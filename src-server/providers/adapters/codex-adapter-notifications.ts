@@ -1,9 +1,15 @@
 import crypto from 'node:crypto';
-import type {
-  ProviderRuntimeEvent as CanonicalRuntimeEvent,
-  ProviderRuntimeErrorEvent,
+import {
+  type ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ENGINE_MCP_ERROR_MAX_CHARS,
+  ENGINE_MCP_SERVER_NAME_MAX_CHARS,
+  type ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import {
+  isCodexWebSearchCompletion,
+  markNativeWebRead,
+} from '../../services/plugins/native-web-read-marks.js';
 import { adapterTurnDuration, providerOps } from '../../telemetry/metrics.js';
 import { providerFailure } from '../provider-failure.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
@@ -31,8 +37,10 @@ import {
 } from './codex-adapter-events.js';
 import {
   type CodexSessionRecord,
+  codexTurnAlreadyTerminal,
   markCodexTurnTerminal,
 } from './codex-adapter-types.js';
+import { mapCodexApprovalReviewer } from './codex-approval-mode.js';
 import {
   codexUsageLimitDetails,
   observeCodexRateLimits,
@@ -162,6 +170,16 @@ interface HandleCodexNotificationOptions {
   onQuotaUpdate?: (record: CodexSessionRecord, payload: unknown) => void;
 }
 
+function codexInterruptedTurnIsTerminal(
+  record: CodexSessionRecord,
+  turnId: string,
+): boolean {
+  return (
+    record.cancelledBoundTurns?.has(turnId) === true &&
+    codexTurnAlreadyTerminal(record, turnId)
+  );
+}
+
 /**
  * Handles one notification. Returns a promise only when handling had to wait
  * on I/O (an image read from the host); the transport holds every later
@@ -177,6 +195,32 @@ export function handleCodexNotification(
   }
 
   switch (notification.method) {
+    case 'thread/settings/updated': {
+      const payload = notification.params;
+      if (
+        record.stopped ||
+        !record.codexThreadId ||
+        !isRecord(payload) ||
+        payload.threadId !== record.codexThreadId ||
+        !isRecord(payload.threadSettings) ||
+        !Object.hasOwn(payload.threadSettings, 'approvalsReviewer')
+      )
+        return;
+      const reviewer = mapCodexApprovalReviewer(
+        payload.threadSettings.approvalsReviewer,
+      );
+      if (record.reportedApprovalReviewer === reviewer) return;
+      record.reportedApprovalReviewer = reviewer;
+      publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso(),
+        method: 'session.approval-reviewer-observed',
+        reviewer,
+      });
+      return;
+    }
     case 'thread/status/changed': {
       if (!isRecord(notification.params)) return;
       const nextState = mapThreadStatusToState(notification.params.status);
@@ -215,7 +259,13 @@ export function handleCodexNotification(
       const turnId = extractString(notification.params.turnId);
       const itemId = extractString(notification.params.itemId);
       const delta = extractString(notification.params.delta);
-      if (!turnId || !itemId || !delta) return;
+      if (
+        !turnId ||
+        !itemId ||
+        !delta ||
+        codexInterruptedTurnIsTerminal(record, turnId)
+      )
+        return;
       const priorOutput = record.turnOutput.get(turnId) ?? '';
       record.turnOutputItemId ??= new Map();
       // A new agent message after text from an earlier one opens a new
@@ -248,7 +298,13 @@ export function handleCodexNotification(
       const turnId = extractString(notification.params.turnId);
       const itemId = extractString(notification.params.itemId);
       const delta = extractString(notification.params.delta);
-      if (!turnId || !itemId || !delta) return;
+      if (
+        !turnId ||
+        !itemId ||
+        !delta ||
+        codexInterruptedTurnIsTerminal(record, turnId)
+      )
+        return;
       publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
@@ -312,6 +368,35 @@ export function handleCodexNotification(
       );
       return;
     }
+    case 'model/rerouted': {
+      // v2 `ModelReroutedNotification` (codex 0.167 app-server schema).
+      const reroute = codexModelReroute(record, notification.params);
+      if (!reroute) return;
+      publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso(),
+        method: 'model.rerouted',
+        ...reroute,
+      });
+      return;
+    }
+    case 'mcpServer/startupStatus/updated': {
+      // v2 `McpServerStatusUpdatedNotification`: one server per notice.
+      const server = codexMcpServerStatus(record, notification.params);
+      if (!server) return;
+      publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso(),
+        method: 'engine-mcp.status',
+        servers: [server],
+        complete: false,
+      });
+      return;
+    }
     case 'account/rateLimits/updated': {
       // #3157: the reset a usage-limit failure resumes at.
       observeCodexRateLimits(record, notification.params);
@@ -323,6 +408,10 @@ export function handleCodexNotification(
       return;
     }
     case 'item/completed': {
+      // #4828: a web search or page open marks the conversation as having
+      // read content written by others.
+      if (isCodexWebSearchCompletion(notification))
+        markNativeWebRead([record.externalThreadId]);
       return handleCodexItemCompleted(
         record,
         notification.params,
@@ -365,28 +454,17 @@ export function handleCodexNotification(
       const turn = notification.params.turn;
       const turnId = extractString(turn.id);
       if (!turnId) return;
+      const alreadyTerminal = codexInterruptedTurnIsTerminal(record, turnId);
+      const active = turnId === record.activeTurnId;
+      // An acknowledged Stop already emitted the terminal but still needs
+      // the engine's final cursor. A newer turn owns its own session state.
+      const ownsSettlement =
+        active ||
+        (record.activeTurnId === undefined &&
+          (!alreadyTerminal || record.terminalPublishedForTurnId === turnId));
+      if (alreadyTerminal && !ownsSettlement) return;
       const outputText = record.turnOutput.get(turnId);
-      // archive#3451 fix round D8 / archive#3572(a) (widened): only touch
-      // the CURRENTLY active turn's bookkeeping — `activeTurnId`,
-      // `activeTurnStartedAt`, AND the duration metric that reads it — when
-      // this notification actually names that turn. Mirrors the
-      // target-mismatch guard `interruptTurn` already has. D8 originally
-      // gated only the `activeTurnId` clear; a late `turn/completed` for
-      // turn-1 arriving while turn-2 is already active still (a) recorded an
-      // `adapterTurnDuration` sample using turn-2's OWN in-flight
-      // `activeTurnStartedAt` — attributing a bogus duration to turn-1's
-      // stale completion — and (b) unconditionally cleared
-      // `activeTurnStartedAt` immediately below, so when turn-2 genuinely
-      // completed later this same block found no `activeTurnStartedAt` to
-      // read and silently recorded NO duration sample for turn-2 at all: one
-      // bogus datapoint, one real one lost. All three now share the single
-      // identity check. `terminalPublishedForTurnId` stays unconditional
-      // below: it states a true fact (turn-1's terminal WAS published) that
-      // is harmless to record even when turn-1 is no longer the active
-      // turn — `publishOrphanedTurnFailure`'s guard compares it against
-      // `activeTurnId`, so it only ever matches (and skips synthesis) when
-      // the ids actually agree.
-      if (turnId === record.activeTurnId) {
+      if (active) {
         if (record.activeTurnStartedAt) {
           adapterTurnDuration.record(Date.now() - record.activeTurnStartedAt, {
             provider: 'codex',
@@ -395,22 +473,20 @@ export function handleCodexNotification(
         record.activeTurnId = undefined;
         record.activeTurnStartedAt = undefined;
       }
-      // archive#3473 fix round: this notification ALWAYS publishes a real
-      // terminal below (turn.completed, or runtime.error for the failed
-      // branch) — mark it before either publish path so a concurrent
-      // `stopSession`/process-exit synthesis (`publishOrphanedTurnFailure`)
-      // never double-publishes for this turn.
+      if (ownsSettlement) {
+        record.session = {
+          ...record.session,
+          status: 'ready',
+          updatedAt: nowIso(),
+          resumeCursor: codexResumeCursor(
+            record.codexThreadId,
+            record.session.resumeCursor,
+            turnId,
+          ),
+        };
+      }
+      if (alreadyTerminal) return;
       markCodexTurnTerminal(record, turnId);
-      record.session = {
-        ...record.session,
-        status: 'ready',
-        updatedAt: nowIso(),
-        resumeCursor: codexResumeCursor(
-          record.codexThreadId,
-          record.session.resumeCursor,
-          turnId,
-        ),
-      };
       // archive#3442: Codex reports a genuinely failed turn (e.g. a
       // usage-limit or context-window exhaustion mid-turn) through the SAME
       // `turn/completed` notification as a success — `turn.status` is the
@@ -514,6 +590,8 @@ export function handleCodexNotification(
         return;
       }
       const errorTurnId = extractString(notification.params.turnId);
+      if (errorTurnId && codexInterruptedTurnIsTerminal(record, errorTurnId))
+        return;
       const willRetry = Boolean(notification.params.willRetry);
       // archive#3451 finding B2: when `willRetry` is falsy this event IS a
       // genuine terminal for the turn it names — every consumer downstream
@@ -567,6 +645,101 @@ export function handleCodexNotification(
     default:
       return;
   }
+}
+
+/** A Codex model id: one token, at most 200 characters. */
+const CODEX_MODEL_ID = /^[A-Za-z0-9._:/@-]{1,200}$/;
+const CODEX_MCP_SERVER_NAME_MAX_CHARS = ENGINE_MCP_SERVER_NAME_MAX_CHARS;
+const CODEX_MCP_ERROR_MAX_CHARS = ENGINE_MCP_ERROR_MAX_CHARS;
+
+/**
+ * `model/rerouted` → `model.rerouted`. Codex names the turn and thread it
+ * rerouted; a thread other than the session's own is a subagent's, so the
+ * reroute is attributed to that child. The only reason Codex 0.167 defines
+ * (`highRiskCyberActivity`) is neither a refusal nor an availability
+ * fallback, so it reads `other`. Codex does not say the new model sticks,
+ * so the scope is `turn` and the session's model is left as it was.
+ */
+function codexModelReroute(
+  record: CodexSessionRecord,
+  params: unknown,
+): Pick<
+  Extract<CanonicalRuntimeEvent, { method: 'model.rerouted' }>,
+  'fromModel' | 'toModel' | 'trigger' | 'scope' | 'childWorkId' | 'turnId'
+> | null {
+  if (!isRecord(params)) return null;
+  const fromModel = extractString(params.fromModel);
+  const toModel = extractString(params.toModel);
+  if (
+    !fromModel ||
+    !toModel ||
+    !CODEX_MODEL_ID.test(fromModel) ||
+    !CODEX_MODEL_ID.test(toModel)
+  )
+    return null;
+  const threadId = extractString(params.threadId);
+  const childWorkId =
+    threadId && threadId !== record.codexThreadId ? threadId : undefined;
+  const turnId = extractString(params.turnId);
+  return {
+    fromModel,
+    toModel,
+    trigger: 'other',
+    scope: 'turn',
+    ...(childWorkId ? { childWorkId } : {}),
+    ...(turnId && !childWorkId ? { turnId } : {}),
+  };
+}
+
+const CODEX_MCP_STATES: Readonly<
+  Record<string, 'starting' | 'ready' | 'failed'>
+> = {
+  starting: 'starting',
+  ready: 'ready',
+  failed: 'failed',
+  cancelled: 'failed',
+};
+
+/**
+ * `mcpServer/startupStatus/updated` → one `engine-mcp.status` server. A
+ * `reauthenticationRequired` failure reads `needs-auth`; a cancelled start
+ * reads `failed`. A notice naming another thread is not this session's.
+ * Codex reads its MCP servers from its own config (Station's passthrough
+ * included), so the scope is `engine-config`.
+ */
+function codexMcpServerStatus(
+  record: CodexSessionRecord,
+  params: unknown,
+):
+  | Extract<
+      CanonicalRuntimeEvent,
+      { method: 'engine-mcp.status' }
+    >['servers'][number]
+  | null {
+  if (!isRecord(params)) return null;
+  const threadId = extractString(params.threadId);
+  if (threadId && threadId !== record.codexThreadId) return null;
+  const name = boundedLine(plainLine(extractString(params.name) ?? ''));
+  if (!name || name.length > CODEX_MCP_SERVER_NAME_MAX_CHARS) return null;
+  const status = extractString(params.status);
+  const reported = status ? CODEX_MCP_STATES[status] : undefined;
+  if (!reported) return null;
+  const state =
+    reported === 'failed' && params.failureReason === 'reauthenticationRequired'
+      ? 'needs-auth'
+      : reported;
+  const rawError = extractString(params.error);
+  const error = rawError
+    ? boundedLine(plainLine(rawError)).slice(0, CODEX_MCP_ERROR_MAX_CHARS)
+    : status === 'cancelled'
+      ? 'Startup cancelled'
+      : '';
+  return {
+    name,
+    state,
+    ...(error ? { error } : {}),
+    scope: 'engine-config',
+  };
 }
 
 function handleCodexItemStarted(

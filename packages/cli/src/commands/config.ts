@@ -26,8 +26,8 @@
  *     config-loader-app.ts`'s `mergeAppConfigUpdate` — a registry-nullable
  *     key's explicit `null` is PERSISTED, not deleted; see
  *     `NULLABLE_APP_CONFIG_KEYS`). Also shared: atomic (temp-file +
- *     rename) persistence (`writeConfigFileAtomically`, mirroring
- *     `saveAppConfigFile`'s essentials).
+ *     rename) persistence (`writeConfigFileAtomically`, through the shared
+ *     durable writer, mirroring `saveAppConfigFile`'s essentials).
  *   - NOT SHARED: the AJV structural pass `saveAppConfigFile` runs against
  *     `schemas/app.schema.json` for `composite`-kind fields (e.g.
  *     `approvalGuardian`) — an offline write accepts any shape the
@@ -50,15 +50,7 @@
  * the live route first so a reachable Station's provenance is available.
  */
 
-import { randomUUID } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
@@ -69,6 +61,7 @@ import {
 } from '@kontourai/station-contracts/settings-registry';
 import { updateAppLogLevel } from '@kontourai/station-sdk/app-config';
 import { authenticatedFetch } from '@kontourai/station-sdk/client';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import {
   configureApiCredential,
@@ -95,46 +88,60 @@ const NO_FLAGS: ParsedCoreArgs = {
   repeatedFlags: {},
 };
 
-function loadConfigFile(): Record<string, unknown> {
+/**
+ * Reads `config/app.json` for a caller that will merge into it and write it
+ * back. A file that cannot be read as a JSON object is refused rather than
+ * treated as empty: every writer here replaces the whole file, so "empty" would
+ * silently discard whatever the operator had in it (a hand-edit typo must not
+ * cost them their settings). Shared with `station registry <url>`
+ * (`install-registry.ts`), which writes the same file.
+ */
+export function loadConfigFile(): Record<string, unknown> {
   ensureStationHomeSchemaSync(PROJECT_HOME);
   if (!existsSync(CONFIG_PATH)) return {};
-  return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
+  } catch (error) {
+    throw new Error(
+      `${CONFIG_PATH} is not valid JSON (${error instanceof Error ? error.message : String(error)}). Fix or remove the file and retry; it was left unchanged.`,
+    );
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(
+      `${CONFIG_PATH} must contain a JSON object. Fix or remove the file and retry; it was left unchanged.`,
+    );
+  }
+  return parsed as Record<string, unknown>;
 }
 
 /**
- * Same-directory temp-file-then-rename (mirrors `saveAppConfigFile`'s
- * essentials in `src-server/domain/config-loader-app.ts`) so a CLI one-shot
- * offline write can't leave `config/app.json` half-written if the process
- * dies mid-write, or torn mid-read by a concurrent reader — `rename(2)` is
- * atomic within a filesystem. Review round 1 MEDIUM 2(a): the plain
- * `writeFileSync(CONFIG_PATH, ...)` this replaced was not atomic. NOT
- * mirrored, deliberately: `saveAppConfigFile`'s cross-process file-mutation
- * lock and expected-source-signature conflict check — a CLI invocation is a
- * single one-shot writer, not a long-lived server serializing concurrent
- * mutators, so there is no concurrent writer within THIS process to lock
- * against (a concurrently running Station is exactly why `--offline`
- * writes bypass its serialization in the first place — that gap is
- * accepted and documented, not something a local lock here would close).
+ * Publishes `config/app.json` through the shared durable writer (exclusive
+ * same-directory temporary, fsync, rename, directory fsync), so a CLI one-shot
+ * offline write can't leave the file half-written if the process dies
+ * mid-write, or torn mid-read by a concurrent reader — `rename(2)` is atomic
+ * within a filesystem. The bytes match `saveAppConfigFile` in
+ * `src-server/domain/config-loader-app.ts`: two-space indent, no trailing
+ * newline, owner-only file. NOT mirrored, deliberately: `saveAppConfigFile`'s
+ * cross-process file-mutation lock and expected-source-signature conflict
+ * check — a CLI invocation is a single one-shot writer, not a long-lived
+ * server serializing concurrent mutators, so there is no concurrent writer
+ * within THIS process to lock against (a concurrently running Station is
+ * exactly why `--offline` writes bypass its serialization in the first place —
+ * that gap is accepted and documented, not something a local lock here would
+ * close).
  */
-function writeConfigFileAtomically(config: Record<string, unknown>): void {
+export function writeConfigFileAtomically(
+  config: Record<string, unknown>,
+): void {
   const configDir = join(PROJECT_HOME, 'config');
-  mkdirSync(configDir, { recursive: true });
-  const serialized = JSON.stringify(config, null, 2);
-  const tempPath = join(
-    configDir,
-    `app.json.${process.pid}.${randomUUID()}.tmp`,
-  );
-  try {
-    writeFileSync(tempPath, serialized, 'utf-8');
-    renameSync(tempPath, CONFIG_PATH);
-  } finally {
-    try {
-      unlinkSync(tempPath);
-    } catch {
-      // Expected on the success path: renameSync already moved it to
-      // CONFIG_PATH, so there is nothing left at tempPath to remove.
-    }
-  }
+  mkdirSync(configDir, { recursive: true, mode: 0o700 });
+  // The shared writer refuses a symlinked parent directory. The server's own
+  // writer follows one, and so did this command, so resolve the directory
+  // first: a home whose `config` is a link keeps working offline too.
+  writeJsonDurably(join(realpathSync(configDir), 'app.json'), config, {
+    trailingNewline: false,
+  });
 }
 
 /** Booleans and all-digit strings parse; everything else stays a string. `"null"` is handled by the caller (an explicit clear, not a stored string). */

@@ -1,0 +1,7 @@
+{
+  "revision": "5cfa1f33214feca9e7654dafc90069bba32f1477",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"component-style-hygiene-baseline.json: chat.css legacy-token:--error-text baseline 11->13 for two uses added on main by #5023/#5027 (not this branch). The guide's description of the baseline (inherited file/signature, new legacy-token references fail) is unchanged and still accurate; no prose change.","inputs":["docs/guides/code-hygiene.md","scripts/component-style-hygiene-baseline.json"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "915d957bdc059e4954e266d14bf66cb383152ddc",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Added the Project brief and model fields; checked against project.ts, file-storage-schemas.ts, content.ts and project-service.ts (null and blank drop, medium default).","inputs":["docs/reference/config.md"]}
+  ]
+}

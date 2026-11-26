@@ -1,5 +1,6 @@
-import { EventEmitter } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { describe, expect, test } from 'vitest';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -1187,10 +1188,14 @@ describe('terminating a POSIX process tree', () => {
   function posixExecution(input: {
     childKill: () => boolean;
     kill: (pid: number, signal: string | number) => void;
+    exitCode?: number | null;
+    signalCode?: string | null;
   }) {
     const child = Object.assign(mockChild(), {
       pid: 4242,
       kill: input.childKill,
+      exitCode: input.exitCode ?? null,
+      signalCode: input.signalCode ?? null,
     });
     return executeOwnedProcess(
       'lab',
@@ -1269,6 +1274,146 @@ describe('terminating a POSIX process tree', () => {
     expect(attempts).toEqual([[-4242, 'SIGTERM']]);
     expect(childKills).toBe(0);
   });
+
+  test('only while the leader is unreaped does a strict force signal reach the group', async () => {
+    const attempts: Array<[number, string | number]> = [];
+    const kill = (pid: number, signal: string | number) => {
+      attempts.push([pid, signal]);
+    };
+    const unreaped = posixExecution({ childKill: () => true, kill });
+    await expect(
+      unreaped.forceTerminate({ onlyWhileLeaderUnreaped: true }),
+    ).resolves.toEqual({ signalled: true });
+    expect(attempts).toEqual([[-4242, 'SIGKILL']]);
+    attempts.length = 0;
+    // Reaped, by exit status or by signal: the group id may have been
+    // reused, so neither the group nor the pid is signalled.
+    let childKills = 0;
+    for (const reaped of [{ exitCode: 0 }, { signalCode: 'SIGTERM' }]) {
+      const execution = posixExecution({
+        childKill: () => {
+          childKills += 1;
+          return true;
+        },
+        kill,
+        ...reaped,
+      });
+      await expect(
+        execution.forceTerminate({ onlyWhileLeaderUnreaped: true }),
+      ).resolves.toEqual({ signalled: false, reason: 'leader-reaped' });
+    }
+    expect(attempts).toEqual([]);
+    expect(childKills).toBe(0);
+    // Without the option a tree kill still reaches descendants that outlive
+    // the leader, as other callers rely on.
+    const legacy = posixExecution({ childKill: () => true, kill, exitCode: 0 });
+    await expect(legacy.forceTerminate()).resolves.toBeUndefined();
+    expect(attempts).toEqual([[-4242, 'SIGKILL']]);
+  });
+
+  test.skipIf(!['darwin', 'linux'].includes(process.platform))(
+    'strict force termination waits for exit status after a sibling exit',
+    async () => {
+      const attemptedSignals: number[] = [];
+      const runtime = {
+        platform: process.platform,
+        kill: (pid: number) => {
+          attemptedSignals.push(pid);
+        },
+      };
+      const start = () =>
+        executeOwnedProcess(
+          process.execPath,
+          [
+            '-e',
+            "process.stdin.once('data', () => process.exit(0)); process.stdout.write('ready');",
+          ],
+          undefined,
+          'exit-batch fixture',
+          { stdio: ['pipe', 'pipe', 'ignore'] },
+          runtime,
+        );
+      const first = start();
+      const second = start();
+      const fixtures = [first, second];
+      type Execution = typeof first;
+      const termination =
+        Promise.withResolvers<
+          Awaited<ReturnType<Execution['forceTerminate']>>
+        >();
+      let observed:
+        | { statusPending: boolean; alreadyGone: boolean }
+        | undefined;
+      const onSiblingExit = (target: Execution) => {
+        if (observed) return;
+        let alreadyGone = false;
+        try {
+          if (target.child.pid !== undefined) process.kill(target.child.pid, 0);
+        } catch (error) {
+          alreadyGone = (error as NodeJS.ErrnoException).code === 'ESRCH';
+        }
+        observed = {
+          statusPending:
+            target.child.exitCode === null && target.child.signalCode === null,
+          alreadyGone,
+        };
+        termination.resolve(
+          target.forceTerminate({ onlyWhileLeaderUnreaped: true }),
+        );
+      };
+
+      try {
+        await Promise.all(
+          fixtures.map(async ({ child }) => {
+            if (!child.stdout || !child.stdin || child.pid === undefined)
+              throw new Error('exit-batch fixture did not start with pipes');
+            expect(await once(child.stdout, 'data')).toEqual([
+              Buffer.from('ready'),
+            ]);
+          }),
+        );
+        first.child.once('exit', () => onSiblingExit(second));
+        second.child.once('exit', () => onSiblingExit(first));
+        for (const { child } of fixtures) child.stdin?.write('exit');
+
+        // Keep this JS turn open until both children have exited. libuv then
+        // reaps them in one batch before dispatching either exit callback.
+        const pids = fixtures.map(({ child }) => child.pid).join(',');
+        const deadline = performance.now() + 3_000;
+        const pause = new Int32Array(new SharedArrayBuffer(4));
+        let bothExited = false;
+        while (performance.now() < deadline && !bothExited) {
+          const states = execFileSyncBounded(
+            '/bin/ps',
+            ['-o', 'stat=', '-p', pids],
+            { encoding: 'utf8', timeout: 1_000, windowsHide: true },
+          )
+            .trim()
+            .split(/\s+/);
+          bothExited =
+            states.length === 2 &&
+            states.every((state) => state.startsWith('Z'));
+          if (!bothExited) Atomics.wait(pause, 0, 0, 5);
+        }
+        expect(bothExited, 'both owned children exited before dispatch').toBe(
+          true,
+        );
+        await Promise.all(fixtures.map(({ completion }) => completion));
+        expect(observed).toEqual({ statusPending: true, alreadyGone: true });
+        await expect(termination.promise).resolves.toEqual({
+          signalled: false,
+          reason: 'leader-reaped',
+        });
+        expect(attemptedSignals).toEqual([]);
+      } finally {
+        for (const { child } of fixtures) {
+          if (child.exitCode === null && child.signalCode === null)
+            child.stdin?.end('exit');
+        }
+        await Promise.all(fixtures.map(({ completion }) => completion));
+      }
+    },
+  );
 
   test('a settled teardown of an exited child reports no errors', async () => {
     const execution = posixExecution({

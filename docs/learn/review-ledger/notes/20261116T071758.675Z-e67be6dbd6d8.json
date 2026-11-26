@@ -1,0 +1,7 @@
+{
+  "revision": "88927861bee7c2dc49b5c5278b84eef7f772c846",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-checked the claims citing ApprovalSheetProvider.tsx after the sheet fixes: a failed request check now waits for the next opening and the catch-up hold applies only on a reconnect; the sheet still never offers a session option for a request the shared rule withholds it from, and no claim here describes the check retry or hold.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ApprovalSheetProvider.tsx"]}
+  ]
+}

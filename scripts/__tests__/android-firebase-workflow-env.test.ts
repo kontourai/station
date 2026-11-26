@@ -50,31 +50,30 @@ describe('Android build jobs carry the Firebase client identity', () => {
     });
   });
 
-  it('release chooses the beta or stable app explicitly before building', () => {
+  // Tagged releases ship only the Stable package (#4929): the release job
+  // selects the Stable Firebase app and refuses a configured project without it.
+  it('release selects the Stable app explicitly before building', () => {
     const { env = {}, steps = [] } = job('release.yml', 'android');
     expect(env).toMatchObject(SHARED);
     // No expression fallback in the job env: the step below decides.
     expect(env.STATION_FIREBASE_APP_ID).toBeUndefined();
 
     const selectIndex = steps.findIndex(
-      (step) => step.name === "Select the channel's Firebase app",
+      (step) => step.name === 'Select the Stable Firebase app',
     );
     const buildIndex = steps.findIndex(BUILDS_ANDROID);
     expect(selectIndex).toBeGreaterThanOrEqual(0);
     expect(buildIndex).toBeGreaterThan(selectIndex);
 
     const select = steps[selectIndex];
-    expect(select.env).toMatchObject({
-      FIREBASE_APP_ID_BETA: '${{ vars.STATION_FIREBASE_APP_ID_BETA }}',
+    expect(select.env).toEqual({
       FIREBASE_APP_ID_STABLE: '${{ vars.STATION_FIREBASE_APP_ID_STABLE }}',
     });
     const run = select.run ?? '';
+    expect(run).not.toContain('BETA');
+    expect(run).toMatch(/-z "\$FIREBASE_APP_ID_STABLE" \]; then[\s\S]*exit 1/);
     expect(run).toContain(
-      'if [ "$RELEASE_CHANNEL" = preview ]; then app_id="$FIREBASE_APP_ID_BETA"; else app_id="$FIREBASE_APP_ID_STABLE"; fi',
-    );
-    expect(run).toMatch(/-z "\$app_id" \]; then[\s\S]*exit 1/);
-    expect(run).toContain(
-      'echo "STATION_FIREBASE_APP_ID=$app_id" >> "$GITHUB_ENV"',
+      'echo "STATION_FIREBASE_APP_ID=$FIREBASE_APP_ID_STABLE" >> "$GITHUB_ENV"',
     );
   });
 

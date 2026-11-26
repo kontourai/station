@@ -1,0 +1,7 @@
+{
+  "revision": "a1c40ee2fee48d9d4ac8d3e8aba0f6138e9c0eff",
+
+  "notes": [
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Re-reviewed against the tests/e2e-manifest.mjs change since e308051c (one added product-bucket, parallel-safe spec, tests/notification-deep-link-opening.spec.ts). The plan routes reconciliation to the manifest and the coverage matrix and states that an inventory or existing test does not establish a journey; the added spec changes no scope, lane routing or acceptance rule. No prose change. Source inspection only; no journey execution is claimed.","inputs":["docs/plans/whole-app-ux-campaign.md","tests/e2e-manifest.mjs"]}
+  ]
+}

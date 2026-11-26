@@ -91,9 +91,27 @@ class CodedOrchestrationError extends Error {
 const sendExecutionMessageMock = vi.fn();
 const submitConversationSteerMock = vi.fn();
 const readConversationInboxHeadMock = vi.fn();
-const queueExecutionMessageMock = vi
-  .fn()
-  .mockResolvedValue({ outcome: 'queued', entry: {} });
+const queueExecutionMessageMock = vi.fn().mockImplementation(
+  async (
+    _apiBase: string,
+    request: {
+      conversationId: string;
+      clientTurnId: string;
+      message: string;
+    },
+  ) => ({
+    outcome: 'queued',
+    conversationId: request.conversationId,
+    clientTurnId: request.clientTurnId,
+    entry: {
+      conversationId: request.conversationId,
+      clientTurnId: request.clientTurnId,
+      message: request.message,
+      kind: 'follow-up',
+      state: 'queued',
+    },
+  }),
+);
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   sendExecutionMessage: (...args: unknown[]) =>
@@ -125,6 +143,7 @@ const clearEphemeralMessagesMock = vi.fn((sessionId: string) => {
 });
 
 vi.mock('../contexts/ActiveChatsContext', () => ({
+  activeChatsStore: { getSnapshot: () => activeChatsStore.getSnapshot() },
   useActiveChatActions: () => ({
     updateChat: updateChatMock,
     clearInput: clearInputMock,
@@ -163,6 +182,8 @@ const steerOrchestrationTurnMock = vi.fn();
 // were invalidated. A fresh `vi.fn` per `useInvalidateQuery` call records
 // nothing an assertion can reach.
 const invalidateMock = vi.fn();
+const runSkillMock = vi.fn().mockResolvedValue(undefined);
+const readSkillDetailMock = vi.fn();
 // #2310 review H1: the session-list cache the send path consults. Tests set
 // what the cache holds; the default is an empty list.
 const sessionCache = new QueryClient({
@@ -202,7 +223,10 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     useConfigQuery: () => configQueryMock(),
     // The Agent-record link of the engine-connection chain; this fixture's
     // chats carry their own binding, so the catalog is empty here.
-    useAgentsQuery: () => ({ data: [], error: null }),
+    useAgentsQuery: () => ({ data: cachedAgentCatalog ?? [], error: null }),
+    useRunSkill: () => ({ mutateAsync: runSkillMock }),
+    useSkillDetailReader: () => readSkillDetailMock,
+    agentMcpPromptsQueryKey: actual.agentMcpPromptsQueryKey,
     useInvalidateQuery: () => invalidateMock,
     useQueryClient: () => queryClientMock,
     interruptOrchestrationTurn: (...args: unknown[]) =>
@@ -259,6 +283,7 @@ import {
   useCancelMessage,
   useSendMessage,
 } from '../hooks/useActiveChatSessionMessaging';
+import { useSlashCommandHandler } from '../hooks/useSlashCommandHandler';
 import {
   _resetOutboundQueueStorage,
   _setOutboundQueueStorage,
@@ -353,6 +378,150 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     outboundQueueMode.useActual = false;
     _resetOutboundQueueStorage();
     activeChatsStore.removeChat(sessionId);
+  });
+
+  const authoredAgent = {
+    slug: 'codex',
+    name: 'Codex',
+    commands: {
+      review: {
+        name: 'review',
+        prompt: 'A={{topic}} again={{topic}} env={{env}} optional={{note}}',
+        params: [
+          { name: 'topic', required: true },
+          { name: 'env', default: 'staging' },
+          { name: 'note' },
+        ],
+      },
+      ping: { name: 'ping', prompt: 'Ping the target' },
+    },
+  };
+
+  async function sendSlashMessage(input: string) {
+    const { result } = renderHook(
+      () => {
+        const handleSlashCommand = useSlashCommandHandler();
+        return useSendMessage(
+          'http://api.test',
+          undefined,
+          undefined,
+          (id, command) =>
+            handleSlashCommand(id, command, {
+              autocomplete: {
+                openModel: () => {},
+                openNewChat: () => {},
+                closeCommand: () => {},
+                closeAll: () => {},
+              },
+            }),
+        );
+      },
+      {
+        wrapper: ({ children }) =>
+          createElement(
+            QueryClientProvider,
+            { client: sessionCache },
+            children,
+          ),
+      },
+    );
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, input);
+    });
+  }
+
+  it.each([
+    [
+      '/review "release notes"',
+      'A=release notes again=release notes env=staging optional=',
+    ],
+    ['/review audit "" ""', 'A=audit again=audit env=staging optional='],
+    ['/review audit prod " "', 'A=audit again=audit env=prod optional= '],
+    ['/ping', 'Ping the target'],
+  ])(
+    'sends the authored expansion of %s through the normal sender',
+    async (input, message) => {
+      cachedAgentCatalog = [authoredAgent];
+      await sendSlashMessage(input);
+      expect(sendExecutionMessageMock).toHaveBeenCalledExactlyOnceWith(
+        'http://api.test',
+        expect.objectContaining({ message }),
+        expect.anything(),
+      );
+      expect(runSkillMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['/review', 'Enter a value for topic'],
+    ['/review ""', 'Enter a value for topic'],
+    ['/review " "', 'Enter a value for topic'],
+    [
+      '/review release notes prod extra',
+      'Use at most 3 arguments. Quote a value that contains spaces',
+    ],
+    ['/ping surplus', 'This command takes no arguments'],
+  ])(
+    'refuses %s without sending or counting a run',
+    async (input, diagnostic) => {
+      cachedAgentCatalog = [authoredAgent];
+      await sendSlashMessage(input);
+      expect(addEphemeralMessageMock).toHaveBeenCalledWith(sessionId, {
+        role: 'system',
+        content: expect.stringContaining(diagnostic),
+      });
+      expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+      expect(runSkillMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['authored', 'skill'])(
+    'preserves literal argument bytes through the %s send path',
+    async (owner) => {
+      const literal = "literal $$ $& $` $' \\path {{env}}";
+      const quoted = '"' + literal.replaceAll('\\', '\\\\') + '"';
+      if (owner === 'authored') {
+        cachedAgentCatalog = [authoredAgent];
+      } else {
+        sessionCache.setQueryData(
+          ['skills', 'local'],
+          [
+            {
+              name: 'review',
+              installed: true,
+              command: { enabled: true, global: true },
+            },
+          ],
+        );
+        readSkillDetailMock.mockResolvedValue({
+          name: 'review',
+          variables: [{ name: 'topic' }, { name: 'env', default: 'staging' }],
+          body: 'A={{topic}} again={{topic}} env={{env}} optional=',
+        });
+      }
+      await sendSlashMessage('/review ' + quoted);
+      expect(sendExecutionMessageMock).toHaveBeenCalledExactlyOnceWith(
+        'http://api.test',
+        expect.objectContaining({
+          message:
+            'A=' + literal + ' again=' + literal + ' env=staging optional=',
+        }),
+        expect.anything(),
+      );
+      expect(runSkillMock).toHaveBeenCalledTimes(owner === 'skill' ? 1 : 0);
+    },
+  );
+
+  it('forwards engine-owned ACP command text before authored argument validation', async () => {
+    const message = '/review "unterminated';
+    cachedAgentCatalog = [{ ...authoredAgent, engineConnectionType: 'acp' }];
+    await sendSlashMessage(message);
+    expect(sendExecutionMessageMock).toHaveBeenCalledExactlyOnceWith(
+      'http://api.test',
+      expect.objectContaining({ message }),
+      expect.anything(),
+    );
+    expect(runSkillMock).not.toHaveBeenCalled();
   });
 
   it('refuses the ordinary local send path for an invalid saved remote destination', async () => {
@@ -1533,6 +1702,56 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(onAdmission.mock.calls).toEqual([['accepted']]);
   });
 
+  it('a busy follow-up queued with its files leaves them with the held message, not the composer', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      attachments: [stagedAttachment],
+      attachmentStages: [stagedSnapshot],
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      expect(
+        await result.current(
+          sessionId,
+          'codex',
+          undefined,
+          'with a file',
+          [stagedAttachment],
+          undefined,
+          undefined,
+          { queueOnBusy: true, queueFilesOnBusy: true },
+        ),
+      ).toBe(true);
+    });
+    expect(queueExecutionMessageMock).toHaveBeenCalledOnce();
+    expect(queueExecutionMessageMock.mock.calls[0]?.[1]).toMatchObject({
+      attachmentRefs: [stagedSnapshot.reference],
+    });
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat?.attachments ?? []).toEqual([]);
+    expect(chat?.attachmentStages ?? []).toEqual([]);
+  });
+
+  it('without a host that holds files, a busy send with files stays in the composer', async () => {
+    activeChatsStore.updateChat(sessionId, { status: 'sending' });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      expect(
+        await result.current(
+          sessionId,
+          'codex',
+          undefined,
+          'with a file',
+          [stagedAttachment],
+          undefined,
+          undefined,
+          { queueOnBusy: true },
+        ),
+      ).toBe(false);
+    });
+    expect(queueExecutionMessageMock).not.toHaveBeenCalled();
+  });
+
   it('reuses the same client turn id from the Retry affordance', async () => {
     sendExecutionMessageMock
       .mockRejectedValueOnce(new Error('temporarily unavailable'))
@@ -1678,7 +1897,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     const notice = activeChatsStore
       .getSnapshot()
       [sessionId]?.ephemeralMessages?.at(-1)?.content;
-    expect(notice).toContain("Can't resume");
+    expect(notice).toContain('This chat can’t continue');
     expect(notice).not.toMatch(/Model connection/i);
     expect(
       activeChatsStore.getSnapshot()[sessionId]?.ephemeralMessages?.at(-1)
@@ -1694,7 +1913,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   it.each([
     [
       'thread t-1 already has an active writer',
-      /^\*\*The chat didn't start\*\*\n\nStation could not complete this request\./,
+      /^\*\*The chat didn't start\*\*\n\nStation couldn’t complete this request\./,
     ],
     [
       'OAuth session expired and could not be refreshed',
@@ -2301,6 +2520,61 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(invalidateMock).toHaveBeenCalledWith(['acp-connections']);
     expect(invalidateMock).toHaveBeenCalledWith(['connections', 'engines']);
   });
+
+  // A send refused because an earlier start on this Session is held (the
+  // REAL fetcher's error). Nothing was sent, nothing failed: the chat is not
+  // marked failed and there is no blind Retry.
+  it.each([
+    'turn_start_held',
+    'turn_start_held_until_restart',
+    'turn_start_busy',
+    'conversation_predecessor_engine_live',
+  ])(
+    'a %s refusal neither marks the chat failed nor offers Retry',
+    async (code) => {
+      const actual = await vi.importActual<
+        typeof import('@kontourai/station-sdk/client')
+      >('@kontourai/station-sdk/client');
+      const previous = globalThis.fetch;
+      globalThis.fetch = (async () =>
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: `Session already has a turn start in progress: ${sessionId}.`,
+            code,
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        )) as typeof fetch;
+      let refusal: unknown;
+      try {
+        refusal = await actual
+          .sendExecutionMessage('http://api.test', {} as never)
+          .catch((caught: unknown) => caught);
+      } finally {
+        globalThis.fetch = previous;
+      }
+      expect(refusal).toMatchObject({ code });
+      sendExecutionMessageMock.mockRejectedValueOnce(refusal);
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'station', undefined, 'hello');
+      });
+
+      const chat = activeChatsStore.getSnapshot()[sessionId];
+      expect(chat?.status).not.toBe('error');
+      // The refused text is restored, and the notice says so.
+      expect(chat?.input).toBe('hello');
+      const notice = chat?.ephemeralMessages?.at(-1);
+      expect(notice?.content).toMatch(
+        /Your earlier message may still be running|Another start is still in progress|The previous agent is still stopping/,
+      );
+      expect(notice?.content).toContain(
+        'Your message is back in the composer.',
+      );
+      expect(notice?.action).toBeUndefined();
+    },
+  );
 
   it('restores supervised attachments and stage refs after a definitive rejection', async () => {
     activeChatsStore.updateChat(sessionId, {
@@ -3124,10 +3398,6 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       openTurnId: 'turn-open',
       conversationId: sessionId,
     });
-    queueExecutionMessageMock.mockResolvedValueOnce({
-      outcome: 'queued',
-      entry: {},
-    });
     const { result } = renderHook(() => useSendMessage('http://api.test'));
     await act(async () => {
       await result.current(
@@ -3498,31 +3768,45 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
   });
 
-  it('keeps an unanswered busy follow-up in the outbox, not the local chat queue', async () => {
-    activeChatsStore.updateChat(sessionId, {
-      status: 'sending',
-      conversationId: sessionId,
-    });
-    queueExecutionMessageMock.mockRejectedValueOnce(new TypeError('offline'));
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
-    await act(async () => {
-      await result.current(
-        sessionId,
-        'claude',
-        sessionId,
-        'offline follow-up',
-        undefined,
-        undefined,
-        'offline-key',
-        { queueOnBusy: true },
+  it.each(['lost response', 'mismatched inner identity'])(
+    'keeps a busy follow-up in the outbox after a %s',
+    async (failure) => {
+      activeChatsStore.updateChat(sessionId, {
+        status: 'sending',
+        conversationId: sessionId,
+      });
+      if (failure === 'lost response') {
+        queueExecutionMessageMock.mockRejectedValueOnce(
+          new TypeError('offline'),
+        );
+      } else {
+        queueExecutionMessageMock.mockResolvedValueOnce({
+          outcome: 'queued',
+          conversationId: sessionId,
+          clientTurnId: 'offline-key',
+          entry: { conversationId: sessionId, clientTurnId: 'other-message' },
+        });
+      }
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(
+          sessionId,
+          'claude',
+          sessionId,
+          'offline follow-up',
+          undefined,
+          undefined,
+          'offline-key',
+          { queueOnBusy: true },
+        );
+      });
+      expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+        [],
       );
-    });
-    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
-      [],
-    );
-    expect(activeChatsStore.getSnapshot()[sessionId].status).toBe('queued');
-    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
-  });
+      expect(activeChatsStore.getSnapshot()[sessionId].status).toBe('queued');
+      expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('uses the started receipt when the busy turn ends before the request', async () => {
     activeChatsStore.updateChat(sessionId, {
@@ -3780,10 +4064,6 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       activeChatsStore.updateChat(sessionId, {
         status: 'sending',
         conversationId: sessionId,
-      });
-      queueExecutionMessageMock.mockResolvedValueOnce({
-        outcome: 'queued',
-        entry: {},
       });
       const { result } = renderHook(() => useSendMessage('http://api.test'));
       const replay = async (

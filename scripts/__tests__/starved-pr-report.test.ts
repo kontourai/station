@@ -5,6 +5,7 @@ import {
   HOLD_MARKER,
   isHeld,
   isStarved,
+  listOpenPullRequests,
   REPORT_MARKER,
   reportBody,
   SETTLE_MINUTES,
@@ -142,6 +143,56 @@ describe('starved pull request detection', () => {
     const body = reportBody(42);
     expect(body).toContain('Verify the arming took');
     expect(body).toContain('isInMergeQueue');
+  });
+});
+
+describe('listing every open pull request', () => {
+  function page(numbers: number[], next: string | null) {
+    return JSON.stringify({
+      data: {
+        repository: {
+          pullRequests: {
+            pageInfo: { hasNextPage: next !== null, endCursor: next },
+            nodes: numbers.map((number) => pr({ number })),
+          },
+        },
+      },
+    });
+  }
+
+  test('follows the cursor past the first page instead of stopping at 100', () => {
+    const calls: string[][] = [];
+    const nodes = listOpenPullRequests('kontourai', 'station', (args) => {
+      calls.push(args);
+      return calls.length === 1 ? page([1, 2], 'cursor-1') : page([3], null);
+    });
+    expect(nodes.map((node) => node.number)).toEqual([1, 2, 3]);
+    expect(calls).toHaveLength(2);
+    // The first page sends no cursor; the second sends the one it was given,
+    // as a raw string field.
+    expect(calls[0].join(' ')).not.toContain('after=');
+    expect(calls[1].slice(-2)).toEqual(['-f', 'after=cursor-1']);
+    // A starved pull request on the second page is now reachable.
+    expect(
+      selectStarved(nodes).map((node: { number: number }) => node.number),
+    ).toContain(3);
+  });
+
+  test('refuses a further page that names no cursor rather than re-reading the first', () => {
+    expect(() =>
+      listOpenPullRequests('kontourai', 'station', () =>
+        JSON.stringify({
+          data: {
+            repository: {
+              pullRequests: {
+                pageInfo: { hasNextPage: true, endCursor: null },
+                nodes: [],
+              },
+            },
+          },
+        }),
+      ),
+    ).toThrow('without a cursor');
   });
 });
 

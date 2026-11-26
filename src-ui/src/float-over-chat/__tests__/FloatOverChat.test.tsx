@@ -318,6 +318,44 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
+test('phone chat opens the conversation’s live browser before any agent input', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 479px)',
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  try {
+    h.autoFloat = false;
+    sessions = [
+      session({
+        browserSessionId: OTHER,
+        threadId: 'other-conversation',
+        surfaceId: 'browser:11111111-2222-4333-8444-555555555555:g1',
+        updatedAt: '2026-09-22T12:01:00.000Z',
+      }),
+      session({ activity: { agentDriven: false } }),
+    ];
+    const { area } = chatArea({ width: 393, height: 700 });
+    renderFloat(area);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open browser' }),
+    );
+    const viewer = await screen.findByRole('dialog', { name: 'Browser' });
+    expect(within(viewer).getByTestId('float-canvas').dataset.surface).toBe(
+      SURFACE,
+    );
+    fireEvent.click(
+      within(viewer).getByRole('button', { name: 'Close browser' }),
+    );
+    expect(screen.queryByRole('dialog', { name: 'Browser' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open browser' })).toBeTruthy();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 describe('a dialog the page holds for the person driving from the float', () => {
   test('is shown and answerable in the float, with Open in pane, and answering it clears it', async () => {
     h.tone = 'you';
@@ -576,11 +614,11 @@ describe('the control indicator', () => {
     const { area } = chatArea();
     renderFloat(area);
     await screen.findByTestId('float-canvas');
-    const dot = screen.getByRole('button', {
+    const dot = await screen.findByRole('button', {
       name: 'Floating browser controls. You are in control.',
     });
     expect(dot.dataset.tone).toBe('you');
-    openPill();
+    fireEvent.click(dot);
     expect(
       within(
         screen.getByRole('toolbar', { name: 'Floating browser' }),
@@ -733,7 +771,7 @@ describe('who is driving, when no one holds the lease (owner decision, D9)', () 
     renderFloat(chatArea().area);
     await screen.findByTestId('float-canvas');
     expect(
-      screen.getByRole('button', {
+      await screen.findByRole('button', {
         name: 'Floating browser controls. No one is in control.',
       }),
     ).toBeTruthy();
@@ -1409,4 +1447,17 @@ describe('on a touch screen (pointerType touch)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Full screen' }));
     expect(h.enterImmersive).toHaveBeenCalledTimes(1);
   });
+});
+
+test('two float hosts share one browser viewer and transfer it on unmount', async () => {
+  const first = renderFloat(chatArea().area);
+  await screen.findByTestId('float-canvas');
+  renderFloat(chatArea().area);
+  await waitFor(() =>
+    expect(screen.getAllByTestId('float-canvas')).toHaveLength(1),
+  );
+  first.unmount();
+  await waitFor(() =>
+    expect(screen.getAllByTestId('float-canvas')).toHaveLength(1),
+  );
 });

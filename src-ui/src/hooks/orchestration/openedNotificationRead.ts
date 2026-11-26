@@ -16,8 +16,9 @@ import { navigationStore } from '../../contexts/NavigationContext';
  * lazily loaded reader exists; `useTurnNotificationReads` queues what it
  * captures until then.
  *
- * Native Android/iOS alert taps route by session (`session_id`), not by
- * this link, so they do not carry the record and do not mark it here.
+ * Native Android/iOS alert taps route by session (`session_id`); their
+ * route also names the record, which `agentActivitySessionTarget` adds as
+ * this parameter, so they are read here too.
  */
 export function startOpenedNotificationCapture(
   deliver: (notificationId: string) => void,

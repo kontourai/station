@@ -1,0 +1,17 @@
+{
+  "revision": "29a790e9b64cbee78baf93f316b9502b44e72a83",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Checked the Verification section against the existing agent instruction pointer, local isolated instance guidance, PR evidence requirements, and protected queue workflow. The new paragraph prefers running the actual changed user path when feasible and asks for the remaining scope to be recorded when live acceptance is unavailable.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the addition against the cited test, server, development, and process-supervisor guidance. It adds a preference for live acceptance before arming auto-merge while retaining the normal test, CI, queue, and ownership behavior already documented.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed the addition against the cited test, server, development, and process-supervisor guidance. It adds a preference for live acceptance before arming auto-merge while retaining the normal test, CI, queue, and ownership behavior already documented.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the addition against the cited test, server, development, and process-supervisor guidance. It adds a preference for live acceptance before arming auto-merge while retaining the normal test, CI, queue, and ownership behavior already documented.","inputs":["docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed the addition against the cited test, server, development, and process-supervisor guidance. It adds a preference for live acceptance before arming auto-merge while retaining the normal test, CI, queue, and ownership behavior already documented.","inputs":["docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the addition against the cited test, server, development, and process-supervisor guidance. It adds a preference for live acceptance before arming auto-merge while retaining the normal test, CI, queue, and ownership behavior already documented.","inputs":["docs/guides/development.md"]}
+  ]
+}

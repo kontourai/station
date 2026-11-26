@@ -1,0 +1,7 @@
+{
+  "revision": "1d83584d2baf428cbf1ae7b399e172ea9a99c4e6",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Historical ADR; the session-api.md sentence on refusing a deleted profile's home does not touch the managed-chat routing it records.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

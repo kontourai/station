@@ -1,0 +1,7 @@
+{
+  "revision": "e9e7c7deea616cd3748497263c57631305abaf44",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the reply toolbar's scoped flex override in chat.css. index.css is restored byte-for-byte to the starting checkout, preserving unrelated document and media bindings. The selector targets the actual capsule/toolbar/setup-button composition and retains fixed Send and 44px tool targets.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}

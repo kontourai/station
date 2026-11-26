@@ -1,0 +1,7 @@
+{
+  "revision": "491a8f90a2032365f573dd05937db853806a7604",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"The app-homes check now uses isCanonicalPathStrictlyWithin (cross-drive safe), and the connection's own config home is exempt from the orphaned-home refusal; session-api and connections-onboarding state this.","inputs":["src-server/providers/app-home/credential-profile-env.ts"]}
+  ]
+}

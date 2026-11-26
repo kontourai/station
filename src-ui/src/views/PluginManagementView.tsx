@@ -56,6 +56,7 @@ export function PluginManagementView({
     layoutAssignment,
     loadingProviderDetails,
     message,
+    setMessage,
     plugins,
     previewData,
     previewMutation,
@@ -93,11 +94,28 @@ export function PluginManagementView({
     togglePreviewSkip,
     toggleProjectSelection,
     toggleProvider,
+    updateCheck,
     updateMutation,
     updatePlugin,
     updates,
   } = usePluginManagementViewModel();
   const [showNewPlugin, setShowNewPlugin] = useState(false);
+  const checkStatus = updateCheck.isError
+    ? 'unavailable'
+    : updateCheck.data?.status;
+  const checkMessage = updateCheck.isFetching
+    ? 'Checking for plugin updates…'
+    : checkStatus === 'unavailable'
+      ? 'Plugin update check unavailable.'
+      : checkStatus === 'partial'
+        ? 'Some plugin update sources could not be checked.'
+        : checkStatus === 'unknown'
+          ? 'This Station did not report whether the update check completed.'
+          : updateCheck.data?.managedByPolicy?.length
+            ? 'Some plugin updates are managed by policy.'
+            : checkStatus === 'complete' && updates.length === 0
+              ? 'No plugin updates found.'
+              : null;
 
   return (
     <>
@@ -148,6 +166,22 @@ export function PluginManagementView({
             </Button>
           </>
         }
+        listIntro={
+          checkMessage && (
+            <div className="plugins__update-check">
+              <span role="status">{checkMessage}</span>
+              {checkStatus && checkStatus !== 'complete' && (
+                <Button
+                  size="sm"
+                  disabled={updateCheck.isFetching}
+                  onClick={() => void updateCheck.refetch()}
+                >
+                  Retry update check
+                </Button>
+              )}
+            </div>
+          )
+        }
         emptyIcon={<PlugGlyph />}
         emptyDescription="Select a plugin from the list or install a new one"
         emptyContent={
@@ -185,6 +219,7 @@ export function PluginManagementView({
               })
             }
             onRemove={setRemoveConfirm}
+            onRecoveryOutcome={setMessage}
             onToggleProviders={toggleExpandedProviders}
             onToggleProvider={toggleProvider}
             onSaveSetting={savePluginSetting}
@@ -247,7 +282,7 @@ export function PluginManagementView({
         title="Remove this trusted permission?"
         message={
           revokeConfirm
-            ? `${revokeConfirm.label} will stop being usable for new work immediately. Station will drain running module work and retire registered providers before reporting completion; if that takes longer, the result will say it is still winding down. Granting it again needs the separate host review page.`
+            ? `${revokeConfirm.label} stops for new work immediately. Running work finishes and registered providers are removed; the result says if cleanup is still winding down. Granting it again needs the separate host review page.`
             : ''
         }
         confirmLabel="Remove"

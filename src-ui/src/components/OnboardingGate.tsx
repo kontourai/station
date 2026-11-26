@@ -43,8 +43,6 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { navigationStore } from '../contexts/navigation-store';
 import {
   shouldRenderSetupLauncher,
-  shouldRenderUsageTelemetryDisclosure,
-  useFirstRunChapterOpen,
   useOnboardingSetupState,
 } from '../contexts/onboarding-setup-store';
 import { useToast } from '../contexts/ToastContext';
@@ -84,7 +82,6 @@ import { triggerHaptic } from '../platform/native/haptics';
 import { primeNativeNotifications } from '../platform/native/notify';
 import { LazyBoundary } from './LazyBoundary';
 import { ManagedRemoteClientsNote } from './managed/ManagedRemoteClientsNote';
-import { UsageTelemetryDisclosure } from './UsageTelemetryDisclosure';
 
 type ConnectionModalMode =
   | 'list'
@@ -250,7 +247,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     defer: deferSetupBanner,
     rearm: rearmSetupBanner,
   } = useOnboardingSetupState();
-  const firstRunChapterOpen = useFirstRunChapterOpen();
   // Identity-scoped recovery read (not the shared bare-key `useConfig`):
   // under the stable boundary a bare entry would survive its connection.
   const unconfiguredPhone =
@@ -308,8 +304,10 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   // when the shell becomes available.
   const reportedBootstrapRecoveryError = useRef<string | undefined>(undefined);
   useEffect(() => {
+    // A mobile launch records one too, when the host would not authorize its
+    // saved Station; the shell mounts without it and this is the only notice.
     if (
-      !profile.isDesktop ||
+      !(profile.isDesktop || profile.isMobile) ||
       !bootstrapRecoveryError ||
       reportedBootstrapRecoveryError.current === bootstrapRecoveryError
     ) {
@@ -317,7 +315,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     }
     reportedBootstrapRecoveryError.current = bootstrapRecoveryError;
     showToast(bootstrapRecoveryError);
-  }, [bootstrapRecoveryError, profile.isDesktop, showToast]);
+  }, [bootstrapRecoveryError, profile.isDesktop, profile.isMobile, showToast]);
 
   const restartNoticeId = useRef<string | null>(null);
   const restartRequestSequence = useRef(0);
@@ -340,7 +338,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         duration: 0,
         recallText: 'The local Station could not restart.',
         actions: [
-          { label: 'Try again', onClick: () => handleRestartBundledServer() },
+          { label: 'Retry', onClick: () => handleRestartBundledServer() },
         ],
       });
       if (noticeId) restartNoticeId.current = noticeId;
@@ -787,18 +785,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       />
     ) : null;
 
-  // THE THIRD OVERLAY, under the same one-at-a-time rule as the other two.
-  // It is mounted after `{children}`, so wherever it renders it renders on
-  // top: over the launcher (which is why the first-run E2E specs used to have
-  // to answer it before they could click anything) and, on a fresh home, over
-  // the first-run chapter. A `pending` home shows it as the chapter's first
-  // step instead; nothing here changes for any other home.
-  const usageTelemetryDisclosureMounted = shouldRenderUsageTelemetryDisclosure({
-    firstRunStatus: config?.firstRun?.status,
-    setupLauncherVisible: Boolean(setupLauncherVisible),
-    firstRunChapterOpen,
-  });
-
   // The shell is invariant across ready, loading, and local-service repair
   // states. Service lifecycle is disclosed in chrome, never by withholding
   // local, cached, settings, or connection-management affordances.
@@ -878,9 +864,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       )}
       {connectedNotice}
       {children}
-      {!unconfiguredPhone && usageTelemetryDisclosureMounted ? (
-        <UsageTelemetryDisclosure firstRun />
-      ) : null}
       {stationSetup ? (
         <LazyBoundary
           key={stationSetupSession}
@@ -1054,9 +1037,11 @@ function SetupLauncher({
       aria-label={firstRun ? 'First-run setup reminder' : 'Setup reminder'}
     >
       <div className="onboarding-setup-launcher__panel" role="status">
-        <div className="onboarding-setup-launcher__eyebrow">
-          {firstRun ? 'First run' : 'Setup needed'}
-        </div>
+        {/* Only a genuine first run earns an eyebrow; otherwise the title
+            already says what needs attention. */}
+        {firstRun && (
+          <div className="onboarding-setup-launcher__eyebrow">First run</div>
+        )}
         <div className="onboarding-setup-launcher__header">
           <div>
             <div className="onboarding-setup-launcher__title">
@@ -1068,7 +1053,7 @@ function SetupLauncher({
           </div>
           <button
             type="button"
-            aria-label="Dismiss setup launcher"
+            aria-label="Dismiss setup reminder"
             onClick={onDismiss}
             className="onboarding-setup-launcher__dismiss"
           >
@@ -1101,12 +1086,10 @@ function SetupLauncher({
         >
           {content.actionLabel}
         </Button>
+        {/* Dismissal is the × above; a second "continue" button did the same. */}
         <div className="onboarding-setup-launcher__actions">
           <Button variant="secondary" size="sm" onClick={onOpenHub}>
-            View All Connections
-          </Button>
-          <Button variant="secondary" size="sm" onClick={onDismiss}>
-            Continue Without Setup
+            All connections
           </Button>
         </div>
       </div>

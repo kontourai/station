@@ -1,0 +1,7 @@
+{
+  "revision": "ba2c5fc6e0669af5dfc7a9beffc4f6b1e1ac6bd3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"The updated child reply description matches the shared paperclip, the touch feedback, and the Codex adapter's text input for an exact child turn.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

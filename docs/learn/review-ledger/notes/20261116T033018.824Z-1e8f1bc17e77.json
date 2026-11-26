@@ -1,0 +1,7 @@
+{
+  "revision": "92b391b81dbf4ca101c22dc7dee4134074cfcd9e",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Added desktop scope-beside-search, Browse at the end of the list and title-first row order; Show work/Show all wording still matches InboxScopeFilter.tsx (label retained for assistive technology, notice unchanged).","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/InboxScopeFilter.tsx"]}
+  ]
+}

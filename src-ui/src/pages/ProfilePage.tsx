@@ -225,7 +225,9 @@ export function ProfilePage() {
           !authority?.isCurrent() ||
           document.visibilityState !== 'visible' ||
           !document.hasFocus() ||
-          document.querySelector('[role="dialog"][aria-modal="true"]') ||
+          document.querySelector(
+            '[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]',
+          ) ||
           !mounted.current
         )
           return;

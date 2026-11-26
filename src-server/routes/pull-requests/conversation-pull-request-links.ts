@@ -1,6 +1,7 @@
 import type {
   ConversationPullRequestLink,
   ConversationPullRequestLinkObservation,
+  LinkedPullRequestSnapshot,
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
@@ -40,6 +41,15 @@ type Access = {
     request: Request,
     conversationId: string,
   ) => Promise<ConversationPullRequestLink[]>;
+  snapshot?: (
+    link: PullRequestLinkIdentity,
+  ) => LinkedPullRequestSnapshot | undefined;
+  /**
+   * Pull requests Station found opened from the chat's Task's own branch
+   * (`branch-derived`), after the declared ones: a pull request also linked
+   * or kept shows that row first.
+   */
+  derived?: (conversationId: string) => ConversationPullRequestLink[];
   /**
    * The Session ids a conversation spans (its lineage). A link stored
    * earlier under a successor Session's own id — the session-detail pane
@@ -99,13 +109,23 @@ export function createConversationPullRequestLinkRoutes(
       ...(access.declared
         ? await access.declared(c.req.raw, conversationId)
         : []),
+      ...(access.derived?.(conversationId) ?? []),
     ];
     const observedAt = new Date().toISOString();
     const observations: ConversationPullRequestLinkObservation[] = [];
     const observe = async (
       link: (typeof links)[number],
     ): Promise<ConversationPullRequestLinkObservation> => {
-      const read = await readPullRequestByIdentity(providers, link);
+      const snapshot = access.snapshot?.(link);
+      if (snapshot)
+        return {
+          ...link,
+          observedAt: snapshot.observedAt ?? observedAt,
+          status: { state: 'current', ...snapshot },
+        };
+      const read = await readPullRequestByIdentity(providers, link, {
+        status: true,
+      });
       if (read.kind === 'unsupported')
         return {
           ...link,
@@ -131,7 +151,7 @@ export function createConversationPullRequestLinkRoutes(
       const pullRequest = read.pullRequest;
       return {
         ...link,
-        observedAt,
+        observedAt: read.observedAt ?? observedAt,
         status: {
           state: 'current',
           title: pullRequest.title,

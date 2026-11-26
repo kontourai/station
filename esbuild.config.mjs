@@ -1,5 +1,7 @@
-import { cpSync, mkdirSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
+import { chmodSync, cpSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createRequire, isBuiltin } from 'node:module';
+import { relative, resolve } from 'node:path';
 import * as esbuild from 'esbuild';
 import {
   SUPERVISOR_BUNDLE_NAME,
@@ -9,6 +11,8 @@ import { generateStationDocs } from './scripts/generate-station-docs.mjs';
 import { authorTelemetryEndpoint } from './scripts/lib/author-telemetry-build.mjs';
 import { deriveServerBuildIdentity } from './scripts/lib/desktop-build-manifest.mjs';
 import { STATION_SERVER_EXTERNALS } from './scripts/lib/server-build-config.mjs';
+import { assertAsciiServerBundles } from './scripts/lib/server-bundle-ascii.mjs';
+import { assertNoBootDeniedStaticImports } from './scripts/lib/server-static-imports.mjs';
 
 // jsonc-parser exposes its CommonJS UMD entry as `main` and its fully
 // statically-importable implementation as `module`. esbuild's Node defaults
@@ -35,6 +39,11 @@ const jsoncParserEsmEntry = resolvePackage.resolve(
 // `packages/cli/esbuild.config.mjs`.
 const serverBuildIdentity = deriveServerBuildIdentity(process.cwd());
 
+const buildBanner = [
+  `globalThis.__STATION_SERVER_BUILD__ = ${JSON.stringify(serverBuildIdentity)};`,
+  `globalThis.__STATION_AUTHOR_TELEMETRY_ENDPOINT__ = ${JSON.stringify(authorTelemetryEndpoint(serverBuildIdentity?.channel))};`,
+].join('\n');
+
 const shared = {
   bundle: true,
   platform: 'node',
@@ -50,8 +59,7 @@ const shared = {
   banner: {
     js: [
       "import { createRequire as __stationCreateRequire } from 'node:module'; const require = __stationCreateRequire(import.meta.url);",
-      `globalThis.__STATION_SERVER_BUILD__ = ${JSON.stringify(serverBuildIdentity)};`,
-      `globalThis.__STATION_AUTHOR_TELEMETRY_ENDPOINT__ = ${JSON.stringify(authorTelemetryEndpoint(serverBuildIdentity?.channel))};`,
+      buildBanner,
     ].join('\n'),
   },
 };
@@ -73,6 +81,45 @@ cpSync(
   `${serverDir}/third-party/media-tools/NOTICE`,
 );
 
+// Bundles this build writes are checked; older files in serverDir are not.
+const buildStartedMs = Date.now();
+// Bind the core to this build's emitted stdio entry, even if the installation
+// path later points to a different generation.
+const docsEntry = `${serverDir}/station-docs.js`;
+const docs = await esbuild.build({
+  ...shared,
+  // The same bytes must run as a file or an in-memory ESM module.
+  banner: { js: buildBanner },
+  entryPoints: ['./src-server/tools/station-docs-server.ts'],
+  outfile: docsEntry,
+  metafile: true,
+  write: false,
+});
+const docsCode = docs.outputFiles.find(
+  (file) => file.path === resolve(docsEntry),
+);
+if (!docsCode)
+  throw new Error('Station Docs build did not emit its executable.');
+const dependencies =
+  docs.metafile.outputs[
+    relative(process.cwd(), docsEntry).split('\\').join('/')
+  ]?.imports;
+if (
+  !dependencies ||
+  dependencies.some(
+    (dependency) =>
+      !dependency.path.startsWith('node:') || !isBuiltin(dependency.path),
+  )
+) {
+  throw new Error('Station Docs must bundle all non-Node dependencies.');
+}
+for (const file of docs.outputFiles) writeFileSync(file.path, file.contents);
+chmodSync(docsCode.path, 0o755);
+const docsExecutable = {
+  sha256: createHash('sha256').update(docsCode.contents).digest('hex'),
+  size: docsCode.contents.byteLength,
+};
+
 await Promise.all([
   esbuild.build({
     ...shared,
@@ -89,6 +136,7 @@ await Promise.all([
   esbuild.build({
     ...shared,
     entryPoints: ['./src-server/index.ts'],
+    define: { __STATION_DOCS_EXECUTABLE__: JSON.stringify(docsExecutable) },
     outfile: `${serverDir}/command-station.js`,
   }),
   // The process supervisor holds listeners and hands them between core
@@ -115,14 +163,6 @@ await Promise.all([
     ...shared,
     entryPoints: ['./src-server/tools/station-knowledge-server.ts'],
     outfile: `${serverDir}/station-knowledge.js`,
-  }),
-  // station#1547: the credential-free docs server. Bundling it here is what
-  // makes "documentation ships with Station, never fetched at runtime" a
-  // build property — the topic prose is compiled into this artifact.
-  esbuild.build({
-    ...shared,
-    entryPoints: ['./src-server/tools/station-docs-server.ts'],
-    outfile: `${serverDir}/station-docs.js`,
   }),
   // station#1903: the self-update health-verification watchdog. It must
   // survive after the parent server process exits (that exit is what frees
@@ -215,3 +255,6 @@ await Promise.all([
     outfile: `${serverDir}/project-task-room-working-state-worker.js`,
   }),
 ]);
+
+assertAsciiServerBundles(serverDir, { sinceMs: buildStartedMs });
+await assertNoBootDeniedStaticImports(`${serverDir}/command-station.js`);

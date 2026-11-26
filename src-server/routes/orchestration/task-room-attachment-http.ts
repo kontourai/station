@@ -19,23 +19,24 @@ export const taskRoomAttachmentsSchema = z
   .array(descriptor.extend({ id: z.string().max(36).uuid() }).strict())
   .max(CHAT_ATTACHMENT_MAX_COUNT)
   .refine(isTaskRoomAttachments, 'Invalid Task attachments.');
+/** Files to upload to a room (Task or Project): the chat attachment limits. */
+export const roomAttachmentUploadItemsSchema = z
+  .array(
+    descriptor
+      .extend({
+        dataUrl: z.string().max(CHAT_ATTACHMENT_MAX_DATA_URL_LENGTH),
+      })
+      .strict(),
+  )
+  .min(1)
+  .max(CHAT_ATTACHMENT_MAX_COUNT)
+  .superRefine((attachments, ctx) => {
+    const error = validateChatAttachments(attachments);
+    if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error });
+  });
 export const taskRoomAttachmentUploadSchema = z
   .object({
     taskCreatedAt: z.string().datetime(),
-    attachments: z
-      .array(
-        descriptor
-          .extend({
-            dataUrl: z.string().max(CHAT_ATTACHMENT_MAX_DATA_URL_LENGTH),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(CHAT_ATTACHMENT_MAX_COUNT)
-      .superRefine((attachments, ctx) => {
-        const error = validateChatAttachments(attachments);
-        if (error)
-          ctx.addIssue({ code: z.ZodIssueCode.custom, message: error });
-      }),
+    attachments: roomAttachmentUploadItemsSchema,
   })
   .strict();

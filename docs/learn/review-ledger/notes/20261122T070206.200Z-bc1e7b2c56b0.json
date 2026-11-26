@@ -1,0 +1,7 @@
+{
+  "revision": "4220017465d77b7b45b1ac3219498c9aa4abd3af",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Delta: the server now refuses retry-episode with task-live while the Task a failed start created is live, reading its status in the same ledger transaction as the live-work check. Checked against automation-ledger.ts retryEpisode, automation-operator.ts retryAutomationEpisode and runtime-routes.ts.","inputs":["docs/design/automations.md"]}
+  ]
+}

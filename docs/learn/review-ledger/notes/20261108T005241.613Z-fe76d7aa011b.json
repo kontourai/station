@@ -1,7 +1,0 @@
-{
-  "revision": "6d24a3afcdae185bf6a3c83de81d231783f95cc8",
-
-  "notes": [
-    {"path":"docs/guides/feature-previews.md","note":"Checked the guide against the new station-orchestration-instructions binding in station-runtime.ts: it uses the documented .bind() form and the docs:feature-previews:check gate passes (40 bound previews) with the settings.md row. The guide describes the procedure, not the list of previews, so no prose changes.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

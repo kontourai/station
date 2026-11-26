@@ -435,6 +435,7 @@ describe('peer tunnel through two real runtime admission boundaries', () => {
               submit: submitted,
               heldByOther: () => false,
               inFlight: () => false,
+              keyBindingChanged: () => false,
             } as never,
           },
         ),
@@ -516,6 +517,7 @@ describe('peer tunnel through two real runtime admission boundaries', () => {
           listSessionReadModel: async () => [],
           readEventStreamHead: () => 0,
           retainSessionDeletionReader: () => () => {},
+          readableEngineStartWaits: () => [],
           conversationStreamBinding: () => undefined,
         } as never,
         {

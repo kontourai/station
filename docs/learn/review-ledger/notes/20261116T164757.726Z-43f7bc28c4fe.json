@@ -1,0 +1,7 @@
+{
+  "revision": "7e7e51117b960cae861a45545c9e7d1aeaefd641",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Hover inbox rows are now two lines (title/time; agent mark, status, project — project yields first; agent in mark tooltip and hover card, words when unmarked) and the desktop hidden-attention notice is a badge on the scope picker; updated the Show work and row-anatomy sentences.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/InboxScopeFilter.tsx"]}
+  ]
+}

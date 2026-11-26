@@ -14,21 +14,27 @@
  *  2. Console budget — console errors, page errors, and 4xx/5xx responses
  *     during ordinary navigation fail the run unless a known finding in
  *     tests/live/fresh-home-walkthrough-allowlist.mjs covers them.
+ *     A document posting the same focus state twice within 1 s also fails,
+ *     since the focus rate limit's 429 itself is allowlisted.
  *  3. Bundled-content smoke — installs every plugin in the bundled registry
  *     manifest (examples/registry/default.json), applies each plugin layout to
  *     a project, opens every declared tab, and asserts none renders
- *     "Unsupported layout tab" or "Temporarily unavailable".
+ *     "Unsupported layout tab", "Extensions could not load" or
+ *     "Temporarily unavailable".
  *
  * Run with `npm run walkthrough:fresh-home` (executed through tsx so the
  * routing tables import directly). This is release-train/nightly work, not
  * per-PR work — see .github/workflows/fresh-home-walkthrough.yml.
  *
  * Like tests/live/cold-bootstrap.mjs this deliberately uses no storageState
- * and never intercepts `/api/**`: the point is the product as shipped.
+ * and never intercepts `/api/**`: the point is the product as shipped. One
+ * init script records focus reports in the page and passes each call to the
+ * real fetch unchanged (helpers/focus-report-budget.mjs says why).
  */
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { pluginLifecycleUnapplied } from '../../packages/contracts/src/plugin.ts';
 import { APP_DESTINATION_REGISTRY } from '../../src-ui/src/app-shell/destination-registry.ts';
 import {
   DEVELOPER_TABS,
@@ -37,6 +43,11 @@ import {
 } from '../../src-ui/src/app-shell/routing.ts';
 import { CONNECTION_SECTIONS } from '../../src-ui/src/views/connections-hub/connection-sections.ts';
 import { WALKTHROUGH_ALLOWLIST } from './fresh-home-walkthrough-allowlist.mjs';
+import {
+  FOCUS_REPORT_LOG_KEY,
+  focusReportFindings,
+  recordFocusReportsInPage,
+} from './helpers/focus-report-budget.mjs';
 // Boot/pair/settle plumbing is shared with the core-loop journey suite
 // (#766 item 2) — see tests/live/helpers/station-instance.mjs. Only the
 // walkthrough-specific pieces (console budget, gallery, expected-failure
@@ -47,6 +58,7 @@ import {
   countVisibleLoadingMarkers,
   pairBrowser as pairBrowserForInstance,
   poll,
+  recoverPluginOnce,
   runStation as runStationAt,
   SUITE_REQUEST_HEADER,
   settlePageReason,
@@ -166,6 +178,13 @@ function attachConsoleBudget(page) {
   page.on('requestfailed', (request) => {
     if (request.headers()[SUITE_REQUEST_HEADER]) return;
     const failure = request.failure()?.errorText ?? 'unknown failure';
+    // The plugin inventory read is aborted by its own client deadline, which
+    // also reads as ERR_ABORTED; log how long it ran so a run that leaves
+    // plugin tabs unloaded shows whether that deadline was the cause.
+    if (new URL(request.url()).pathname === '/api/plugins') {
+      const ranMs = Math.round(Date.now() - request.timing().startTime);
+      console.log(`[${phase}] GET /api/plugins ${failure} after ${ranMs}ms`);
+    }
     // Navigating away mid-flight aborts in-progress fetches; that is the
     // sweep's own doing, not a product failure.
     if (failure.includes('ERR_ABORTED')) return;
@@ -174,6 +193,26 @@ function attachConsoleBudget(page) {
       `${request.method()} FAILED(${failure}) ${new URL(request.url()).pathname}`,
     );
   });
+}
+
+/**
+ * Fails the run when any document posted the same focus state twice inside
+ * the reporter's 1 s floor. A run that recorded no report at all fails too:
+ * the recorder not seeing the reporter is not evidence of a clean count.
+ */
+async function checkFocusReports(page) {
+  const recorded = JSON.parse(
+    (await page.evaluate(
+      (key) => localStorage.getItem(key),
+      FOCUS_REPORT_LOG_KEY,
+    )) ?? '[]',
+  );
+  if (recorded.length === 0) {
+    fail('focus report recorder saw no POST /api/presence/focus');
+    return;
+  }
+  console.log(`focus reports recorded: ${recorded.length}`);
+  for (const finding of focusReportFindings(recorded)) fail(finding);
 }
 
 // ---------------------------------------------------------------------------
@@ -260,7 +299,7 @@ async function dismissFirstRun(page) {
   await settlePage(page, 'first boot');
   await screenshot(page, 'first-boot');
   const steps = [
-    ['button', 'Continue Without Setup'],
+    ['button', 'Dismiss setup reminder'],
     // #1582 A3 / #1600: both disclosure surfaces name the decision now.
     ['button', 'Keep usage telemetry on'],
     ['button', 'Not now'],
@@ -340,31 +379,45 @@ async function installBundledPlugin(page, plugin) {
   if (!previewed.contentDigest || !previewed.permissions) {
     throw new Error(`preview for ${plugin.id} returned no basis to approve`);
   }
-  await apiOk(page, 'POST', '/api/plugins/install', {
-    source,
-    consent: {
-      permissions: previewed.permissions.required ?? [],
-      contentDigest: previewed.contentDigest,
-      dependencies: (previewed.dependencies ?? []).map((entry) => entry.id),
-      ...((previewed.dependencies ?? []).some((entry) => entry.consent)
-        ? {
-            dependencyApprovals: (previewed.dependencies ?? []).flatMap(
-              (entry) =>
-                entry.consent
-                  ? [
-                      {
-                        id: entry.id,
-                        permissions: entry.consent.permissions,
-                        contentDigest: entry.consent.contentDigest,
-                        dependencies: entry.consent.dependencies,
-                      },
-                    ]
-                  : [],
-            ),
-          }
-        : {}),
+  const installed = await apiOk(
+    page,
+    'POST',
+    '/api/plugins/install',
+    {
+      source,
+      consent: {
+        permissions: previewed.permissions.required ?? [],
+        contentDigest: previewed.contentDigest,
+        dependencies: (previewed.dependencies ?? []).map((entry) => entry.id),
+        ...((previewed.dependencies ?? []).some((entry) => entry.consent)
+          ? {
+              dependencyApprovals: (previewed.dependencies ?? []).flatMap(
+                (entry) =>
+                  entry.consent
+                    ? [
+                        {
+                          id: entry.id,
+                          permissions: entry.consent.permissions,
+                          contentDigest: entry.consent.contentDigest,
+                          dependencies: entry.consent.dependencies,
+                        },
+                      ]
+                    : [],
+              ),
+            }
+          : {}),
+      },
     },
-  });
+    // A designed 202 (saved, activation not completed) is not an API
+    // failure; the plugin still has to become active (below).
+    { acceptSaved: true },
+  );
+  const unapplied = pluginLifecycleUnapplied(installed);
+  if (unapplied?.kind === 'activation' && unapplied.recovery !== 'none')
+    await recoverPluginOnce(
+      page,
+      installed.plugin?.name ?? previewed.manifest?.name ?? plugin.id,
+    );
 }
 
 async function bundledContentSmoke(page) {
@@ -446,6 +499,7 @@ async function bundledContentSmoke(page) {
         }
         for (const forbidden of [
           'Unsupported layout tab',
+          'Extensions could not load',
           'Temporarily unavailable',
         ]) {
           if ((await page.getByText(forbidden).count()) > 0) {
@@ -540,6 +594,9 @@ try {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  // Records focus reports so the per-document count can be checked even
+  // though the rate limit's 429 is allowlisted (helpers/focus-report-budget).
+  await context.addInitScript(recordFocusReportsInPage, FOCUS_REPORT_LOG_KEY);
   const page = await context.newPage();
   attachConsoleBudget(page);
 
@@ -549,6 +606,8 @@ try {
   await dismissFirstRun(page);
   await sweepRoutes(page, routes);
   await bundledContentSmoke(page);
+  phase = 'focus report count';
+  await checkFocusReports(page);
 } finally {
   await browser?.close();
   phase = 'teardown';

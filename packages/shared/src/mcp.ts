@@ -1,5 +1,9 @@
 export * from './mcp-connection.js';
 export {
+  buildEventArgumentHeaders,
+  describeEventArgumentHeaders,
+} from './mcp-event-headers.js';
+export {
   bindMCPDefinitionAdmission,
   type MCPLocalClaim,
   type MCPLocalCleanup,

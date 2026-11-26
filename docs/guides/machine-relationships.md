@@ -45,6 +45,19 @@ visibility layer** over the second relationship — not a third kind of
 access. The list does not control the work. The remote Station owns execution
 and applies its own policy to the delegated request.
 
+That list includes the external Claude, Codex, OpenCode and Grok sessions the
+remote Station found on its own computer. Each Station finds sessions only on
+the computer it runs on, while it is running. There is no separate
+per-computer daemon, and this Station never reads another computer's provider
+files itself. Opening a remote row shows its history read-only, labeled with
+the computer it lives on, and pages older turns on request. The composer stays
+disabled with the reason: to continue the session, open Station on that
+computer. A host without the `remoteSessionHistory` handshake flag says it
+cannot show remote sessions rather than opening an empty transcript. Only the
+Station's owner, in person, sees remote sessions: the connection's credential
+belongs to the whole Station, so other people's paired devices and agents are
+refused. A hosted Station offers neither the list nor the reader.
+
 The current SSH creator calls the server's environment probe and create APIs.
 It saves an SSH host alias, remote project path, and optional remote Station
 port. SSH user, SSH port, and key selection come from the server machine's
@@ -236,7 +249,7 @@ account-tied people cannot hold tokens. See the [API reference](../reference/api
 |---|---|---|---|---|
 | **Paired device** | Device → this Station (the other device drives this Station) | A scoped, revocable device credential. Station never stores the device's private key. | That device can control this Station, within its actual granted scopes. | State lives on this Station. The paired device reaches it; it is not a copy of it. |
 | **Remote computer (SSH)** | This Station → remote Station (delegated execution) | OpenSSH uses the configured agent or key file to authenticate the tunnel; protected Station APIs still require a separately enrolled scoped credential. | This Station can run delegated tasks on that machine, using that machine's own agents, credentials, and workspace. | Execution and its event-store record live on the **remote** machine — persistence follows execution, not the Station that requested it. |
-| **Remote session (home work list)** | Read-only view of sessions on a connected remote Station, including work started there independently | The same authenticated peer credential over the connected SSH tunnel; forwarding alone grants no read authority. | Visibility into remote work; this list does not start or control it. | The session's authoritative record stays on the remote machine; the home list reflects it. |
+| **Remote session (home work list)** | Read-only view of sessions on a connected remote Station, including work started there independently and external sessions that Station found on its own computer | The same authenticated peer credential over the connected SSH tunnel; forwarding alone grants no read authority. | Visibility into remote work; this list does not start or control it. | The session's authoritative record stays on the remote machine; the home list reflects it. |
 
 ## A third thing that is not delegation: fleet inference
 
@@ -288,7 +301,8 @@ flow already provides restricted Project catalogue/detail views and bounded,
 read-only access to explicitly published shared Task lists, history, and
 documents. Current membership and publication are rechecked through response
 delivery. A collaborator does not need to contribute a computer, checkout, or
-provider credentials to read that shared work.
+provider credentials to read that shared work. A Commenter can also reply when
+their browser has the **Participate in shared Projects** grant.
 
 The guest entry also mounts Project access controls. Administration requires
 the appropriate current membership plus a separately approved Device

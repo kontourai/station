@@ -1,7 +1,0 @@
-{
-  "revision": "afc5075dffd45ae320b2c811bb563f5b597aad98",
-
-  "notes": [
-    {"path":"packages/telemetry-broker/README.md","note":"Public domain paragraph now lists provisioned channels and notes frozen earlier weeks (public-domain.ts, lite-store.ts publishWeeks). Dashboard paragraph now states the per-card Bonferroni threshold ln(m/(0.05(1+alpha)))/epsilon with checked values 645, 1,033 and 1,692 at epsilon 1/280 (public-dashboard.ts threshold; pages.test.ts pins it).","inputs":["packages/telemetry-broker/README.md","packages/telemetry-broker/src/__tests__/lite-weekly.test.ts","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/public-dashboard.ts","packages/telemetry-broker/src/public-domain.ts"]}
-  ]
-}

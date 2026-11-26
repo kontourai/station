@@ -1,7 +1,0 @@
-{
-  "revision": "9ef649a05c5d46faef90550ff6a17c3ca517964f",
-
-  "notes": [
-    {"path":"docs/user/native-recovery.md","note":"Changed the managed-policy link to its absolute GitHub URL because the guide is not admitted to Pages (docs:public:hygiene). The managed-policy fail-closed paragraph still matches fail_closed_message in bundled_server_state.rs (no retry, administrator remedy).","inputs":["docs/user/native-recovery.md"]}
-  ]
-}

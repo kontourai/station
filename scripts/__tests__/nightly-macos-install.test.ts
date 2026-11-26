@@ -316,7 +316,7 @@ it('ships only camera and audio-input entitlements for media capture', () => {
     'com.apple.security.device.camera',
     'com.apple.security.device.audio-input',
   ]);
-  for (const channel of ['stable', 'beta', 'nightly']) {
+  for (const channel of ['stable', 'nightly']) {
     const info = readFileSync(
       resolve(root, `src-desktop/Info.${channel}.plist`),
       'utf8',

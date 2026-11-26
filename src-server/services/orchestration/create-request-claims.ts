@@ -24,6 +24,10 @@ import type {
   ForegroundMessageHandle,
   ForegroundMessageInput,
 } from '../execution-target/execution-target-execution.js';
+import {
+  bindDelegationToolIntent,
+  captureInheritedDelegationToolContext,
+} from './delegation-tool-policy.js';
 import { chatTurnSubmissionDigest } from './turn-submission-digest.js';
 
 const MAX_CLAIMS = 1024;
@@ -38,6 +42,7 @@ interface Claim {
   kind: 'delegation' | 'foreground';
   digest: string;
   sessionId: string;
+  sessionIdentityOrigin?: 'server' | 'provided';
   starting?: true;
   startedAt?: number;
   tombstoneAt?: number;
@@ -215,6 +220,9 @@ export class CreateRequestClaims {
         ) ||
         typeof claim.sessionId !== 'string' ||
         !claim.sessionId ||
+        (claim.sessionIdentityOrigin !== undefined &&
+          claim.sessionIdentityOrigin !== 'server' &&
+          claim.sessionIdentityOrigin !== 'provided') ||
         !['delegation', 'foreground'].includes(claim.kind) ||
         (claim.starting !== undefined && claim.starting !== true) ||
         (claim.tombstoneAt !== undefined &&
@@ -282,6 +290,9 @@ export class CreateRequestClaims {
       throw new Error(
         'Create requires authenticated caller scope and a request key.',
       );
+    const { kind } = input;
+    const requestedSessionId = input.sessionId ?? undefined;
+    const digest = chatTurnSubmissionDigest(input.intent);
     const callerSessionId =
       input.callerSessionId ?? (await createRequestCallerSession());
     const scope = [
@@ -292,9 +303,8 @@ export class CreateRequestClaims {
       callerSessionId ?? null,
     ];
     const key = createHash('sha256')
-      .update(JSON.stringify([input.kind, scope, input.requestKey]))
+      .update(JSON.stringify([kind, scope, input.requestKey]))
       .digest('hex');
-    const digest = chatTurnSubmissionDigest(input.intent);
     // Reject changed input before waiting for the live request's ownership lock.
     const known = await this.#update((ledger) => ledger.claims[key]);
     let reclaimable = false;
@@ -358,12 +368,15 @@ export class CreateRequestClaims {
           return existing;
         }
         const row: Claim = {
-          kind: input.kind,
+          kind,
           digest,
           sessionId:
-            input.sessionId ??
-            `${input.kind === 'delegation' ? 'task' : 'conversation'}:${randomUUID()}`,
+            requestedSessionId ??
+            `${kind === 'delegation' ? 'task' : 'conversation'}:${randomUUID()}`,
         };
+        if (kind === 'delegation')
+          row.sessionIdentityOrigin =
+            requestedSessionId === undefined ? 'server' : 'provided';
         ledger.claims[key] = row;
         const capacity = (): 'records' | 'bytes' | undefined => {
           if (Object.keys(ledger.claims).length > MAX_CLAIMS) return 'records';
@@ -496,14 +509,17 @@ export async function runDelegationCreate(
       authority,
       callerSessionId: input.createRequestCallerSessionId,
       requestKey: input.clientTurnId!,
-      intent: input.createRequestIntent ?? {
-        prompt: input.prompt,
-        attemptId: input.delegationAttemptId ?? null,
-        target: input.target,
-        parentTaskId: input.parentTaskId ?? null,
-        sessionId: input.sessionId ?? null,
-        attachments: input.taskRoomAttachments ?? null,
-      },
+      intent: bindDelegationToolIntent(
+        input.createRequestIntent ?? {
+          prompt: input.prompt,
+          attemptId: input.delegationAttemptId ?? null,
+          target: input.target,
+          parentTaskId: input.parentTaskId ?? null,
+          sessionId: input.sessionId ?? null,
+          attachments: input.taskRoomAttachments ?? null,
+        },
+        input.delegation,
+      ),
       sessionId: existingAttemptSessionId ?? input.sessionId,
       hasSessionStartRecord,
     },
@@ -528,19 +544,27 @@ export async function runForegroundCreateClaim(
       );
     return result;
   }
-  if (!claims || !input.clientTurnId)
+  const requestKey = input.clientTurnId;
+  if (!claims || !requestKey)
     throw new Error('Durable foreground create claims are unavailable.');
+  const captured = {
+    ...input,
+    delegation: captureInheritedDelegationToolContext(input.delegation),
+  };
   return claims.run(
     {
       kind: 'foreground',
       principal: input.principal,
       authority,
       callerSessionId,
-      requestKey: input.clientTurnId,
-      intent,
+      requestKey,
+      intent: bindDelegationToolIntent(intent, captured.delegation),
       hasSessionStartRecord,
     },
     async (conversationId) =>
-      (await execute({ ...input, conversationId })) as ForegroundMessageHandle,
+      (await execute({
+        ...captured,
+        conversationId,
+      })) as ForegroundMessageHandle,
   );
 }

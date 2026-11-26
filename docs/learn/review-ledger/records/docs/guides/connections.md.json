@@ -450,7 +450,23 @@
 
     "src-server/routes/integrations/integration-status-routes.ts",
 
-    "src-server/routes/integrations/__tests__/integration-status-routes.test.ts"
+    "src-server/routes/integrations/__tests__/integration-status-routes.test.ts",
+
+    "src-ui/src/views/connections-hub/connection-health.ts",
+
+    "src-ui/src/views/connections-hub/connection-section-signals.ts",
+
+    "src-server/providers/adapters/claude-instruction-files.ts",
+
+    "src-ui/src/views/ProviderSettingsView.css",
+
+    "src-ui/src/views/project-page/useMemberProjectSharedWork.ts",
+
+    "src-ui/src/views/project-page/ProjectWebMcp.tsx",
+
+    "src-ui/src/views/project-page/__tests__/ProjectWebMcp.test.tsx",
+
+    "src-ui/src/views/integrations/IntegrationEventsSection.tsx"
   ],
 
   "checks": [

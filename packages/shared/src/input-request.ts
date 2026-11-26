@@ -11,11 +11,15 @@ import type {
   InputRequestResponse,
   InputRequestSource,
   InputRequestStringFormat,
+  InputRequestUrl,
+  InputRequestUrlPurpose,
+  InputRequestUrlResponse,
   InputRequestValue,
 } from '@kontourai/station-contracts/input-request';
 import {
   INPUT_REQUEST_HEADER_MAX_CHARS,
   INPUT_REQUEST_SCHEMA,
+  INPUT_REQUEST_URL_MAX_CHARS,
 } from '@kontourai/station-contracts/input-request';
 import type { ApprovalStatus } from '@kontourai/station-contracts/runtime-events';
 
@@ -394,6 +398,80 @@ export function readInputRequestForm(input: unknown): InputRequestForm | null {
   };
 }
 
+const URL_PURPOSES = new Set<InputRequestUrlPurpose>([
+  'mcp-sign-in',
+  'elicitation',
+  'engine-link',
+]);
+
+/**
+ * A link a URL request may carry: https, no user info, at most
+ * {@link INPUT_REQUEST_URL_MAX_CHARS} characters, and parseable. Returned as
+ * given, never normalized, so the person sees exactly what the source sent.
+ */
+export function readInputRequestLink(value: unknown): string | null {
+  if (!text(value, INPUT_REQUEST_URL_MAX_CHARS) || !value) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) return null;
+  return value;
+}
+
+/**
+ * Read a stored URL request. Refuses an unknown key, a purpose this version
+ * does not define, and any link {@link readInputRequestLink} refuses. A URL
+ * request never comes from `approval`.
+ */
+export function readInputRequestUrl(input: unknown): InputRequestUrl | null {
+  const value = own(input);
+  const body = own(value?.body);
+  if (
+    !value ||
+    !onlyKeys(value, ['schema', 'source', 'requester', 'message', 'body']) ||
+    value.schema !== INPUT_REQUEST_SCHEMA ||
+    !text(value.requester, MAX_LABEL_CHARS) ||
+    !text(value.message, INPUT_REQUEST_MAX_MESSAGE_CHARS) ||
+    !body ||
+    !onlyKeys(body, ['kind', 'url', 'purpose', 'elicitationId']) ||
+    body.kind !== 'url' ||
+    !URL_PURPOSES.has(body.purpose as InputRequestUrlPurpose) ||
+    !optionalText(body.elicitationId, MAX_NAME_CHARS)
+  )
+    return null;
+  const url = readInputRequestLink(body.url);
+  const source = readSource(value.source);
+  if (!url || !source || source === 'approval') return null;
+  return {
+    schema: INPUT_REQUEST_SCHEMA,
+    source,
+    requester: value.requester,
+    message: value.message,
+    body: {
+      kind: 'url',
+      url,
+      purpose: body.purpose as InputRequestUrlPurpose,
+      ...(typeof body.elicitationId === 'string'
+        ? { elicitationId: body.elicitationId }
+        : {}),
+    },
+  };
+}
+
+/** Read a URL request's answer, or null. Shape only. */
+export function readInputRequestUrlResponse(
+  input: unknown,
+): InputRequestUrlResponse | null {
+  const value = own(input);
+  if (!value || Object.keys(value).length !== 1) return null;
+  return value.action === 'accept' || value.action === 'cancel'
+    ? { action: value.action }
+    : null;
+}
+
 // --- Legacy stored harness questions ------------------------------------
 
 /**
@@ -575,6 +653,34 @@ export function inputRequestFromRequestEvent(
         : 'The agent has questions for you',
     body: { kind: 'form', fields: legacy.map(harnessQuestionField) },
   });
+}
+
+/**
+ * The URL request a `request.opened` event carries (its `inputRequest` with
+ * a `url` body), or null. Like a form, it is answered on its own card: the
+ * person opens the link there, so no one-click Allow may stand in for it.
+ */
+export function inputRequestUrlFromRequestEvent(
+  event: { payload?: Record<string, unknown> } | undefined,
+): InputRequestUrl | null {
+  const payload = own(event?.payload);
+  if (!payload || payload.inputRequest === undefined) return null;
+  return readInputRequestUrl(payload.inputRequest);
+}
+
+/**
+ * Whether a `request.opened` event is answered on its own card (a form or
+ * a link) rather than by an approval's Allow/Deny.
+ */
+export function isCardAnsweredRequestEvent(
+  event:
+    | { provider?: string; title?: string; payload?: Record<string, unknown> }
+    | undefined,
+): boolean {
+  return (
+    inputRequestFromRequestEvent(event) !== null ||
+    inputRequestUrlFromRequestEvent(event) !== null
+  );
 }
 
 /**
@@ -941,15 +1047,32 @@ export function inputRequestAnswerTexts(
  * what a session answer would grant for this request
  * (`toolRequestGrantLabel`), or undefined where none is offered. The optional
  * server label is supplied only after the adapter authenticated a Station browser call.
+ * The optional rule label (`toolRequestRuleGrant`) offers the narrower
+ * command-prefix choice, placed before the whole-tool one. The optional
+ * all label (`toolRequestAllGrantFromPayload`) offers the widest choice,
+ * every later ask in the session, placed last of the session choices.
  */
 export function approvalDecisionBody(
   sessionGrantLabel: string | undefined,
   serverGrantLabel?: string,
+  ruleGrantLabel?: string,
+  allGrantLabel?: string,
 ): InputRequestDecisionBody {
   return {
     kind: 'decision',
     options: [
-      { id: 'allow-once', label: 'Allow Once', effect: 'allow', scope: 'once' },
+      { id: 'allow-once', label: 'Allow once', effect: 'allow', scope: 'once' },
+      ...(ruleGrantLabel
+        ? [
+            {
+              id: 'allow-rule-session',
+              label: ruleGrantLabel,
+              effect: 'allow' as const,
+              scope: 'session' as const,
+              sessionGrantScope: 'rule' as const,
+            },
+          ]
+        : []),
       ...(sessionGrantLabel
         ? [
             {
@@ -971,8 +1094,51 @@ export function approvalDecisionBody(
             },
           ]
         : []),
+      ...(allGrantLabel
+        ? [
+            {
+              id: 'allow-all-session',
+              label: allGrantLabel,
+              effect: 'allow' as const,
+              scope: 'session' as const,
+              sessionGrantScope: 'all' as const,
+            },
+          ]
+        : []),
       { id: 'deny', label: 'Deny', effect: 'deny', scope: 'once' },
     ],
+  };
+}
+
+/**
+ * The name of the one menu that holds every session grant an approval offers.
+ * Every grant in it lasts until the adapter session ends, never longer, so the
+ * menu is not called "Always allow".
+ */
+export const APPROVAL_SESSION_GRANTS_MENU_LABEL = 'Allow for this session';
+
+/**
+ * Where an approval's choices sit, shared by every surface that answers one
+ * (the inline card, the request sheet, the toast) so they cannot drift: Allow
+ * once and Deny are the two labelled buttons, and every session grant the
+ * request offered goes in one menu ({@link APPROVAL_SESSION_GRANTS_MENU_LABEL}).
+ * A grant the body does not carry is never added here.
+ */
+export function approvalDecisionLayout(body: InputRequestDecisionBody): {
+  once: InputRequestDecisionOption | undefined;
+  deny: InputRequestDecisionOption | undefined;
+  sessionGrants: InputRequestDecisionOption[];
+} {
+  const once = body.options.find(
+    (option) => option.effect === 'allow' && option.scope === 'once',
+  );
+  const deny = body.options.find((option) => option.effect === 'deny');
+  return {
+    once,
+    deny,
+    sessionGrants: body.options.filter(
+      (option) => option !== once && option !== deny,
+    ),
   };
 }
 
@@ -997,12 +1163,36 @@ export function inputRequestOutcome(
 ): InputRequestOutcome {
   switch (status) {
     case 'approved':
-      return kind === 'form' ? 'accepted' : 'allowed';
+      return kind === 'form'
+        ? 'accepted'
+        : kind === 'url'
+          ? 'opened'
+          : 'allowed';
     case 'denied':
-      return kind === 'form' ? 'declined' : 'denied';
+      return kind === 'form'
+        ? 'declined'
+        : kind === 'url'
+          ? 'cancelled'
+          : 'denied';
     case 'expired':
       return 'expired';
     default:
       return 'cancelled';
   }
+}
+
+/** Classify display requests without mistaking plan decisions for input forms.
+ * A form or a link both ask the user for input; neither approves a tool. */
+export function isInputRequestEvent(event: {
+  requestType?: string;
+  provider?: string;
+  title?: string;
+  payload?: Record<string, unknown>;
+}): boolean {
+  return (
+    event.requestType === 'input' ||
+    (event.payload?.toolName !== 'cursor/create_plan' &&
+      event.payload?.toolName !== 'ExitPlanMode' &&
+      isCardAnsweredRequestEvent(event))
+  );
 }

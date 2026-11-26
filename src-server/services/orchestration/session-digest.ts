@@ -1,4 +1,8 @@
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import {
+  stationToolOf,
+  stationToolPhrase,
+} from '@kontourai/station-contracts/station-tool-phrases';
 import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 /**
  * station#3413: the digest behind Station Control's `get_session_digest`, a
@@ -69,8 +73,11 @@ export interface DigestTurn {
   providerTriggered?: true;
   sender?: ClientOriginSender;
   outcome: DigestTurnOutcome;
-  /** Tool calls by name, most used first. */
-  toolCalls: Array<{ tool: string; calls: number }>;
+  /**
+   * Tool calls by name, most used first. Station tools add a bare-form
+   * `label` ("Wait for a Session", #3418); the count spans every outcome.
+   */
+  toolCalls: Array<{ tool: string; calls: number; label?: string }>;
   /** Calls of tools beyond the listed names. */
   otherTools?: { names: number; calls: number };
   /** Files an engine reported editing, deleting or moving, when it reported any. */
@@ -102,7 +109,10 @@ export function digestTurnOutcome(
   return terminal.finishReason === 'cancelled' ? 'interrupted' : 'completed';
 }
 
-function firstLine(prompt: string): { line: string; clipped: boolean } {
+export function digestRequestPreview(prompt: string): {
+  line: string;
+  clipped: boolean;
+} {
   const lines = prompt.split(/\r?\n/u);
   const index = lines.findIndex((candidate) => candidate.trim().length > 0);
   const trimmed = index < 0 ? '' : lines[index]!.trim();
@@ -149,7 +159,7 @@ export function digestTurn(
 ): DigestTurn {
   const request =
     facts.promptPrefix !== undefined
-      ? firstLine(
+      ? digestRequestPreview(
           facts.sender
             ? (unframeAgentMessage(facts.promptPrefix) ?? facts.promptPrefix)
             : facts.promptPrefix,
@@ -169,10 +179,15 @@ export function digestTurn(
     ...(facts.providerTriggered ? { providerTriggered: true as const } : {}),
     ...(facts.sender ? { sender: facts.sender } : {}),
     outcome: digestTurnOutcome(facts.terminal),
-    toolCalls: listedTools.map((entry) => ({
-      tool: clipSerialized(entry.toolName, TOOL_NAME_MAX_BYTES),
-      calls: entry.calls,
-    })),
+    toolCalls: listedTools.map((entry) => {
+      const station = stationToolOf(entry.toolName);
+      const label = station && stationToolPhrase(station.tool, 'pending');
+      return {
+        tool: clipSerialized(entry.toolName, TOOL_NAME_MAX_BYTES),
+        calls: entry.calls,
+        ...(label ? { label } : {}),
+      };
+    }),
   };
   if (otherTools.length > 0)
     turn.otherTools = {

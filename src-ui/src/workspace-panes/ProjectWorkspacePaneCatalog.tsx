@@ -56,8 +56,7 @@ function CatalogContents({
   if (error && entries.length === 0 && !hasData) {
     return (
       <ErrorState
-        title="Could not load workspace panes"
-        description="Station could not read this Project’s pane catalog."
+        title="Couldn’t load panes"
         action={
           <button type="button" onClick={onRetry}>
             Retry
@@ -144,7 +143,7 @@ export function ProjectWorkspacePaneModal({
   onClose,
   notice,
   title = 'Add workspace pane',
-  subtitle = 'Every pane this Project can hold is listed. Available panes open directly; the others carry their state as a badge with the next step.',
+  subtitle,
   ...catalog
 }: CatalogProps & {
   show: boolean;

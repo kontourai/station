@@ -77,6 +77,8 @@ import {
   executionEnvironment,
   rejectRetiredExecutionSelectors,
 } from './execution-target.js';
+import { INVOKED_CWD } from './helpers.js';
+import { isLoopbackSelfAuthEndpoint } from './local-self-auth.js';
 import { runMcpClientsCommand } from './mcp-clients.js';
 import { collectModelOptions, resolveOnRequestMode } from './model-options.js';
 import { runOperateCommand } from './operate/index.js';
@@ -1182,21 +1184,33 @@ async function runChat(
   // station#978 AC1/AC2/AC5/AC7: usage errors here throw before any request,
   // same as every other flag check above.
   const { modelOptions, cwd } = collectModelOptions(parsed);
-  const projectSlug =
-    typeof parsed.flags.project === 'string' ? parsed.flags.project : undefined;
-  // A shell already has an authoritative execution workspace: the directory
-  // from which it was invoked. Never silently turn an ordinary CLI chat into
-  // an unbound/home chat. A project, when selected, is a separate resource and
-  // organizational context; it can contribute knowledge, layouts, policies,
-  // and agent availability beyond the directory where a tool happens to run.
-  //
-  // Match delegate's workspace contract: a target cannot select both a
-  // configured project and an arbitrary directory.
+  const projectSlug = optionalValueFlag(parsed, 'project');
   if (cwd && projectSlug) {
     throw new Error('Use --project or --cwd, not both.');
   }
+  const conversationId = sessionFlag ?? conversationFlag;
+  if (conversationId && (cwd || projectSlug)) {
+    throw new Error(
+      'A resumed conversation retains its workspace binding; omit workspace flags or start a new chat.',
+    );
+  }
   const onRequest = resolveOnRequestMode(parsed);
   const environment = executionEnvironment(parsed);
+  const localWorkspace =
+    environment.kind === 'current' && isLoopbackSelfAuthEndpoint(apiBase);
+  const workspaceCwd =
+    cwd !== undefined &&
+    localWorkspace &&
+    !isAbsolute(cwd) &&
+    cwd !== '~' &&
+    !cwd.startsWith('~/')
+      ? resolve(INVOKED_CWD, cwd)
+      : (cwd ?? (localWorkspace ? INVOKED_CWD : undefined));
+  const workspace = projectSlug
+    ? { kind: 'project' as const, projectSlug }
+    : workspaceCwd !== undefined
+      ? { kind: 'directory' as const, cwd: workspaceCwd }
+      : undefined;
   if (parsed.flags.title !== undefined) {
     throw new Error(
       '--title is not supported by canonical foreground execution yet.',
@@ -1216,31 +1230,11 @@ async function runChat(
             },
           }
         : {}),
-      ...(!sessionFlag && !conversationFlag
-        ? projectSlug
-          ? {
-              workspace: {
-                kind: 'project' as const,
-                projectSlug,
-                cwd: process.cwd(),
-              },
-            }
-          : cwd !== undefined || environment.kind === 'current'
-            ? {
-                workspace: {
-                  kind: 'directory' as const,
-                  cwd: cwd ?? process.cwd(),
-                },
-              }
-            : // This machine's folder means nothing on another Station, and
-              // naming one there takes command authority; an explicit --cwd
-              // is still sent.
-              {}
-        : {}),
+      ...(!conversationId && workspace ? { workspace } : {}),
     },
     {
       message: content,
-      conversationId: sessionFlag ?? conversationFlag,
+      conversationId,
       clientTurnId,
       jsonMode: parsed.flags.json === true,
       onRequest,
@@ -1286,7 +1280,10 @@ async function runSessionsCommand(
     return;
   }
 
-  const client = await createSessionClient(apiBase, { agentSlug });
+  const client = await createSessionClient(apiBase, {
+    agentSlug,
+    readOnly: action === 'list' || action === 'read',
+  });
 
   if (action === 'list') {
     printJson(await client.listSessions());
@@ -1301,8 +1298,7 @@ async function runSessionsCommand(
 
   if (action === 'interrupt') {
     const id = requirePositional(parsed, 2, 'session id');
-    const turnId =
-      typeof parsed.flags.turn === 'string' ? parsed.flags.turn : undefined;
+    const turnId = optionalValueFlag(parsed, 'turn');
     await client.interruptSession(id, turnId);
     printJson({ success: true, interrupted: id });
     return;
@@ -1353,6 +1349,12 @@ export async function runCoreCommand(
   if (command === 'activity') {
     const { runActivityCommand } = await import('./session-reads.js');
     await runActivityCommand(apiBase, parsed);
+    return;
+  }
+
+  if (command === 'board' || command === 'boards') {
+    const { runBoardCommand } = await import('./board.js');
+    await runBoardCommand(command, apiBase, parsed);
     return;
   }
 

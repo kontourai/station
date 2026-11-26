@@ -1,0 +1,7 @@
+{
+  "revision": "6e5db01edeac4b13532a43f6d6247b5c4061615a",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"connect-reconnect-banner still covers the Station manager pairing entry points at phone size; it now expects code entry instead of a camera error in camera-less Chromium.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-reconnect-banner.spec.ts"]}
+  ]
+}

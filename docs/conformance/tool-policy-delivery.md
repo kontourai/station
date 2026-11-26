@@ -3,13 +3,13 @@
 This page combines current source contracts with historical provider probes.
 The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun.
 The earlier dependency review inspected Agent SDK 0.3.302. The current lockfile
-selects 0.3.318; source inspection of its installed `sdk.d.ts` still finds that
+selects 0.3.322; source inspection of its installed `sdk.d.ts` still finds that
 omitted `settingSources` loads all filesystem settings. That type declaration
 is not a fresh live test of permission-rule precedence, workspace trust, or
 memory/MCP discovery.
 
 Version-specific observations below retain the SDK and CLI versions actually
-inspected or executed. They are not new provider results for SDK 0.3.318.
+inspected or executed. They are not new provider results for SDK 0.3.322.
 
 `EngineCapabilityMatrix.toolPolicy` declares only whether Station can make a
 pre-tool blocking or grant decision on the actual tool-call path. It does not
@@ -35,7 +35,8 @@ opinion, and the engine asks `canUseTool` for anything it does not allow
 itself.
 
 An approval-guardian allow is handled the same way (#2947). The guardian is
-shown the Agent's name, the tool's name and the call's arguments. On ACP it
+shown what the person typed in the conversation (#4827; never a tool result
+or a reply), the Agent's name, the tool's name and the call's arguments. On ACP it
 is also shown the call's title as the tool description; the Claude hook
 passes no description. It is not shown the session's working directories, its permission
 mode, or why the engine would ask, so its allow speaks for the call as
@@ -48,13 +49,17 @@ allow answers it only where `toolRequestIsPlainCall` holds and no effective
 authored Ask requires approval, and it is used
 once. A different input, which another `PreToolUse` hook's `updatedInput` can
 produce, consumes the allow without using it, and the request prompts. A
-chained Bash command is a plain call, so a guardian allow answers it,
-including what the chained-command gaps below leave invisible. When an allow
+chained Bash command with no reason text is a plain call, so a guardian
+allow answers it, including what the chained-command gaps below leave
+invisible. A Bash command-analysis warning is not a plain call here: it
+reaches a person, as it does under `autoApprove`. When an allow
 is not applied the adapter logs that and why. An escalation, a plan exit or a question reaches a person, and a
 call the engine allows itself never consults the allow. The guardian is asked
 once per call. At most 256 unanswered allows are kept per session; beyond
 that the oldest is dropped, and a call whose allow was dropped prompts. A
-guardian deny (enforce mode) is still a `PreToolUse` deny. What a hook allow
+guardian deny (enforce mode) is still a `PreToolUse` deny, except the
+escalation after repeated denials (#4827), which is a required ask: a
+`PreToolUse` `ask`, which reaches `canUseTool` and a person. What a hook allow
 skipped was read in the bundled 2.1.278 binary and not reproduced in a live
 session: after one the engine re-checks deny rules, ask rules, user-interaction
 tools, safety checks, the MCP organization ceiling and a sandbox override, and
@@ -99,9 +104,22 @@ ACP is partial at its protocol `requestPermission` callback through the same
 staged evaluator. It has the unattended gap above and an additional coverage
 limit: only calls that invoke that callback and report a tool name enter the
 policy check, and the external engine reports that identity. Which calls
-invoke the callback is the engine's own configuration; for OpenCode, Station
-sets that configuration from the chat's approval mode
-([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)). Codex
+invoke the callback is the engine's own configuration. Station's approval
+mode can answer those requests without changing that configuration. For
+verified OpenCode 1.x over ACP, Station also sets the launch configuration.
+For OpenCode 2.x over ACP, host Never ask answers the engine's own requests
+without a launch overlay; confined modes remain refused
+([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
+The `opencode` engine delivers the same staged evaluator on both transports.
+Over ACP it is the `requestPermission` path above. On its native transport it
+runs on each OpenCode permission ask, the session's or a descendant's, in
+ACP's order, with OpenCode's own name for the asking tool (the name its ACP
+layer reports). The same coverage limit applies: only calls OpenCode asks
+about, whose tool it names, enter the check. An unnamed ask, or one that does
+not fit the tool recorded for its call (a Code Mode nested call names the
+`execute` call), goes to a person, or is rejected in a delegated session that
+may not grant approvals. A native deny reaches the model as the tool's failure with its reason
+([OpenCode native transport](../decisions/opencode-native-transport.md#governance)). Codex
 has no general Station pre-tool interception seam. Its preview bound browser
 and device dynamic calls pass through the staged evaluator and Station's
 approval path before execution; that narrow path does not cover other Codex
@@ -109,16 +127,27 @@ tools. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
 
-Child fan-out is the one denial Station also enforces server-side for every
-engine. A delegated child that calls `delegate_task` or `send_message` is
-refused at the routes behind them (`POST /api/orchestration/delegations`, and
-`/chat`, `/chat/delegated` and `/chat/background`) with `403` and
-`delegated_tool_blocked`, before the depth limit is read. The decision uses the
-calling session's own recorded delegation context and the built-in denial list,
-so an Agent's `allowedTools` cannot re-allow it. It needs a verified
-station-control caller: a Codex URL token, an ACP header token or the Claude
-in-process server. A shell `station` CLI run under an operator credential is not
-that caller, so this is not coverage of every way a child could start work.
+Inherited delegation allowlists are conjunctive. Each group is an allowlist
+from an ancestor, and the tool must match every group as well as the child's
+own allowlist. An empty group permits no tool. Station preserves the groups
+in delegated requests and binds them to the runtime attestation. Station
+refuses execution of requests or recorded sessions carrying inherited groups,
+including managed Station execution and forwarding to a peer or SSH target.
+When reusing a Session, Station checks that the recorded policy retains the
+requested tool allowlist, blocked tools, and approval denial before sending a
+turn. The durable Task and foreground create claims include the requested tool
+restrictions in their identity. A retry with different restrictions conflicts
+before dispatch. An older receipt without a policy binding also conflicts with
+a policy-bound retry. Inherited groups still require proof of enforcement at
+the actual tool effect before execution can be enabled.
+
+Station Control derives the dispatch caller from its verified session.
+A child can start another child only on this Station in the caller's own
+scope, within the recorded depth limit and inherited tool policy. Station
+refuses a child that calls `send_message` with `delegated_tool_blocked`.
+The calling session's recorded context controls both decisions. This
+covers verified ACP, Codex, and Claude callers. Commands issued with an
+operator credential have their own authority.
 
 ### Codex approval policy and reviewer
 
@@ -144,10 +173,12 @@ approval paths.
 
 With `approvals_reviewer: auto_review`, Codex can review eligible sandbox
 escalations of a `host` session automatically without opening a Station
-approval card. The Ask
-chip confirms the approval-policy mapping only; Station does not currently
-report the effective reviewer. Its picker and chip disclosure name that gap.
-Ask alone is not evidence that a person must approve every sandbox escalation.
+approval card. The approval sheet shows the reviewer Codex reported for the
+current native thread as You, Automatic, or Unknown. Station records startup,
+resume, fork, and subsequent settings reports independently of the approval
+mode. The last report is restored on reconnect. An explicit workspace start
+is refused if Codex reports an automatic reviewer in conflict with the
+human-reviewer configuration.
 See OpenAI's [Auto-review documentation](https://learn.chatgpt.com/docs/sandboxing/auto-review).
 
 This mapping was checked against Codex CLI 0.162.1's generated app-server
@@ -229,12 +260,64 @@ passes only on a person's recorded approval of that tool. Calls an engine
 makes to a server it connects to itself are not enforced
 ([design](../design/mcp-subregistry-curation.md#coverage-and-gaps)).
 
+Under full access the `ask` is not raised: full access is the person's own
+standing answer, so the external evaluator records it as that person's
+approval for the seam and leaves the call to the engine. Each engine's
+adapter says when it runs at full access: Claude Code at
+`bypassPermissions`, Codex at an applied `never` (which also answers its
+Station-bound browser and station-control calls), and an OpenCode or other
+Station-governed ACP session at `never`. `deny` still refuses, and the
+persistence protection below still applies.
+
+## Built-in tools that change authority
+
+Owner decision (2026-11-16): full access trusts an agent with the work,
+never with widening its own trust. The station-control tools that change who
+or what holds authority (`STATION_AUTHORITY_TOOLS`: Station configuration,
+creating or updating Agents, plugins, deleting integrations, skills and SSH
+hosts) are a required question on every engine, in any name the engine gives
+them: the staged evaluator asks a person before any grant, pattern or full
+access is read, and `toolRequestNeedsPerson` offers and honours no session
+answer for them. On Station's own engine (voice and other unattended runs
+included) an approval guardian the operator enabled may still allow one, as
+it may any mutation there (archive#2016); on an external engine, which would
+run a guardian-allowed call unasked at full access, a person is always asked.
+Tools that run host code or store credentials
+stay person-only at the station-control guard and never reach an agent.
+
+Engine-native web reads set the same mark (#4828): Claude Code through an
+in-process `PostToolUse` hook on every session (`WebFetch`, `WebSearch`), Codex
+from a completed `webSearch` item, ACP from a tool call of kind `fetch`, the
+Station engine's HTTP request in `afterToolCall`, and Station's browser tools
+at the browser-agent route. Muse is not covered. In a marked conversation the
+staged evaluator then runs one more stage before the untrusted-content
+permission, a best-effort early check by path. A write, move, rename or copy
+that reaches a known agent-instruction file or git-hook or git configuration
+location (including the `core.hooksPath` git reports) is refused with
+`untrusted_persistence_protection`. A shell command naming one, or giving git
+a configuring global option, is a required Ask. This check does not contain
+git hook execution: an external absolute hooks path, a bare repository, a
+repository nested in a hooks folder, a symlinked hooks folder, a writable
+`[include]` that retargets the hooks path, and git inside a quoted `sh -c` or
+shell alias have each run a planted hook. OS-level enforcement is
+[#4860](https://github.com/kontourai/station/issues/4860). A delegated child
+takes its ancestors' marks, and a child's read marks its parent when the
+result returns. The stage reads a loaded MCP tool's original name from loader
+provenance. It runs wherever the staged evaluator runs (Station engine, Claude
+`PreToolUse`, ACP permission requests, OpenCode native asks). ACP edit, move
+and delete requests are also checked by kind when unnamed, at the absolute
+locations OpenCode's ACP layer reports. The OpenCode native transport checks
+its `edit` asks' files the same way, before the evaluator: OpenCode names them
+relative to the asking session's directory, so each is also checked at its
+absolute path there, where a custom `core.hooksPath` is read. It does not run
+for Codex's own file changes and commands.
+
 Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
 ask; `canUseTool` also excludes it from automatic, guardian and session grants.
 Adapter tests exercise both callbacks, including repeated calls after a session
 answer. This is not fresh live-provider proof of every Claude permission mode;
-the earlier quota-blocked live run did not execute a tool. Codex, Muse and ACP
-cannot deliver this contract and refuse resolved Agents with nonempty Ask rules.
+the earlier quota-blocked live run did not execute a tool. Codex, Muse, ACP
+and the GitHub Copilot (SDK) preview engine cannot deliver this contract and refuse resolved Agents with nonempty Ask rules.
 Their picker labels approval as **Engine controlled**.
 
 ## Selected MCP tools
@@ -320,7 +403,8 @@ with a real turn in `permissionMode: 'default'`:
   `hasTrustDialogAccepted`), the same rule did **not** shadow the callback. The
   user tier carries no such precondition: `~/.claude/settings.json` applies to
   every session regardless, because the operator wrote it for themselves.
-  A full-access session Station runs inside its Seatbelt profile (#2494) reads
+  A full-access session Station runs inside its Seatbelt profile (#2494), or
+  on Linux its bubblewrap sandbox (#4770), reads
   both the user tier and that trust from a Station-owned configuration
   directory instead, never the operator's
   ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).
@@ -343,7 +427,7 @@ do not already allow, rather than claiming a floor Station does not impose.
 The standing grant covers calls to the tool, never an escalation beyond the
 call (#2915; #2911 set the same rule for Codex). The recorded escalation
 inspection used Agent SDK 0.3.278, which bundled Claude Code 2.1.278.
-This checkout now resolves SDK 0.3.318 as noted above; the historical
+This checkout now resolves SDK 0.3.322 as noted above; the historical
 2.1.261 and 2.1.278 observations below were not freshly rerun against it.
 That inspected engine signals escalations in several shapes. Read, Glob, Grep and LSP ask for a path outside
 the session's working directories without a `blockedPath`. They carry a session
@@ -360,8 +444,18 @@ One shared computation, `toolRequestSessionGrant`, decides what a session
 answer grants. The adapter honours it and the toast, inline card (on a phone,
 its request sheet's overflow item, #3331) and inbox card label it:
 
-- A plain call to a tool grants every later call to that tool ("Allow Bash for
-  this session"). Only this case mints a Station tool grant.
+- A plain call to a tool grants every later call to that tool ("Allow all
+  Bash commands for this session", "Allow all WebFetch calls for this
+  session"). Only this case mints a Station tool grant.
+- A plain Claude Bash call whose suggestions carry one or two command-prefix
+  allow rules (`npm ls *`, or `npm ls:*`) also offers the narrower choice
+  "Allow "npm ls *" for this session", computed by `toolRequestRuleGrant`
+  and answered with `acceptForSession` plus the typed
+  `sessionGrantScope: 'rule'`. The adapter forwards only those Bash rules,
+  with `destination: 'session'`, so the engine stops asking for matching
+  commands; Station mints no tool grant. An exact-command rule
+  (`npm --version`) offers no such choice. A `rule` answer to a request that
+  offered none is a one-call accept.
 - An authentic `station-browser` plain call also offers the server-wide choice
   "Allow the Station browser for this session", computed by
   `toolRequestServerGrant` and answered with `acceptForSession` plus the typed
@@ -371,6 +465,21 @@ its request sheet's overflow item, #3331) and inbox card label it:
   session and no authored server using the id. It is offered beside the
   per-tool grant, never instead of it, and changes nothing in the #90 N2
   auto-approval rule.
+- A request an adapter marks `sessionGrantAll: true` (OpenCode, native or
+  over ACP, and ACP; never a request addressed to a person, nor an ACP
+  request without an allow-once option) also offers the
+  widest choice, "Allow everything for this session", read by
+  `toolRequestAllGrantFromPayload` and answered with `acceptForSession` plus
+  the typed `sessionGrantScope: 'all'`. The adapter keeps one session-wide
+  grant and nothing else (the answered request is sent allow-once and mints
+  no tool grant) and answers every later request with allow-once only (an
+  ACP request offering allow-always alone goes to a person, and an `all`
+  answer leaves it open), after Station's
+  rejections and staged policy, never for a request addressed to a person,
+  an OpenCode configuration edit Station gives a person, or a delegated
+  child that may not grant approvals; a change of approval mode drops it.
+  An adapter that does not declare the scope receives the plain per-tool
+  answer.
 - A plain Claude file edit (Edit, Write, MultiEdit, NotebookEdit), outside plan
   mode and full access, allows the call and forwards only the engine's
   `acceptEdits` mode change ("Auto-accept file edits for this session"). The
@@ -480,7 +589,7 @@ Claude Code writes why it asks on each `can_use_tool` control request:
 `workingDir`, `safetyCheck`, `classifier`, `other`), `classifier_approvable`,
 `decision_reason_code` and `requires_user_interaction`. The installed Agent
 SDK 0.3.289 was observed forwarding reason type, reason code and interaction
-fields, but not `classifier_approvable`. The current 0.3.318 type contract exposes
+fields, but not `classifier_approvable`. The current 0.3.322 type contract exposes
 `requestId`, `decisionReason` and `matchedAskRule`; Station obtains the structured
 reason fields from its frame tap below. A test runs the real installed SDK against a stand-in
 CLI and verifies the reason values, request identities and classifier facts
@@ -503,6 +612,21 @@ different reasons leave it unrecorded, so it reads as missing; the same
 request seen twice is kept once. At most 256 unread records are kept; the
 oldest is dropped beyond that. A stdout line longer than 8 MiB is forwarded
 without being read.
+
+A person's own session answer is offered on every tool approval, an
+escalation included (owner decision, 2026-11-16): where a narrower grant
+below does not apply (an acceptEdits mode change, a folder), the whole-tool
+grant is offered. Only a request addressed to a person (a plan exit, a
+question, a per-host sandbox network ask, a built-in tool that changes
+authority) offers none. A grant covers what it was given on: one given on a
+plain call answers later plain calls of the tool, and only one given on an
+escalation also answers the tool's later escalations. A grant widened onto
+an escalation is Station's own and forwards none of the engine's
+suggestions, so it never switches a full-access or plan-mode session to
+acceptEdits. The command-prefix and server-wide browser choices are offered
+for a plain call only. What follows decides which requests escalate, and so
+whether a pattern, the guardian or a delegated child may answer the call
+(`toolRequestIsPlainCall`).
 
 `claudeAskEscalates` in the shared computation then decides, for both the
 session grant and `toolRequestIsPlainCall`:
@@ -528,15 +652,24 @@ session grant and `toolRequestIsPlainCall`:
 - Type `subcommandResults` on Bash is a chained command (`a && b`, `a; b`, a
   pipeline). By owner decision it is a plain call, so a Bash grant or
   `autoApprove` answers it, unless the request carries
-  `classifier_approvable`, any `decision_reason` text, a `matched_ask_rule`,
-  or one of the other signals above (a blocked path, a directory suggestion,
-  a sandbox override, an ask flag). What that leaves invisible is listed
-  under the gaps below.
-- Type `other` escalates unless its reason is exactly `This command requires
-  approval`, what 2.1.278 sends for a single Bash command no rule matched.
-  Its other `other` reasons are checks: shell operators, an
-  unparseable command, a `cd` before a write, a sed write, process
-  substitution.
+  `classifier_approvable`, a `matched_ask_rule`, or one of the other signals
+  above (a blocked path, a directory suggestion, a sandbox override, an ask
+  flag). Its `decision_reason` text (a warning such as a `&` background
+  operator) does not stop a person's own Bash session grant, but still
+  reaches a person under `autoApprove` or the approval guardian. What that
+  leaves invisible is listed under the gaps below.
+- Type `other` on Bash: besides `This command requires approval`, what
+  2.1.278 sends for a single command no rule matched, the engine sends its
+  command-analysis warnings under `other`: shell operators, an unparseable
+  command, a variable it cannot check before the command runs, brace or
+  tilde expansion, a `cd` before a version-control command or a write, a sed
+  write, process substitution. Each says a command-prefix rule cannot be
+  checked against the command. By owner decision a person's whole-tool
+  session grant ("Allow all Bash commands for this session") answers them,
+  since it checks no rule. An agent's `autoApprove` pattern, the approval
+  guardian and a delegated child do not: those still reach a person. On any
+  other tool, type `other` escalates unless its reason is exactly `This
+  command requires approval`.
 - No reason type is a plain call, except on a shell tool. It is the ordinary
   ask of an MCP tool, WebFetch, and a file edit inside the working
   directories. An ordinary Bash ask carries type `other` in 2.1.278, so a
@@ -579,8 +712,13 @@ What this costs, and what it still does not cover:
     /outside/f`) keeps its `addDirectories` suggestion and prompts, as does
     a single command.
   - (iii) a part's warning that is not a safety check.
+  - (iv) under a person's Bash session grant only: a command-analysis
+    warning that concerns a write outside the working directories (a `cd`
+    before a write, a sed write, a `&` background operator in a chain) when
+    the engine sends it with no blocked path. Whether it does was not
+    captured.
 
-  These gaps exist on `main` today: before Station read the structured
+  These gaps (i) to (iii) exist on `main` today: before Station read the structured
   reason, a Bash grant answered every chained command. Closing them needs
   the engine to send the nested reasons. The request shapes for (i) and
   (ii), and for the two guarantees, were captured from live turns against
@@ -591,10 +729,12 @@ What this costs, and what it still does not cover:
 - **Every PowerShell ask prompts.** See the type bullet above: a PowerShell
   grant or pattern answers nothing. The list of PowerShell security warnings
   there was read in the engine's code, not captured.
-- **The ordinary Bash ask is recognised by its text.** `other` covers both
-  the ordinary ask and safety prose, and only the text tells them apart. The
-  text was read in 2.1.278. If a later engine rewords it, ordinary Bash calls
-  prompt until the literal is updated; a rewording never widens a grant.
+- **A person's Bash session grant does not read Bash `other` reasons.**
+  Under that grant a Bash ask of type `other` is a plain call whatever its
+  text, so a safety check the engine sent as `other` with no
+  `classifier_approvable` would be answered too. `autoApprove` and the
+  guardian still read the text and prompt. In 2.1.278 a safety check
+  arrives as `safetyCheck` or carries `classifier_approvable`.
 - **A different frame shape costs prompts, with one exception.** A request
   Station cannot parse is not recorded, so all Claude asks would prompt and
   offer no tool grant. A session can run an installed `claude` newer than
@@ -698,7 +838,7 @@ promising more than it does:
 The conversation opens one approval sheet for its current tool requests. It
 shows each command in full and gives each request its own decision controls.
 Closing the sheet hides it without answering; that prompt remains dismissed
-until Answer or Needs approval reopens it. A newly opened prompt can open the
+until Answer, Needs input or Needs approval reopens it. A newly opened prompt can open the
 sheet again. Sending and failure state survive hiding the sheet. When Station
 answers a decision with "already settled", the view missed that request's
 resolution: the sheet drops the request and its count at once and refetches

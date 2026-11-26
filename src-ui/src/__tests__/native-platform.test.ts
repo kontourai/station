@@ -76,6 +76,14 @@ const CAPABILITY_FIXTURE: Record<
     state: 'disabled',
     reason: 'Native shares are not configured.',
   },
+  'image-share-intake': {
+    state: 'disabled',
+    reason: 'Native image shares are Android-only.',
+  },
+  'clipboard-image': {
+    state: 'unsupported',
+    reason: 'Clipboard image reads are mobile-only.',
+  },
 };
 
 function validCapabilityReport() {

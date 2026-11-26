@@ -1,7 +1,0 @@
-{
-  "revision": "c9428f44de0486f7d84ad489bb65cd7fdca3ddcf",
-
-  "notes": [
-    {"path":"packages/agent-runtime/README.md","note":"Reviewed turn-journal command COMMIT checkpoint suppression and finally restoration, idle PASSIVE checkpoint after FULL commit, active-turn pause, compactAgentBodies effectComplete-only 2 ms pass, one-page vacuum eligibility versus actual SQLite I/O. Real WAL regression fails on baseline (8 checkpointed frames), passes after deferred checkpoint with independent-connection durable visibility; commit-failure rollback/recovery and three fault controls pass. Raw 50 ms bounds remain unchanged; hosted 161.99 ms has no component trace and is not causally attributed.","inputs":["packages/agent-runtime/README.md","packages/agent-runtime/src/__tests__/turn-retention-fixture.ts","packages/agent-runtime/src/__tests__/turn-retention.test.ts","packages/agent-runtime/src/turn-journal.ts"]}
-  ]
-}

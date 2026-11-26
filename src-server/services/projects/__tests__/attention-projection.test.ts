@@ -11,7 +11,6 @@ import {
   SESSION_LIFECYCLE_STATES,
   type SessionLifecycleState,
 } from '@kontourai/station-contracts/session-lifecycle';
-import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -258,7 +257,7 @@ function registryApproval(overrides: Partial<Notification> = {}): Notification {
     status: 'delivered',
     createdAt: now,
     updatedAt: now,
-    actions: [{ id: 'accept', label: 'Allow Once' }],
+    actions: [{ id: 'accept', label: 'Allow once' }],
     metadata: {
       requestKind: 'registry',
       approvalId: 'approval-registry-1',
@@ -345,7 +344,7 @@ describe('AttentionProjectionService', () => {
       status: 'delivered',
       createdAt: now,
       updatedAt: now,
-      actions: [{ id: 'accept', label: 'Allow Once' }],
+      actions: [{ id: 'accept', label: 'Allow once' }],
       metadata: { sessionId: 'thread/one', sessionKind: 'runtime' },
     };
     const projection = makeService({
@@ -367,11 +366,13 @@ describe('AttentionProjectionService', () => {
       items: expect.arrayContaining([
         expect.objectContaining({
           kind: 'approval',
-          openHref: activityDeepLink({ sessionId: 'thread/one' }),
+          // The notification href every channel opens (`notificationSessionHref`).
+          openHref: '/?chat=thread%2Fone&dock=open',
         }),
         expect.objectContaining({
           kind: 'needs_input',
-          openHref: activityDeepLink({ sessionId: 'thread two' }),
+          // The same dock-chat href the notification beside it opens.
+          openHref: '/?chat=thread%20two&dock=open',
         }),
       ]),
     });
@@ -851,7 +852,7 @@ describe('AttentionProjectionService', () => {
       status: 'delivered',
       createdAt: now,
       updatedAt: now,
-      actions: [{ id: 'accept', label: 'Allow Once' }],
+      actions: [{ id: 'accept', label: 'Allow once' }],
       metadata: { sessionId: 'thread-both', sessionKind: 'runtime' },
     };
     const projection = makeService({
@@ -1366,7 +1367,7 @@ describe('AttentionProjectionService', () => {
         createdAt: now,
         updatedAt: now,
         actions: [
-          { id: 'accept', label: 'Allow Once' },
+          { id: 'accept', label: 'Allow once' },
           { id: 'decline', label: 'Deny', variant: 'danger' },
         ],
         metadata: {
@@ -1581,7 +1582,7 @@ describe('AttentionProjectionService', () => {
           title: 'Untitled session',
           body: 'Engine exited with code 1',
           sessionId: 'thread-boom',
-          openHref: activityDeepLink({ sessionId: 'thread-boom' }),
+          openHref: '/?chat=thread-boom&dock=open',
         }),
       );
     });
@@ -1755,7 +1756,7 @@ describe('AttentionProjectionService', () => {
           createdAt: now,
           updatedAt: '2026-07-23T12:00:00.000Z',
           sessionId: 'thread-full',
-          openHref: activityDeepLink({ sessionId: 'thread-full' }),
+          openHref: '/?chat=thread-full&dock=open',
           source: { threadId: 'thread-full' },
           engine: 'claude',
           agent: 'reviewer',
@@ -1819,14 +1820,13 @@ describe('AttentionProjectionService', () => {
       });
 
       /*
-       * THE DESTINATION FIX. `sessionOpenHref`'s project branch opens the
-       * chat dock, and the dock has no failure surface at all — `failureText`
-       * is derived in `useMutableSessionDetailState` and rendered only by
-       * `SessionDetailErrors`, inside the session detail pane. A failed
-       * session must therefore land on the Activity surface, EVEN WHEN it
-       * has a project slug that would otherwise route it to the dock.
+       * THE DESTINATION. A failed session opens in the chat dock like every
+       * other session row. The dock has rendered a cold-arrived failure since
+       * archive#3213 (`ChatDockBody`'s session failure banner); until then a
+       * failure was sent to the session reader because the dock showed none,
+       * which left a reader whose own header then offered "Open in chat".
        */
-      test('a project-scoped failure opens the session detail, not the chat dock', async () => {
+      test('a failure opens in the chat dock, with or without a project', async () => {
         const service = makeService({
           sessions: [
             baseSession({
@@ -1834,8 +1834,12 @@ describe('AttentionProjectionService', () => {
               lifecycleState: 'failed',
               projectSlug: 'proj a',
             }),
+            baseSession({
+              threadId: 'thread-bare',
+              lifecycleState: 'failed',
+            }),
             // Same project, but this one asks the user to ANSWER — the dock's
-            // composer is what it needs, so its href is deliberately unchanged.
+            // composer is what it needs.
             baseSession({
               threadId: 'thread-ask',
               lifecycleState: 'needs_input',
@@ -1849,7 +1853,11 @@ describe('AttentionProjectionService', () => {
         expect(
           result.items.find((item) => item.sessionId === 'thread-boom')
             ?.openHref,
-        ).toBe(activityDeepLink({ sessionId: 'thread-boom' }));
+        ).toBe('/projects/proj%20a?chat=thread-boom&dock=open');
+        expect(
+          result.items.find((item) => item.sessionId === 'thread-bare')
+            ?.openHref,
+        ).toBe('/?chat=thread-bare&dock=open');
         expect(
           result.items.find((item) => item.sessionId === 'thread-ask')
             ?.openHref,
@@ -2250,7 +2258,7 @@ describe('AttentionProjectionService', () => {
         status: 'delivered',
         createdAt: now,
         updatedAt: now,
-        actions: [{ id: 'accept', label: 'Allow Once' }],
+        actions: [{ id: 'accept', label: 'Allow once' }],
         metadata: {
           requestKind: 'orchestration',
           requestId: `req-${threadId}`,
@@ -2378,9 +2386,9 @@ describe('AttentionProjectionService', () => {
     // AC4: "Open session" must actually open the dock. `dock=open` is what
     // navigation-store.ts's `isDockOpen` reads; without it the deep link
     // lands on the project layout with the dock still shut — defect 1 in
-    // the issue. The surface deep link carries its own reveal; it must not
-    // also stamp `dock=open`.
-    test('sessionOpenHref stamps dock=open on the project-scoped href only', async () => {
+    // the issue. A session without a Project opens the same dock chat from
+    // the root route: the href its own notification already opens.
+    test('sessionOpenHref stamps dock=open with and without a project', async () => {
       const service = makeService({
         sessions: [
           baseSession({
@@ -2404,7 +2412,7 @@ describe('AttentionProjectionService', () => {
       expect(
         result.items.find((item) => item.sessionId === 'thread-no-project')
           ?.openHref,
-      ).toBe(activityDeepLink({ sessionId: 'thread-no-project' }));
+      ).toBe('/?chat=thread-no-project&dock=open');
     });
   });
 });
@@ -2444,7 +2452,7 @@ describe('the bell agrees with the client fold (station#3227 B1)', () => {
           title: 'Session blocked',
           body: 'Waiting on a human decision about the deploy',
           sessionId: 'thread-stuck',
-          openHref: activityDeepLink({ sessionId: 'thread-stuck' }),
+          openHref: '/?chat=thread-stuck&dock=open',
         }),
       );
     });
@@ -3778,4 +3786,49 @@ describe('versioned attention snooze', () => {
     await f.registry.setEnabled('attention-snooze', true);
     expect((await service.list()).pendingCount).toBe(0);
   });
+});
+
+test('structured questions keep exact request inspection despite input display metadata', async () => {
+  const { mapServerRequestToEvent } = await import(
+    '../../../providers/adapters/codex-adapter-events.js'
+  );
+  const event = mapServerRequestToEvent(
+    'question-thread',
+    'question-id',
+    'item/tool/requestUserInput',
+    {
+      questions: [
+        { id: 'goal', header: 'Goal', question: 'Which goal?', options: null },
+      ],
+    },
+    now,
+  )!;
+  const summary = buildOrchestrationSessionSummary({
+    loaded: baseSession({
+      threadId: event.threadId,
+      provider: 'codex',
+      status: 'running',
+    }) as ProviderSession,
+    events: [event],
+    openRequestIds: [event.requestId],
+    answerability: SETTLEMENT_OBSERVATION,
+  });
+  expect(summary.openRequestKinds).toEqual({ 'question-id': 'input' });
+  const projection = await makeService({
+    sessions: [summary],
+    sessionEvents: { [event.threadId]: [event] },
+  }).list();
+  expect(projection.items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'review_pending',
+        requestReference: {
+          threadId: event.threadId,
+          requestId: event.requestId,
+          requestEventId: event.eventId,
+        },
+      }),
+    ]),
+  );
+  expect(projection.items.some((item) => 'inputReference' in item)).toBe(false);
 });

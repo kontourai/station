@@ -1,7 +1,0 @@
-{
-  "revision": "b2c82caeefbfb9ead319fa28fb1e69a7e241a301",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"Reviewed the session-start acceptance paragraph against AsyncEventQueue exclusive iterator ownership, EventStore onClosing revocation, runtime early cleanup custody, and OrchestrationService commit/failure settlement. Five new regressions fail on main; all three layer fault controls fail and restore green (40 tests). This establishes local primitive behavior, not initialized child-work/provider/release readiness.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

@@ -8,6 +8,7 @@ export {
 export type {
   ConnectionHealthCheckResult,
   ConnectionHealthCoordinatorOptions,
+  ConnectionHealthFailureEvidence,
   ConnectionHealthSnapshot,
   ConnectionRouteResult,
 } from './core/ConnectionHealthCoordinator';
@@ -24,6 +25,7 @@ export type {
   SyncStatus,
 } from './core/ConnectionSupervisor';
 export { ConnectionSupervisor } from './core/ConnectionSupervisor';
+export { hasCameraApi } from './core/cameraSupport';
 export type {
   ConnectionCandidateDiscoveryResult,
   ConnectionCandidateProviderResult,

@@ -109,6 +109,25 @@
   box-shadow: none;
 }
 
+/* Touch swipe-to-dismiss (useSwipeToDismiss). The card keeps vertical
+   scrolling; a horizontal drag moves it and fades it toward the edge. */
+.toast-card--swipe {
+  touch-action: pan-y;
+  transform: translateX(var(--toast-swipe-offset, 0px));
+  /* Motion tokens collapse under prefers-reduced-motion (tokens.css). */
+  transition:
+    transform var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
+}
+.toast-card--dragging {
+  transition: none;
+  opacity: 0.85;
+}
+.toast-card--leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .toast-card__header,
 .toast-card__meta,
 .toast-card__conversation,
@@ -264,6 +283,21 @@
   color: var(--text-primary);
 }
 
+/* An approval's Deny, drawn as the card's `danger-outline` button draws it.
+   `.toast-card__action`'s transparent border would otherwise erase its edge. */
+.toast-card__action--danger-outline {
+  border-color: color-mix(in srgb, var(--k-negative) 25%, transparent);
+}
+
+/* The approval's session-grant menu takes its buttons' height, as it does
+   beside an `ActionRow` (ActionOverflowMenu.css). */
+.toast-card__actions > .action-overflow__trigger {
+  width: auto;
+  min-width: 44px;
+  height: auto;
+  align-self: stretch;
+}
+
 .toast-card__action--danger {
   /* --error is defined nowhere, so this only ever rendered its literal
      fallback. --error-fill is the theme-aware white-carrying danger fill. */
@@ -304,6 +338,23 @@
 .toast-stack__item {
   width: 100%;
   flex: 0 0 auto;
+}
+
+.toast-stack[data-exit-only],
+.toast-stack__item.is-exiting,
+.toast-stack__item.is-exiting .toast-card {
+  pointer-events: none;
+}
+
+.toast-stack__item.is-exiting {
+  animation: toast-stack-exit var(--motion-fast) var(--ease-out) both;
+}
+
+@keyframes toast-stack-exit {
+  to {
+    opacity: 0;
+    transform: translateX(var(--k-space-3));
+  }
 }
 
 .notification-container__overflow {
@@ -394,6 +445,11 @@
       var(--safe-top, 0px) -
       16px
     );
+  }
+
+  /* With Inbox open, leave room for the controls and its own scrolling list. */
+  :root:has(.mobile-inbox:not([hidden])) .notification-container {
+    max-height: 45dvh;
   }
 
   .notification-approval-queue__panel {

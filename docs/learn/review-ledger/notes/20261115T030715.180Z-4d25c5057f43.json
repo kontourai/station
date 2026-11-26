@@ -1,0 +1,7 @@
+{
+  "revision": "ec474fb93199fa97b1a19bcd27266e7cdf730bfe",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Delta review only: the qualification failure-manifest paragraph in docs/guides/testing.md was rewritten to state its threat model and the rename-over-target writes. This page links testing.md only for unrelated sections, so no claim here is affected and the prose is unchanged.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]}
+  ]
+}

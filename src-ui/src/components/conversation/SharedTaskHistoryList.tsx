@@ -1,10 +1,10 @@
 import type { ProjectSharedTaskHistory } from '@kontourai/station-contracts/project-shared-task';
 import type { ProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import type { ReactNode } from 'react';
-import { RoomAvatar } from '../../workspace-panes/ProjectTaskRoomPresence';
 import { Button } from '../Button';
-import { LazyMarkdown } from '../chat/LazyMarkdown';
-import { Empty, ErrorState, SkeletonBlock, SkeletonList } from '../state';
+import { RoomAvatar } from '../room/RoomAvatar';
+import { RoomMessageText } from '../room/RoomMessageText';
+import { Empty, ErrorState, SkeletonList } from '../state';
 import './SharedTaskHistoryList.css';
 
 type HistoryPage = ProjectSharedTaskHistory | ProjectTaskRoomBrowserHistory;
@@ -46,19 +46,9 @@ export function projectTaskHistory<T extends HistoryRecord>(
   return { records, outcome };
 }
 
+/** Shared history text renders like a room message: Markdown for every author. */
 export function SharedTaskHistoryText({ text }: { text: string }) {
-  const mention = /^\*\*@(.+?)\*\*\s+/.exec(text);
-  return (
-    <div className="task-room-message-text">
-      {mention && <span className="task-room-mention">@{mention[1]}</span>}
-      <LazyMarkdown
-        skipHtml
-        loadingProjection={<SkeletonBlock label="Loading message" />}
-      >
-        {mention ? text.slice(mention[0].length) : text}
-      </LazyMarkdown>
-    </div>
-  );
+  return <RoomMessageText text={text} />;
 }
 
 export function SharedTaskHistoryRecord({
@@ -149,6 +139,7 @@ export function SharedTaskHistoryList<T extends HistoryRecord>({
   onLoadEarlier,
   onRetry,
   renderRecord,
+  renderList,
   label = 'Shared history records',
   emptyLabel = 'No published messages yet.',
 }: {
@@ -162,6 +153,21 @@ export function SharedTaskHistoryList<T extends HistoryRecord>({
   onLoadEarlier: () => void;
   onRetry: () => void;
   renderRecord?: (record: T, previous: T | undefined) => ReactNode;
+  /**
+   * Hands the admitted records and their states to a room list
+   * (`RoomConversation`) instead of this plain list. Access and outcome
+   * projection stay here.
+   */
+  renderList?: (list: {
+    records: readonly T[];
+    label: string;
+    pending: boolean;
+    status?: ReactNode;
+    empty?: ReactNode;
+    hasEarlier: boolean;
+    loadingEarlier: boolean;
+    onLoadEarlier(): void;
+  }) => ReactNode;
   label?: string;
   emptyLabel?: string;
 }) {
@@ -175,6 +181,35 @@ export function SharedTaskHistoryList<T extends HistoryRecord>({
         action={<Button onClick={onRetry}>Refresh history</Button>}
       />
     );
+  const failure = failed ? (
+    <ErrorState
+      variant="compact"
+      title={
+        records.length
+          ? 'Couldn’t load more history.'
+          : 'Shared history is unavailable.'
+      }
+      action={<Button onClick={onRetry}>Retry</Button>}
+    />
+  ) : null;
+  if (renderList)
+    return renderList({
+      records,
+      label,
+      pending: !!pending,
+      status:
+        failure ??
+        (pending ? (
+          <SkeletonList count={2} label="Loading messages" />
+        ) : undefined),
+      empty:
+        !pending && !failed ? (
+          <Empty variant="compact" label={emptyLabel} />
+        ) : undefined,
+      hasEarlier: !!hasEarlier,
+      loadingEarlier: !!loadingEarlier,
+      onLoadEarlier,
+    });
   return (
     <div
       className="shared-task-history"
@@ -190,17 +225,7 @@ export function SharedTaskHistoryList<T extends HistoryRecord>({
         </Button>
       )}
       {pending && <SkeletonList count={2} label="Loading messages" />}
-      {failed && (
-        <ErrorState
-          variant="compact"
-          title={
-            records.length
-              ? 'Couldn’t load more history.'
-              : 'Shared history is unavailable.'
-          }
-          action={<Button onClick={onRetry}>Retry</Button>}
-        />
-      )}
+      {failure}
       {!pending && !failed && !records.length && (
         <Empty variant="compact" label={emptyLabel} />
       )}

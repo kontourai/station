@@ -7,7 +7,12 @@ import {
   acpRuntimeCatalogStatus,
   buildACPCapabilityInventory,
 } from '../../connections/connection-service-helpers.js';
-import { ACP_DECLARED_FACT_BOUNDS } from '../acp-handshake-facts.js';
+import {
+  ACP_DECLARED_FACT_BOUNDS,
+  projectAcpDeclaredHandshake,
+  projectAcpDeclaredLogging,
+  resolveAcpEngineVariant,
+} from '../acp-handshake-facts.js';
 import { getACPManagerStatus } from '../acp-manager-view.js';
 import { ACPProbe } from '../acp-probe.js';
 import { ACPProcess } from '../acp-process.js';
@@ -185,6 +190,13 @@ describe('declared handshake facts reach the connection inventory', () => {
         '_kiro/session/compact',
         '_kiro/session/export',
       ],
+      engineVariant: 'kiro-v3',
+      declaredFeatures: {
+        namespace: 'kiro',
+        checkpoints: true,
+        sessionList: true,
+        forkAtMessage: true,
+      },
     });
     // v3 sends no agentInfo, so nothing names a version.
     expect(inventory.declaredHandshake).not.toHaveProperty('agentInfo');
@@ -367,6 +379,9 @@ describe('what is served of declared facts is projected and bounded', () => {
       authMethods: 32,
       extensionMethods: 256,
       availableModels: 1024,
+      featureList: 16,
+      logChannels: 16,
+      path: 4096,
     });
   });
 
@@ -525,5 +540,147 @@ describe('one model-option rule', () => {
     expect(connection.advertisedModels).toEqual([
       { id: 'grok-4.6', name: 'Grok 4.6' },
     ]);
+  });
+});
+
+/**
+ * The live kiro-cli 2.35.0 `acp --agent-engine v3` initialize answer
+ * (2026-11-13), whole except that the home directory in its log paths is
+ * replaced with `/home/user`.
+ */
+const LIVE_V3 = JSON.parse(
+  readFileSync(
+    new URL('./fixtures/kiro-v3-2.35.0-initialize.json', import.meta.url),
+    'utf8',
+  ),
+).result;
+
+describe('Kiro v3 declared features, from the live 2.35.0 handshake', () => {
+  test('projects every declared flag, list and range', () => {
+    const declared = projectAcpDeclaredHandshake(LIVE_V3);
+    expect(declared.engineVariant).toBe('kiro-v3');
+    expect(declared.declaredFeatures).toEqual({
+      namespace: 'kiro',
+      checkpoints: true,
+      sessionList: true,
+      replayMarking: true,
+      modelFallbackReporting: true,
+      policyNotifications: true,
+      forkAtMessage: true,
+      autoCompactionThreshold: { min: 0, max: 80, default: 80 },
+      executionTargets: ['local', 'cloud-sandbox'],
+      sessionSources: ['local', 'remote'],
+      sessionListScopes: ['workspace', 'user'],
+    });
+    expect(declared.extensionMethods).toHaveLength(44);
+    expect(declared.sessionCapabilities).toEqual([
+      'list',
+      'close',
+      'fork',
+      'delete',
+    ]);
+    expect(declared.authMethods?.map(({ id }) => id)).toEqual([
+      'aws-builder-id',
+      'aws-iam-identity-center',
+    ]);
+    expect(declared).not.toHaveProperty('refused');
+  });
+
+  test('serves log channel names only; the paths stay on the server', () => {
+    const declared = projectAcpDeclaredHandshake(LIVE_V3);
+    expect(declared.logChannels).toEqual(['kiro', 'mcp', 'powers']);
+    expect(JSON.stringify(declared)).not.toContain('/home/user');
+    expect(projectAcpDeclaredLogging(LIVE_V3)).toEqual({
+      logDir: '/home/user/.kiro/logs/20261113T062509340-30557',
+      channels: ['kiro', 'mcp', 'powers'].map((name) => ({
+        name,
+        filePath: `/home/user/.kiro/logs/20261113T062509340-30557/${name}.log`,
+      })),
+    });
+  });
+
+  test('an out-of-bounds feature or log channel refuses that fact whole, and only it', () => {
+    const kiro = LIVE_V3.agentCapabilities._meta.kiro;
+    const withMeta = (patch: Record<string, unknown>) => ({
+      ...LIVE_V3,
+      agentCapabilities: {
+        ...LIVE_V3.agentCapabilities,
+        _meta: { kiro: { ...kiro, ...patch } },
+      },
+    });
+    const range = projectAcpDeclaredHandshake(
+      withMeta({ autoCompactionThreshold: { min: 0, max: 80, default: 90 } }),
+    );
+    expect(range).not.toHaveProperty('declaredFeatures');
+    expect(range.refused).toEqual(['declaredFeatures']);
+    expect(range.logChannels).toEqual(['kiro', 'mcp', 'powers']);
+
+    const targets = projectAcpDeclaredHandshake(
+      withMeta({
+        executionTargets: Array.from({ length: 17 }, (_, i) => `t${i}`),
+      }),
+    );
+    expect(targets.refused).toEqual(['declaredFeatures']);
+
+    const logs = projectAcpDeclaredHandshake(
+      withMeta({
+        logging: {
+          logDir: '/home/user/.kiro/logs/x',
+          channels: [
+            { name: '../kiro', filePath: '/home/user/.kiro/logs/x/kiro.log' },
+          ],
+        },
+      }),
+    );
+    expect(logs.refused).toEqual(['logChannels']);
+    expect(logs).not.toHaveProperty('logChannels');
+    expect(logs.declaredFeatures?.checkpoints).toBe(true);
+  });
+
+  test('a flag that is not a boolean is absent, not coerced', () => {
+    const declared = projectAcpDeclaredHandshake({
+      ...LIVE_V3,
+      agentCapabilities: {
+        ...LIVE_V3.agentCapabilities,
+        _meta: { kiro: { checkpoints: 'yes', sessionList: false } },
+      },
+    });
+    expect(declared.declaredFeatures).toEqual({
+      namespace: 'kiro',
+      sessionList: false,
+      forkAtMessage: true,
+    });
+  });
+
+  test('another vendor namespace declares no features Station reads', () => {
+    const declared = projectAcpDeclaredHandshake({
+      ...LIVE_V3,
+      agentCapabilities: {
+        ...LIVE_V3.agentCapabilities,
+        sessionCapabilities: {},
+        _meta: { other: { checkpoints: true } },
+      },
+    });
+    expect(declared).not.toHaveProperty('declaredFeatures');
+    expect(declared).not.toHaveProperty('engineVariant');
+  });
+});
+
+describe('engine variant, from the handshake identity', () => {
+  test('v3 declares its namespace; v2 names itself; neither is anything else', () => {
+    expect(resolveAcpEngineVariant(LIVE_V3)).toBe('kiro-v3');
+    expect(
+      resolveAcpEngineVariant({
+        agentInfo: { name: 'Kiro CLI Agent', version: '2.35.0' },
+        agentCapabilities: { loadSession: true },
+      }),
+    ).toBe('kiro-v2');
+    expect(
+      resolveAcpEngineVariant({
+        agentInfo: { name: 'Kiro CLI Agent Fork', version: '2.35.0' },
+        agentCapabilities: { _meta: { kirox: {} } },
+      }),
+    ).toBeUndefined();
+    expect(resolveAcpEngineVariant(null)).toBeUndefined();
   });
 });

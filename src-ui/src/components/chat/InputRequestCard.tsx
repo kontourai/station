@@ -38,6 +38,7 @@ import {
   useRequestSheet,
 } from './RequestSheet';
 import './InputRequestCard.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 export type InputRequestAction = 'accept' | 'decline' | 'cancel';
 
@@ -151,6 +152,7 @@ export function InputRequestCard({
     content?: InputRequestContent,
   ) => Promise<void>;
 }) {
+  useDecisionSurface('input-request-card');
   const id = useId();
   const [draft, setDraft] = useState<InputRequestDraft>(() =>
     initialDraft(form),

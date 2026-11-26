@@ -1,0 +1,9 @@
+{
+  "revision": "1e06f3885ee72949eb3078f4c471825944d9d51c",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Only the promptless options-shape test changed: it isolates CLAUDE_CONFIG_DIR and expects the agents-md setting in Options.settings. Citing pages' claims about tool-policy delivery and smoke confidence are unaffected.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Only the promptless options-shape test changed: it isolates CLAUDE_CONFIG_DIR and expects the agents-md setting in Options.settings. Citing pages' claims about tool-policy delivery and smoke confidence are unaffected.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]}
+  ]
+}

@@ -1,3 +1,4 @@
+import type { ApprovalMode } from '@kontourai/station-contracts/provider';
 import type {
   ProviderInterruptTurnResult,
   ProviderSession,
@@ -5,6 +6,7 @@ import type {
 import type { CodexChildWorkState } from './codex-adapter-child-work.js';
 import type { CodexThreadSandbox } from './codex-approval-mode.js';
 import type { CodexUsageLimitState } from './codex-usage-limit.js';
+import type { EngineWorkloadNotices } from './engine-workload-notices.js';
 
 export interface CodexProcessLike {
   readonly pid?: number;
@@ -100,6 +102,13 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
   boundChannelClosed?: boolean;
   boundChannelCurrent?: () => boolean;
   closeBoundTools?: () => Promise<void>;
+  /**
+   * The session's Station pre-tool policy, held for the engine's life even
+   * without bound tools: Station reads its launch binding to restart a
+   * session whose integrations or Agent changed at its next turn. Codex's
+   * own MCP calls never pass through it.
+   */
+  launchPolicy?: unknown;
   boundToolApprovals?: Map<
     string,
     {
@@ -115,6 +124,7 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
   preparedResumeBindingKey?: string;
   externalThreadId: string;
   codexThreadId: string;
+  reportedApprovalReviewer?: import('@kontourai/station-contracts/provider').EngineApprovalReviewer;
   process: CodexProcessLike;
   session: ProviderSession;
   rpcRequestCounter: number;
@@ -130,6 +140,11 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
    * auto-accepts later calls without re-prompting. Dies with the session.
    */
   approvedTools: Set<string>;
+  /**
+   * The approval mode the latest turn ran at (`never` is full access), from
+   * the posture it was sent. Absent until a turn sends one.
+   */
+  appliedApprovalMode?: ApprovalMode;
   /**
    * #2880: replies written and not yet acknowledged, keyed by
    * `jsonRpcIdKey(rpcRequestId)` so the wire id's type is part of the match.
@@ -208,6 +223,12 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
    */
   stopped: boolean;
   /**
+   * #5113: workload notices Codex has not been told yet. The transport
+   * steers them into a running turn; otherwise they go with the next
+   * `turn/start` input.
+   */
+  workloadNotices?: EngineWorkloadNotices;
+  /**
    * Set while a notification is waiting on I/O (an image read from the host);
    * the transport delivers this session's later notifications after it.
    */
@@ -237,6 +258,7 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
    * #2458: this session's Codex subagents as child work
    * (`codex-adapter-child-work.ts`). Created on first use.
    */
+  childModelAcceptsImages?: (modelId: string | undefined) => boolean;
   childWork?: CodexChildWorkState;
   /**
    * The absolute `CODEX_HOME` this session's app-server was spawned under,

@@ -1,0 +1,7 @@
+{
+  "revision": "d7c32634930b555d9703502e5cc66e1eb26ec1b3",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Fix round 2 (Muse): only the contracts.md Muse adapter wording changed; no package contract type changed and this file makes no Muse, steer or sandbox claim, so its routing guidance stays accurate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

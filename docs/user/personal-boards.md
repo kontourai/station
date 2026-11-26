@@ -61,7 +61,8 @@ shares the session list: live stream updates invalidate it, with a 60-second
 safety poll even while the stream is connected. Project sections refresh about
 every fifteen seconds. Failed reads show Retry rather than an empty success. Attention can
 report that an underlying source is unavailable. Links open the owning feature;
-review and approve requests there. A Board never approves work on your behalf.
+review and approve requests there. A Flow gate item links to its run console only
+while this device's Flow preview is on. A Board never approves work on your behalf.
 
 ## Build through chat
 
@@ -109,6 +110,16 @@ Station retains both and asks you to inspect them; retrying cannot discard the
 newer contents. Apply or dismiss a pending proposal before moving; unpublished
 content cannot travel into a Project. Saved dashboard sections and existing
 Layout tabs render in Main, a docked region, and the destination Project.
+
+After you confirm **Delete**, or choose a Project in **Move to project…**, the
+Board leaves the sidebar and a notice offers **Undo**. **⌘Z** on macOS or
+**Ctrl+Z** on Windows and Linux also undoes the latest one. Station deletes or
+moves the Board only when the notice closes, so Undo leaves the saved Board as
+it is, including edits made on another device in the meantime. The notice stays
+while you point at it or it has focus. Deleting or moving the open Board returns
+to Home; Undo returns to the Board if you are still there. If Station changes, or the
+page closes or reloads before the notice closes, the Board is kept. A refused
+delete or move is reported, and the Board comes back.
 
 Existing Boards with configured Layout tabs keep those tabs when you add a
 dashboard. Arbitrary plugin-pane composition still follows the existing Layout

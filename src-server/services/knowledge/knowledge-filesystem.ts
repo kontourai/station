@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { lstat, readFile } from 'node:fs/promises';
 import { relative } from 'node:path';
 import type {
   KnowledgeDocumentMeta,
@@ -9,6 +10,7 @@ import type {
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { createLogger } from '../../utils/logger.js';
 import type { ProjectWorkspacePathOptions } from '../projects/project-workspace-path.js';
+import { KnowledgeDocumentExistsError } from './knowledge-documents.js';
 import {
   applyKnowledgeScanPatterns,
   collectKnowledgeFiles,
@@ -20,6 +22,16 @@ import {
 import { readKnowledgeDocuments } from './knowledge-storage.js';
 
 const logger = createLogger({ name: 'knowledge-filesystem' });
+
+/** Longest document, in characters, a directory scan indexes. */
+const MAX_SCANNED_DOCUMENT_CHARACTERS = 500_000;
+/**
+ * Largest file a directory scan reads at all. UTF-8 spends at most three
+ * bytes on one UTF-16 code unit, so a file above this size always decodes to
+ * more than `MAX_SCANNED_DOCUMENT_CHARACTERS` and is skipped without being
+ * read. A file at or below it is read and measured exactly as before.
+ */
+const MAX_SCANNED_FILE_BYTES = MAX_SCANNED_DOCUMENT_CHARACTERS * 3;
 
 export async function listKnowledgeDocuments({
   projectSlug,
@@ -132,6 +144,7 @@ export async function scanKnowledgeDirectories({
   storageAdapter,
   getNamespaceConfig,
   uploadDocument,
+  prepareNamespace,
   workspacePathOptions,
 }: {
   projectSlug: string;
@@ -157,7 +170,9 @@ export async function scanKnowledgeDirectories({
     source: 'directory-scan',
     namespace: string,
   ): Promise<unknown>;
-}): Promise<{ indexed: number; skipped: number }> {
+  /** Runs once, before the first write, and only when there is a file to write. */
+  prepareNamespace?(): Promise<void>;
+}): Promise<{ indexed: number; alreadyIndexed: number; skipped: number }> {
   const scanPath = await resolveKnowledgeScanPath(
     projectSlug,
     namespace,
@@ -165,44 +180,67 @@ export async function scanKnowledgeDirectories({
     getNamespaceConfig,
     workspacePathOptions,
   );
-  if (!scanPath || !existsSync(scanPath)) return { indexed: 0, skipped: 0 };
+  if (!scanPath || !existsSync(scanPath))
+    return { indexed: 0, alreadyIndexed: 0, skipped: 0 };
 
   const allowedExtensions = extensions
     ? new Set(
         extensions.map((extension) => normalizeKnowledgeExtension(extension)),
       )
     : DEFAULT_EXTENSIONS;
-  const files = collectKnowledgeFiles(scanPath, allowedExtensions);
-  const filteredFiles = applyKnowledgeScanPatterns(
-    files,
+  // The patterns are applied inside the walk, so the walk's file cap counts
+  // files this scan will index rather than files the patterns then discard.
+  const files = await collectKnowledgeFiles(
     scanPath,
-    includePatterns,
-    excludePatterns,
+    allowedExtensions,
+    (filePath) =>
+      applyKnowledgeScanPatterns(
+        [filePath],
+        scanPath,
+        includePatterns,
+        excludePatterns,
+      ).length > 0,
   );
 
-  let indexed = 0;
-  let skipped = 0;
-  for (const filePath of filteredFiles) {
-    try {
-      const content = readFileSync(filePath, 'utf-8');
-      if (content.length === 0 || content.length > 500_000) {
-        skipped += 1;
-        continue;
-      }
-      const relativePath = relative(scanPath, filePath);
-      await uploadDocument(
-        projectSlug,
-        relativePath,
-        content,
-        'directory-scan',
-        namespace,
-      );
-      indexed += 1;
-    } catch (error) {
-      logger.debug('Failed to index file during directory scan', { error });
-      skipped += 1;
-    }
-  }
+  if (files.length > 0) await prepareNamespace?.();
 
-  return { indexed, skipped };
+  const counts = { indexed: 0, alreadyIndexed: 0, skipped: 0 };
+  for (const filePath of files) {
+    const outcome = await indexScannedFile(filePath, scanPath, (path, text) =>
+      uploadDocument(projectSlug, path, text, 'directory-scan', namespace),
+    );
+    counts[outcome] += 1;
+  }
+  return counts;
+}
+
+/**
+ * One file of a directory scan. A path already in the namespace is left as it
+ * is: a scan adds files, it does not re-read or update ones it indexed before.
+ */
+async function indexScannedFile(
+  filePath: string,
+  scanPath: string,
+  upload: (relativePath: string, content: string) => Promise<unknown>,
+): Promise<'indexed' | 'alreadyIndexed' | 'skipped'> {
+  try {
+    // Size first: an empty or oversized file is skipped without its bytes
+    // ever being read into memory. `lstat`, so a file swapped for a link
+    // since the walk is not read through either.
+    const info = await lstat(filePath);
+    if (!info.isFile() || info.size === 0 || info.size > MAX_SCANNED_FILE_BYTES)
+      return 'skipped';
+    const content = await readFile(filePath, 'utf-8');
+    if (
+      content.length === 0 ||
+      content.length > MAX_SCANNED_DOCUMENT_CHARACTERS
+    )
+      return 'skipped';
+    await upload(relative(scanPath, filePath), content);
+    return 'indexed';
+  } catch (error) {
+    if (error instanceof KnowledgeDocumentExistsError) return 'alreadyIndexed';
+    logger.debug('Failed to index file during directory scan', { error });
+    return 'skipped';
+  }
 }

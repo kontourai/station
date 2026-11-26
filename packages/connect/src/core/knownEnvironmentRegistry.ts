@@ -34,14 +34,11 @@ import type {
 } from '@kontourai/station-contracts';
 import { KNOWN_ENVIRONMENT_SCHEMA_VERSION } from '@kontourai/station-contracts';
 import { normalizeBaseUrl } from '@kontourai/station-contracts/http';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { defaultStorage } from './storage';
 import type { StorageAdapter } from './types';
 
 const DEFAULT_STORAGE_KEY = 'station-known-environments';
-
-function uuid(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
 
 export interface CreateKnownEnvironmentInput {
   label: string;
@@ -90,7 +87,7 @@ export function createKnownEnvironment(
   const now = input.now ?? Date.now();
   return {
     schemaVersion: KNOWN_ENVIRONMENT_SCHEMA_VERSION,
-    id: uuid(),
+    id: randomCorrelationId(),
     ...(input.environmentId ? { environmentId: input.environmentId } : {}),
     label: input.label,
     source: input.source,

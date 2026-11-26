@@ -30,6 +30,11 @@ import {
 import type { IProviderAdapterRegistry } from '../../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../../providers/sessions/async-event-queue.js';
 import {
+  queuedAttachmentsOf,
+  readQueuedAttachmentFrom,
+} from '../../../../runtime/routes/conversation-start-ports.js';
+import { prepareManagedAcpWorkspace } from '../../../../services/acp/managed-acp-workspace.js';
+import {
   type ExecutionSessionBinding,
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
@@ -41,7 +46,10 @@ import { memoryContinuationForInbox } from '../../../../services/orchestration/m
 import { OrchestrationService } from '../../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../../services/orchestration/session-agent-resolution.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../../../services/orchestration/session-lifecycle-service.js';
-import { ThreadInboxDelivery } from '../../../../services/orchestration/thread-inbox.js';
+import {
+  ThreadInboxDelivery,
+  type ThreadInboxDeliveryPorts,
+} from '../../../../services/orchestration/thread-inbox.js';
 import {
   createOrchestrationRoutes,
   isForegroundDispatchHandle,
@@ -75,6 +83,8 @@ class ScriptedAdapter implements ProviderAdapterShape {
   readonly starts: ProviderSessionStartInput[] = [];
   /** Leave each turn running until `complete` ends it. */
   holdTurns = false;
+  prepareNextSession?: Promise<void>;
+  workspaceHome?: string;
   /** Refuse the next send as a turn the engine opened itself. */
   refuseNextAsBusy = false;
   /** Take the next send and never answer it (the engine may have it). */
@@ -89,7 +99,20 @@ class ScriptedAdapter implements ProviderAdapterShape {
 
   async startSession(input: ProviderSessionStartInput) {
     this.starts.push(input);
+    const preparation = this.prepareNextSession;
+    this.prepareNextSession = undefined;
+    if (preparation) await preparation;
     const now = new Date().toISOString();
+    const cwd = this.workspaceHome
+      ? await prepareManagedAcpWorkspace(
+          {
+            kind: 'session',
+            connectionId: 'fixture',
+            threadId: input.threadId,
+          },
+          this.workspaceHome,
+        )
+      : undefined;
     for (const method of ['session.started', 'session.configured'] as const)
       this.events.push({
         eventId: `${input.threadId}:${method}`,
@@ -99,11 +122,13 @@ class ScriptedAdapter implements ProviderAdapterShape {
         sessionId: input.threadId,
         createdAt: now,
         metadata: input.metadata,
+        ...(method === 'session.configured' && cwd ? { cwd } : {}),
       } as CanonicalRuntimeEvent);
     this.sessions.add(input.threadId);
     return {
       provider: this.provider,
       threadId: input.threadId,
+      ...(cwd ? { cwd } : {}),
       // The model it started with, as an engine that confirms it reports.
       ...(input.modelId ? { model: input.modelId } : {}),
       status: 'ready' as const,
@@ -249,6 +274,8 @@ export function createInboxHarness() {
       inbox?: boolean;
       continueThroughExecutor?: true;
       stagedAttachments?: true;
+      /** Busy sends with files are held, as on a host with `followUpAttachments`. */
+      queuedFiles?: true;
       /** Reopen another process's home (a restart). */
       root?: string;
       /** This process's birth: an earlier birth's claims read as dead. */
@@ -260,11 +287,14 @@ export function createInboxHarness() {
        * model continues in a new Session (`needsModelRestart`).
        */
       modelPerTurn?: false;
+      managedWorkspace?: true;
       /**
        * Continuation after a memory kill: `manual` mounts only the
        * person's route; `automatic` also feeds Station's own trigger.
        */
       memoryContinuation?: 'manual' | 'automatic';
+      /** A sender's placement policy, as production chains them. */
+      placementRefusal?: ThreadInboxDeliveryPorts['placementRefusal'];
     } = {},
   ) {
     const root = options.root ?? tempDir('station-inbox-');
@@ -285,7 +315,8 @@ export function createInboxHarness() {
         : []),
     );
     const adapter = new ScriptedAdapter();
-    if (options.stagedAttachments)
+    if (options.managedWorkspace) adapter.workspaceHome = root;
+    if (options.stagedAttachments || options.queuedFiles)
       adapter.metadata.capabilities = [
         ...adapter.metadata.capabilities,
         'file-input',
@@ -483,7 +514,9 @@ export function createInboxHarness() {
           store.readInputlessTurnDisposition(threadId),
         readInvocationTerminal: (threadId, invocationId, turnId) =>
           store.readInvocationTerminal(threadId, invocationId, turnId),
-        coordinatorBusy: (threadId) => service.hasActiveTurn(threadId),
+        coordinatorBusy: (threadId) =>
+          service.isSessionStartUnderway(threadId) ||
+          service.hasActiveTurn(threadId),
         hasPossibleEffect: (threadId) =>
           store.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
         conversationOf: (threadId) =>
@@ -518,11 +551,17 @@ export function createInboxHarness() {
           const gate = inboxStartGate.wait;
           inboxStartGate.wait = undefined;
           if (gate) await gate;
+          // Production's read-back, before the start (a missing file refuses).
+          const attachments = queuedAttachmentsOf(
+            { readQueuedAttachment: readQueuedAttachmentFrom(store) },
+            payload,
+          );
           try {
             const handle = await executeForegroundMessage(
               {
                 target: { environment: { kind: 'current' }, agent: AGENT },
                 message: payload.message,
+                ...(attachments ? { attachments } : {}),
                 conversationId,
                 clientTurnId,
                 userId: payload.actor.userId,
@@ -530,7 +569,11 @@ export function createInboxHarness() {
                 fullAccessGrant: null,
               } as never,
               deps,
-              { submissionDigest: payload.inputDigest, inboxPlacement: true },
+              {
+                submissionDigest: payload.inputDigest,
+                inboxPlacement: true,
+                expectedInboxSessionId: payload.expectedInboxSessionId,
+              },
             );
             if (!isForegroundDispatchHandle(handle))
               return { outcome: 'indeterminate' };
@@ -559,6 +602,9 @@ export function createInboxHarness() {
               listener({ threadId: event.threadId, method: event.method });
           }),
         logger: { warn: vi.fn() },
+        ...(options.placementRefusal
+          ? { placementRefusal: options.placementRefusal }
+          : {}),
         retryDelaysMs: [20, 50, 100],
         ...(options.placementDeadlineMs
           ? { placementDeadlineMs: options.placementDeadlineMs }
@@ -606,6 +652,12 @@ export function createInboxHarness() {
         eventBus: bus,
         logger: { debug: vi.fn() },
         getUserId: () => caller,
+        ...(options.queuedFiles
+          ? {
+              storeQueuedAttachment: (bytes: Buffer) =>
+                store.storeQueuedAttachmentBlob(bytes),
+            }
+          : {}),
         ...(options.stagedAttachments
           ? {
               resolvePrincipal: () => ({
@@ -771,6 +823,7 @@ export function createInboxHarness() {
       continueSend,
       root,
       adapter,
+      bus,
       store,
       service,
       inbox,

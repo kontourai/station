@@ -1,0 +1,7 @@
+{
+  "revision": "564cae9d1f4a2c97b59e580eca0511e97d6cdbac",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"The Loading row now names ConversationLoadingStage as the conversation first-load treatment; the state barrel records it as a reasoned exception next to FullScreenLoader and LoadingDots. Other routing and primitive rules are unchanged.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

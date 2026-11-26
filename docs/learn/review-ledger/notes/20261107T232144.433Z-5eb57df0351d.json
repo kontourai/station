@@ -1,9 +1,0 @@
-{
-  "revision": "baa09439fd4cb90e5b26c98ac60e6d3398ab5ebc",
-
-  "notes": [
-    {"path":"deployment/telemetry/README.md","note":"Inspected receiver public/private boundaries and privacy/utility claims against the telemetry-broker README dashboard update. Counts, fixed-domain noise, pagination, retention and Node operator authorization are unchanged. The shared public page now explains a no-signal publication in one state and displays its closed-week window. Cloudflare-session authentication is limited to the separate Worker insights reader, documented by deploy/telemetry-worker/README.md. No Node deployment or collection completeness is asserted.","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/README.md"]},
-
-    {"path":"docs/guides/monitoring.md","note":"Inspected receiver public/private boundaries and privacy/utility claims against the telemetry-broker README dashboard update. Counts, fixed-domain noise, pagination, retention and Node operator authorization are unchanged. The shared public page now explains a no-signal publication in one state and displays its closed-week window. Cloudflare-session authentication is limited to the separate Worker insights reader, documented by deploy/telemetry-worker/README.md. No Node deployment or collection completeness is asserted.","inputs":["docs/guides/monitoring.md","packages/telemetry-broker/README.md"]}
-  ]
-}

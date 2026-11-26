@@ -1,0 +1,7 @@
+{
+  "revision": "1b1f42a6c7b9854525fb66d301b1e370394668ce",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Cites ChatMessageList for dock/region placement; the hold and scroll-input changes do not alter any placement claim.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

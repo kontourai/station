@@ -1,0 +1,9 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Adds the Pause, archive, delete subsection and two Feature preview rows.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Adds the Pause, archive, delete subsection and two Feature preview rows.","inputs":["docs/user/settings.md"]}
+  ]
+}

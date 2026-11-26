@@ -3,7 +3,7 @@ import type { OrchestrationConversationEventWindow } from '@kontourai/station-co
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { type ReactNode, useSyncExternalStore } from 'react';
 import { ConversationConnectionContext } from '../components/conversation/ConversationConnectionContext';
-import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
+import { SessionReaderBindingProvider } from '../components/conversation/SessionReaderBinding';
 // @vitest-environment jsdom
 
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -152,7 +152,7 @@ function CanonicalActivityBinding({ children }: { children: ReactNode }) {
   );
   const intent = navigation.surfaceIntent;
   return (
-    <ActivityWorkspacePaneBindingProvider
+    <SessionReaderBindingProvider
       binding={{
         apiBase: API,
         sessionId: intent?.sessionId,
@@ -161,7 +161,7 @@ function CanonicalActivityBinding({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-    </ActivityWorkspacePaneBindingProvider>
+    </SessionReaderBindingProvider>
   );
 }
 
@@ -881,6 +881,14 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
     expect(rows[1]!.textContent).toContain('Please rebase onto main.');
     expect(rows[1]!.textContent).not.toContain('[Station:');
     expect(within(rows[1]!).queryByText('You')).toBeNull();
+    expect(
+      within(rows[1]!).getByRole('button', {
+        name: /^Copy message$/,
+      }),
+    ).toBeTruthy();
+    expect(
+      within(rows[1]!).queryByRole('button', { name: 'Copy your message' }),
+    ).toBeNull();
   });
 
   test('a coordinator wake is labelled as Station input', () => {
@@ -904,6 +912,13 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
     const [row] = screen.getAllByTestId('session-transcript-message');
     expect(row!.getAttribute('aria-label')).toBe('Update from Station');
     expect(row!.textContent).toContain('Update from Station');
+    expect(
+      within(row!).getByRole('button', { name: /^Copy message$/ }),
+    ).toBeTruthy();
+    expect(
+      within(row!).queryByRole('button', { name: 'Copy your message' }),
+    ).toBeNull();
+
     expect(within(row!).queryByText('You')).toBeNull();
   });
 
@@ -923,7 +938,7 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
     expect(Boolean(row!.querySelector('.message.agent-incoming'))).toBe(true);
     expect(within(row!).queryByText('You')).toBeNull();
     expect(row!.getAttribute('aria-label')).toBe(
-      'Non-person input: sender not recorded',
+      'Automated message: sender unknown',
     );
   });
 });
@@ -1001,7 +1016,7 @@ describe('engine-opened transcript cause (#3419)', () => {
   });
 });
 
-describe('exact send/receive navigation through Activity and older pages (#3419)', () => {
+describe('exact send/receive navigation through Chat and older pages (#3419)', () => {
   test.each(['sent', 'received'] as const)(
     'the canonical %s link loads its older page and focuses the exact record',
     async (direction) => {
@@ -1106,7 +1121,7 @@ describe('exact send/receive navigation through Activity and older pages (#3419)
         }),
       );
       navigationStore.navigate(
-        `/?surface=activity&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=${direction}&messageRequest=${key}`,
+        `/?surface=chat&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=${direction}&messageRequest=${key}`,
       );
       renderTranscript(false);
       await waitFor(() =>
@@ -1184,7 +1199,7 @@ describe('real anchor paging failure and resource bound (#3419)', () => {
         }),
       );
       navigationStore.navigate(
-        `/?surface=activity&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=received&messageRequest=not-present`,
+        `/?surface=chat&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=received&messageRequest=not-present`,
       );
       const view = renderTranscript(false);
       if (mode === 'page-limit') {
@@ -1247,7 +1262,7 @@ test('two sends sharing a request key in one answer remain an ambiguous anchor (
     event,
   }));
   navigationStore.navigate(
-    `/?surface=activity&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=sent&messageRequest=${key}`,
+    `/?surface=chat&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=sent&messageRequest=${key}`,
   );
   renderTranscript(false);
   await screen.findByText(
@@ -1303,6 +1318,15 @@ test('the durable incoming cause follows canonical phone state and expands full 
   fireEvent.click(details.querySelector('summary')!);
   expect(details.open).toBe(true);
   expect(details.textContent).toContain('Please inspect the login patch.');
+  expect(
+    within(details).getAllByRole('button', {
+      name: /^Copy message$/,
+    }),
+  ).toHaveLength(1);
+  expect(
+    within(details).queryByRole('button', { name: 'Copy your message' }),
+  ).toBeNull();
+
   expect(details.querySelector('a')?.href).toContain(
     'messageRequest=phone-key',
   );

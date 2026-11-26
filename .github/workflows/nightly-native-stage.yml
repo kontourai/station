@@ -216,6 +216,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Android, macOS and Windows start from the plan. iOS waits for the macOS
+  # build to finish so this cohort requests one hosted macOS runner at a time.
   stage-android:
     name: Build Android (sign arm64 AAB + APK)
     needs: plan-cohort
@@ -266,7 +268,7 @@ jobs:
           workspaces: src-desktop
           key: android-aarch64
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with: { distribution: temurin, java-version: 17 }
       # `packages` defaults to `tools platform-tools`, and `tools` is the
       # obsolete SDK Tools package Google removed from the repository — the
@@ -497,8 +499,9 @@ jobs:
 
   stage-ios:
     name: Build iOS
+    # macOS completion orders the builds. The plan still owns iOS admission.
     needs: [plan-cohort, stage-macos]
-    if: ${{ always() && !cancelled() && needs.plan-cohort.result == 'success' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
+    if: ${{ !cancelled() && needs.plan-cohort.result == 'success' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -526,8 +529,8 @@ jobs:
 
   stage-windows:
     name: Build Windows NSIS installer (updater sign + verify)
-    needs: [plan-cohort, stage-android]
-    if: ${{ always() && !cancelled() && needs.plan-cohort.result == 'success' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
+    needs: plan-cohort
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
     runs-on: windows-latest
     environment: native-release
     timeout-minutes: 120
@@ -541,7 +544,7 @@ jobs:
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: x86_64-pc-windows-msvc }
-      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with: { workspaces: src-desktop, key: windows-nightly-x64 }
       - run: npm run dependencies:ci
       - name: Build the exact reserved Windows version
@@ -597,6 +600,7 @@ jobs:
     name: Assemble one desktop manifest
     needs: [plan-cohort, stage-macos, stage-windows]
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     environment: native-release
     permissions: { contents: read, id-token: write, attestations: write }
     steps:

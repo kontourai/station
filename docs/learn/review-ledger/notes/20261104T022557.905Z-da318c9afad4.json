@@ -1,7 +1,0 @@
-{
-  "revision": "cde03be04a15d9f6d75b341b3ad38a788930c3a4",
-
-  "notes": [
-    {"path":"docs/design/cli-triage.md","note":"Rechecked after INTERACTIVE_TRIAGE_INSTRUCTION in packages/cli/src/commands/triage.ts became module-private (the export had no caller). Its text and the launch arguments are unchanged, and the document does not describe it as exported; triage.test.ts still pins the instruction literally.","inputs":["docs/design/cli-triage.md","packages/cli/src/__tests__/triage.test.ts","packages/cli/src/commands/triage.ts"]}
-  ]
-}

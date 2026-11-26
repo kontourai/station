@@ -1,0 +1,7 @@
+{
+  "revision": "5f595df786189d5f4addb8d14ede98b44876630d",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Compared the generated SessionCommandModule topic against the canonical module map. The only added text labels the group owner dormant and describes snapshot, dispatch reservation, and unknown-receipt retention. The generated topic advertises no capability.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

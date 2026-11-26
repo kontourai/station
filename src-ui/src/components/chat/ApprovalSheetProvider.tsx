@@ -6,8 +6,16 @@ import {
   useRef,
   useState,
 } from 'react';
+import {
+  isSettledRequest,
+  rememberSettledRequest,
+  useHeldDuringCatchUp,
+} from '../../hooks/orchestration/heldDuringCatchUp';
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
+import { pendingRequestKind } from '../../hooks/orchestration/pendingRequestRows';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { attentionWord } from '../../views/home/work-status';
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import {
   REVEAL_APPROVAL_EVENT,
@@ -17,6 +25,21 @@ import { ApprovalSheetContext } from './ApprovalSheetContext';
 import { RequestSheet } from './RequestSheet';
 import { type ToolApprovalOutcome, ToolCallDisplay } from './ToolCallDisplay';
 
+type SheetAction =
+  | 'once'
+  | 'trust'
+  | 'trust-server'
+  | 'trust-rule'
+  | 'trust-all'
+  | 'deny';
+
+const MAX_REMEMBERED = 256;
+const remember = (set: Set<string>, key: string) => {
+  set.add(key);
+  for (const old of [...set].slice(0, Math.max(0, set.size - MAX_REMEMBERED)))
+    set.delete(old);
+};
+
 const dismissed = new Set<string>();
 const identity = (request: PendingApprovalRequest) =>
   `${request.approvalThreadId}:${request.approvalId}:${request.approvalEventId}`;
@@ -24,6 +47,7 @@ const identity = (request: PendingApprovalRequest) =>
 export function ApprovalSheetProvider({
   requests: openRequests,
   apiBase,
+  catchingUp: requestedHold = false,
   onApprove,
   onCheck,
   onSettledElsewhere,
@@ -31,9 +55,15 @@ export function ApprovalSheetProvider({
 }: {
   requests: readonly PendingApprovalRequest[];
   apiBase?: string;
+  /**
+   * The event stream is replaying what this view missed. Requests opened and
+   * resolved inside the replay would otherwise flash through the sheet and
+   * its count, so the sheet holds what it last showed until the replay ends.
+   */
+  catchingUp?: boolean;
   onApprove(
     request: PendingApprovalRequest,
-    action: 'once' | 'trust' | 'trust-server' | 'deny',
+    action: SheetAction,
   ): Promise<ToolApprovalOutcome>;
   children: ReactNode;
   onCheck?: (
@@ -48,32 +78,23 @@ export function ApprovalSheetProvider({
 }) {
   const mobile = useIsMobile();
   const [open, setOpen] = useState(false);
+  // Bumped whenever the module-wide settled set changes, so the filter reruns.
+  const [settledVersion, setSettledVersion] = useState(0);
+  const listed = useHeldDuringCatchUp(openRequests, requestedHold);
+  const catchingUp = listed !== openRequests;
   // A request Station reports settled stays off the sheet and out of its
   // count even before this view's transcript sees its resolution. Kept on
   // screen with live buttons, it read as the request to answer while the one
   // actually blocking the turn was missing from the sheet.
-  const [settledRequests, setSettledRequests] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: settledVersion re-reads the module-wide set.
   const requests = useMemo(
-    () =>
-      settledRequests.size === 0
-        ? openRequests
-        : openRequests.filter(
-            (request) => !settledRequests.has(identity(request)),
-          ),
-    [openRequests, settledRequests],
+    () => listed.filter((request) => !isSettledRequest(request.approvalId)),
+    [listed, settledVersion],
   );
   const settledElsewhere = useCallback(
     (request: PendingApprovalRequest, catchUp: boolean) => {
-      setSettledRequests((current) => {
-        const next = new Set(current);
-        next.add(identity(request));
-        // Bounded: identities of requests long gone need not be kept.
-        for (const key of [...next].slice(0, Math.max(0, next.size - 256)))
-          next.delete(key);
-        return next;
-      });
+      rememberSettledRequest(request.approvalId);
+      setSettledVersion((version) => version + 1);
       if (catchUp) onSettledElsewhere?.(request);
     },
     [onSettledElsewhere],
@@ -83,10 +104,41 @@ export function ApprovalSheetProvider({
   );
   const returnFocusTarget = useRef<HTMLElement | null>(null);
   const shouldAutoOpen =
-    mobile && requests.some((request) => !dismissed.has(identity(request)));
+    mobile &&
+    !catchingUp &&
+    requests.some((request) => !dismissed.has(identity(request)));
   useEffect(() => {
     if (shouldAutoOpen) setOpen(true);
   }, [shouldAutoOpen]);
+
+  // Ask Station once about each request the open sheet lists. A transcript
+  // that missed a resolution (a reconnect whose replay or history window did
+  // not reach it) would otherwise keep the request, its count and the
+  // session's "needs approval" state forever. `onCheck` catches the
+  // transcript up on a settled answer itself.
+  // Each opening checks afresh: a request confirmed open last time may have
+  // been settled since.
+  const checked = useRef(new Set<string>());
+  useEffect(() => {
+    if (!open) checked.current.clear();
+  }, [open]);
+  useEffect(() => {
+    if (!open || !mobile || catchingUp || !onCheck) return;
+    for (const request of requests) {
+      const key = identity(request);
+      if (checked.current.has(key)) continue;
+      checked.current.add(key);
+      onCheck(request)
+        .then((outcome) => {
+          if (outcome === 'already-settled') settledElsewhere(request, false);
+        })
+        // Unknown stays listed: a failed check never hides a request. It is
+        // not retried until the next opening (the key is cleared on close),
+        // so a failing Station is not asked again on every render.
+        .catch(() => undefined);
+    }
+  }, [open, mobile, catchingUp, requests, onCheck, settledElsewhere]);
+
   const show = useCallback(
     (detail: RevealApprovalDetail) => {
       if (
@@ -150,14 +202,74 @@ export function ApprovalSheetProvider({
     [apiBase, show, check],
   );
   const dismiss = () => {
-    for (const request of requests) dismissed.add(identity(request));
-    for (const key of [...dismissed].slice(
-      0,
-      Math.max(0, dismissed.size - 256),
-    ))
-      dismissed.delete(key);
+    for (const request of requests) remember(dismissed, identity(request));
     setOpen(false);
   };
+  const answer = async (
+    request: PendingApprovalRequest,
+    action: SheetAction,
+  ) => {
+    try {
+      const outcome = await onApprove(request, action);
+      setFailedRequests((current) => {
+        const next = new Set(current);
+        next.delete(identity(request));
+        return next;
+      });
+      if (outcome === 'already-settled') settledElsewhere(request, true);
+      return outcome;
+    } catch (error) {
+      setFailedRequests((current) => new Set([...current, identity(request)]));
+      throw error;
+    }
+  };
+  // Bulk answers cover tool approvals only: a question needs its own answer.
+  const approvals = requests.filter(
+    (request) => pendingRequestKind(request) !== 'input',
+  );
+  const [bulk, setBulk] = useState<'once' | 'trust' | null>(null);
+  const allowAll = async (action: 'once' | 'trust') => {
+    if (bulk) return;
+    setBulk(action);
+    try {
+      // One at a time: each answer is its own authority check, and a refusal
+      // of one (already answered, or content not yet loaded) must not stop
+      // the rest. Failures stay listed with their own error and retry.
+      for (const request of approvals) {
+        await answer(request, action).catch(() => undefined);
+      }
+    } finally {
+      setBulk(null);
+    }
+  };
+  const bulkActions =
+    approvals.length > 1 ? (
+      <ActionRow
+        className="approval-decision-row"
+        overflowLabel="More ways to allow every request"
+        primary={
+          <Button
+            variant="primary"
+            disabled={bulk !== null}
+            pending={bulk === 'once'}
+            pendingLabel="Allowing…"
+            onClick={() => void allowAll('once')}
+          >
+            {`Allow all (${approvals.length})`}
+          </Button>
+        }
+        overflow={[
+          {
+            key: 'allow-all-session',
+            // Each listed request's own tool grant: narrower than "Allow
+            // everything for this session", which a request may also offer.
+            label: 'Allow these tools for this session',
+            disabled: bulk !== null,
+            onSelect: () => void allowAll('trust'),
+          },
+        ]}
+      />
+    ) : null;
   return (
     <ApprovalSheetContext.Provider value={context}>
       {children}
@@ -177,37 +289,22 @@ export function ApprovalSheetProvider({
             open={open}
             title={
               requests.length === 1
-                ? 'Needs approval'
-                : `Needs approval (${requests.length})`
+                ? requests[0] && pendingRequestKind(requests[0]) === 'input'
+                  ? attentionWord('answer')
+                  : attentionWord('approval')
+                : `${requests.some((request) => pendingRequestKind(request) !== 'input') ? attentionWord('approval') : attentionWord('answer')} (${requests.length})`
             }
             subtitle={undefined}
             returnFocusTarget={returnFocusTarget.current}
             onDismiss={dismiss}
-            actions={null}
+            actions={bulkActions}
           >
             <div className="approval-sheet__requests">
               {requests.map((request) => (
                 <ToolCallDisplay
                   key={identity(request)}
                   toolCall={request}
-                  onApprove={async (action) => {
-                    try {
-                      const outcome = await onApprove(request, action);
-                      setFailedRequests((current) => {
-                        const next = new Set(current);
-                        next.delete(identity(request));
-                        return next;
-                      });
-                      if (outcome === 'already-settled')
-                        settledElsewhere(request, true);
-                      return outcome;
-                    } catch (error) {
-                      setFailedRequests(
-                        (current) => new Set([...current, identity(request)]),
-                      );
-                      throw error;
-                    }
-                  }}
+                  onApprove={(action) => answer(request, action)}
                 />
               ))}
             </div>

@@ -1,0 +1,7 @@
+{
+  "revision": "bae7b04009663a877e9157bab300848b0af06198",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Rechecked: the only source change is dropping the export keyword from Muse module-internal constants and helpers (code-health unused exports); no behavior or claim in this document changes, and none of those names is cited here.","inputs":["docs/security/remote-access-threat-model.md","src-desktop/src/lib.rs","src-server/providers/app-home/app-home-profiles.ts","src-server/routes/environments/peer-chat-policy.ts","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

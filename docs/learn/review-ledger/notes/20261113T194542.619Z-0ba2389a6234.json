@@ -1,0 +1,11 @@
+{
+  "revision": "04830d104fe58751c07c8c9a2cc443d7bffb4667",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"Muse parity follow-up: atlas.json only adds MuseCodeAdapter to the execution topic modules. The README says module descriptions come from the module map and describes atlas build/maintenance generically; no claim names the module set or changes. No edit needed.","inputs":["docs/learn/README.md","docs/learn/atlas.json"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Muse parity follow-up: station-docs-content.ts was regenerated with docs:mcp:generate after the Muse doc edits and the MuseCodeAdapter atlas entry; this reference describes the generated topics and delivery generically, and its Muse statements (no MCP tool-server delivery channel, startup adoption) remain accurate. No edit needed.","inputs":["docs/reference/station-docs.md","docs/learn/atlas.json","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Muse parity follow-up: atlas.json adds MuseCodeAdapter to a topic; the README states atlas membership determines the module set and is not hard-coded, which still holds. No edit needed.","inputs":["examples/repository-knowledge-graph/README.md","docs/learn/atlas.json"]}
+  ]
+}

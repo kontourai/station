@@ -6,25 +6,21 @@
 //
 //   node scripts/pr-duplicate-sweep.mjs --pr 2629            # report to stdout
 //   node scripts/pr-duplicate-sweep.mjs --pr 2629 --apply    # comment once on the merged PR
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const COMMENT_MARKER = '<!-- pr-duplicate-sweep -->';
 const CLOSING_RE = /(?:closes|fixes|resolves)\s+#(\d+)/gi;
+const MERGED_LIMIT = 100;
+const OPEN_LIMIT = 200;
 
-function runGh(args, { allowFailure = false } = {}) {
-  try {
-    return execFileSyncBounded('gh', args, {
-      encoding: 'utf8',
-      windowsHide: true,
-    }).trim();
-  } catch (error) {
-    if (allowFailure) return '';
-    throw error;
-  }
+/** Every `gh` failure throws: a lookup that failed is not an empty answer. */
+function runGh(args, { input } = {}) {
+  return execFileSyncBounded('gh', args, {
+    encoding: 'utf8',
+    windowsHide: true,
+    ...(input === undefined ? {} : { input }),
+  }).trim();
 }
 
 export function parseClosingIssues(body) {
@@ -101,16 +97,22 @@ function listMergedSince(since) {
     '--json',
     'number',
     '--limit',
-    '100',
+    String(MERGED_LIMIT),
   ]);
-  return JSON.parse(listing || '[]').map((pull) => pull.number);
+  const numbers = JSON.parse(listing || '[]').map((pull) => pull.number);
+  if (numbers.length >= MERGED_LIMIT)
+    console.log(
+      `[pr-duplicate] the merged listing reached its ${MERGED_LIMIT}-PR limit; older merges in range were not swept`,
+    );
+  return numbers;
 }
 
-function sweepPr(pr, argv, repoArgs) {
-  const merged = JSON.parse(
-    runGh(['pr', 'view', pr, ...repoArgs, '--json', 'number,title,body,files']),
-  );
-  const mergedFiles = (merged.files ?? []).map((file) => file.path);
+/**
+ * The open pull requests every merged PR is compared against. Fetched once
+ * per run: the listing carries each PR's files, and it does not change
+ * between the merged PRs of one sweep.
+ */
+function listOpenCandidates(repoArgs) {
   const open = JSON.parse(
     runGh([
       'pr',
@@ -121,19 +123,31 @@ function sweepPr(pr, argv, repoArgs) {
       '--json',
       'number,title,body,files',
       '--limit',
-      '200',
+      String(OPEN_LIMIT),
     ]),
   );
+  if (open.length >= OPEN_LIMIT)
+    console.log(
+      `[pr-duplicate] the open listing reached its ${OPEN_LIMIT}-PR limit; older open PRs were not compared`,
+    );
+  return open.map((pull) => ({
+    number: pull.number,
+    files: (pull.files ?? []).map((file) => file.path),
+    closingIssueNumbers: parseClosingIssues(pull.body),
+  }));
+}
+
+function sweepPr(pr, argv, repoArgs, openCandidates) {
+  const merged = JSON.parse(
+    runGh(['pr', 'view', pr, ...repoArgs, '--json', 'number,title,body,files']),
+  );
+  const mergedFiles = (merged.files ?? []).map((file) => file.path);
   const candidates = findSupersededCandidates(
     {
       files: mergedFiles,
       closingIssueNumbers: parseClosingIssues(merged.body),
     },
-    open.map((pull) => ({
-      number: pull.number,
-      files: (pull.files ?? []).map((file) => file.path),
-      closingIssueNumbers: parseClosingIssues(pull.body),
-    })),
+    openCandidates,
   );
   const comment = buildComment(candidates);
   if (!comment) {
@@ -142,29 +156,27 @@ function sweepPr(pr, argv, repoArgs) {
   }
   console.log(comment);
   if (argv.includes('--apply')) {
-    const existing = runGh(
-      [
-        'pr',
-        'view',
-        pr,
-        ...repoArgs,
-        '--json',
-        'comments',
-        '--jq',
-        '[.comments[].body] | join("\\n")',
-      ],
-      { allowFailure: true },
-    );
+    // Fails closed: if the existing comments cannot be read this throws
+    // rather than reading as "none", which would post a second report.
+    const existing = runGh([
+      'pr',
+      'view',
+      pr,
+      ...repoArgs,
+      '--json',
+      'comments',
+      '--jq',
+      '[.comments[].body] | join("\\n")',
+    ]);
     if (existing.includes(COMMENT_MARKER)) {
       console.log(
         '[pr-duplicate] report comment already present; not duplicating',
       );
       return;
     }
-    const dir = mkdtempSync(join(tmpdir(), 'pr-duplicate-'));
-    const bodyPath = join(dir, 'comment.md');
-    writeFileSync(bodyPath, comment);
-    runGh(['pr', 'comment', pr, ...repoArgs, '--body-file', bodyPath]);
+    runGh(['pr', 'comment', pr, ...repoArgs, '--body-file', '-'], {
+      input: comment,
+    });
     console.log(`[pr-duplicate] commented on #${pr}`);
   }
 }
@@ -187,7 +199,8 @@ function main(argv) {
     console.log('[pr-duplicate] no merged PRs in range');
     return;
   }
-  for (const pr of targets) sweepPr(pr, argv, repoArgs);
+  const openCandidates = listOpenCandidates(repoArgs);
+  for (const pr of targets) sweepPr(pr, argv, repoArgs, openCandidates);
 }
 
 if (invokedDirectly(import.meta.url)) {

@@ -1,0 +1,29 @@
+{
+  "revision": "74696ea2c5ac4ffd73b5f558f4ee2be76c17e572",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Checked that the aggregate treats a timed-out discovery as failing admission even when exact shard evidence ran and passed. Readiness and receipt authority continue to use their existing owners.","inputs":[".veritas/README.md","scripts/fast-checks-shard.mjs","scripts/lib/fast-checks-shards.mjs"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Verified the local diagnostics, protected PR integration and main full-qualification lanes retain their published ownership. A hosted discovery timeout can leave diagnostic shard evidence while blocking admission.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the fallback's use of existing bounded importer inventory and measured shard evidence. Empty nonempty slices and timeout plans cannot serve as passing required evidence.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","scripts/fast-checks-shard.mjs","scripts/lib/fast-checks-shards.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Verified the normal push and protected queue rules still apply. The timeout plan now has exact shard diagnostics and remains blocked at both integration decisions.","inputs":["docs/guides/development.md","scripts/fast-checks-shard.mjs","scripts/lib/fast-checks-shards.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Traced the owned timeout and clean settlement from discovery through the bounded direct importer fallback, provisional shard evidence, failed aggregate and blocked queue decision.","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts","scripts/fast-checks-shard.mjs","scripts/lib/fast-checks-shards.mjs","scripts/merge-queue-regression-decision.mjs","scripts/run-changed-verification.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Verified the unsharded exhausted-budget infrastructure receipt, then the hosted timeout field and explicit deferral. Retained hosted shard evidence remains diagnostic and does not complete discovery.","inputs":["docs/reference/verification-receipts.md","scripts/run-changed-verification.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"The changed source verification aggregate applies only to its selected Vitest evidence. Browser smoke and native qualification retain their named independent checks.","inputs":["docs/testing/browser-smoke.md","scripts/fast-checks-shard.mjs","scripts/lib/fast-checks-shards.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Confirmed the timeout still uses the existing owned-process settlement limit and named discovery failure. Independently known suites ride existing resource groups within the existing importer cap.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"The narrow-diff fixture still exercises its real selected suite. New hosted cases distinguish a settled timeout from failed cleanup and validate their public admission outcomes.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts","scripts/run-changed-verification.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Verified the testing guidance still routes through focused owner verification and the existing test-effectiveness path. The hosted timeout work is diagnostic.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"The shared test-effectiveness route stays applicable. Fallback UI importer suites are selected through exact relative and configured alias resolution, and broader admission remains blocked on timeout.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Verified focus and escalation guidance remains accurate. A passing planned shard requires passing measured tests when nonempty, and a clean timeout preserves only diagnostic work.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/chat-host-images';
 import { claudeArtifactLinkOfEvent } from '@kontourai/station-contracts/claude-artifact';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import { appearanceProposalReferenceOfEvent } from '@kontourai/station-contracts/custom-appearance';
 import { isStationMemoryContinuationTurn } from '@kontourai/station-contracts/provider';
 import {
   hasRuntimeEventContentRefs,
@@ -14,13 +15,14 @@ import {
   runtimeEventContentForDisplay,
 } from '@kontourai/station-contracts/runtime-event-content';
 import {
+  acpCompletionFailureMessage,
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
 } from '@kontourai/station-contracts/runtime-events';
 import { stationControlRefusalView } from '@kontourai/station-contracts/station-control-refusal';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import { agentMessageInput } from './agent-message-frame.js';
+import { agentMessageInput, stationTurnOrigin } from './agent-message-frame.js';
 import {
   type ConversationMessage,
   isStationRestartContinuationTurn,
@@ -29,17 +31,22 @@ import {
 import {
   EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
   EXTENSION_TRANSCRIPT_MARKER_TEXT,
-  type ExtensionTranscriptMarkerKind,
   extensionTranscriptMarker,
+  modelReroutedMarkerText,
+  sessionRewoundLateMarker,
+  sessionRewoundMarker,
 } from './extension-transcript-markers.js';
 import {
   inputRequestFromRequestEvent,
   inputRequestOutcome,
   inputRequestSummary,
+  inputRequestUrlFromRequestEvent,
 } from './input-request.js';
 import {
+  toolRequestAllGrantFromPayload,
   toolRequestDisplayName,
   toolRequestFromPayload,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from './tool-request-preview.js';
@@ -83,7 +90,7 @@ function appendRuntimeErrorPart(
   const previousText = previous?.type === 'text' ? previous.text : undefined;
   if (previousText?.startsWith(prefix)) {
     const suffix = previousText.slice(prefix.length);
-    const match = /^ \(repeated (\d+)×\)$/.exec(suffix);
+    const match = /^ \(repeated (\d+)\u00d7\)$/.exec(suffix);
     if (suffix && !match) return [...parts, runtimeErrorPart(prefix, code)];
     const count = match ? Number(match[1]) + 1 : 2;
     return [
@@ -125,11 +132,52 @@ export const TURN_INTERRUPTED_MESSAGE =
   'Turn interrupted — the process restarted while this turn was in progress.';
 
 /**
+ * The same banner when Station settles, without a restart, a turn start it
+ * could not confirm because the Session's engine process ended around it.
+ */
+export const TURN_ENGINE_ENDED_MESSAGE =
+  'Turn interrupted — the engine process ended before Station could confirm this turn started. Nothing is running now; your next message starts a new turn.';
+
+/**
+ * `runtime.warning.code` Station writes when a turn it already recorded as
+ * interrupted reports a successful completion after all: possible only if
+ * the engine was wrongly judged gone. The transcript keeps every fact in
+ * order (the interruption notice, then the turn's reply) and shows this
+ * warning's message after them, so the earlier notice is not left reading
+ * as the last word.
+ */
+export const TURN_COMPLETED_AFTER_INTERRUPTION_CODE =
+  'turn-completed-after-interruption';
+
+/**
  * What the chat's Continue sends after a restart interrupted a turn: an
  * ordinary turn from the person, in the same conversation.
  */
 export const TURN_INTERRUPTED_CONTINUE_PROMPT =
   "Station restarted while you were working and your last turn was cut off. Before you continue, check what already happened: run `git status` and `git log` in the working directory, check the state of the Task's pull request and issue if this work has them, and look for background processes you started. Do not repeat a push, a pull request, a comment or any other action outside this working directory until you have confirmed it did not already happen. Then continue from where you stopped.";
+
+/**
+ * The Continue prompt after Station settled an interrupted turn without a
+ * restart (`TURN_ENGINE_ENDED_MESSAGE`): Station kept running, the engine
+ * process ended. The restart prompt above would tell the agent something
+ * that did not happen.
+ */
+export const TURN_ENGINE_ENDED_CONTINUE_PROMPT =
+  "Your engine process ended while your last turn was starting, so that turn may not have run, or may have run only in part. Before you continue, check what already happened: run `git status` and `git log` in the working directory, check the state of the Task's pull request and issue if this work has them, and look for background processes you started. Do not repeat a push, a pull request, a comment or any other action outside this working directory until you have confirmed it did not already happen. Then continue from where you stopped.";
+
+/**
+ * The Continue prompt for an interruption notice, chosen by the notice's
+ * reason (the text after `[SYSTEM_EVENT] [TURN_INTERRUPTED]`): an exact
+ * engine-ended reason gets its own prompt, every other one the restart
+ * prompt, as before.
+ */
+export function turnInterruptedContinuePrompt(
+  reason: string | undefined,
+): string {
+  return reason?.trim() === TURN_ENGINE_ENDED_MESSAGE
+    ? TURN_ENGINE_ENDED_CONTINUE_PROMPT
+    : TURN_INTERRUPTED_CONTINUE_PROMPT;
+}
 
 export {
   turnInterruptedContinueBoundaryId,
@@ -251,9 +299,13 @@ export interface ProjectRuntimeEventsOptions {
 export function withoutCompletedTurnRecovery(
   events: readonly CanonicalRuntimeEvent[],
 ): CanonicalRuntimeEvent[] {
+  return events.filter(completedTurnRecoveryFilter());
+}
+
+function completedTurnRecoveryFilter() {
   const starts = new Map<string, string | undefined>();
   const completed = new Map<string, string | undefined>();
-  return events.filter((event) => {
+  return (event: CanonicalRuntimeEvent) => {
     const turnId =
       event.method === 'session.state-changed'
         ? event.interruptedTurnBoundary?.providerTurnId
@@ -279,14 +331,78 @@ export function withoutCompletedTurnRecovery(
         (event.method === 'session.state-changed' &&
           event.interruptedTurnBoundary))
     );
-  });
+  };
 }
 
 export function projectRuntimeEventsToMessages(
   events: CanonicalRuntimeEvent[],
   options: ProjectRuntimeEventsOptions = {},
 ): ConversationMessage[] {
-  events = withoutCompletedTurnRecovery(events);
+  const filtered = withoutCompletedTurnRecovery(events);
+  const projection = createRuntimeMessageProjection(filtered, options);
+  for (const event of filtered) projection.append(event);
+  return projection.finish();
+}
+
+interface StandingUnresolvedCompletions {
+  ids: Set<string>;
+  snapshot?: ReadonlySet<string>;
+}
+
+/** Track standing completion ids without closing the open turn at a read boundary. */
+export function createStandingUnresolvedCompletionProjection() {
+  const standing: StandingUnresolvedCompletions = { ids: new Set() };
+  const filter = completedTurnRecoveryFilter();
+  const projection = createRuntimeMessageProjection([], {}, standing);
+  return {
+    snapshot() {
+      standing.snapshot ??= new Set(standing.ids);
+      return standing.snapshot;
+    },
+    append(event: CanonicalRuntimeEvent) {
+      if (!filter(event)) return;
+      if (
+        event.method === 'tool.started' ||
+        event.method === 'tool.completed'
+      ) {
+        const {
+          method,
+          eventId,
+          threadId,
+          turnId,
+          createdAt,
+          provider,
+          toolCallId,
+          toolName,
+          itemId,
+        } = event;
+        const identity = {
+          eventId,
+          threadId,
+          turnId,
+          createdAt,
+          provider,
+          toolCallId,
+          toolName,
+          itemId,
+        };
+        projection.append(
+          method === 'tool.completed'
+            ? { ...identity, method, status: event.status }
+            : { ...identity, method },
+        );
+        return;
+      }
+      projection.append(event);
+    },
+  };
+}
+
+function createRuntimeMessageProjection(
+  events: readonly CanonicalRuntimeEvent[],
+  options: ProjectRuntimeEventsOptions,
+  standingUnresolved?: StandingUnresolvedCompletions,
+) {
   const messages: ConversationMessage[] = [];
   const turnKey = (
     sessionId: string | undefined,
@@ -457,6 +573,16 @@ export function projectRuntimeEventsToMessages(
   /** The open turn's last pre-steer row, owner of last resort. */
   let preSteerRowIndex: number | undefined;
   const revokedAnswerTurns = new Set<string>();
+  // Turns an in-place engine rewind hid from the engine. The transcript is
+  // append-only: their rows stay, marked `rewound`.
+  const rewoundTurns = new Set<string>();
+  for (const ev of events) {
+    if (ev.method !== 'runtime.warning') continue;
+    for (const turnId of sessionRewoundMarker(ev)?.hiddenTurnIds ?? []) {
+      const key = turnKey(ev.threadId, turnId);
+      if (key) rewoundTurns.add(key);
+    }
+  }
   // station#1182: `turnReportedModel` is per-turn (set from turn.started/
   // turn.completed metadata); `sessionReportedModel` is the last value seen
   // on a session.configured event, carried forward as a fallback across
@@ -489,6 +615,29 @@ export function projectRuntimeEventsToMessages(
     }
   };
 
+  const indexAssistantRow = (
+    role: ConversationMessage['role'],
+    beforeSteer: boolean,
+    rowIndex: number,
+  ) => {
+    // station#1558: only an assistant row carries a turn's activity, and only
+    // the FIRST row emitted for a turn identity owns it — a re-emission would
+    // otherwise redirect a late result away from the row that shows the call.
+    const emittedKey =
+      role === 'assistant' ? turnKey(turnSessionId, turnIdentity) : undefined;
+    // A pre-steer segment never owns the turn: the turn is still open, so
+    // its later start-less completions belong to the live buffer, and after
+    // the terminal the row that owns the turn is the one emitted last.
+    if (emittedKey && beforeSteer) preSteerRowIndex = rowIndex;
+    if (
+      emittedKey &&
+      !beforeSteer &&
+      !assistantMessageIndexByTurn.has(emittedKey)
+    ) {
+      assistantMessageIndexByTurn.set(emittedKey, rowIndex);
+    }
+  };
+
   const pushMessage = (
     role: ConversationMessage['role'],
     p: MessagePart[],
@@ -499,6 +648,12 @@ export function projectRuntimeEventsToMessages(
      */
     beforeSteer = false,
   ) => {
+    if (standingUnresolved) {
+      // The inventory checks whether an assistant row owns the turn.
+      // Its stored index is never used to look up message content.
+      indexAssistantRow(role, beforeSteer, 0);
+      return;
+    }
     const reportedModel = turnReportedModel ?? sessionReportedModel;
     // station#1410: only an assistant turn that both has an observed turn
     // identity AND reached a terminal event has an envelope. An open or
@@ -552,22 +707,7 @@ export function projectRuntimeEventsToMessages(
       parts: p,
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     });
-    // station#1558: only an assistant row carries a turn's activity, and only
-    // the FIRST row emitted for a turn identity owns it — a re-emission would
-    // otherwise redirect a late result away from the row that shows the call.
-    const emittedKey =
-      role === 'assistant' ? turnKey(turnSessionId, turnIdentity) : undefined;
-    // A pre-steer segment never owns the turn: the turn is still open, so
-    // its later start-less completions belong to the live buffer, and after
-    // the terminal the row that owns the turn is the one emitted last.
-    if (emittedKey && beforeSteer) preSteerRowIndex = messages.length - 1;
-    if (
-      emittedKey &&
-      !beforeSteer &&
-      !assistantMessageIndexByTurn.has(emittedKey)
-    ) {
-      assistantMessageIndexByTurn.set(emittedKey, messages.length - 1);
-    }
+    indexAssistantRow(role, beforeSteer, messages.length - 1);
   };
 
   // A reply shown as a spilled outputText's preview names its reference on
@@ -575,26 +715,29 @@ export function projectRuntimeEventsToMessages(
   let pendingSpilledText: MessagePart['spilledText'];
   const flushText = () => {
     if (textBuf) {
-      parts.push({
-        type: 'text',
-        text: textBuf,
-        ...(pendingSpilledText ? { spilledText: pendingSpilledText } : {}),
-      });
+      if (!standingUnresolved || parts.length === 0)
+        parts.push({
+          type: 'text',
+          text: textBuf,
+          ...(pendingSpilledText ? { spilledText: pendingSpilledText } : {}),
+        });
       textBuf = '';
     }
     pendingSpilledText = undefined;
   };
   const flushReasoning = () => {
     if (reasoningBuf) {
-      parts.push({ type: 'reasoning', text: reasoningBuf });
+      if (!standingUnresolved || parts.length === 0)
+        parts.push({ type: 'reasoning', text: reasoningBuf });
       reasoningBuf = '';
     }
   };
 
   /** station#3415: markers that arrived during the open turn. */
   let heldMarkers: Array<{
-    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>;
-    marker: ExtensionTranscriptMarkerKind;
+    ev: { eventId?: string; createdAt?: string };
+    text: { betweenTurns: string; duringTurn: string };
+    extra?: Pick<MessagePart, 'modelReroute'>;
   }> = [];
 
   /**
@@ -618,6 +761,7 @@ export function projectRuntimeEventsToMessages(
         NonNullable<ConversationMessage['metadata']>['turnStoppedBy']
       >;
     },
+    cutOff?: NonNullable<ConversationMessage['metadata']>['turnCutOff'],
   ) => {
     flushReasoning();
     flushText();
@@ -639,6 +783,7 @@ export function projectRuntimeEventsToMessages(
       row.metadata = {
         ...row.metadata,
         turnEnded: ended,
+        ...(cutOff ? { turnCutOff: cutOff } : {}),
         ...(endedStop && row.parts.length === 0
           ? {
               ...(endedStop.reason
@@ -689,8 +834,8 @@ export function projectRuntimeEventsToMessages(
     heldMarkers = [];
     openTurnSessionExited = false;
     if (releaseMarkers)
-      for (const { ev, marker } of held)
-        pushTranscriptMarker(ev, marker, true, closedTurnTimestamp);
+      for (const { ev, text, extra } of held)
+        pushTranscriptMarker(ev, text, true, closedTurnTimestamp, extra);
   };
 
   const stamp = (createdAt?: string) => {
@@ -736,6 +881,7 @@ export function projectRuntimeEventsToMessages(
     toolPart: MessagePart,
     ev: Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>,
   ) => {
+    if (standingUnresolved) return;
     const files = toolResultFileParts(ev);
     if (files.length === 0) return;
     for (const list of [parts, ...messages.map((message) => message.parts)]) {
@@ -755,8 +901,8 @@ export function projectRuntimeEventsToMessages(
    * nothing, so a live marker never moves or remounts the open turn's row.
    */
   const pushTranscriptMarker = (
-    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>,
-    marker: ExtensionTranscriptMarkerKind,
+    ev: { eventId?: string; createdAt?: string },
+    text: { betweenTurns: string; duringTurn: string },
     duringTurn: boolean,
     /**
      * For a held marker, the closed turn's row timestamp: readers that merge
@@ -764,11 +910,11 @@ export function projectRuntimeEventsToMessages(
      * rather than inside it.
      */
     turnRowTimestamp?: number,
+    extra?: Pick<MessagePart, 'modelReroute'>,
   ) => {
     const timestamp =
       turnRowTimestamp ??
       (ev.createdAt ? Date.parse(ev.createdAt) : Number.NaN);
-    const text = EXTENSION_TRANSCRIPT_MARKER_TEXT[marker];
     messages.push({
       id:
         options.stableIds && ev.eventId
@@ -779,6 +925,7 @@ export function projectRuntimeEventsToMessages(
         {
           type: EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
           text: duringTurn ? text.duringTurn : text.betweenTurns,
+          ...extra,
         },
       ],
       ...(Number.isNaN(timestamp) ? {} : { metadata: { timestamp } }),
@@ -789,8 +936,16 @@ export function projectRuntimeEventsToMessages(
   ) => {
     const marker = extensionTranscriptMarker(ev.namespace, ev.type);
     if (!marker) return;
-    if (turnOpen) heldMarkers.push({ ev, marker });
-    else pushTranscriptMarker(ev, marker, false);
+    holdOrPushMarker(ev, EXTENSION_TRANSCRIPT_MARKER_TEXT[marker]);
+  };
+  const holdOrPushMarker = (
+    ev: { eventId?: string; createdAt?: string },
+    text: { betweenTurns: string; duringTurn: string },
+    extra?: Pick<MessagePart, 'modelReroute'>,
+  ) => {
+    if (standingUnresolved) return;
+    if (turnOpen) heldMarkers.push({ ev, text, extra });
+    else pushTranscriptMarker(ev, text, false, undefined, extra);
   };
 
   /**
@@ -807,7 +962,28 @@ export function projectRuntimeEventsToMessages(
     }
   }
 
-  for (const ev of events) {
+  const recordStandingCompletion = (
+    eventId: string,
+    isUnresolved: boolean,
+    previous?: MessagePart,
+  ) => {
+    if (!standingUnresolved) return;
+    const priorId = previous?.sourceEventId;
+    if (
+      previous?.state === 'unresolved' &&
+      priorId !== undefined &&
+      (!isUnresolved || priorId !== eventId) &&
+      standingUnresolved.ids.delete(priorId)
+    ) {
+      standingUnresolved.snapshot = undefined;
+    }
+    if (isUnresolved && !standingUnresolved.ids.has(eventId)) {
+      standingUnresolved.ids.add(eventId);
+      standingUnresolved.snapshot = undefined;
+    }
+  };
+
+  const append = (ev: CanonicalRuntimeEvent) => {
     if (
       ev.method === 'turn.completed' ||
       ev.method === 'turn.aborted' ||
@@ -843,6 +1019,7 @@ export function projectRuntimeEventsToMessages(
           }
           turnAnchorEventId = ev.eventId;
           stamp(ev.createdAt);
+          if (standingUnresolved) break;
           const steerParts: MessagePart[] = [];
           const steerInput = agentMessageInput({
             ...ev,
@@ -913,6 +1090,7 @@ export function projectRuntimeEventsToMessages(
         // model without its own reportedModel invalidates any carried-over
         // sessionReportedModel — it belongs to the prior model generation.
         noteModelGeneration(turnModel, turnReportedModel);
+        if (standingUnresolved) break;
         const userParts: MessagePart[] = [];
         const turnInput = agentMessageInput({
           ...ev,
@@ -956,6 +1134,11 @@ export function projectRuntimeEventsToMessages(
             const row = messages[messages.length - 1]!;
             row.metadata = { ...row.metadata, stationMemoryContinuation: true };
           }
+          const origin = stationTurnOrigin(ev);
+          if (origin) {
+            const row = messages[messages.length - 1]!;
+            row.metadata = { ...row.metadata, stationOrigin: origin };
+          }
           if (isStationRestartContinuationTurn(ev)) {
             const row = messages[messages.length - 1]!;
             row.metadata = {
@@ -971,14 +1154,18 @@ export function projectRuntimeEventsToMessages(
         turnSessionId ??= ev.threadId;
         turnOpen = true;
         flushReasoning();
-        textBuf += ev.delta ?? '';
+        textBuf = standingUnresolved
+          ? textBuf || (ev.delta ? 'x' : '')
+          : textBuf + (ev.delta ?? '');
         break;
       }
       case 'content.reasoning-delta': {
         turnSessionId ??= ev.threadId;
         turnOpen = true;
         flushText();
-        reasoningBuf += ev.delta ?? '';
+        reasoningBuf = standingUnresolved
+          ? reasoningBuf || (ev.delta ? 'x' : '')
+          : reasoningBuf + (ev.delta ?? '');
         break;
       }
       case 'tool.started': {
@@ -1035,7 +1222,8 @@ export function projectRuntimeEventsToMessages(
             state: 'call',
             ...(ev.spilledContent ? { contentThreadId: ev.threadId } : {}),
           };
-          messages[startNamedTurnIndex]!.parts.push(latePart);
+          if (!standingUnresolved)
+            messages[startNamedTurnIndex]!.parts.push(latePart);
           carriedToolsByCallId.set(ev.toolCallId, {
             part: latePart,
             turnKey: startNamedTurnKey,
@@ -1165,6 +1353,7 @@ export function projectRuntimeEventsToMessages(
             existing.toolName = ev.toolName;
           }
           if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
+          recordStandingCompletion(ev.eventId, isUnresolved, existing);
           existing.state = derivedState;
           existing.output = ev.output;
           if (ev.spilledContent) existing.contentThreadId = ev.threadId;
@@ -1173,6 +1362,9 @@ export function projectRuntimeEventsToMessages(
           if (refusal) existing.stationControlRefusal = refusal;
           const artifact = claudeArtifactLinkOfEvent(ev);
           if (artifact) existing.claudeArtifact = artifact;
+          const appearance = appearanceProposalReferenceOfEvent(ev);
+          if (appearance) existing.appearanceProposal = appearance;
+          else delete existing.appearanceProposal;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
           existing.error = spillableDisplayText(ev.error);
           existing.sourceEventId = ev.eventId;
@@ -1266,6 +1458,9 @@ export function projectRuntimeEventsToMessages(
                   ),
                 }
               : {}),
+            ...(appearanceProposalReferenceOfEvent(ev)
+              ? { appearanceProposal: appearanceProposalReferenceOfEvent(ev) }
+              : {}),
             ...(ev.outputReceipt?.truncated
               ? { outputTruncated: true as const }
               : {}),
@@ -1276,8 +1471,9 @@ export function projectRuntimeEventsToMessages(
             ...(text !== undefined ? { result: text } : {}),
           };
           terminalToolsByEventId.set(ev.eventId, part);
+          recordStandingCompletion(ev.eventId, isUnresolved);
           if (namedTurnIndex !== undefined) {
-            messages[namedTurnIndex]!.parts.push(part);
+            if (!standingUnresolved) messages[namedTurnIndex]!.parts.push(part);
           } else {
             // Either the event names the turn currently being folded, or it
             // names one whose `turn.started` fell outside this bounded window
@@ -1306,7 +1502,7 @@ export function projectRuntimeEventsToMessages(
       }
       case 'tool.progress': {
         const existing = toolsByCallId.get(ev.toolCallId);
-        if (existing) {
+        if (existing && !standingUnresolved) {
           existing.progressMessage = ev.message;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
         }
@@ -1318,7 +1514,7 @@ export function projectRuntimeEventsToMessages(
         // `request.resolved`, so an answer given anywhere — this device,
         // another one, a timeout — leaves a trace.
         const openRecord = (
-          kind: 'form' | 'decision',
+          kind: 'form' | 'decision' | 'url',
           requester: string,
           message: string,
         ) => {
@@ -1334,7 +1530,7 @@ export function projectRuntimeEventsToMessages(
               eventId: ev.eventId,
               kind,
               requester,
-              message,
+              message: standingUnresolved ? '' : message,
               outcome: 'pending',
             },
           };
@@ -1350,6 +1546,12 @@ export function projectRuntimeEventsToMessages(
         const form = inputRequestFromRequestEvent(ev);
         if (form) {
           openRecord('form', form.requester, inputRequestSummary(form.message));
+          break;
+        }
+        // A link is opened from its own card too, never allowed in a click.
+        const link = inputRequestUrlFromRequestEvent(ev);
+        if (link) {
+          openRecord('url', link.requester, inputRequestSummary(link.message));
           break;
         }
         const toolName = ev.payload?.toolName ?? ev.payload?.tool;
@@ -1401,12 +1603,20 @@ export function projectRuntimeEventsToMessages(
           target.approvalServerGrant = toolRequestServerGrantFromPayload(
             ev.payload,
           );
+          const ruleGrant = toolRequestRuleGrantFromPayload(ev.payload);
+          if (ruleGrant) target.approvalRuleGrant = ruleGrant;
+          else delete target.approvalRuleGrant;
+          if (toolRequestAllGrantFromPayload(ev.payload))
+            target.approvalAllGrant = true;
+          else delete target.approvalAllGrant;
           // docs/design/event-content-spill.md: what a surface must load
           // whole before it offers Allow.
-          approvalRequestByPart.set(target, ev);
-          if (ev.spilledContent || hasRuntimeEventContentRefs(target.args))
-            target.approvalContentEvent = ev;
-          else delete target.approvalContentEvent;
+          if (!standingUnresolved) {
+            approvalRequestByPart.set(target, ev);
+            if (ev.spilledContent || hasRuntimeEventContentRefs(target.args))
+              target.approvalContentEvent = ev;
+            else delete target.approvalContentEvent;
+          }
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
           openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {
@@ -1458,7 +1668,7 @@ export function projectRuntimeEventsToMessages(
       }
       case 'turn.aborted': {
         const revoked = turnKey(ev.threadId, ev.turnId);
-        if (revoked) revokedAnswerTurns.add(revoked);
+        if (revoked && !standingUnresolved) revokedAnswerTurns.add(revoked);
         turnSessionId ??= ev.threadId;
         adoptTerminalIdentity(ev.turnId);
         turnSeenInPart = false;
@@ -1487,7 +1697,8 @@ export function projectRuntimeEventsToMessages(
       case 'turn.completed': {
         turnSessionId ??= ev.threadId;
         adoptTerminalIdentity(ev.turnId);
-        turnAnswerEligible = ev.finishReason !== 'cancelled';
+        const failure = acpCompletionFailureMessage(ev);
+        turnAnswerEligible = !failure && ev.finishReason !== 'cancelled';
         stamp(ev.createdAt);
         // station#1182: some adapters (e.g. Claude — see
         // claude-adapter-events.ts) only learn the runtime-reported model
@@ -1564,7 +1775,19 @@ export function projectRuntimeEventsToMessages(
             textBuf = outputText;
           }
         }
-        emitAssistantTurn(true, 'completed');
+        if (failure) {
+          flushText();
+          parts.push(runtimeErrorPart(failure));
+        }
+        emitAssistantTurn(
+          true,
+          failure ? undefined : 'completed',
+          undefined,
+          // The engine stopped at its output limit: the reply is incomplete.
+          !failure && ev.finishReason === 'max-tokens'
+            ? 'max-tokens'
+            : undefined,
+        );
         break;
       }
       case 'session.configured': {
@@ -1594,6 +1817,38 @@ export function projectRuntimeEventsToMessages(
       case 'extension.notification':
         emitTranscriptMarker(ev);
         break;
+      case 'model.rerouted':
+        // A quiet marker line, placed like an extension marker: after the
+        // turn it happened in.
+        holdOrPushMarker(
+          ev,
+          modelReroutedMarkerText(ev),
+          ev.childWorkId
+            ? undefined
+            : {
+                modelReroute: {
+                  sessionId: ev.threadId,
+                  ...(ev.turnId ? { turnId: ev.turnId } : {}),
+                  scope: ev.scope,
+                },
+              },
+        );
+        break;
+      case 'runtime.warning': {
+        // An in-place engine rewind: a marker where it happened. The turns it
+        // hid stay in the transcript, marked `rewound` below.
+        const rewound = sessionRewoundMarker(ev);
+        if (rewound) holdOrPushMarker(ev, rewound.text);
+        // A late one names no turns it hid; its marker is all there is.
+        const late = sessionRewoundLateMarker(ev);
+        if (late) holdOrPushMarker(ev, late);
+        if (ev.code === TURN_COMPLETED_AFTER_INTERRUPTION_CODE)
+          holdOrPushMarker(ev, {
+            betweenTurns: ev.message,
+            duringTurn: ev.message,
+          });
+        break;
+      }
       case 'session.exited':
         // The turn row itself is unchanged (it is still emitted as it
         // stands at the end); only its held markers are now owed a place.
@@ -1620,6 +1875,10 @@ export function projectRuntimeEventsToMessages(
         // the banner, so the banner reads after what the user actually saw
         // — not before it.
         if (turnOpen) emitAssistantTurn();
+        if (standingUnresolved) break;
+        // Closing the turn cleared its time; the notice keeps its own. Readers
+        // that merge rows by time place a row without one after all others.
+        stamp(ev.createdAt);
         pushMessage('user', [
           {
             type: 'text',
@@ -1646,43 +1905,57 @@ export function projectRuntimeEventsToMessages(
     // then cannot place it. It takes the time of the event that opened it;
     // a turn that did start keeps that start (or its terminal) time.
     if (turnOpen && turnTimestamp === undefined) stamp(ev.createdAt);
-  }
+  };
 
-  if (turnOpen) {
-    const live = options.liveOpenTurn;
-    if (
-      live &&
-      !openTurnSessionExited &&
-      (turnSessionId ?? live.threadId) === live.threadId &&
-      // Exact identity: a turn the window cannot name is not claimed live.
-      (live.turnId === undefined || turnIdentity === live.turnId)
-    ) {
-      // `toolsByCallId` holds only this turn's calls with no terminal yet
-      // (the terminal branch retires the slot), so these are exactly the
-      // calls still executing. An approval-bound call keeps its own state.
-      for (const part of toolsByCallId.values()) {
-        if (part.state === 'call') part.state = 'running';
+  const finish = () => {
+    if (turnOpen) {
+      const live = options.liveOpenTurn;
+      if (
+        live &&
+        !openTurnSessionExited &&
+        (turnSessionId ?? live.threadId) === live.threadId &&
+        // Exact identity: a turn the window cannot name is not claimed live.
+        (live.turnId === undefined || turnIdentity === live.turnId)
+      ) {
+        // `toolsByCallId` holds only this turn's calls with no terminal yet
+        // (the terminal branch retires the slot), so these are exactly the
+        // calls still executing. An approval-bound call keeps its own state.
+        for (const part of toolsByCallId.values()) {
+          if (part.state === 'call') part.state = 'running';
+        }
       }
+      emitAssistantTurn(openTurnSessionExited);
     }
-    emitAssistantTurn(openTurnSessionExited);
-  }
-  return messages.map((message) => {
-    if (
-      message.role !== 'assistant' ||
-      !message.metadata?.turnId ||
-      !revokedAnswerTurns.has(
-        turnKey(message.metadata.sessionId, message.metadata.turnId) ?? '',
-      )
-    ) {
-      return message;
-    }
-    const {
-      answerEligible: _eligible,
-      provenance: _provenance,
-      ...metadata
-    } = message.metadata;
-    return { ...message, metadata };
-  });
+    return messages.map((projected) => {
+      const message =
+        projected.metadata?.turnId &&
+        rewoundTurns.has(
+          turnKey(projected.metadata.sessionId, projected.metadata.turnId) ??
+            '',
+        )
+          ? {
+              ...projected,
+              metadata: { ...projected.metadata, rewound: true as const },
+            }
+          : projected;
+      if (
+        message.role !== 'assistant' ||
+        !message.metadata?.turnId ||
+        !revokedAnswerTurns.has(
+          turnKey(message.metadata.sessionId, message.metadata.turnId) ?? '',
+        )
+      ) {
+        return message;
+      }
+      const {
+        answerEligible: _eligible,
+        provenance: _provenance,
+        ...metadata
+      } = message.metadata;
+      return { ...message, metadata };
+    });
+  };
+  return { append, finish };
 }
 
 /**

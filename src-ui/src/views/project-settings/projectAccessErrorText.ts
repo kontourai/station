@@ -41,4 +41,4 @@ export function projectAccessErrorMessage(
 
 /** The `forbidden` sentence for turning sharing on. */
 export const ENABLE_SHARING_FORBIDDEN =
-  'You can’t turn on sharing from this device. It needs Station owner authority, such as the Station’s own computer.';
+  'You can’t turn on sharing from this device. Only the Station operator can, for example on the computer running Station.';

@@ -126,7 +126,15 @@
 
     "packages/shared/package.json#/main",
 
-    "packages/shared/package.json#/types"
+    "packages/shared/package.json#/types",
+
+    "src-server/services/ssh/remote-session-reader.ts",
+
+    "src-ui/src/hooks/useServerCapabilities.ts",
+
+    "src-server/services/orchestration/conversation-title-generation.ts",
+
+    "src-server/runtime/bootstrap/runtime-shutdown.ts"
   ],
 
   "checks": [

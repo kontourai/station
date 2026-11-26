@@ -1,6 +1,7 @@
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
+import { errorMessage } from '../../utils/error-message.js';
 import { mediaInputPolicy } from '../media-tools/media-input-policy.js';
 import {
   MediaProcessError,
@@ -409,7 +410,7 @@ export class SherpaTranscriber implements Transcriber {
       return {
         status: 'failed',
         reason,
-        message: error instanceof Error ? error.message : String(error),
+        message: errorMessage(error),
       };
     } finally {
       try {

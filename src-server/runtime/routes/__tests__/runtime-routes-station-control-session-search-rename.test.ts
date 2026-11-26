@@ -1,5 +1,6 @@
 /**
- * #176: `search_sessions` and `rename_session`, through the PRODUCTION
+ * #176: `search_sessions` and `rename_session` (and `settle_conversation`,
+ * the person's Open and Settled inbox record), through the PRODUCTION
  * composition: `configureRuntimeRoutes` with the real runtime auth boundary,
  * the real station-control authority guard and caller re-derivation, the real
  * unified-search service over a real event store, and the real memory store.
@@ -28,6 +29,7 @@ import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { ConversationWorkStateStore } from '../../../services/orchestration/conversation-work-state-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -124,7 +126,8 @@ describe('station-control session search and rename (#176)', () => {
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup() {
+  /** `previews`: the Feature Previews this Station has turned on. */
+  async function setup(previews: readonly string[] = []) {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-session-search-');
 
@@ -290,6 +293,14 @@ describe('station-control session search and rename (#176)', () => {
       monitoringEvents: [],
       orchestrationEventStore: store,
       orchestrationService: orchestration,
+      featurePreviews: deepStub({
+        bind: (definition: { id: string }) => ({
+          select: <T>(branches: { enabled: () => T; disabled: () => T }) =>
+            previews.includes(definition.id)
+              ? branches.enabled()
+              : branches.disabled(),
+        }),
+      }),
       runtimeSearch,
       storageAdapter: storage,
       taskGraphService: taskGraph,
@@ -442,7 +453,16 @@ describe('station-control session search and rename (#176)', () => {
       };
     };
 
-    return { base, memory, tool, asTool, personRenames, stored, routeRequests };
+    return {
+      base,
+      home,
+      memory,
+      tool,
+      asTool,
+      personRenames,
+      stored,
+      routeRequests,
+    };
   }
 
   const sessionIds = (body: any): string[] =>
@@ -927,11 +947,75 @@ describe('station-control session search and rename (#176)', () => {
     });
   });
 
-  test('both tools are in the Chats group', () => {
+  describe('settle_conversation', () => {
+    const settled = (home: string, person: string) =>
+      new ConversationWorkStateStore(home).read(person);
+
+    test("an agent settles and reopens its owner's conversation in the owner's own inbox", async () => {
+      const { home, tool, routeRequests } = await setup([
+        'conversation-resolution',
+      ]);
+      const settle = await tool(
+        delegated('carol-global'),
+        'settle_conversation',
+        {
+          conversationId: 'carol-chat',
+          settled: true,
+        },
+      );
+      expect([settle.isError, settle.body]).toEqual([false, { success: true }]);
+      expect(Object.keys(settled(home, C))).toEqual(['carol-chat']);
+      // Nobody else's inbox changes.
+      expect(settled(home, 'personal:owner')).toEqual({});
+      expect(settled(home, D)).toEqual({});
+
+      const reopen = await tool(bearer('carol-global'), 'settle_conversation', {
+        conversationId: 'carol-chat',
+        settled: false,
+      });
+      expect(reopen.body).toEqual({ success: true });
+      expect(settled(home, C)).toEqual({});
+      expect(routeRequests).toEqual([
+        '/api/conversations/carol-chat/work-state',
+        '/api/conversations/carol-chat/work-state',
+      ]);
+    });
+
+    test("another person's conversation reads as absent and records nothing", async () => {
+      const { home, tool } = await setup(['conversation-resolution']);
+      const refused = await tool(bound('dave-agent'), 'settle_conversation', {
+        conversationId: 'carol-chat',
+        settled: true,
+      });
+      expect(refused.body).toMatchObject({
+        success: false,
+        error: 'Conversation not found',
+      });
+      expect(settled(home, D)).toEqual({});
+      expect(settled(home, C)).toEqual({});
+    });
+
+    test('with the preview off it is refused and records nothing', async () => {
+      const { home, tool } = await setup();
+      const refused = await tool(bound('carol-global'), 'settle_conversation', {
+        conversationId: 'carol-chat',
+        settled: true,
+      });
+      expect(refused.body).toMatchObject({
+        success: false,
+        code: 'feature_preview_disabled',
+        previewId: 'conversation-resolution',
+      });
+      expect(settled(home, C)).toEqual({});
+    });
+  });
+
+  test('the session tools are in the Chats group', () => {
     const groups = Object.fromEntries(
       stationControlToolCatalog().map((entry) => [entry.name, entry.group]),
     );
     expect(groups.search_sessions).toBe('Chats');
     expect(groups.rename_session).toBe('Chats');
+    expect(groups.settle_conversation).toBe('Chats');
   });
 });

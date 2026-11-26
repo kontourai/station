@@ -13,8 +13,6 @@ import { toPosixPath } from './lib/posix-path.mjs';
 export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   'src-server/routes/agents/skills.ts :: route POST / :: result.message :: 1',
   'src-server/routes/agents/skills.ts :: route POST /local :: result.message :: 1',
-  'src-server/routes/agents/skills.ts :: route PUT /:name :: result.message :: 1',
-  'src-server/routes/agents/skills.ts :: route DELETE /:name :: result.message :: 1',
   'src-server/routes/agents/tools.ts :: route POST /:serverId/ui/call :: error.message :: 1',
   'src-server/routes/agents/unattended-grants-routes.ts :: route POST / :: error.message :: 1',
   'src-server/routes/agents/unattended-grants-routes.ts :: route POST /revoke :: error.message :: 1',
@@ -46,6 +44,20 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   // `EngineCredentialRefusedError`: two fixed sentences, never the key.
   'src-server/routes/connections/acp-sign-in.ts :: function failure :: error.message :: 1',
   'src-server/routes/connections/acp-sign-in.ts :: function failure :: error.message :: 2',
+  // Remote task engine refusals (docs/decisions/remote-task-engines.md).
+  // `error` is narrowed by `instanceof RemoteTaskError`; a disabled preview
+  // answers the shared preview refusal and anything else a fixed sentence.
+  // Occurrence 1 is every refusal: sentences authored in the
+  // remote-task-engines service, bindings and `vendor-http.ts`, whose only
+  // interpolations are the vendor's label, an HTTP status, and the vendor's
+  // own error text, which `redactSecret` strips of the connection's
+  // credential and bounds to 500 characters before it is wrapped. That vendor
+  // text is passed on on purpose: a plan or permission refusal must reach the
+  // person in the vendor's words.
+  //
+  // What would make this unsafe: constructing a RemoteTaskError from a caught
+  // error's message, or from vendor text that did not pass `redactSecret`.
+  'src-server/routes/remote-task-engines/remote-task-engine-routes.ts :: function refusal :: error.message :: 1',
   // The script runner's refusal (#3994). `error` is narrowed by `instanceof
   // TerminalCommandUnavailable`, constructed only in `terminal-sessions.ts`
   // from a literal ("Its directory has changed") or from a
@@ -57,6 +69,17 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   // What would make this unsafe: wrapping a caught error's message in either
   // class, or interpolating file contents or host paths into one.
   'src-server/routes/projects/terminal-session-routes.ts :: function createTerminalSessionRoutes :: error.message :: 1',
+  // A refused repository source in New Project. `error` is narrowed by
+  // `instanceof RepositoryAcquisitionInputError`, constructed only in
+  // `repository-acquisition-service.ts`'s `validateSource`, and every one of
+  // its messages is a literal sentence naming the rule the source broke; none
+  // interpolates the source, a path or a caught error.
+  //
+  // What would make this unsafe: interpolating the submitted source or any
+  // caught error's message into that class. Occurrence 2 repeats the same
+  // sentence as the validation reason.
+  'src-server/routes/projects/repository-acquisition-routes.ts :: function failure :: error.message :: 1',
+  'src-server/routes/projects/repository-acquisition-routes.ts :: function failure :: error.message :: 2',
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/settings :: error.message :: 1',
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/providers :: error.message :: 1',
   'src-server/routes/plugins/plugin-install-routes.ts :: route POST /preview :: error.message :: 1',
@@ -124,10 +147,10 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   // peer text, or store content to any of these constructors, or widening
   // a branch's `instanceof` to a supertype that could carry a caught
   // message. A fifth branch is a new identity and gets reviewed.
-  'src-server/routes/orchestration/orchestration.ts :: route POST /delegations :: error.message :: 1',
-  'src-server/routes/orchestration/orchestration.ts :: route POST /delegations :: error.message :: 2',
-  'src-server/routes/orchestration/orchestration.ts :: route POST /delegations :: error.message :: 3',
-  'src-server/routes/orchestration/orchestration.ts :: route POST /delegations :: error.message :: 4',
+  'src-server/routes/orchestration/orchestration.ts :: function dispatchAuthorizedDelegation :: error.message :: 1',
+  'src-server/routes/orchestration/orchestration.ts :: function dispatchAuthorizedDelegation :: error.message :: 2',
+  'src-server/routes/orchestration/orchestration.ts :: function dispatchAuthorizedDelegation :: error.message :: 3',
+  'src-server/routes/orchestration/orchestration.ts :: function dispatchAuthorizedDelegation :: error.message :: 4',
 ]);
 
 const TRANSPORT_AND_DIAGNOSTIC_BOUNDARIES = [

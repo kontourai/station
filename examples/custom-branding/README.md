@@ -96,7 +96,7 @@ What Station accepts:
   must also pass the action rules.
 - A device accent chosen in **Settings → Appearance** still colours buttons and
   links on that device over the theme's action colour. Focus rings follow
-  `--k-focus` when the theme (or a Dev, Beta or Nightly build) sets it, and
+  `--k-focus` when the theme (or a Dev or Nightly build) sets it, and
   the device accent otherwise.
 
 ## Disable without uninstalling

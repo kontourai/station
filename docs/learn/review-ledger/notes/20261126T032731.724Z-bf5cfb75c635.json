@@ -1,0 +1,7 @@
+{
+  "revision": "aa8f93451a18a1a860d66692e0c8dc187f2367b2",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"The generated Corpus bundle now carries the canonical ACP transcript search clarification. Reviewed the Station docs tool behavior and topic publication contract, which are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

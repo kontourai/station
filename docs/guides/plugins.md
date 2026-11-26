@@ -58,6 +58,22 @@ bundle's download together, a stylesheet fetch and a same-origin script
 `preload` for each, then still applies and executes them one at a time in
 registry order, so each registration is read at its own script's load event.
 Each stylesheet's deadline starts at its plugin's turn, not at its download.
+Before any of that, the UI reads `GET /api/plugins` up to three times, with
+8, 16 and 24 second deadlines and a 1 second pause between reads, when a read
+times out, fails in transit or gets a 5xx. Plugin layout tabs show a loading
+state meanwhile. Against a Station that accepts the connection and then hangs,
+that is about 50 seconds before a tab reports **Extensions could not load**,
+with a **Retry** button; a Station that is down refuses at once, and the three
+reads finish in about 2 seconds. A refused read (4xx) is not retried. After
+that, while the connection stays healthy, completed health probes (every 10
+seconds, for a probed Station and for the desktop app's own managed Station
+alike) re-read an inventory that failed for one of those passing reasons. The
+re-read runs on the 1st, 3rd, 7th and 15th probe after the failure and every
+8th after that; probes during a re-read do not count. It runs in the
+background: the tab keeps showing **Extensions could not load** and **Retry**
+until a re-read succeeds, then shows the plugin. Pressing **Retry** during a
+background re-read shows the loading state at once and reads again after the
+running re-read ends, like any other reload.
 See the [registry](../../src-ui/src/core/PluginRegistry.ts).
 
 The capability is a per-launch 256-bit secret checked in constant time. It
@@ -155,13 +171,10 @@ its layout definition (#2995):
 ```
 
 An unknown value (`primary: "terminal"`), a drill-in that is not one of the
-layout's own panes, or `drillIns` without `"stack"` is refused by name. So is
-a drill-in whose Project occurrence id would exceed the 128 characters the
-pane host and the navigation store accept; that id embeds the plugin id and
-layout slug twice, so keep them short (#4130). Install refuses such a plugin.
-A plugin copied straight into `plugins/` without installing skips that
-check, and the catalog then leaves its whole layout out, not just the
-drill-in. Each
+layout's own panes, or `drillIns` without `"stack"` is refused by name.
+A drill-in's descriptor and bound source must fit the pane host's
+128-character identity limit. The Project catalog issues compact occurrence
+IDs and state keys when the composed values exceed that limit. Each
 drill-in still goes through the ordinary pane availability check, so one the
 Project's catalog does not issue is simply not on the rail. Station states
 the declaration on every layout read; it is not stored in the Project's
@@ -384,6 +397,11 @@ Common fields:
 | `skills` | string[] | no | Skill package IDs contributed by the plugin |
 | `settings` | PluginSettingField[] | no | Configurable settings (see Settings) |
 
+Use the declared ID in SDK document and vault calls for the same Project
+namespace. Applying the [Enterprise Layout example](../../examples/enterprise-layout/README.md#knowledge-namespaces)
+registers `enterprise-notes`, which its Notes pane already uses. A Project's existing
+namespace registrations remain in place when a layout adds another one.
+
 #### Reserved plugin names
 
 `name` is the logical installation identity and the URL segment your server
@@ -569,9 +587,20 @@ Managing connected sources requires the Station operator and an
 `access:manage` credential. Standard paired clients can browse ordinary
 catalog items without gaining host source-management authority.
 
-The Registry's Add marketplace flow connects additional public GitHub Skill
-libraries, local Skill directories and local/HTTPS Station manifests without
-changing `registryUrl`. Sources persist separately, can be refreshed or disabled,
+The Registry's **Add source** flow connects additional sources without
+changing `registryUrl`. A source is a location, with an optional ref for a
+GitHub repository. Station detects what it provides from its content:
+`SKILL.md` packages, a Station manifest's plugins and agents, and a Claude Code
+marketplace index or MCP definitions, which are recognized but not yet
+installable ([decision](../decisions/registry-sources-detected-by-structure.md)). Each
+source under **Manage sources** (opened from the Registry toolbar, so the
+catalog comes first) shows its trust tier
+(Station, Default, Plugin, or Unverified for one a person added), what it was
+detected to provide with counts (a default catalog shows its last count, or
+that it has not been scanned yet), and when it was last read and last changed
+upstream. Sources with the same name are told apart by their location, and a
+source that reads the same repository or folder as another says they overlap.
+Choosing a source keeps it selected across the Registry tabs. Sources persist separately, can be refreshed or disabled,
 and report offline/stale/error status independently. Offline plugin rows retain
 the current installed state from the local Library, even after an update or
 removal; cached catalog metadata cannot declare a package installed. Removing one preserves
@@ -648,18 +677,49 @@ specific repair guidance. Fix or restore the manifest, then choose **Reload
 plugins**. Station does not invent a version or expose normal settings, update,
 permission, or removal controls until the manifest validates again.
 
+Installed dependency and update readers use the selected package's physical
+directory. They read a bounded regular manifest under that directory. Inventory
+and update checks accept a manifest reference whose target stays within the
+selected package. The dependency build path still requires a regular manifest
+at the package root. Station checks that the selected dependency remains
+current under its content lock before building or publishing. Directory
+containment is checked when the path is
+resolved. Concurrent changes to parent directories and Windows reparse
+behavior require separate platform verification.
+
 ### Recover interrupted activation
 
-An **Activation pending** plugin retains its code and data while its runtime
-contributions remain unavailable. Open **Plugins**, select it, and choose
-**Review recovery**. Review the permissions and retained dependencies, then
-choose **Recover plugin** and confirm the permission review. Recovery does not
-fetch replacement code or reset stored data. Trusted permissions still require
-the separate host approval flow.
+When a plugin's runtime activation does not finish in time (a slow host, or
+plugin code that hangs), an install or update can be saved first. Station waits up to 10 seconds for a
+plugin to activate, the same limit as any other configuration change; past it, Station stops that
+activation rather than hold every other configuration change behind it, and it
+does not retry it on its own. Recovery runs under the same limit, so a retry may
+work and removing the plugin is the way out. While the server is still
+activating the plugin, its row reads **Activating…** with no recovery offered;
+it becomes ready by itself or, once stopped, **Needs recovery**. Plugins
+then says the plugin was installed (or updated) but is not active, and opens
+its row, which reads **Needs recovery**. It did not fail, and installing it
+again would install a second copy: installing a plugin that reads **Needs
+recovery**, from Plugins, Registry or `station plugin install`, offers
+recovery instead, and installs again only when you ask (**Install again
+anyway**, or `--reinstall`). Station does not ask for its trusted
+permissions yet, because their host approval needs an active plugin; a
+recovery that activates it asks for them straight away, as a completed install
+does. The CLI prints the same
+outcome. A removal saved this way needs nothing from you: Station finishes
+unloading the plugin in the background.
 
-A recovery request may be accepted while runtime activation remains pending.
-Use **Refresh status** to read its current state; do not automatically replay the
-request. If a dependency must recover first, follow the server's dependency
+A **Needs recovery** plugin retains its code and data while its runtime
+contributions remain unavailable. Open **Plugins** and select it: the recovery
+review loads with the row. Review the permissions and retained dependencies,
+then choose **Recover plugin** and confirm the permission review. Recovery does
+not fetch replacement code or reset stored data. Once the plugin is active,
+Station asks for any trusted permissions it still needs through the separate
+host approval flow; declining leaves them under **Requested and not granted**.
+
+A recovery can also be saved without its activation finishing; the row then
+still reads **Needs recovery**. Use **Refresh status** to read its current
+state and recover it again; do not automatically replay the request. If a dependency must recover first, follow the server's dependency
 message, then obtain a fresh review for the parent. A changed approval or
 installation requires a new review, never reuse of an earlier decision.
 
@@ -1181,7 +1241,14 @@ module.exports = () => ({
 });
 ```
 
-Alternatively, point `module` at a JSON file and the server auto-wraps it with `JsonManifestRegistryProvider`.
+Alternatively, point `module` at a JSON file and the server auto-wraps it with
+`JsonManifestRegistryProvider`, whose agent view lists only the manifest's
+`type: "agent"` entries. Every registered agent registry is listed: rows carry
+`catalogSourceName`, and an ID that two registries offer is marked
+`ambiguous-source` and refused at install rather than taken from the first. A
+plain-ID install is also refused while any agent registry cannot be read, since
+it might offer the same ID. The same rule holds on the plugin install, preview
+and update paths for an ID that a readable registry offers as an agent.
 
 ### integrationRegistry
 
@@ -1464,6 +1531,15 @@ DELETE /api/plugins/:name
 # Check for updates across all plugins
 GET /api/plugins/check-updates
 ```
+
+Plugins shows when an update check was unavailable or incomplete and offers
+a retry. A partial check keeps any updates it found. The view confirms that
+it found no updates only after the eligible sources complete.
+
+When reviewing installation or recovery, inspect the registry verification
+for each dependency to see the claim and pin bound to that
+dependency's consent. The installed view shows the selected plugin's recorded
+receipt.
 
 A registry the [managed policy](managed-policy.md#capability-switches) refuses
 is not asked during an update check, and a plugin installed from it is not
@@ -1754,8 +1830,10 @@ The dev server:
   - `POST /api/plugins/fetch` — server-side fetch proxy
 
 The dev server reads installed dependencies from `<STATION_HOME>/plugins/` and
-starts the existing install command for a missing dependency with a resolved
-source. That is an installation attempt, not proof that consent, activation or
+runs the existing install command for a missing dependency with a resolved
+source, waiting for it to finish before it generates the preview page. A
+refused or failed install is printed as a warning and the preview still
+starts. That is an installation attempt, not proof that consent, activation or
 dependency readiness completed before the preview starts.
 
 Direct `--host` or non-loopback HTTP exposure is not supported. For remote development, run `station plugin dev 4300` on the development host, forward it with `ssh -N -L 4300:127.0.0.1:4300 user@dev-host`, and open `http://127.0.0.1:4300` locally. The privileged file, MCP, fetch, and reload routes enforce the same exact loopback browser boundary.
@@ -1905,13 +1983,14 @@ by plugin code.
     }
   },
   "ui": {
-    "component": "my-plugin-chat",
-    "quickPrompts": [
-      { "id": "help", "label": "Help", "prompt": "What can you help me with?" }
-    ]
+    "component": "my-plugin-chat"
   }
 }
 ```
+
+Remove `streaming` and `ui.quickPrompts` from Agent source definitions when
+updating to the current schema. Older Agent definitions still load. Layouts
+can continue passing an explicit `AgentQuickPrompt` to `onLaunchPrompt`.
 
 Installed Agent IDs remain clean and globally unique; the installer refuses an
 existing ID rather than adding a namespace prefix. Choose a unique ID if the
@@ -2027,7 +2106,7 @@ selector. Grant `agents.invoke` in Library, configure the native model or extern
 engine connection, and make the Agent available in the Project before running it.
 
 The host confirms that a conversation was accepted and offers **Open
-conversation**. If delivery is uncertain, inspect Activity; the host does not
+conversation**. If delivery is uncertain, inspect the Chat inbox; the host does not
 retry a possibly started action. Revoked permissions, changed packages, missing
 Agents, and unavailable execution modes remain visible failures.
 
@@ -2100,7 +2179,8 @@ plugin or grant its server-side permissions.
 
 A failed inventory or bundle load produces a notification linking to Extensions.
 The screen retains the failure message and Retry extensions until the registry
-recovers. A failure to start the deferred registry itself produces a notification
+recovers. A rejected registry import on a healthy connection is retried once before a
+persistent failure is reported. A failure to start the deferred registry itself produces a notification
 with Reload Station; it does not displace unrelated work with a global banner.
 Core shell and connection recovery retain their own failure surfaces.
 

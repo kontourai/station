@@ -1,0 +1,17 @@
+{
+  "revision": "3dfb243bc6017e2799816f1c78b93e1874a2f7e7",
+
+  "notes": [
+    {"path":"docs/guides/home-transfer-controller.md","note":"No claim depends on the orchestration route module: endpoints are home-authority-routes.ts and services/orchestration/planned-home-*; the scope statement is owned by pairing scopes, not the hub.","inputs":["docs/guides/home-transfer-controller.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"CI runner-label guide; nothing in it concerns orchestration routes.","inputs":["docs/guides/private-runner-partition.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Product-law authoring guidance; no route, symbol or behaviour from the orchestration route module is described.","inputs":["docs/guides/product-law-authoring.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Directory-level layout guide; makes no claim about orchestration.ts content.","inputs":["docs/guides/repository-layout.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Work Board security boundary is owned by spatial-board routes/store and UI pane registry; nothing references orchestration routes.","inputs":["docs/guides/work-board-security.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Workspace package format/CLI guide; its route mentions are Git and Project routes, not the orchestration route module.","inputs":["docs/guides/workspace-packages.md","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

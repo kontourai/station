@@ -49,6 +49,7 @@ import {
   compareStationReleaseVersions,
 } from '@kontourai/station-shared/release-version-order';
 import {
+  readServiceLauncherContext,
   readServiceUpdateProgress,
   serviceUpdatePaths,
   writeJsonAtomically,
@@ -328,6 +329,10 @@ export class ServerUpdateCoordinator {
   /** The launcher-run archive this server is, or null when it is not one. */
   private archive(): (ArchiveProvenance & { installRoot: string }) | null {
     if (this.archiveResolved) return this.archiveResolved.value;
+    if (!readServiceLauncherContext(this.deps.options?.env)) {
+      this.archiveResolved = { value: null };
+      return null;
+    }
     const provenance = this.deps.provenance();
     const value =
       provenance.installKind === 'archive' &&

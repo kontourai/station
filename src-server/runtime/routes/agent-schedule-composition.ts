@@ -11,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/agent-schedule';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import type {
+  SchedulerAutomationCreator,
   SchedulerAutomationTarget,
   SchedulerJob,
   SchedulerLogEntry,
@@ -28,8 +29,19 @@ import {
   type AgentScheduleRoutesDeps,
   createJobProposalApproval,
 } from '../../routes/orchestration/agent-schedule.js';
-import { requestMayBeAnAgent } from '../../security/coding-authority.js';
+import type {
+  AutomationProposalOperator,
+  AutomationProposalRoutesDeps,
+} from '../../routes/orchestration/automation-proposals.js';
+import {
+  isOperatorAtHostNotAgent,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import {
+  type AutomationProposalStore,
+  agentDefinitionDigest,
+} from '../../services/automation/automation-proposals.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import {
   type AgentScheduleStore,
@@ -38,7 +50,9 @@ import {
 } from '../../services/orchestration/agent-schedule.js';
 import type { SessionReadScope } from '../../services/orchestration/orchestration-service.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
+import type { ProjectPrincipalAction } from '../../services/projects/project-principal-permission.js';
 import { stationControlScopeRefusal } from '../../tools/station-control-policy.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type {
   StationControlDispatchScope,
   StationControlResolvedDispatchTarget,
@@ -86,6 +100,14 @@ export interface AgentScheduleCompositionDeps {
   dispatchActor(c: Context): AgentScheduleActor;
   /** The Project an Agent belongs to (`undefined`: global); throws when none. */
   agentProject(agentSlug: string): Promise<string | undefined>;
+  /** #5070: whether a job proposal may name a Project. */
+  projectSchedulesEnabled?(): boolean;
+  projectExists?(projectId: string): boolean;
+  principalMayInProject?(
+    principalId: string,
+    projectId: string,
+    action: ProjectPrincipalAction,
+  ): boolean;
   /**
    * The automations whose runs land in a conversation. Absent (hosted, no
    * scheduler): the chat's schedule lists none.
@@ -94,10 +116,33 @@ export interface AgentScheduleCompositionDeps {
     conversationId: string,
     context: Context,
   ): Promise<readonly ConversationAutomation[]>;
+  /** #4830: agent-proposed Automation sources and rules. */
+  readonly automationProposals?: AutomationProposalCompositionDeps;
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
   now?: () => number;
+}
+
+/** What #4830's proposals need beyond the schedule's own reads. */
+export interface AutomationProposalCompositionDeps {
+  /** Absent (hosted, or no event store): proposals are unavailable. */
+  readonly store: AutomationProposalStore | undefined;
+  readonly automations: AutomationProposalRoutesDeps['automations'];
+  /** The slug of the Project with this `ProjectConfig.id`, if any. */
+  projectSlugForId(projectId: string): string | undefined;
+  projectName(projectId: string): string | undefined;
+  /**
+   * The Agent's whole stored definition, read once per check; its `project`
+   * is the Agent's own Project slug. Throws when there is no such Agent.
+   */
+  agentDefinition(agentSlug: string): Promise<{ readonly project?: string }>;
+  agentIncarnation(agentSlug: string, initialize: boolean): string | undefined;
+  withAgentIdentity<T>(operation: () => Promise<T>): Promise<T>;
+  /** `proposingTurnId` over the Session's inferred calling turn (#4882). */
+  proposingTurn(sessionId: string): string | undefined;
+  untrustedContent(conversationId: string): Promise<boolean>;
+  operator(request: Request): Promise<AutomationProposalOperator | undefined>;
 }
 
 /** The conversation a recorded wake-up belongs to; the guard's read. */
@@ -114,6 +159,9 @@ export interface AgentScheduleComposition {
   readonly jobProposals: JobProposalApproval;
   /** The scheduler create/edit routes' rule for a job `target`. */
   readonly admitAutomationTarget: AutomationTargetAdmission;
+  /** #2377 slice D: who an untargeted job created by this request runs as. */
+  readonly jobOwner: (c: Context) => SchedulerAutomationCreator | undefined;
+  maySetProjectJob(projectId: string, creatorId: string): boolean;
   /** The scheduler routes' rule for acting on a job with a stored target. */
   readonly admitAutomationJob: AutomationJobAdmission;
   readonly mayReadAutomationRun: (
@@ -130,6 +178,8 @@ export interface AgentScheduleComposition {
     jobs: readonly SchedulerJob[],
   ): (run: RunSummary) => boolean;
   readonly delivery: AgentWakeUpDelivery | undefined;
+  /** What `createAutomationProposalRoutes` is mounted with. */
+  readonly automationProposalRouteDeps: AutomationProposalRoutesDeps;
   /** For the guard's `wake-up-stays-in-own-conversation` rule. */
   wakeUpConversation(wakeUpId: string): string | undefined;
   person(c: Context): AgentSchedulePerson | undefined;
@@ -222,6 +272,33 @@ function admitAutomationTargetFor(
 }
 
 /**
+ * #2377 slice D: who an untargeted job's runs act as. An agent's request
+ * records its dispatch actor, as a targeted automation does; a person's
+ * records that person. Neither resolved: no owner.
+ */
+function jobOwnerFor(
+  deps: Pick<AgentScheduleCompositionDeps, 'dispatchActor'>,
+  person: (c: Context) => AgentSchedulePerson | undefined,
+): (c: Context) => SchedulerAutomationCreator | undefined {
+  return (c) => {
+    if (requestMayBeAnAgent(c.req.raw)) {
+      if (stationControlRequestAuthority(c.req.raw)?.kind !== 'caller')
+        return undefined;
+      const actor = deps.dispatchActor(c);
+      return {
+        userId: actor.userId,
+        ...(actor.principal ? { principal: actor.principal } : {}),
+        ...(actor.ownerAttribution
+          ? { ownerAttribution: actor.ownerAttribution }
+          : {}),
+      };
+    }
+    const requester = person(c);
+    return requester ? { userId: requester.userId } : undefined;
+  };
+}
+
+/**
  * Who may edit, run, enable, disable or delete an existing automation that
  * targets a conversation, decided on its STORED target: its runs act as the
  * stored creator there, so a change by anyone who could not send to that
@@ -238,9 +315,16 @@ function admitAutomationJobFor(
 ): AutomationJobAdmission {
   return (c, job) => {
     const conversationId = job.target?.conversationId;
+    const owner = job.createdBy?.userId;
     if (requestMayBeAnAgent(c.req.raw)) {
       const authority = stationControlRequestAuthority(c.req.raw);
       if (authority?.kind !== 'caller') return TARGET_OUT_OF_SCOPE;
+      // #2377 slice D: an untargeted job's runs act as its owner, so only
+      // an agent acting for that same person may change or run it.
+      if (!job.target)
+        return owner !== undefined && authority.caller.principal?.id === owner
+          ? { ok: true }
+          : TARGET_OUT_OF_SCOPE;
       const own = authority.caller.conversationId ?? authority.caller.sessionId;
       return job.target?.kind === 'conversation' && conversationId === own
         ? { ok: true }
@@ -254,10 +338,21 @@ function admitAutomationJobFor(
         code: 'automation_target_person_required',
         error: 'Sign in again to change this automation.',
       };
+    // #2377 slice D, owner decision 2026-11-16: the operator in person (the
+    // operator credential or home-possession, never an agent, never an owner
+    // device) may manage ANY owned untargeted job. Its runs still act as the
+    // job's recorded owner, never as the operator.
+    if (
+      conversationId === undefined &&
+      requester.userId !== job.createdBy?.userId &&
+      !job.target &&
+      isOperatorAtHostNotAgent(c.req.raw)
+    )
+      return { ok: true, operatorOverride: true };
     const allowed =
       conversationId !== undefined
         ? requester.mayMutate(conversationId)
-        : requester.userId === job.createdBy?.userId;
+        : requester.userId === owner;
     return allowed
       ? { ok: true }
       : {
@@ -292,6 +387,16 @@ export function composeAgentSchedule(
         ),
     };
   };
+  const mayViewProjectJob = (c: Context, projectId: string) => {
+    if (requestMayBeAnAgent(c.req.raw)) return false;
+    const requester = person(c);
+    return (
+      !!requester &&
+      (isOperatorAtHostNotAgent(c.req.raw) ||
+        deps.principalMayInProject?.(requester.userId, projectId, 'view') ===
+          true)
+    );
+  };
   // Approves a restart cut short are open again, with or without an inbox.
   // Synchronous, before any route is served, and bounded by this start
   // time, so it can never undo an Approve this process claimed.
@@ -308,7 +413,7 @@ export function composeAgentSchedule(
         });
     } catch (error) {
       deps.logger.warn('could not reopen interrupted job proposal approvals', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -338,6 +443,108 @@ export function composeAgentSchedule(
       remote: false,
     });
   };
+  const proposals = deps.automationProposals;
+  const proposalStore = deps.hosted ? undefined : proposals?.store;
+  if (proposalStore) {
+    const startedAt = deps.now?.() ?? Date.now();
+    try {
+      const automations = proposals?.automations;
+      // An object an interrupted Confirm created is adopted; otherwise the
+      // proposal is open again. Unreadable configuration reconciles nothing.
+      const configuration = automations?.read();
+      const settled = configuration
+        ? proposalStore.reconcileInterrupted(
+            startedAt,
+            startedAt,
+            (createdId) =>
+              configuration.sources.some(({ id }) => id === createdId) ||
+              configuration.rules.some(({ id }) => id === createdId),
+          )
+        : { confirmed: 0, reopened: 0 };
+      if (settled.confirmed + settled.reopened > 0)
+        deps.logger.warn(
+          'settled automation proposals a restart left confirming',
+          settled,
+        );
+    } catch (error) {
+      deps.logger.warn('could not reopen interrupted automation proposals', {
+        error: errorMessage(error),
+      });
+    }
+  }
+  /**
+   * #4830: the Project/Agent pair resolved when the proposing chat could
+   * start work for this Agent in this Project itself: the same scope rule a
+   * dispatch answers, for the Project (with `execute`) and for the Agent's own
+   * Project, as its recorded owner. An operator's bound caller reaches every
+   * Project, so the Project and the Agent must also exist. The Agent is read
+   * once under the identity fence. Confirm checks its Project, definition
+   * digest and incarnation as well as the recorded caller's scope.
+   */
+  const bindAutomationTarget: AutomationProposalRoutesDeps['bind'] = async (
+    caller,
+    projectId,
+    agentId,
+    initialize,
+  ) => {
+    if (!proposals) return undefined;
+    const ownerId = caller.principal?.elevationEligible
+      ? caller.principal.id
+      : undefined;
+    const projectSlug = proposals.projectSlugForId(projectId);
+    if (ownerId === undefined || projectSlug === undefined) return undefined;
+    const projectTarget = deps.scope?.target(
+      { kind: 'new', ownerId, projectSlug, remote: false },
+      'execute',
+    );
+    if (stationControlScopeRefusal(caller, projectTarget)) return undefined;
+    // Throws when the Agent does not exist, which refuses.
+    const definition = await proposals.agentDefinition(agentId);
+    const agentProject = definition.project ?? null;
+    const agentTarget =
+      agentProject === null
+        ? {
+            ownerId,
+            scope: { kind: 'global' as const },
+            host: false,
+            remote: false,
+          }
+        : deps.scope?.target({
+            kind: 'new',
+            ownerId,
+            projectSlug: agentProject,
+            remote: false,
+          });
+    if (stationControlScopeRefusal(caller, agentTarget)) return undefined;
+    const agentIncarnation = proposals.agentIncarnation(agentId, initialize);
+    if (!agentIncarnation) return undefined;
+    return {
+      projectId,
+      projectSlug,
+      agentId,
+      agentProject,
+      agentDigest: agentDefinitionDigest(definition),
+      agentIncarnation,
+    };
+  };
+  const automationProposalRouteDeps: AutomationProposalRoutesDeps = {
+    isInternalRequest: deps.isInternalRequest,
+    store: proposalStore,
+    automations: proposals?.automations,
+    hosted: deps.hosted,
+    bind: bindAutomationTarget,
+    withAgentIdentity: (operation) =>
+      proposals ? proposals.withAgentIdentity(operation) : operation(),
+    // Unwired, fail closed: no caller may propose.
+    proposingTurn: (sessionId) => proposals?.proposingTurn(sessionId),
+    untrustedContent: async (conversationId) =>
+      (await proposals?.untrustedContent(conversationId)) ?? true,
+    projectName: (projectId) => proposals?.projectName(projectId),
+    person,
+    operator: async (request) => proposals?.operator(request),
+    logger: deps.logger,
+    ...(deps.now ? { now: deps.now } : {}),
+  };
   const routeDeps: AgentScheduleRoutesDeps = {
     isInternalRequest: deps.isInternalRequest,
     scope: deps.scope,
@@ -346,7 +553,42 @@ export function composeAgentSchedule(
     dispatchActor: deps.dispatchActor,
     person,
     jobAgentTarget,
+    ...(deps.projectSchedulesEnabled
+      ? { projectSchedulesEnabled: deps.projectSchedulesEnabled }
+      : {}),
+    // #5070: a Project schedule needs the same `execute` reach a dispatch
+    // into the Project answers.
+    jobProjectTarget: async (projectId, ownerId) => {
+      const projectSlug = proposals?.projectSlugForId(projectId);
+      if (ownerId === undefined || projectSlug === undefined) return undefined;
+      return deps.scope?.target(
+        { kind: 'new', ownerId, projectSlug, remote: false },
+        'execute',
+      );
+    },
     hosted: deps.hosted,
+    ...(proposalStore
+      ? {
+          // The mark as it is now beside the one recorded at proposal time:
+          // a chat marked after its agent proposed still warns (#4830 review).
+          // An unreadable mark reads as marked.
+          automationProposals: async (conversationId: string) => {
+            const open = proposalStore.openProposals(conversationId);
+            if (open.length === 0) return open;
+            let marked: boolean;
+            try {
+              marked =
+                (await proposals?.untrustedContent(conversationId)) ?? true;
+            } catch {
+              marked = true;
+            }
+            return open.map((proposal) => ({
+              ...proposal,
+              untrustedContentNow: marked,
+            }));
+          },
+        }
+      : {}),
     ...(deps.conversationAutomations
       ? { conversationAutomations: deps.conversationAutomations }
       : {}),
@@ -372,10 +614,16 @@ export function composeAgentSchedule(
   const composition: AgentScheduleComposition = {
     routeDeps,
     delivery,
+    automationProposalRouteDeps,
     person,
     admitAutomationTarget: admitAutomationTargetFor(deps, person),
+    jobOwner: jobOwnerFor(deps, person),
+    maySetProjectJob: (projectId, creatorId) =>
+      deps.projectExists?.(projectId) === true &&
+      deps.principalMayInProject?.(creatorId, projectId, 'execute') === true,
     admitAutomationJob: admitAutomationJobFor(person),
     mayReadAutomationJob: (c, job) => {
+      if (job.projectId) return mayViewProjectJob(c, job.projectId);
       if (requestMayBeAnAgent(c.req.raw)) {
         const authority = stationControlRequestAuthority(c.req.raw);
         if (authority?.kind !== 'caller') return false;
@@ -395,6 +643,7 @@ export function composeAgentSchedule(
     mayReadAutomationRun: (c, job, run) => {
       if (run.jobId && run.jobId !== job.unattendedPrincipal?.jobId)
         return false;
+      if (job.projectId && !mayViewProjectJob(c, job.projectId)) return false;
       const isAgent = requestMayBeAnAgent(c.req.raw);
       const requester = isAgent ? undefined : person(c);
       if (run.runTarget === undefined) {

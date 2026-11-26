@@ -1,0 +1,45 @@
+{
+  "revision": "9067aa8e8f4e4ae828f98353fe582e5be37d186c",
+
+  "notes": [
+    {"path":"docs/user/work-board.md","note":"Checked the mount refresh and conflict invalidation in the SDK and the pane's revision-matched projection, recovery action and title draft. Cleanup rechecks all selected pinned references with the request-bound resolver and refuses the selection if any result is other than missing. The revision check still guards the write and Undo restores the pins. An owner can change after its observation.","inputs":["docs/user/work-board.md","packages/sdk/src/spatial-board.ts","src-server/routes/spatial-board.ts","src-ui/src/workspace-panes/SpatialBoardControls.tsx","src-ui/src/workspace-panes/SpatialBoardPins.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Personal Work Board against both query hooks, conflict invalidation and the cleanup handler. Stored layout and revision remain separate from owner observations, and cleanup crosses the same request-bound resolver as the resolved read.","inputs":["docs/architecture/module-map.md","packages/sdk/src/spatial-board.ts","src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Traced the cleanup request through validation, revision and identity checks, request-bound resolution, conflict response, and the revision-checked store mutation. Other Spatial Board request and response shapes remain unchanged.","inputs":["docs/reference/api.md","src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Cleanup resolves only the exact identities present in the personal board, using the same request-bound owner as the resolved GET. This preserves the documented owner and authority limits.","inputs":["docs/guides/work-board-security.md","src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified the Work Board entry still links to the existing personal pane and guide. Refresh and cleanup changes do not change pane selection, opening, or navigation.","inputs":["docs/user/getting-started.md","docs/user/work-board.md"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Traced explicit check, disabled automatic query, and API-base/project/run cache scope through the mounted example. The plugin still uses the published Fieldwork 0.15.0 facade and returns only availability on success. The real unfinished fixture produced a redacted request error, and the mounted example made no output request on open, close or unmount. No production timing or remote transport was inferred.","inputs":["examples/fieldwork-review/README.md","examples/fieldwork-review/server/__tests__/plugin-server.test.ts","examples/fieldwork-review/server/plugin.mjs","examples/fieldwork-review/src/components.tsx","examples/fieldwork-review/src/hooks.ts","examples/fieldwork-review/src/index.tsx"]},
+
+    {"path":".veritas/README.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/guides/development.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]},
+
+    {"path":"docs/user/work-board.md","note":"The change is confined to the existing personal-mode cleanup route. It uses the existing router, resolver, revision store, error envelope and authority. No admission, process, deployment, repository, product-law or delegation boundary moved.","inputs":["src-server/routes/spatial-board.ts"]}
+  ]
+}

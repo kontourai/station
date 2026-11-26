@@ -59,6 +59,9 @@ beforeEach(async () => {
     command: process.execPath,
   });
   vi.spyOn(Client.prototype, 'connect').mockResolvedValue(undefined);
+  vi.spyOn(Client.prototype, 'getServerCapabilities').mockReturnValue({
+    tools: {},
+  });
   vi.spyOn(Client.prototype, 'listTools').mockResolvedValue({
     tools: [{ name: 'read', inputSchema: { type: 'object' } }],
   });

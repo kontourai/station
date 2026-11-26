@@ -1,0 +1,211 @@
+{
+  "revision": "fcab118f5bfbf3d0969629c65bd97da2a9746c27",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the status, retry and Withdraw Send actions. Only a durable withdrawal or identified provider turn releases an unresolved attempt. Draft and attachment ownership persists through refusal.","inputs":["docs/design/chat-composer.md","src-server/routes/orchestration/orchestration.ts","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/components/conversation/conversation-transport.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the owner-only DELETE and its atomic condition against the handoff reservation. The route cannot cancel a provider turn or an existing reservation.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked the owner-only DELETE and its atomic condition against the handoff reservation. The route cannot cancel a provider turn or an existing reservation.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Checked the authority-scoped withdrawal request and exact outcome requirement. Operations other than the new recovery action retain their existing transport and receipt handling.","inputs":["packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the authority-scoped withdrawal request and exact outcome requirement. Operations other than the new recovery action retain their existing transport and receipt handling.","inputs":["packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the authority-scoped withdrawal request and exact outcome requirement. Operations other than the new recovery action retain their existing transport and receipt handling.","inputs":["packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the authority-scoped withdrawal request and exact outcome requirement. Operations other than the new recovery action retain their existing transport and receipt handling.","inputs":["packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the owner fixture through the HTTP withdrawal and late POST, including provider non-start and a refusal for a key already reserved.","inputs":["src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the owner fixture through the HTTP withdrawal and late POST, including provider non-start and a refusal for a key already reserved.","inputs":["src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed the new DELETE for owner and request authority, input bounds, and withdrawal receipt. Other orchestration routes and foreground approval checks retain their paths.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked exact DELETE leaf registration at orchestration operate. The status GET remains an orchestration read.","inputs":["src-server/security/__tests__/pairing-route-scopes.test.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Checked exact local withdrawal scope. It uses orchestration operate and does not alter relay policy or public read scope.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked atomic keyed withdrawal and rejection inside reservation, plus conversation lineage cleanup. The focused test fails without the reservation check. Other event and context writers retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Checked atomic keyed withdrawal and rejection inside reservation, plus conversation lineage cleanup. The focused test fails without the reservation check. Other event and context writers retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked atomic keyed withdrawal and rejection inside reservation, plus conversation lineage cleanup. The focused test fails without the reservation check. Other event and context writers retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked atomic keyed withdrawal and rejection inside reservation, plus conversation lineage cleanup. The focused test fails without the reservation check. Other event and context writers retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Checked atomic keyed withdrawal and rejection inside reservation, plus conversation lineage cleanup. The focused test fails without the reservation check. Other event and context writers retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Checked atomic keyed withdrawal and rejection inside reservation, plus conversation lineage cleanup. The focused test fails without the reservation check. Other event and context writers retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked atomic keyed withdrawal and rejection inside reservation, plus conversation lineage cleanup. The focused test fails without the reservation check. Other event and context writers retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked atomic keyed withdrawal and rejection inside reservation, plus conversation lineage cleanup. The focused test fails without the reservation check. Other event and context writers retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked atomic keyed withdrawal and rejection inside reservation, plus conversation lineage cleanup. The focused test fails without the reservation check. Other event and context writers retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked atomic keyed withdrawal and rejection inside reservation, plus conversation lineage cleanup. The focused test fails without the reservation check. Other event and context writers retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked current authorized conversation-owner resolution before the atomic withdrawal. Other service queries, approval and context dispatch retain their semantics.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the dedicated recovery action for an expired unreserved request. Ordinary Send and approval controls continue through their existing owners.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the dedicated recovery action for an expired unreserved request. Ordinary Send and approval controls continue through their existing owners.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked the dedicated recovery action for an expired unreserved request. Ordinary Send and approval controls continue through their existing owners.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked the dedicated recovery action for an expired unreserved request. Ordinary Send and approval controls continue through their existing owners.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked the dedicated recovery action for an expired unreserved request. Ordinary Send and approval controls continue through their existing owners.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked withdrawal and status with the same captured Station authority as the staged Send. Direct and paired conversation transport contracts retain their scope.","inputs":["src-ui/src/components/conversation/conversation-transport.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked withdrawal and status with the same captured Station authority as the staged Send. Direct and paired conversation transport contracts retain their scope.","inputs":["src-ui/src/components/conversation/conversation-transport.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked withdrawal and status with the same captured Station authority as the staged Send. Direct and paired conversation transport contracts retain their scope.","inputs":["src-ui/src/components/conversation/conversation-transport.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked withdrawal and status with the same captured Station authority as the staged Send. Direct and paired conversation transport contracts retain their scope.","inputs":["src-ui/src/components/conversation/conversation-transport.ts"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked withdrawal and status with the same captured Station authority as the staged Send. Direct and paired conversation transport contracts retain their scope.","inputs":["src-ui/src/components/conversation/conversation-transport.ts"]}
+  ]
+}

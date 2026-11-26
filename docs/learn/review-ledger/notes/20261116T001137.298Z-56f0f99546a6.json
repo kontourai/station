@@ -1,0 +1,7 @@
+{
+  "revision": "6d5fdf39bb836c25b7b47b7c26a71ca71f7fcd3b",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Routes to code-quality.md for lint and ratchet rules; the added sentence about an unmeasurable ratchet run changes no routing or instruction here.","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md"]}
+  ]
+}

@@ -143,6 +143,30 @@ describe('CdpPipeTransport framing and correlation', () => {
 });
 
 describe('CdpPipeTransport close semantics', () => {
+  test('terminal diagnostics retain the first origin after pending rejection and repeated signals', async () => {
+    const pipe = fakePipe();
+    const observed: unknown[] = [];
+    const transport = new CdpPipeTransport(pipe.writable, pipe.readable, {
+      onTerminal: (event: unknown) => observed.push(event),
+    });
+    const requests = [
+      transport.send('A'),
+      transport.send('B', {}, 'secret-session'),
+    ];
+    const settled = Promise.allSettled(requests);
+    pipe.readable.emit('end');
+    pipe.readable.emit('close');
+    await transport.close();
+    expect(
+      (await settled).every((result) => result.status === 'rejected'),
+    ).toBe(true);
+    await expect(transport.closed).resolves.toBeUndefined();
+    expect(observed).toEqual([
+      { origin: 'readable-end', pending: 2, remaining: 0, saturated: false },
+    ]);
+    expect(JSON.stringify(observed)).not.toContain('secret-session');
+  });
+
   test('pipe end rejects every pending request and settles `closed`', async () => {
     const pipe = fakePipe();
     const transport = new CdpPipeTransport(pipe.writable, pipe.readable);
@@ -160,7 +184,10 @@ describe('CdpPipeTransport close semantics', () => {
 
   test('explicit close rejects pending, ends the write side, and refuses later sends', async () => {
     const pipe = fakePipe();
-    const transport = new CdpPipeTransport(pipe.writable, pipe.readable);
+    const observed: unknown[] = [];
+    const transport = new CdpPipeTransport(pipe.writable, pipe.readable, {
+      onTerminal: (event) => observed.push(event),
+    });
     const pending = transport.send('A');
     await transport.close();
     await expect(pending).rejects.toBeInstanceOf(CdpTransportClosedError);
@@ -172,16 +199,34 @@ describe('CdpPipeTransport close semantics', () => {
     });
     // No bytes were written for the refused send.
     expect(pipe.sent().map((m) => m.method)).toEqual(['A']);
+    expect(observed).toEqual([
+      { origin: 'caller-close', pending: 1, remaining: 0, saturated: false },
+    ]);
   });
 
   test('read and write errors close the transport and reject pending', async () => {
     for (const side of ['readable', 'writable'] as const) {
       const pipe = fakePipe();
-      const transport = new CdpPipeTransport(pipe.writable, pipe.readable);
+      const observed: unknown[] = [];
+      const transport = new CdpPipeTransport(pipe.writable, pipe.readable, {
+        onTerminal: (event) => {
+          observed.push(event);
+          throw new Error('diagnostic sink failed');
+        },
+      });
       const pending = transport.send('A');
       pipe[side].emit('error', new Error('EPIPE'));
       await expect(pending).rejects.toBeInstanceOf(CdpTransportClosedError);
       expect(transport.closeReason).toMatch(/EPIPE/);
+      await expect(transport.closed).resolves.toBeUndefined();
+      expect(observed).toEqual([
+        {
+          origin: side === 'readable' ? 'read-error' : 'write-error',
+          pending: 1,
+          remaining: 0,
+          saturated: false,
+        },
+      ]);
     }
   });
 

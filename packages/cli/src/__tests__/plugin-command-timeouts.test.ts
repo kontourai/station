@@ -115,8 +115,21 @@ describe('plugin commands report a deadline miss as a timeout (#369)', () => {
     const printed = await printedFailure(() =>
       install(GIT_SOURCE, [], parsed, null),
     );
-    // The preview answered; the deadline expired on the install itself.
-    expect(fetch).toHaveBeenCalledTimes(2);
+    // The preview answered; the deadline expired on the install itself. A
+    // read of the installed plugins (the not-active check, which tolerates a
+    // failed read) is the only other request.
+    const paths = fetch.mock.calls
+      .map(
+        ([input]) =>
+          new URL(String(input instanceof Request ? input.url : input))
+            .pathname,
+      )
+      .sort();
+    expect(paths).toEqual([
+      '/api/plugins',
+      '/api/plugins/install',
+      '/api/plugins/preview',
+    ]);
     expect(printed).toContain(WRITE_TIMEOUT);
     expect(printed).not.toContain('not reachable');
   });

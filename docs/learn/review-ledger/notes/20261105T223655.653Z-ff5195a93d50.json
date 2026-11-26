@@ -1,7 +1,0 @@
-{
-  "revision": "20f9ec6c462126d61a8d9c99ad936a6aa28cc899",
-
-  "notes": [
-    {"path":"docs/guides/machine-relationships.md","note":"Links to connections.md for setup and pairing steps only; the connections.md edit changes the phone-chip switching sentence, which this guide does not restate.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
-  ]
-}

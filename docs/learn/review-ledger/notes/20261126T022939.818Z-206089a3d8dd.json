@@ -1,0 +1,9 @@
+{
+  "revision": "a703505683a9d3b8818f5920296fd3c7bcf89fe9",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed mounted inbox coverage for native network path, polling intervals, and unknown read state. The added owned-steer recovery exercises the same inbox and leaves the cited network behavior unchanged.","inputs":["src-ui/src/__tests__/useConversationInbox.test.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed mounted inbox coverage for native network path, polling intervals, and unknown read state. The added owned-steer recovery exercises the same inbox and leaves the cited network behavior unchanged.","inputs":["src-ui/src/__tests__/useConversationInbox.test.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a99d98613c4e1cf6760fd15243ccf1bf426c4b94",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"Re-checked against the guardian change: skill edits, delegation and task control remain subject to approval; skill install/update/uninstall ask a person on every call except where an operator-enabled guardian allows it on Station's engine.","inputs":["examples/self-configuring-agent/README.md","src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}

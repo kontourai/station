@@ -1,7 +1,0 @@
-{
-  "revision": "d41d29ef25e7ac07f6246fca334daf6832ae8ec3",
-
-  "notes": [
-    {"path":"docs/reference/config.md","note":"Change under review (#4480 round three on fix/start-owner-gate-followups-20261103): an exit consumed while a thread's start is still underway records the start as settled so the start hook binds no interim owner; a replaced adapter's late session.started or session.exited settles only a thread that adapter still owns; settleStartEvent moved above publishObservedEvent's docblock. The single publishObservedEvent continue-gate and its scan-owned ordering are unchanged. Searched this document for owner-establishment, command-gate, start-hook, adapter-replacement and session.started/session.exited ownership claims: none describe them, so the prose citing orchestration-service.ts remains accurate.","inputs":["docs/reference/config.md","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

@@ -1,0 +1,7 @@
+{
+  "revision": "d479ad8d5290f7379cfdb24aec4ec18ddf8e3de3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Its VoltAgent adapter claim is about model-only input composition; the onEnd change (no abort counting, totalUsage) does not touch it.","inputs":["docs/architecture/module-map.md","src-server/runtime/frameworks/voltagent-adapter.ts"]}
+  ]
+}

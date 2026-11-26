@@ -1,0 +1,7 @@
+{
+  "revision": "caf947c82dab28bb4ed4c24798afcaa9b2d11991",
+
+  "notes": [
+    {"path":"docs/learn/media/agent-efficiency-working-configuration.png","note":"The stylesheet change only zeroes the bottom margin of .editor-field children of .project-sources__form, which only the repository source fields use; the working configuration form in this capture has none, so the captured image is unaffected.","inputs":["src-ui/src/views/project-settings/ProjectSourcesSection.css"]}
+  ]
+}

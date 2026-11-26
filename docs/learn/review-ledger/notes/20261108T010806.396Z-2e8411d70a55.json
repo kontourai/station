@@ -1,7 +1,0 @@
-{
-  "revision": "9065f79520a72288ebbe5ff3aa2e409c792bf6b9",
-
-  "notes": [
-    {"path":"docs/reference/config.md","note":"Searched the config reference for Agent prompt delivery, systemPrompt and feature previews. prompt row (system channel or first message) is still right; Station guidance is not an Agent config field and the Agent schema is unchanged. Nothing in the changed runtime-initialize.ts and station-runtime.ts wiring adds config keys or env vars.","inputs":["docs/reference/config.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

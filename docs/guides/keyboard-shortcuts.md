@@ -9,10 +9,10 @@ plain-language names.
   **Cancel** to leave both unchanged.
 - **Clear** removes a shortcut. **Restore default** returns the command to its
   current registered default binding, which may come from a plugin or command skill.
-- Each row has a context hint, with a technical hint under **Advanced**. These
-  currently come from the command's ID, not its actual availability rule; they
-  are not a live explanation of why a command can or cannot run.
-  [#2767](https://github.com/kontourai/station/issues/2767) tracks that correction.
+- Each row explains the registered condition. **Advanced** shows its exact
+  rule and explains how modal and input ownership can take priority. Commands
+  are listed when registered in the current view. A listed command with a
+  cleared binding shows **Not set**.
 - Some known browser-reserved combinations carry a warning. They may work more reliably
   in the desktop app because a browser can intercept them first.
 
@@ -40,10 +40,10 @@ usual group. Rows with a shortcut show it.
 Type to search. Results are grouped into commands, actions (such as opening the
 chat dock, a new Board, the tour, **Troubleshoot an issue** or **Report a problem**), places to go,
 plugins, Settings rows, open chats, Projects, workspace panes, Agents and
-skills. After two characters it also searches indexed conversation messages.
+skills. After two characters it also searches chat messages.
 Among close matches, items you use often rank higher; **Reset command history**
 clears that. Choose
-**Workspace search (this Station)** at the top to switch to workspace search.
+**Search Tasks and messages** at the top to switch to workspace search.
 
 A command row shows its current shortcut, if it has one, so the palette doubles
 as a way to learn them.
@@ -79,13 +79,30 @@ composition. During a turn, the shortcut uses the composer's selected Queue or
 Steer mode. The same keys start a chat from the Home, Project page and New chat
 composers. This preference is included in device-settings export/import.
 
-## Restore a dismissed conversation
+## Undo the last action
 
-After dismissing an inbox conversation, choose **Undo** in the toast or press
-**⌘Z** on macOS / **Ctrl+Z** on Windows and Linux. **Undo inbox dismissal** can
-be rebound in Keyboard shortcuts. The command declines inside text fields,
-contenteditable editors, CodeMirror and terminals, preserving their own Undo.
-Dismissal does not stop work or delete conversation history.
+After an action that offers **Undo** in a notice, press **⌘Z** on macOS or
+**Ctrl+Z** on Windows and Linux to undo the most recent one. This covers
+deleting a Board, moving it into a Project, dismissing an inbox conversation and
+hiding a third-party session. **Undo last action** is the only command on that
+key and can be rebound in Keyboard shortcuts. It declines inside text fields,
+contenteditable editors, CodeMirror and terminals, preserving their own Undo,
+and does nothing when no notice is waiting. Each press undoes one action,
+newest first, among the notices still on screen; choose **Undo** in a notice
+to pick which. If an Undo can no longer apply, the notice says why.
+
+Only the latest inbox **Mark done** keeps its notice: marking a second
+conversation done closes the first one's, so a second press does not bring the
+first back. Once its notice has gone, the conversation is brought back by
+searching the inbox for it and choosing **Reopen** under **Marked done**.
+Mark done does not stop work or delete conversation history. Mark done on the
+inbox page, a phone bulk Mark done and Discard draft use the same one notice.
+The bell popover's per-row Undo is a button in the row and does not answer
+**⌘Z**. Changing Station
+closes the notice, so its Undo is not offered for another Station.
+
+A key saved for the removed **Undo inbox dismissal** command no longer does
+anything; rebind **Undo last action** in Keyboard shortcuts instead.
 
 ## Dispatch and limits
 
@@ -105,10 +122,10 @@ including when restoring a default. It does not analyze all conditional overlaps
 or guarantee that every chord is conflict-free. The catalog also depends on which
 components have registered their commands in the current view.
 
-Custom bindings containing Space currently store a key name that does not match
-the standard keyboard event. [#2771](https://github.com/kontourai/station/issues/2771)
-tracks the capture-to-dispatch correction; the defect was reproduced through
-the mounted editor and registry with DOM events.
+Space works as a shortcut key, including in existing saved bindings. A bare
+Space binding lets a focused text field or control use the key. A chord with
+Control, Command, or Alt still follows the command's normal focus and modal
+rules.
 
 The [keyboard shortcut module](https://github.com/kontourai/station/blob/main/docs/architecture/module-map.md#keyboard-shortcuts)
 connects these rules to the editor, registry, device store, import/export owner

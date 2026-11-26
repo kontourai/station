@@ -1,0 +1,11 @@
+{
+  "revision": "1b1f42a6c7b9854525fb66d301b1e370394668ce",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked every page citing ChatMessageList (chat-composer, ai-ui-bridge-expansion, placement): only chat-composer describes the hold, updated in this change.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked every page citing ChatMessageList (chat-composer, ai-ui-bridge-expansion, placement): only chat-composer describes the hold, updated in this change.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked every page citing ChatMessageList (chat-composer, ai-ui-bridge-expansion, placement): only chat-composer describes the hold, updated in this change.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

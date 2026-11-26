@@ -1,0 +1,7 @@
+{
+  "revision": "94b4022f8b176675d039f3934878f2e8a4fab029",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the combined phone first-run path. The browser chooses From a repository and opens the existing-folder control, while the test uses its own Git checkout under the Playwright output directory.","inputs":["tests/first-run-live.spec.ts"]}
+  ]
+}

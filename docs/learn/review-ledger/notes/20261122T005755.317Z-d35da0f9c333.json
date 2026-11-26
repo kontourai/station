@@ -1,0 +1,9 @@
+{
+  "revision": "81775e029d59043848244ed3acdf95cf04e45d5f",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Verified the documented recovery route against the existing main-qualification dispatch, exact-source receipt reuse and the delivery-validation graph. The focused GitHub API fixture reproduced the previous premature closure and checked whole-family delivery recovery.","inputs":["docs/guides/releasing.md","scripts/qualification-health.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Compared the health tracker with the separate main qualification and Nightly job graphs. A validation failure stays open through publication, skipped checks, or partial families and clears after all five hosted validation families succeed. Existing workflow, source and publication gate authority is unchanged.","inputs":["scripts/qualification-health.mjs"]}
+  ]
+}

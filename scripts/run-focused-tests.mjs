@@ -81,12 +81,12 @@ export function resolveFocusedTestFiles(args, root = SCRIPT_ROOT) {
 /**
  * @param {readonly string[]} args
  * @param {string} [root]
- * @param {{ testTimeoutMs?: number }} [options]
+ * @param {{ testTimeoutMs?: number, reportProgress?: boolean }} [options]
  */
 export function buildFocusedVitestInvocation(
   args,
   root = SCRIPT_ROOT,
-  { testTimeoutMs } = {},
+  { testTimeoutMs, reportProgress = false } = {},
 ) {
   if (
     testTimeoutMs !== undefined &&
@@ -149,6 +149,12 @@ export function buildFocusedVitestInvocation(
       ...(testTimeoutMs === undefined
         ? []
         : [`--testTimeout=${testTimeoutMs}`]),
+      ...(reportProgress
+        ? [
+            '--reporter=default',
+            `--reporter=${path.join(realRoot, 'scripts', 'vitest-inflight-reporter.mjs')}`,
+          ]
+        : []),
     ],
   };
 }
@@ -236,7 +242,7 @@ export function focusedVitestVerdict({
 
 /**
  * @param {readonly string[]} args
- * @param {{ root?: string, spawnProcess?: typeof spawn, assertDependencyProvenance?: typeof assertWorkspacePackageProvenance, testTimeoutMs?: number }} [options]
+ * @param {{ root?: string, spawnProcess?: typeof spawn, assertDependencyProvenance?: typeof assertWorkspacePackageProvenance, testTimeoutMs?: number, reportProgress?: boolean }} [options]
  */
 export async function runFocusedTests(
   args,
@@ -245,11 +251,13 @@ export async function runFocusedTests(
     spawnProcess = spawn,
     assertDependencyProvenance = assertWorkspacePackageProvenance,
     testTimeoutMs,
+    reportProgress = false,
   } = {},
 ) {
   assertDependencyProvenance({ cwd: root });
   const invocation = buildFocusedVitestInvocation(args, root, {
     testTimeoutMs,
+    reportProgress,
   });
   process.stdout.write(
     `[test:focused] root=${invocation.root}; files=${invocation.tests.length}\n`,
@@ -264,7 +272,7 @@ export async function runFocusedTests(
     reportDirectory = mkdtempSync(path.join(reportsRoot, 'focused-selection-'));
     reportPath = path.join(reportDirectory, 'result.json');
     invocation.args.push(
-      '--reporter=default',
+      ...(!reportProgress ? ['--reporter=default'] : []),
       '--reporter=json',
       `--outputFile.json=${reportPath}`,
     );

@@ -7,7 +7,7 @@ import { describe, expect, test } from 'vitest';
 // Vitest stubs stylesheets, so these cost nothing but put the test in the
 // graph.
 import '../components/chat/chat.css';
-import '../components/chat/ConversationHandoff.css';
+import '../components/chat/TranscriptChangeMarker.css';
 import '../components/chat/TaskPicker.css';
 import '../index.css';
 
@@ -17,8 +17,8 @@ const chatCss = readFileSync(
   join(uiRoot, 'components', 'chat', 'chat.css'),
   'utf8',
 );
-const handoffCss = readFileSync(
-  join(uiRoot, 'components', 'chat', 'ConversationHandoff.css'),
+const transcriptChangeCss = readFileSync(
+  join(uiRoot, 'components', 'chat', 'TranscriptChangeMarker.css'),
   'utf8',
 );
 const turnActionsMenu = readFileSync(
@@ -95,24 +95,21 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
   });
 
   test('handoff cards and completed-answer controls use the same responsive flow instead of a centered long action', () => {
-    const handoff = rule(handoffCss, '.conversation-handoff-boundary');
+    // chat-24: the engine-switch row is a centred transcript marker now; it
+    // still spans the row and may shrink rather than overflow it.
+    const handoff = rule(transcriptChangeCss, '.transcript-change');
     const task = rule(taskPicker, '.task-picker');
 
     expect(handoff).toContain('width: 100%');
-    expect(handoff).toContain('margin: 12px 0');
-    expect(handoff).toContain('text-align: left');
-    // Scoped to the actions cluster's OWN rule. `.turn-footer__actions` also
-    // appears as a descendant in the 480px block and under
-    // `.message-details__body`, so the selector is anchored to a line start:
-    // an unanchored `indexOf('.turn-footer__actions {')` resolves to the media
-    // block first. Whole-file `toContain('flex-wrap: wrap')` /
-    // `toContain('justify-content: flex-end')` used to stand here and were
-    // satisfied by unrelated rules elsewhere in this 2.4k-line sheet -- this
-    // cluster declares neither.
+    expect(handoff).toContain('min-width: 0');
+    expect(handoff).toContain('box-sizing: border-box');
+    // Anchor to the base rule. A descendant or media-query declaration
+    // cannot prove the action cluster fits its own share of the footer.
     const actions = /\n\.turn-footer__actions\s*\{([^}]*)\}/.exec(chatCss)?.[1];
     expect(actions, "the .turn-footer__actions rule's own body").toBeDefined();
     expect(actions).toContain('align-self: flex-end');
-    expect(actions).toContain('flex: 0 0 auto');
+    expect(actions).toContain('flex: 0 1 auto');
+    expect(actions).toContain('max-width: 100%');
     // ...and the responsive half: at <=480px the footer is a column, so the
     // cluster moves to the reading edge rather than staying at the far one.
     // Since the #926 amendment the cluster is `.turn-footer__bar` (the
@@ -182,11 +179,9 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(chatCss).toMatch(
       /\n\.turn-footer__actions \{[^}]*align-self: flex-end;/s,
     );
-    // Replaces a `getComputedStyle(...).flexWrap` assertion that could not
-    // fail: vitest stubs CSS imports, and `nowrap` is the initial value, so it
-    // passed with no stylesheet loaded at all.
+    // The action cluster wraps inside a constrained footer on narrow docks.
     expect(chatCss).toMatch(
-      /\n\.turn-footer__actions \{[^}]*flex-wrap: nowrap;/s,
+      /\n\.turn-footer__actions \{[^}]*flex-wrap: wrap;/s,
     );
     const narrowRuleStart = chatCss.lastIndexOf(
       '.turn-footer .turn-footer__bar {',

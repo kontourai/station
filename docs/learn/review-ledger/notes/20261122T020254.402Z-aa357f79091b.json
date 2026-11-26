@@ -1,0 +1,15 @@
+{
+  "revision": "8d861da1494bb0518bd049acf9b2c419a87383ef",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked citing pages (module map continuation and nextTurnStartsSession paragraphs, agent-runtime CONTEXT, monument docs): four handoff refusals and the reserved-tail refusal now carry codes; their conditions, messages and nextTurnStartsSession reporting are unchanged.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked citing pages (module map continuation and nextTurnStartsSession paragraphs, agent-runtime CONTEXT, monument docs): four handoff refusals and the reserved-tail refusal now carry codes; their conditions, messages and nextTurnStartsSession reporting are unchanged.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked citing pages (module map continuation and nextTurnStartsSession paragraphs, agent-runtime CONTEXT, monument docs): four handoff refusals and the reserved-tail refusal now carry codes; their conditions, messages and nextTurnStartsSession reporting are unchanged.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked citing pages (module map continuation and nextTurnStartsSession paragraphs, agent-runtime CONTEXT, monument docs): four handoff refusals and the reserved-tail refusal now carry codes; their conditions, messages and nextTurnStartsSession reporting are unchanged.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked citing pages (module map continuation and nextTurnStartsSession paragraphs, agent-runtime CONTEXT, monument docs): four handoff refusals and the reserved-tail refusal now carry codes; their conditions, messages and nextTurnStartsSession reporting are unchanged.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]}
+  ]
+}

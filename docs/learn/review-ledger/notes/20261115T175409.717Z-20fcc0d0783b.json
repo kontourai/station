@@ -1,0 +1,7 @@
+{
+  "revision": "65ccf6e0cdb5e3a9de82825c2836d3190991c50b",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"ComposerChoice's safety mark moved beside the value as a non-shrinking span; layout claims (truncation, 44px targets, sheet owns choices) unchanged.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ComposerChoice.css","src-ui/src/components/ComposerChoice.tsx"]}
+  ]
+}

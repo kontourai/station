@@ -1,0 +1,7 @@
+{
+  "revision": "498cca03db1d74f1877484478d4859d81caa18b7",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked against the shared refusal sentence now exported from managed-model-binding and thrown at both provider-service sites: the sentence and the cascade that throws it are unchanged, so the default-connection and ambiguity claims here are as before.","inputs":["docs/guides/connections.md","packages/contracts/src/managed-model-binding.ts","src-server/services/connections/provider-service.ts"]}
+  ]
+}

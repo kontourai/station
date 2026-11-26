@@ -1,7 +1,0 @@
-{
-  "revision": "35c0dd81a584a371852bc26a11af65e41bdf1aba",
-
-  "notes": [
-    {"path":"docs/architecture/abstraction-review.md","note":"#4515 integration: docs/reference/cli.md now says station policy check prints the number of limits a policy sets. Checked this doc's references to the CLI reference; none concerns station policy output.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]}
-  ]
-}

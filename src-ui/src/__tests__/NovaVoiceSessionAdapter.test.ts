@@ -41,6 +41,7 @@ function flush(): Promise<void> {
 function createHarness(options?: {
   getUserMedia?: () => Promise<MediaStream>;
   fetchVoicePort?: () => Promise<number>;
+  credential?: string;
 }) {
   const socket = new FakeSocket();
   const source = {
@@ -65,7 +66,8 @@ function createHarness(options?: {
     close: vi.fn(async () => undefined),
   } as unknown as AudioContext;
   const track = vi.fn();
-  const createSocket = vi.fn(() => socket as unknown as WebSocket);
+  const createSocket = vi.fn((_url: string) => socket as unknown as WebSocket);
+  const authGateRemote: boolean[] = [];
   const createVoiceSession = vi.fn(async () => ({ sessionId: 'rest-session' }));
   class FakeAudioWorkletNode {
     readonly port = { onmessage: null };
@@ -78,7 +80,7 @@ function createHarness(options?: {
     apiBase: 'http://localhost:3000',
     connectionId: 'direct-1',
     credentialProvider: {
-      getCredential: () => undefined,
+      getCredential: () => options?.credential,
       getProtocolVersion: () => 1,
     },
     pageHref: () => 'http://localhost:5173/',
@@ -91,13 +93,17 @@ function createHarness(options?: {
     createVoiceSession,
     deriveVoiceWsUrl: () => 'ws://localhost:3002/?agent=station-voice',
     isRemoteEndpoint: () => false,
-    createAuthGate: (_remote, _credentials, onAuthenticated) => ({
-      open: () => onAuthenticated(),
-      consume: () => false,
-    }),
+    createAuthGate: (remote, _credentials, onAuthenticated) => {
+      authGateRemote.push(remote);
+      return {
+        open: () => onAuthenticated(),
+        consume: () => false,
+      };
+    },
     track,
   };
   return {
+    authGateRemote,
     adapter: new NovaVoiceSessionAdapter(dependencies),
     context,
     socket,
@@ -123,6 +129,30 @@ async function startHarness(harness: ReturnType<typeof createHarness>) {
 }
 
 describe('NovaVoiceSessionAdapter', () => {
+  // #2377 slice D: a voice session's Station tools act for the signed-in
+  // person, so a loopback client that holds a credential presents it.
+  it('a loopback client with a credential asks to authenticate and presents it', async () => {
+    const harness = createHarness({ credential: 'station-credential' });
+    void harness.adapter.start();
+    await flush();
+    const url = new URL(String(harness.createSocket.mock.calls[0]?.[0]));
+    expect(url.searchParams.get('authenticate')).toBe('1');
+    // Never the credential itself in the URL.
+    expect(url.toString()).not.toContain('station-credential');
+    expect(harness.authGateRemote).toEqual([true]);
+  });
+
+  // The local UI holds no readable credential: its HttpOnly device cookie
+  // rides the loopback upgrade, so the client asks for no auth frame.
+  it('a loopback client with no readable credential connects without an auth frame (its cookie authenticates)', async () => {
+    const harness = createHarness();
+    void harness.adapter.start();
+    await flush();
+    const url = new URL(String(harness.createSocket.mock.calls[0]?.[0]));
+    expect(url.searchParams.has('authenticate')).toBe(false);
+    expect(harness.authGateRemote).toEqual([false]);
+  });
+
   it('rechecks selected-route policy after voice port lookup before opening a socket', async () => {
     let releasePort!: (port: number) => void;
     const port = new Promise<number>((resolve) => {

@@ -38,7 +38,12 @@ import {
   publishReferenceableConversations,
 } from '../../chat/conversationReferenceDrag';
 import { InboxGroupList, InboxRow } from '../../chat-dock/ChatDockInboxRows';
+import {
+  resetPendingUndoForTest,
+  undoLatestAction,
+} from '../../undo/UndoableActionShortcut';
 import { inboxRowChips } from '../inbox-row-chips';
+import { snoozeChoices } from '../snooze-presets';
 
 // The details sheet's on-demand reads (git, pull requests, basis) need a
 // connection scope; with none they stay disabled, which is all these tests
@@ -65,6 +70,27 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   dispatchOrchestrationCommandWithReceipt: discardCommand,
 }));
+
+const resolutionState = vi.hoisted(() => ({
+  supported: false,
+  settled: {} as Record<string, string>,
+  mutate: vi.fn(),
+}));
+vi.mock('../../chat-dock/useConversationWorkState', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../chat-dock/useConversationWorkState')
+    >();
+  return {
+    ...actual,
+    useConversationWorkState: () => ({
+      ...actual.useConversationWorkState(),
+      supported: resolutionState.supported,
+      settled: resolutionState.settled,
+      change: { isPending: false, mutate: resolutionState.mutate },
+    }),
+  };
+});
 
 const NOW = Date.parse('2026-09-30T10:01:15.000Z');
 
@@ -124,7 +150,6 @@ function renderRow(
         facts={row.facts}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat={false}
         now={NOW}
         onActivate={vi.fn()}
         hoverCard={false}
@@ -143,18 +168,13 @@ function statusText(): string {
   return clone.textContent ?? '';
 }
 
-/** What a screen reader is told about the row: its description, with
- *  `aria-hidden` content left out as the accessibility tree leaves it out. */
+// The off-screen reason and duration are directly referenced even when
+// hidden from the button's name.
 function describedText(): string {
   const open = screen.getByTestId('inbox-row').querySelector('button')!;
   return (open.getAttribute('aria-describedby') ?? '')
     .split(' ')
-    .map((id) => {
-      const clone = document.getElementById(id)?.cloneNode(true) as Element;
-      for (const hidden of clone.querySelectorAll('[aria-hidden="true"]'))
-        hidden.remove();
-      return clone.textContent ?? '';
-    })
+    .map((id) => document.getElementById(id)?.textContent ?? '')
     .join(' ');
 }
 
@@ -235,7 +255,7 @@ describe('the row says exactly what the ladder says', () => {
     expect(statusText()).toBe('Needs approval');
     expect(screen.queryByRole('button', { name: /approve|deny/i })).toBeNull();
     screen
-      .getByRole('button', { name: 'Migrate sessions table, station' })
+      .getByRole('button', { name: /^Migrate sessions table.*station/ })
       .click();
     expect(onActivate).toHaveBeenCalledWith(row.item);
   });
@@ -273,7 +293,7 @@ describe('the row says exactly what the ladder says', () => {
     healthy.unmount();
 
     renderRow(rowFor({ turnProgress: SILENCE }));
-    expect(statusText()).toBe('No progress · Bash · 6m');
+    expect(statusText()).toBe('No progress · Bash · 6m 0s');
     expect(screen.getByTestId('inbox-row-status').dataset.tone).toBe('caution');
     expect(glyphPath()).toBeTruthy();
     expect(glyphPath()).not.toBe(healthyGlyph);
@@ -283,24 +303,30 @@ describe('the row says exactly what the ladder says', () => {
 });
 
 describe('what a screen reader and a ticking clock each get', () => {
-  it('describes the row by its status, with a coarse duration instead of the ticking one', () => {
+  it('names the visible status once and describes the coarse duration', () => {
     renderRow(rowFor());
-    expect(statusText()).toBe('Running · Bash · 1m');
+    expect(statusText()).toBe('Running · Bash · 1m 12s');
     // The per-second number is hidden from the description; a duration that
     // only moves with the host's clock stands in for it.
-    expect(describedText()).toBe('Running · Bash, for about 1 minute');
+    expect(
+      screen.getByRole('button', {
+        name: /^Migrate sessions table.*Running · Bash.*station/,
+        description: /^for about 1 minute$/,
+      }),
+    ).toBeTruthy();
+    expect(describedText()).toBe('for about 1 minute');
   });
 
   it('ticks once a second', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     renderRow(rowFor());
-    expect(statusText()).toBe('Running · Bash · 1m');
+    expect(statusText()).toBe('Running · Bash · 1m 12s');
     act(() => {
       vi.advanceTimersByTime(48_000);
     });
     // 72s + 48s: the shared clock moved the duration to the next minute.
-    expect(statusText()).toBe('Running · Bash · 2m');
+    expect(statusText()).toBe('Running · Bash · 2m 0s');
   });
 
   it('shows the real elapsed time even when the list clock is 30s stale', () => {
@@ -309,11 +335,11 @@ describe('what a screen reader and a ticking clock each get', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     renderRow(rowFor(), { now: NOW - 30_000 });
-    expect(statusText()).toBe('Running · Bash · 1m');
+    expect(statusText()).toBe('Running · Bash · 1m 12s');
     act(() => {
       vi.advanceTimersByTime(48_000);
     });
-    expect(statusText()).toBe('Running · Bash · 2m');
+    expect(statusText()).toBe('Running · Bash · 2m 0s');
   });
 
   it('a host re-rendering with a fresh now does not restart the ticker', () => {
@@ -333,7 +359,6 @@ describe('what a screen reader and a ticking clock each get', () => {
           facts={row.facts}
           isCurrent={false}
           isSnoozed={false}
-          isOpenChat={false}
           now={NOW + 48_000}
           onActivate={vi.fn()}
           hoverCard={false}
@@ -341,7 +366,7 @@ describe('what a screen reader and a ticking clock each get', () => {
       </QueryClientProvider>,
     );
     expect(setIntervalSpy.mock.calls.length).toBe(started);
-    expect(statusText()).toBe('Running · Bash · 2m');
+    expect(statusText()).toBe('Running · Bash · 2m 0s');
     setIntervalSpy.mockRestore();
   });
 
@@ -363,9 +388,12 @@ describe('a reason is readable in full on every surface', () => {
     expect(screen.getByTestId('inbox-row-failure-reason').textContent).toBe(
       FAILED.terminalAttribution.detail,
     );
-    expect(describedText()).toBe(
-      `Failed · ${FAILED.terminalAttribution.detail}`,
-    );
+    expect(
+      screen.getByRole('button', {
+        name: /^Migrate sessions table.*Failed.*The engine reported an error/,
+      }),
+    ).toBeTruthy();
+    expect(describedText()).toBe('');
   });
 
   it('the unanswerable basis is on the row and in its description', () => {
@@ -403,9 +431,7 @@ describe('a reason is readable in full on every surface', () => {
   it('a slim failed row shows the word and still describes the reason', () => {
     renderRow(rowFor(FAILED), { size: 'slim' });
     expect(statusText()).toBe('Failed');
-    expect(describedText()).toBe(
-      `Failed · ${FAILED.terminalAttribution.detail}`,
-    );
+    expect(describedText()).toBe(FAILED.terminalAttribution.detail);
   });
 
   it('touch chrome opens the card as a sheet holding every fact the row leaves off', async () => {
@@ -505,24 +531,54 @@ describe('the chip line exists only when a chip does', () => {
     expect(
       [...document.querySelectorAll('.inbox-row__chip')].map((chip) => [
         chip.getAttribute('data-chip'),
-        chip.textContent,
+        chip.textContent?.trim(),
       ]),
     ).toEqual([
-      ['remote', 'home-media'],
+      ['remote', 'Station: home-media'],
       ['woke', 'Woke from snooze'],
     ]);
-    // #4266: no full-line "Unsent draft" chip. A pencil on the meta line,
+    // #4266: no full-line "Unsent draft" chip. A pencil after the project,
     // hidden from assistive tech: the row's name already says it.
     const marker = screen.getByTestId('inbox-row-draft-marker');
     expect(marker.getAttribute('title')).toBe('Unsent draft');
     expect(marker.getAttribute('aria-hidden')).toBe('true');
-    expect(marker.closest('.inbox-row__meta')).not.toBeNull();
+    expect(marker.closest('.inbox-row__context')).not.toBeNull();
     expect(screen.queryByText('Unsent draft')).toBeNull();
     expect(
-      screen.getByRole('button', { name: /, unsent draft$/ }),
+      screen.getByRole('button', { name: /\bunsent draft$/ }),
     ).toBeTruthy();
     act(() => chatDraftsStore.clear('chat-with-draft'));
     expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
+  });
+
+  it('shows peer Station provenance from work facts with a project mark', () => {
+    const row = rowFor();
+    renderRow({
+      ...row,
+      facts: {
+        ...row.facts!,
+        station: { id: 'peer-1', label: 'Build Station' },
+      },
+    });
+    expect(screen.getByText('Station: Build Station')).toBeTruthy();
+    expect(document.querySelector('.project-icon')).not.toBeNull();
+  });
+
+  it('does not borrow host artwork or colour for a peer-bound chat with the same project slug', () => {
+    const row = rowFor();
+    renderRow(
+      {
+        ...row,
+        facts: {
+          ...row.facts!,
+          station: { id: 'peer', label: 'Peer Station' },
+        },
+      },
+      { projectIcon: '🚀', projectAccent: '#ff8800' },
+    );
+    expect(document.querySelector('.project-icon--icon')).toBeNull();
+    expect(document.querySelector('.project-icon--initials')).not.toBeNull();
+    expect(document.querySelector('[data-project-icon="dot"]')).toBeNull();
   });
 
   it('the chip derivation, fact by fact', () => {
@@ -532,33 +588,33 @@ describe('the chip line exists only when a chip does', () => {
     ]);
     expect(inboxRowChips({}, { isWoken: false })).toEqual([]);
     expect(inboxRowChips({ environmentLabel: 'box' })).toEqual([
-      { kind: 'remote', label: 'box' },
+      { kind: 'remote', label: 'Station: box' },
     ]);
   });
 });
 
 describe('the picker project line draws one project mark (#4266)', () => {
-  it('a project without an icon shows the folder alone, never folder plus colour dot', () => {
+  it('a project without an icon shows one initials mark beside its name', () => {
     const { container } = renderRow(rowFor(), {
       actionsInDetails: true,
       chrome: 'touch',
       projectAccent: '#ff8800',
     });
-    const line = container.querySelector('.inbox-row__project-context')!;
-    expect(line.querySelectorAll('svg')).toHaveLength(1);
+    const line = container.querySelector('.inbox-row__project-line')!;
+    expect(line.querySelectorAll('.project-icon--initials')).toHaveLength(1);
     expect(line.querySelector('[data-project-icon]')).toBeNull();
     expect(line.querySelector('.inbox-row__project')?.textContent).toBeTruthy();
   });
 
-  it('a project with its own icon shows that icon instead of the folder', () => {
+  it('a project with its own icon shows that icon instead of initials', () => {
     const { container } = renderRow(rowFor(), {
       actionsInDetails: true,
       chrome: 'touch',
       projectAccent: '#ff8800',
       projectIcon: '🚀',
     });
-    const line = container.querySelector('.inbox-row__project-context')!;
-    expect(line.querySelector('svg')).toBeNull();
+    const line = container.querySelector('.inbox-row__project-line')!;
+    expect(line.querySelector('.project-icon--initials')).toBeNull();
     expect(line.querySelector('.project-icon--icon')?.textContent).toBe('🚀');
   });
 
@@ -570,7 +626,7 @@ describe('the picker project line draws one project mark (#4266)', () => {
         { ...base, item: { ...base.item, chatSessionId: 'picker-draft' } },
         { actionsInDetails: true, chrome: 'touch' },
       );
-      const line = container.querySelector('.inbox-row__project-context')!;
+      const line = container.querySelector('.inbox-row__project-line')!;
       expect(
         line.querySelector('[data-testid="inbox-row-draft-marker"]'),
       ).not.toBeNull();
@@ -585,7 +641,7 @@ describe('the picker project line draws one project mark (#4266)', () => {
       actionsInDetails: true,
       chrome: 'touch',
     });
-    const text = container.querySelector('.inbox-row__meta-text');
+    const text = container.querySelector('.inbox-row__agent');
     expect(text?.className).not.toContain('sr-only');
     expect(container.querySelector('.inbox-row__agent')?.textContent).toBe(
       rowFor().item.agentLabel,
@@ -617,16 +673,48 @@ describe('two sizes and two chromes', () => {
     );
   });
 
-  it('hover chrome offers snooze, named and with a tooltip, and no separate open control', () => {
-    renderRow(rowFor(), { onSnoozeWake: vi.fn() });
-    const snooze = screen.getByRole('button', {
-      name: 'Snooze Migrate sessions table',
+  it('hover chrome puts the row actions behind one ⋯ menu, in the one order', () => {
+    const row = rowFor({ hasActiveTurn: false });
+    const onActivate = vi.fn();
+    const onSnoozeWake = vi.fn();
+    renderRow(row, {
+      onActivate,
+      onSnoozeWake,
+      done: { done: false, onSelect: vi.fn() },
     });
-    expect(snooze.getAttribute('title')).toBe('Snooze');
-    // One control that opens the duration choice; never a one-tap default.
-    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
-    // The row itself opens; a second control would be a redundant tab stop.
-    expect(screen.queryByRole('button', { name: /^Open / })).toBeNull();
+    const more = screen.getByRole('button', {
+      name: 'Actions for Migrate sessions table',
+    });
+    expect(more.getAttribute('aria-haspopup')).toBe('menu');
+    // The row itself opens; no other control sits beside the menu.
+    expect(
+      document.querySelectorAll('.inbox-row__actions button'),
+    ).toHaveLength(1);
+    fireEvent.click(more);
+    const menu = screen.getByRole('menu');
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.firstChild?.textContent),
+    ).toEqual([
+      'Open chat',
+      'Mark done',
+      ...snoozeChoices(NOW).map((choice) => choice.label),
+    ]);
+    // Each snooze choice says the time it ends.
+    const [first] = snoozeChoices(NOW);
+    expect(
+      within(menu).getByRole('menuitem', {
+        name: new RegExp(`^${first.label},`),
+      }).textContent,
+    ).toBe(`${first.label}, ${first.hint}`);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Open chat' }));
+    expect(onActivate).toHaveBeenCalledWith(row.item);
+    fireEvent.click(more);
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: new RegExp(`^${first.label},`) }),
+    );
+    expect(onSnoozeWake).toHaveBeenCalledWith(row.item, first.wakeAt, more);
   });
 
   const directActions = () =>
@@ -636,19 +724,18 @@ describe('two sizes and two chromes', () => {
 
   it('touch chrome shows Details and one direct action; the rest are buttons in the sheet', async () => {
     const onSnoozeWake = vi.fn();
-    const onCloseChat = vi.fn();
+    const onSelect = vi.fn();
     const base = rowFor();
     renderRow(
       { ...base, item: { ...base.item, chatSessionId: 'tab-1' } },
       {
         chrome: 'touch',
         hoverCard: true,
-        isOpenChat: true,
         onSnoozeWake,
-        onCloseChat,
+        done: { done: false, onSelect },
       },
     );
-    // Snooze is the live row's one direct action; close moved to the sheet.
+    // Snooze is the live row's one direct action; Mark done is in the sheet.
     expect(directActions()).toEqual([
       'Details for Migrate sessions table',
       'Snooze Migrate sessions table',
@@ -662,29 +749,29 @@ describe('two sizes and two chromes', () => {
       {},
       { timeout: 8000 },
     );
-    fireEvent.click(
-      within(actions).getByRole('button', { name: 'Close chat' }),
-    );
+    // Open chat leads; Close is not an inbox action.
+    expect(
+      within(actions)
+        .getAllByRole('button')
+        .map((button) => button.textContent)
+        .slice(0, 2),
+    ).toEqual(['Open chat', 'Mark done']);
+    expect(
+      within(actions).queryByRole('button', { name: /^Close/ }),
+    ).toBeNull();
+    fireEvent.click(within(actions).getByRole('button', { name: 'Mark done' }));
     // The host is handed the Details trigger, which is inside the row.
-    expect(onCloseChat).toHaveBeenCalledWith('tab-1', details);
+    expect(onSelect).toHaveBeenCalledWith(details);
     expect(screen.queryByTestId('inbox-row-details')).toBeNull();
   });
 
-  it('a row whose one action is close keeps it beside Details', () => {
-    const base = rowFor();
-    renderRow(
-      { ...base, item: { ...base.item, chatSessionId: 'tab-1' } },
-      {
-        chrome: 'touch',
-        hoverCard: true,
-        isOpenChat: true,
-        onCloseChat: vi.fn(),
-      },
-    );
-    expect(directActions()).toEqual([
-      'Details for Migrate sessions table',
-      'Close Migrate sessions table',
-    ]);
+  it('a touch row whose one action is Mark done keeps it in the sheet', () => {
+    renderRow(rowFor(), {
+      chrome: 'touch',
+      hoverCard: true,
+      done: { done: false, onSelect: vi.fn() },
+    });
+    expect(directActions()).toEqual(['Details for Migrate sessions table']);
   });
 
   it('a slim touch row shows Details alone, with its actions in the sheet', async () => {
@@ -705,7 +792,7 @@ describe('two sizes and two chromes', () => {
       {},
       { timeout: 8000 },
     );
-    fireEvent.click(within(actions).getByRole('button', { name: 'Unsnooze' }));
+    fireEvent.click(within(actions).getByRole('button', { name: 'Wake now' }));
     expect(onSnoozeWake).toHaveBeenCalledWith(row.item, null, details);
   });
 
@@ -735,7 +822,12 @@ describe('shared inbox actions', () => {
       {},
       { timeout: 8000 },
     );
-    fireEvent.click(within(actions).getByRole('button', { name: '1 hour' }));
+    const [first] = snoozeChoices(NOW);
+    fireEvent.click(
+      within(actions).getByRole('button', {
+        name: new RegExp(`^${first.label},`),
+      }),
+    );
     expect(onSnoozeWake).toHaveBeenCalledWith(
       row.item,
       NOW + 3_600_000,
@@ -745,45 +837,46 @@ describe('shared inbox actions', () => {
   });
 
   it.each([false, true])(
-    'runs the same resolution command from desktop and Details (settled: %s)',
-    async (settled) => {
-      const onChange = vi.fn();
+    'runs the same Mark done command from the desktop menu and Details (done: %s)',
+    async (isDone) => {
+      const onSelect = vi.fn();
       const row = rowFor({
         hasActiveTurn: false,
         conversationActivity: undefined,
       });
-      const resolution = { settled, pending: false, onChange };
-      const verb = settled ? 'Reopen' : 'Settle';
-      renderRow(row, { resolution });
+      const done = { done: isDone, pending: false, onSelect };
+      const verb = isDone ? 'Reopen' : 'Mark done';
+      renderRow(row, { done });
       fireEvent.click(
-        screen.getByRole('button', { name: `${verb} Migrate sessions table` }),
+        screen.getByRole('button', {
+          name: 'Actions for Migrate sessions table',
+        }),
       );
-      expect(onChange).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByRole('menuitem', { name: verb }));
+      expect(onSelect).toHaveBeenCalledTimes(1);
       cleanup();
 
-      renderRow(row, { chrome: 'touch', hoverCard: true, resolution });
+      renderRow(row, { chrome: 'touch', hoverCard: true, done });
       fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
       const actions = await screen.findByTestId(
         'inbox-row-details-actions',
         {},
         { timeout: 8000 },
       );
-      fireEvent.click(
-        within(actions).getByRole('button', { name: `${verb} conversation` }),
-      );
-      expect(onChange).toHaveBeenCalledTimes(2);
+      fireEvent.click(within(actions).getByRole('button', { name: verb }));
+      expect(onSelect).toHaveBeenCalledTimes(2);
       expect(screen.queryByTestId('inbox-row-details')).toBeNull();
     },
   );
 
   it.each(['hover', 'touch'] as const)(
-    'does not resubmit a pending resolution through %s actions',
+    'does not resubmit a pending Mark done through %s actions',
     async (chrome) => {
-      const onChange = vi.fn();
+      const onSelect = vi.fn();
       renderRow(rowFor(), {
         chrome,
         hoverCard: true,
-        resolution: { settled: false, pending: true, onChange },
+        done: { done: false, pending: true, onSelect },
       });
       if (chrome === 'touch') {
         fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
@@ -792,47 +885,162 @@ describe('shared inbox actions', () => {
           {},
           { timeout: 8000 },
         );
-      }
-      const settle = screen.getByRole('button', {
-        name:
-          chrome === 'touch'
-            ? 'Settle conversation'
-            : 'Settle Migrate sessions table',
-      });
-      expect(settle.hasAttribute('disabled')).toBe(true);
-      fireEvent.click(settle);
-      expect(onChange).not.toHaveBeenCalled();
+      } else
+        fireEvent.click(screen.getByRole('button', { name: /^Actions for/ }));
+      const markDone =
+        chrome === 'touch'
+          ? screen.getByRole('button', { name: 'Mark done' })
+          : screen.getByRole('menuitem', { name: 'Mark done' });
+      expect(markDone.hasAttribute('disabled')).toBe(true);
+      fireEvent.click(markDone);
+      expect(onSelect).not.toHaveBeenCalled();
     },
   );
+});
 
-  it('names inbox dismissal separately from closing an open chat', async () => {
-    const row = rowFor();
-    const onDismiss = vi.fn();
-    const onCloseChat = vi.fn();
-    renderRow(row, {
-      chrome: 'touch',
-      hoverCard: true,
-      actionsInDetails: true,
-      isOpenChat: true,
-      onDismiss,
-      onCloseChat,
-    });
-    const details = screen.getByRole('button', { name: /^Details for/ });
-    fireEvent.click(details);
-    const actions = await screen.findByTestId(
-      'inbox-row-details-actions',
-      {},
-      { timeout: 8000 },
-    );
-    expect(
-      within(actions).queryByRole('button', { name: 'Close chat' }),
-    ).toBeNull();
+describe('Mark done is one verb over settle and dismiss', () => {
+  const running = { ...rowFor().item, conversationId: 'running-chat' };
+  const idle = {
+    ...rowFor({ hasActiveTurn: false }).item,
+    id: 'idle',
+    title: 'Review next steps',
+    lifecycleLabel: 'Ready' as const,
+    conversationId: 'idle-chat',
+  };
+  const markDone = (title: string) => {
     fireEvent.click(
-      within(actions).getByRole('button', { name: 'Dismiss from inbox' }),
+      screen.getByRole('button', { name: `Actions for ${title}` }),
     );
-    expect(onDismiss).toHaveBeenCalledWith(row.item, details);
-    expect(onCloseChat).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Mark done' }));
+  };
+  afterEach(() => {
+    resolutionState.supported = false;
+    resolutionState.mutate.mockClear();
   });
+
+  it('settles where settlement reaches the row, and dismisses on this device otherwise', () => {
+    const dismiss = vi.fn();
+    const settle = vi.fn();
+    resolutionState.supported = true;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[
+            { id: 'running', label: 'Running', items: [running] },
+            { id: 'idle', label: 'Idle', items: [idle] },
+          ]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          now={NOW}
+          chrome="hover"
+          onActivate={vi.fn()}
+          onDismiss={dismiss}
+          onSettle={settle}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    // A running chat cannot be settled yet: Mark done dismisses it here.
+    markDone(running.title);
+    expect(dismiss).toHaveBeenCalledWith(
+      running,
+      expect.any(HTMLButtonElement),
+    );
+    expect(settle).not.toHaveBeenCalled();
+    // An idle chat is settled, synced to the person's other devices.
+    markDone(idle.title);
+    expect(settle).toHaveBeenCalledWith(
+      'idle-chat',
+      true,
+      expect.any(HTMLButtonElement),
+    );
+    expect(dismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('dismisses every row when settlement is not available', () => {
+    const dismiss = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[{ id: 'idle', label: 'Idle', items: [idle] }]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          now={NOW}
+          chrome="hover"
+          onActivate={vi.fn()}
+          onDismiss={dismiss}
+          onSettle={vi.fn()}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    markDone(idle.title);
+    expect(dismiss).toHaveBeenCalledWith(idle, expect.any(HTMLButtonElement));
+  });
+
+  it('a settled row offers Reopen, and a row marked done on this device offers Reopen too', () => {
+    const settle = vi.fn();
+    const restore = vi.fn();
+    resolutionState.supported = true;
+    resolutionState.settled = { 'idle-chat': '2026-09-30T09:00:00.000Z' };
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <InboxGroupList
+            groups={[
+              { id: 'settled', label: 'Settled', items: [idle] },
+              { id: 'dismissed', label: 'Marked done', items: [running] },
+            ]}
+            idPrefix="test"
+            activeChatSessionId={null}
+            now={NOW}
+            chrome="hover"
+            onActivate={vi.fn()}
+            onDismiss={vi.fn()}
+            onRestore={restore}
+            onSettle={settle}
+            onSnoozeWake={vi.fn()}
+          />
+        </QueryClientProvider>,
+      );
+      for (const title of [idle.title, running.title]) {
+        fireEvent.click(
+          screen.getByRole('button', { name: `Actions for ${title}` }),
+        );
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Reopen' }));
+      }
+      expect(settle).toHaveBeenCalledWith(
+        'idle-chat',
+        false,
+        expect.any(HTMLButtonElement),
+      );
+      expect(restore).toHaveBeenCalledWith(
+        running,
+        expect.any(HTMLButtonElement),
+      );
+    } finally {
+      resolutionState.settled = {};
+    }
+  });
+});
+
+it('swipe actions place Mark done to the right of Snooze', () => {
+  const row = rowFor({ hasActiveTurn: false });
+  renderRow(row, {
+    chrome: 'touch',
+    hoverCard: true,
+    swipeActions: true,
+    swipeOpen: true,
+    onSnoozeWake: vi.fn(),
+    done: { done: false, pending: false, onSelect: vi.fn() },
+  });
+  const tray = document.querySelector<HTMLElement>('.inbox-row__swipe-actions');
+  if (!tray) throw new Error('Missing swipe actions');
+  expect(
+    within(tray)
+      .getAllByRole('button')
+      .map((button) => button.textContent?.trim()),
+  ).toEqual(['Snooze', 'Mark done']);
 });
 
 describe('the Details sheet belongs to the item, not to the row instance', () => {
@@ -855,7 +1063,6 @@ describe('the Details sheet belongs to the item, not to the row instance', () =>
           groups={groups}
           idPrefix="test"
           activeChatSessionId={null}
-          openChatIds={new Set()}
           now={NOW}
           chrome="touch"
           onActivate={vi.fn()}
@@ -883,7 +1090,8 @@ describe('the Details sheet belongs to the item, not to the row instance', () =>
 });
 
 describe('an unsent composer draft on touch chrome (U11)', () => {
-  it('its Details sheet offers Discard unsent draft, which clears the composer and the store', async () => {
+  it('its Details sheet offers Discard draft, which clears the composer and the store, with Undo', async () => {
+    resetPendingUndoForTest();
     const base = rowFor({
       hasActiveTurn: false,
       conversationActivity: undefined,
@@ -894,12 +1102,12 @@ describe('an unsent composer draft on touch chrome (U11)', () => {
     };
     chatDraftsStore.set('tab-draft', 'Draft on the phone: check the README');
     try {
-      renderRow(row, { chrome: 'touch', hoverCard: true, isOpenChat: true });
+      renderRow(row, { chrome: 'touch', hoverCard: true });
       expect(screen.getByTestId('inbox-row-draft-marker')).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
       await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
       const discard = screen.getByRole('button', {
-        name: 'Discard unsent draft for Migrate sessions table',
+        name: 'Discard draft for Migrate sessions table',
       });
       expect(discard.classList.contains('action-overflow__row--danger')).toBe(
         true,
@@ -909,6 +1117,14 @@ describe('an unsent composer draft on touch chrome (U11)', () => {
       // The chip reads the same store, so it goes with the text.
       expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
       expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+      // Like the server Draft's discard, it can be undone (⌘Z reaches it).
+      act(() => {
+        expect(undoLatestAction()).toBe(true);
+      });
+      expect(chatDraftsStore.get('tab-draft')).toBe(
+        'Draft on the phone: check the README',
+      );
+      expect(screen.getByTestId('inbox-row-draft-marker')).toBeTruthy();
     } finally {
       chatDraftsStore.clear('tab-draft');
     }
@@ -924,15 +1140,12 @@ describe('an unsent composer draft on touch chrome (U11)', () => {
       {
         chrome: 'touch',
         hoverCard: true,
-        isOpenChat: true,
-        onCloseChat: vi.fn(),
+        done: { done: false, onSelect: vi.fn() },
       },
     );
     fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
     await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
-    expect(
-      screen.queryByRole('button', { name: /^Discard unsent draft/ }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Discard draft/ })).toBeNull();
   });
 });
 
@@ -1046,7 +1259,6 @@ describe('a Details sheet whose row leaves the list', () => {
           groups={[{ id: 'earlier', label: 'Earlier', items: [earlier] }]}
           idPrefix="test"
           activeChatSessionId={null}
-          openChatIds={new Set()}
           now={NOW}
           chrome="touch"
           collapsible={{
@@ -1088,7 +1300,7 @@ describe('the Details sheet’s actions are a menu list, never a row of buttons'
     await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
   };
 
-  it('a slim draft row lists snooze presets under a Snooze group, then close, with Discard last and marked', async () => {
+  it('a slim draft row lists Open chat, the snooze list under Snooze until, with Discard last and marked', async () => {
     const onSnoozeWake = vi.fn();
     const base = rowFor({
       hasActiveTurn: false,
@@ -1107,9 +1319,7 @@ describe('the Details sheet’s actions are a menu list, never a row of buttons'
       chrome: 'touch',
       size: 'slim',
       hoverCard: true,
-      isOpenChat: true,
       onSnoozeWake,
-      onCloseChat: vi.fn(),
       onDraftDiscarded: vi.fn(),
     });
     await openSheet();
@@ -1128,13 +1338,15 @@ describe('the Details sheet’s actions are a menu list, never a row of buttons'
         ),
       ),
     ).toEqual([
-      ['1 hour', '3 hours', 'Tomorrow 9am', 'Next Monday 9am'],
-      ['Close chat'],
+      ['Open chat'],
+      snoozeChoices(NOW).map((choice) => `${choice.label}, ${choice.hint}`),
       ['Discard draft'],
     ]);
-    expect(within(groups[0] as HTMLElement).getByText('Snooze')).toBeTruthy();
     expect(
-      screen.getByRole('group', { name: 'Snooze' }).contains(groups[0]),
+      within(groups[1] as HTMLElement).getByText('Snooze until'),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('group', { name: 'Snooze until' }).contains(groups[1]),
     ).toBe(true);
     for (const button of menu.querySelectorAll('button')) {
       expect(button.classList.contains('menu-row')).toBe(true);
@@ -1146,12 +1358,11 @@ describe('the Details sheet’s actions are a menu list, never a row of buttons'
     expect(discard.className).toContain('action-overflow__row--danger');
     // A preset goes through the sheet: closes it, hands over the trigger.
     const details = screen.getByRole('button', { name: /^Details for/ });
-    fireEvent.click(within(menu).getByRole('button', { name: '3 hours' }));
-    expect(onSnoozeWake).toHaveBeenCalledWith(
-      row.item,
-      NOW + 3 * 3_600_000,
-      details,
+    const last = snoozeChoices(NOW).at(-1)!;
+    fireEvent.click(
+      within(menu).getByRole('button', { name: new RegExp(`^${last.label},`) }),
     );
+    expect(onSnoozeWake).toHaveBeenCalledWith(row.item, last.wakeAt, details);
     expect(screen.queryByTestId('inbox-row-details')).toBeNull();
   });
 
@@ -1185,7 +1396,6 @@ describe('the Details sheet’s actions are a menu list, never a row of buttons'
               item={rowFor().item}
               isCurrent={false}
               isSnoozed={false}
-              isOpenChat={false}
               now={NOW}
               chrome="touch"
               onActivate={vi.fn()}
@@ -1260,19 +1470,21 @@ describe("the project's colour is a swatch, never the name's colour", () => {
     expect(swatch).not.toBeNull();
     expect(swatch!.getAttribute('aria-hidden')).toBe('true');
     expect(swatch!.style.backgroundColor).toBe('var(--event-tool-call)');
-    // Before the name, beside it on the meta line.
+    // Before the name, beside it on the state line.
     const project = row.querySelector<HTMLElement>('.inbox-row__project')!;
     expect(swatch!.nextElementSibling).toBe(project);
     expect(project.textContent).toBe('station');
     // The accent is never a text colour (accent-foreground ratchet).
     expect(project.style.color).toBe('');
     expect(
-      row.querySelector('.inbox-row__meta-text')!.getAttribute('style'),
+      row.querySelector('.inbox-row__context')!.getAttribute('style'),
     ).toBeNull();
     // The open button's name still says the project in words.
-    expect(row.querySelector('button')!.getAttribute('aria-label')).toContain(
-      'station',
-    );
+    expect(
+      within(row).getByRole('button', {
+        name: /^Migrate sessions table.*station/,
+      }),
+    ).toBeTruthy();
   });
 
   it('a row with no accent draws no swatch', () => {
@@ -1292,7 +1504,6 @@ describe("the project's colour is a swatch, never the name's colour", () => {
           ]}
           idPrefix="test"
           activeChatSessionId={null}
-          openChatIds={new Set()}
           now={NOW}
           onActivate={vi.fn()}
           onSnoozeWake={vi.fn()}
@@ -1309,8 +1520,9 @@ describe("the project's colour is a swatch, never the name's colour", () => {
       .getAllByTestId('inbox-row')
       .map(
         (row) =>
-          row.querySelector<HTMLElement>('.inbox-row__project-accent')?.style
-            .backgroundColor ?? null,
+          row
+            .querySelector<HTMLElement>('.inbox-row__project-line')
+            ?.style.getPropertyValue('--inbox-project-accent') || null,
       );
     expect(colours).toEqual([
       'var(--event-agent-start)',
@@ -1335,9 +1547,11 @@ describe("the project's icon takes the swatch's place when it has one", () => {
     expect(mark?.classList.contains('project-icon--dot')).toBe(false);
     expect(mark?.nextElementSibling?.textContent).toBe('station');
     // The open button's name still says the project in words, once.
-    expect(row.querySelector('button')!.getAttribute('aria-label')).toContain(
-      'station',
-    );
+    expect(
+      within(row).getByRole('button', {
+        name: /^Migrate sessions table.*station/,
+      }),
+    ).toBeTruthy();
   });
 
   it('the phone sheet’s project line draws it too', () => {
@@ -1348,7 +1562,7 @@ describe("the project's icon takes the swatch's place when it has one", () => {
     });
     const context = screen
       .getByTestId('inbox-row')
-      .querySelector('.inbox-row__project-context');
+      .querySelector('.inbox-row__project-line');
     expect(
       context?.querySelector('.inbox-row__project-accent .brand-icon__glyph')
         ?.textContent,
@@ -1364,7 +1578,6 @@ describe("the project's icon takes the swatch's place when it has one", () => {
           groups={[{ id: 'idle', label: 'Idle', items: [station, other] }]}
           idPrefix="test"
           activeChatSessionId={null}
-          openChatIds={new Set()}
           now={NOW}
           onActivate={vi.fn()}
           onSnoozeWake={vi.fn()}
@@ -1385,6 +1598,89 @@ describe("the project's icon takes the swatch's place when it has one", () => {
       );
     expect(marks[0]?.querySelector('img')?.getAttribute('src')).toBe(IMAGE);
     expect(marks[1]?.querySelector('img')).toBeNull();
-    expect(marks[1]?.style.backgroundColor).toBe('var(--event-reasoning)');
+    expect(
+      marks[1]?.parentElement?.style.getPropertyValue('--inbox-project-accent'),
+    ).toBe('var(--event-reasoning)');
+  });
+});
+
+it('renders the answer rung for an input request after server projection', () => {
+  renderRow(
+    rowFor({
+      lifecycleState: 'needs_input',
+      transitionReason: 'input_requested',
+      pendingReview: false,
+    }),
+  );
+  expect(statusText()).toBe('Needs input');
+});
+
+describe('a collapsed inbox section that holds the open chat', () => {
+  const idle = (threadId: string, title: string) =>
+    rowFor({
+      threadId,
+      displayTitle: title,
+      lifecycleState: 'idle',
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    }).item;
+
+  it('still shows that one row under its header, and only that row', () => {
+    const open = idle('T-open', 'The chat on screen');
+    const other = idle('T-other', 'Another chat');
+    const activeId = open.orchestrationThreadId ?? open.chatSessionId ?? '';
+    expect(activeId).not.toBe('');
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[{ id: 'open', label: 'Open', items: [other, open] }]}
+          idPrefix="test"
+          activeChatSessionId={activeId}
+          now={NOW}
+          chrome="touch"
+          collapsible={{ sections: { open: false }, onToggle: vi.fn() }}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    const section = screen.getByRole('region', { name: /^Open/ });
+    expect(
+      within(section)
+        .getByRole('button', { name: /^Open/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+    const rows = within(section).getAllByTestId('inbox-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('The chat on screen');
+  });
+
+  it('stacks collapsed sections from the top when none is expanded', () => {
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[
+            { id: 'open', label: 'Open', items: [idle('T-a', 'A')] },
+            { id: 'external', label: 'Third-party', items: [idle('T-b', 'B')] },
+          ]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          now={NOW}
+          chrome="touch"
+          collapsible={{
+            sections: { open: false, external: false },
+            onToggle: vi.fn(),
+          }}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(container.querySelectorAll('.chat-dock-inbox__group')).toHaveLength(
+      2,
+    );
+    expect(
+      container.querySelector('.chat-dock-inbox__group--shelf-start'),
+    ).toBeNull();
   });
 });

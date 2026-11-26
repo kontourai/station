@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 /**
- * The engine switch ("Change engine for this conversation") is offered only
+ * The engine switch ("Change engine for this chat") is offered only
  * when the server's open resolution lets this caller change the
  * conversation. `ChatWorkspacePane` owns that gate: it hands the content
  * area `onExecutionModelSelect` only while `conversationCanMutate` holds, the
@@ -29,6 +29,7 @@ const contentArea = vi.hoisted(() => ({
   props: null as null | { onExecutionModelSelect?: unknown },
 }));
 const viewSession = vi.hoisted(() => ({ current: null as unknown }));
+const preview = vi.hoisted(() => ({ settled: true }));
 
 vi.mock('../components/chat-dock/ChatDockContentArea', () => ({
   ChatDockContentArea: (props: { onExecutionModelSelect?: unknown }) => {
@@ -51,7 +52,11 @@ vi.mock('../contexts/useShowSurface', () => ({
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
-  useHostRequestAuthorityScope: () => undefined,
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://test.local',
+    authorityKey: 'host-authority',
+    isCurrent: () => true,
+  }),
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
@@ -107,7 +112,6 @@ vi.mock('../contexts/open-chats-store', () => ({
     items: [],
     currentSessionIdByConversation: new Map(),
   }),
-  countOpenChatAttention: () => 0,
 }));
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useRehydrateSessions: () => () => {},
@@ -188,7 +192,7 @@ vi.mock('../components/chat-dock/useChatDockViewModel', () => ({
   }),
 }));
 vi.mock('../components/chat-dock/useChatDockActiveChatSync', () => ({
-  useChatDockActiveChatSync: () => {},
+  useChatDockActiveChatSync: () => ({ pendingChat: null }),
 }));
 vi.mock('../components/chat/ShareIntakeController', () => ({
   ShareIntakeController: () => null,
@@ -204,6 +208,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     telemetry: { track: () => {} },
     useAcknowledgeConversationMutation: () => ({ mutate: () => {} }),
     useEngineConnectionsQuery: () => ({ data: [] }),
+    useFeaturePreviewsQuery: () => ({ data: preview.settled ? [] : undefined }),
     useConversationInventoryQuery: () => ({ data: [] }),
     useGenerateSessionSummaryMutation: () => ({ mutate: () => {} }),
     useInvalidateQuery: () => () => {},
@@ -234,7 +239,6 @@ function session(
     source: 'manual',
     createdAt: 1,
     updatedAt: 1,
-    hasUnread: false,
     ...(conversationOpenState ? { conversationOpenState } : {}),
   } as unknown as ChatSession;
 }
@@ -269,6 +273,7 @@ async function renderPane(active: ChatSession, waitForContent = true) {
 }
 
 beforeEach(() => {
+  preview.settled = true;
   window.localStorage.clear();
   window.history.replaceState({}, '', '/?dock=open');
   navigationStore.navigate('/', { dock: 'open', maximize: null });
@@ -284,7 +289,11 @@ afterEach(() => {
 });
 
 describe('ChatWorkspacePane engine-switch gate', () => {
-  test('a collapsed phone chat can go straight to full screen and restore to a peek', async () => {
+  // Restore returns a full-screen chat to where it was before it went full
+  // screen (owner decision, replacing "restore to a peek" in every case): a
+  // chat maximized from its bar goes back to the bar, and one that was
+  // already open returns to the level it was on.
+  test('a collapsed phone chat goes full screen and restores to its bar; an open one restores to its dock', async () => {
     vi.stubGlobal(
       'matchMedia',
       vi.fn((query: string) => ({
@@ -305,6 +314,20 @@ describe('ChatWorkspacePane engine-switch gate', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'Restore chat size' }),
     );
+    // Back in its bar: full screen is offered again and no body is showing.
+    expect(
+      screen.getByRole('button', { name: 'Full screen chat' }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('content-area')).toBeNull();
+
+    // Opened from the bar (to Half), then full screen: Restore comes back to
+    // the open dock.
+    fireEvent.click(screen.getByRole('button', { name: 'Chats' }));
+    expect(await screen.findByTestId('content-area')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Full screen chat' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Restore chat size' }),
+    );
     expect(
       screen.getByRole('button', { name: 'Full screen chat' }),
     ).toBeTruthy();
@@ -314,6 +337,13 @@ describe('ChatWorkspacePane engine-switch gate', () => {
   test('a conversation this caller may change is offered the engine switch', async () => {
     const props = await renderPane(session());
     expect(typeof props?.onExecutionModelSelect).toBe('function');
+  });
+
+  test('a writable conversation cannot switch engines before preview disposition is known', async () => {
+    preview.settled = false;
+    const props = await renderPane(session());
+    expect(props).not.toBeNull();
+    expect(props?.onExecutionModelSelect).toBeUndefined();
   });
 
   test('a conversation the server resolved as not continuable offers none', async () => {

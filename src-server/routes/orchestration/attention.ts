@@ -47,6 +47,15 @@ export function createAttentionRoutes(
       taskId: string,
       requestType: string | undefined,
     ) => boolean;
+    /**
+     * Whether THIS request could Send again or turn off a chat's pull
+     * request feedback: the feedback routes' own writer rule. Absent fails
+     * closed: no item claims the caller can change it.
+     */
+    viewerMayChangePullRequestFeedback?: (
+      request: Request,
+      conversationId: string,
+    ) => boolean;
   } = {},
 ) {
   const app = new Hono();
@@ -62,6 +71,15 @@ export function createAttentionRoutes(
           ) =>
             options.viewerMayRespondToPeerTask?.(c, taskId, requestType) ??
             false,
+        }
+      : {}),
+    ...(options.viewerMayChangePullRequestFeedback
+      ? {
+          mayChangePullRequestFeedback: (conversationId: string) =>
+            options.viewerMayChangePullRequestFeedback?.(
+              c.req.raw,
+              conversationId,
+            ) ?? false,
         }
       : {}),
   });

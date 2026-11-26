@@ -137,6 +137,12 @@ export interface TelemetryRequestFailure {
   at: string;
   code: TelemetryRequestFailureCode;
   httpStatus?: number;
+  /**
+   * #4994: the reason a receiver gave for refusing a product batch, as a
+   * sanitized sentence of at most 200 characters (never the batch itself).
+   * Absent when it gave none, and on older servers.
+   */
+  detail?: string;
 }
 
 export interface TelemetryConnectionProbeStatus {

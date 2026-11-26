@@ -32,8 +32,6 @@
 
     "src-server/runtime/bootstrap/runtime-service-bootstrap.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "src-server/runtime/conversation/runtime-event-log.ts",
 
     "src-server/runtime/routes/runtime-route-support.ts",
@@ -44,11 +42,7 @@
 
     "src-server/services/flow/flow-run-service.ts",
 
-    "src-server/services/orchestration/event-store.ts",
-
     "src-server/services/orchestration/flow-policy-sidecar.ts",
-
-    "src-server/services/orchestration/orchestration-service.ts",
 
     "src-server/services/orchestration/session-command-module.ts",
 
@@ -66,7 +60,17 @@
 
     "docs/guides/testing.md",
 
-    "src-server/services/automation/repair-controller.ts"
+    "src-server/services/automation/repair-controller.ts",
+
+    "src-server/services/scheduling/scheduled-conversation-runs.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "src-server/services/telemetry-publisher-service.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "packages/contracts/src/product-telemetry.ts"
   ],
 
   "checks": [

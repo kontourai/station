@@ -11,12 +11,20 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { LIFECYCLE_HOLD_MS } from '../components/chat-dock/useHeldLifecycles';
+import { snoozeChoices } from '../components/inbox-row/snooze-presets';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { migrateSnoozeKey, writeSnooze } from '../utils/activity-snooze-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import { buildOrchestrationItems } from '../views/home/home-view-model';
+import type { WorkFacts } from '../views/home/work-facts';
 import { peerRecordSummary } from './fixtures/peer-delegation-record';
+
+// The app supplies connection authority; these isolated row tests supply the
+// project catalogue used by the scope labels without starting remote reads.
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
 
 const NOW = Date.parse('2026-07-27T18:00:00Z');
 
@@ -69,6 +77,11 @@ function renderPanel(
   return { ...render(<ChatDockInboxPanel {...props} />), props };
 }
 
+/** Opens a row's ⋯ menu by the row's title. */
+function openActions(title: string) {
+  fireEvent.click(screen.getByRole('button', { name: `Actions for ${title}` }));
+}
+
 describe('ChatDockInboxPanel', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -85,7 +98,7 @@ describe('ChatDockInboxPanel', () => {
   it('renders activity groups in order with their status words', () => {
     renderPanel();
 
-    const panel = screen.getByRole('complementary', { name: 'Inbox chats' });
+    const panel = screen.getByRole('complementary', { name: 'Chats' });
     const labels = Array.from(
       panel.querySelectorAll(
         '.chat-dock-inbox__group-label, .chat-dock-inbox__section-toggle',
@@ -98,7 +111,7 @@ describe('ChatDockInboxPanel', () => {
       'Needs attention',
       'Working',
       'Just finished',
-      'Settled · 1',
+      'Earlier · 1',
     ]);
     // The Running row's chip says the lane's word, never "Active".
     expect(
@@ -122,20 +135,24 @@ describe('ChatDockInboxPanel', () => {
       openChatSessionIds: [...items, ready].map((entry) => entry.id),
     });
 
-    const rowName = 'ready title, ready project';
+    const rowName = /^ready title.*ready project/;
     const idle = screen.getByRole('region', { name: 'Open' });
-    expect(within(idle).getByRole('button', { name: rowName })).not.toBeNull();
+    const row = within(idle).getByRole('button', { name: rowName });
+    expect(within(row).getAllByText('30m ago', { exact: true })).toHaveLength(
+      1,
+    );
+    expect(within(row).queryByText(/last activity/i)).toBeNull();
     const running = screen.getByRole('region', { name: 'Working' });
     expect(within(running).queryByRole('button', { name: rowName })).toBeNull();
     expect(
       within(running).getByRole('button', {
-        name: 'active title, active project',
+        name: /^active title.*active project/,
       }),
     ).not.toBeNull();
     expect(
       within(screen.getByRole('region', { name: 'Needs attention' })).getByRole(
         'button',
-        { name: 'attention title, attention project' },
+        { name: /^attention title.*attention project/ },
       ),
     ).not.toBeNull();
     expect(screen.queryByRole('region', { name: 'Active now' })).toBeNull();
@@ -150,7 +167,7 @@ describe('ChatDockInboxPanel', () => {
       'Working',
       'Open',
       'Just finished',
-      'Settled · 1',
+      'Earlier · 1',
     ]);
   });
 
@@ -177,9 +194,11 @@ describe('ChatDockInboxPanel', () => {
         items: [running, other],
         openChatSessionIds: [],
       });
-      const rowName = 'moving title, moving project';
+      const rowName = /^moving title.*moving project/;
       screen.getByRole('button', { name: rowName }).focus();
-      expect(document.activeElement?.getAttribute('aria-label')).toBe(rowName);
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: rowName }),
+      );
 
       // The turn ends: same row, now Idle — a different section, so the
       // focused button is unmounted and a new one mounted under Idle.
@@ -212,7 +231,7 @@ describe('ChatDockInboxPanel', () => {
         openChatSessionIds: [],
       });
       const row = screen.getByRole('button', {
-        name: 'moving title, moving project',
+        name: /^moving title.*moving project/,
       });
       row.focus();
       // Clicking non-focusable space: focus goes nowhere, no focusin.
@@ -240,7 +259,7 @@ describe('ChatDockInboxPanel', () => {
         items: [running, other],
         openChatSessionIds: [],
       });
-      const rowName = 'moving title, moving project';
+      const rowName = /^moving title.*moving project/;
       const row = screen.getByRole('button', { name: rowName });
       row.focus();
       // What a window/tab switch looks like: focusout to nowhere, but the
@@ -272,10 +291,10 @@ describe('ChatDockInboxPanel', () => {
       const a = item('a', 'Running', NOW - 60_000);
       const b = item('b', 'Running', NOW - 2 * 60_000);
       const view = renderPanel({ items: [a, b], openChatSessionIds: [] });
-      screen.getByRole('button', { name: 'a title, a project' }).focus();
+      screen.getByRole('button', { name: /^a title.*a project/ }).focus();
       view.rerender(<ChatDockInboxPanel {...view.props} items={[b]} />);
       expect(document.activeElement).toBe(
-        screen.getByRole('button', { name: 'b title, b project' }),
+        screen.getByRole('button', { name: /^b title.*b project/ }),
       );
     });
   });
@@ -302,10 +321,10 @@ describe('ChatDockInboxPanel', () => {
         if (snoozed)
           fireEvent.click(screen.getByRole('button', { name: /^Snoozed/ }));
         else if (lifecycle === 'Completed')
-          fireEvent.click(screen.getByRole('button', { name: /^Settled/ }));
+          fireEvent.click(screen.getByRole('button', { name: /^Earlier/ }));
 
         const row = screen.getByRole('button', {
-          name: 'ready title, ready project, unsent draft',
+          name: /^ready title.*ready project.*unsent draft/,
         });
         expect(within(row).getByTitle('Unsent draft')).not.toBeNull();
 
@@ -314,7 +333,7 @@ describe('ChatDockInboxPanel', () => {
         act(() => chatDraftsStore.clear('ready'));
         expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
         expect(
-          screen.getByRole('button', { name: 'ready title, ready project' }),
+          screen.getByRole('button', { name: /^ready title.*ready project/ }),
         ).not.toBeNull();
       },
     );
@@ -356,7 +375,7 @@ describe('ChatDockInboxPanel', () => {
       onFocusChat,
     });
 
-    const panel = screen.getByRole('complementary', { name: 'Inbox chats' });
+    const panel = screen.getByRole('complementary', { name: 'Chats' });
     const labels = Array.from(
       panel.querySelectorAll(
         '.chat-dock-inbox__group-label, .chat-dock-inbox__section-toggle',
@@ -367,10 +386,10 @@ describe('ChatDockInboxPanel', () => {
       'Working',
       'Open',
       'Just finished',
-      'Settled · 1',
+      'Earlier · 1',
     ]);
 
-    const rowName = 'never-prompted title, never-prompted project';
+    const rowName = /^never-prompted title.*never-prompted project/;
     for (const live of ['Needs attention', 'Working']) {
       expect(
         within(screen.getByRole('region', { name: live })).queryByRole(
@@ -395,7 +414,7 @@ describe('ChatDockInboxPanel', () => {
     expect(
       screen
         .getByRole('button', {
-          name: 'active title, active project',
+          name: /^active title.*active project/,
           current: true,
         })
         .getAttribute('aria-current'),
@@ -403,7 +422,7 @@ describe('ChatDockInboxPanel', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'attention title, attention project',
+        name: /^attention title.*attention project/,
       }),
     );
     expect(onFocusChat).toHaveBeenCalledWith('attention');
@@ -421,7 +440,7 @@ describe('ChatDockInboxPanel', () => {
     renderPanel({ items: [completed], onAcknowledgeConversation });
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'done title, done project' }),
+      screen.getByRole('button', { name: /^done title.*done project/ }),
     );
     await waitFor(() =>
       expect(onAcknowledgeConversation).toHaveBeenCalledWith(completed),
@@ -448,7 +467,7 @@ describe('ChatDockInboxPanel', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'elsewhere title, elsewhere project',
+        name: /^elsewhere title.*elsewhere project.*Station: Living Room Mac/,
       }),
     );
     await waitFor(() =>
@@ -478,7 +497,7 @@ describe('ChatDockInboxPanel', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'rehydrate-me title, rehydrate-me project',
+        name: /^rehydrate-me title.*rehydrate-me project/,
       }),
     );
     await waitFor(() =>
@@ -492,10 +511,8 @@ describe('ChatDockInboxPanel', () => {
   it('moves a snoozed row into the shared Snoozed group', () => {
     renderPanel();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Snooze active title' }),
-    );
-    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
+    openActions('active title');
+    fireEvent.click(screen.getByRole('menuitem', { name: /^In 1 hour,/ }));
 
     const snoozedToggle = screen.getByRole('button', {
       name: 'Snoozed · 1',
@@ -504,17 +521,18 @@ describe('ChatDockInboxPanel', () => {
 
     expect(
       screen.getByRole('button', {
-        name: 'active title, active project',
+        name: /^active title.*active project/,
       }),
     ).not.toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Unsnooze active title' }),
-    ).not.toBeNull();
+    openActions('active title');
+    expect(screen.getByRole('menuitem', { name: 'Wake now' })).not.toBeNull();
   });
 
   it('snooze opens the duration choice; nothing is snoozed until one is chosen (D7)', () => {
     renderPanel({ items: [items[0]] });
-    const snooze = screen.getByRole('button', { name: 'Snooze active title' });
+    const snooze = screen.getByRole('button', {
+      name: 'Actions for active title',
+    });
     expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
     fireEvent.click(snooze);
     // The click alone snoozed nothing: the row is still here, the store empty.
@@ -522,9 +540,9 @@ describe('ChatDockInboxPanel', () => {
       JSON.parse(localStorage.getItem('station.activity.snoozed') ?? '{}'),
     ).toEqual({});
     expect(
-      screen.getByRole('menu', { name: 'Snooze active title' }),
+      screen.getByRole('menu', { name: 'Actions for active title' }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /^In 1 hour,/ }));
     expect(
       JSON.parse(localStorage.getItem('station.activity.snoozed') ?? '{}'),
     ).toEqual({ active: NOW + 3_600_000 });
@@ -532,29 +550,32 @@ describe('ChatDockInboxPanel', () => {
 
   it('chooses a longer duration from the same choice', () => {
     renderPanel({ items: [items[0]] });
+    openActions('active title');
     fireEvent.click(
-      screen.getByRole('button', { name: 'Snooze active title' }),
+      screen.getByRole('menuitem', { name: /^Tomorrow morning,/ }),
     );
-    fireEvent.click(screen.getByRole('menuitem', { name: '3 hours' }));
+    const tomorrow = snoozeChoices(NOW).find(
+      (choice) => choice.label === 'Tomorrow morning',
+    );
     expect(
       JSON.parse(localStorage.getItem('station.activity.snoozed') ?? '{}'),
-    ).toEqual({ active: NOW + 3 * 3_600_000 });
+    ).toEqual({ active: tomorrow?.wakeAt });
   });
 
   it('moves focus to the adjacent row before snoozing the focused row (#1054)', () => {
     renderPanel();
     // Needs you ("attention") reads first, Running ("active") next.
     const snooze = screen.getByRole('button', {
-      name: 'Snooze attention title',
+      name: 'Actions for attention title',
     });
     snooze.focus();
 
     fireEvent.click(snooze);
-    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /^In 1 hour,/ }));
 
     expect(document.activeElement).toBe(
       screen.getByRole('button', {
-        name: 'active title, active project',
+        name: /^active title.*active project/,
       }),
     );
     expect(document.activeElement).not.toBe(document.body);
@@ -564,21 +585,22 @@ describe('ChatDockInboxPanel', () => {
     const onCloseChat = vi.fn();
     renderPanel({ onCloseChat });
     const close = screen.getByRole('button', {
-      name: 'Dismiss attention title from inbox',
+      name: 'Actions for attention title',
     });
     close.focus();
 
     fireEvent.click(close);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Mark done' }));
 
     expect(onCloseChat).not.toHaveBeenCalled();
     expect(
       screen.queryByRole('button', {
-        name: 'attention title, attention project',
+        name: /^attention title.*attention project/,
       }),
     ).toBeNull();
     expect(document.activeElement).toBe(
       screen.getByRole('button', {
-        name: 'active title, active project',
+        name: /^active title.*active project/,
       }),
     );
     expect(document.activeElement).not.toBe(document.body);
@@ -586,13 +608,14 @@ describe('ChatDockInboxPanel', () => {
 
   it('focuses the inbox panel when the removed row has no neighbor (#1054)', () => {
     renderPanel({ items: [items[0]], openChatSessionIds: ['active'] });
-    const panel = screen.getByRole('complementary', { name: 'Inbox chats' });
+    const panel = screen.getByRole('complementary', { name: 'Chats' });
     const close = screen.getByRole('button', {
-      name: 'Dismiss active title from inbox',
+      name: 'Actions for active title',
     });
     close.focus();
 
     fireEvent.click(close);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Mark done' }));
 
     expect(document.activeElement).toBe(panel);
     expect(document.activeElement).not.toBe(document.body);
@@ -618,10 +641,8 @@ describe('ChatDockInboxPanel', () => {
       activeChatSessionId: null,
     });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Snooze store-x title' }),
-    );
-    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
+    openActions('store-x title');
+    fireEvent.click(screen.getByRole('menuitem', { name: /^In 1 hour,/ }));
     first.unmount();
 
     // The real promotion moment: `ActiveChatsStore.assignConversationId`
@@ -641,11 +662,8 @@ describe('ChatDockInboxPanel', () => {
 
     const snoozedToggle = screen.getByRole('button', { name: 'Snoozed · 1' });
     fireEvent.click(snoozedToggle);
-    expect(
-      screen.getByRole('button', {
-        name: 'Unsnooze store-x title',
-      }),
-    ).not.toBeNull();
+    openActions('store-x title');
+    expect(screen.getByRole('menuitem', { name: 'Wake now' })).not.toBeNull();
   });
 
   // archive#1311 (opposite direction): reopening an EXISTING
@@ -664,10 +682,8 @@ describe('ChatDockInboxPanel', () => {
       openChatSessionIds: ['agent-1:1111'],
       activeChatSessionId: null,
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Snooze conv-stable title' }),
-    );
-    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
+    openActions('conv-stable title');
+    fireEvent.click(screen.getByRole('menuitem', { name: /^In 1 hour,/ }));
     first.unmount();
 
     // Reopened: same `id` (conversationId), brand-new `chatSessionId`.
@@ -683,11 +699,8 @@ describe('ChatDockInboxPanel', () => {
 
     const snoozedToggle = screen.getByRole('button', { name: 'Snoozed · 1' });
     fireEvent.click(snoozedToggle);
-    expect(
-      screen.getByRole('button', {
-        name: 'Unsnooze conv-stable title',
-      }),
-    ).not.toBeNull();
+    openActions('conv-stable title');
+    expect(screen.getByRole('menuitem', { name: 'Wake now' })).not.toBeNull();
   });
 
   // archive#1297: "rehydrate vs navigate" must be a row-open policy, not an
@@ -721,7 +734,7 @@ describe('ChatDockInboxPanel', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Ship the release note, station',
+        name: /^Ship the release note.*station/,
       }),
     );
 
@@ -794,7 +807,7 @@ describe('ChatDockInboxPanel', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Attached session, station, Claude Code, third-party session',
+        name: /^Attached session(?=.*Claude Code)(?=.*station).*third-party session/,
       }),
     );
 
@@ -837,7 +850,7 @@ describe('ChatDockInboxPanel', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Orphaned session, station',
+        name: /^Orphaned session.*station/,
       }),
     );
 
@@ -860,7 +873,7 @@ describe('ChatDockInboxPanel', () => {
     // shared lane partition keeps every not-finished item live regardless
     // of recency), which is always expanded — the row is reachable directly.
     expect(
-      screen.getByRole('button', { name: 'epoch title, epoch project' }),
+      screen.getByRole('button', { name: /^epoch title.*epoch project/ }),
     ).not.toBeNull();
     expect(screen.queryByText(/\d+d$/)).toBeNull();
     // No timestamp means no time and no "last activity": the row says Idle
@@ -870,11 +883,16 @@ describe('ChatDockInboxPanel', () => {
     expect(screen.getByTestId('inbox-row-status').textContent).toBe('Idle');
   });
 
-  it('moves a collapsed Working shelf below expanded work and keeps Settled last', () => {
-    renderPanel({ items: [...items, item('ready', 'Ready', NOW)] });
+  it('moves a collapsed Working shelf below expanded work and keeps Earlier last', () => {
+    // No chat on screen: a collapsed shelf keeps the open chat's row, which
+    // is covered by InboxRow.test.tsx's collapsed-section case.
+    renderPanel({
+      items: [...items, item('ready', 'Ready', NOW)],
+      activeChatSessionId: null,
+    });
     fireEvent.click(screen.getByRole('button', { name: /^Working/ }));
     expect(
-      screen.queryByRole('button', { name: 'active title, active project' }),
+      screen.queryByRole('button', { name: /^active title.*active project/ }),
     ).toBeNull();
     const groups = screen
       .getAllByRole('region')
@@ -885,7 +903,7 @@ describe('ChatDockInboxPanel', () => {
     expect(groups.at(-1)).toBe('chat-dock-inbox-earlier');
     fireEvent.click(screen.getByRole('button', { name: /^Working/ }));
     expect(
-      screen.getByRole('button', { name: 'active title, active project' }),
+      screen.getByRole('button', { name: /^active title.*active project/ }),
     ).toBeTruthy();
   });
 
@@ -915,7 +933,7 @@ describe('ChatDockInboxPanel', () => {
     expectWorkingFirst();
     expect(
       screen
-        .getByRole('button', { name: /^Settled/ })
+        .getByRole('button', { name: /^Earlier/ })
         .getAttribute('aria-expanded'),
     ).toBe('false');
     first.unmount();
@@ -933,7 +951,7 @@ describe('ChatDockInboxPanel', () => {
 
   it('persists collapsible section state', () => {
     const first = renderPanel();
-    const earlier = screen.getByRole('button', { name: /^Settled/ });
+    const earlier = screen.getByRole('button', { name: /^Earlier/ });
     expect(earlier.getAttribute('aria-expanded')).toBe('false');
 
     fireEvent.click(earlier);
@@ -943,12 +961,12 @@ describe('ChatDockInboxPanel', () => {
     renderPanel();
     expect(
       screen
-        .getByRole('button', { name: /^Settled/ })
+        .getByRole('button', { name: /^Earlier/ })
         .getAttribute('aria-expanded'),
     ).toBe('true');
     expect(
       screen.getByRole('button', {
-        name: 'earlier title, earlier project',
+        name: /^earlier title.*earlier project/,
       }),
     ).not.toBeNull();
   });
@@ -1019,9 +1037,7 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
     expect(panel.className).not.toContain('chat-dock-inbox--exiting');
     expect(panel.inert).toBe(false);
     // Still a landmark answering to its name, and still reachable.
-    expect(
-      screen.getByRole('complementary', { name: 'Inbox chats' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('complementary', { name: 'Chats' })).toBeTruthy();
   });
 
   it('is inert and marked exiting while it plays its exit', () => {
@@ -1072,23 +1088,152 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
   describe('resync', () => {
     it('says the list is the last known one when its read failed, and Refresh re-reads it', () => {
       const onRefresh = vi.fn();
-      renderPanel({ sync: { failed: true, refreshing: false, onRefresh } });
+      renderPanel({
+        sync: {
+          failed: true,
+          pending: false,
+          updating: false,
+          refresh: { phase: 'idle', recovering: false, run: onRefresh },
+        },
+      });
       expect(screen.getByRole('alert').textContent).toContain(
         'Showing the last known list.',
       );
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-      expect(onRefresh).toHaveBeenCalledOnce();
+      expect(onRefresh).toHaveBeenCalledExactlyOnceWith(true);
     });
 
-    it('shows a running resync and does not start a second one', () => {
+    it('a failed read that is already re-reading offers no second Retry', () => {
       const onRefresh = vi.fn();
-      renderPanel({ sync: { failed: false, refreshing: true, onRefresh } });
-      fireEvent.click(screen.getByRole('button', { name: 'Inbox actions' }));
-      const refresh = screen.getByRole('menuitem', { name: 'Refreshing…' });
-      expect(refresh).toHaveProperty('disabled', true);
-      fireEvent.click(refresh);
+      renderPanel({
+        sync: {
+          failed: true,
+          pending: false,
+          updating: false,
+          refresh: { phase: 'refreshing', recovering: true, run: onRefresh },
+        },
+      });
+      const retry = screen.getByRole('button', { name: 'Retrying…' });
+      expect(retry).toHaveProperty('disabled', true);
+      fireEvent.click(retry);
       expect(onRefresh).not.toHaveBeenCalled();
-      expect(screen.queryByText(/Couldn't refresh/)).toBeNull();
+    });
+
+    it('a retry whose start clears the failure keeps its notice until the re-read settles', () => {
+      const onRefresh = vi.fn();
+      renderPanel({
+        sync: {
+          failed: false,
+          pending: false,
+          updating: false,
+          refresh: { phase: 'refreshing', recovering: true, run: onRefresh },
+        },
+      });
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Showing the last known list.',
+      );
+      expect(screen.getByRole('button', { name: 'Retrying…' })).toHaveProperty(
+        'disabled',
+        true,
+      );
+    });
+
+    it('a healthy list shows no refresh control at all', () => {
+      renderPanel({
+        sync: {
+          failed: false,
+          pending: false,
+          updating: false,
+          refresh: { phase: 'idle', recovering: false, run: vi.fn() },
+        },
+      });
+      expect(
+        screen.queryByRole('button', { name: /Retry|Refresh/ }),
+      ).toBeNull();
     });
   });
+
+  describe('toolbar and footer', () => {
+    it('search, scope and New chat share one toolbar line, with no Inbox ⋯ menu', () => {
+      renderPanel({ onNewChat: vi.fn() });
+      const toolbar = document.querySelector(
+        '.chat-dock-inbox__toolbar',
+      ) as HTMLElement;
+      expect(
+        within(toolbar).getByRole('searchbox', { name: 'Search chats' }),
+      ).toBeTruthy();
+      expect(
+        within(toolbar).getByRole('combobox', { name: 'Scope for Chats' }),
+      ).toBeTruthy();
+      expect(
+        within(toolbar).getByRole('button', { name: 'New chat' }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Actions for Chats' }),
+      ).toBeNull();
+      // The scope's visible label gave its width to search; its name stays.
+      expect(
+        toolbar.querySelector('.chat-dock-inbox__scope label > span')
+          ?.className,
+      ).toBe('sr-only');
+    });
+
+    it('Browse all conversations closes the list and opens history', () => {
+      const { props } = renderPanel();
+      const browse = screen.getByRole('button', {
+        name: 'Browse all conversations',
+      });
+      // At the end of the list, after the last group.
+      const scroll = document.querySelector('.chat-dock-inbox__scroll')!;
+      expect(scroll.lastElementChild).toBe(browse);
+      fireEvent.click(browse);
+      expect(props.onOpenHistory).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('shows the project beside the title and one recency beside the status', () => {
+    renderPanel();
+    const row = screen.getByRole('button', { name: /^active title/ });
+    expect(within(row).getByText('active project')).toBeTruthy();
+    expect(within(row).getByText('active agent')).toBeTruthy();
+    expect(within(row).getAllByText('1m ago')).toHaveLength(1);
+  });
+});
+
+it('filters Chats by a known PR state without matching an unknown check', () => {
+  const pullRequest = {
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'acme', name: 'team' },
+    source: 'explicit' as const,
+    ref: '17',
+    observedAt: '2026-11-25T15:00:00Z',
+    status: {
+      state: 'current' as const,
+      title: 'Fix a check',
+      pullRequestState: 'OPEN',
+    },
+  };
+  const workFacts = new Map<string, WorkFacts>([
+    [
+      'active',
+      {
+        pullRequests: [
+          {
+            ...pullRequest,
+            status: { ...pullRequest.status, checks: 'failing' },
+          },
+        ],
+      },
+    ],
+    ['attention', { pullRequests: [{ ...pullRequest, ref: '18' }] }],
+  ]);
+  renderPanel({ workFacts });
+  const filter = screen.getByRole('combobox', { name: 'Pull request status' });
+  fireEvent.change(filter, { target: { value: 'failing' } });
+  expect(screen.getByText('active title')).toBeTruthy();
+  expect(screen.queryByText('attention title')).toBeNull();
+  fireEvent.change(filter, { target: { value: 'ready' } });
+  expect(screen.queryByText('active title')).toBeNull();
+  expect(screen.queryByText('attention title')).toBeNull();
 });

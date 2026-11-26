@@ -1,0 +1,7 @@
+{
+  "revision": "e65247274d851ce157fc1361fc4b8e99a490cd39",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated shipped topics only (docs:mcp:generate) from the edited api/sdk/module-map/self-configuring-agent pages; station-docs.md describes the generator and bundle shape, which are unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

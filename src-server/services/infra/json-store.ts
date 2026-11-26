@@ -15,11 +15,13 @@ import {
   readFileSync,
   readSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
+import { jsonFileStoreWriteBytes } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger({ name: 'json-store' });
@@ -49,6 +51,16 @@ export type JsonStoreCorruptionMode = 'default-value' | 'throw';
  */
 export type JsonStoreAtomicWriteDurability = 'crash-safe' | 'tear-safe';
 
+/**
+ * The closed set of `store` attribute values for
+ * `station.json_store.write_bytes` (#4995). A store opts in by name; an
+ * unnamed store records nothing, so the attribute cannot carry a path.
+ */
+export type JsonFileStoreMetricName =
+  | 'notifications'
+  | 'notification-tombstones'
+  | 'principal-notifications';
+
 export interface JsonFileStoreOptions {
   /** Opt-in read-owner bound. Oversize/non-regular files are not corruption. */
   maxReadBytes?: number;
@@ -61,6 +73,11 @@ export interface JsonFileStoreOptions {
    * the behavior every caller had before this option existed.
    */
   atomicWriteDurability?: JsonStoreAtomicWriteDurability;
+  /**
+   * Records each completed write's bytes (the primary and, for a durable
+   * write, the retained `.previous` copy) under this bounded store name.
+   */
+  metricStore?: JsonFileStoreMetricName;
 }
 
 export class JsonFileStoreCorruptionError extends Error {
@@ -157,8 +174,10 @@ export class JsonFileStore<T> {
 
   write(data: T): void {
     mkdirSync(dirname(this.filePath), { recursive: true });
+    const serialized = JSON.stringify(data, null, 2);
     if (!this.options.durableAtomicWrite) {
-      writeFileSync(this.filePath, JSON.stringify(data, null, 2));
+      writeFileSync(this.filePath, serialized);
+      this.recordWriteBytes('primary', Buffer.byteLength(serialized));
       return;
     }
 
@@ -177,19 +196,25 @@ export class JsonFileStore<T> {
     // keeps its fsyncs instead of silently degrading to none with no compile
     // error (round 2, LOW 4). Durability is the safe default to fall back to.
     const crashSafe = this.options.atomicWriteDurability !== 'tear-safe';
+    let previousBytes: number | undefined;
     try {
-      writeFileSync(tempPath, JSON.stringify(data, null, 2), { flag: 'wx' });
+      writeFileSync(tempPath, serialized, { flag: 'wx' });
       if (crashSafe) fsyncFile(tempPath);
       if (existsSync(this.filePath)) {
         // Copy before replacement, rather than renaming the primary away: a
         // failed final rename leaves the current complete value readable.
         copyFileSync(this.filePath, backupTempPath);
+        if (this.options.metricStore)
+          previousBytes = statSync(backupTempPath).size;
         if (crashSafe) fsyncFile(backupTempPath);
         renameSync(backupTempPath, previousPath);
         if (crashSafe) fsyncDirectory(directory);
       }
       renameSync(tempPath, this.filePath);
       if (crashSafe) fsyncDirectory(directory);
+      this.recordWriteBytes('primary', Buffer.byteLength(serialized));
+      if (previousBytes !== undefined)
+        this.recordWriteBytes('previous', previousBytes);
     } finally {
       // A failed rename leaves no partially-written primary. The temp file is
       // intentionally best-effort cleanup; the prior version remains recoverable.
@@ -208,6 +233,15 @@ export class JsonFileStore<T> {
         }
       }
     }
+  }
+
+  private recordWriteBytes(
+    artifact: 'primary' | 'previous',
+    bytes: number,
+  ): void {
+    const store = this.options.metricStore;
+    if (!store) return;
+    jsonFileStoreWriteBytes.record(bytes, { store, artifact });
   }
 
   /** For array-typed stores: append an entry, keeping the last `max` entries. */

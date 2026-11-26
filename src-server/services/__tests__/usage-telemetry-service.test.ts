@@ -14,6 +14,7 @@ import type { AppConfig } from '@kontourai/station-contracts/config';
 import type {
   ProductTelemetryBatch,
   ProductTelemetryCommitReceipt,
+  TelemetryOutboxEntry,
 } from '@kontourai/station-contracts/product-telemetry';
 import {
   PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
@@ -132,7 +133,8 @@ async function service(
 
 describe('UsageTelemetryService', () => {
   test.each([
-    ['beta', 'preview'],
+    // #4929 retired Beta; an unknown channel is omitted.
+    ['beta', undefined],
     ['stable', 'stable'],
     ['preview', 'preview'],
     ['nightly', 'nightly'],
@@ -719,6 +721,7 @@ describe('UsageTelemetryService', () => {
   });
 
   test('lost response retry preserves observation IDs, time and build on real delivery', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
     const bodies: ProductTelemetryBatch[] = [];
     const receivedKeys: Array<string | string[] | undefined> = [];
     const receiver = createServer(async (request, response) => {
@@ -763,6 +766,8 @@ describe('UsageTelemetryService', () => {
       });
       await subject.flush();
       expect(subject.bufferedCount).toBe(1);
+      // The first retry waits out at most one flush interval (#4994).
+      vi.setSystemTime(Date.now() + 10_000);
       await subject.flush();
       expect(subject.bufferedCount).toBe(0);
       expect(await subject.deliveryStatus()).toMatchObject({
@@ -1298,12 +1303,15 @@ describe('UsageTelemetryService', () => {
       fetch,
       setInterval: vi.fn() as any,
     });
+    vi.useFakeTimers({ toFake: ['Date'] });
     await subject.stationStarted();
     await subject.flush();
     expect(
       subject.bufferedCount,
       'failed telemetry batch was dropped instead of requeued',
     ).toBe(1);
+    // The first retry waits out at most one flush interval (#4994).
+    vi.setSystemTime(Date.now() + 10_000);
     await expect(
       subject.flush(),
       'permanently failing telemetry endpoint threw into caller',
@@ -1776,7 +1784,7 @@ describe('UsageTelemetryService', () => {
       'shutdown returned while a track-started flush was still writing the dropped ledger',
     ).toBe(0);
   }, 10_000);
-  test('SHUTDOWN LIFETIME DEFECT: a flush cut at the deadline settles its ledger before shutdown returns', async () => {
+  test('SHUTDOWN LIFETIME DEFECT: a flush cut at the deadline leaves its batch recorded as dropped once, settled before shutdown returns', async () => {
     // The request never answers until shutdown's 1s budget aborts it.
     const fetch = vi.fn(
       (_url: string, init?: RequestInit) =>
@@ -1791,18 +1799,18 @@ describe('UsageTelemetryService', () => {
       fetch: fetch as any,
       setInterval: vi.fn() as any,
     });
-    // The aborted batch's local ledger write takes a moment to land under the
-    // home, like a loaded runner. Shutdown must join it, not leave it running.
-    // Only the flush's own write passes its wire ID; shutdown's write for the
-    // still-buffered events does not, and must not satisfy this probe.
-    let transportLedgerSettled = false;
-    const recordFull = (subject as any).recordFull.bind(subject);
-    (subject as any).recordFull = async (...args: unknown[]) => {
-      if (args[1] !== 'dropped' || args[2] !== 'transport' || args.length < 4)
-        return recordFull(...args);
+    // The dropped record's local write takes a moment to land under the home,
+    // like a loaded runner. Shutdown must join it, not leave it running.
+    const local = (subject as any).publishers.local;
+    const record = local.record.bind(local);
+    const dropped: unknown[] = [];
+    let droppedLedgerSettled = false;
+    local.record = async (entry: TelemetryOutboxEntry) => {
+      if (entry.outcome !== 'dropped') return record(entry);
+      dropped.push({ reason: entry.reason, payload: entry.payload });
       await new Promise((resolve) => setTimeout(resolve, 200));
-      await recordFull(...args);
-      transportLedgerSettled = true;
+      await record(entry);
+      droppedLedgerSettled = true;
     };
     for (let index = 0; index < 20; index++)
       await subject.track('station_started', {
@@ -1812,10 +1820,22 @@ describe('UsageTelemetryService', () => {
       });
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     await subject.shutdown();
+    // #5053: the cut attempt is not itself a drop; the batch is dropped once,
+    // when shutdown abandons the queue.
+    expect(dropped).toEqual([
+      {
+        reason: 'transport',
+        payload: { event: 'telemetry_dropped', count: 20 },
+      },
+    ]);
     expect(
-      transportLedgerSettled,
-      'shutdown returned while an aborted flush was still writing under the home',
+      droppedLedgerSettled,
+      'shutdown returned while its dropped record was still writing under the home',
     ).toBe(true);
+    expect(await subject.deliveryStatus()).toMatchObject({
+      queued: 0,
+      counts: { shutdownDropped: 20 },
+    });
   }, 10_000);
   test('IDENTITY RACE DEFECT: concurrent creation converges on one UUID', async () => {
     const root = await home();

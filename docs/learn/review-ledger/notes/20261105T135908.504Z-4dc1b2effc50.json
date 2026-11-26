@@ -1,7 +1,0 @@
-{
-  "revision": "744db210a71fad425c522ed476d7862c1803e3c1",
-
-  "notes": [
-    {"path":"README.md","note":"After merging main: deployment-authentication changes do not alter README's install/sign-in link description.","inputs":["README.md","docs/guides/deployment-authentication.md"]}
-  ]
-}

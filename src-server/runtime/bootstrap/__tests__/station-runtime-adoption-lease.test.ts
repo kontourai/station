@@ -1,7 +1,8 @@
 // @vitest-environment node
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import {
   acquireStationHomeMaintenanceLease,
   acquireStationHomeRuntimeLease,
@@ -9,7 +10,10 @@ import {
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { adoptDetectedNativeEngines } from '../native-engine-adoption.js';
 import {
   NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS,
   StationRuntime,
@@ -236,6 +240,65 @@ async function letShutdownRunToQuiescence(): Promise<void> {
 }
 
 describe('shutdown and the native-engine adoption window (station#1815)', () => {
+  test('cancels a contended registry write before releasing the home lease', async () => {
+    const directory = makeTempDir('station-adoption-contention-');
+    const { runtime } = shutdownDouble();
+    const loader = new ConfigLoader({ projectHomeDir: directory });
+    const config = join(directory, 'config');
+    const registry = join(config, 'agent-registry.json');
+    const lock = `${registry}.mutation`;
+    await loadOrCreateAgentRegistry(loader);
+    const registryBefore = readFileSync(registry, 'utf8');
+    const lease = acquireStationHomeRuntimeLease(directory);
+    runtime.stationHomeRuntimeLease = lease;
+    runtime.configLoader = loader;
+    const release = await acquireFileMutationLockAsync(lock);
+    const holder = readFileSync(lock, 'utf8');
+    const registryFiles = () =>
+      readdirSync(config)
+        .filter((file) => file.startsWith('agent-registry.json'))
+        .sort();
+    const filesBefore = registryFiles();
+    const adoption = adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: runtime.logger,
+      detect: async () => true,
+      delaysMs: [0],
+      signal: runtime.nativeEngineAdoptionAbort.signal,
+    });
+    runtime.nativeEngineAdoptionSettled = adoption;
+    runtime.nativeEngineAdoptionSettleBudgetMs = () => 1_000;
+
+    try {
+      await vi.waitFor(
+        () => {
+          expect(
+            readdirSync(config).some((file) =>
+              /^agent-registry\.json\.mutation\..+\.tmp$/.test(file),
+            ),
+          ).toBe(true);
+        },
+        { timeout: 2_000 },
+      );
+      expect(() => acquireStationHomeMaintenanceLease(directory)).toThrow(
+        StationHomeActiveError,
+      );
+
+      await runtime.shutdown();
+      const maintenance = acquireStationHomeMaintenanceLease(directory);
+      maintenance.release();
+      expect(readFileSync(lock, 'utf8')).toBe(holder);
+      expect(readFileSync(registry, 'utf8')).toBe(registryBefore);
+      expect(registryFiles()).toEqual(filesBefore);
+      expect((await adoption).outcomes.claude).toBe('interrupted');
+    } finally {
+      await release();
+      await adoption;
+      await loader.dispose();
+      lease.release();
+    }
+  });
+
   test('tears down everything else first, then waits, then disposes and releases', async () => {
     const { runtime, log, release } = shutdownDouble();
     let landWrite!: () => void;

@@ -1,0 +1,37 @@
+{
+  "revision": "d92cd23a09365be7bc79310679dcfc3511e39975",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the two example findings against the repaired stdio Sessions reader, the ElevenLabs token and browser audio path, and the limits of the scripted evidence. The registry install finding still has its separate owner.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Followed the example's authenticated SDK transport, activation, registry ownership and browser cleanup. Checked authenticatedFetch and voiceRegistry in the published 0.8.0 SDK archive. External provider and microphone execution remain unverified.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"examples/README.md","note":"The two examples now pass scripted entry-point controls and move to explicit external runtime gaps in the static conformance report. Existing example discovery, TypeScript coverage and the Nova Sonic known-broken finding are unchanged.","inputs":["examples/README.md","scripts/examples-conformance.mjs"]},
+
+    {"path":"examples/elevenlabs-voice/README.md","note":"Checked the documented single-use token and STT/TTS WebSocket protocols against the actual plugin route, activation and scripted audio transport. Confirmed credentials stay separated and invalid, unauthorized and cancelled requests retire client resources. The normal plugin bundle built locally. Live provider, billing and audio hardware were outside verification.","inputs":["examples/elevenlabs-voice/README.md","examples/elevenlabs-voice/plugin.json","examples/elevenlabs-voice/plugin.mjs","examples/elevenlabs-voice/src/ElevenLabsSTTProvider.ts","examples/elevenlabs-voice/src/ElevenLabsTTSProvider.ts","examples/elevenlabs-voice/src/index.ts","examples/elevenlabs-voice/src/authorization.ts","examples/elevenlabs-voice/src/__tests__/protocol.test.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Verified the actual MCP child with a loopback fixture. Its authenticated canonical route and success envelope separate real empty, denied, unavailable, partial, malformed and timed-out snapshots. Both tool and resource retain their documented names. Live external-host rendering remains unverified.","inputs":["examples/station-sessions-mcp/README.md","examples/station-sessions-mcp/__tests__/render.test.mjs","examples/station-sessions-mcp/panel.mjs","examples/station-sessions-mcp/server.mjs","examples/station-sessions-mcp/__tests__/server.process.test.mjs"]},
+
+    {"path":"examples/workspace-pane-starter/README.md","note":"The layout still references the same MCP tool and descriptor. Checked the new target and read credential setup and the reader's separate unavailable panel. This does not qualify an external MCP host or a live Station.","inputs":["examples/workspace-pane-starter/README.md","examples/station-sessions-mcp/server.mjs"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The new voice example paragraph refers to the existing SDK registry, authenticated client and provider lifecycle. SDK scope and integration boundaries remain applicable.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The new voice example paragraph refers to the existing SDK registry, authenticated client and provider lifecycle. SDK scope and integration boundaries remain applicable.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The gate still validates every declared example, manifest and TypeScript coverage. Only the repaired examples' runtime classification changes to explicit external service gaps backed by scripted evidence.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"docs/guides/connections.md","note":"The gate still validates every declared example, manifest and TypeScript coverage. Only the repaired examples' runtime classification changes to explicit external service gaps backed by scripted evidence.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The gate still validates every declared example, manifest and TypeScript coverage. Only the repaired examples' runtime classification changes to explicit external service gaps backed by scripted evidence.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"examples/README.md","note":"The gate still validates every declared example, manifest and TypeScript coverage. Only the repaired examples' runtime classification changes to explicit external service gaps backed by scripted evidence.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"examples/docs-snippets/README.md","note":"The gate still validates every declared example, manifest and TypeScript coverage. Only the repaired examples' runtime classification changes to explicit external service gaps backed by scripted evidence.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The gate still validates every declared example, manifest and TypeScript coverage. Only the repaired examples' runtime classification changes to explicit external service gaps backed by scripted evidence.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"The new example test owns a single MCP child and a loopback fixture listener, so it enters the existing process-heavy class. Existing lane allocation and cleanup rules are unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"The new example test owns a single MCP child and a loopback fixture listener, so it enters the existing process-heavy class. Existing lane allocation and cleanup rules are unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

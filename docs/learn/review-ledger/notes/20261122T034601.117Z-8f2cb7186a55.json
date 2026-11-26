@@ -1,0 +1,29 @@
+{
+  "revision": "560cdd4dcd89a81913bad068be5d0b6345c1f3e1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked against this change: the Claude adapter declares refusesTurnsAfterFailure, matching its existing session_gone refusal of a Session in error. No behavior of the adapter changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked against this change: the Claude adapter declares refusesTurnsAfterFailure, matching its existing session_gone refusal of a Session in error. No behavior of the adapter changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked against this change: the Claude adapter declares refusesTurnsAfterFailure, matching its existing session_gone refusal of a Session in error. No behavior of the adapter changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Checked against this change: the Claude adapter declares refusesTurnsAfterFailure, matching its existing session_gone refusal of a Session in error. No behavior of the adapter changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked against this change: the Claude adapter declares refusesTurnsAfterFailure, matching its existing session_gone refusal of a Session in error. No behavior of the adapter changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked against this change: the Claude adapter declares refusesTurnsAfterFailure, matching its existing session_gone refusal of a Session in error. No behavior of the adapter changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked against this change: the Claude adapter declares refusesTurnsAfterFailure, matching its existing session_gone refusal of a Session in error. No behavior of the adapter changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked against this change: the Claude adapter declares refusesTurnsAfterFailure, matching its existing session_gone refusal of a Session in error. No behavior of the adapter changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked against this change: the Claude adapter declares refusesTurnsAfterFailure, matching its existing session_gone refusal of a Session in error. No behavior of the adapter changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked against this change: the Claude adapter declares refusesTurnsAfterFailure, matching its existing session_gone refusal of a Session in error. No behavior of the adapter changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked against this change: the Claude adapter declares refusesTurnsAfterFailure, matching its existing session_gone refusal of a Session in error. No behavior of the adapter changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked against this change: the Claude adapter declares refusesTurnsAfterFailure, matching its existing session_gone refusal of a Session in error. No behavior of the adapter changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

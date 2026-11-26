@@ -1,0 +1,9 @@
+{
+  "revision": "50be642daa052938f0a880e12241ee065e8c45af",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"background-tasks-store: a reconnect snapshot keeps a post-turn tool running while the parent conversation reports running child work, and still settles it unresolved when it reports none or no activity record. The user guide's and placement's 'missing snapshot evidence leaves an outcome unknown' still holds: nothing is declared successful.","inputs":["src-ui/src/contexts/background-tasks-store.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"background-tasks-store: a reconnect snapshot keeps a post-turn tool running while the parent conversation reports running child work, and still settles it unresolved when it reports none or no activity record. The user guide's and placement's 'missing snapshot evidence leaves an outcome unknown' still holds: nothing is declared successful.","inputs":["src-ui/src/contexts/background-tasks-store.ts"]}
+  ]
+}

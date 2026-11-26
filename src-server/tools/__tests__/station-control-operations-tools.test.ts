@@ -1,3 +1,4 @@
+import { AUTOMATION_OPERATOR_SURFACE } from '@kontourai/station-contracts/automation';
 import { REVIEW_EVIDENCE_OPERATOR_SURFACE } from '@kontourai/station-contracts/review-evidence';
 import { SCHEDULER_OPERATOR_SURFACE } from '@kontourai/station-contracts/scheduler';
 import { McpServer } from '@modelcontextprotocol/server';
@@ -149,6 +150,25 @@ describe('station-control operations tools (characterization)', () => {
         Object.values(SCHEDULER_OPERATOR_SURFACE).map(({ mcp }) => mcp),
       ),
     );
+  });
+
+  test('registers exactly the Automation read verbs and no Automation mutation (#4513)', async () => {
+    const tools = await registerTools();
+    const reads = Object.values(AUTOMATION_OPERATOR_SURFACE)
+      .map(({ mcp }) => mcp)
+      .filter((name): name is string => name !== null);
+    expect(reads.sort()).toEqual([
+      'list_automation_deliveries',
+      'list_automation_episodes',
+      'list_automation_rules',
+      'list_automation_sources',
+    ]);
+    expect(Object.keys(tools)).toEqual(expect.arrayContaining(reads));
+    expect(
+      Object.keys(tools).filter(
+        (name) => name.includes('automation') && !reads.includes(name),
+      ),
+    ).toEqual([]);
   });
 
   test('registers every canonical independent-review operator operation', async () => {
@@ -666,100 +686,48 @@ describe('station-control operations tools (characterization)', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE}/api/projects`);
   });
 
-  test('list_delegation_targets exposes the sanitized capability catalog used by the UI', async () => {
-    const sensitiveMarker = ['private', 'delegation', 'credential'].join('-');
-    fetchMock.mockImplementation(async (input) => {
-      const url = String(input);
-      if (url === `${API_BASE}/.well-known/station/v1`) {
-        return jsonResponse({ environmentId: 'environment-current' });
-      }
-      if (url === `${API_BASE}/api/projects/station`) {
-        return jsonResponse({
-          success: true,
-          data: { slug: 'station', workingDirectory: '/work/station' },
-        });
-      }
-      if (url === `${API_BASE}/api/connections/agents`) {
-        return jsonResponse({
-          success: true,
-          data: [
+  test('list_delegation_targets reaches the Project-scoped discovery route', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          environment: {
+            id: 'environment-current',
+            name: 'Current environment',
+            kind: 'current',
+          },
+          project: { slug: 'station' },
+          targets: [
             {
               id: 'codex',
               kind: 'agent',
-              type: 'codex',
-              name: 'Codex',
-              enabled: true,
-              status: 'ready',
-              capabilities: [
-                'agent-runtime',
-                'resume',
-                'interrupt',
-                'approvals',
-              ],
-              config: {
-                defaultModel: 'gpt-5.6-sol',
-                apiKey: sensitiveMarker,
-              },
-              prerequisites: [],
-              runtimeCatalog: {
-                models: [
-                  {
-                    id: 'gpt-5.6-sol',
-                    name: 'GPT-5.6 Sol',
-                    originalId: 'gpt-5.6-sol',
-                    credential: sensitiveMarker,
-                  },
-                ],
-              },
+              ready: true,
+              models: [{ id: 'gpt-5.6-sol' }],
             },
           ],
-        });
-      }
-      if (url === `${API_BASE}/api/agents`) {
-        return jsonResponse({
-          success: true,
-          data: [
-            {
-              slug: 'codex',
-              name: 'Codex',
-              available: true,
-              execution: { agentConnectionId: 'codex' },
-            },
-          ],
-        });
-      }
-      throw new Error(`Unexpected request: ${url}`);
-    });
+        },
+      }),
+    );
     const tools = await registerTools();
-
     const result = await tools.list_delegation_targets({
       projectSlug: 'station',
     });
-    const catalog = JSON.parse(result.content[0].text);
-
-    expect(catalog).toMatchObject({
-      environment: {
-        id: 'environment-current',
-        name: 'Current environment',
-        kind: 'current',
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/api/orchestration/delegations/options`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ projectSlug: 'station' }),
+      }),
+    );
+    expect(JSON.parse(result.content[0].text).targets).toEqual([
+      {
+        id: 'codex',
+        kind: 'agent',
+        ready: true,
+        models: [{ id: 'gpt-5.6-sol' }],
       },
-      project: { slug: 'station' },
-      targets: [
-        {
-          id: 'codex',
-          kind: 'agent',
-          ready: true,
-          defaultModel: 'gpt-5.6-sol',
-          capabilities: {
-            resume: true,
-            interrupt: true,
-            approvals: true,
-            modelSelection: true,
-          },
-        },
-      ],
-    });
-    expect(JSON.stringify(catalog)).not.toContain(sensitiveMarker);
+    ]);
   });
 
   test('list_delegation_environments exposes safe environment choices', async () => {
@@ -790,6 +758,160 @@ describe('station-control operations tools (characterization)', () => {
     });
   });
 
+  test('list_delegation_environments lists paired Stations with their readiness, and SSH stays the one entry for a shared id', async () => {
+    const peer = (
+      environmentId: string,
+      label: string,
+      readiness?: Record<string, unknown>,
+      scope = 'orchestration:read orchestration:operate',
+    ) => ({
+      environmentId,
+      apiBase: `https://${environmentId}.example.test`,
+      scope,
+      label,
+      createdAt: 1,
+      updatedAt: 1,
+      ...(readiness ? { readiness } : {}),
+    });
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${API_BASE}/.well-known/station/v1`) {
+        return jsonResponse({ environmentId: 'environment-current' });
+      }
+      if (url === `${API_BASE}/api/environments/ssh`) {
+        return jsonResponse({
+          success: true,
+          data: [
+            {
+              profile: {
+                id: 'ssh-1',
+                name: 'Build box',
+                environmentId: 'env-build',
+                verifiedProjectPath: '/srv/project',
+              },
+              state: { phase: 'idle' },
+            },
+          ],
+        });
+      }
+      if (url === `${API_BASE}/api/environments/peers`) {
+        return jsonResponse({
+          success: true,
+          data: [
+            peer('env-online', 'online-box', {
+              status: 'online',
+              checkedAt: 1,
+            }),
+            peer('env-recovering', 'recovering-box', {
+              status: 'recovering',
+              checkedAt: 1,
+            }),
+            peer('env-gone', 'gone-box', {
+              status: 'unreachable',
+              checkedAt: 1,
+            }),
+            peer('env-moved', 'moved-box', {
+              status: 'unconfirmed',
+              reason: 'identity-mismatch',
+              checkedAt: 1,
+            }),
+            peer(
+              'env-readonly',
+              'readonly-box',
+              { status: 'online', checkedAt: 1 },
+              'orchestration:read',
+            ),
+            peer('env-build', 'ssh-twin', {
+              status: 'unreachable',
+              checkedAt: 1,
+            }),
+          ],
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const tools = await registerTools();
+
+    const result = await tools.list_delegation_environments();
+    const { environments } = JSON.parse(result.content[0].text) as {
+      environments: Array<Record<string, unknown>>;
+    };
+
+    expect(environments.slice(1)).toEqual([
+      {
+        id: 'env-build',
+        name: 'Build box',
+        kind: 'ssh',
+        ready: true,
+        connected: false,
+      },
+      {
+        id: 'env-online',
+        name: 'online-box',
+        kind: 'peer',
+        ready: true,
+        connected: true,
+      },
+      {
+        id: 'env-recovering',
+        name: 'recovering-box',
+        kind: 'peer',
+        ready: false,
+        connected: false,
+        unavailableReason: 'Recovering · server down or restarting',
+      },
+      {
+        id: 'env-gone',
+        name: 'gone-box',
+        kind: 'peer',
+        ready: false,
+        connected: false,
+        unavailableReason: 'Unreachable',
+      },
+      {
+        id: 'env-moved',
+        name: 'moved-box',
+        kind: 'peer',
+        ready: false,
+        connected: false,
+        unavailableReason:
+          'Identity mismatch · a different Station answers at this address',
+      },
+      {
+        id: 'env-readonly',
+        name: 'readonly-box',
+        kind: 'peer',
+        ready: false,
+        connected: true,
+        unavailableReason:
+          'This paired Station did not grant orchestration:operate.',
+      },
+    ]);
+    expect(result.content[0].text).not.toContain('example.test');
+  });
+
+  test('list_delegation_environments still answers when the paired-Station read fails', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${API_BASE}/.well-known/station/v1`) {
+        return jsonResponse({ environmentId: 'environment-current' });
+      }
+      if (url === `${API_BASE}/api/environments/ssh`) {
+        return jsonResponse({ success: true, data: [] });
+      }
+      if (url === `${API_BASE}/api/environments/peers`) {
+        return jsonResponse({ success: false, error: 'Forbidden' }, 403);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const tools = await registerTools();
+    const result = await tools.list_delegation_environments();
+    expect(
+      (JSON.parse(result.content[0].text) as { environments: unknown[] })
+        .environments,
+    ).toHaveLength(1);
+  });
+
   test('list_delegated_tasks exposes the bounded coordinator inventory', async () => {
     fetchMock.mockImplementation(async (input) => {
       const url = String(input);
@@ -816,35 +938,6 @@ describe('station-control operations tools (characterization)', () => {
       },
       tasks: [],
       truncated: false,
-    });
-  });
-
-  test('list_delegation_targets keeps selected-Station failures generic', async () => {
-    fetchMock.mockImplementation(async (input) => {
-      const url = String(input);
-      if (url === `${API_BASE}/.well-known/station/v1`) {
-        return jsonResponse({ environmentId: 'environment-current' });
-      }
-      if (url === `${API_BASE}/api/connections/agents`) {
-        return jsonResponse(
-          { success: false, error: '/private/remote/config failed' },
-          500,
-        );
-      }
-      if (url === `${API_BASE}/api/agents`) {
-        return jsonResponse({ success: true, data: [] });
-      }
-      throw new Error(`Unexpected request: ${url}`);
-    });
-    const tools = await registerTools();
-
-    // #2795: the failure is an MCP error in the delegation family's shape;
-    // the sentence stays generic (no remote path leaks).
-    const result = await tools.list_delegation_targets({});
-    expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0].text)).toEqual({
-      success: false,
-      error: 'Engine connections are unavailable on the selected Station',
     });
   });
 

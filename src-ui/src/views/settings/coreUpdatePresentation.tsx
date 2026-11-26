@@ -14,8 +14,13 @@ import type {
 } from '@kontourai/station-contracts/system-status';
 import type { CoreUpdateStatus } from '@kontourai/station-sdk';
 import type { SemanticTone } from '@kontourai/ui/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
+import { Button } from '../../components/Button';
 import { CheckGlyph } from '../../components/icons/Glyph';
+import { copyToClipboard } from '../../lib/clipboard';
+import { formatBytes } from '../../utils/formatBytes';
+import { formatDateTime } from '../../utils/relativeTime';
+import './coreUpdatePresentation.css';
 
 /**
  * When the last check ran, as a wall-clock time: React Query's stamp of the
@@ -138,8 +143,8 @@ export function deriveComparisonView(
       tone: 'warning',
       text:
         status.provenanceIssue === 'invalid-stamp'
-          ? 'This server’s update provenance is invalid. Station cannot determine whether a server update is available. Use the installation method that manages this server.'
-          : 'This server install has no usable update provenance. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+          ? 'This server’s install record is invalid, so Station can’t check for updates. Update it with the method that installed it.'
+          : 'This server has no install record, so Station can’t check for updates. Update it with the method that installed it.',
       glyph: false,
       diverged: false,
     };
@@ -314,16 +319,36 @@ export function TechnicalDetails({
   message?: string | null;
   detail?: string | null;
 }) {
-  const lines: string[] = [];
-  if (typeof message === 'string' && message.length > 0) lines.push(message);
-  if (typeof detail === 'string' && detail.length > 0) lines.push(detail);
-  if (lines.length === 0) return null;
+  const lines = [
+    ...new Set(
+      [message, detail].filter((line): line is string => Boolean(line)),
+    ),
+  ];
+  const diagnostic = lines.join('\n');
+  const [copied, setCopied] = useState<{ text: string; ok: boolean }>();
+  if (!diagnostic) return null;
+  const feedback = copied?.text === diagnostic ? copied : undefined;
   return (
     <details className="settings__update-technical">
       <summary>Technical details</summary>
       {lines.map((line) => (
         <pre key={line}>{line}</pre>
       ))}
+      <Button
+        size="sm"
+        onClick={async () =>
+          setCopied({ text: diagnostic, ok: await copyToClipboard(diagnostic) })
+        }
+      >
+        Copy details
+      </Button>
+      {feedback && (
+        <span role="status">
+          {feedback.ok
+            ? 'Copied to clipboard'
+            : "Couldn't copy to the clipboard"}
+        </span>
+      )}
     </details>
   );
 }
@@ -375,15 +400,12 @@ function serviceUpdateReason(reason: string): string {
 }
 
 function finishedTime(at: string): string {
-  const time = Date.parse(at);
-  return Number.isFinite(time) ? new Date(time).toLocaleString() : at;
+  return formatDateTime(at, at);
 }
 
 export const SERVICE_UPDATE_IN_FLIGHT: ReadonlySet<
   ServiceUpdateProgress['state']
 > = new Set(['queued', 'staging', 'updating']);
-
-const MEGABYTE = 1024 * 1024;
 
 /**
  * #3851: the step the installer reported, with measured bytes while it
@@ -402,7 +424,7 @@ function stagingLine(
     const percent = Math.floor(
       (progress.downloadedBytes / progress.totalBytes) * 100,
     );
-    return `Downloading the release: ${(progress.downloadedBytes / MEGABYTE).toFixed(1)} of ${(progress.totalBytes / MEGABYTE).toFixed(1)} MB (${percent}%)…`;
+    return `Downloading the release: ${formatBytes(progress.downloadedBytes)} of ${formatBytes(progress.totalBytes)} (${percent}%)…`;
   }
   if (progress.stagePhase === 'downloading') return 'Downloading the release…';
   if (progress.stagePhase === 'verifying')
@@ -488,7 +510,7 @@ export function serviceUpdateProgressLine(
       const name = instance ?? '<instance>';
       return {
         tone: 'error',
-        text: `The update to ${progress.targetVersion} could not be rolled back: the Station home could not be restored after ${progress.restoreAttempts} attempts (${serviceUpdateReason(progress.reason)}). The service keeps the home’s backup and runs no Station until an operator acts. Fix the cause shown in the service log, then retry the restore on the host with: station service stop --instance=${name} && station service start --instance=${name}`,
+        text: `The update to ${progress.targetVersion} could not be rolled back after ${progress.restoreAttempts} attempts (${serviceUpdateReason(progress.reason)}). Station stays stopped and its backup is kept. Fix the cause in the service log, then run on the computer running Station: station service stop --instance=${name} && station service start --instance=${name}`,
       };
     }
     case 'up-to-date':
@@ -611,7 +633,7 @@ export function serviceUpdateDownload(progress: ServiceUpdateProgress): {
       100,
       Math.floor((progress.downloadedBytes / progress.totalBytes) * 100),
     ),
-    text: `${(progress.downloadedBytes / MEGABYTE).toFixed(1)} / ${(progress.totalBytes / MEGABYTE).toFixed(1)} MB`,
+    text: `${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalBytes)}`,
   };
 }
 

@@ -1,6 +1,7 @@
 import {
   getProject,
   getProjectCheckoutFreshness,
+  listProjectLayouts,
   listProjects,
 } from '@kontourai/station-sdk/client';
 import { z } from 'zod';
@@ -30,12 +31,22 @@ async function getProjectWithCheckoutFreshness(slug: string) {
   return checkoutFreshness ? { ...project, checkoutFreshness } : project;
 }
 
-/** Shared callbacks; the outside adapter supplies scoped domain reads, never internal credentials. */
+/** Shared Project read registrations with caller-owned access. */
 export function registerProjectReadTools(
   server: Pick<StationControlToolRegistry, 'tool'>,
-  reads: { list(): Promise<unknown>; get(slug: string): Promise<unknown> } = {
+  reads: {
+    list(): Promise<unknown>;
+    get(slug: string): Promise<unknown>;
+    layouts?(slug: string): Promise<unknown>;
+  } = {
     list: () => listProjects(resolveControlApiBase(), controlRequestOptions()),
     get: getProjectWithCheckoutFreshness,
+    layouts: (slug) =>
+      listProjectLayouts(
+        resolveControlApiBase(),
+        slug,
+        controlRequestOptions(),
+      ),
   },
 ) {
   server.tool('list_projects', 'List readable projects', {}, async () =>
@@ -49,4 +60,13 @@ export function registerProjectReadTools(
     { slug: z.string() },
     async ({ slug }) => jsonToolResult(await toToolEnvelope(reads.get(slug))),
   );
+  const layouts = reads.layouts;
+  if (layouts) {
+    server.tool(
+      'list_project_layouts',
+      'List layouts for a project',
+      { slug: z.string() },
+      async ({ slug }) => jsonToolResult(await toToolEnvelope(layouts(slug))),
+    );
+  }
 }

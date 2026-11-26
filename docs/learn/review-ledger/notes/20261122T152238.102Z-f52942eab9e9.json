@@ -1,0 +1,7 @@
+{
+  "revision": "ac3c0bc3e815b6d8fcfd3997caa9bd94e434f527",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Rechecked InboxRow.css (#5398 round 4): a busy Check dims; no motion added.","inputs":["docs/design/motion.md","src-ui/src/components/inbox-row/InboxRow.css"]}
+  ]
+}

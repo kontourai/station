@@ -14,6 +14,7 @@ import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { ErrorState } from '../components/state';
 import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
+import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { type LocaleContextValue, useLocale } from '../i18n/LocaleContext';
 import { openConnectionsModal } from '../lib/connectionModalEvents';
 import { requestTroubleshoot } from '../lib/troubleshootEvents';
@@ -149,7 +150,7 @@ class RouteErrorBoundary extends Component<
    * It is deliberately NOT offered for a rejected chunk import: React caches
    * a `lazy` rejection for the life of the module, so mounting the same
    * lazy component replays the same rejected promise (the reason
-   * `LazyBoundary` has to construct a fresh one). Offering "Try again" there
+   * `LazyBoundary` has to construct a fresh one). Offering "Retry" there
    * would be a button that cannot work.
    */
   retry = () => {
@@ -244,16 +245,50 @@ class RouteErrorBoundary extends Component<
 function RouteViewPending({
   surfaceId,
   body,
+  stationUnavailable,
 }: {
   surfaceId: string | null;
   body: ReactNode;
+  stationUnavailable: boolean;
 }) {
+  const { message } = useLocale();
+  const pending = useDegradedQueryState({ isPending: true });
+  const online = useSyncExternalStore(
+    subscribeOnline,
+    browserOnline,
+    () => true,
+  );
   useEffect(() => {
     if (!surfaceId) return;
     routeTransitionStore.setPending(surfaceId);
     return () => routeTransitionStore.clearPending(surfaceId);
   }, [surfaceId]);
-  return <>{body}</>;
+  if (pending === 'loading') return <>{body}</>;
+  const reviewConnection = stationUnavailable || !online;
+  return (
+    <ErrorState
+      className="route-pending-recovery"
+      title={
+        reviewConnection
+          ? message('route.pending.connectionTitle')
+          : message('route.pending.title')
+      }
+      action={
+        <Button
+          variant="primary"
+          onClick={
+            reviewConnection
+              ? () => openConnectionsModal()
+              : () => window.location.reload()
+          }
+        >
+          {reviewConnection
+            ? message('route.authority.reviewAction')
+            : message('route.chunk.action')}
+        </Button>
+      }
+    />
+  );
 }
 
 export function RouteViewBoundary({
@@ -261,6 +296,7 @@ export function RouteViewBoundary({
   routeKey,
   pendingSurfaceId = null,
   pendingBody = <RoutePendingSkeleton />,
+  stationUnavailable = false,
 }: {
   children: ReactNode;
   routeKey: string;
@@ -279,6 +315,7 @@ export function RouteViewBoundary({
    * placeholder, which is what this boundary has always shown.
    */
   pendingBody?: ReactNode;
+  stationUnavailable?: boolean;
 }) {
   const { message } = useLocale();
   return (
@@ -293,6 +330,7 @@ export function RouteViewBoundary({
             key={routeKey}
             surfaceId={pendingSurfaceId}
             body={pendingBody}
+            stationUnavailable={stationUnavailable}
           />
         }
       >

@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
@@ -14,8 +14,16 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { validatePackagedReleaseManifest } from '../../packages/cli/src/commands/lifecycle-code-root.js';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 
 const SCRIPT = resolve('scripts/package-portable-release.sh');
+// The packager classifies release tags through the shared parser (#4929), so
+// a fixture checkout carries it and its one import, exactly as the repo does.
+const RELEASE_TAG_PARSER = [
+  'scripts/lib/release-tag.mjs',
+  'scripts/lib/module-entry.mjs',
+] as const;
 const CREATED_AT = '2026-07-22T12:34:56.000Z';
 const roots: string[] = [];
 const REPOSITORY_LOCAL_GIT_ENV_KEYS = [
@@ -70,8 +78,10 @@ function createFixture(
 ): string {
   const root = mkdtempSync(join(tmpdir(), 'station-portable-release-'));
   roots.push(root);
-  mkdirSync(join(root, 'scripts'));
+  mkdirSync(join(root, 'scripts/lib'), { recursive: true });
   copyFileSync(SCRIPT, join(root, 'scripts/package-portable-release.sh'));
+  for (const file of RELEASE_TAG_PARSER)
+    copyFileSync(resolve(file), join(root, file));
   chmodSync(join(root, 'scripts/package-portable-release.sh'), 0o755);
   writeFileSync(join(root, 'package.json'), '{"name":"fixture"}\n');
   writeFileSync(join(root, 'tracked.txt'), 'portable\n');
@@ -131,6 +141,80 @@ function packageFixture(
 // workers or a sibling session the 5s default budget starves. Cap, not
 // expectation.
 describe('portable release packager', { timeout: 30_000 }, () => {
+  it.each([
+    {
+      name: 'signs the source-smoke manifest from schema-3 product identity',
+      tag: 'v0.1.0',
+      admitted: true,
+    },
+    {
+      name: 'refuses an RC as the final source-smoke manifest',
+      tag: 'v0.1.0-rc.1',
+      admitted: false,
+    },
+  ])('$name', ({ tag, admitted }) => {
+    const root = createFixture();
+    const source = readFileSync(
+      resolve('scripts/smoke-install-source.sh'),
+      'utf8',
+    );
+    const serverStart = source.indexOf(
+      '\nnode -e \'\n  require("node:http").createServer',
+    );
+    if (serverStart < 0)
+      throw new Error('Source smoke fixture setup boundary is missing');
+    const runnerTemp = join(root, 'runner-temp');
+    const result = spawnSyncBounded(
+      'bash',
+      ['-c', source.slice(0, serverStart)],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 30_000,
+        env: isolatedGitEnvironment({
+          ...process.env,
+          RUNNER_TEMP: runnerTemp,
+          GITHUB_WORKSPACE: resolve('.'),
+          SMOKE_HOME: join(root, 'smoke-home'),
+          RELEASE_DIR: join(root, 'release'),
+          RELEASE_TAG: tag,
+          RELEASE_CHANNEL: 'stable',
+          RUNTIME_CHANNEL: 'stable',
+          ARTIFACT_PORT: '18765',
+        }),
+      },
+    );
+    expect(
+      result.status,
+      `${result.error?.message ?? ''}${result.stderr}`,
+    ).toBe(admitted ? 0 : 1);
+    if (!admitted) {
+      expect(result.stderr).toContain(
+        'source smoke tag does not match packaged product version',
+      );
+      return;
+    }
+    const manifest = JSON.parse(
+      readFileSync(
+        join(
+          runnerTemp,
+          'install-source-stable/fixture-manifests/manifest.json',
+        ),
+        'utf8',
+      ),
+    );
+    expect(manifest.payload).toMatchObject({
+      channel: 'stable',
+      version: '0.1.0',
+      releaseTag: tag,
+      sourceSha: run('git', ['rev-parse', 'HEAD'], root),
+    });
+    expect(manifest.payload.artifacts.macos.name).toBe(
+      'station-0.1.0-macos-universal.dmg',
+    );
+  });
+
   it('isolates nested repositories from inherited Git hook state', () => {
     const outerRoot = mkdtempSync(join(tmpdir(), 'station-outer-repository-'));
     roots.push(outerRoot);
@@ -158,22 +242,26 @@ describe('portable release packager', { timeout: 30_000 }, () => {
     expect(run('git', ['status', '--porcelain'], outerRoot)).toBe('');
   });
 
-  it('creates a deterministic preview manifest and embedded preview provenance', () => {
+  it('packages a release candidate as the Stable ring under its own tag', () => {
     const root = createFixture();
     const output = packageFixture(
       root,
-      'release-preview',
+      'release-candidate',
       process.env,
-      'v0.2.0-preview.3',
+      'v0.2.0-rc.3',
     );
+    // A candidate is the Stable ring: no prerelease ring manifest is written.
+    expect(() =>
+      readFileSync(join(output, 'station-release-ring-preview.json')),
+    ).toThrow();
     const ring = JSON.parse(
-      readFileSync(join(output, 'station-release-ring-preview.json'), 'utf8'),
+      readFileSync(join(output, 'station-release-ring-stable.json'), 'utf8'),
     );
     expect(ring).toMatchObject({
       schemaVersion: 1,
-      channel: 'preview',
-      prerelease: true,
-      ref: 'v0.2.0-preview.3',
+      channel: 'stable',
+      prerelease: false,
+      ref: 'v0.2.0-rc.3',
       sha: run('git', ['rev-parse', 'HEAD'], root),
       createdAt: CREATED_AT,
     });
@@ -189,12 +277,14 @@ describe('portable release packager', { timeout: 30_000 }, () => {
       ),
     );
     expect(embedded).toMatchObject({
-      schemaVersion: 2,
-      channel: 'beta',
-      releaseChannel: 'preview',
-      prerelease: true,
-      ref: 'v0.2.0-preview.3',
+      schemaVersion: 3,
+      channel: 'stable',
+      releaseChannel: 'stable',
+      prerelease: false,
+      version: '0.2.0',
     });
+    expect(embedded).not.toHaveProperty('ref');
+    expect(validatePackagedReleaseManifest(embedded)).toEqual(embedded);
   });
 
   it('creates deterministic tracked-only bytes with exact provenance and checksum', () => {
@@ -223,9 +313,9 @@ describe('portable release packager', { timeout: 30_000 }, () => {
       ),
     );
     expect(manifest).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       sha: run('git', ['rev-parse', 'HEAD'], root),
-      ref: 'v0.1.0',
+      version: '0.1.0',
       createdAt: CREATED_AT,
       channel: 'stable',
       releaseChannel: 'stable',
@@ -234,7 +324,7 @@ describe('portable release packager', { timeout: 30_000 }, () => {
     expect(Object.keys(manifest)).toEqual([
       'schemaVersion',
       'sha',
-      'ref',
+      'version',
       'createdAt',
       'channel',
       'releaseChannel',
@@ -354,21 +444,39 @@ describe('portable release packager', { timeout: 30_000 }, () => {
     expect(() => packageFixture(root, 'release-with-link')).toThrow();
   });
 
-  it.each(['v01.2.3', 'v1.02.3', 'v1.2.03', 'v1.2.3-preview.0', 'main'])(
-    'rejects non-ring tag %s',
-    (ref) => {
-      const root = createFixture();
-      expect(() =>
-        execFileSync('bash', [
-          join(root, 'scripts/package-portable-release.sh'),
-          '--output-dir',
-          join(root, 'release'),
-          '--ref',
-          ref,
-          '--sha',
-          run('git', ['rev-parse', 'HEAD'], root),
-        ]),
-      ).toThrow();
-    },
-  );
+  it.each([
+    'v01.2.3',
+    'v1.02.3',
+    'v1.2.03',
+    'v1.2.3-preview.1',
+    'v1.2.3-preview.0',
+    'v1.2.3-rc.0',
+    'v1.2.3-rc.99',
+    'main',
+  ])('rejects non-ring tag %s', (ref) => {
+    const root = createFixture();
+    const result = spawnSync(
+      'bash',
+      [
+        join(root, 'scripts/package-portable-release.sh'),
+        '--output-dir',
+        join(root, 'release'),
+        '--ref',
+        ref,
+        '--sha',
+        run('git', ['rev-parse', 'HEAD'], root),
+      ],
+      {
+        encoding: 'utf8',
+        env: isolatedGitEnvironment(process.env),
+        windowsHide: true,
+      },
+    );
+    expect(result.status).toBe(1);
+    // The refusal is the parser's, not a missing module or a crash.
+    expect(result.stderr).not.toContain('Cannot find module');
+    expect(result.stderr).toContain(
+      'error: release ref must be a vX.Y.Z or vX.Y.Z-rc.N tag',
+    );
+  });
 });

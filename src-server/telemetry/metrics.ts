@@ -79,6 +79,24 @@ export const usageTelemetryOutcomes = meter.createCounter(
   'station.usage_telemetry.outcomes',
   { description: 'Usage telemetry delivery and drop outcomes' },
 );
+/**
+ * Full usage-telemetry batch delivery by publisher (`kontour`/`operator`),
+ * outcome (`acknowledged`/`rejected`/`retry_scheduled`), failure `code` (the
+ * closed request-failure vocabulary, absent when acknowledged) and
+ * `status_class` (`2xx`/`4xx`/`5xx`/`other`/`none`). #4994.
+ */
+export const usageTelemetryBatches = meter.createCounter(
+  'station.usage_telemetry.batches',
+  { description: 'Usage telemetry batch delivery outcomes by bounded class' },
+);
+/** Repeated identical usage-telemetry delivery warnings logged at debug instead. */
+export const usageTelemetrySuppressedWarnings = meter.createCounter(
+  'station.usage_telemetry.suppressed_warnings',
+  {
+    description:
+      'Usage telemetry delivery warnings suppressed as repeats, by publisher and code',
+  },
+);
 
 export const tokensInput = meter.createCounter('station.tokens.input', {
   description: 'Input tokens consumed',
@@ -418,6 +436,41 @@ export const routingDecision = meter.createCounter('station.routing.decision', {
 export const agentOps = meter.createCounter('station.agent.operations', {
   description: 'Agent CRUD operations',
 });
+/**
+ * #4995: setup-requirement probe reads (not memoized reuses) by bounded
+ * `outcome`: `ready` | `blocked` | `failed`. No Agent slug or error text.
+ */
+export const stationSetupRequirementProbeOutcomes = meter.createCounter(
+  'station.setup_requirement.probe_outcomes',
+  {
+    description:
+      'Station setup requirement probe reads by bounded outcome (ready, blocked, failed)',
+  },
+);
+/**
+ * #4995: bytes one durable JsonFileStore write puts on disk, for stores that
+ * name themselves. Attributes: `store` (closed `JsonFileStoreMetricName`) and
+ * `artifact` (`primary` | `previous`, the retained prior copy).
+ */
+export const jsonFileStoreWriteBytes = meter.createHistogram(
+  'station.json_store.write_bytes',
+  {
+    description:
+      'Bytes written per durable JSON store write by bounded store and artifact (primary, previous)',
+    unit: 'By',
+  },
+);
+/**
+ * #4995: startup sweep of orphaned `*.mutation.<uuid>.tmp` lock temporaries,
+ * by bounded `outcome`: `removed` | `retained_live` | `failed`.
+ */
+export const fileMutationLockOrphanTemporaries = meter.createCounter(
+  'station.file_mutation_lock.orphan_temporaries',
+  {
+    description:
+      'Orphaned file mutation lock temporaries found by the startup sweep, by bounded outcome',
+  },
+);
 export const projectOps = meter.createCounter('station.project.operations', {
   description: 'Project CRUD operations',
 });
@@ -1165,6 +1218,47 @@ export const sessionOwnerCacheOps = meter.createCounter(
   },
 );
 
+// ── Session read model readers (#4992) ──
+/**
+ * Every `listSessionReadModel` call. `purpose` is the caller's declared
+ * reason (`session-read-model-purpose.ts`, a closed vocabulary; anything
+ * else records `invalid`) and `scope` is `all` or `threads` (a `threadIds`
+ * read). No session, user or thread identity is ever a dimension.
+ */
+export const sessionReadModelReads = meter.createCounter(
+  'station.orchestration.session_read_model.reads',
+  {
+    description:
+      'Session read model reads by declared caller purpose and scope (all | threads)',
+  },
+);
+/**
+ * Wall time of one read, by `purpose` and `phase`: `total` includes the
+ * awaited adapter session sync; `build` is the synchronous fold after it,
+ * which holds the main thread.
+ */
+export const sessionReadModelDuration = meter.createHistogram(
+  'station.orchestration.session_read_model.duration',
+  {
+    description:
+      'Session read model read duration by caller purpose and phase (total | build)',
+    unit: 'ms',
+  },
+);
+/**
+ * Threads per read, by `purpose` and `outcome`: `considered` (readable
+ * threads the read built), `projection_refolded` / `projection_reused`
+ * (projection facts folded again or served from the event store's per-thread
+ * cache), and `count_refreshed` / `count_reused` (the same for event counts).
+ */
+export const sessionReadModelThreads = meter.createHistogram(
+  'station.orchestration.session_read_model.threads',
+  {
+    description:
+      'Threads per session read model read by caller purpose and outcome (considered | projection_refolded | projection_reused | count_refreshed | count_reused)',
+  },
+);
+
 // ── Coalesced event fan-out (archive#1093 Part B) ──
 /**
  * Per-dispatch coalesce ratio (events-in vs work-out) for a
@@ -1418,6 +1512,18 @@ export const notificationOps = meter.createCounter(
   },
 );
 /**
+ * #5052: settled records (`status`: `expired` | `actioned` | `dismissed`)
+ * removed from `notifications.json` once their settle time is older than the
+ * retention window. Never carries ids, sources, tags or content.
+ */
+export const notificationRetentionPruned = meter.createCounter(
+  'station.notification.retention_pruned',
+  {
+    description:
+      'Settled notification records removed by retention, by bounded status',
+  },
+);
+/**
  * #2584: `notify_user` outcomes by `result` (the tool's status) and
  * `urgency`. Never carries session ids, titles or bodies.
  */
@@ -1527,14 +1633,23 @@ export const contextSafetyFindings = meter.createCounter(
 export const schedulerJobRuns = meter.createCounter(
   'station.scheduler.job.runs',
   {
-    description: 'Scheduler job executions',
+    description:
+      'Confirmed built-in scheduler job executions with an applied terminal receipt',
   },
 );
 export const schedulerJobDuration = meter.createHistogram(
   'station.scheduler.job.duration',
   {
-    description: 'Scheduler job execution duration',
+    description:
+      'Elapsed time of confirmed built-in scheduler job executions with an applied terminal receipt',
     unit: 'ms',
+  },
+);
+export const schedulerManagementOperations = meter.createCounter(
+  'station.scheduler.management.operations',
+  {
+    description:
+      'Scheduler mutation requests reaching the route dispatch boundary',
   },
 );
 export const schedulerConcurrencyDeferrals = meter.createCounter(
@@ -1547,6 +1662,59 @@ export const schedulerConcurrencyDeferrals = meter.createCounter(
 export const schedulerHealthy = meter.createObservableGauge(
   'station.scheduler.healthy',
   { description: 'Scheduler heartbeat health (1=healthy, 0=unhealthy)' },
+);
+
+// ── Linux workload scopes ──
+/**
+ * Settled and failed workload scope cleanup attempts (#4993). Attributes are
+ * closed: `outcome`, `error_kind` and `trigger`; never a unit or session.
+ */
+export const workloadScopeCleanupAttempts = meter.createCounter(
+  'station.workload.scope_cleanup.attempts',
+  {
+    description:
+      "Workload scope cleanup attempts by outcome ('settled' | 'retry_scheduled' | 'abandoned'), error_kind ('none' | 'bus_unavailable' | 'command_failed' | 'other') and trigger ('monitor' | 'close' | 'shutdown')",
+  },
+);
+/** Workload scopes whose cleanup has failed and not settled, by state. */
+export const workloadScopeCleanupBacklog = meter.createObservableGauge(
+  'station.workload.scope_cleanup.backlog',
+  {
+    description:
+      "Workload scopes whose cleanup has not settled, by state ('pending' | 'abandoned')",
+  },
+);
+
+/**
+ * Kernel OOM kills inside workload scopes (#5081), counted once each by where
+ * Station first saw them. Attributes are closed: `source` and `scope_kind`;
+ * never a unit, session or process name.
+ */
+export const workloadScopeOomKills = meter.createCounter(
+  'station.workload.scope.oom_kills',
+  {
+    description:
+      "Kernel OOM kills inside workload scopes by source ('live': the 1 s poll saw the scope's count rise while it ran | 'close': first seen when the scope closed) and scope_kind ('engine' | 'command')",
+  },
+);
+/** Workload scope memory-pressure transitions (#5081). */
+export const workloadScopeMemoryPressure = meter.createCounter(
+  'station.workload.scope.memory_pressure',
+  {
+    description:
+      "Workload scope memory-pressure transitions by transition ('enter': working set reached the configured share of memory.max | 'exit') and scope_kind ('engine' | 'command')",
+  },
+);
+/**
+ * Workload notices (#5113) an engine adapter handled for its own scope.
+ * Attributes are closed: `provider_family`, `kind` and `outcome`.
+ */
+export const engineWorkloadNotices = meter.createCounter(
+  'station.engine.workload_notices',
+  {
+    description:
+      "Workload notices engine adapters handled, by provider_family ('claude' | 'codex'), kind ('pressure-enter' | 'pressure-exit' | 'oom-kill') and outcome ('delivered-mid-turn': in the running turn | 'delivered-turn-start': with the next turn's input | 'superseded': a later transition replaced it before delivery | 'expired': undelivered for 10 minutes | 'discarded': the session ended first)",
+  },
 );
 
 // ── MCP lifecycle ──
@@ -2024,7 +2192,7 @@ export const acpResumeSessions = meter.createCounter(
   'station.acp.resume_sessions',
   {
     description:
-      "ACP sessions reattached via session/resume or session/load with Station tool servers re-delivered (#895; attrs: connectionId, outcome: 'resumed'|'loaded'|'load-unsupported')",
+      "ACP sessions reattached via session/resume or session/load with Station tool servers re-delivered (#895; attrs: connectionId, outcome: 'resumed'|'loaded'|'load-unsupported'|'other-session'|'started-fresh'; other-session when the engine's answer named a different session than the one asked for, started-fresh when a reviewed engine refusal made Station start a new engine session instead)",
   },
 );
 
@@ -2296,6 +2464,28 @@ export const analyticsOps = meter.createCounter(
     description: 'Analytics query events',
   },
 );
+/**
+ * #373: one lifetime usage pass, by `mode`: `full` (no valid watermark, or a
+ * requested rebuild) or `incremental` (caught up from the watermark).
+ */
+export const usageProjectionPassDuration = meter.createHistogram(
+  'station.usage_projection.pass.duration',
+  {
+    description: 'Lifetime usage projection pass duration by mode',
+    unit: 'ms',
+  },
+);
+/**
+ * #373: event rows one lifetime usage pass read, by `mode`: `full` (every
+ * thread refolded), `incremental` (new rows past the watermark) or `rebuild`
+ * (usage rows of the threads an incremental pass refolded).
+ */
+export const usageProjectionRowsScanned = meter.createHistogram(
+  'station.usage_projection.rows_scanned',
+  {
+    description: 'Event rows read per lifetime usage projection pass by mode',
+  },
+);
 
 // ── Bedrock ──
 export const bedrockOps = meter.createCounter('station.bedrock.operations', {
@@ -2555,6 +2745,27 @@ export const serverLogStoreRetentionRemovedFiles = meter.createCounter(
   },
 );
 
+/** #4995: repeated identical records the logger seam suppressed, by the
+ * logger's component (a source-literal `createLogger` name, so bounded by
+ * call sites) and level. Never message text or context. */
+export const logRecordsSuppressed = meter.createCounter(
+  'station.logs.suppressed_records',
+  {
+    description:
+      'Repeated identical log records suppressed by the logger repeat limit, by component and level',
+  },
+);
+
+/** #4995: size-cap rotations of the server's stdout log file
+ * (`STATION_LOG_FILE`), by bounded outcome (rotated|failed). */
+export const serverStdoutLogRotations = meter.createCounter(
+  'station.logs.stdout_file.rotations',
+  {
+    description:
+      'Size-cap rotations of the server stdout log file by outcome (rotated|failed)',
+  },
+);
+
 export const serverLogsRead = meter.createCounter('station.logs.read', {
   description:
     'Server log read-path queries (station#1896 logging slice 2), by surface (route|tool)',
@@ -2604,13 +2815,14 @@ export function registerObservableGauges(callbacks: {
 }): void {
   meter
     .createObservableGauge('station.agents.active', {
-      description: 'Number of active agents',
+      description: 'Number of loaded Agent objects',
     })
     .addCallback((obs) => obs.observe(callbacks.activeAgents()));
 
   meter
     .createObservableGauge('station.mcp.connections', {
-      description: 'Number of MCP connections',
+      description:
+        'Number of tracked MCP server status entries, including failures',
     })
     .addCallback((obs) => obs.observe(callbacks.mcpConnections()));
 }

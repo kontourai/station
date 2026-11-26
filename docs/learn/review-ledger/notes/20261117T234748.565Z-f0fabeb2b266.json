@@ -1,0 +1,7 @@
+{
+  "revision": "c0f3ec08cacd7ec51b2756149c7f44a422241e10",
+
+  "notes": [
+    {"path":"docs/reference/station-weight.md","note":"Reviewed optional three-ordinal requestConversation from CLI through Station chat acceptance, SDK resume and stub capture. Default workload, metrics and baseline schema remain unchanged. Checked cumulative versus repeated/new line multiset accounting, whole tool definitions and deferred names, matched models/versions, fresh request and turn identities, rule receipts, explicit NOT_MEASURED/skips and no baseline recording. Focused real Station/SDK short-stub run paired all three ordinals; fixture faults exposed duplicated AGENTS guidance, missing rules, changed conversation identity on continuation and replayed reply. HTTP history controls reject skipped/ambiguous/reordered turns. No full memory/timing benchmark, provider spend, parking causality, discovery transition or Codex/ACP parity was verified.","inputs":["docs/reference/station-weight.md","scripts/bench/station-weight-request.mjs","scripts/bench/station-weight-stub.mjs","scripts/bench/station-weight.mjs","scripts/__tests__/station-weight.test.ts","scripts/__tests__/station-weight.end-to-end.process.test.ts"]}
+  ]
+}

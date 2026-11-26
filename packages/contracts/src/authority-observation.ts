@@ -29,6 +29,7 @@
  * client-observation slice, owned separately.
  */
 import { isPrincipalRef } from './principal.js';
+import { isObjectRecord } from './record-guard.js';
 
 export const AUTHORITY_OBSERVATION_SCHEMA_VERSION =
   'station.authority-observation/v1';
@@ -60,10 +61,6 @@ export interface AuthorityObservation {
   readonly grant: AuthorityObservationGrant;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function hasOnlyKnownKeys(
   value: Record<string, unknown>,
   keys: readonly string[],
@@ -74,7 +71,7 @@ function hasOnlyKnownKeys(
 function isObservationPrincipal(
   value: unknown,
 ): value is AuthorityObservationPrincipal {
-  if (!isRecord(value)) return false;
+  if (!isObjectRecord(value)) return false;
   if (!hasOnlyKnownKeys(value, ['kind', 'id'])) return false;
   if (value.kind !== 'human' && value.kind !== 'tenant') return false;
   if (typeof value.id !== 'string' || value.id.length === 0) return false;
@@ -87,7 +84,7 @@ function isObservationPrincipal(
 function isObservationGrant(
   value: unknown,
 ): value is AuthorityObservationGrant {
-  if (!isRecord(value)) return false;
+  if (!isObjectRecord(value)) return false;
   if (value.kind === 'operator') return hasOnlyKnownKeys(value, ['kind']);
   if (value.kind === 'device') {
     if (!hasOnlyKnownKeys(value, ['kind', 'deviceId', 'grantedScopes']))
@@ -112,7 +109,7 @@ function isObservationGrant(
 export function isAuthorityObservation(
   value: unknown,
 ): value is AuthorityObservation {
-  if (!isRecord(value)) return false;
+  if (!isObjectRecord(value)) return false;
   if (
     !hasOnlyKnownKeys(value, [
       'schemaVersion',

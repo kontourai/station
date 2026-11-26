@@ -8,15 +8,31 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../src-server/__test-utils__/orchestration-gate-test-harness';
+import { createNotificationRoutes } from '../../src-server/routes/operations/notifications';
 import { createAttentionRoutes } from '../../src-server/routes/orchestration/attention';
 import { createOrchestrationRoutes } from '../../src-server/routes/orchestration/orchestration';
+import {
+  ApprovalInboxNotificationProvider,
+  wireApprovalInboxNotifications,
+} from '../../src-server/services/approvals/approval-inbox';
+import { NotificationService } from '../../src-server/services/notifications/notification-service';
 import { EventBus } from '../../src-server/services/orchestration/event-bus';
 import { EventStore } from '../../src-server/services/orchestration/event-store';
 import { OrchestrationService } from '../../src-server/services/orchestration/orchestration-service';
 import { AttentionProjectionService } from '../../src-server/services/projects/attention-projection';
 
 /** Real route/service/SQLite seams with a controlled in-process provider, not a live account. */
-export async function exactRequestBackend(page: Page, databasePath: string) {
+export async function exactRequestBackend(
+  page: Page,
+  databasePath: string,
+  {
+    approval,
+    projectSlug,
+  }: {
+    approval?: { guardianReason?: string };
+    projectSlug?: string;
+  } = {},
+) {
   mkdirSync(dirname(databasePath), { recursive: true });
   const store = new EventStore(databasePath);
   const eventBus = new EventBus();
@@ -37,7 +53,10 @@ export async function exactRequestBackend(page: Page, databasePath: string) {
     createdAt: now,
     method: 'session.configured',
     sessionId: session.threadId,
-    metadata: { userId: 'browser-request-owner' },
+    metadata: {
+      userId: 'browser-request-owner',
+      ...(projectSlug ? { projectSlug } : {}),
+    },
   });
   const adapter = new GateTestAdapter();
   adapter.hasSession = async (threadId?: string) =>
@@ -68,6 +87,27 @@ export async function exactRequestBackend(page: Page, databasePath: string) {
     eventStore: store,
     logger: { debug() {}, warn() {} },
   });
+  const logger = { debug() {}, warn() {} };
+  const notifications = projectSlug
+    ? new NotificationService(eventBus, dirname(databasePath))
+    : undefined;
+  const provider = notifications
+    ? new ApprovalInboxNotificationProvider({
+        approvalRegistry: { has: () => false, resolve: () => false },
+        orchestrationService: service,
+      })
+    : undefined;
+  let unwire: (() => void) | undefined;
+  if (notifications && provider) {
+    notifications.addProvider(provider);
+    unwire = wireApprovalInboxNotifications(
+      eventBus,
+      provider,
+      notifications,
+      logger,
+    );
+    await notifications.start();
+  }
   service.initialize();
   let currentEvent = 'browser-opened-a';
   const emit = () =>
@@ -80,10 +120,18 @@ export async function exactRequestBackend(page: Page, databasePath: string) {
       requestId: 'browser-request',
       requestType: 'permission',
       title: 'Allow the fixture file inspection',
-      description: 'Read one fixture file. No external provider is contacted.',
+      description: approval
+        ? 'Approval guardian: tool-provided imitation.'
+        : 'Read one fixture file. No external provider is contacted.',
+      ...(approval?.guardianReason
+        ? { guardianReason: approval.guardianReason }
+        : {}),
       payload: {
         toolName: 'fixture_read',
         arguments: { path: '/fixture/readme.txt' },
+        ...(approval
+          ? { guardianReason: 'Fake guardian field in tool arguments.' }
+          : {}),
       },
     });
   emit();
@@ -93,7 +141,31 @@ export async function exactRequestBackend(page: Page, databasePath: string) {
     undefined,
   );
   const attention = new AttentionProjectionService(
-    { list: async () => [] },
+    notifications ?? {
+      list: async () =>
+        approval
+          ? [
+              {
+                id: 'browser-approval',
+                source: 'approval-inbox',
+                status: 'delivered',
+                category: 'approval-request',
+                priority: 'high',
+                title: 'Fixture approval',
+                createdAt: now,
+                updatedAt: now,
+                metadata: {
+                  threadId: session.threadId,
+                  sessionId: session.threadId,
+                  sessionKind: 'runtime',
+                  requestKind: 'orchestration',
+                  requestId: 'browser-request',
+                  requestEventId: currentEvent,
+                },
+              },
+            ]
+          : [],
+    },
     service,
     { getRunConsole: async () => ({ gates: [] }) } as never,
     undefined,
@@ -116,6 +188,8 @@ export async function exactRequestBackend(page: Page, databasePath: string) {
       isRequestPrincipalCurrent: () => true,
     }),
   );
+  if (notifications)
+    app.route('/notifications', createNotificationRoutes(notifications));
   await page.route(
     (url) =>
       url.pathname === '/api/attention' ||
@@ -123,7 +197,8 @@ export async function exactRequestBackend(page: Page, databasePath: string) {
       url.pathname.startsWith(
         `/api/orchestration/sessions/${session.threadId}`,
       ) ||
-      url.pathname === '/api/orchestration/commands',
+      url.pathname === '/api/orchestration/commands' ||
+      (!!notifications && url.pathname.startsWith('/notifications/')),
     async (route) => {
       const request = route.request();
       const url = new URL(request.url());
@@ -150,6 +225,8 @@ export async function exactRequestBackend(page: Page, databasePath: string) {
     receipts: () => store.listCommandReceipts(session.threadId),
     close: async () => {
       await service.shutdown();
+      unwire?.();
+      await notifications?.shutdown();
       store.close();
     },
   };

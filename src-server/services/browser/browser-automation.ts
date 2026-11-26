@@ -46,6 +46,8 @@ import type {
   LiveSurfaceModifiers,
 } from '@kontourai/station-contracts/live-surface';
 import { BROWSER_SESSION_ID_PATTERN } from '@kontourai/station-contracts/workspace-browser-pane';
+import { createKeyedSerialQueue } from '../../utils/keyed-serial-queue.js';
+import { sleep } from '../../utils/sleep.js';
 import type { AgentController } from '../live-surface/control-lease.js';
 import { jpegSize } from '../live-surface/jpeg-size.js';
 import {
@@ -755,7 +757,7 @@ const SELECT_OPTION_FN = `function (by, match) {
 const ACTIVE_ELEMENT = `${PROTO_GET('Document', 'activeElement')}.call(document)`;
 
 export class BrowserAutomation {
-  private readonly chains = new Map<string, Promise<unknown>>();
+  private readonly chains = createKeyedSerialQueue();
   /** Ref tables by agent session AND browser session (N4). */
   private readonly snapshots = new Map<string, SnapshotTable>();
   private readonly worlds = new Map<string, IsolatedWorld>();
@@ -764,8 +766,7 @@ export class BrowserAutomation {
   private readonly stepMs: number;
 
   constructor(private readonly deps: BrowserAutomationDeps) {
-    this.sleep =
-      deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.sleep = deps.sleep ?? sleep;
     this.now = deps.now ?? (() => Date.now());
     this.stepMs = deps.stepDeadlineMs ?? STEP_DEADLINE_MS;
   }
@@ -815,15 +816,7 @@ export class BrowserAutomation {
     browserSessionId: string,
     run: () => Promise<T>,
   ): Promise<T> {
-    const previous = this.chains.get(browserSessionId) ?? Promise.resolve();
-    const next = previous.then(run, run);
-    const tail = next.catch(() => {});
-    this.chains.set(browserSessionId, tail);
-    void tail.then(() => {
-      if (this.chains.get(browserSessionId) === tail)
-        this.chains.delete(browserSessionId);
-    });
-    return next;
+    return this.chains.run(browserSessionId, run);
   }
 
   /** Select, serialize and map failures to typed refusals. */
@@ -2787,6 +2780,52 @@ export class BrowserAutomation {
           return refuse('not-permitted', EVALUATE_NOT_PERMITTED, {
             setting: 'browserEvaluate',
           });
+        // The check and the script run in ONE page-world context, named by
+        // its unique id: a navigation between them (a person's address bar,
+        // Back, Reload, or the page itself) destroys that context, so the
+        // script then fails instead of running in the new document. The
+        // address half comes from the page (`location` is the document's own,
+        // and a page cannot make it say another scheme). The origin half
+        // comes from the browser's report for that same context, which a page
+        // cannot forge (`self.origin` it can). Anything but a definite "no,
+        // and a real origin" is refused.
+        // Idempotent; reports existing contexts if nobody had enabled it.
+        await control.send('Runtime.enable', {});
+        const world = selected.live.host.mainWorld?.(
+          selected.live.target.targetId,
+        );
+        if (world === undefined)
+          return refuse('browser-error', EVALUATE_NO_PAGE_WORLD);
+        let blank: { result?: { value?: unknown } } | undefined;
+        try {
+          blank = await control.send(
+            'Runtime.evaluate',
+            {
+              expression: ABOUT_PAGE,
+              uniqueContextId: world,
+              returnByValue: true,
+              silent: true,
+              timeout: this.stepMs,
+            },
+            this.stepMs + 500,
+          );
+        } catch (error) {
+          if (isGoneContext(error) || isNavigatedWhileRunning(error))
+            return refuse('browser-error', EVALUATE_PAGE_NAVIGATED);
+          throw error;
+        }
+        const siteless =
+          blank?.result?.value === false
+            ? false
+            : blank?.result?.value === true
+              ? !hasSiteOrigin(
+                  selected.live.host.mainWorldOrigin?.(
+                    selected.live.target.targetId,
+                    world,
+                  ),
+                )
+              : true;
+        if (siteless) return refuse('browser-refused', EVALUATE_ON_BLANK_PAGE);
         let outcome:
           | {
               result?: {
@@ -2802,11 +2841,13 @@ export class BrowserAutomation {
             }
           | 'timeout';
         try {
-          // The page's OWN world: this is the page's JavaScript by design.
+          // The page's OWN world: this is the page's JavaScript by design,
+          // bound to the context the check above read.
           outcome = await control.send(
             'Runtime.evaluate',
             {
               expression: input.expression,
+              uniqueContextId: world,
               returnByValue: true,
               awaitPromise: true,
               userGesture: false,
@@ -2815,6 +2856,18 @@ export class BrowserAutomation {
             timeoutMs + 1_000,
           );
         } catch (error) {
+          // The checked document is gone, so the script did not run.
+          if (isGoneContext(error))
+            return refuse('browser-error', EVALUATE_PAGE_NAVIGATED);
+          if (isNavigatedWhileRunning(error)) {
+            this.record(
+              authority,
+              selected,
+              'script-evaluated',
+              `${input.expression.length}-character script (page navigated while it ran)`,
+            );
+            return refuse('browser-error', EVALUATE_NAVIGATED_WHILE_RUNNING);
+          }
           if (!(error instanceof StepTimeout)) throw error;
           outcome = 'timeout';
         }
@@ -2870,6 +2923,67 @@ export class BrowserAutomation {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * True on an `about:` page (about:blank, about:blank#x, about:blank?x). It is
+ * site-less, and Chrome 158 aborts the whole browser, and every tab in it,
+ * when script on a site-less page adds a `sandbox="allow-scripts"` srcdoc
+ * frame while sandboxed frames get their own process (`site_instance_impl.cc`
+ * CHECK `has_site_`). A browser-initiated navigation to any about:blank
+ * address leaves no site; one a page opened or navigated to itself inherits
+ * that page's origin and site, which the browser's report of the context's
+ * origin tells apart ({@link hasSiteOrigin}). Some site-less pages that would
+ * not abort are refused too, on every Chrome version: writing throwaway HTML
+ * into a blank tab is refused, and the refusal names the HTML reply tools.
+ */
+const ABOUT_PAGE = "location.protocol === 'about:'";
+
+/**
+ * Whether the origin the browser reported for a script context is a real
+ * `scheme://host[:port]` origin. An opaque origin reads `://` on Chrome 158;
+ * anything unrecognised, or absent, counts as site-less (fail closed).
+ */
+function hasSiteOrigin(origin: string | undefined): boolean {
+  return (
+    origin !== undefined &&
+    /^[a-z][a-z0-9+.-]*:\/\/[^/:?#]+(:\d+)?$/i.test(origin)
+  );
+}
+
+/**
+ * Chromium's answer to a command bound to a script context that no longer
+ * exists (its document was replaced): "uniqueContextId not found" on Chrome
+ * 157 and 158. Matched on the protocol's message; an unmatched failure keeps
+ * its ordinary mapping, which also never runs the script.
+ */
+function isGoneContext(error: unknown): boolean {
+  return (
+    error instanceof CdpProtocolError &&
+    /uniqueContextId not found|cannot find context with specified id/i.test(
+      error.protocolMessage,
+    )
+  );
+}
+
+/** Chromium's answer when the page navigated while the script ran. */
+function isNavigatedWhileRunning(error: unknown): boolean {
+  return (
+    error instanceof CdpProtocolError &&
+    /inspected target navigated or closed/i.test(error.protocolMessage)
+  );
+}
+
+const EVALUATE_PAGE_NAVIGATED =
+  'The page navigated before the script ran, so it did not run. Check where the page is now (browser_snapshot), then try again.';
+
+const EVALUATE_NAVIGATED_WHILE_RUNNING =
+  'The page navigated while the script was running, so its result is lost; it may have run in part. Check where the page is now (browser_snapshot) before trying again.';
+
+const EVALUATE_NO_PAGE_WORLD =
+  'The page is between documents (it is loading), so the script did not run. Try again in a moment.';
+
+const EVALUATE_ON_BLANK_PAGE =
+  'This tab has no page loaded (about:blank), so Station does not run scripts in it: there, a script that adds a sandboxed frame can make the browser quit and close every tab. Open a real page with browser_navigate first (an http or https address; data: and blob: addresses are not allowed). To show HTML you generated, use html_preview, or html_render to publish it in the conversation, where those tools are available, rather than writing it into a blank tab.';
 
 const EVALUATE_NOT_PERMITTED =
   'Running JavaScript in this Project’s browser is turned off. Ask the Station operator or a Project admin to allow JavaScript evaluation for this Project in the Browser pane. Until then, use browser_snapshot, browser_click, browser_type and browser_wait_for.';

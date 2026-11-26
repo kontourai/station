@@ -81,6 +81,36 @@ export function childWorkDisplayStatus(
  */
 export type ChildWorkProducer = 'engine-subagent' | 'station-delegate';
 
+/**
+ * What sort of work a child is. An `agent` is a conversation of its own (a
+ * subagent, a workflow, a delegate); a `command` is a background shell
+ * command; a `monitor` is a background command that watches for output.
+ * Only an agent has instructions, a model or a transcript.
+ */
+export type ChildWorkKind = 'agent' | 'command' | 'monitor';
+
+const CHILD_WORK_KINDS: readonly ChildWorkKind[] = [
+  'agent',
+  'command',
+  'monitor',
+];
+
+/** Claude's `task_type` for a background shell task (history fallback). */
+const CLAUDE_SHELL_TASK_TYPE = 'local_bash';
+
+/**
+ * The kind of `item`: what its producer reported, else `command` for Claude
+ * history recorded before `workKind` existed (its `kindLabel` is the raw
+ * `local_bash` task type), else `agent`.
+ */
+export function childWorkKindOf(
+  item: Pick<ChildWorkItem, 'workKind' | 'kindLabel'>,
+): ChildWorkKind {
+  if (item.workKind && CHILD_WORK_KINDS.includes(item.workKind))
+    return item.workKind;
+  return item.kindLabel === CLAUDE_SHELL_TASK_TYPE ? 'command' : 'agent';
+}
+
 /** Bound on a settled child's summary; a longer one is cut and flagged. */
 export const CHILD_WORK_SUMMARY_MAX_CHARS = 4_000;
 
@@ -146,7 +176,10 @@ export type ChildWorkModelSource =
    * Agent tool's model choice.
    */
   | 'subagent-reply'
-  /** Codex: `model` on the completed `spawnAgent` call that created the child. */
+  /**
+   * The engine's report of the spawn that created the child: Codex's `model`
+   * on the completed `spawnAgent` call, Grok's `model` on `subagent_spawned`.
+   */
   | 'spawn-result'
   /** Codex: `thread.model` on the child thread's own `thread/started`. */
   | 'child-thread';
@@ -338,8 +371,8 @@ export type ChildWorkTranscriptEntry = {
   truncated?: true;
 } & (
   | { kind: 'text'; role: 'user' | 'assistant'; text: string }
-  | { kind: 'tool-call'; name: string; input?: string }
-  | { kind: 'tool-result'; text?: string; isError?: true }
+  | { kind: 'tool-call'; name: string; input?: string; toolCallId?: string }
+  | { kind: 'tool-result'; text?: string; isError?: true; toolCallId?: string }
   /** Blocks of one message past the per-message bound. */
   | { kind: 'omitted'; count: number }
   /** A transcript record too large to read; it is skipped, not cut. */
@@ -350,10 +383,33 @@ export interface ChildWorkTranscriptPage {
   entries: ChildWorkTranscriptEntry[];
   /** Message offset of the next page; absent on the last page. */
   nextOffset?: number;
+  /**
+   * Message offset of this page's first message. A tail read (the latest
+   * messages) starts wherever the transcript's last page begins.
+   */
+  offset?: number;
+  /**
+   * Message offset just past this page's last message: where a later read
+   * continues. A message can map to no entries, so this is not derivable
+   * from `entries`.
+   */
+  endOffset?: number;
 }
+
+/** Structured image input is rejected by hosts that only understand text steering. */
+export type ChildSteerMessage =
+  | string
+  | {
+      text: string;
+      attachmentRefs: import('./attachment-staging.js').StagedAttachmentReference[];
+    };
 
 /** Station-owned child instructions, independently paged from provider history. */
 export interface ChildWorkInstruction {
+  attachments?: Pick<
+    import('./attachment-staging.js').StagedAttachmentReference,
+    'name' | 'digest' | 'clientAttachmentId'
+  >[];
   childId: string;
   turnId: string;
   clientInputId: string;
@@ -400,6 +456,11 @@ export interface ChildWorkItem extends ChildWorkKey {
   title?: string;
   /** The producer's own name for the kind of child (e.g. a subagent type). */
   kindLabel?: string;
+  /**
+   * What sort of work the child is (see {@link ChildWorkKind}). Absent when
+   * the producer did not say; read through {@link childWorkKindOf}.
+   */
+  workKind?: ChildWorkKind;
   /** #3163: the child's OWN model, as its engine reported it. Absent when unreported. */
   model?: ChildWorkModel;
   /** #3163: where the child's own transcript can be read, when it has one. */
@@ -432,7 +493,7 @@ export interface ChildWorkItem extends ChildWorkKey {
   /** A stop seam Station has actually wired for this child. */
   controls?: {
     stop?: 'delegate-interrupt' | 'provider-task-stop';
-    steer?: { turnId: string };
+    steer?: { turnId: string; images?: true };
   };
 }
 
@@ -692,6 +753,8 @@ function normalizeItem(item: ChildWorkItem): ChildWorkItem {
   if (depth !== undefined) next.depth = depth;
   if (item.title !== undefined) next.title = item.title;
   if (item.kindLabel !== undefined) next.kindLabel = item.kindLabel;
+  if (item.workKind !== undefined && CHILD_WORK_KINDS.includes(item.workKind))
+    next.workKind = item.workKind;
   const model = parseChildWorkModel(item.model);
   if (model) next.model = model;
   const transcript = parseChildWorkTranscriptRef(item.transcript);
@@ -724,7 +787,12 @@ function normalizeItem(item: ChildWorkItem): ChildWorkItem {
     turnId.length <= 512 &&
     turnId.trim() === turnId &&
     new TextEncoder().encode(turnId).length <= 512
-      ? { turnId }
+      ? {
+          turnId,
+          ...(item.controls?.steer?.images === true
+            ? { images: true as const }
+            : {}),
+        }
       : undefined;
   if (item.controls?.stop || steer) {
     next.controls = {
@@ -1118,6 +1186,21 @@ export function childWorkForReporter(
   return Object.values(state.items).filter(
     (item) => item.reporterThreadId === reporterThreadId,
   );
+}
+
+/**
+ * Drops a reporter's statement that it reports no child work, keeping its
+ * items: a new session start on the same thread makes its own statement (or
+ * reports), so an earlier one must not outlive it.
+ */
+export function clearChildWorkNotReported(
+  state: ChildWorkRegistryState,
+  reporterThreadId: string,
+): ChildWorkRegistryState {
+  if (!(reporterThreadId in state.notReported)) return state;
+  const notReported = { ...state.notReported };
+  delete notReported[reporterThreadId];
+  return { ...state, notReported };
 }
 
 /** Drops everything a reporter held, e.g. when its session exits. */

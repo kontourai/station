@@ -1,7 +1,0 @@
-{
-  "revision": "4fc42742e13cb7a2ac1da908560e1d186a5c9786",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Checked the Claude full-access switching paragraph against ClaudeAdapter.turnNeedsEngineRelaunch and the pre-turn park in OrchestrationService.sendTurn: no-mode chats relaunch in place; open request, running background work, or root outside a sandbox still need a restart.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

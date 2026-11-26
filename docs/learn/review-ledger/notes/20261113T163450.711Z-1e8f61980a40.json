@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the extension-binding and describeStationFailure paragraphs: engine-update-required text is composed by Station from a built-in descriptor and a parsed version, consistent with fixed domain translations; no new binding rows or consumers. Usage-scope and steer changes live in adapter modules the map does not enumerate. No claim changed.","inputs":["docs/architecture/module-map.md","src-server/providers/adapters/acp-adapter-events.ts","src-ui/src/utils/stationFailure.ts"]}
+  ]
+}

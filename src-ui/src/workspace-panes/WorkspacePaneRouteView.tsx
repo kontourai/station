@@ -5,6 +5,7 @@ import type {
 } from '@kontourai/station-contracts';
 import { withWorkspacePaneInstanceLayoutBinding } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
+import { matchesLegacyProjectLayoutPaneId } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { useProjectLayoutQuery } from '@kontourai/station-sdk';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Button } from '../components/Button';
@@ -22,6 +23,11 @@ import { WorkspacePaneCatalogRefreshNotice } from './WorkspacePaneCatalogRefresh
 import { WorkspacePaneFrame } from './WorkspacePaneFrame';
 import { WorkspacePaneStandardDataView } from './WorkspacePaneStandardDataView';
 import type { WorkspacePaneAvailabilityCatalogEntry } from './workspacePaneAvailabilityPresentation';
+import {
+  WORKSPACE_PANE_ACTION_ELSEWHERE,
+  WORKSPACE_PANE_AVAILABILITY_CHECKING,
+  WORKSPACE_PLUGIN_PANE_UNBOUND,
+} from './workspacePaneCopy';
 import { workspacePaneRequiresLayoutIdentity } from './workspacePaneDirectRoute';
 import { isWorkspacePaneInstanceOwnedByProject } from './workspacePaneHostAdmission';
 import {
@@ -100,7 +106,9 @@ export function WorkspacePaneRouteView({
   const entry = catalog.entries.find(
     (candidate) =>
       candidate.descriptor.id === descriptorId &&
-      candidate.instance?.instanceId === instanceId,
+      candidate.instance &&
+      (candidate.instance.instanceId === instanceId ||
+        matchesLegacyProjectLayoutPaneId(candidate.instance, instanceId)),
   );
   const requiresSelectedLayout = entry
     ? workspacePaneRequiresLayoutIdentity(entry.descriptor)
@@ -128,13 +136,13 @@ export function WorkspacePaneRouteView({
   ): string => {
     if (action.code === 'retry-availability-check') {
       void catalog.refetch();
-      return 'Checking the current pane availability.';
+      return WORKSPACE_PANE_AVAILABILITY_CHECKING;
     }
     if (action.code === 'enable-distribution') {
       navigate('/registry/layouts');
       return 'Opening the layout registry to review distribution.';
     }
-    return 'This route can explain the requirement but cannot complete that step.';
+    return WORKSPACE_PANE_ACTION_ELSEWHERE;
   };
 
   const canExecuteAction = (
@@ -152,8 +160,7 @@ export function WorkspacePaneRouteView({
   if (catalog.isError && catalog.data === undefined) {
     return (
       <ErrorState
-        title="Could not load workspace pane"
-        description="Station could not read this Project’s pane catalog."
+        title="Couldn’t load this pane"
         action={
           <Button
             onClick={() => void catalog.refetch()}
@@ -172,7 +179,7 @@ export function WorkspacePaneRouteView({
   if (!entry && catalog.isRefetchError) {
     return (
       <ErrorState
-        title="Could not refresh workspace panes"
+        title="Couldn’t refresh panes"
         description="Station couldn’t check this Project’s current panes, so it can’t tell whether this one exists."
         action={
           <Button
@@ -447,7 +454,7 @@ export function WorkspacePaneRouteView({
       return withRefreshNotice(
         <ErrorState
           title="Workspace pane unavailable"
-          description="Station could not bind this plugin pane to its owning Project and plugin."
+          description={WORKSPACE_PLUGIN_PANE_UNBOUND}
         />,
       );
     }
@@ -499,8 +506,8 @@ export function WorkspacePaneRouteView({
   if (entry.availability.state === 'available') {
     return withRefreshNotice(
       <ErrorState
-        title="Workspace pane cannot mount"
-        description="This pane is not registered by the current host build."
+        title={`${entry.descriptor.name} unavailable`}
+        description="This version of Station doesn’t include this pane."
         action={
           <button
             type="button"
@@ -523,10 +530,9 @@ export function WorkspacePaneRouteView({
     >
       <div className="project-page__inner">
         {refreshNotice}
-        <h2 id="workspace-pane-route-title">Workspace pane</h2>
-        <p className="project-page__modal-description">
-          This pane is not currently available to mount in this host.
-        </p>
+        <h2 id="workspace-pane-route-title">
+          {entry.descriptor.name} unavailable
+        </h2>
         <WorkspacePaneAvailabilityList
           entries={[entry]}
           aria-label="Workspace pane availability"

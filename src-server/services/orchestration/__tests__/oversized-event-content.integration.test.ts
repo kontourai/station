@@ -869,7 +869,7 @@ describe('oversized event content through the live adapter loop', () => {
           turnId: 'turn-1',
         } as CanonicalRuntimeEvent);
         await vi.waitFor(async () =>
-          expect(await labels()).toContain('Allow Once'),
+          expect(await labels()).toContain('Allow once'),
         );
         adapter.events.push({
           eventId: 'start-inbox',

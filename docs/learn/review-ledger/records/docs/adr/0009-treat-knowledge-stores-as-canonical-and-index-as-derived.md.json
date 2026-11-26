@@ -16,7 +16,11 @@
 
     "src-server/knowledge-store/knowledge-store-provider.ts",
 
-    "src-server/runtime/routes/runtime-routes.ts"
+    "src-server/routes/knowledge/knowledge-index-routes.ts",
+
+    "src-server/knowledge-index/index-adapter-registry.ts",
+
+    "src-server/knowledge-store/conversation-root-bootstrap.ts"
   ],
 
   "checks": [

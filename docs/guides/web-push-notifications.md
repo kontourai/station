@@ -49,7 +49,8 @@ platform evidence.
 The [private paired-device record](../../src-server/services/ssh/device-pairing-service.ts)
 holds one `pushSubscription`; it is omitted
 from the public `PairedDevice` view. `POST /api/system/push-subscribe` replaces
-it, and `POST /api/system/push-unsubscribe` clears it. Changes persist before
+it. `POST /api/system/push-unsubscribe` clears the identified device’s
+record only when its endpoint matches the request. Changes persist before
 becoming live in the service's memory. Successful revocation clears the stored
 subscription and removes the device from future listings. It does not delete
 the browser's local PushManager object or recall a message already handed to a
@@ -60,8 +61,8 @@ push service or displayed on screen.
 Subscribe/unsubscribe resolve the request credential to a paired device through
 `identifyDevice`. An operator credential alone is insufficient, and so is a
 personal access token (#3557: it is no device a notification reaches). A relay
-alias of a paired device is refused at subscribe too: its read scope fails the
-credential gate first, and the handler refuses it as well. An
+alias of a paired device is refused for registration changes, including
+unsubscribe. The route uses the same device admission for a fingerprint read. An
 unidentified caller, a token or an alias reaching the route gets
 `403 {error: 'device_pairing_required'}`. The
 outer credential gate can reject earlier with
@@ -69,13 +70,18 @@ outer credential gate can reject earlier with
 `credential_invalid` and `credential_missing`; the response is not a unique
 explanation of why authentication failed.
 
-The [SDK subscription helpers](../../packages/sdk/src/query-domains/chatRuntimeDevice.ts)
-map those two response combinations to the hook's **Pair this device first**
-message. However, subscription first fetches the VAPID public key. Any non-OK
-response from that earlier request currently becomes **Server does not support
-push notifications**, so an authentication refusal can appear as unsupported
-before the pairing-specific mapping runs. Other authorization/rate-limit failures
-also need their own diagnosis.
+VAPID discovery uses the same authenticated Station route. A paired
+device receives an opaque SHA-256 fingerprint of its current registration,
+or a null fingerprint when it has no registration. A valid credential
+without an eligible paired device receives a pairing-required state. The
+fingerprint response stays private to the requesting authority and is not
+cached. It contains neither the push endpoint nor the encryption keys.
+
+The [SDK](../../packages/sdk/src/query-domains/chatRuntimeDevice.ts)
+preserves the HTTP status for the VAPID read. The browser renders a sign-in
+instruction after an authentication refusal, a pairing instruction when
+pairing is required, an access refusal for a generic 403, and unavailable
+for a 404. Transport failures remain retryable failures.
 
 Production web builds also register the worker through
 [WebOfflineShell](../../src-ui/src/components/WebOfflineShell.tsx), before the
@@ -83,39 +89,40 @@ access gate and independently of notification permission. Its anonymous app-shel
 cache is described in [offline reading](../user/getting-started.md#read-recent-conversations-offline).
 Registering this worker does not subscribe to push or grant notification consent.
 
-[usePushNotifications](../../src-ui/src/hooks/usePushNotifications.ts), mounted
-once by the app shell, registers
-`/sw.js`, requests permission on subscription, creates a PushManager subscription,
-and posts it to the selected Station. **Subscribed** requires that Station's
-successful registration response and a browser subscription whose application
-server key matches the Station's VAPID key. An existing local subscription is
-checked and re-registered on mount without requesting permission. Switching to
-a Station with a different key leaves the previous subscription intact; the
-explicit **Enable push notifications** action can replace it for the new Station.
+[usePushNotifications](../../src-ui/src/hooks/usePushNotifications.ts) uses
+the selected Station request authority. **Subscribed** requires an exact
+match between the browser subscription and the Station registration, or
+a successful registration response from that authority. Mount, browser
+reconnect, window focus, and Station or authority changes check the
+registration. These checks read the existing worker and Station state.
+Registration writes and browser permission prompts occur through **Enable
+push notifications**. Earlier Station responses without registration
+status can still confirm an explicit successful registration.
 
-The Settings → Notifications & voice **Push notifications** switch removes the
-browser's existing subscription when turned off, then attempts server cleanup.
-Importing an Off preference or restoring device defaults performs the same
-cleanup without opening Notifications. Mounting the app does not request
-notification permission. Settings reads the shell's subscription state, so
-changing routes cannot abandon a pending disable operation. A disable
-invalidates an older subscription attempt even if the preference is enabled
-again before that attempt finishes.
-Turning it back on shows the subscription controls; subscribing still requires
-the **Enable push notifications** action. The separate **Unsubscribe** action
-also removes the local subscription and attempts server cleanup as best effort.
-Repeated Enable calls share one pending attempt. Unsubscribe invalidates pending
-attempts and cleans up any registration response that arrives afterward.
-If server cleanup fails, a stored registration can remain
-until later cleanup. Browser state, server registration and actual delivery are
-three different observations; the label alone does not establish all three.
+Changing Stations or credentials leaves the browser subscription in place
+until an explicit enable or unsubscribe. A browser subscription for a
+different VAPID key stays active until the person chooses to switch. The
+same VAPID key can be shared by separate credentials, so the displayed state
+also requires that selected authority's exact registration.
+
+Turning off **Push notifications** in Settings, importing an off preference,
+or resetting device defaults unsubscribes the browser and attempts to clear
+the registration. The separate **Unsubscribe** action does the same. Cleanup
+uses only the authority that owned the registration and reports failure
+when the local browser is off but the Station record could not be cleared.
+Repeated Enable calls share one pending attempt. Disabling or unsubscribing
+invalidates earlier attempts and fences late responses. A stored entry can
+remain after local revocation until the Station observes the old endpoint is
+gone. A registration check establishes state, while physical delivery
+requires separate evidence.
 
 ## Who receives a push
 
 `WebPushChannel.accepts` uses
 [the category classifier](../../packages/shared/src/notification-priority.ts).
 Current categories include approval requests, job failures/misses, unhealthy
-scheduler notices, turn completion/stop/failure, pairing requests, and the Agent
+scheduler notices, turn completion/stop/failure, pairing requests, pull request
+agent feedback that paused or waits on a stopped agent, and the Agent
 attention/failed/done/info categories. Lifecycle `needs_input` and
 `review_pending` projections are not themselves notification delivery events;
 a separate approval notification can represent related work.
@@ -138,9 +145,10 @@ Future-scheduled principal writes are refused; expiry is settled when the feed
 is next accessed. These records do not enter the owner feed or shared
 notification stream and do not trigger push. The authenticated person reads,
 marks read, and dismisses their own entries through the
-[person notification routes](../reference/api.md#person-notifications). A
-per-person notification preference, account-bound Device push, producers, and
-the corresponding inbox UI remain future work.
+[person notification routes](../reference/api.md#person-notifications). The
+first producer is a Project room mention (#4799), shown under **For you** on
+the Notifications page. A per-person notification preference, account-bound
+Device push, other producers and a full inbox view remain future work.
 
 The router consumes `NOTIFICATION_DELIVERED`. It also handles content changes to
 previously seen, delivered, unread enveloped records on `NOTIFICATION_UPDATED`;
@@ -166,12 +174,23 @@ reports have a 120-second lease. The client renews a focused report every 60
 seconds while there was input in the last two minutes or the document shows a
 chat whose turn is running; the second reason renews at most 60 times (one
 hour) since the last input or window focus, counted per document across all
-of its chats and turns, not per turn. There are caps of 32 documents per device,
+of its chats and turns, not per turn. Hiding or unloading a document reports
+`hidden` once, and a document that never reported sends nothing. There are caps of 32 documents per device,
 32 operator tabs, and 256 device streams overall. A document beyond a cap does
 not qualify as live.
 
 A live focused document suppresses `info`/`done` on the person's other surfaces
-and can defer `attention`/`failed`. Default escalation is three minutes. It is
+and can defer `attention`/`failed`. For an `info`/`done` record that names a
+session, such as a finished turn, a document counts as focused only while it
+shows that session. Its report lists the open chat's ids (`viewingSessionIds`,
+sent as `[]` when no chat is on screen). A document showing another chat
+neither quiets the other surfaces nor skips its own alert. With the
+`project-overview` preview on, a document showing a Project page also counts as
+watching that Project's finished turns (`viewingProjectId`), and each Project's
+notification setting applies to its turn and approval alerts. A client that does
+not send the field keeps the device-wide rule. A host built before the field
+answers 400, and the client then reports without it
+([notification delivery](../design/notification-delivery.md#finished-alerts-one-per-completion-episode)). Default escalation is three minutes. It is
 one in-memory recheck of the current record, audience, registrations, focus and
 preferences—not a delivery guarantee or general retry queue. Quiet hours, mute,
 minimum urgency, silent interrupt, current focus, read/dismiss state or expiry
@@ -224,18 +243,23 @@ The title and body are sent in display form (#3382): bidi controls and
 invisible characters removed, controls turned into spaces, a multi-line title
 joined onto one line with " ⏎ ". A device's hide-content preference
 substitutes generic title/body text. The
-browser still receives category, notification ID and destination URL. For
-routing, Session metadata is tried first (`sessionId` or `conversationId`), then
-a validated relative `metadata.link`, then `/notifications`; the URL also carries
-`openedNotification=<id>`, which the loaded page uses to mark that record read
-and then removes. Managed Sessions
-legitimately use `/?chat=...&dock=open`; the root route with these parameters is
-not an error. The current composed payload does not carry the legacy service
+browser still receives category, notification ID and destination URL. The URL
+is the one every OS channel opens for the record (`notificationOpenLink`; see
+[Opening a notification](../design/notification-delivery.md#opening-a-notification-on-the-station-that-sent-it)):
+its path target, else its session (`/projects/<slug>?chat=...&dock=open`, or
+`/?chat=...&dock=open` without a Project, for runtime and managed sessions),
+else a validated relative `metadata.link`, else `/notifications`. It also
+carries `openedNotification=<id>`, which the loaded page uses to mark that
+record read and then removes, and `station=<environmentId>`, the sending
+Station, so a page connected to another saved Station switches to it before
+opening; the root route with these parameters is not an error. The current composed payload does not carry the legacy service
 worker's approval-action fields, so those old action branches are not this
 channel's live payload path.
 
-On a tap, the worker closes that notification and attempts to focus/navigate a
-window or open one. It resolves the payload URL against its own origin and opens
+On a tap, the worker closes that notification, focuses a window and posts it
+the link (`station-notification-open`), so the running app opens it in place;
+a window that does not acknowledge within 1.5 seconds is navigated to the link,
+and with no window one is opened. It resolves the payload URL against its own origin and opens
 `/notifications` instead for anything off it or not http(s). The server never
 sends one: a link (an agent's included) is admitted only if its normalized path
 stays on Station (`/..//host` and `/%2e%2e//host` are refused) and it carries no
@@ -243,16 +267,14 @@ fragment and no `openedNotification` (only the alert's own open link names a
 record to read); the open link with the record id is rebuilt on Station's
 origin, without a fragment, or falls back to the inbox. Notification action
 requests go only to the worker's own origin, with their ids path-encoded. Navigation can fail; there is no replacement-window fallback
-after a rejected existing-window navigation. Verify the actual destination on
+after a rejected existing-window navigation, and an app that acknowledged the
+message owns the open from there. Verify the actual destination on
 the target platform rather than claiming the URL alone proves successful display.
 
-Web Push has `retract: false`. Read, dismissal or expiry on the host does not
-proactively remove an already displayed browser notification. The worker closes
-clicked notifications and reuses tags on later pushes; it does not reconcile
-host read/expiry state. A 404/410 response from a push service triggers stored
-subscription cleanup, but an old in-flight send can currently clear a newer
-replacement. [#2753](https://github.com/kontourai/station/issues/2753) tracks that
-identity race and its required regression cases.
+The channel captures the registration generation before sending. On a
+404 or 410, it clears only the same active generation. A replacement
+registration, including an explicit renewal of the same endpoint, survives
+a delayed response from an older send.
 
 ## Manual phone checklist
 

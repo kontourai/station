@@ -25,6 +25,11 @@ import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import {
+  type CheckpointRestoreClientError,
+  confirmCheckpointRestore,
+  previewCheckpointRestore,
+} from '@kontourai/station-sdk/client/checkpoint-restore';
+import {
   type CheckpointGitRunner,
   enumerateThreadCheckpointRefs,
   isCheckpointRetentionAudit,
@@ -36,6 +41,12 @@ import {
   admitStationRuntimeHome,
   resolveRuntimeHome,
 } from '@kontourai/station-shared/runtime-path-resolver';
+import {
+  cliRequestScope,
+  configureApiCredential,
+  parseCoreArgs,
+  resolveApiBase,
+} from './core-api.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -56,7 +67,6 @@ export interface CheckpointsCommandDeps {
   stderr?: (line: string) => void;
   env?: NodeJS.ProcessEnv;
   runGit?: CheckpointGitRunner;
-  fetch?: typeof fetch;
 }
 
 function gitEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -312,9 +322,13 @@ export async function runCheckpointsCommand(
   const out = deps.stdout ?? ((line: string) => console.log(line));
   const err = deps.stderr ?? ((line: string) => console.error(line));
   const runGit = deps.runGit ?? defaultRunner(env);
-  const home = resolveStationHome(env);
   const json = rawArgs.includes('--json');
   const sub = rawArgs.find((arg) => !arg.startsWith('--'));
+  if (sub === 'restore') {
+    await restoreCheckpoint(rawArgs, out, err);
+    return;
+  }
+  const home = resolveStationHome(env);
 
   if (sub === 'status' || sub === undefined) {
     const statuses = await collectStatus(home, runGit);
@@ -461,13 +475,29 @@ export async function runCheckpointsCommand(
     }
     let events: unknown[] = [];
     try {
-      const parsed = JSON.parse(
+      const parsed: unknown = JSON.parse(
         readFileSync(join(home, 'checkpoint-restores.json'), 'utf-8'),
-      ) as { events?: Array<{ threadId?: string }> };
-      events = (parsed.events ?? []).filter(
-        (event) => event.threadId === thread,
       );
-    } catch {}
+      const recorded = (parsed as { events?: unknown } | null)?.events;
+      if (!Array.isArray(recorded)) {
+        throw new Error('invalid restore audit schema');
+      }
+      events = recorded.filter(
+        (event) =>
+          (event as { threadId?: unknown } | null)?.threadId === thread,
+      );
+    } catch (error) {
+      // A missing audit means nothing was recorded. Anything else (corrupt
+      // bytes, an unreadable file) must not read as "no restores", exactly as
+      // `retention` below refuses to.
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        err(
+          `station checkpoints history: audit unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+    }
     if (json) out(JSON.stringify({ threadId: thread, events }, null, 2));
     else if (events.length === 0)
       out(`thread ${thread}: no checkpoint restores recorded`);
@@ -509,82 +539,162 @@ export async function runCheckpointsCommand(
     return;
   }
 
-  if (sub === 'restore') {
-    const thread = rawArgs
-      .find((arg) => arg.startsWith('--thread='))
-      ?.slice('--thread='.length);
-    const turn = rawArgs
-      .find((arg) => arg.startsWith('--turn='))
-      ?.slice('--turn='.length);
-    const phase =
-      rawArgs
-        .find((arg) => arg.startsWith('--phase='))
-        ?.slice('--phase='.length) ?? 'settle';
-    const apiBase =
-      rawArgs
-        .find((arg) => arg.startsWith('--api-base='))
-        ?.slice('--api-base='.length) ?? 'http://127.0.0.1:3141';
-    if (
-      !thread ||
-      !turn ||
-      !isSafeCheckpointRefSegment(thread) ||
-      !isSafeCheckpointRefSegment(turn) ||
-      !['baseline', 'settle'].includes(phase)
-    ) {
-      err(
-        'station checkpoints restore requires safe --thread=<id> --turn=<id> [--phase=baseline|settle]',
-      );
-      process.exitCode = 1;
-      return;
-    }
-    if (!rawArgs.includes('--confirm')) {
-      err('station checkpoints restore is destructive and requires --confirm');
-      process.exitCode = 1;
-      return;
-    }
-    const baseUrl = `${apiBase.replace(/\/$/, '')}/api/orchestration/sessions/${encodeURIComponent(thread)}/checkpoints/${encodeURIComponent(turn)}`;
-    const previewResponse = await (deps.fetch ?? fetch)(
-      `${baseUrl}/restore-preview`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ phase }),
-      },
-    );
-    const previewBody = (await previewResponse.json()) as any;
-    if (!previewResponse.ok || !previewBody?.data?.previewId) {
-      err(
-        `station checkpoints restore preview failed (${previewResponse.status}): ${JSON.stringify(previewBody)}`,
-      );
-      process.exitCode = 1;
-      return;
-    }
-    const response = await (deps.fetch ?? fetch)(`${baseUrl}/restore`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        confirmed: true,
-        previewId: previewBody.data.previewId,
-        expectedCurrentTreeSha: previewBody.data.currentTreeSha,
-      }),
-    });
-    const body = await response.json();
-    if (!response.ok) {
-      err(
-        `station checkpoints restore failed (${response.status}): ${JSON.stringify(body)}`,
-      );
-      process.exitCode = 1;
-      return;
-    }
-    out(
-      json
-        ? JSON.stringify(body, null, 2)
-        : `restored thread ${thread} to turn ${turn} (${phase})`,
-    );
-    return;
-  }
-
   err(`Unknown checkpoints action: ${sub}`);
   err('Valid actions: status, prune, history, retention, restore');
   process.exitCode = 1;
+}
+
+const treeShaPattern = /^[0-9a-f]{40,64}$/;
+const previewIdPattern = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
+
+async function restoreCheckpoint(
+  args: string[],
+  out: (line: string) => void,
+  err: (line: string) => void,
+): Promise<void> {
+  const parsed = parseCoreArgs(args);
+  const {
+    thread,
+    turn,
+    phase = 'settle',
+    confirm,
+    'preview-id': previewId,
+    'expected-current-tree-sha': currentTreeSha,
+  } = parsed.flags;
+  const fail = (message: string) => {
+    err(`station checkpoints restore: ${message}`);
+    process.exitCode = 1;
+  };
+  if (
+    typeof thread !== 'string' ||
+    typeof turn !== 'string' ||
+    !isSafeCheckpointRefSegment(thread) ||
+    !isSafeCheckpointRefSegment(turn) ||
+    (phase !== 'baseline' && phase !== 'settle')
+  ) {
+    fail('requires safe --thread=<id> --turn=<id> [--phase=baseline|settle]');
+    return;
+  }
+  if (
+    confirm !== undefined ||
+    previewId !== undefined ||
+    currentTreeSha !== undefined
+  ) {
+    if (
+      confirm !== true ||
+      typeof previewId !== 'string' ||
+      !previewIdPattern.test(previewId) ||
+      typeof currentTreeSha !== 'string' ||
+      !treeShaPattern.test(currentTreeSha) ||
+      parsed.flags.phase !== undefined
+    ) {
+      fail(
+        'review a preview first, then pass --confirm --preview-id=<id> --expected-current-tree-sha=<sha> without --phase',
+      );
+      return;
+    }
+  }
+
+  const apiBase = resolveApiBase(parsed);
+  configureApiCredential(parsed, apiBase);
+  const requestScope = cliRequestScope(apiBase);
+
+  try {
+    if (typeof previewId === 'string' && typeof currentTreeSha === 'string') {
+      const receipt = await confirmCheckpointRestore(
+        apiBase,
+        thread,
+        turn,
+        { previewId, currentTreeSha },
+        requestScope,
+      );
+      if (
+        !receipt ||
+        typeof receipt !== 'object' ||
+        !('restored' in receipt) ||
+        typeof receipt.restored !== 'boolean' ||
+        !('previewId' in receipt) ||
+        receipt.previewId !== previewId ||
+        !('threadId' in receipt) ||
+        receipt.threadId !== thread ||
+        !('turnId' in receipt) ||
+        receipt.turnId !== turn ||
+        !('previousTreeSha' in receipt) ||
+        receipt.previousTreeSha !== currentTreeSha
+      )
+        throw new Error('Station returned no matching restore receipt');
+      out(
+        parsed.flags.json
+          ? JSON.stringify({ success: true, data: receipt }, null, 2)
+          : receipt.restored
+            ? `Restored thread ${thread} to turn ${turn} on ${apiBase}.`
+            : `The workspace for thread ${thread} already matched turn ${turn} on ${apiBase}.`,
+      );
+      return;
+    }
+
+    const preview = await previewCheckpointRestore(
+      apiBase,
+      thread,
+      turn,
+      requestScope,
+      phase,
+    );
+    if (
+      !preview ||
+      preview.threadId !== thread ||
+      preview.turnId !== turn ||
+      preview.phase !== phase ||
+      typeof preview.previewId !== 'string' ||
+      !previewIdPattern.test(preview.previewId) ||
+      typeof preview.currentTreeSha !== 'string' ||
+      !treeShaPattern.test(preview.currentTreeSha) ||
+      typeof preview.targetTreeSha !== 'string' ||
+      !treeShaPattern.test(preview.targetTreeSha) ||
+      typeof preview.repoRoot !== 'string' ||
+      typeof preview.expiresAt !== 'string' ||
+      !Number.isFinite(Date.parse(preview.expiresAt)) ||
+      typeof preview.pathsTruncated !== 'boolean' ||
+      !Array.isArray(preview.paths) ||
+      !preview.paths.every(
+        (item) =>
+          item &&
+          typeof item.path === 'string' &&
+          typeof item.status === 'string',
+      )
+    )
+      throw new Error('Station returned an invalid restore preview');
+
+    if (parsed.flags.json) {
+      out(JSON.stringify({ success: true, data: preview }, null, 2));
+      return;
+    }
+    out(`Preview for thread ${thread}, turn ${turn} (${phase}) on ${apiBase}`);
+    out(`Workspace: ${JSON.stringify(preview.repoRoot)}`);
+    out(`Current tree: ${preview.currentTreeSha}`);
+    out(`Checkpoint tree: ${preview.targetTreeSha}`);
+    for (const { path, status } of preview.paths) {
+      out(`  ${JSON.stringify(status)} ${JSON.stringify(path)}`);
+    }
+    if (preview.pathsTruncated) out('More paths are affected than shown.');
+    else if (preview.paths.length === 0)
+      out('No file differences in the preview.');
+    out(`Preview expires: ${new Date(preview.expiresAt).toISOString()}`);
+    out('Confirm on the same Station with the same thread and turn:');
+    out(
+      `  --confirm --preview-id=${preview.previewId} --expected-current-tree-sha=${preview.currentTreeSha}`,
+    );
+  } catch (error) {
+    const failure = error as Partial<CheckpointRestoreClientError> | null;
+    const status =
+      typeof failure?.status === 'number' ? ` (HTTP ${failure.status})` : '';
+    const reason =
+      typeof failure?.reason === 'string' ? ` [${failure.reason}]` : '';
+    const message = error instanceof Error ? error.message : String(error);
+    fail(
+      confirm
+        ? `confirmation failed${status}: ${message}${reason}. Inspect the workspace before attempting another restore.`
+        : `preview failed${status}: ${message}${reason}`,
+    );
+  }
 }

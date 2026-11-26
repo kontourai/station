@@ -10,6 +10,11 @@ and a separate authenticated OTel Collector, Prometheus, Tempo and Grafana.
 [`compose.yaml`](compose.yaml) holds the receiver and PostgreSQL and includes
 the diagnostic services from [`compose.diagnostics.yaml`](compose.diagnostics.yaml).
 The Grafana dashboard is [`dashboards/station.json`](dashboards/station.json).
+The Scheduler section distinguishes HTTP management requests from confirmed
+built-in job executions. The execution count and duration select the current
+`source="built-in"` series. The
+[monitoring guide](../../docs/guides/monitoring.md#grafana-dashboard) describes
+the dashboard's other populations and absent observations.
 Grafana uses the plugins bundled in its pinned image. Plugin preinstallation and
 automatic updates are disabled: startup must not replace a bundled datasource
 with an unpinned download or unload it while an update fails on the read-only
@@ -501,7 +506,7 @@ COMPOSE_PROJECT_NAME=station-telemetry-private
 TELEMETRY_PRIVATE_DIR=/absolute/private/station-telemetry
 TELEMETRY_RECEIVER_IMAGE=station-telemetry:qualified-source
 STATION_RELEASE_SHA=<exact-clean-qualified-40-character-commit>
-STATION_RELEASE_REF=v0.0.0-preview.1
+STATION_RELEASE_REF=v0.0.0-rc.1
 STATION_RELEASE_CREATED_AT=<canonical-ISO-timestamp-for-that-source>
 ```
 

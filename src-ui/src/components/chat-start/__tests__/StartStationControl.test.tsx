@@ -11,6 +11,7 @@ import {
 } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { STATION_READINESS_WATCH_MS } from '../../../hooks/useExecutionStationCatalog';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { StartStationMenu } from '../StartMenus';
 import { StartPickerMenus } from '../StartPickerMenus';
@@ -98,9 +99,14 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
 vi.mock('../../../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => ({ hostName: 'kontour' }),
 }));
+/** Each peer-list read's options, to see who keeps readiness current. */
+const peerQueryConfigs: Array<Record<string, unknown> | undefined> = [];
 vi.mock('@kontourai/station-sdk', () => ({
   useSshEnvironmentsQuery: () => ({ ...reads.ssh, refetch: retries.ssh }),
-  usePeerCredentialsQuery: () => ({ ...reads.peers, refetch: retries.peers }),
+  usePeerCredentialsQuery: (config?: Record<string, unknown>) => {
+    peerQueryConfigs.push(config);
+    return { ...reads.peers, refetch: retries.peers };
+  },
   // Station config behind the No project folder hint (#4389): nothing saved.
   useConfigQuery: () => ({
     data: undefined,
@@ -400,10 +406,14 @@ test('the Station choice marks where the work runs now and reports the chosen St
 });
 
 describe('the start menus wire the Station choice to the start', () => {
-  function renderMenus(environment?: string, unavailable = false) {
+  function renderMenus(
+    environment?: string,
+    unavailable = false,
+    peers: unknown[] = [PAIRED],
+  ) {
     reads.peers = unavailable
       ? { isSuccess: false, isError: true, data: [] }
-      : { isSuccess: true, isError: false, data: [PAIRED] };
+      : { isSuccess: true, isError: false, data: peers };
     const agent = { slug: 'reviewer', name: 'Reviewer' };
     const start = {
       modelChoiceFor: () =>
@@ -482,5 +492,89 @@ describe('the start menus wire the Station choice to the start', () => {
       'current',
     );
     expect(setMenu).toHaveBeenCalledWith(null);
+  });
+
+  test('the open Station list re-reads readiness on a cadence; the closed control does not poll', () => {
+    peerQueryConfigs.length = 0;
+    reads.peers = { isSuccess: true, isError: false, data: [PAIRED] };
+    render(<StartStationControl canChoose onOpen={vi.fn()} />);
+    expect(peerQueryConfigs.at(-1)?.refetchInterval).toBeUndefined();
+    cleanup();
+    peerQueryConfigs.length = 0;
+    renderMenus();
+    expect(peerQueryConfigs.at(-1)).toMatchObject({
+      refetchOnMount: 'always',
+      refetchInterval: STATION_READINESS_WATCH_MS,
+    });
+  });
+
+  test('a recovering paired Station stays listed but greyed with its reason, and choosing it does nothing', () => {
+    const { start, setMenu } = renderMenus(undefined, false, [
+      { ...PAIRED, readiness: { status: 'recovering', checkedAt: 1 } },
+    ]);
+    const row = screen.getByRole('button', { name: /brian-media/ });
+    expect((row as HTMLButtonElement).disabled).toBe(true);
+    expect(row.className).toContain('start-menu__station--unavailable');
+    const reason = screen.getByText('Recovering · server down or restarting');
+    expect(row.getAttribute('aria-describedby')).toBe(reason.id);
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(start.setExecutionEnvironment).not.toHaveBeenCalled();
+    expect(setMenu).not.toHaveBeenCalled();
+    // This Station is still a choice beside it.
+    expect(
+      (screen.getByRole('button', { name: /kontour/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  test('an online paired Station and one from an older host (no readiness) stay choosable', () => {
+    renderMenus(undefined, false, [
+      { ...PAIRED, readiness: { status: 'online', checkedAt: 1 } },
+      { ...PAIRED, environmentId: 'env-old', label: 'old-host' },
+    ]);
+    for (const name of [/brian-media/, /old-host/])
+      expect(
+        (screen.getByRole('button', { name }) as HTMLButtonElement).disabled,
+      ).toBe(false);
+  });
+
+  test('an unreachable paired Station that is the current choice stays listed with its reason', () => {
+    const { setMenu } = renderMenus('env-brian-media', false, [
+      { ...PAIRED, readiness: { status: 'unreachable', checkedAt: 1 } },
+    ]);
+    const row = screen.getByRole('button', { name: /brian-media/ });
+    expect(row.getAttribute('aria-current')).toBe('true');
+    expect(screen.getByText('Unreachable')).toBeTruthy();
+    // Re-choosing the current choice only closes, as before.
+    fireEvent.click(row);
+    expect(setMenu).toHaveBeenCalledWith(null);
+  });
+
+  test('an SSH Station whose last connection failed stays choosable, saying it reconnects', () => {
+    reads.ssh = {
+      isSuccess: true,
+      isError: false,
+      data: [
+        {
+          ...sshEnvironment('/srv/project'),
+          state: { phase: 'error', reason: 'timeout', action: 'Retry' },
+        },
+      ],
+    };
+    const { start } = renderMenus(undefined, false, []);
+    const row = screen.getByRole('button', { name: /build-box/ });
+    // Its error phase lasts until something reconnects it, and launching
+    // work there does: greying it out would leave no way to choose it.
+    expect((row as HTMLButtonElement).disabled).toBe(false);
+    expect(row.classList.contains('start-menu__station--unavailable')).toBe(
+      false,
+    );
+    expect(
+      screen.getByText('Disconnected · reconnects when used'),
+    ).toBeTruthy();
+    expect(row.getAttribute('aria-describedby')).toBeTruthy();
+    fireEvent.click(row);
+    expect(start.setExecutionEnvironment).toHaveBeenCalled();
   });
 });

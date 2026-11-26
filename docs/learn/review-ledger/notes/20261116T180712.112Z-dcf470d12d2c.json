@@ -1,0 +1,7 @@
+{
+  "revision": "b6bc5f276a354fdfdc5129b06b62ab399906b2d7",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-read the selection paragraphs against scripts/lib/path-read-pin-scan.mjs, scripts/test-impact-manifest.mjs and scripts/run-changed-verification.mjs on the tree merged with main: the native-literal derivation's suite roots, file roots, supplemental-only effect, what it does not see, and the local rule that a test only this derivation selected is left out first when an escalated diff has more than 32 explicit targets all match the code; the 32-target sentence for local diagnostics still holds.","inputs":["docs/guides/testing.md","scripts/run-changed-verification.mjs","scripts/test-impact-manifest.mjs"]}
+  ]
+}

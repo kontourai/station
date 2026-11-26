@@ -306,6 +306,14 @@ endpoints `source: 'advertised'` and pruning those it stops reporting except
 the one in use; `addRoute` and `removeRoute` change the routes a user added.
 Relay, SSH-tunnel and native shared profiles keep their single route
 ([Station routes](../design/station-routes.md)).
+Each completed probe run, success or failure, also stamps `checkedAt`, so a
+surface can say how old the status it shows is; Station's switcher prints it as
+"checked 2m ago" beside the active Station. A managed-loopback server is
+trusted to its supervisor without a probe and reports `checkedAt: null`.
+`completedProbes` counts completed runs for both kinds (an aborted run does not
+count), and `onHealthyProbe` is called once per run that completes healthy
+after the consumer mounted; Station's plugin registry uses it to re-read a
+plugin inventory it could not read.
 Station's separate chat outbound queue has its own admission and replay rules;
 this is not a promise that the whole application has no queue.
 
@@ -331,8 +339,13 @@ healthy transport with a failed subscription stays `connected` with
 
 `classifyConnectionFailure(reason: ConnectionFailureReason):
 'transient' | 'terminal'` maps this package's failure vocabulary onto the
-supervisor's generic classification — today only `authentication-failed`
-(401/403) is terminal. `ConnectionHealthCoordinator` is the first adopter: it
+supervisor's generic classification. Only `authentication-failed` is
+terminal. Station's detailed probe retains the response status, an observed
+error code when available, and whether it answered the public handshake or
+an authenticated request. Local relay authority failures carry the local code
+without an HTTP status. The probe keeps its original `reason` for compatibility.
+The coordinator uses the additional evidence to keep rate limits, scope refusals
+and verification failures out of the pairing state. It
 consults this classifier on each failure and, for a terminal reason, stops
 scheduling its automatic retry ladder (surfaced as a new `blocked: boolean`
 on `ConnectionHealthSnapshot` / `ConnectionStatusResult`). It resumes on the next explicit
@@ -452,6 +465,11 @@ query string, or ordinary connection-profile localStorage record.
 Returns the composed connection list, including a host-injected entry when it
 has not been folded into its matching saved profile. Injected entries are not
 persisted. The result is cached between invalidations.
+
+Stored rows are read one at a time. A row this build cannot read, such as a
+shape written by a newer build, is left out of the list and written back
+unchanged, in place, by later writes. A stored value that is not a JSON list
+reads as an empty list.
 
 #### `getActive(): SavedConnection | null`
 
@@ -691,7 +709,7 @@ installed Station channel, then redeem the invitation. Creating it approves
 the selected access; no second approval is needed. For Station’s in-app scanner, select **Scanner inside Station** under **More options**.
 **Paired devices → Approve another device** also opens the invitation panel.
 The selected client channel controls both the app-opening QR and any published
-mobile download links. Public store and beta invitation URLs are maintained in
+mobile download links. Public store and TestFlight invitation URLs are maintained in
 `packages/connect/src/core/mobileAppDownloads.ts`; absent destinations have no
 install link. Native clients default to their own release channel. Station
 creates a five-minute, single-use offer containing an environment ID, endpoint,
@@ -706,6 +724,14 @@ created it. Use a reachable HTTPS endpoint for that scan flow. Browser camera
 and mixed-content restrictions still apply. The
 QR contains that offer only—never a bearer credential. A 10-character manual
 code plus the Station address is available when camera access is unavailable.
+Where the browser has no camera API, **Manage Stations** does not offer **Scan
+a QR code** and says to use the Station address or a pairing code, the pairing
+dialog is titled **Enter a pairing code** and opens on code entry, and the
+Connect Station dialog has no **Scan QR** method. Only when the page is not a
+secure context (plain HTTP) does code entry add the note "Camera scanning
+requires HTTPS or localhost."; a secure page without the API gets no note. Where
+the API exists but a capture attempt finds no camera, both dialogs switch to
+code entry without an error or a note.
 
 For another browser, set **Browser app address** to a reachable Station web
 address and choose **Copy browser link**. That address must serve the web UI
@@ -826,11 +852,19 @@ unsub(); // cleanup
 
 Reads a URL stored under a legacy single-URL key and imports it when no saved
 entry has the same URL. It retains the legacy key, so repeated calls do not
-delete the old client's fallback or duplicate the same entry.
+delete the old client's fallback or duplicate the same entry. It imports nothing
+while `hasUnreadableStoredList()` is true.
 
 ```ts
 store.migrate('project-station-api-base');
 ```
+
+#### `hasUnreadableStoredList(): boolean`
+
+True when storage holds a saved-connection value that is not a JSON list. The
+store then reads as empty, and `ConnectionsProvider` skips its `Default`
+seeding so the stored value is not replaced; `apiBase` falls back to
+`defaultUrl`. An explicit `add` still replaces the value.
 
 ### example
 
@@ -977,6 +1011,7 @@ interface UseConnectionStatusOptions {
     brokerRoute?: NonNullable<SavedConnection['brokerRoute']>,
   ) => Promise<ConnectionHealthCheckResult>;
   pollInterval?: number; // ms, default: 10_000
+  onHealthyProbe?: () => void; // once per run that completes healthy, after mount
 }
 
 interface ConnectionStatusResult {
@@ -993,6 +1028,10 @@ interface ConnectionStatusResult {
                                // the automatic retry ladder is paused until recheck(),
                                // a credential change, or the browser regaining network
   routes: ReadonlyArray<ConnectionRouteResult>; // per-route outcome of the last check
+  checkedAt: number | null;   // epoch ms the last probe run finished, whatever its outcome;
+                               // null until one has; unchanged by an aborted run, and null
+                               // for a supervised managed-loopback server, which is not probed
+  completedProbes: number;    // completed runs of either endpoint kind; aborted runs excluded
   recheck: () => void;        // manually trigger a check
 }
 ```
@@ -1012,6 +1051,9 @@ package exports. The host must preserve selected-connection authentication,
 identity checks, cancellation and failure reasons. Station's own caller uses
 authenticated `/api/system/status`, not an unauthenticated `/api/health`
 endpoint. See [the host health adapter](../../src-ui/src/lib/serverHealth.ts).
+The coordinator sets no deadline of its own and queues later triggers behind a
+running check, so a `probeEndpoint` must always settle. Station's adapter ends
+the whole probe, route resolution included, at `HEALTH_PROBE_TIMEOUT_MS`.
 
 ---
 
@@ -1061,7 +1103,11 @@ exchange. Strict transaction durability must be supported; unavailable storage
 blocks the send. Independent tabs share this authority on nonsecure HTTP origins
 without depending on Web Locks. Redirects are refused. A lost response, abort,
 invalid response or failed local credential/profile custody retains an
-`indeterminate` hold. Ordinary pending-slot clear/save does not erase it.
+`indeterminate` hold. Ordinary pending-slot clear/save does not erase it. A
+failed-custody outcome also carries the completion owner's own `failure`. A
+flight that stops after its claim but before sending anything releases that
+claim as unconsumed and reports `aborted`; nothing is held. If the release
+cannot be recorded, the outcome stays `indeterminate`.
 
 Only the exact unconsumed `request_not_confirmed` 409 or `rate_limited` 429
 response permits a retry. Held attempts survive expiry. Completed/retired
@@ -1151,7 +1197,8 @@ const { candidates, refresh } = useConnectionCandidates();
 
 Plain browsers do not register a provider by default and never enumerate a
 guessed subnet or probe a hard-coded port. Manual address and pairing-code
-entry remain available under Other ways to connect.
+entry remain available on the phone welcome screen (**Enter a pairing code** and
+**Enter Station address**).
 
 The former `useNetworkDiscovery` and `DiscoveredServer` exports remain as
 deprecated source-compatibility adapters. The hook reads the same registered
@@ -1278,6 +1325,20 @@ for a schema-valid, unexpired `station-pairing:v1` offer. Raw endpoint URLs are
 not accepted. Camera access requires a secure context (HTTPS or localhost); the
 connection modal always exposes the accessible manual-code fallback.
 
+With `onUnavailable`, a browser with no camera is not shown an error: no camera
+API, or a capture refusal that means no camera (`NotFoundError`,
+`NotSupportedError`, `OverconstrainedError`), calls `onUnavailable` instead.
+The device list is not consulted, because before a grant some engines list no
+camera even when one exists. A camera that exists but is refused or busy still
+shows the error as an alert, with **Enter the pairing code manually** when
+`onManualEntry` is set. Only the capture request can report a missing camera: a
+granted camera whose video fails to play shows its error whatever the error
+name. `JoinDevicePairingPanel` opens on code entry without mounting the scanner
+when there is no camera API, and drops the scanner when capture reports no
+camera; either way the cursor goes to the first empty field. `hasCameraApi()`
+reports whether the browser exposes the capture API at all; it does not prove a
+camera exists.
+
 **props**
 
 ```ts
@@ -1285,7 +1346,10 @@ interface QRScannerProps {
   onScan: (payload: string) => void;
   onCancel: () => void;
   onManualEntry?: () => void;
+  onUnavailable?: () => void;
 }
+
+function hasCameraApi(): boolean;
 ```
 
 **example**

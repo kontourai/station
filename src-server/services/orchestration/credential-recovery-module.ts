@@ -5,6 +5,7 @@ import type {
 import type {
   ConnectionRecoveryIntent,
   RecoveryAdmissionRefusalReason,
+  UsageLimitContinueOnProfile,
 } from '@kontourai/station-contracts/connection-recovery';
 import { credentialProfileApplication } from '../../telemetry/metrics.js';
 import type { ClassifiedConnectionFailure } from '../connections/connection-recovery-policy.js';
@@ -45,7 +46,17 @@ export interface CredentialProfileRecoveryAdapter {
     failure: ClassifiedConnectionFailure;
     /** Claim-generated opaque key persisted before the registry is mutated. */
     recoveryFingerprint: string;
+    /**
+     * A person chose this profile for this stop ("Continue on <label>"); it
+     * replaces the `automatic` opt-in, never the selector's other rules. The
+     * automatic path's allowance ranking and exclusion do not apply.
+     */
+    consentedProfileRef?: string;
   }): Promise<CredentialProfileStageOutcome>;
+  /** Profiles a usage-limit stop on this provider may be continued on. */
+  listContinueOnProfiles?(
+    provider: string,
+  ): Promise<UsageLimitContinueOnProfile[]>;
   inspectStartup?(input: {
     provider: string;
     application: CredentialApplicationHandle;
@@ -87,6 +98,8 @@ interface CredentialRecoveryObservation {
    * bytes (archive#3374).
    */
   replay: RecoveryDispatchReplay;
+  /** A person's "Continue on <label>": stage exactly this profile. */
+  consentedProfileRef?: string;
 }
 
 /** Total results keep callers from reconstructing compensation policy. */
@@ -97,6 +110,13 @@ type CredentialRecoveryOutcome =
   | { kind: 'restarted'; turnId: string }
   | { kind: 'recovered' }
   | { kind: 'rolled-back' }
+  /**
+   * A definite pre-send refusal whose session had to be quarantined: the
+   * account is rolled back and the session is closed. `retired` says whether
+   * the stop was durably retired as `session-ended`; when it was not, it is
+   * still recorded as waiting, but nothing should claim it will resume.
+   */
+  | { kind: 'session-ended'; retired: boolean }
   | { kind: 'indeterminate' };
 
 /**
@@ -274,7 +294,11 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
     if (credential.kind !== 'owner') {
       return this.indeterminateProfileDispatch(claimed, prepared.attempt);
     }
-    const staged = await this.stage(intent, credential.attemptId);
+    const staged = await this.stage(
+      intent,
+      credential.attemptId,
+      observation.consentedProfileRef,
+    );
     if (staged.kind === 'unavailable') {
       const released = prepared.attempt.releaseBeforeInvocation({
         outcome: intent.outcome === 'manual' ? 'manual' : 'armed',
@@ -320,11 +344,46 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
       }
       if (outcome.kind === 'rejected') {
         const rolledBack = await this.rollback(claimed, 'adoption_failed');
-        if (!rolledBack) {
+        // A restart that began before failing left the session down or on
+        // the candidate; put it back on the connection's own account.
+        const session = outcome.sessionTouched
+          ? await this.restoreSessionOutcome(claimed)
+          : 'restored';
+        if (!rolledBack || session === 'failed') {
           const marked = this.markCompensationRequired(claimed);
           if (marked.kind !== 'applied') return { kind: 'indeterminate' };
           return { kind: 'indeterminate' };
-        } else if (
+        }
+        // The provider definitely did not take the replay, and the account is
+        // back. A person's choice that failed must not cost the stop its own
+        // wait: it returns to waiting instead of ending failed. A quarantined
+        // session is closed, so whoever chose, the stop is retired with that
+        // reason instead.
+        if (
+          observation.consentedProfileRef !== undefined ||
+          session === 'quarantined'
+        ) {
+          const released = prepared.attempt.releaseBeforeInvocation({
+            outcome: intent.outcome === 'manual' ? 'manual' : 'armed',
+            now: this.now(),
+          });
+          if (released.kind === 'applied') {
+            this.claims.delete(intent.fingerprint);
+            this.claimedFingerprints.delete(intent.fingerprint);
+            if (session !== 'quarantined') return { kind: 'rolled-back' };
+            const retired = this.dependencies.ledger.retireWaiting({
+              fingerprint: intent.fingerprint,
+              outcome: 'canceled',
+              reason: 'session-ended',
+              now: this.now(),
+            });
+            return {
+              kind: 'session-ended',
+              retired: retired.kind === 'applied',
+            };
+          }
+        }
+        if (
           this.dependencies.ledger.terminal(
             claimed.fingerprint,
             'failed',
@@ -743,12 +802,14 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
   private async stage(
     intent: ConnectionRecoveryIntent,
     recoveryFingerprint: string,
+    consentedProfileRef?: string,
   ): Promise<CredentialProfileStageOutcome> {
     try {
       const outcome = await this.dependencies.adapter.stage({
         provider: intent.provider,
         failure: { kind: intent.failureKind, scope: intent.scope, timing: {} },
         recoveryFingerprint,
+        ...(consentedProfileRef !== undefined ? { consentedProfileRef } : {}),
       });
       if (outcome.kind !== 'staged') return outcome;
       if (outcome.attempt.capability !== 'restart_resume') {
@@ -955,19 +1016,29 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
   private async restoreOrQuarantine(
     intent: ConnectionRecoveryIntent,
   ): Promise<boolean> {
+    return (await this.restoreSessionOutcome(intent)) !== 'failed';
+  }
+
+  /**
+   * Which of the two made the session safe: a quarantined session is closed,
+   * so nothing may still promise to resume it.
+   */
+  private async restoreSessionOutcome(
+    intent: ConnectionRecoveryIntent,
+  ): Promise<'restored' | 'quarantined' | 'failed'> {
     try {
       await this.dependencies.restoreSession({
         threadId: intent.threadId,
         signal: new AbortController().signal,
       });
-      return true;
+      return 'restored';
     } catch {
       try {
-        if (!this.dependencies.quarantineSession) return false;
+        if (!this.dependencies.quarantineSession) return 'failed';
         await this.dependencies.quarantineSession(intent.threadId);
-        return true;
+        return 'quarantined';
       } catch {
-        return false;
+        return 'failed';
       }
     }
   }

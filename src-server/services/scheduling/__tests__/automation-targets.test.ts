@@ -118,7 +118,7 @@ describe('fatigue', () => {
     });
     await vi.waitFor(() => expect(fatigueBells()).toHaveLength(1));
     expect(fatigueBells()[0]![1]).toMatchObject({
-      title: 'Automation "digest" turned off',
+      title: 'Automation "digest" paused itself',
       metadata: { jobName: 'digest', link: '/automations?job=digest' },
     });
 
@@ -521,6 +521,7 @@ describe('fix round: fatigue counts occurrences, survives crashes, resets on re-
     });
     await setup.addJob({
       name: 'digest',
+      displayName: 'Morning digest',
       schedule: { kind: 'every', everyMs: 86_400_000 },
       prompt: 'x',
       target: TARGET,
@@ -545,7 +546,8 @@ describe('fix round: fatigue counts occurrences, survives crashes, resets on re-
     restarted.start();
     await vi.waitFor(() => expect(bells.fatigueBells()).toHaveLength(1));
     expect(bells.fatigueBells()[0]![1]).toMatchObject({
-      title: 'Automation "digest" turned off',
+      // The person reads the display name; the link still keys on the slug.
+      title: 'Automation "Morning digest" paused itself',
       metadata: { jobName: 'digest', link: '/automations?job=digest' },
     });
     expect((await restarted.listJobs())[0]).toMatchObject({ enabled: false });

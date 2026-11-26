@@ -1,37 +1,68 @@
-import { permissionTier } from '@kontourai/station-contracts/plugin';
+import {
+  permissionTier,
+  pluginLifecycleUnapplied,
+} from '@kontourai/station-contracts/plugin';
 import {
   usePluginRecoveryMutation,
   usePluginRecoveryPreviewQuery,
 } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { DetailHeader } from '../../components/DetailHeader';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { usePermissions } from '../../core/PermissionManager';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { PluginRegistryTrustSection } from './PluginRegistryTrustSection';
-import type { ReadyPlugin } from './types';
+import {
+  installedDependencyPermissions,
+  type PluginMessage,
+  type ReadyPlugin,
+} from './types';
+import { consentFailureMessage, recoveryStoppedNotice } from './view-utils';
+
+/** How often an activating row is read again. */
+export const ACTIVATION_POLL_INTERVAL_MS = 2000;
+/** The server's activation deadline is 10 seconds; this is that plus margin. */
+export const ACTIVATION_POLL_CEILING_MS = 15_000;
 
 export function PluginRecoveryPanel({
   plugin,
+  message,
   onRemove,
+  onOutcome,
 }: {
   plugin: ReadyPlugin;
+  /** The view's latest outcome, e.g. the install that left this row pending. */
+  message?: PluginMessage | null;
   onRemove(name: string): void;
+  /**
+   * The outcome of a recovery that activated the plugin. The panel unmounts
+   * as soon as the plugin reads ready, so its own notice would never show.
+   */
+  onOutcome?(message: PluginMessage): void;
 }) {
   const preview = usePluginRecoveryPreviewQuery(plugin.name, {
     enabled: false,
   });
   const recovery = usePluginRecoveryMutation();
   const queries = useQueryClient();
-  const { requestInstallConsent } = usePermissions();
+  const { requestConsent, requestInstallConsent } = usePermissions();
   const [reviewedRevision, setReviewedRevision] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const busy = useRef(false);
-  const pending = plugin.installationReadiness?.state === 'pending';
+  const activating = plugin.activationInFlight === true;
+  const pending =
+    plugin.installationReadiness?.state === 'pending' && !activating;
+  const [pollExpired, setPollExpired] = useState(false);
+  const queriesRef = useRef(queries);
+  queriesRef.current = queries;
+  // Read after the consent prompt: an install or recover begun elsewhere can
+  // turn this row into an activating one while the person is deciding.
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
   const basis =
-    preview.data?.recoveryRevision === reviewedRevision
+    pending && preview.data?.recoveryRevision === reviewedRevision
       ? preview.data
       : undefined;
   async function review() {
@@ -41,6 +72,41 @@ export function PluginRecoveryPanel({
     if (result.data && !result.error)
       setReviewedRevision(result.data.recoveryRevision);
   }
+  // A pending row is a plugin whose activation was stopped; nothing resumes
+  // it, so the review that recovers it is loaded straight away. It is a read:
+  // recovering still takes the person's explicit decision below. An activating
+  // row gets no review: that activation finishes by itself.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per change of state (the panel is keyed by plugin name).
+  useEffect(() => {
+    // A review loaded before an activation is not reused after it: leaving
+    // pending drops it, and returning to pending loads a fresh one.
+    if (pending) void review();
+    else setReviewedRevision(undefined);
+  }, [pending]);
+  // While the server reports the activation in flight, read the list again
+  // until it settles into ready or stopped. The server stops an activation at
+  // its 10-second deadline, so a row still activating well past that is not
+  // going to settle by being read again: stop at the ceiling and leave
+  // Refresh status. Leaving the row (or the view) clears the timers.
+  useEffect(() => {
+    if (!activating) {
+      setPollExpired(false);
+      return;
+    }
+    const poll = setInterval(
+      () =>
+        void queriesRef.current.invalidateQueries({ queryKey: ['plugins'] }),
+      ACTIVATION_POLL_INTERVAL_MS,
+    );
+    const stop = setTimeout(() => {
+      clearInterval(poll);
+      setPollExpired(true);
+    }, ACTIVATION_POLL_CEILING_MS);
+    return () => {
+      clearInterval(poll);
+      clearTimeout(stop);
+    };
+  }, [activating]);
   async function recover() {
     if (busy.current || !basis) return;
     busy.current = true;
@@ -59,7 +125,7 @@ export function PluginRecoveryPanel({
         ],
         { action: 'recover' },
       );
-      if (!approved) return;
+      if (!approved || !pendingRef.current) return;
       const result = await recovery.mutateAsync({
         name: plugin.name,
         recoveryRevision: basis.recoveryRevision,
@@ -75,11 +141,47 @@ export function PluginRecoveryPanel({
           })),
         },
       });
-      setNotice(
-        result.configurationActivation?.status === 'pending'
-          ? 'Recovery was accepted. Activation is still pending; refresh status before reviewing another recovery.'
-          : 'Recovery completed. Refreshing plugin status.',
-      );
+      const unapplied = pluginLifecycleUnapplied(result);
+      if (unapplied) {
+        setNotice(
+          unapplied.kind === 'activation' && unapplied.recovery === 'none'
+            ? 'Recovery was saved; Station finishes applying it in the background.'
+            : recoveryStoppedNotice(unapplied),
+        );
+        return;
+      }
+      // Active now, so the trusted host approval it still owes can be
+      // recorded: ask for it here, as a completed install does, rather than
+      // leave the plugin's server code off until someone finds the request.
+      const name = plugin.displayName || plugin.name;
+      let outcome: PluginMessage = {
+        type: 'success',
+        text: `${name} was recovered and is active.`,
+      };
+      const owed = result.permissions?.pendingConsent ?? [];
+      if (owed.length > 0 && !(await requestConsent(plugin.name, name, owed)))
+        outcome = { type: 'error', text: consentFailureMessage(name, owed) };
+      for (const dependency of installedDependencyPermissions(result) ?? []) {
+        if (outcome.type === 'error') break;
+        if (dependency.pendingConsent.length === 0) continue;
+        if (
+          !(await requestConsent(
+            dependency.id,
+            dependency.id,
+            dependency.pendingConsent,
+          ))
+        )
+          outcome = {
+            type: 'error',
+            text: consentFailureMessage(
+              `Dependency ${dependency.id}`,
+              dependency.pendingConsent,
+            ),
+          };
+      }
+      void queries.invalidateQueries({ queryKey: ['plugins'] });
+      setNotice(outcome.text);
+      onOutcome?.(outcome);
     } catch (error) {
       setNotice(
         error instanceof Error
@@ -93,24 +195,47 @@ export function PluginRecoveryPanel({
   }
   return (
     <div className="detail-panel">
+      {message && (
+        <div
+          className={`plugins__message plugins__message--${message.type}`}
+          role="status"
+        >
+          <span>{message.text}</span>
+          {message.action && (
+            <Button onClick={message.action.invoke}>
+              {message.action.label}
+            </Button>
+          )}
+        </div>
+      )}
       <DetailHeader
         title={plugin.displayName || plugin.name}
         subtitle={`Version ${plugin.version}`}
         badge={{
-          label: pending ? 'Activation pending' : 'Unavailable',
+          label: pending
+            ? 'Needs recovery'
+            : activating
+              ? 'Activating…'
+              : 'Unavailable',
           variant: 'warning',
         }}
       />
       <div className="detail-panel__body plugins__recovery">
         <p>
-          {pending
-            ? 'The retained plugin is not active yet. Its workspace panes and actions stay unavailable until runtime activation completes.'
-            : 'Station cannot verify this installation. Refresh its status before using it.'}
+          {activating
+            ? pollExpired
+              ? 'This plugin is still reported as activating. Refresh status to check again.'
+              : 'Station is activating this plugin now. Its workspace panes and actions appear once it is ready.'
+            : pending
+              ? 'Installed but not active: its activation did not finish, and Station does not retry it. Its panes and actions stay off until you recover it.'
+              : 'Station cannot verify this installation. Refresh its status before using it.'}
         </p>
-        <p>
-          Recovery uses the retained code and data. It does not download a
-          replacement or reset stored data.
-        </p>
+        {!activating && (
+          <p>
+            Recovery uses the retained code and data. It does not download a
+            replacement or reset stored data.
+          </p>
+        )}
         {notice && <p role="status">{notice}</p>}
         {preview.error && (
           <p role="alert">{userFacingErrorMessage(preview.error)}</p>
@@ -131,6 +256,14 @@ export function PluginRecoveryPanel({
                 .map((dependency) => dependency.id)
                 .join(', ') || 'None'}
             </p>
+            {basis.dependencies.map((dependency) => (
+              <PluginRegistryTrustSection
+                key={dependency.id}
+                trust={dependency.registryTrust}
+                context="installed"
+                dependency={dependency.id}
+              />
+            ))}
             {basis.permissions.pendingConsent.some(
               (entry) => entry.tier === 'trusted',
             ) && (
@@ -166,7 +299,7 @@ export function PluginRecoveryPanel({
           </Button>
           <Button
             onClick={() => onRemove(plugin.name)}
-            disabled={recovery.isPending}
+            disabled={recovery.isPending || activating}
           >
             Remove plugin
           </Button>

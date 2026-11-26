@@ -27,6 +27,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   agentOps: { add: vi.fn() },
+  agentCapabilityUndelivered: { add: vi.fn() },
 }));
 
 const {
@@ -307,6 +308,49 @@ describe('the Station identity binding is app state, not Agent state', () => {
       // Agent a person named "Station" keeps that name.
       expect(readAgent('station').name).toBe('Station');
       expect((await agents.getAgent('writer')).name).toBe('Station');
+    });
+
+    test('a legacy Station name discovered through the Agent service still executes, while actual edits refuse', async () => {
+      const { agentDefinitionFingerprint } = await import(
+        '../agent-definition-fingerprint.js'
+      );
+      const { createSessionAgentResolver } = await import(
+        '../../orchestration/session-agent-resolution.js'
+      );
+      writeAgent('station', { name: 'Station', prompt: 'Keep this task.' });
+      const discovered = await service().getAgent('station');
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: (slug) => loadAgentConfig(home, slug),
+        resolveToolServer: async (id) => ({
+          id,
+          kind: 'mcp' as const,
+          transport: 'stdio' as const,
+          command: 'node',
+          args: ['/tools/' + id + '.mjs'],
+        }),
+        resolveSkillDir: async () => null,
+      });
+      const input = {
+        threadId: 'legacy-station',
+        provider: 'opencode' as const,
+        metadata: {
+          agentSlug: 'station',
+          executionAgentId: 'opencode',
+          expectedDefinitionFingerprint: agentDefinitionFingerprint(
+            discovered,
+            'station',
+          ),
+        },
+      };
+      await expect(resolver(input)).resolves.toBeDefined();
+      writeAgent('station', { name: 'Ops desk', prompt: 'Keep this task.' });
+      await expect(resolver(input)).rejects.toThrow(
+        'definition changed before execution',
+      );
+      writeAgent('station', { name: 'Station', prompt: 'A different task.' });
+      await expect(resolver(input)).rejects.toThrow(
+        'definition changed before execution',
+      );
     });
 
     test('a name the person gave the built-in Agent is kept (#4388)', async () => {

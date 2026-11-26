@@ -1,0 +1,7 @@
+{
+  "revision": "6fddf2f4a1f812b3eb75299cfa05f6ad528a8b96",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Re-read the validator and secret-scan passages against this change: scripts/__tests__/dependency-advisory-policy.test.ts now creates the cacache override fixture with trackTempDirs() instead of a raw mkdtemp (no assertion changed), and .gitleaks.toml keeps the exact-value entry for the removed patches/node-forge-1.4.0.patch because the secret scan walks git history. The guide's statements about the override floor and the removed backport are unaffected. No prose change needed.","inputs":["docs/guides/dependency-security.md","scripts/__tests__/dependency-advisory-policy.test.ts"]}
+  ]
+}

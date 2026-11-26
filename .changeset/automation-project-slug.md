@@ -1,0 +1,34 @@
+---
+'@kontourai/station-contracts': minor
+'@kontourai/station-sdk': minor
+---
+
+An Automation rule's action and a source's grant may name their Project by
+slug as well as by id. Station stores the Project's id; when a value is one
+Project's id and another's slug, the id wins. Creating or editing a rule or
+grant that names no Project is refused, quoting the value. A delivery whose
+rule names a Project that no longer exists is refused with the new reason
+`project_unavailable` in `AUTOMATION_REFUSAL_REASONS`, and no Task starts.
+
+`AutomationEpisodeRecord` gains an optional `startFailed: true` for an open
+episode whose latest start failed before its Agent started; retry-episode
+now accepts such an episode, with `startFailure: 'agent-option-unsupported'`
+when the rule asks for an approval mode its Agent cannot take.
+`AutomationEpisodeList` (`GET /automations/episodes`) adds
+`actionsUnavailable` while no automation Task can start, and
+`listAutomationEpisodes` returns it.
+
+A dispatch-task rule's `approvalMode` adds `connection-default` (the
+Agent's own approval settings; no per-invocation setting is sent). Omitted
+still means `ask`, and an Agent that cannot be told `ask` is refused before
+any Task is created. Open episodes add `startFailure` values
+`agent-own-approval-required` and `task-not-canceled`, and
+`retryNeedsRuleChange`; `actionsUnavailable` adds `detail`.
+
+Delegation and Station Control starts change for an ACP connection whose
+approvals Station answers (`acpApprovalControl` of `station` or `requests`):
+an ACP Agent on such a connection now accepts a per-invocation
+`approvalMode` instead of refusing it; other Agents are refused as before.
+A start whose Task could not be canceled keeps `task-not-canceled` on its
+open episode only while that Task is live, so Retry returns once the Task is
+canceled or done.

@@ -1,0 +1,7 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Added the Project defaults GET/PUT routes (owner-in-person write, project-read for reads, a switch left out keeps its value) and DELETE …/derived; branch-derived rows in the conversation pull request projection. Checked against pull-request-feedback-task-branches.ts routes and the runtime wiring.","inputs":["docs/reference/api.md"]}
+  ]
+}

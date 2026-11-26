@@ -19,6 +19,8 @@
  * (`OrchestrationService` start admission -> `bindProjectTaskRoomExecution`)
  * is written here with that same store method.
  */
+
+import { existsSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -31,10 +33,16 @@ import { NotificationService } from '../../../services/notifications/notificatio
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../../services/orchestration/session-owner-attribution.js';
 import { taskQuestionWakeKey } from '../../../services/orchestration/task-question-wake.js';
 import { composeTaskDispatcher } from '../../../services/projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
@@ -178,6 +186,16 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     );
     const port = await listening;
     const context = deepStub({
+      // Only pull request agent feedback's preview is on; every other
+      // binding reads off, as on a fresh Station.
+      featurePreviews: {
+        bind: (definition: { id: string }) => ({
+          select: <T>(branches: { enabled: () => T; disabled: () => T }) =>
+            definition.id === 'pull-request-agent-feedback'
+              ? branches.enabled()
+              : branches.disabled(),
+        }),
+      },
       projectSharedTasks: undefined,
       deploymentAuthentication: undefined,
       localAccounts: undefined,
@@ -314,7 +332,7 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     };
 
     /** A Task dispatched to an agent: the lead Session, bound to the room. */
-    const dispatchedTask = async () => {
+    const dispatchedTask = async (options: { unattributed?: boolean } = {}) => {
       const task = await taskGraph.createTask({
         projectId: PROJECT,
         title: 'Ship the fix',
@@ -328,6 +346,10 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
         sourceSurface: 'task-memory-engine-test',
         fullAccessGrant: null,
         ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        // As an automation rule starts its Task: it acts for no person.
+        ...(options.unattributed
+          ? { ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION }
+          : {}),
       } as never);
       if (dispatched.kind !== 'dispatched')
         throw new Error(`dispatch was ${dispatched.kind}`);
@@ -419,6 +441,8 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     };
 
     return {
+      base,
+      homeDir,
       store,
       orchestration,
       taskGraph,
@@ -780,6 +804,124 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     ]);
   });
 
+  test("an operator reads a chat's pull request feedback through the production routes", async () => {
+    const e = await setup();
+    const { sessionId } = await e.dispatchedTask();
+    const conversation =
+      e.store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+    // The route decides with the principal orchestration owns the chat
+    // under; without its authority binding the read failed (500).
+    const read = await e.asOperator(
+      'GET',
+      `/api/pull-request-feedback/conversations/${encodeURIComponent(conversation)}`,
+    );
+    expect(read.status, JSON.stringify(read.json)).toBe(200);
+    expect(read.json.data).toEqual({
+      conversationId: conversation,
+      pullRequests: [],
+      viewerMayChange: true,
+    });
+  });
+
+  test("Station's internal principal cannot turn a chat's pull request feedback on, with or without an agent's tool token", async () => {
+    const e = await setup();
+    const { sessionId } = await e.dispatchedTask();
+    const conversation =
+      e.store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+    const path = `/api/pull-request-feedback/conversations/${encodeURIComponent(conversation)}`;
+    const body = JSON.stringify({
+      identity: {
+        provider: 'github',
+        host: 'github.com',
+        repository: { owner: 'acme', name: 'widgets' },
+        ref: '42',
+      },
+      settings: { fixFailingChecks: true, addressReviewComments: true },
+    });
+    const internal = {
+      'content-type': 'application/json',
+      [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+      [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+    };
+    // As an agent's tool call: the authority guard maps no tool to it.
+    const asTool = await fetch(`${e.base}${path}`, {
+      method: 'PUT',
+      headers: {
+        ...internal,
+        'x-station-control-caller-token': mintStationControlMcpToken(
+          sessionId,
+          'sdk-in-process',
+        ).token,
+      },
+      body,
+    });
+    expect(asTool.status).toBe(403);
+    expect(await asTool.json()).toMatchObject({
+      code: 'station_control_route_unmapped',
+    });
+    // As Station's own internal principal with no tool caller: the guard
+    // refuses every internal caller on a route no tool maps (the route's
+    // own person check is a second line behind it).
+    const asInternal = await fetch(`${e.base}${path}`, {
+      method: 'PUT',
+      headers: internal,
+      body,
+    });
+    expect(asInternal.status).toBe(403);
+    expect(await asInternal.json()).toMatchObject({
+      code: 'station_control_route_unmapped',
+    });
+    // Nothing was claimed: no store was even created.
+    expect(
+      existsSync(
+        join(
+          e.homeDir,
+          'pull-request-feedback',
+          'pull-request-feedback.sqlite',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  test("the production inbox asks pull request feedback's placement re-check before placing a queued prf- message", async () => {
+    const e = await setup();
+    const { sessionId } = await e.dispatchedTask();
+    const conversation =
+      e.store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+    const inbox = support.options?.threadInbox?.();
+    expect(inbox).toBeDefined();
+    const submit = (clientTurnId: string) =>
+      inbox!.submit({
+        conversationId: conversation,
+        clientTurnId,
+        payload: {
+          message: 'Pull request feedback.',
+          actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+        },
+      });
+    const entry = (key: string) =>
+      e.store
+        .threadInboxStore()
+        .list(conversation)
+        .find((stored) => stored.key === key);
+    // A prf- key the feedback store never wrote: its re-check refuses it.
+    const key = `prf-${'0'.repeat(40)}`;
+    expect(submit(key).outcome).toBe('queued');
+    await vi.waitFor(() => expect(entry(key)?.state).toBe('refused'), {
+      timeout: 10_000,
+    });
+    expect(JSON.parse(String(entry(key)?.outcome))).toMatchObject({
+      reasonCode: 'pr_feedback_stale',
+    });
+    // The re-check passes over every other key.
+    const other = `tf-${'2'.repeat(40)}`;
+    expect(submit(other).outcome).toBe('queued');
+    await vi.waitFor(() => expect(entry(other)?.state).not.toBe('queued'), {
+      timeout: 10_000,
+    });
+    expect(entry(other)?.state).not.toBe('refused');
+  });
+
   test("the production inbox asks the Task follow-up wake's placement re-check before placing a queued tf- wake (#4508)", async () => {
     const asked: unknown[] = [];
     let refuse = true;
@@ -848,5 +990,138 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     } finally {
       support.taskFollowUpWake = undefined;
     }
+  });
+  test("a person's own turn in a taken-over automation Session may write its own Task and nothing else; no other turn may (#4511)", async () => {
+    const e = await setup();
+    const { taskId, sessionId } = await e.dispatchedTask({
+      unattributed: true,
+    });
+    const call = await e.connect(sessionId);
+    const roleRequired = 'station_control_role_required';
+    const calls = async () => ({
+      summary: await call('task_summary_update', {
+        text: 'Concluded: nothing to change.',
+        baseRevision: 0,
+      }),
+      record: await call('task_record', {
+        kind: 'decision',
+        key: 'outcome',
+        text: 'An open fix already exists.',
+      }),
+      reply: await call('task_thread_reply', {
+        threadId: 'no-thread',
+        deliveryKey: 'no-delivery',
+        body: 'Seen.',
+      }),
+      brief: await call('get_task_brief'),
+      // Closing a person's review thread is not in the grant (#4511).
+      resolve: await call('task_thread_resolve', {
+        threadId: 'no-thread',
+        reason: 'Addressed.',
+      }),
+    });
+    const refusedEverywhere = async () => {
+      for (const [name, result] of Object.entries(await calls()))
+        expect(result.body?.code, name).toBe(roleRequired);
+    };
+    let tick = 0;
+    const turn = (fields: Record<string, unknown>) => {
+      tick += 1;
+      const turnId = `${sessionId}-automation-turn-${tick}`;
+      e.store.appendEvent({
+        threadId: sessionId,
+        turnId,
+        provider: 'codex',
+        eventId: `${turnId}:start`,
+        method: 'turn.started',
+        createdAt: new Date(Date.UTC(2026, 10, 22, 0, 0, tick)).toISOString(),
+        prompt: 'Continue',
+        ...fields,
+      } as never);
+      return turnId;
+    };
+    const end = (turnId: string) =>
+      e.store.appendEvent({
+        threadId: sessionId,
+        turnId,
+        provider: 'codex',
+        eventId: `${turnId}:done`,
+        method: 'turn.completed',
+        createdAt: new Date(Date.UTC(2026, 10, 22, 0, 1, tick)).toISOString(),
+        finishReason: 'stop',
+      } as never);
+
+    // The automation's own turn, before any takeover: refused.
+    const automationTurn = turn({});
+    await refusedEverywhere();
+    end(automationTurn);
+
+    // A person typed a turn but nobody took the Session over: refused.
+    const untaken = turn({ authoredBy: 'person' });
+    await refusedEverywhere();
+    end(untaken);
+    expect(e.stored(taskId).summary).toBeUndefined();
+
+    // A takeover recorded for a different Task grants nothing here.
+    const otherTask = await e.taskGraph.createTask({
+      projectId: PROJECT,
+      title: 'Another Task',
+    });
+    e.orchestration.recordPersonTakeover(sessionId, otherTask.id);
+    const misbound = turn({ authoredBy: 'person' });
+    await refusedEverywhere();
+    end(misbound);
+
+    // The automation runtime records the takeover at the person's admission.
+    e.orchestration.recordPersonTakeover(sessionId, taskId);
+    const personTurn = turn({ authoredBy: 'person' });
+    const allowed = await calls();
+    expect(allowed.summary.body).toMatchObject({
+      status: 'updated',
+      taskId,
+      summary: {
+        revision: 1,
+        text: 'Concluded: nothing to change.',
+        author: { kind: 'session', sessionId },
+      },
+    });
+    expect(allowed.record.body).toMatchObject({ status: 'recorded' });
+    expect(allowed.reply.body?.code).not.toBe(roleRequired);
+    // Replying is allowed; resolving a thread is refused exactly as before
+    // the takeover, so a person still closes their own review threads.
+    expect(allowed.resolve.body?.code).toBe(roleRequired);
+    expect(allowed.brief.isError, JSON.stringify(allowed.brief.body)).toBe(
+      false,
+    );
+    expect(e.stored(otherTask.id).summary).toBeUndefined();
+    // Nothing else the person could do: no automation proposal, no new
+    // Project note, and the Session still acts for no one.
+    expect(
+      (
+        await call('propose_automation_source', {
+          kind: 'github-poll',
+          name: 'watch-it',
+          repository: 'kontourai/station',
+        })
+      ).body?.code,
+    ).toBe(roleRequired);
+    expect(
+      (
+        await call('remember_project_note', {
+          title: 'From the failed run',
+          body: 'Remember this.',
+        })
+      ).body?.code,
+    ).toBe(roleRequired);
+    expect(
+      e.orchestration.resolveSessionActingPrincipal(sessionId),
+    ).toBeUndefined();
+
+    // Between turns, and in a later turn no person typed: refused again.
+    end(personTurn);
+    await refusedEverywhere();
+    turn({});
+    await refusedEverywhere();
+    expect(e.stored(taskId).summary?.revision).toBe(1);
   });
 });

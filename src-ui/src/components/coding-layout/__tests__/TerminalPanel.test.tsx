@@ -355,6 +355,45 @@ test('a missing PTY backend swaps to the command executor with the server reason
   expect(screen.getByPlaceholderText('Type a command...')).toBeTruthy();
 });
 
+test('the command executor leaves Space to its input, follows new output and keeps history in range', async () => {
+  renderTerminal();
+  const { session } = await connectTerminal();
+  act(() =>
+    session.emit({
+      state: 'failed',
+      error: new TerminalSessionError(
+        'pty-unavailable',
+        'node-pty could not load on this host',
+      ),
+    }),
+  );
+  const input = (await screen.findByPlaceholderText(
+    'Type a command...',
+  )) as HTMLInputElement;
+  // `fireEvent` answers false when a handler cancelled the event, and a
+  // cancelled Space keydown types nothing: `git status` became `gitstatus`.
+  expect(fireEvent.keyDown(input, { key: ' ' })).toBe(true);
+
+  const scrollTo = vi.mocked(HTMLElement.prototype.scrollTo);
+  executeCodingCommand.mockResolvedValueOnce({ stdout: 'on branch main' });
+  fireEvent.change(input, { target: { value: 'git status' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(await screen.findByText('on branch main')).toBeTruthy();
+  const scrollsBeforeOutput = scrollTo.mock.calls.length;
+  executeCodingCommand.mockResolvedValueOnce({ stdout: 'second run' });
+  fireEvent.change(input, { target: { value: 'git log' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(await screen.findByText('second run')).toBeTruthy();
+  expect(scrollTo.mock.calls.length).toBeGreaterThan(scrollsBeforeOutput);
+
+  // Stepping below the newest entry stays there: one ArrowUp is the latest
+  // command again.
+  fireEvent.keyDown(input, { key: 'ArrowDown' });
+  fireEvent.keyDown(input, { key: 'ArrowDown' });
+  fireEvent.keyDown(input, { key: 'ArrowUp' });
+  expect(input.value).toBe('git log');
+});
+
 test('a broker route refusal explains that a direct Station connection is required', async () => {
   renderTerminal();
   await waitFor(() => expect(FakeSession.instances).toHaveLength(1));

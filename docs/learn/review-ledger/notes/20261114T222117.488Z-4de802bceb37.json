@@ -1,0 +1,17 @@
+{
+  "revision": "3c64fd984ea7c948d0393ffe8188b7cc131bf938",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-checked this page's citations of testing.md after the PR Gallery excuse normalisation and trust text changed: it states nothing about the PR Gallery attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-checked this page's citations of testing.md after the PR Gallery excuse normalisation and trust text changed: it states nothing about the PR Gallery attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-checked this page's citations of testing.md after the PR Gallery excuse normalisation and trust text changed: it states nothing about the PR Gallery attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-checked this page's citations of testing.md after the PR Gallery excuse normalisation and trust text changed: it states nothing about the PR Gallery attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-checked this page's citations of testing.md after the PR Gallery excuse normalisation and trust text changed: it states nothing about the PR Gallery attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-checked this page's citations of testing.md after the PR Gallery excuse normalisation and trust text changed: it states nothing about the PR Gallery attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]}
+  ]
+}

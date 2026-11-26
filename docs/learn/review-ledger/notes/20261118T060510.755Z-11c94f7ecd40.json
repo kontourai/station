@@ -1,0 +1,37 @@
+{
+  "revision": "e896de40751e5d628e627e29d93eb5e8b98f534c",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Checked the scheduler section and actual dashboard query fixture. Pinned Collector, Prometheus and Grafana binaries over loopback admitted authenticated OTLP and evaluated the provisioned dashboard; the compose/container and deployed receipts remain separate.","inputs":["deployment/telemetry/README.md","deployment/telemetry/dashboards/station.json"]},
+
+    {"path":"docs/architecture.md","note":"Checked the infrastructure telemetry owner against the changed instrument declarations. The scheduler splits request observations from terminal executions under the existing OTel provider; no runtime, custody or event-log ownership changes.","inputs":["docs/architecture.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the Monitoring guide and declaration reference changes. Existing OTel and local monitoring boundaries remain separate, and the generated catalog remains a list of declarations.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md","docs/reference/metrics.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the scheduler and primary chat runtime owners. Built-in execution emits confirmed counters after durable settlement; request routes keep their existing admission. Primary chat owns the terminal status and end of its span, and finalization still owns measured token and duration attributes.","inputs":["docs/architecture/module-map.md","src-server/routes/chat/chat-primary-stream.ts","src-server/routes/operations/scheduler.ts","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked the engine and runtime measurement contract. No Agent, request authority or installed-tool behavior changed. The updated descriptors report loaded maps and confirmed scheduler attempts.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked the scheduler route's exact attempt and authority claims. The route observation is now a dedicated counter; its order relative to admission and provider dispatch is unchanged, and the measured invocation does not replace the run receipt.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked scheduler management reachability and outcomes. The added management instrument measures dispatch observations; the route continues to rely on the existing service and authority callbacks.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the direct-chat turn and Agent configuration lease references. Span finalization moves to the stream owner without changing configuration/approval, engine invocation or user-facing SSE behavior.","inputs":["docs/guides/agent-configuration.md","src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked Provider and runtime telemetry references. Provider instrumentation remains the same; the diagnostic dashboard distinguishes the existing attributes. No connection status or credential is synthesized.","inputs":["docs/guides/connections.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the counter/histogram populations, chart expressions and primary chat span lifecycle through real scheduler and chat callers. Local authenticated Collector to Prometheus/Grafana query evidence observes the exact execution statuses, management events, finite chat p95, absent route errors, and projected trace codes. Production and provider billing are unqualified.","inputs":["docs/guides/monitoring.md","deployment/telemetry/dashboards/station.json","src-server/routes/chat/chat-lifecycle.ts","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked notification instrumentation against the shared declaration module. Existing notification recording and association stay the same; the dashboard uses the op label supplied by those callers.","inputs":["docs/guides/web-push-notifications.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked scheduler methods and primary chat SSE against the mutation. Authority, request and response shapes, refusal handling and health remain unchanged. Changes are only counting population and span outcome.","inputs":["docs/reference/api.md","src-server/routes/chat/chat-primary-stream.ts","src-server/routes/operations/scheduler.ts","src-server/services/scheduling/scheduler-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked scheduler invocation limits, retries and indeterminate run behavior against the execution owner. The configured timeouts, invocation admission and restart semantics stay as shipped; only confirmed outcomes contribute to execution telemetry.","inputs":["docs/reference/config.md","src-server/services/scheduling/builtin-scheduler-execution.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked chat configuration and trace ownership against the stream site. The optional exporter still receives the configured context; the changed status handling introduces no environment variables or provider transport changes.","inputs":["docs/reference/env-vars.md","src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/metrics.md","note":"Regenerated the declaration catalog from the metrics module and verified it with the canonical check. The scheduler counter, elapsed-time descriptor, management counter, and map-size descriptions match their owners. Actual production caller exports were exercised separately.","inputs":["docs/reference/metrics.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked scheduled-job help against the built-in execution delta. The route, limits and user-observable run receipts retain their meaning. Telemetry identifies confirmed runs separately from management requests and does not alter execution.","inputs":["docs/reference/station-docs.md","src-server/services/scheduling/builtin-scheduler-execution.ts"]}
+  ]
+}

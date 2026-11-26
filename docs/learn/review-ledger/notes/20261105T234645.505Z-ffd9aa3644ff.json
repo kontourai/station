@@ -1,7 +1,0 @@
-{
-  "revision": "395462fd4b684fd7cae9e4cc6a288222c563bd75",
-
-  "notes": [
-    {"path":"docs/guides/desktop-build.md","note":"Reviewed staging rules against koffi 3.3.6: its public index.cjs loads src/koffi/index.cjs, so Windows retains src and the native package; vendor and doc are omitted. Non-Windows retains metadata and available licenses only. The actual installed package loads under Windows retention rules on macOS; this is packaging evidence, not a Windows API execution.","inputs":["docs/guides/desktop-build.md","scripts/__tests__/server-build-portability.test.ts","scripts/lib/desktop-server-runtime.mjs"]}
-  ]
-}

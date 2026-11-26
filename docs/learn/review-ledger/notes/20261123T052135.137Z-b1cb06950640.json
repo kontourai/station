@@ -1,0 +1,7 @@
+{
+  "revision": "436b4ca4dbab9500c5051b403e99a9d236715639",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"station automation deliveries lists interrupted among outcomes; the CLI prints the API projection unchanged.","inputs":["docs/reference/cli.md"]}
+  ]
+}

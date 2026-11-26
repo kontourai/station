@@ -24,6 +24,7 @@ import {
   isToolCallAwaitingApproval,
   isToolCallBatchPending,
   RAN_EVEN_WHEN_FAILED,
+  type StationCallNaming,
   type ToolCallKind,
   type ToolCallPhase,
   toolCallPhase,
@@ -68,6 +69,10 @@ const KIND_PHRASES: Record<
     done: (n) => `Ran ${plural(n, 'search', 'searches')}`,
     pending: (n) => plural(n, 'search', 'searches'),
   },
+  station: {
+    done: (n) => `Used ${plural(n, 'Station tool', 'Station tools')}`,
+    pending: (n) => plural(n, 'Station tool call', 'Station tool calls'),
+  },
   other: {
     done: (n) => `Used ${plural(n, 'tool', 'tools')}`,
     pending: (n) => plural(n, 'tool call', 'tool calls'),
@@ -82,6 +87,7 @@ const KIND_ORDER: ToolCallKind[] = [
   'delete',
   'exec',
   'search',
+  'station',
   'other',
 ];
 
@@ -155,7 +161,7 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   unresolvedCount: number;
   /** How many of this run's calls are waiting on an explicit grant. Same
    * collapsed-visible duty as `failedCount`: collapsing 2+ calls would
-   * otherwise hide Allow Once / Deny behind the sheet. */
+   * otherwise hide Allow once / Deny behind the sheet. */
   awaitingApprovalCount: number;
   deniedCount: number;
   cancelledCount: number;
@@ -218,10 +224,16 @@ export function recoveredFailures(calls: readonly RetryEvidence[]): boolean[] {
 function classifyCall<P extends ToolCallLike>(
   part: P,
   index: number,
+  naming: Pick<StationCallNaming, 'sessionTitle'> = {},
 ): Omit<ClassifiedToolCall<P>, 'recovered'> {
   const toolName = toolNameOf(part);
   const args = toolDisplayView(part).args;
-  const kind = classifyToolCall({ toolName, toolKind: part.toolKind, args });
+  const kind = classifyToolCall({
+    toolName,
+    toolKind: part.toolKind,
+    args,
+    server: part.server,
+  });
   const phase = toolCallPhase(part);
   const inProgress = isToolCallActive(part);
   const unresolved = part.state === 'unresolved';
@@ -233,7 +245,10 @@ function classifyCall<P extends ToolCallLike>(
     (part.cancelled === true || part.state === 'cancelled') && !denied;
   const failed =
     (Boolean(toolDisplayView(part).error) || part.state === 'error') && !denied;
-  const label = callLabel(kind, toolName, args, phase);
+  const label = callLabel(kind, toolName, args, phase, {
+    server: part.server,
+    ...naming,
+  });
   return {
     part,
     index,
@@ -334,9 +349,10 @@ function summarizeCalls(
  * a multi-call batch. */
 export function classifyToolCallRun<P extends ToolCallLike>(
   run: ToolCallRun<P>,
+  naming: Pick<StationCallNaming, 'sessionTitle'> = {},
 ): ToolCallGroup<P> {
   const classified = run.calls.map(({ part, index }) =>
-    classifyCall(part, index),
+    classifyCall(part, index, naming),
   );
   const recovered = recoveredFailures(
     classified.map((call) => {

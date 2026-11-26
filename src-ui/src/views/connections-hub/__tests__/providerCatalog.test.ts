@@ -138,7 +138,7 @@ describe('provider catalog presentation', () => {
         'muse-cli': {
           id: 'muse-cli',
           name: 'Muse Code CLI',
-          description: 'Required to launch the Muse Code runtime.',
+          description: 'Required to launch the Muse Code engine.',
         },
         'muse-auth': {
           id: 'muse-auth',

@@ -1,0 +1,13 @@
+{
+  "revision": "c699843b2339cf96e5404c5dc247dd67cbba486a",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Added one covered row for ConversationForkDialog.tsx, which uses the same ResponsiveDialogSurface and ResponsiveSurfaceActions as ConversationHandoffDialog; no existing row or cited responsive, theming or pattern claim changed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Added one covered row for ConversationForkDialog.tsx, which uses the same ResponsiveDialogSurface and ResponsiveSurfaceActions as ConversationHandoffDialog; no existing row or cited responsive, theming or pattern claim changed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Added one covered row for ConversationForkDialog.tsx, which uses the same ResponsiveDialogSurface and ResponsiveSurfaceActions as ConversationHandoffDialog; no existing row or cited responsive, theming or pattern claim changed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Added one covered row for ConversationForkDialog.tsx, which uses the same ResponsiveDialogSurface and ResponsiveSurfaceActions as ConversationHandoffDialog; no existing row or cited responsive, theming or pattern claim changed.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

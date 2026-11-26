@@ -1,0 +1,7 @@
+{
+  "revision": "5e27fc0fa2b2b8a17bfc70cc4c713ab4b332bacd",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Checked the guide's tracking-issue passage against scripts/lib/tracking-issue.mjs at this change: the bot-author constant and the neutraliser lost their export keyword and are otherwise unchanged; the guide names neither symbol and its statements about bot-authored trackers, neutralised mentions and the posted-size bound still hold. No prose change needed.","inputs":["docs/guides/code-hygiene.md","scripts/lib/tracking-issue.mjs"]}
+  ]
+}

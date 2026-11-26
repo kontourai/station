@@ -1,7 +1,0 @@
-{
-  "revision": "5c3fa7ab070e457bafbc55d16b398d91525cbf45",
-
-  "notes": [
-    {"path":"docs/design/shell-ownership-and-boards.md","note":"Footer bullet: the command palette now opens from its keyboard shortcut or the header Search or jump to… entry (CommandPaletteEntry in Header.tsx); verified against the mounted header and command-palette.spec.ts.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/header/Header.css","src-ui/src/components/header/Header.tsx"]}
-  ]
-}

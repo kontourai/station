@@ -1,0 +1,7 @@
+{
+  "revision": "0c2f9e509f5b8d0b97828c5d75f1a9cfe6dc8a1c",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the mounted transcript test: desktop and mobile fold completed activity while the existing pending-grant case keeps the approval action accessible. Provider policy and grant delivery are unchanged by the test update.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/__tests__/ChatMessageList.mobileTurnFold.test.tsx"]}
+  ]
+}

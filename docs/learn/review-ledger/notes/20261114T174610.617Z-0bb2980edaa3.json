@@ -1,0 +1,7 @@
+{
+  "revision": "e3f3d880eaa77a53fe91942099dc2f15924aea5f",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Re-read the runner admission capacity paragraph: added the 2026-11-14 measurement (two concurrent merge-group builds peaked at ten jobs across all workflows, no macOS) and the seven PR source slots; checked the arithmetic 10 + Free qualification peak 4 + 7 = 21 against the stated twenty-runner default and that the text claims a queue-depth bound, not a reservation.","inputs":["docs/guides/releasing.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]}
+  ]
+}

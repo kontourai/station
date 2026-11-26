@@ -137,7 +137,7 @@ describe('conversation usage breakdown in the stats dialog', () => {
     );
     expect(rows[1].textContent).toContain('Subagent: Search the repo');
     expect(rows[1].textContent).toContain(
-      'last request 41,108 tokens (not its usage) · 3 tool uses · 1 min 5 s',
+      'last request 41,108 tokens (not its usage) · 3 tool uses · 1m 5s',
     );
     expect(rows[1].textContent).toContain(
       'Tokens not in total, cost already in parent.',

@@ -7,6 +7,7 @@ import {
 import { notificationCategoryLabel } from '../../utils/notificationLabels';
 import {
   formatNotificationTime,
+  notificationBody,
   notificationDetail,
 } from '../../utils/notifications';
 import { DISMISS_NOTIFICATION_ACTION } from '../attention/notificationRowActions';
@@ -50,6 +51,7 @@ export function NotificationCard({
     if (focused) cardRef.current?.focus();
   }, [focused]);
   const detail = notificationDetail(notification);
+  const body = notificationBody(notification);
   const notice =
     answerability.status === 'unanswerable' ||
     answerability.status === 'unknown'
@@ -82,13 +84,12 @@ export function NotificationCard({
              * `actioned` is still something to clear — an `expired` or
              * still-`pending` notification included.
              *
-             * archive#3779: the label is read from the shared action model.
-             * `DELETE /notifications/:id` does NOT delete — it sets `status:
-             * 'dismissed'` and keeps the record — so the word stays "Dismiss".
+             * archive#3779: the label is read from the shared action model and
+             * reads "Mark done". `DELETE /notifications/:id` does NOT delete —
+             * it sets `status: 'dismissed'` and keeps the record.
              */}
             <RowMenu
               items={[
-                ...menuItems,
                 ...(dismissible
                   ? [
                       {
@@ -98,14 +99,13 @@ export function NotificationCard({
                       },
                     ]
                   : []),
+                ...menuItems,
               ]}
             />
           </span>
         </div>
         <div className="notification-card__message">{notification.title}</div>
-        {notification.body && (
-          <div className="notification-card__detail">{notification.body}</div>
-        )}
+        {body && <div className="notification-card__detail">{body}</div>}
         {detail && <div className="notification-card__detail">{detail}</div>}
         <NotificationEnvelopeControls
           notification={notification}

@@ -35,16 +35,15 @@ import {
 /**
  * Whether this engine's adapter maps `approvalMode` to a native knob.
  *
- * #3290: ACP is one provider for many engines, so its answer is the
- * connection's (`acpApprovalControl`): only a connection whose approval rules
- * Station sets at launch has the knob. Without that answer an ACP thread has
- * none, so a posture is never sent to an engine that decides for itself.
+ * Station can configure OpenCode at launch and answer standard permission
+ * requests from other ACP engines.
  */
 export function approvalKnobSupported(
   provider: EngineId,
   acpControl?: AcpApprovalControl,
 ): boolean {
-  if (provider === PROVIDER_ACP) return acpControl === 'station';
+  if (provider === PROVIDER_ACP)
+    return acpControl === 'station' || acpControl === 'requests';
   return (
     PROVIDER_MODEL_OPTION_SUPPORT[provider]?.includes('approvalMode') === true
   );
@@ -54,7 +53,8 @@ export function approvalKnobSupported(
  * #2493/#2494: whether this engine runs `never` confined to the workspace.
  *
  * - Codex: always, with its own sandbox (`workspace-write`).
- * - Claude: inside a Seatbelt profile Station applies around the engine.
+ * - Claude: inside a sandbox Station applies around the engine (a Seatbelt
+ *   profile on macOS, bubblewrap on Linux).
  *   At a START the request passes through: the start resolves its
  *   confinement (a plan, or a refusal where no mechanism exists), and the
  *   adapter applies full access only once the provider has observed the

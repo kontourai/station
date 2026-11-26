@@ -1,0 +1,9 @@
+{
+  "revision": "6357a36115c52248b38762a080e2cb15ff06b053",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Only the listOrchestrationSessions limit sentence changed (client-side RangeError); citing pages route to sdk.md generally and make no claim it affects.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Only the listOrchestrationSessions limit sentence changed (client-side RangeError); citing pages route to sdk.md generally and make no claim it affects.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

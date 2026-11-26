@@ -1,6 +1,6 @@
 /*
  * archive#3213: the failure banner's one appearance, lifted verbatim from
- * `.sessions-detail__failure` (SessionsView.css) when the chat dock became a
+ * `.sessions-detail__failure` (SessionDetail.css) when the chat dock became a
  * second consumer. Both surfaces render this component, so neither can drift
  * into its own error styling for the same fact.
  *
@@ -16,7 +16,8 @@
  *   - scroll rather than `-webkit-line-clamp`, because the whole recorded
  *     cause must stay readable on the surface reporting it. Nothing is hidden.
  *
- * The banner carries no action, so there is no 44px touch target to meet; it
+ * Its one control is the Details disclosure a translated cause carries, and
+ * that summary meets the shared 44px phone touch floor below. Everything else
  * inherits the global mobile wrap floor in index.css like every other block.
  */
 .session-failure {
@@ -46,5 +47,25 @@
   color: var(--text-muted);
   font-size: 0.95em;
   line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* The recorded text behind a translated cause: closed by default. */
+.session-failure__raw {
+  margin-top: 0.25rem;
+}
+
+.session-failure__raw > summary {
+  cursor: pointer;
+  /* A tap target on a phone: the shared touch floor (44px there, unset on a
+     desktop), reached by padding the one line rather than a flex box, which
+     would drop the disclosure marker. */
+  min-height: var(--touch-target-min, auto);
+  padding-block: max(0px, calc((var(--touch-target-min, 0px) - 1lh) / 2));
+  box-sizing: border-box;
+}
+
+.session-failure__raw > p {
+  margin: 0.25rem 0 0;
   overflow-wrap: anywhere;
 }

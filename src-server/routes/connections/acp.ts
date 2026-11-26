@@ -10,6 +10,7 @@ import {
   normalizeACPArgs,
 } from '@kontourai/station-contracts/acp';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import { acpApprovalControl } from '@kontourai/station-contracts/engine-capability-matrix';
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import { Hono } from 'hono';
 import {
@@ -27,6 +28,7 @@ import {
 } from '../../providers/auth/cli-auth.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
   managedCapabilityRefusalBody,
   managedRegistryLimits,
@@ -35,21 +37,33 @@ import {
   assertEngineAllowedByManagedPolicy,
   managedEngineRefusalBody,
 } from '../../security/managed-engine-limits.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import { listValidatedACPRegistryEntries } from '../../services/acp/acp-engine-descriptors.js';
 import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.js';
 import { forgetEngineAuthStatus } from '../../services/acp/engine-auth-status.js';
 import { engineCredentials } from '../../services/acp/engine-credentials.js';
+import {
+  acpConnectionIcon,
+  builtInAcpEntries,
+  builtInAcpEntryFor,
+  engineInstallerFor,
+  engineSetupEntries,
+} from '../../services/acp/engine-setup.js';
 import { engineSignIn } from '../../services/acp/engine-sign-in.js';
 import type { PublicAgentRegistrySource } from '../../services/acp/public-agent-registry.js';
 import {
   mapPublicRegistryListings,
   type PublicRegistryCatalog,
 } from '../../services/acp/public-agent-registry-catalog.js';
+import { engineHostAuth } from '../../services/engine-host-auth/service.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import {
   type IntegrationSecretResolution,
   SecretBindingResolutionError,
 } from '../../services/secrets/secret-binding-administration.js';
 import { acpOps } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
 import {
   acpConnectionSchema,
@@ -218,12 +232,25 @@ function getRegistryCatalog(
     }
   }
 
+  const listings = listValidatedACPRegistryEntries();
+  const builtIns = listings
+    .filter(({ builtin }) => builtin)
+    .map(({ entry }) => entry);
+  for (const connection of installedConnections) {
+    const variant = builtInAcpEntryFor(connection, builtIns);
+    if (variant && !installedSources.has(variant.id)) {
+      installedSources.set(
+        variant.id,
+        connection.source === 'plugin' ? 'plugin' : 'user',
+      );
+    }
+  }
   const entriesById = new Map<string, ACPConnectionRegistryEntry>();
   for (const {
     entry: registryEntry,
     builtin,
     source: providerSource,
-  } of listValidatedACPRegistryEntries()) {
+  } of listings) {
     const hostInstall = installRecipeForPlatform(
       registryEntry.install,
       process.platform,
@@ -504,6 +531,7 @@ function connectionStatusView(
 ) {
   return {
     ...cfg,
+    ...engineInstallerFor(cfg),
     ...(status.connections.find((s) => s.id === cfg.id) || {
       status: ACPStatus.UNAVAILABLE,
       modes: [],
@@ -511,6 +539,16 @@ function connectionStatusView(
       mcpServers: [],
     }),
   };
+}
+
+function builtInConnectionPresentation(
+  cfg: ACPConnectionConfig,
+  entries: readonly ACPConnectionRegistryEntry[],
+) {
+  const entry = builtInAcpEntryFor(cfg, entries);
+  return entry
+    ? { registryId: entry.id, icon: acpConnectionIcon(cfg.icon, entry) }
+    : {};
 }
 
 /**
@@ -572,6 +610,8 @@ export function createACPRoutes(
   options: {
     /** Absent when this Station does not read the public agent registry. */
     publicAgentRegistry?: PublicAgentRegistrySource;
+    engineSetupPreview?: FeaturePreviewSelector;
+    personalHost?: boolean;
   } = {},
 ) {
   const app = new Hono();
@@ -582,8 +622,66 @@ export function createACPRoutes(
     void registerFirstHandshakeACPConnection(ctx, config).catch((error) => {
       ctx.logger?.warn?.('ACP first-handshake registration failed', {
         id: config.id,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
+    });
+  });
+
+  app.get('/setup', async (c) => {
+    if (options.personalHost !== true)
+      return c.json(
+        {
+          success: false,
+          code: 'engine_setup_unavailable',
+          error: 'Engine setup is available on personal Stations.',
+        },
+        404,
+      );
+    const enabled =
+      options.engineSetupPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) ?? false;
+    if (!enabled)
+      return c.json(
+        {
+          success: false,
+          code: 'feature_preview_disabled',
+          previewId: 'guided-engine-setup',
+          settingsPath:
+            '/settings?view=feature-previews&highlight=feature-previews',
+          error:
+            'Enable Guided engine setup in Settings → Advanced → Feature previews.',
+        },
+        404,
+      );
+    const authority = stationControlRequestAuthority(c.req.raw);
+    const ownerAgent =
+      authority?.kind === 'caller' &&
+      authority.caller.principal?.elevationEligible === true &&
+      authority.caller.principal.id === LOCAL_OPERATOR_PRINCIPAL_ID;
+    if (!ownerAgent && !isOperatorInPersonNotAgent(c.req.raw))
+      return c.json(
+        {
+          success: false,
+          error: 'Only the Station owner can inspect engine setup.',
+        },
+        403,
+      );
+    const config = await ctx.configLoader.loadACPConfig();
+    const saved = mergeACPConnections(
+      config.connections,
+      getProviderConnections(),
+    );
+    await resolveAugmentedPath();
+    const entries = getRegistryEntries(saved);
+    const live = ctx.acpBridge.getStatus().connections;
+    const data = engineSetupEntries(entries, saved, live);
+    return c.json({
+      success: true,
+      data,
+      guidance:
+        'Open setupPath in Station to install, connect or sign in. These actions are completed by the person. Return to this chat afterward and re-read setup and list_agents. A handshake or HTTP advertisement does not verify a chat turn or tool delivery.',
     });
   });
 
@@ -594,9 +692,14 @@ export function createACPRoutes(
   app.get('/connections', async (c) => {
     const allConnections = await installedACPConnections(ctx.configLoader);
     const status = ctx.acpBridge.getStatus();
-    const connections = allConnections.map((cfg) =>
-      connectionStatusView(cfg, status),
-    );
+    const builtIns = builtInAcpEntries();
+    const connections = allConnections.map((cfg) => ({
+      ...connectionStatusView(cfg, status),
+      ...builtInConnectionPresentation(cfg, builtIns),
+      ...(acpApprovalControl(cfg.command) === 'requests'
+        ? { stationApprovalRequests: true as const }
+        : {}),
+    }));
     return c.json({ success: true, data: connections });
   });
 
@@ -610,9 +713,13 @@ export function createACPRoutes(
     if (registeredIds === null) return c.json({ success: true, data: [] });
     const config = await ctx.configLoader.loadACPConfig();
     const status = ctx.acpBridge.getStatus();
+    const builtIns = builtInAcpEntries();
     const data = config.connections
       .filter((connection) => !registeredIds.has(connection.id))
-      .map((connection) => connectionStatusView(connection, status));
+      .map((connection) => ({
+        ...connectionStatusView(connection, status),
+        ...builtInConnectionPresentation(connection, builtIns),
+      }));
     return c.json({ success: true, data });
   });
 
@@ -736,11 +843,8 @@ export function createACPRoutes(
             );
           }
 
-          const entry = findRegistryEntry(
-            id,
-            [...config.connections, ...providerConns],
-            publicRegistry,
-          );
+          const saved = mergeACPConnections(config.connections, providerConns);
+          const entry = findRegistryEntry(id, saved, publicRegistry);
           if (!entry) {
             return c.json(
               {
@@ -831,7 +935,26 @@ export function createACPRoutes(
               : {}),
           });
           const existing = config.connections.find((conn) => conn.id === id);
-          if (existing && !isDeepStrictEqual(existing, newConn)) {
+          if (!existing && entry.source === 'core') {
+            const builtIns = builtInAcpEntries();
+            const alias = saved.find(
+              (connection) =>
+                builtInAcpEntryFor(connection, builtIns)?.id === id,
+            );
+            if (alias)
+              return c.json(
+                {
+                  success: false,
+                  error: `${alias.name || alias.id} already uses this engine. Open its saved setup.`,
+                },
+                409,
+              );
+          }
+          const comparable =
+            existing && entry.source === 'core'
+              ? { ...existing, icon: acpConnectionIcon(existing.icon, entry) }
+              : existing;
+          if (existing && !isDeepStrictEqual(comparable, newConn)) {
             return c.json(
               {
                 success: false,
@@ -840,7 +963,8 @@ export function createACPRoutes(
               409,
             );
           }
-          if (!existing) config.connections.push(newConn);
+          const connection = existing ?? newConn;
+          if (!existing) config.connections.push(connection);
           // Durable ACP config first, then the identity/default CAS. A failed
           // CAS deliberately leaves retryable config that remains invisible.
           await ctx.configLoader.saveACPConfig(config);
@@ -852,21 +976,21 @@ export function createACPRoutes(
           // retryable, and invisible to every installed surface until the
           // identity below registers — and a later install/re-check of the
           // same entry re-probes and materializes once the engine works.
-          const connected = await connectNewACPConnection(ctx, newConn);
+          const connected = await connectNewACPConnection(ctx, connection);
           // A never-connected engine that ran out of the request budget gets
           // its cold retry in the background; the response reads `probing`.
-          if (!connected) ctx.acpBridge.continueFirstContact?.(newConn.id);
+          if (!connected) ctx.acpBridge.continueFirstContact?.(connection.id);
           const agent = connected
             ? await registerPersistedACPConnection(
                 ctx,
-                newConn.id,
-                newConn.name,
+                connection.id,
+                connection.name,
               )
             : undefined;
           acpOps.add(1, { op: 'create' });
           return c.json({
             success: true,
-            data: connectionStatusView(newConn, ctx.acpBridge.getStatus()),
+            data: connectionStatusView(connection, ctx.acpBridge.getStatus()),
             ...(agent
               ? {
                   agent: {
@@ -1065,6 +1189,15 @@ export function createACPRoutes(
                 id,
               }),
             );
+          // Nor may a Kiro sign-in or an engine-held secret Station kept for it.
+          await engineHostAuth()
+            ?.removeConnection(id)
+            .catch(() =>
+              ctx.logger?.warn?.(
+                'Engine sign-in and secrets could not be removed',
+                { id },
+              ),
+            );
           acpOps.add(1, { op: 'delete' });
           return c.json({ success: true });
         },
@@ -1074,16 +1207,79 @@ export function createACPRoutes(
 
   app.post('/connections/:id/reconnect', async (c) => {
     const id = param(c, 'id');
-    // Existence is judged by the bridge's live probe set — the same
-    // projection GET /status serves. Reconnect acts on a live connection;
-    // a config entry that never onboarded has no probe to reconnect, and
-    // the bridge's own `false` cannot distinguish that from a failed
-    // handshake, so the explicit 404 is resolved here.
     const connection = ctx.acpBridge
       .getStatus()
       .connections.find((entry) => entry.id === id);
-    if (!connection) {
-      return c.json({ success: false, error: 'Connection not found' }, 404);
+    const persisted = (await ctx.configLoader.loadACPConfig()).connections.some(
+      (entry) => entry.id === id,
+    );
+    if (!connection || persisted) {
+      // A saved connection can outlive its probe (failed first contact or a
+      // restart). Recover through the same serialized probe/register path as
+      // Retry check, preserving the saved command and authored Agent.
+      return configurationMutationResponse(
+        await captureConfigurationMutation(
+          ctx.applyAgentConfigurationMutation,
+          async (beginMutation) => {
+            const saved = (
+              await ctx.configLoader.loadACPConfig()
+            ).connections.find((entry) => entry.id === id);
+            if (!saved)
+              return c.json(
+                { success: false, error: 'Connection not found' },
+                404,
+              );
+            const refused = managedEngineCreationRefusal(saved);
+            if (refused) return c.json(refused, 403);
+            if (!saved.enabled)
+              return c.json(
+                {
+                  success: false,
+                  code: 'engine-disabled',
+                  error: `${saved.name} is turned off. Turn it on from its engine page, then retry.`,
+                },
+                409,
+              );
+            beginMutation();
+            const connected = await connectNewACPConnection(ctx, saved);
+            if (!connected) {
+              ctx.acpBridge.continueFirstContact?.(saved.id);
+              const current = ctx.acpBridge
+                .getStatus()
+                .connections.find((entry) => entry.id === id);
+              const failureDetail = current?.lastError
+                ? {
+                    phase: current.lastError.phase,
+                    detail: sanitizeFreeText(current.lastError.message),
+                  }
+                : {};
+              return c.json(
+                {
+                  success: false,
+                  error: `Could not check ${saved.name}.`,
+                  ...failureDetail,
+                },
+                502,
+              );
+            }
+            const current = (
+              await ctx.configLoader.loadACPConfig()
+            ).connections.find((entry) => entry.id === id);
+            if (!isDeepStrictEqual(current, saved))
+              return c.json(
+                {
+                  success: false,
+                  code: 'engine-setup-changed',
+                  error:
+                    'Engine setup changed while checking. Retry with the current setup.',
+                },
+                409,
+              );
+            await registerPersistedACPConnection(ctx, saved.id, saved.name);
+            return c.json({ success: true });
+          },
+        ),
+      );
     }
     // The probe contract already redacts secrets in `lastError.message`
     // (acp-probe.ts); the client-facing channel additionally runs it through

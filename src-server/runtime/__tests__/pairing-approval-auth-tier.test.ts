@@ -1704,7 +1704,10 @@ describe('#3557 Station groups at the HTTP boundary', () => {
         body: JSON.stringify({ group: 'admin' }),
       },
     );
-    expect(change.status).toBe(401);
+    expect(change.status).toBe(403);
+    expect(await change.json()).toMatchObject({
+      error: { code: 'operator_credential_required' },
+    });
     expect(harness.security.groupOf(casey.principalId)).toBe('member');
   });
 
@@ -1985,16 +1988,16 @@ describe('#3557 personal access tokens at the HTTP boundary', () => {
       '127.0.0.1',
     );
     const desktop = (await mint.json()) as { credential: string };
-    expect(
-      (
-        await harness.request(
-          path,
-          bearer(desktop.credential, {
-            name: 'x',
-            scope: 'orchestration:read',
-          }),
-        )
-      ).status,
-    ).toBe(401);
+    const refused = await harness.request(
+      path,
+      bearer(desktop.credential, {
+        name: 'x',
+        scope: 'orchestration:read',
+      }),
+    );
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({
+      error: { code: 'operator_credential_required' },
+    });
   });
 });

@@ -1,12 +1,14 @@
 /**
  * The shared inbox row (#3043): the dock inbox, the mobile sheet, Home's work
- * lanes and the sidebar's open chats all render this.
+ * lanes use the same row.
  *
- * Fixed line budget: meta, title, one status line, and a chip line that
- * exists only when a chip does. Every line is a single non-wrapping line, so
- * a row's height is decided by which lines it has and never by their text.
+ * Legacy Home card layout: the headline (title and time), then on a hover row one
+ * state line (the agent's mark, status, project) and on a touch row the status
+ * and meta lines, and a chip line that exists only when a chip does. Every line is a single non-wrapping line, so a row's height is decided
+ * by which lines it has and never by their text. What the row is about comes
+ * first; who and where, last.
  *
- * The time at the end of the meta line and the hover/focus actions share one
+ * The time at the end of the headline and the hover/focus actions share one
  * slot. The actions are absolutely positioned over that slot, so revealing
  * them moves nothing: no reflow, no height change, no text shift.
  */
@@ -19,10 +21,78 @@
   --inbox-row-line: 18px;
   --inbox-row-pad-block: var(--space-3);
   --inbox-row-pad-inline: var(--space-4);
+  --inbox-row-action-size: 26px;
+  --inbox-row-action-top: calc(
+    var(--inbox-row-pad-block) +
+    1px +
+    (var(--inbox-row-line) - var(--inbox-row-action-size)) /
+    2
+  );
+  /* #3075: a leading column every row keeps, read or not, for the unread
+     dot, so the text column sits in one place in both states. */
+  --inbox-row-unread-gutter: var(--k-space-3);
+  --inbox-row-unread-dot: 6px;
+  --inbox-row-unread-gap: var(--k-space-1);
   position: relative;
   min-width: 0;
   border-radius: var(--radius-md);
   animation: inbox-row-enter var(--motion-base) var(--ease-standard);
+}
+
+.inbox-row__approval {
+  padding-inline: var(--inbox-row-pad-inline);
+  padding-block-end: var(--inbox-row-pad-block);
+}
+
+/* #5398: "Last message may not have arrived" with Check, under the row's
+   status. A flag beside the status, not a status: the caution hue without
+   the act-now pulse, and the row stays in the lane its status gives it. It
+   sits outside the row's open button (Check is a control of its own), so it
+   is tucked up against the button's last line and starts where its text
+   starts. */
+.inbox-row__flag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+  margin-block-start: calc(var(--k-space-1) / 2 - var(--inbox-row-pad-block));
+  padding-inline: calc(
+      var(--inbox-row-pad-inline) +
+      var(--inbox-row-unread-gutter)
+    )
+    var(--inbox-row-pad-inline);
+  padding-block-end: var(--inbox-row-pad-block);
+  font-size: var(--inbox-row-text-size);
+  line-height: var(--inbox-row-line);
+}
+.inbox-row__flag-glyph {
+  flex: 0 0 auto;
+}
+/* Check meets the touch floor on a phone; on a desktop it stays a line tall. */
+.inbox-row__flag-action {
+  min-block-size: var(--touch-target-min, 0px);
+}
+/* While its Check runs (aria-disabled, so it keeps keyboard focus). */
+.inbox-row__flag-action[aria-busy="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+/* A flagged hover row: the flag belongs to the row, so the hover and current
+   treatment moves from the open button to the whole row (the touch row's
+   rules below), instead of stopping short of the flag. */
+.inbox-row--hover:has(> .inbox-row__flag) {
+  border: 1px solid transparent;
+}
+.inbox-row--hover:has(> .inbox-row__flag) .inbox-row__open {
+  border-color: transparent;
+  background: transparent;
+}
+.inbox-row__flag-result:empty {
+  display: none;
+}
+.inbox-row__flag-result {
+  flex-basis: 100%;
+  color: var(--k-text-muted);
 }
 
 @keyframes inbox-row-enter {
@@ -43,6 +113,10 @@
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-1);
   padding: var(--inbox-row-pad-block) var(--inbox-row-pad-inline);
+  padding-inline-start: calc(
+    var(--inbox-row-pad-inline) +
+    var(--inbox-row-unread-gutter)
+  );
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
@@ -69,23 +143,50 @@
   outline-offset: -2px;
 }
 
-/* Meta line: agent mark, agent and project, then the time slot. */
-.inbox-row__meta {
+/* Headline: the title, then the time slot the hover actions cover. */
+.inbox-row__headline {
   display: flex;
   min-width: 0;
+  /* One line tall, like the meta line it replaced at the top: the hover
+     actions' offset (--inbox-row-action-top) centres them on this line. */
   height: var(--inbox-row-line);
   align-items: center;
-  gap: var(--space-2);
-  color: var(--text-tertiary);
-  font-size: var(--inbox-row-text-size);
+  gap: var(--k-space-2);
 }
-
-.inbox-row__meta-text {
+.inbox-row__headline > .inbox-row__title {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* A Home hover row's second line: status, project, then agent.
+   The status keeps its word whole; the project gives way first. */
+.inbox-row__state {
+  display: flex;
+  min-width: 0;
+  min-height: var(--inbox-row-line);
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.inbox-row__state > .inbox-row__status {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.inbox-row__context {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  /* Yields all of its width before the status detail loses any: the
+     project is also in the row's name and hover card; the state is not. */
+  flex: 0 10000 auto;
+  min-width: 0;
   overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--inbox-row-text-size);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.inbox-row__context::before {
+  content: "· ";
 }
 
 /* The project's mark before its name (decorative; the name is the identity):
@@ -114,10 +215,65 @@
 .inbox-row__title {
   overflow: hidden;
   font-size: var(--inbox-row-title-size);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* #3075: the visible title and an invisible bold copy share one grid cell,
+   so the title is always as large as its bold rendering. Unread turns the
+   weight up without moving an ellipsis or re-wrapping a two-line title. */
+.inbox-row__title[data-title] {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  overflow: visible;
+}
+
+.inbox-row__title[data-title] > .inbox-row__title-text,
+.inbox-row__title[data-title]::after {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-row__title[data-title]::after {
+  content: attr(data-title);
+  visibility: hidden;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* Unread: weight on the title and a small accent dot hanging in the row's
+   leading gutter, outside the text, so neither state moves anything. */
+.inbox-row[data-unread] .inbox-row__title {
+  color: var(--k-text);
+  font-weight: 700;
+}
+
+.inbox-row[data-unread] .inbox-row__title[data-title]::before,
+.inbox-row[data-read-unknown] .inbox-row__title[data-title]::before {
+  content: "";
+  position: absolute;
+  /* Centred on the first title line (line-height 1.35). */
+  top: calc(0.675em - var(--inbox-row-unread-dot) / 2);
+  left: calc((var(--inbox-row-unread-dot) + var(--inbox-row-unread-gap)) * -1);
+  width: var(--inbox-row-unread-dot);
+  height: var(--inbox-row-unread-dot);
+  border-radius: 50%;
+  background: var(--k-action, var(--k-brand));
+}
+
+/* #3075 review: read status unknown (the server could not read it). A hollow
+   ring in the dot's place, the title at its read weight: it claims neither
+   read nor unread, and the panel's note says why once. */
+.inbox-row[data-read-unknown] .inbox-row__title[data-title]::before {
+  box-sizing: border-box;
+  border: 1px solid var(--k-text-faint);
+  background: transparent;
 }
 
 /* The ONE status line. Icon and word always; colour only reinforces them. */
@@ -151,10 +307,8 @@
   white-space: nowrap;
 }
 
-/* A failure or unanswerable REASON is the one place the line budget yields:
- * the line flows as text and may take a second line rather than cut off
- * what the user needs to read. Anything longer than two lines is in full in
- * the row's details and is always the whole of its accessible description. */
+/* Let an actionable reason wrap. The row's name or description still carries
+ * the untruncated wording, as does its Details surface. */
 .inbox-row__status--reason {
   display: -webkit-box;
   height: auto;
@@ -205,7 +359,8 @@
 
 .inbox-row__status[data-tone="caution"] .inbox-row__word,
 .inbox-row__status[data-tone="caution"] .inbox-row__status-glyph,
-.inbox-row__slim-status[data-tone="caution"] {
+.inbox-row__slim-status[data-tone="caution"],
+.inbox-row__flag {
   color: var(--warning-text);
 }
 
@@ -288,8 +443,8 @@
 
 .inbox-row__actions {
   position: absolute;
-  top: var(--space-2);
-  right: var(--space-3);
+  top: var(--inbox-row-action-top);
+  right: var(--inbox-row-pad-inline);
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -313,6 +468,12 @@
 
 /* The time yields its slot rather than being covered: hidden, never removed,
  * so the meta line keeps its width. */
+.inbox-row--hover.inbox-row--has-actions:is(
+    :hover,
+    :has(:focus-visible),
+    :has([aria-expanded="true"])
+  )
+  .inbox-row__status-column,
 .inbox-row--hover.inbox-row--has-actions:hover .inbox-row__time,
 .inbox-row--hover.inbox-row--has-actions:has(:focus-visible) .inbox-row__time,
 .inbox-row--hover.inbox-row--has-actions:has([aria-expanded="true"])
@@ -322,14 +483,14 @@
   .inbox-row__slim-word,
 .inbox-row--hover.inbox-row--has-actions:has([aria-expanded="true"])
   .inbox-row__slim-word {
-  visibility: hidden;
+  opacity: 0;
 }
 
 .inbox-row__action {
   position: relative;
   display: inline-flex;
-  width: 26px;
-  height: 26px;
+  width: var(--inbox-row-action-size);
+  height: var(--inbox-row-action-size);
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -343,13 +504,12 @@
 
 /* An always-on invisible hit area: the drawn control stays 26px while the
  * target is 44px tall on every pointer, with no media query deciding who
- * gets it. It starts at the ROW's top edge (the slot sits `--space-2` below
- * it) and extends downward, so it never reaches into the row above or
+ * gets it. It starts at the row's top edge and extends downward, so it never reaches into the row above or
  * below. Horizontally it reaches only to the midpoint of the gap, so
  * neighbouring targets never overlap. */
 .inbox-row__action::after {
   position: absolute;
-  top: calc(var(--space-2) * -1);
+  top: calc(var(--inbox-row-action-top) * -1);
   right: calc(var(--space-2) / -2);
   left: calc(var(--space-2) / -2);
   height: 44px;
@@ -380,6 +540,10 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-1) var(--inbox-row-pad-inline);
+  padding-inline-start: calc(
+    var(--inbox-row-pad-inline) +
+    var(--inbox-row-unread-gutter)
+  );
 }
 
 .inbox-row--slim .inbox-row__title {
@@ -387,6 +551,38 @@
   min-width: 0;
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+/* A slim row leads with its status glyph, so its dot sits in the row's own
+   gutter, centred on the single line, where a card's dot sits. */
+.inbox-row--slim[data-unread] .inbox-row__title[data-title]::before,
+.inbox-row--slim[data-read-unknown] .inbox-row__title[data-title]::before {
+  content: none;
+}
+
+.inbox-row--slim[data-unread]::before,
+.inbox-row--slim[data-read-unknown]::before {
+  content: "";
+  position: absolute;
+  top: calc(50% - var(--inbox-row-unread-dot) / 2);
+  left: calc(
+    1px +
+    var(--inbox-row-pad-inline) +
+    var(--inbox-row-unread-gutter) -
+    var(--inbox-row-unread-dot) -
+    var(--inbox-row-unread-gap)
+  );
+  width: var(--inbox-row-unread-dot);
+  height: var(--inbox-row-unread-dot);
+  border-radius: 50%;
+  background: var(--k-action, var(--k-brand));
+  pointer-events: none;
+}
+
+.inbox-row--slim[data-read-unknown]::before {
+  box-sizing: border-box;
+  border: 1px solid var(--k-text-faint);
+  background: transparent;
 }
 
 .inbox-row__slim-status {
@@ -412,9 +608,11 @@
   white-space: nowrap;
 }
 
+/* Centred by offset, not a transform: a transform would make this slot the
+ * containing block of the row menu's fixed-position list, placing it off
+ * screen. */
 .inbox-row--slim .inbox-row__actions {
-  top: 50%;
-  transform: translateY(-50%);
+  top: calc(50% - var(--inbox-row-action-size) / 2);
 }
 
 /* A slim row is 30px tall, so the hit area is the row's own height: staying
@@ -442,13 +640,25 @@
  * stopped short of them and read as a second, unrelated control. */
 .inbox-row--touch:has(.inbox-row__open:hover),
 .inbox-row--touch:has(.inbox-row__open:focus-visible),
-.inbox-row--touch.is-current {
+.inbox-row--touch.is-current,
+.inbox-row--hover:has(> .inbox-row__flag):has(.inbox-row__open:hover),
+.inbox-row--hover:has(> .inbox-row__flag):has(.inbox-row__open:focus-visible),
+.inbox-row--hover.is-current:has(> .inbox-row__flag) {
   border-color: var(--border-secondary);
   background: var(--bg-tertiary);
 }
 
-.inbox-row--touch.is-current {
+.inbox-row--touch.is-current,
+.inbox-row--hover.is-current:has(> .inbox-row__flag) {
   border-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+}
+
+/* The flag takes a line of its own under the button and its actions. */
+.inbox-row--touch:has(.inbox-row__flag) {
+  flex-wrap: wrap;
+}
+.inbox-row--touch .inbox-row__flag {
+  flex-basis: 100%;
 }
 
 .inbox-row--touch .inbox-row__open,
@@ -479,6 +689,29 @@
   transform: none;
 }
 
+/* A direct draft refusal gets its own line. Keep the existing action
+ * buttons in the top row where the pointer and focus left them. */
+.inbox-row--touch:has(> .inbox-row__actions > .discard-draft__error) {
+  flex-wrap: wrap;
+}
+
+.inbox-row--touch > .inbox-row__actions:has(> .discard-draft__error) {
+  display: contents;
+}
+
+.inbox-row--touch
+  > .inbox-row__actions:has(> .discard-draft__error)
+  > .inbox-row__action {
+  align-self: center;
+}
+
+.inbox-row--touch > .inbox-row__actions > .discard-draft__error {
+  flex: 0 0 100%;
+  max-width: none;
+  padding: 0 var(--inbox-row-pad-inline) var(--inbox-row-pad-block);
+  overflow-wrap: anywhere;
+}
+
 .inbox-row--touch .inbox-row__action {
   min-width: 44px;
   min-height: 44px;
@@ -498,9 +731,22 @@
   height: 16px;
 }
 
+/* A touch list's larger title would make a 6px dot close to the text read
+   as a list bullet; a larger, freer dot reads as the row's state. */
+.inbox-row--touch {
+  --inbox-row-unread-dot: 8px;
+  --inbox-row-unread-gap: var(--k-space-2);
+}
+
 /* Touch lists give the work title room while metadata remains compact. */
 .inbox-row--card.inbox-row--touch .inbox-row__title {
   font-size: max(var(--inbox-row-title-size), var(--k-text-md));
+}
+
+.inbox-row--card.inbox-row--touch
+  .inbox-row__title[data-title]
+  > .inbox-row__title-text,
+.inbox-row--card.inbox-row--touch .inbox-row__title[data-title]::after {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -576,7 +822,7 @@
 }
 .inbox-row--swipe > .inbox-row__open,
 .inbox-row--swipe > .inbox-row__actions {
-  transform: translateX(var(--inbox-swipe-offset, 0px));
+  transform: translateX(var(--swipe-action-offset, 0px));
   transition: transform var(--motion-base) var(--ease-spring);
 }
 .inbox-row--dragging > .inbox-row__open,
@@ -593,7 +839,7 @@
   position: absolute;
   inset: 0 0 0 auto;
   display: flex;
-  width: var(--inbox-swipe-width, 144px);
+  width: var(--swipe-action-width, 144px);
   background: var(--k-panel-raised);
 }
 .inbox-row__swipe-actions[hidden] {
@@ -620,7 +866,7 @@
 .inbox-row__swipe-actions > button::after {
   content: none;
 }
-.inbox-row__swipe-actions > .inbox-row__swipe-dismiss {
+.inbox-row__swipe-actions > .inbox-row__swipe-done {
   color: var(--k-action);
   background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel-raised));
 }
@@ -658,39 +904,158 @@
   border-color: color-mix(in srgb, var(--k-action) 60%, var(--k-line));
   box-shadow: inset 3px 0 0 var(--k-action);
 }
-.inbox-row__meta,
 .inbox-row__time {
   color: var(--k-text-muted);
 }
 
-.inbox-row--task {
+/* Station provenance has the same mark for peer and SSH work. */
+.inbox-row__chip--remote,
+.inbox-row__slim-remote {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: color-mix(in srgb, var(--k-action) 10%, transparent);
+  color: var(--k-text);
+}
+.inbox-row .inbox-row__open:has(.inbox-row__status-column),
+.mobile-inbox
+  .inbox-row--touch
+  .inbox-row__open:has(.inbox-row__status-column) {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) fit-content(37.5%);
+  align-content: center;
+  align-items: start;
   gap: var(--k-space-1) var(--k-space-2);
-  padding: var(--k-space-2) var(--k-space-3);
+  padding: var(--k-space-3);
+  min-height: var(--touch-target-min, 44px);
 }
-.inbox-row--task .inbox-row__title,
-.inbox-row--task .inbox-row__status {
+.inbox-row .inbox-row__open:has(.inbox-row__status-column) > .inbox-row__title {
+  grid-row: 1;
   grid-column: 1;
+  min-width: 0;
+  display: grid;
 }
-.inbox-row__task-label {
+.inbox-row__open:has(.inbox-row__status-column)
+  > .inbox-row__title[data-title]
+  > .inbox-row__title-text,
+.inbox-row__open:has(.inbox-row__status-column)
+  > .inbox-row__title[data-title]::after {
+  display: -webkit-box;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.inbox-row__project-line {
   grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  overflow: hidden;
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
-.inbox-row__task-actions {
+:is(.inbox-row__project-line, .inbox-row__context) .inbox-row__project,
+.inbox-row__station {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+:is(.inbox-row__project-line, .inbox-row__context) .inbox-row__project-accent {
+  flex: none;
+  margin-inline-end: 0;
+}
+:is(.inbox-row__project, .inbox-row__station, .inbox-row__draft-marker)
+  + :is(.identity-marks, .inbox-row__agent) {
+  margin-inline-start: var(--k-space-1);
+}
+.inbox-row__status-column {
   grid-column: 2;
-  grid-row: 1 / 4;
-  min-height: 44px;
+  grid-row: 1 / span 2;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: end;
+  align-content: start;
+  gap: var(--k-space-1);
   font-size: var(--k-text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--k-text-muted);
+}
+.inbox-row
+  .inbox-row__status-column
+  :is(.inbox-row__time, .inbox-row__elapsed, .inbox-row__status) {
+  position: static;
+  grid-row: auto;
+  grid-column: auto;
+  min-height: 0;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--k-text-sm);
+  gap: var(--k-space-1);
+}
+.inbox-row .inbox-row__status-column .inbox-row__status {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  text-align: end;
+}
+.inbox-row__status-column .inbox-row__word {
+  flex: 0 1 auto;
+}
+.inbox-row__reason {
+  grid-column: 1 / -1;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
 }
 
-.inbox-row__task-actions {
-  display: flex;
-  align-items: center;
+.inbox-row .inbox-row__open[aria-pressed]:has(.inbox-row__selection-mark) {
+  position: relative;
+  padding-inline-start: calc(var(--k-space-6) + var(--k-space-4));
 }
-.inbox-row__task-actions > button {
-  min-height: 44px;
-  font-size: var(--k-text-sm);
+.inbox-row__selection-mark {
+  position: absolute;
+  top: var(--k-space-4);
+  inset-inline-start: var(--k-space-3);
+  display: grid;
+  place-items: center;
+  width: var(--k-space-5);
+  height: var(--k-space-5);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+}
+.inbox-row__open[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--k-action) 11%, var(--k-panel));
+}
+.inbox-row__open[aria-pressed="true"] .inbox-row__selection-mark {
+  color: var(--k-panel);
+  background: var(--k-action);
+}
+.inbox-row__selection-mark svg {
+  width: var(--k-space-4);
+}
+.inbox-row__project-line .project-icon--initials {
+  box-shadow: inset 0 -2px var(--inbox-project-accent, transparent);
+}
+:is(.inbox-row__project-line, .inbox-row__context) .identity-marks {
+  flex: none;
+}
+:is(.inbox-row__project-line, .inbox-row__context) .inbox-row__agent {
+  position: static;
+  width: auto;
+  height: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  clip-path: none;
+}
+
+.inbox-row__open:has(.inbox-row__status-column) > .inbox-row__chips {
+  grid-column: 1 / -1;
+}
+.mobile-inbox .inbox-row--touch:has(> .inbox-row__actions) {
+  display: flex;
 }

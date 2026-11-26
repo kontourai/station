@@ -1,0 +1,7 @@
+{
+  "revision": "a05dfd19ed19335bcb9b470af227da6492be0175",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed against the Automations list change (last 12 run outcomes and paused-itself in the scheduler list read, Next 7 days on the page, the fatigue notice now says paused itself); nothing this page states is changed by it.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

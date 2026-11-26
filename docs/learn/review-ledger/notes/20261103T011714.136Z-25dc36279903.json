@@ -1,7 +1,0 @@
-{
-  "revision": "430ebfcbdf1399ebcec06aef965602257e4fb4f8",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"Reviewed the draft heading and no-project action using intrinsic flex wrapping instead of a height breakpoint. Both themes at 390px and 1440px were rendered and inspected; all six focused gallery screens pass product assertions with zero findings. Short-dock spacing, the Station line and setup scrolling retain the documented behavior; no prose change is needed.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/ChatStart.css"]}
-  ]
-}

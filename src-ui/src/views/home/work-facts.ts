@@ -1,3 +1,4 @@
+import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import { ownedWorkUnknownReasons } from '@kontourai/station-contracts/session-attention';
 import { taskAwaitsAnswer } from '@kontourai/station-contracts/task-memory';
 import type {
@@ -5,16 +6,23 @@ import type {
   TaskListRecord,
 } from '@kontourai/station-sdk';
 import type { ChatStationBindingV1 } from '../../connections/station-connection';
-import { chatBelongsToStation } from '../../connections/station-state';
+import {
+  chatBelongsToStation,
+  conversationStateKey,
+} from '../../connections/station-state';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { serverWorkLive } from '../../utils/conversation-activity';
 import {
   orchestrationLifecycleLabel,
   sessionAttentionKind,
 } from '../../utils/session-state';
-import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
+import { requestAttentionKind } from '../../utils/waiting-approvals';
 import { groupDelegatedSessionRuns } from '../sessions/run-groups';
-import type { HomeWorkItem } from './home-view-model';
+import {
+  chatQueuedToSend,
+  type HomeWorkItem,
+  unconfirmedOutboundTurns,
+} from './home-view-model';
 
 /**
  * THE FACTS BEHIND A ROW'S STATUS WORDS (#3042), derived BESIDE the work
@@ -46,13 +54,16 @@ import type { HomeWorkItem } from './home-view-model';
  * - `blocked`: the session's `blocked` state, or a durable Task's.
  * - `queued`: a send queued on this device while offline.
  * - `waiting`: owed something, kind not recorded.
+ *
+ * A message whose delivery nothing can confirm is not one of these: nothing
+ * is owed and nothing waits to send, so it is a flag beside the status
+ * (`WorkFacts.unconfirmedDelivery`), never a status of its own (#5398).
  */
 export type WorkAttentionKind =
   | 'approval'
   | 'answer'
   | 'interrupted'
   | 'blocked'
-  | 'delivery-unconfirmed'
   | 'queued'
   | 'waiting';
 
@@ -68,18 +79,50 @@ export interface WorkActivity {
 }
 
 export interface WorkFacts {
+  pullRequests?: ConversationListItem['pullRequests'];
+  observedWorkspace?: ConversationListItem['observedWorkspace'];
   chatBinding?: ChatStationBindingV1;
   /** Host-only detail reads and controls must not borrow a bound receiver ID. */
   hostDetails?: boolean;
+  /** A completed local delegation with an idle Session available for follow-up. */
+  resumableDelegationResult?: true;
   /** Recorded run root, resolved against this presentation's row identities. */
   runRootId?: string;
   station?: { id: string; label: string };
   attention?: WorkAttentionKind;
+  attentionStartedAt?: number;
   activity?: WorkActivity;
+  /**
+   * #5398: messages this device sent in this conversation whose delivery
+   * nothing can confirm (`unconfirmedOutboundTurns`), oldest first, with the
+   * chat that holds each. A device-local fact read from this device's outbox,
+   * beside the conversation's synced status: it never moves the row to
+   * another lane and never settles or reopens the conversation. The row shows
+   * it as the flag "Last message may not have arrived" with Check.
+   */
+  unconfirmedDelivery?: readonly {
+    chatSessionId: string;
+    clientTurnId: string;
+    createdAt: number;
+  }[];
   ownedWorkState?: NonNullable<
     OrchestrationSessionSummary['ownedWork']
   >['state'];
+  ownedWorkInFlight?: boolean;
   ownedStopReasons?: readonly string[];
+  /**
+   * The conversation's open or latest turn is one the engine opened on its
+   * own (a reply to background work), not a send: the open turn's trigger
+   * while it runs, the summary's `latestTurnTrigger` after. A fact beside the
+   * item, not an item field, so the Home role projection is unchanged.
+   */
+  engineOpenedTurn?: true;
+  /**
+   * The Session's latest turn completed at the engine's output limit
+   * (`lastTurnCutOff`), so its reply is incomplete. Set only beside a
+   * Completed label; the ladder then words the row Cut off, not Done.
+   */
+  cutOff?: true;
 }
 
 export type WorkFactsById = ReadonlyMap<string, WorkFacts>;
@@ -92,7 +135,6 @@ const WORK_ATTENTION_ORDER: readonly WorkAttentionKind[] = [
   'approval',
   'answer',
   'waiting',
-  'delivery-unconfirmed',
   'queued',
   'blocked',
   'interrupted',
@@ -155,22 +197,16 @@ function workActivityFrom(
 function chatAttentionKind(chat: ChatUIState): WorkAttentionKind | undefined {
   // Requests still waiting on the user, not every one open on the server: an
   // answered one waits on the engine (utils/waiting-approvals).
-  if (requestsWaitingOnUser(chat).length > 0) return 'approval';
-  if (
-    chat.outboundQueuedTurns?.some(
-      (turn) =>
-        turn.status === 'may-have-started' ||
-        (turn.status === 'invoking' && turn.awaitingLookup),
-    )
-  )
-    return 'delivery-unconfirmed';
-  if (chat.status === 'queued') return 'queued';
+  const requestKind = requestAttentionKind(chat);
+  if (requestKind) return requestKind;
+  if (chatQueuedToSend(chat)) return 'queued';
   if (chat.orchestrationStatus === 'awaiting-approval') return 'waiting';
   return undefined;
 }
 
 interface WorkFactSources {
   items: readonly HomeWorkItem[];
+  inventoryById?: ReadonlyMap<string, ConversationListItem>;
   chats?: Readonly<Record<string, ChatUIState>>;
   sessions?: readonly OrchestrationSessionSummary[];
   tasks?: readonly TaskListRecord[];
@@ -190,6 +226,7 @@ interface WorkFactSources {
  */
 export function buildWorkFacts({
   items,
+  inventoryById,
   chats = {},
   sessions = [],
   tasks = [],
@@ -213,6 +250,36 @@ export function buildWorkFacts({
   const answerTaskIds = new Set(
     tasks.filter(taskAwaitsAnswer).map((task) => task.id),
   );
+  // #5398: every chat on this device that holds an unconfirmed message, by
+  // the row identity `buildActiveChatTaskItems` gives it. Two chats can hold
+  // one conversation (a reopen mints a new chat key); the merged row shows
+  // only one of them, so the flag is read from all of them.
+  const unconfirmedByRow = new Map<
+    string,
+    { chatSessionId: string; clientTurnId: string; createdAt: number }[]
+  >();
+  // A send waiting, or not sent, in any of those chats is the row's owed
+  // "Queued to send", like its Needs attention label (`buildActiveChatTaskItems`).
+  const queuedRows = new Set<string>();
+  for (const [chatSessionId, chat] of Object.entries(chats)) {
+    const turns = unconfirmedOutboundTurns(chat);
+    const queued = chatQueuedToSend(chat);
+    if (turns.length === 0 && !queued) continue;
+    const rowIds = new Set([
+      chatSessionId,
+      conversationStateKey(
+        chat.stationBinding,
+        chat.conversationId || chatSessionId,
+      ),
+    ]);
+    for (const rowId of rowIds) {
+      if (queued) queuedRows.add(rowId);
+      if (turns.length === 0) continue;
+      const held = unconfirmedByRow.get(rowId) ?? [];
+      held.push(...turns.map((turn) => ({ chatSessionId, ...turn })));
+      unconfirmedByRow.set(rowId, held);
+    }
+  }
   const facts = new Map<string, WorkFacts>();
   for (const item of items) {
     const session =
@@ -227,6 +294,18 @@ export function buildWorkFacts({
       hostDetails:
         item.kind !== 'remote-session' && (!chat || chatBelongsToStation(chat)),
     };
+    if (
+      entry.hostDetails &&
+      item.lifecycleLabel === 'Completed' &&
+      session?.delegation?.taskId &&
+      (session.delegation.environmentKind === undefined ||
+        session.delegation.environmentKind === 'current') &&
+      session.controlMode !== 'read-only-attached' &&
+      session.lifecycleState === 'idle' &&
+      session.answerability.answerable
+    ) {
+      entry.resumableDelegationResult = true;
+    }
     if (chat?.stationBinding && chat.stationBinding.affinity.kind !== 'host')
       entry.station = {
         id: chat.stationBinding.environmentId,
@@ -243,20 +322,57 @@ export function buildWorkFacts({
           session.delegation.environmentId,
       };
     }
+    if (
+      session &&
+      (session.conversationActivity?.openTurn
+        ? session.conversationActivity.openTurn.trigger === 'provider'
+        : session.latestTurnTrigger === 'provider')
+    )
+      entry.engineOpenedTurn = true;
+    if (item.kind !== 'remote-session') {
+      const unconfirmed = [
+        ...new Map(
+          [
+            ...(unconfirmedByRow.get(item.id) ?? []),
+            ...(item.chatSessionId
+              ? (unconfirmedByRow.get(item.chatSessionId) ?? [])
+              : []),
+          ].map((turn) => [turn.clientTurnId, turn] as const),
+        ).values(),
+      ].sort((left, right) => left.createdAt - right.createdAt);
+      if (unconfirmed.length > 0) entry.unconfirmedDelivery = unconfirmed;
+    }
+    if (item.lifecycleLabel === 'Completed' && session?.lastTurnCutOff)
+      entry.cutOff = true;
     if (item.lifecycleLabel === 'Needs attention') {
+      if (
+        session?.lifecycleState === 'needs_input' &&
+        session.lifecycleChangedAt
+      ) {
+        const start = Date.parse(session.lifecycleChangedAt);
+        if (Number.isFinite(start)) entry.attentionStartedAt = start;
+      }
       const attention = moreUrgentAttention(
         moreUrgentAttention(
           session && orchestrationLifecycleLabel(session) === 'Needs attention'
-            ? sessionAttentionKind(session)
+            ? sessionAttentionKind(session, chat?.answeredApprovals)
             : undefined,
           chat ? chatAttentionKind(chat) : undefined,
         ),
         moreUrgentAttention(
-          item.kind === 'task' && answerTaskIds.has(item.id)
-            ? 'answer'
-            : undefined,
-          item.kind === 'task' && blockedTaskIds.has(item.id)
-            ? 'blocked'
+          moreUrgentAttention(
+            item.kind === 'task' && answerTaskIds.has(item.id)
+              ? 'answer'
+              : undefined,
+            item.kind === 'task' && blockedTaskIds.has(item.id)
+              ? 'blocked'
+              : undefined,
+          ),
+          item.kind !== 'remote-session' &&
+            (queuedRows.has(item.id) ||
+              (item.chatSessionId !== undefined &&
+                queuedRows.has(item.chatSessionId)))
+            ? 'queued'
             : undefined,
         ),
       );
@@ -265,6 +381,12 @@ export function buildWorkFacts({
     if (item.lifecycleLabel === 'Running') {
       if (session?.ownedWork) {
         entry.ownedWorkState = session.ownedWork.state;
+        entry.ownedWorkInFlight =
+          session.hasActiveTurn === true ||
+          session.ownedWork.runningChildCount > 0 ||
+          session.ownedWork.pendingStops.some(
+            ({ custody }) => custody !== 'unknown',
+          );
         entry.ownedStopReasons = ownedWorkUnknownReasons(session.ownedWork);
       }
       const activity =
@@ -281,6 +403,13 @@ export function buildWorkFacts({
             )
           : undefined);
       if (activity) entry.activity = activity;
+    }
+    if (entry.hostDetails !== false && !item.environmentId) {
+      const conversation = inventoryById?.get(item.id);
+      if (conversation?.pullRequests?.length)
+        entry.pullRequests = conversation.pullRequests;
+      if (conversation?.observedWorkspace)
+        entry.observedWorkspace = conversation.observedWorkspace;
     }
     if (Object.keys(entry).length > 0) facts.set(item.id, entry);
   }

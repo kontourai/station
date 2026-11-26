@@ -39,6 +39,7 @@ import type {
   OrchestrationEvent,
   OrchestrationSnapshotPayload,
 } from '../hooks/orchestration/types';
+import { parseEpochMs } from '../utils/parseEpochMs';
 import type { ChatBackgroundTask } from './active-chats-state';
 import { childWorkGlobalStore } from './child-work-global-store';
 
@@ -77,6 +78,13 @@ export interface BackgroundTaskEntry {
   title: string;
   delegationTitle?: string;
   detail?: string;
+  /** A tool card's tool, kept even when a description names the card. */
+  toolName?: string;
+  /**
+   * A tool card's arguments as one bounded display line (the command, path,
+   * URL or query it ran with), so the expanded row says what ran.
+   */
+  toolInput?: string;
   latestTool?: string;
   /**
    * When the card's work started, on this client's clock basis. #2459:
@@ -123,9 +131,7 @@ export function createEmptyBackgroundTasksState(): BackgroundTasksState {
 }
 
 function parseTime(iso: string | undefined, fallback: number): number {
-  if (!iso) return fallback;
-  const parsed = Date.parse(iso);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  return parseEpochMs(iso) ?? fallback;
 }
 
 function metaString(
@@ -324,6 +330,47 @@ function pruneUnrepresentedBindings(
     : { ...state, delegateParents };
 }
 
+const TOOL_INPUT_LIMIT = 240;
+const TOOL_INPUT_KEYS = [
+  'command',
+  'cmd',
+  'file_path',
+  'path',
+  'url',
+  'query',
+  'pattern',
+  'prompt',
+] as const;
+
+/**
+ * The argument a reader recognizes the call by, else the arguments as JSON,
+ * as a single display line of at most TOOL_INPUT_LIMIT characters. A display
+ * summary, never a value anything executes or parses back.
+ */
+function toolInputSummary(
+  args: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!args) return undefined;
+  const named = TOOL_INPUT_KEYS.map((key) => args[key]).find(
+    (value): value is string => typeof value === 'string' && value.length > 0,
+  );
+  let text = named;
+  if (text === undefined) {
+    const { description: _description, ...rest } = args;
+    if (Object.keys(rest).length === 0) return undefined;
+    try {
+      text = JSON.stringify(rest);
+    } catch {
+      return undefined;
+    }
+  }
+  const line = text.replace(/\s+/g, ' ').trim();
+  if (!line) return undefined;
+  return line.length > TOOL_INPUT_LIMIT
+    ? `${line.slice(0, TOOL_INPUT_LIMIT - 1)}…`
+    : line;
+}
+
 function foldToolStarted(
   state: BackgroundTasksState,
   event: Extract<OrchestrationEvent, { method: 'tool.started' }>,
@@ -334,12 +381,15 @@ function foldToolStarted(
       : undefined;
   const description =
     typeof args?.description === 'string' ? args.description : undefined;
+  const toolInput = toolInputSummary(args);
   const entry: BackgroundTaskEntry = {
     id: event.toolCallId,
     kind: 'tool',
     source: 'tool-event',
     chatThreadId: event.threadId,
     title: description || event.toolName,
+    toolName: event.toolName,
+    ...(toolInput ? { toolInput } : {}),
     startedAt: parseTime(event.createdAt, Date.now()),
     state: 'running',
   };
@@ -402,7 +452,10 @@ function foldToolProgress(
 
 function foldToolCompleted(
   state: BackgroundTasksState,
-  event: Extract<OrchestrationEvent, { method: 'tool.completed' }>,
+  event: Pick<
+    Extract<OrchestrationEvent, { method: 'tool.completed' }>,
+    'toolCallId' | 'status' | 'createdAt'
+  >,
 ): BackgroundTasksState {
   const existing = state.entries[event.toolCallId];
   // An `unresolved` card is the one settled state that is not final: the
@@ -824,6 +877,25 @@ export function reconcileBackgroundTasksSnapshot(
       next = pruneFinished(next, entries, existing.chatThreadId);
     }
   }
+  for (const session of payload.sessions) {
+    const activity = session.conversationActivity;
+    const lastTool = activity?.lastTool;
+    if (!lastTool) continue;
+    const entry = next.entries[lastTool.callId];
+    if (
+      entry?.kind !== 'tool' ||
+      entry.chatThreadId !== session.threadId ||
+      entry.startedAt === undefined ||
+      !(entry.startedAt <= Date.parse(lastTool.completedAt)) ||
+      activity.runningTools?.some((tool) => tool.callId === lastTool.callId)
+    )
+      continue;
+    next = foldToolCompleted(next, {
+      toolCallId: lastTool.callId,
+      status: lastTool.outcome,
+      createdAt: lastTool.completedAt,
+    });
+  }
   // A snapshot is authoritative for liveness.  Do not leave raw tools or
   // delegates visible merely because their terminal SSE event was missed.
   const sessionsByThread = new Map(
@@ -834,7 +906,14 @@ export function reconcileBackgroundTasksSnapshot(
     if (entry.kind === 'agent')
       return !sessionsByThread.has(entry.delegateThreadId ?? entry.id);
     const parent = sessionsByThread.get(entry.chatThreadId);
-    return !parent || parent.hasActiveTurn === false;
+    if (!parent) return true;
+    if (parent.hasActiveTurn !== false) return false;
+    // A tool still running after its turn ended is background work (a
+    // backgrounded command, or a subagent's own call). The snapshot lists no
+    // tools, so while the conversation still reports running child work it
+    // cannot refute the live record: settling here read "no result" until the
+    // call's next progress revived it, on every reconnect.
+    return !(parent.conversationActivity?.runningChildWork?.count ?? 0);
   });
   if (stale.length) {
     const entries = { ...next.entries };
@@ -897,6 +976,23 @@ export function stationProviderTasks(
   }));
 }
 
+/** A chat's running engine child as the card the Running list shows. */
+export function providerTaskEntry(
+  state: BackgroundTasksState,
+  chatThreadId: string,
+  task: ChatBackgroundTask,
+): BackgroundTaskEntry {
+  const matchedTool = task.toolCallId
+    ? state.entries[task.toolCallId]
+    : undefined;
+  return backgroundTaskEntryFromChildWork(providerTaskChildWork(task), {
+    chatThreadId,
+    // #2459: no spawning tool card, no start. `Date.now()` here was an
+    // invented start that reset on every recompute.
+    startedAt: matchedTool?.startedAt,
+  });
+}
+
 /**
  * The one read the UI consumes: this chat's Running/Finished entries, with
  * provider background subagents (`ChatUIState.backgroundTasks`, tracked
@@ -923,17 +1019,9 @@ export function selectChatBackgroundTasks(
     (entry) => !(entry.kind === 'tool' && suppressedToolCallIds.has(entry.id)),
   );
 
-  const providerEntries = (providerTasks ?? []).map((task) => {
-    const matchedTool = task.toolCallId
-      ? state.entries[task.toolCallId]
-      : undefined;
-    return backgroundTaskEntryFromChildWork(providerTaskChildWork(task), {
-      chatThreadId,
-      // #2459: no spawning tool card, no start. `Date.now()` here was an
-      // invented start that reset on every recompute.
-      startedAt: matchedTool?.startedAt,
-    });
-  });
+  const providerEntries = (providerTasks ?? []).map((task) =>
+    providerTaskEntry(state, chatThreadId, task),
+  );
 
   // An unknown start sorts last rather than posing as "now".
   const running = [

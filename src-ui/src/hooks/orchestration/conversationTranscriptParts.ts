@@ -36,10 +36,14 @@ export function conversationPartToContentParts(
     output: part.output,
     ...(part.htmlReply ? { htmlReply: part.htmlReply } : {}),
     ...(part.claudeArtifact ? { claudeArtifact: part.claudeArtifact } : {}),
+    ...(part.appearanceProposal
+      ? { appearanceProposal: part.appearanceProposal }
+      : {}),
     ...(part.stationControlRefusal
       ? { stationControlRefusal: part.stationControlRefusal }
       : {}),
     ...(part.outputTruncated ? { outputTruncated: true } : {}),
+    ...(part.modelReroute ? { modelReroute: part.modelReroute } : {}),
     error: part.error,
     cancelled: part.cancelled,
     state: part.state,
@@ -62,6 +66,8 @@ export function conversationPartToContentParts(
       : {}),
     approvalSessionGrant: part.approvalSessionGrant,
     approvalServerGrant: part.approvalServerGrant,
+    approvalRuleGrant: part.approvalRuleGrant,
+    ...(part.approvalAllGrant ? { approvalAllGrant: true as const } : {}),
     approvalStatus: part.approvalStatus,
     ...(part.inputRequestRecord
       ? { inputRequestRecord: { ...part.inputRequestRecord } }
@@ -161,6 +167,8 @@ export function conversationMessageToChatMessage(
     stationCheckBack: metadata?.stationCheckBack,
     stationMemoryContinuation: metadata?.stationMemoryContinuation,
     stationRestartContinuation: metadata?.stationRestartContinuation,
+    stationOrigin: metadata?.stationOrigin,
+    rewound: metadata?.rewound,
     interruptedTurnBoundaryId: metadata?.interruptedTurnBoundaryId,
     sender: metadata?.sender,
     answerEligible: metadata?.answerEligible,
@@ -169,5 +177,6 @@ export function conversationMessageToChatMessage(
     turnEnded: metadata?.turnEnded,
     turnEndedReason: metadata?.turnEndedReason,
     turnStoppedBy: metadata?.turnStoppedBy,
+    turnCutOff: metadata?.turnCutOff,
   };
 }

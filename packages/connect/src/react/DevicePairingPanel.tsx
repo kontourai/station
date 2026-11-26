@@ -25,6 +25,10 @@ import {
   useRef,
   useState,
 } from 'react';
+import {
+  cameraApiBlockedByInsecureContext,
+  hasCameraApi,
+} from '../core/cameraSupport';
 import { isLoopbackUrl } from '../core/connectionProfile';
 import { describeDeviceScope, deviceRevokeError } from '../core/deviceActivity';
 import {
@@ -299,7 +303,26 @@ export function JoinDevicePairingPanel({
     directConnectionId,
     accountBoundDeviceRequest?.clientInstanceId,
   ]);
-  const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(initialMode);
+  // The scanner is offered only where this browser can have a camera. With no
+  // camera API there is nothing to attempt, so open straight on code entry
+  // without mounting the scanner. Otherwise only a capture attempt that finds
+  // no camera drops it; the device list is not trusted before a grant.
+  // Fixed for the page's life: the API exists only in a secure context.
+  const [cameraUnavailable, setCameraUnavailable] = useState(
+    () => !hasCameraApi(),
+  );
+  // Fixed for the page's life: name the cause only when it is the insecure
+  // page; a secure page without the API gets no reason it could not back.
+  const [insecureContextBlocksCamera] = useState(
+    cameraApiBlockedByInsecureContext,
+  );
+  const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(() =>
+    initialMode === 'scan' && cameraUnavailable ? 'manual' : initialMode,
+  );
+  const markCameraUnavailable = useCallback(() => {
+    setCameraUnavailable(true);
+    setMode((current) => (current === 'scan' ? 'manual' : current));
+  }, []);
   const [deviceName, setDeviceName] = useState(
     hostAppName ? 'This device' : 'This browser',
   );
@@ -377,6 +400,20 @@ export function JoinDevicePairingPanel({
   // An address the panel itself refused, shown on that field.
   const [addressError, setAddressError] = useState<string | null>(null);
   const addressErrorId = useId();
+  const manualEndpointRef = useRef<HTMLInputElement>(null);
+  const manualCodeRef = useRef<HTMLInputElement>(null);
+  // Code entry is the whole point of the manual form, so put the cursor in the
+  // first field still to fill: the address, or the code when the address is
+  // already known. Nothing moves when both are prefilled.
+  useEffect(() => {
+    if (mode !== 'manual') return;
+    const field = !manualEndpointRef.current?.value
+      ? manualEndpointRef.current
+      : !manualCodeRef.current?.value
+        ? manualCodeRef.current
+        : null;
+    field?.focus();
+  }, [mode]);
   const [requestingAccess, setRequestingAccess] = useState(false);
   const requestInFlight = useRef(false);
   // Set while the exchange is retrying something worth waiting out, so the
@@ -873,13 +910,23 @@ export function JoinDevicePairingPanel({
          * on — deleted from this screen.
          */}
         <p className="pairing-wait__instruction">
-          On <strong>{target}</strong>, approve <strong>“{deviceName}”</strong>{' '}
-          to connect {hostAppName ? 'this device' : 'this browser'}.
+          {accountBoundDeviceRequest ? (
+            <>
+              The Station owner can approve <strong>“{deviceName}”</strong> in
+              Notifications. Your shared work opens after approval.
+            </>
+          ) : (
+            <>
+              On <strong>{target}</strong>, approve{' '}
+              <strong>“{deviceName}”</strong> to connect{' '}
+              {hostAppName ? 'this device' : 'this browser'}.
+            </>
+          )}
         </p>
         <span className="pairing-wait__timer" aria-live="off">
           {requestExpiryLabel(pending.expiresAt, now)}
         </span>
-        {pending.requestKind === 'direct' && (
+        {pending.requestKind === 'direct' && !accountBoundDeviceRequest && (
           // Closed by default: this is available when no other
           // trusted session is available, not the instruction. The command
           // itself gets a Copy button — the wrapped monospace text beneath
@@ -1023,7 +1070,7 @@ export function JoinDevicePairingPanel({
           style={inputStyle}
         />
       </label>
-      {mode !== 'direct' && (
+      {mode !== 'direct' && !cameraUnavailable && (
         <fieldset
           style={{ border: 0, display: 'grid', gap: 6, margin: 0, padding: 0 }}
         >
@@ -1062,16 +1109,19 @@ export function JoinDevicePairingPanel({
               lineHeight: 1.45,
             }}
           >
-            {directLabel
-              ? `Ask to connect to ${directLabel}. Approve this device on that computer.`
-              : originIsStation
-                ? 'Ask to connect. Approve this device on the computer running Station.'
-                : 'Enter the address of the computer running Station, then request access.'}{' '}
-            {/* The approver reads this same level ("asks for full device
-                access"); say it here too, rather than leave it unchosen. */}
-            {accountBoundDeviceRequest
-              ? 'It asks for Standard access; whoever approves it decides.'
-              : 'It asks for full device access; whoever approves it can limit that.'}
+            {accountBoundDeviceRequest ? (
+              'Ask the Station owner to approve this browser for shared Projects.'
+            ) : (
+              <>
+                {directLabel
+                  ? `Ask to connect to ${directLabel}. Approve this device on that computer.`
+                  : originIsStation
+                    ? 'Ask to connect. Approve this device on the computer running Station.'
+                    : 'Enter the address of the computer running Station, then request access.'}{' '}
+                It asks for full device access; whoever approves it can limit
+                that.
+              </>
+            )}
           </p>
           {!knowsEndpoint && (
             <input
@@ -1109,7 +1159,7 @@ export function JoinDevicePairingPanel({
             {requestingAccess
               ? 'Sending request…'
               : error
-                ? 'Try again'
+                ? 'Retry'
                 : 'Request access'}
           </button>
           <button type="button" onClick={onCancel} style={secondaryBtnStyle}>
@@ -1144,6 +1194,7 @@ export function JoinDevicePairingPanel({
               setError(null);
               setMode('manual');
             }}
+            onUnavailable={markCameraUnavailable}
           />
         </div>
       ) : (
@@ -1156,6 +1207,19 @@ export function JoinDevicePairingPanel({
             if (manualReady) void beginManual();
           }}
         >
+          {insecureContextBlocksCamera && (
+            // Say why scanning is missing; the other device may still suggest
+            // scanning. A missing camera found at capture time stays silent.
+            <p
+              style={{
+                margin: 0,
+                color: 'var(--text-secondary, #999)',
+                fontSize: 12,
+              }}
+            >
+              Camera scanning requires HTTPS or localhost.
+            </p>
+          )}
           <button
             type="button"
             onClick={pastePairingPayload}
@@ -1164,6 +1228,7 @@ export function JoinDevicePairingPanel({
             Paste pairing code
           </button>
           <input
+            ref={manualEndpointRef}
             aria-label="Station server address"
             {...STATION_ADDRESS_INPUT_PROPS}
             enterKeyHint="next"
@@ -1189,6 +1254,7 @@ export function JoinDevicePairingPanel({
           )}
           <HttpConnectionConsent consent={httpConsent} />
           <input
+            ref={manualCodeRef}
             aria-label="Pairing code"
             autoCapitalize="characters"
             autoCorrect="off"
@@ -2444,7 +2510,7 @@ export function HostDevicePairingPanel({
                         }}
                       >
                         {request.requireAccountBinding
-                          ? 'The invitee requested account-bound access. Approval can create only this account-bound Device. The pilot can view permitted Projects; editing and running work are unavailable.'
+                          ? 'They can read shared work in this browser. To allow replies, choose “Participate in shared Projects” under Paired devices after they connect.'
                           : 'Requires this account to sign in again. This pilot can view permitted Projects; editing and running work are unavailable. It does not grant membership.'}
                       </small>
                     </span>
@@ -2816,7 +2882,6 @@ export function HostDevicePairingPanel({
                     className="pairing-select"
                   >
                     <option value="stable">Station</option>
-                    <option value="beta">Station Beta</option>
                     <option value="nightly">Station Nightly</option>
                   </select>
                 </label>
@@ -3062,7 +3127,6 @@ export function HostDevicePairingPanel({
               className="pairing-select"
             >
               <option value="stable">Station</option>
-              <option value="beta">Station Beta</option>
               <option value="nightly">Station Nightly</option>
             </select>
           </label>

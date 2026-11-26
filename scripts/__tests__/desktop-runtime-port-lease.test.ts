@@ -58,6 +58,46 @@ afterEach(() => {
 });
 
 describe('desktop runtime listener lease', () => {
+  it('reports the wait budget and an observed live holder without running the waiter', async () => {
+    const { withDesktopRuntimeListenerLease } = await import(
+      '../lib/desktop-runtime-port-lease.mjs'
+    );
+    const path = join(makeTempDir('station-lease-holder-'), 'listeners.lock');
+    const waiter = vi.fn();
+    await withDesktopRuntimeListenerLease(
+      async () => {
+        await expect(
+          withDesktopRuntimeListenerLease(waiter, { path, waitMs: 0 }),
+        ).rejects.toThrow(
+          `Timed out waiting for the packaged-runtime listener lease (wait budget: 0ms, holder: PID ${process.pid})`,
+        );
+        expect(waiter).not.toHaveBeenCalled();
+        expect(fs.existsSync(path)).toBe(true);
+      },
+      { path },
+    );
+    expect(fs.existsSync(path)).toBe(false);
+  });
+
+  it('reports an unknown holder without reclaiming a lease that has no proof', async () => {
+    const { withDesktopRuntimeListenerLease } = await import(
+      '../lib/desktop-runtime-port-lease.mjs'
+    );
+    const path = join(makeTempDir('station-lease-unknown-'), 'listeners.lock');
+    const waiter = vi.fn();
+    fs.mkdirSync(path);
+    fs.writeFileSync(join(path, 'lease.json'), 'unreadable lease');
+    await expect(
+      withDesktopRuntimeListenerLease(waiter, { path, waitMs: 0 }),
+    ).rejects.toThrow(
+      'Timed out waiting for the packaged-runtime listener lease (wait budget: 0ms, holder: unknown)',
+    );
+    expect(waiter).not.toHaveBeenCalled();
+    expect(fs.readFileSync(join(path, 'lease.json'), 'utf8')).toBe(
+      'unreadable lease',
+    );
+  });
+
   it('releases without leaving the lock path empty for a waiter to claim mid-delete (#2648)', async () => {
     const { withDesktopRuntimeListenerLease } = await import(
       '../lib/desktop-runtime-port-lease.mjs'

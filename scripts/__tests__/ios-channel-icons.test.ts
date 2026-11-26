@@ -29,7 +29,7 @@ import { IOS_TESTFLIGHT_CHANNELS } from '../ios-testflight-channel.mjs';
 const root = resolve(import.meta.dirname, '../..');
 const catalog = resolve(root, IOS_APP_ICON_CATALOG);
 const committedFilenames = catalogFilenames(catalog);
-const iosChannels = ['stable', 'beta', 'nightly'] as const;
+const iosChannels = ['stable', 'nightly'] as const;
 const iconChannels = [...iosChannels, 'dev'] as const;
 
 function setDir(channel: (typeof iconChannels)[number], base = root) {
@@ -122,18 +122,18 @@ describe('iOS channel icon sets', () => {
     }
   });
 
-  it('keeps the committed gen/apple catalog equal to the stable set and distinct from beta and nightly', () => {
+  it('keeps the committed gen/apple catalog equal to the stable set and distinct from Nightly', () => {
     expect(verifyIosChannelIcons('stable')).toMatchObject({
       iconSet: 'icons/stable/ios',
       iconSetFiles: committedFilenames,
       catalogMatchesChannelSet: true,
     });
-    expect(() => verifyIosChannelIcons('beta')).toThrow(/does not match/);
+    expect(() => verifyIosChannelIcons('beta')).toThrow(/unknown icon channel/);
     expect(() => verifyIosChannelIcons('nightly')).toThrow(/does not match/);
     expect(
       new Set(iosChannels.map((channel) => channelSetDigest(setDir(channel))))
         .size,
-    ).toBe(3);
+    ).toBe(2);
   });
 
   it('applies the channel set over every template PNG and verify derives the match', () => {
@@ -301,7 +301,7 @@ describe.skipIf(process.platform !== 'darwin')(
         /pixels differ/,
       );
       expect(() => verifyShippedIosAppIcon('beta', { appDir: app })).toThrow(
-        /pixels differ/,
+        /unknown icon channel/,
       );
     });
 

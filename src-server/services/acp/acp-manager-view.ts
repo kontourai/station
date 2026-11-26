@@ -8,11 +8,13 @@ import {
   ACPStatus,
   type ACPStatusValue,
 } from '@kontourai/station-contracts/acp';
+import type { CatalogModelRoute } from '@kontourai/station-contracts/tool';
 import {
   type AcpDeclaredHandshake,
   acpAdvertisedModelCatalog,
 } from './acp-handshake-facts.js';
 import type { AcpSessionModelState } from './acp-process.js';
+import { openCodeCatalogModel } from './opencode-model-capabilities.js';
 
 /** archive#895 wave B: per-connection session-surface evidence projected from a
  * live ACP `initialize` handshake.
@@ -110,7 +112,7 @@ interface ACPProbeLike {
   isProbeInFlight?(): boolean;
   lastProbeAt: number;
   /** Why the most recent probe failed; `null`/absent when the last probe succeeded or never ran. */
-  lastError?: { message: string; phase: string } | null;
+  lastError?: { message: string; phase: string; code?: string } | null;
 }
 
 export function getACPManagerStatus(
@@ -153,13 +155,17 @@ export function getACPManagerStatus(
      * The model catalog the composer offers, by the same rule a session start
      * applies (`acpAdvertisedModelCatalog`).
      */
-    advertisedModels: Array<{ id: string; name: string }>;
+    advertisedModels: Array<{
+      id: string;
+      name: string;
+      catalogRoute?: CatalogModelRoute;
+    }>;
     /**
      * Why the connection is unavailable, from the probe's most recent
      * failure. Absent whenever the connection is available or no probe has
      * failed.
      */
-    lastError?: { message: string; phase: string };
+    lastError?: { message: string; phase: string; code?: string };
   }>;
   activeSessions: number;
 } {
@@ -214,7 +220,14 @@ export function getACPManagerStatus(
         mcpServers: [],
         configOptions,
         currentModel: modelCatalog.currentModelId ?? null,
-        advertisedModels: modelCatalog.models,
+        advertisedModels: modelCatalog.models.map((model) => {
+          const catalogRoute = openCodeCatalogModel(
+            id,
+            model.id,
+            config,
+          )?.catalogRoute;
+          return catalogRoute ? { ...model, catalogRoute } : model;
+        }),
         capabilities,
         providerRouting:
           providerRouting === null

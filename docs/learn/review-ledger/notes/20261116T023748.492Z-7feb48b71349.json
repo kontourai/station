@@ -1,0 +1,7 @@
+{
+  "revision": "1d83584d2baf428cbf1ae7b399e172ea9a99c4e6",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Added that an app home neither legacy nor a current profile's refuses continuation, because a deleted profile keeps its directory and credentials.","inputs":["docs/design/connections-onboarding.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "6f79b4bde6496a5dc171a5acd3f765548842c9d9",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the agent-message provenance section against the new stationTurnOrigin classifier (shared agent-message-frame), its projection metadata, the live turnHandlers flag, the history mapper and the IncomingAgentHeader labels. Added one paragraph: internal, sender-less, non-person turns with dispatchOrigin delegation or automation are marked stationOrigin and labelled by flow; access is unchanged. Checked with runtime-event-projection, ChatMessageList.agentMessages and turnHandlers.stationOrigin tests, each failing when its path was reverted.","inputs":["docs/architecture/module-map.md","src-ui/src/contexts/active-chats-state.ts","src-ui/src/hooks/orchestration/turnHandlers.ts"]}
+  ]
+}

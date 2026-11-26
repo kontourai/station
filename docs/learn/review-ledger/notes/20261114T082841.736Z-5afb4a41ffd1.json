@@ -1,0 +1,17 @@
+{
+  "revision": "75ad341e6da8d29550d18ac78c18e66e12957e5d",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-checked after testing.md was recorded at this revision: its delta is CI-automation prose (retirement-path 409 warnings, CI health 5xx retries and stuck work); nothing this page states changed. No prose change.","inputs":["docs/contexts/operations/CONTEXT.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-checked after testing.md was recorded at this revision: its delta is CI-automation prose (retirement-path 409 warnings, CI health 5xx retries and stuck work); nothing this page states changed. No prose change.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-checked after testing.md was recorded at this revision: its delta is CI-automation prose (retirement-path 409 warnings, CI health 5xx retries and stuck work); nothing this page states changed. No prose change.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-checked after testing.md was recorded at this revision: its delta is CI-automation prose (retirement-path 409 warnings, CI health 5xx retries and stuck work); nothing this page states changed. No prose change.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-checked after testing.md was recorded at this revision: its delta is CI-automation prose (retirement-path 409 warnings, CI health 5xx retries and stuck work); nothing this page states changed. No prose change.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-checked after testing.md was recorded at this revision: its delta is CI-automation prose (retirement-path 409 warnings, CI health 5xx retries and stuck work); nothing this page states changed. No prose change.","inputs":["tests/AGENTS.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "c36eed39078e220f4dd85b40baf3a090961872ca",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-reviewed the OpenCode bullet for c36eed3907: beside a 2.x database, opencode-next.db is read only for sessions OpenCode 2.x does not hold in session_v2 in any state (archived, child, never prompted), and skipped whole once OpenCode's migration.v1-v2 state in kv is completed (importNextDatabase copies every session of an isNextDatabase-shaped file) or when it is the unreadable preview format. The compaction warning now names the conversation and fires once per Station run. Checked by the v2 source tests.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "7a661b797e244280d80a94a3c094adad521388db",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"The guide now owns the opt-in create-only lifecycle lab as well as the worker lab. Reviewed exact-head prerequisite checks, four real create/reply/refusal controls, zero model requests and fixture cleanup. This adds a navigation/review dependency, not native funding or restart qualification.","inputs":["docs/guides/native-model-channel-lab.md","scripts/child-work-native-container-lifecycle-lab.ts"]}
+  ]
+}

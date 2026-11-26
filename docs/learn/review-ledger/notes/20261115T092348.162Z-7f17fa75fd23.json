@@ -1,0 +1,7 @@
+{
+  "revision": "4b4a014c9d90b800e45a48b7c2b6c1ee44cc11b4",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed against provider-failure.ts: one new mapping, opencode_serve_denied_path -> permission_denied (not retryable), for Station's own OpenCode server client refusing a route it never calls. The diagnostic table gains that row; no other code, kind or retry rule changes.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts","packages/contracts/src/provider-failure.ts"]}
+  ]
+}

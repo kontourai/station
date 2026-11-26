@@ -77,6 +77,7 @@ import {
 } from '@kontourai/station-connect';
 import { useIsRestoring, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
+import { clearTranscriptWindowCache } from './orchestration/transcriptWindowCache';
 
 /**
  * Only `authentication-failed`, the one terminal reason in
@@ -186,6 +187,8 @@ export function useInvalidateCachesOnConnectionSwitch(
     )
       return;
 
+    // Recently read transcript windows are the previous Station's.
+    clearTranscriptWindowCache();
     void queryClient.invalidateQueries();
   }, [apiBase, hasActiveConnection, connectionScope, isRestoring, queryClient]);
 }

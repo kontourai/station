@@ -1,9 +1,0 @@
-{
-  "revision": "40b16dd532042b0d5e3e7f57783425a82e75f96a",
-
-  "notes": [
-    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed the sidebar caller-test updates against the existing Apps section heading. The four hosted failures expected the previous Personal Boards label; current assertions retain workspace-map isolation, composer-draft preservation, real Board subtree mounting, creation payload and lazy-boundary failure checks. Production UI and documented Board ownership/navigation are unchanged. The three focused suites passed 106 tests. No runtime, native or backend qualification is added.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/__tests__/ProjectSidebar.test.tsx"]},
-
-    {"path":"docs/user/getting-started.md","note":"Reviewed the cross-surface count test against current rendered headings: Home and Activity retain Needs you, while desktop/mobile Inbox shelves use Needs attention. All four surfaces still assert the same visible count formatting and accessible label, with one heading and no duplicate count badge. This corrects a stale expectation without changing production grouping, status precedence or guide instructions. The focused sidebar/Board/Activity selection passed 106 tests.","inputs":["docs/user/getting-started.md","src-ui/src/views/activity/__tests__/ActivityList.test.tsx"]}
-  ]
-}

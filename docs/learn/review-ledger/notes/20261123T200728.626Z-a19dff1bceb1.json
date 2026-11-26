@@ -1,0 +1,7 @@
+{
+  "revision": "3eaea39eeb0fffa7a4a0744ca669bf41cd75dd53",
+
+  "notes": [
+    {"path":"docs/learn/media/agent-efficiency-working-configuration.png","note":"Reviewed the working configuration capture against the stylesheet change. Only the repository toolbar alignment changed. The separate working configuration layout in the capture is unaffected.","inputs":["src-ui/src/views/project-settings/ProjectSourcesSection.css"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "7fc73e60294b7bc5a764ddce0fa75d59f2082d6c",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Anchors cited (gallery-product-assertions, heavy-check slots, pressure liveness, transfer gate, what-counts-as-tested) still exist after the Gallery section rewrite.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]}
+  ]
+}

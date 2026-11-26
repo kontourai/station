@@ -1,0 +1,9 @@
+{
+  "revision": "0fad08ada7950a070a273764721a10a921a6a73a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The handoff route proves that an event appended during digest capture invalidates the seed reservation before provider dispatch.","inputs":["src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The handoff route proves that an event appended during digest capture invalidates the seed reservation before provider dispatch.","inputs":["src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"]}
+  ]
+}

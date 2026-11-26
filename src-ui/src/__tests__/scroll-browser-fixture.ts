@@ -10,6 +10,7 @@ export async function scrollBrowserFixture(
   plugins: Plugin[] = [],
   /** Page options for a geometry that needs them (a coarse-pointer phone). */
   pageOptions: Parameters<Browser['newPage']>[0] = {},
+  beforeNavigate?: (page: Page) => Promise<void>,
 ) {
   const result = await build({
     stdin: { contents, loader: 'tsx', resolveDir: ROOT },
@@ -59,7 +60,9 @@ export async function scrollBrowserFixture(
     if (path === '/')
       return route.fulfill({
         contentType: 'text/html',
-        body: '<div id="root"></div><script type="module" src="/fixture.js"></script>',
+        // A device-width layout viewport: without it a mobile page lays out
+        // at Chromium's 980px fallback (#4810 gallery delta 2).
+        body: '<meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div><script type="module" src="/fixture.js"></script>',
       });
     if (path === '/fixture.js')
       return route.fulfill({
@@ -68,6 +71,7 @@ export async function scrollBrowserFixture(
       });
     return route.abort();
   });
+  await beforeNavigate?.(page);
   await page.goto('http://station.test/');
   if (css) await page.addStyleTag({ content: css });
   return { browser, page, errors };

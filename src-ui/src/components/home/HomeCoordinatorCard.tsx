@@ -13,8 +13,9 @@ const LABEL_ID = 'home-coordinator-label';
 
 /**
  * #3628: the person's coordinator Session, pinned on Home. One primary
- * action: open it. Without one, it says where to make one (any chat's
- * menu). A host that cannot keep one (older, or hosted) shows nothing.
+ * action: open it. Without one, it says what it is and where to make one
+ * (any chat's menu). A host that cannot keep one (older, hosted, or the
+ * preview off) shows nothing.
  */
 export function HomeCoordinatorCard() {
   const { state, retry } = useCoordinator();
@@ -67,8 +68,13 @@ export function HomeCoordinatorCard() {
       ) : (
         <div className="home-view__coordinator-body">
           <p>
-            Open a chat and choose Make this {COORDINATOR_PRODUCT_NAME} from its
-            menu.
+            {COORDINATOR_PRODUCT_NAME} is a chat you choose as your personal
+            agent. Station tells it when work you can read needs you, fails or
+            finishes.
+          </p>
+          <p>
+            To set it up, open a chat and choose Make this{' '}
+            {COORDINATOR_PRODUCT_NAME} from its menu.
           </p>
         </div>
       )}

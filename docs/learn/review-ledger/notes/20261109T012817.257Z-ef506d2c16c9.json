@@ -1,7 +1,0 @@
-{
-  "revision": "f2a61e1eeaf01c047ec617ec7f17d9c9ace6700b",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Re-reviewed the Model evals subsection after the package script was dropped: it now names the direct npx tsx scripts/evals/station-control-tool-use/run.ts invocation, which matches run.ts (ANTHROPIC_API_KEY skip, CI refusal, --out). package.json is unchanged against the merge base, so no package-script claim in this guide is affected.","inputs":["docs/guides/testing.md","package.json#/scripts"]}
-  ]
-}

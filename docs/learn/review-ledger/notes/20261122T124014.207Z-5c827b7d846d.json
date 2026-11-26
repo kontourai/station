@@ -1,0 +1,7 @@
+{
+  "revision": "0173a6c392429be0d169bb4e61a40c8f23b45ca6",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Test-only change: four no-camera focus assertions now wait for the same field to take focus; the guide's scanning and code-entry claims are unchanged.","inputs":["docs/guides/connections.md","packages/connect/src/__tests__/DevicePairingPanel.test.tsx"]}
+  ]
+}

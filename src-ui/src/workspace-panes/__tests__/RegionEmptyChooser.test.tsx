@@ -109,7 +109,7 @@ const rowNames = (container: HTMLElement) =>
  * A1/A3: the rows are the registry's surfaces declaring the region, in
  * registry order, `exposure` notwithstanding — Home drops out by its own
  * `regions`. Reverting the filter to `exposure !== 'catalog'` reds the
- * exact-list assertion (only Chat and Activity would list); dropping the
+ * exact-list assertion (only Chat and Agents would list); dropping the
  * `regions` filter reds it with Home listed.
  */
 test('an empty region lists every surface declaring it, in registry order, for Right and for Bottom alike', () => {
@@ -125,15 +125,7 @@ test('an empty region lists every surface declaring it, in registry order, for R
     within(list)
       .getAllByRole('button')
       .map((row) => row.querySelector('.region-chooser__title')?.textContent),
-  ).toEqual([
-    'Chat',
-    'Activity',
-    'Agents',
-    'Device',
-    'Terminal',
-    'Diff',
-    'Files',
-  ]);
+  ).toEqual(['Chat', 'Agents', 'Device', 'Terminal', 'Diff', 'Files']);
   // No instance-keyed family is offered: `board:`, `layout:`, `pr:` and
   // `file-preview:` name one occurrence each and have no blank one to
   // place, so they are prefixes (`INSTANCE_SURFACE_PREFIXES`) and never
@@ -169,15 +161,7 @@ test('an empty region lists every surface declaring it, in registry order, for R
     within(bottom)
       .getAllByRole('button')
       .map((row) => row.querySelector('.region-chooser__title')?.textContent),
-  ).toEqual([
-    'Chat',
-    'Activity',
-    'Agents',
-    'Device',
-    'Terminal',
-    'Diff',
-    'Files',
-  ]);
+  ).toEqual(['Chat', 'Agents', 'Device', 'Terminal', 'Diff', 'Files']);
 });
 
 /**
@@ -186,7 +170,7 @@ test('an empty region lists every surface declaring it, in registry order, for R
  * never a host open action. Reverting the call to `placeSurface` reds the
  * spy assertion.
  */
-test('choosing Activity opens it in this region through the model', () => {
+test('choosing Agents opens it in this region through the model', () => {
   render(
     <RegionEmptyChooser
       regionId="right"
@@ -194,8 +178,8 @@ test('choosing Activity opens it in this region through the model', () => {
       variant="inline"
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
-  expect(harness.openSurfaceInRegion).toHaveBeenCalledWith('activity', {
+  fireEvent.click(screen.getByRole('button', { name: 'Agents' }));
+  expect(harness.openSurfaceInRegion).toHaveBeenCalledWith('workspace-agents', {
     region: 'right',
   });
   expect(harness.openSurfaceInRegion).toHaveBeenCalledTimes(1);
@@ -206,7 +190,7 @@ test('choosing Activity opens it in this region through the model', () => {
  * refusal sentence in its name, in the tab order; the same row is enabled
  * once the context binds a project. Reverting the `enabled` derivation to
  * `true` reds the `aria-disabled` assertion; hiding the row instead reds
- * the name lookup. Chat, Activity, Agents and Device need no project.
+ * the name lookup. Chat, Agents, Agents and Device need no project.
  */
 test('a coding row is disabled with the reason without a project, and enabled with one', () => {
   const { unmount } = render(
@@ -230,7 +214,7 @@ test('a coding row is disabled with the reason without a project, and enabled wi
         .getAttribute('aria-disabled'),
     ).toBe('true');
   }
-  for (const name of ['Activity', 'Agents', 'Device']) {
+  for (const name of ['Agents', 'Device']) {
     expect(
       screen.getByRole('button', { name }).getAttribute('aria-disabled'),
     ).toBeNull();
@@ -279,7 +263,7 @@ test('a surface held elsewhere reads "Move here from <Region>", and one held her
   regions.left = {
     ...regions.left,
     visible: true,
-    panes: ['chat', 'activity'],
+    panes: ['chat', 'workspace-agents'],
     occupant: 'chat',
   };
   harness.regions = regions;
@@ -296,7 +280,7 @@ test('a surface held elsewhere reads "Move here from <Region>", and one held her
     screen.getByRole('button', { name: 'Chat Move here from Left' }),
   ).toBeTruthy();
   expect(
-    screen.getByRole('button', { name: 'Activity Move here from Left' }),
+    screen.getByRole('button', { name: 'Agents Move here from Left' }),
   ).toBeTruthy();
   fromLeft.unmount();
   render(
@@ -313,13 +297,13 @@ test('a surface held elsewhere reads "Move here from <Region>", and one held her
     within(menu).getByRole('menuitem', { name: 'Chat Already here' }),
   ).toBeTruthy();
   expect(
-    within(menu).getByRole('menuitem', { name: 'Activity Already here' }),
+    within(menu).getByRole('menuitem', { name: 'Agents Already here' }),
   ).toBeTruthy();
   expect(
     within(menu)
       .getAllByRole('menuitem')
       .map((row) => row.getAttribute('aria-disabled')),
-  ).toEqual([null, null, null, null, 'true', 'true', 'true']);
+  ).toEqual([null, null, null, 'true', 'true', 'true']);
 });
 
 /**
@@ -339,11 +323,11 @@ test('a refused choice shows the refusal sentence and keeps the rows', () => {
       variant="inline"
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Agents' }));
   expect(screen.getByRole('alert').textContent).toBe(
     'That region is not available on this device.',
   );
-  expect(rowNames(screen.getByRole('list'))).toHaveLength(7);
+  expect(rowNames(screen.getByRole('list'))).toHaveLength(6);
 });
 
 /**
@@ -365,14 +349,14 @@ test('the panel variant is a menu that closes on a choice, on Escape and on its 
     />,
   );
   const menu = screen.getByRole('menu', { name: 'Add to Right region' });
-  expect(within(menu).getAllByRole('menuitem')).toHaveLength(7);
+  expect(within(menu).getAllByRole('menuitem')).toHaveLength(6);
   expect(screen.queryByRole('list')).toBeNull();
   // Focus enters the menu's first row (`useMenuFocus`).
   expect(document.activeElement).toBe(
     within(menu).getByRole('menuitem', { name: 'Chat Move here from Bottom' }),
   );
-  fireEvent.click(within(menu).getByRole('menuitem', { name: 'Activity' }));
-  expect(harness.openSurfaceInRegion).toHaveBeenCalledWith('activity', {
+  fireEvent.click(within(menu).getByRole('menuitem', { name: 'Agents' }));
+  expect(harness.openSurfaceInRegion).toHaveBeenCalledWith('workspace-agents', {
     region: 'right',
   });
   expect(onClose).toHaveBeenCalledTimes(1);
@@ -406,7 +390,7 @@ test('the panel variant is a menu that closes on a choice, on Escape and on its 
       onClose={stays}
     />,
   );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Activity' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
   expect(stays).not.toHaveBeenCalled();
   expect(within(screen.getByRole('menu')).getByRole('alert').textContent).toBe(
     'That pane cannot be placed in that region.',

@@ -215,7 +215,6 @@ describe('ChatDockBody Send again with the transcript projection (#3112)', () =>
       attachments: [],
       queuedMessages: [],
       inputHistory: [],
-      hasUnread: false,
       status: 'error',
       createdAt: Date.now(),
       updatedAt: Date.now(),

@@ -1,7 +1,0 @@
-{
-  "revision": "9065f79520a72288ebbe5ff3aa2e409c792bf6b9",
-
-  "notes": [
-    {"path":"docs/reference/env-vars.md","note":"Checked env var inventory against the changed bootstrap files: runtime-initialize.ts and station-runtime.ts add only a Feature Preview selector and two callbacks, no environment variables.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

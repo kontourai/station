@@ -140,15 +140,21 @@ vi.mock('../components/chat/SystemEventMessage', () => ({
   SystemEventMessage: () => null,
 }));
 
+import { APPEARANCE_HOOKS } from '@kontourai/station-contracts/custom-appearance';
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import type { ChatSession } from '../types';
+
+/** A custom-appearance hook selector, from the contract (APPEARANCE_HOOKS). */
+const appearanceHook = (id: string) =>
+  APPEARANCE_HOOKS.find((hook) => hook.id === id)!.selector;
 
 function buildChatInput(): Parameters<typeof ChatDockBody>[0]['chatInput'] {
   return {
     quotes: [],
     quotedDraftText: '',
     removeQuote: vi.fn(),
+    prepareOutgoingText: vi.fn(async () => null),
     input: '',
     attachments: [],
     attachmentError: null,
@@ -207,7 +213,6 @@ function buildSession(overrides: Partial<ChatSession>): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -331,6 +336,19 @@ describe('ChatDockBody ephemeral render gate (station#1292)', () => {
     // The real messages still render as ordinary bubbles.
     expect(await screen.findByText('hello')).toBeTruthy();
     expect(await screen.findByText('hi there')).toBeTruthy();
+    // ...each under its custom-appearance hooks, inside the transcript's.
+    const transcript = document.querySelector(appearanceHook('transcript'));
+    expect(transcript).toBeTruthy();
+    expect(
+      transcript!
+        .querySelector(appearanceHook('user-message'))
+        ?.contains(screen.getByText('hello')),
+    ).toBe(true);
+    expect(
+      transcript!
+        .querySelector(appearanceHook('assistant-message'))
+        ?.contains(screen.getByText('hi there')),
+    ).toBe(true);
 
     // archive#1424 ("the unpinned owner hop"):
     // ChatDockBody.tsx resolves `owner` from `useAuth` and threads it into

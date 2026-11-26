@@ -1,0 +1,15 @@
+{
+  "revision": "6ba7d2563eb634b289aab9c418ca0786b2e2613e",
+
+  "notes": [
+    {"path":"README.md","note":"packages/cli README cites cli.md; the only cli.md change is the additive diagnostics bundle field, no CLI command or flag changed (#4992).","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"packages/cli README cites cli.md; the only cli.md change is the additive diagnostics bundle field, no CLI command or flag changed (#4992).","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"packages/cli README cites cli.md; the only cli.md change is the additive diagnostics bundle field, no CLI command or flag changed (#4992).","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"packages/cli README cites cli.md; the only cli.md change is the additive diagnostics bundle field, no CLI command or flag changed (#4992).","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"packages/cli README cites cli.md; the only cli.md change is the additive diagnostics bundle field, no CLI command or flag changed (#4992).","inputs":["docs/reference/cli.md"]}
+  ]
+}

@@ -6,6 +6,7 @@ import {
   type ChildWorkSessionView,
   childWorkDeltaFromLegacyClaudeTaskNotification,
   childWorkForReporter,
+  clearChildWorkNotReported,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
 } from '@kontourai/station-contracts/child-work';
@@ -124,12 +125,18 @@ export class ChildWorkProjection {
     events: readonly CanonicalRuntimeEvent[],
   ): void {
     if (this.historicalSeeded.has(threadId)) return;
-    const { settlements, lastReportAt } = settledChildWorkFromHistory(
-      threadId,
-      events,
-    );
+    const { settlements, lastReportAt, notReported } =
+      settledChildWorkFromHistory(threadId, events);
     for (const settlement of settlements)
       this.state = applyChildWorkDelta(this.state, settlement);
+    // A session that said once, at its start, that it reports no child work
+    // must not read "nothing running" after a restart.
+    if (notReported !== undefined && !this.observedAt.has(threadId))
+      this.state = applyChildWorkDelta(this.state, {
+        kind: 'not-reported',
+        reporterThreadId: threadId,
+        reason: notReported,
+      });
     if (lastReportAt && !this.observedAt.has(threadId))
       this.observedAt.set(threadId, lastReportAt);
     this.historicalSeeded.add(threadId);
@@ -149,6 +156,9 @@ export class ChildWorkProjection {
     }
     if (event.method === 'session.started') {
       this.exited.delete(event.threadId);
+      // A session that starts again (a resume after an unclean exit, possibly
+      // on another transport) states its child-work reporting afresh.
+      this.state = clearChildWorkNotReported(this.state, event.threadId);
       return;
     }
     if (this.exited.has(event.threadId)) return;
@@ -205,6 +215,18 @@ export class ChildWorkProjection {
       };
     }
     const observedAt = this.observedAt.get(threadId);
+    // An engine that reports only on some connections: without a report
+    // seen by this process, Station cannot say nothing is running.
+    if (
+      observedAt === undefined &&
+      cell?.state === 'declared' &&
+      cell.perConnection
+    ) {
+      return {
+        observability: 'not-reported',
+        reason: cell.perConnection.unobservedReason,
+      };
+    }
     if (observedAt === undefined && cell?.state !== 'declared')
       return undefined;
     const children = childWorkForReporter(this.state, threadId).filter(

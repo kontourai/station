@@ -1,7 +1,0 @@
-{
-  "revision": "0532a3f4a0df84289eada6cdf15677942c5a2dda",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"Searched for toolbar connection-chip claims; none. The chat.css change is limited to .app-toolbar__conn label and width rules and does not alter placement, rail or picker geometry described here.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]}
-  ]
-}

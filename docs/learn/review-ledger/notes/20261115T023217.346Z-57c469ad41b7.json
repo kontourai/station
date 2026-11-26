@@ -1,0 +1,7 @@
+{
+  "revision": "eed803222d9aa398bbe40ce4ffc7c40bd6f3fd35",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"deploy-ledger.mjs gained an opt-in --if-absent that exits without writing when the identity exists; validation, identity, duplicate refusal for every other caller and the Markdown projection are unchanged, so this generated document's claims stand.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json","scripts/deploy-ledger.mjs"]}
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "revision": "f3920b0f12df533b5bbf7b55ad44772559fdd8e2",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked toolSearch in composeStationInstructions: the ToolSearch loading line is now composed only when mcpLoading is on-demand (stationEnablesClaudeToolSearch). Checked this document's orchestration-instruction and loading claims; none here states the old harness-default behavior.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Checked toolSearch in composeStationInstructions: the ToolSearch loading line is now composed only when mcpLoading is on-demand (stationEnablesClaudeToolSearch). Checked this document's orchestration-instruction and loading claims; none here states the old harness-default behavior.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Checked toolSearch in composeStationInstructions: the ToolSearch loading line is now composed only when mcpLoading is on-demand (stationEnablesClaudeToolSearch). Checked this document's orchestration-instruction and loading claims; none here states the old harness-default behavior.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked toolSearch in composeStationInstructions: the ToolSearch loading line is now composed only when mcpLoading is on-demand (stationEnablesClaudeToolSearch). Checked this document's orchestration-instruction and loading claims; none here states the old harness-default behavior.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked toolSearch in composeStationInstructions: the ToolSearch loading line is now composed only when mcpLoading is on-demand (stationEnablesClaudeToolSearch). Checked this document's orchestration-instruction and loading claims; none here states the old harness-default behavior.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]}
+  ]
+}

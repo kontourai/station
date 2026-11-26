@@ -1,0 +1,15 @@
+{
+  "revision": "ecac6cc556d78879b9ae3fbc28ecb5d3fc18bf85",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the final schedule refresh filter. It ignores running parts before reading their arguments, so incomplete input cannot hide a completed script call. The connection still supplies conversation identity. The focused case caught the old ordering.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the final schedule refresh filter. It ignores running parts before reading their arguments, so incomplete input cannot hide a completed script call. The connection still supplies conversation identity. The focused case caught the old ordering.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed the final schedule refresh filter. It ignores running parts before reading their arguments, so incomplete input cannot hide a completed script call. The connection still supplies conversation identity. The focused case caught the old ordering.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Reviewed the final schedule refresh filter. It ignores running parts before reading their arguments, so incomplete input cannot hide a completed script call. The connection still supplies conversation identity. The focused case caught the old ordering.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the final schedule refresh filter. It ignores running parts before reading their arguments, so incomplete input cannot hide a completed script call. The connection still supplies conversation identity. The focused case caught the old ordering.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

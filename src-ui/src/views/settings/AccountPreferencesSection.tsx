@@ -12,6 +12,7 @@ import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { ErrorState } from '../../components/state';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
   APPROVAL_MODE_OPTIONS,
@@ -23,6 +24,7 @@ import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 
 export function AccountPreferencesSection() {
+  useDecisionSurface('account-approval-defaults');
   const account = useAccountPreferences();
   const { aboveCeiling } = useManagedApprovalCeiling();
   const recoveryRegion = useRef<HTMLElement>(null);

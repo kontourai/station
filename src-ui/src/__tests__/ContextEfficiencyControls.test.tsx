@@ -19,9 +19,14 @@ vi.mock('@kontourai/station-sdk', () => ({
     return value.data;
   },
 }));
+const previews = vi.hoisted(() => ({ coordinator: true }));
 vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () =>
-    new Set(['context-compaction', 'project-supervision']),
+    new Set([
+      'context-compaction',
+      'project-supervision',
+      ...(previews.coordinator ? ['coordinator-session'] : []),
+    ]),
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({
@@ -40,6 +45,7 @@ import { TaskSupervisionPanel } from '../views/task-workspace/TaskSupervisionPan
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  previews.coordinator = true;
 });
 function mount(element: React.ReactNode) {
   const client = new QueryClient({
@@ -159,4 +165,19 @@ test('supervision pause and stop use the displayed generation and retain visible
   });
   expect(screen.getByText('Original wake outcome is unconfirmed')).toBeTruthy();
   expect(screen.getByText('attention: No resend permitted')).toBeTruthy();
+});
+
+test('supervision is not offered while the coordinator-session preview is off', async () => {
+  previews.coordinator = false;
+  mount(
+    <TaskSupervisionPanel
+      taskId="task"
+      taskCreatedAt="created"
+      projectId="project"
+      authority={{ apiBase: 'http://host', authorityKey: 'current' }}
+    />,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(screen.queryByRole('button', { name: /supervision/i })).toBeNull();
+  expect(api.get).not.toHaveBeenCalled();
 });

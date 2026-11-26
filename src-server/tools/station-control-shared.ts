@@ -104,6 +104,14 @@ export interface StationControlCaller {
    * one must fail closed.
    */
   readonly principal?: StationControlCallerPrincipal;
+  /** A turn-scoped grant for reading and proposing personal appearance only. */
+  readonly appearanceOwnerId?: string;
+  /**
+   * A turn-scoped grant to read and write this one Task only (#4511): a
+   * person's typed turn in an automation Session they took over, which acts
+   * for no one. It admits only tools marked `ownTask` in the policy table.
+   */
+  readonly ownTaskId?: string;
   /** Station-local project identity (`ProjectConfig.id`); membership keys on it. */
   readonly localProjectId?: string;
   /**
@@ -295,12 +303,10 @@ export async function requireStationControlCaller(): Promise<StationControlCalle
 function executionContextHeaders(): Record<string, string> {
   const context = executionContexts.getStore();
   const callerToken = callerCredential();
-  // In-process HTTP requests always prefer their AsyncLocal request context.
-  // A spawned stdio station-control child is already one-session/one-tenant
-  // and receives that immutable binding in its process environment; retain
-  // that separately reviewed delivery path rather than making hosted stdio
-  // tools silently lose all tenant authority.
-  const tenantId = context?.tenantId ?? process.env.STATION_INTERNAL_TENANT;
+  // The AsyncLocal request context is the only tenant source. #2377 slice D:
+  // no stdio child receives a tenant binding (or any credential) in its
+  // environment any more.
+  const tenantId = context?.tenantId;
   return {
     ...(tenantId ? { 'x-station-internal-tenant': tenantId } : {}),
     ...serverSelfHeaders(),

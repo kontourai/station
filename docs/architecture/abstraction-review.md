@@ -46,21 +46,20 @@ GitHub owns implementation work and current status. These sections retain the
 source observations that explain each finding. Their issue links include
 suggested fixes and documentation acceptance; they are not a second backlog.
 
-### Personal Knowledge scope and the Settings card disagree
+### Personal Knowledge scope and Settings selection
 
 `KnowledgeStoreProvider.generateRootId` allows `root:personal:2` and later
-suffixes; the runtime's read-only `root:conversations` also uses personal scope.
+suffixes. The read-only `root:conversations` also has personal scope.
 [KnowledgeStoreSection](../../src-ui/src/views/settings/KnowledgeStoreSection.tsx)
-selects the first personal root and stops offering creation. Thus a scope tag
-cannot tell this UI whether it found the intended writable store. Review the
-desired uniqueness and adapter-capability contract before introducing another
-special-case root-name check. This is an existing model/UI mismatch, not a
-claim that the registry already enforces one writable store per person.
+shows the first personal root returned by the Knowledge API that has neither
+an author-private read policy nor the conversation adapter. If it finds a
+match, the card stops offering creation. This selection permits multiple
+registrations.
 
-The existing [Settings scope issue #2192](https://github.com/kontourai/station/issues/2192)
-now carries this model/UI clarification and documentation acceptance. Its
-original per-principal uniqueness claim needs a contract decision, not just a
-label change.
+The Settings catalog calls this row `personal` and identifies the Station
+operator as its manager. The configuration API and account preferences keep
+their own storage scopes. The Knowledge API controls access to roots and
+requires an operator for registration. [Settings scope #2192](https://github.com/kontourai/station/issues/2192)
 
 ### Capture provenance depends on mutable UI state
 
@@ -101,41 +100,47 @@ alert appeared. Coalescing, delayed sends, and a disabled card can affect the
 actual experience. Those remaining timing and device boundaries need their
 own evidence; sharing a helper does not resolve them automatically.
 
-### CLI request assembly does not always use the shared client contract
+### CLI request assembly and request state
 
-The [chat caller](../../packages/cli/src/commands/core.ts) builds workspace
-selection separately from saved-Station selection. The source launcher changes
-working directory, and continuation omits workspace flags without a warning.
-[#2733](https://github.com/kontourai/station/issues/2733) tracks one explicit
-workspace-selection contract across those paths.
+The original audit at
+`3c655ae4cb3223a5c7b5438edb95f14c7a917d94` found that chat could use the
+checkout's directory when invoked elsewhere, silently drop continuation
+workspace flags, and fold a space-separated model option into the prompt.
+It also reproduced a completed chat whose JSON still named a resolved request
+as pending.
 
-The [model-option collector](../../packages/cli/src/commands/model-options.ts)
-does not reject the bare flag produced by the advertised spaced syntax;
-the following value becomes prompt text. A local parser/collector probe
-confirmed that the equals spelling works and the spaced spelling loses the
-option. [#2732](https://github.com/kontourai/station/issues/2732) tracks support
-or explicit refusal, with tests through chat and delegate callers.
+The [chat caller](../../packages/cli/src/commands/core.ts) now uses the
+invocation directory for new local directory-based chats, lets the server
+resolve a selected Project's directory, and rejects workspace changes on
+continuation. [#2733](https://github.com/kontourai/station/issues/2733)
 
-[Checkpoint restore](../../packages/cli/src/commands/checkpoints.ts) uses raw
-fetch without the common authentication/target/deadline path and confirms its
-returned preview without displaying it. [#2734](https://github.com/kontourai/station/issues/2734)
-tracks the authenticated caller and visible confirmation journey. These are
-source/caller findings, not proof of a real restore or engine execution.
+The [argument parser](../../packages/cli/src/commands/core-api.ts) now rejects
+bare and space-separated model options before chat or delegate dispatch.
+[#2732](https://github.com/kontourai/station/issues/2732)
 
-The CLI's final JSON can also retain `pendingRequest` after that request has
-resolved and the turn completed. An isolated caller/SSE probe reproduced this
-combination. [#2741](https://github.com/kontourai/station/issues/2741) tracks a
-response contract that distinguishes current pending work from the last notice.
+[Chat JSON](../../packages/cli/src/commands/session-client.ts) now exposes
+the last opening notice as `lastObservedRequest`. A responder command in
+`pendingRequest` requires a bounded Session read and exact request inspection.
+Local launcher and HTTP fixture evidence covers these caller contracts.
+[#2741](https://github.com/kontourai/station/issues/2741)
+
+[Checkpoint restore](../../packages/cli/src/commands/checkpoints.ts)
+takes its target, credential and deadline from the common client path. It
+displays the preview and requires its ID and current-tree hash in a separate
+confirmation.
+[#2734](https://github.com/kontourai/station/issues/2734)
 
 ### A declared namespace and its consumer can name different stores
 
-Enterprise Layout declares `notes` but its
+At the audit baseline, Enterprise Layout declared `notes` but its
 [public SDK hooks](../../examples/enterprise-layout/src/data/notes-hooks.ts)
-read and write `enterprise-notes`. The host preserves those names; fallback
-storage admits the undeclared partition, while unscoped retrieval enumerates
+read and wrote `enterprise-notes`. The host preserved those names; fallback
+storage admitted the undeclared partition, while unscoped retrieval enumerated
 registered RAG namespaces. [#2735](https://github.com/kontourai/station/issues/2735)
-tracks an identity correction with preservation of existing records. Manifest
-validation alone does not prove that a consumer uses the registered resource.
+records the correction. The [Enterprise example](../../examples/enterprise-layout/README.md#knowledge-namespaces)
+now declares `enterprise-notes`. Projects keep the older namespace and its
+records. Manifest validation alone does not prove that a consumer uses the
+registered resource.
 
 ### Board revisions do not establish freshness of linked work
 
@@ -193,32 +198,26 @@ subscription: [#2753](https://github.com/kontourai/station/issues/2753).
 The channel race was exercised with synthetic state; physical browser delivery
 was not. See the current [Web Push guide](../guides/web-push-notifications.md).
 
-### Reusable prompts have two different argument contracts
+### Reusable prompts validate their own input
 
-Authored Agent commands and command skills both expand prompt text, but only
-the skill path rejects missing values and surplus positional words. Both use
-JavaScript replacement-string semantics, so dollar patterns in a supplied
-value can change its text. [#2764](https://github.com/kontourai/station/issues/2764)
-tracks authored argument validation;
-[#2763](https://github.com/kontourai/station/issues/2763) tracks literal-value
-preservation. The [command guide](../guides/commands.md) describes the current
-precedence and limits. A pure skill-helper probe reproduced the dollar-pattern
-behavior; no provider completion was inferred from prompt expansion.
+The original audit found that authored commands accepted missing and surplus
+arguments and that JavaScript replacement patterns changed the expanded text
+in both authored commands and command skills. Authored commands now enforce
+their declared positional parameters before dispatch. Both paths share a
+single literal substitution pass. Sender and preview-helper fixtures verify
+the expanded bytes. [Argument validation #2764](https://github.com/kontourai/station/issues/2764),
+[literal values #2763](https://github.com/kontourai/station/issues/2763),
+[command guide](../guides/commands.md)
 
-### Shortcut hints are separate from dispatch rules
+### Shortcut explanations come from registered rules
 
-The keyboard editor derives context hints from command IDs, while dispatch
-uses registered conditions plus modal/input ownership checks.
-[#2767](https://github.com/kontourai/station/issues/2767) tracks a shared source
-for the visible explanation and actual availability rule. The
-[shortcut guide](../guides/keyboard-shortcuts.md) now names that distinction and
-the current local settings store. This is a source-confirmed explanation gap,
-not a physical keyboard or native-shell failure.
-
-A separate mounted-editor probe found that a captured Space binding is saved
-under a different key spelling from the standard dispatched event.
-[#2771](https://github.com/kontourai/station/issues/2771) tracks normalization
-across capture, storage and dispatch, including existing saved bindings.
+The original audit found that settings derived hints from command IDs and
+that saving Space used a different spelling from the standard event key.
+Settings now displays the registered rule, and capture and dispatch share
+Space key normalization. A Chromium fixture exercises capture, reload,
+focus eligibility and modal suppression. [Rule explanations #2767](https://github.com/kontourai/station/issues/2767),
+[Space bindings #2771](https://github.com/kontourai/station/issues/2771),
+[shortcut guide](../guides/keyboard-shortcuts.md)
 
 ### One HTTP origin does not expose every realtime listener
 
@@ -246,14 +245,12 @@ and relay transports need separate qualification.
 
 ### Staging must use the candidate's dependency contract
 
-Dogfood candidate preparation still runs raw `npm ci` before building a detached
-release, while the current repository has a pnpm lockfile and managed installer.
-Its fixture accepts any npm command, so a green fixture cannot establish
-package-manager compatibility. [#2776](https://github.com/kontourai/station/issues/2776)
-tracks the real candidate caller, a stricter fixture, and a disposable managed
-installation check. This audit inspected the mismatch; it did not stage a live
-release or exercise promotion/rollback. The
-[deployment guide](../guides/deployment.md) retains that qualification limit.
+The dogfood reconciler runs each detached candidate's
+`npm run dependencies:ci` before building it. The pnpm-only fixture checks the
+command and exercises missing lifecycle, install failure and build failure
+while the prior release keeps serving. A disposable reconcile additionally
+completed the real managed install and build. The
+[deployment guide](../guides/deployment.md) describes the operator path.
 
 ### Composition owners are difficult to learn as a single page
 
@@ -293,9 +290,10 @@ has exercised it yet.
 
 ### Public configuration and runtime enforcement must agree
 
-The Agent contract exposes `guardrails.maxSteps`, but the file schema rejects
-it; Strands also does not apply the configured step cap. [#2846](https://github.com/kontourai/station/issues/2846)
-tracks a single admitted shape and engine-specific enforcement evidence.
+At the audit baseline, the Agent contract exposed `guardrails.maxSteps` while
+the file schema rejected it. [#2846](https://github.com/kontourai/station/issues/2846)
+records the alignment on top-level `maxSteps` for VoltAgent. The engine matrix
+states that Strands and external engines use their own limits.
 Retained quick prompts have no current UI consumer ([#2847](https://github.com/kontourai/station/issues/2847)),
 and invalid date/time format JSON can reach prompt expansion before failing
 ([#2848](https://github.com/kontourai/station/issues/2848)). The
@@ -303,10 +301,11 @@ and invalid date/time format JSON can reach prompt expansion before failing
 
 ### Shared CLI safeguards need to cover each caller
 
-The Operate shell's event stream bypasses the authenticated SDK transport even
-though its initial Session read uses it. A real caller against a synthetic
-protected HTTP service reproduced the missing credential and HTTP 401;
-[#2845](https://github.com/kontourai/station/issues/2845) tracks the correction.
+The Operate shell's event stream uses the same origin-bound authenticated
+transport as its initial Session read. A real caller against a synthetic
+protected HTTP service exercises credential transmission, cross-origin
+isolation, frame parsing and cancellation.
+[#2845](https://github.com/kontourai/station/issues/2845) recorded the original HTTP 401.
 Home reset now acquires the home maintenance lease, rechecks lifecycle inactivity
 and archives the home while holding that lease. It still does not separately
 consult the home-scoped instance registry
@@ -328,10 +327,12 @@ browser evidence alongside their state/contract tests.
 
 ### Examples need the same caller contracts as the product
 
-The standalone sessions MCP reader hides failed unauthenticated reads behind
-an empty panel ([#2785](https://github.com/kontourai/station/issues/2785)). The
-ElevenLabs example uses an older token/audio/transcript protocol
-([#2784](https://github.com/kontourai/station/issues/2784)). The registry CLI
+The Sessions MCP example exercises authenticated list reads and distinct
+failure snapshots through real stdio against a fixture API. The ElevenLabs
+example exercises the documented single-use token and audio protocols with a
+scripted transport. An isolated Station verified the Sessions example's
+empty snapshot and refusal after Device revocation. External-host rendering
+and live voice provider execution remain unverified. The registry CLI
 submits an install ID without the preview consent required by the installer
 ([#2809](https://github.com/kontourai/station/issues/2809)). A manifest, build or
 render test does not establish these end-to-end journeys.

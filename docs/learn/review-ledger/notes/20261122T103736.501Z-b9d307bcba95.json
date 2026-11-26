@@ -1,0 +1,7 @@
+{
+  "revision": "70659bd2ae0c0e2e09f10722eea772e2d5b3db5c",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Its only api.md citation is the terminal socket transport anchor, which this change does not touch; the anchor and claims still hold.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
+  ]
+}

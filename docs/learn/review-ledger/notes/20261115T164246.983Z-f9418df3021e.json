@@ -1,0 +1,19 @@
+{
+  "revision": "940be3079c4399a864e8e2ec18ab76ffc8a99af8",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Change composes the finished-alert hold (service facts plus the inbox's hasWaitingFollowUp) and passes it to wireTurnCompletionNotifications and the agent-activity session reader. No route, capability flag, gate or service construction order changed. Citing documents searched for completion, focus, card and inbox claims; none contradicted. Keyword review.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Change composes the finished-alert hold (service facts plus the inbox's hasWaitingFollowUp) and passes it to wireTurnCompletionNotifications and the agent-activity session reader. No route, capability flag, gate or service construction order changed. Citing documents searched for completion, focus, card and inbox claims; none contradicted. Keyword review.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Change composes the finished-alert hold (service facts plus the inbox's hasWaitingFollowUp) and passes it to wireTurnCompletionNotifications and the agent-activity session reader. No route, capability flag, gate or service construction order changed. Citing documents searched for completion, focus, card and inbox claims; none contradicted. Keyword review.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Change composes the finished-alert hold (service facts plus the inbox's hasWaitingFollowUp) and passes it to wireTurnCompletionNotifications and the agent-activity session reader. No route, capability flag, gate or service construction order changed. Citing documents searched for completion, focus, card and inbox claims; none contradicted. Keyword review.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Change composes the finished-alert hold (service facts plus the inbox's hasWaitingFollowUp) and passes it to wireTurnCompletionNotifications and the agent-activity session reader. No route, capability flag, gate or service construction order changed. Citing documents searched for completion, focus, card and inbox claims; none contradicted. Keyword review.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Change composes the finished-alert hold (service facts plus the inbox's hasWaitingFollowUp) and passes it to wireTurnCompletionNotifications and the agent-activity session reader. No route, capability flag, gate or service construction order changed. Citing documents searched for completion, focus, card and inbox claims; none contradicted. Keyword review.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Change composes the finished-alert hold (service facts plus the inbox's hasWaitingFollowUp) and passes it to wireTurnCompletionNotifications and the agent-activity session reader. No route, capability flag, gate or service construction order changed. Citing documents searched for completion, focus, card and inbox claims; none contradicted. Keyword review.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]}
+  ]
+}

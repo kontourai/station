@@ -1,0 +1,83 @@
+{
+  "revision": "ac1758253b0a09d4b8ebf0e6b3fac1f97de6ae2a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed staged Agent selection, context disclosure, regular Model and Send controls, Undo, exact retry, retained attachment limits and queued approval protection. The preview-off dialog retains immediate handoff. Evidence reaches scripted and browser fixtures, with live providers and devices pending.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ConversationHandoffDialog.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockContentArea.tsx","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/components/conversation/conversation-transport.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the staged-only regression test: an indeterminate effect is refused and neither provider start nor send is invoked.","inputs":["src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Checked the staged-only regression test: an indeterminate effect is refused and neither provider start nor send is invoked.","inputs":["src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the staged-only regression test: an indeterminate effect is refused and neither provider start nor send is invoked.","inputs":["src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the staged-only indeterminate retry fence before provider dispatch. Earlier accepted effects retain their exact turn identity and existing delegation, worktree and approval paths are unaffected by this delta.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the staged-only indeterminate retry fence before provider dispatch. Earlier accepted effects retain their exact turn identity and existing delegation, worktree and approval paths are unaffected by this delta.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked the staged-only indeterminate retry fence before provider dispatch. Earlier accepted effects retain their exact turn identity and existing delegation, worktree and approval paths are unaffected by this delta.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Checked the staged-only indeterminate retry fence before provider dispatch. Earlier accepted effects retain their exact turn identity and existing delegation, worktree and approval paths are unaffected by this delta.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the staged-only indeterminate retry fence before provider dispatch. Earlier accepted effects retain their exact turn identity and existing delegation, worktree and approval paths are unaffected by this delta.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the predecessor Session type against durable markers and the staged request comparison. The stale source guard and other successor rules keep the same behavior.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked the predecessor Session type against durable markers and the staged request comparison. The stale source guard and other successor rules keep the same behavior.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the predecessor Session type against durable markers and the staged request comparison. The stale source guard and other successor rules keep the same behavior.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked the predecessor Session type against durable markers and the staged request comparison. The stale source guard and other successor rules keep the same behavior.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked the predecessor Session type against durable markers and the staged request comparison. The stale source guard and other successor rules keep the same behavior.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the stage confirmation behavior and explicit absence of dispatch and draft preparation in the mounted dialog test.","inputs":["src-ui/src/__tests__/ConversationHandoffDialog.test.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked preview admission and stable verified person/Station recovery identity, scoped model options, and propagation through the existing dock composer. Navigation, pane placement and ordinary chat controls retain their existing callers.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Checked preview admission and stable verified person/Station recovery identity, scoped model options, and propagation through the existing dock composer. Navigation, pane placement and ordinary chat controls retain their existing callers.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked preview admission and stable verified person/Station recovery identity, scoped model options, and propagation through the existing dock composer. Navigation, pane placement and ordinary chat controls retain their existing callers.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked preview admission and stable verified person/Station recovery identity, scoped model options, and propagation through the existing dock composer. Navigation, pane placement and ordinary chat controls retain their existing callers.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Checked preview admission and stable verified person/Station recovery identity, scoped model options, and propagation through the existing dock composer. Navigation, pane placement and ordinary chat controls retain their existing callers.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Checked preview admission and stable verified person/Station recovery identity, scoped model options, and propagation through the existing dock composer. Navigation, pane placement and ordinary chat controls retain their existing callers.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked preview admission and stable verified person/Station recovery identity, scoped model options, and propagation through the existing dock composer. Navigation, pane placement and ordinary chat controls retain their existing callers.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked preview admission and stable verified person/Station recovery identity, scoped model options, and propagation through the existing dock composer. Navigation, pane placement and ordinary chat controls retain their existing callers.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Checked preview admission and stable verified person/Station recovery identity, scoped model options, and propagation through the existing dock composer. Navigation, pane placement and ordinary chat controls retain their existing callers.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked prop forwarding through the existing conversation body with the same pane and chat identity.","inputs":["src-ui/src/components/chat-dock/ChatDockContentArea.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked that stage confirmation previews fresh context and returns to the composer. It neither prepares the draft nor calls the immediate handoff route. Legacy and peer handoff paths were checked separately.","inputs":["src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked that stage confirmation previews fresh context and returns to the composer. It neither prepares the draft nor calls the immediate handoff route. Legacy and peer handoff paths were checked separately.","inputs":["src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the staged destination, Undo and status actions against the shared composer controls. Mobile Chromium covers the Undo notice while keeping the draft.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the staged destination, Undo and status actions against the shared composer controls. Mobile Chromium covers the Undo notice while keeping the draft.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked staged Send interception, requested model display and availability, Undo and status routing. Current Session identity and approval authority still come from their existing owners.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked staged Send interception, requested model display and availability, Undo and status routing. Current Session identity and approval authority still come from their existing owners.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked staged Send interception, requested model display and availability, Undo and status routing. Current Session identity and approval authority still come from their existing owners.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked staged Send interception, requested model display and availability, Undo and status routing. Current Session identity and approval authority still come from their existing owners.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked staged Send interception, requested model display and availability, Undo and status routing. Current Session identity and approval authority still come from their existing owners.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked that the staged Send and receipt read bind to the same Station base and live request authority. Existing direct and relayed conversation transports keep their current capability checks.","inputs":["src-ui/src/components/conversation/conversation-transport.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked that the staged Send and receipt read bind to the same Station base and live request authority. Existing direct and relayed conversation transports keep their current capability checks.","inputs":["src-ui/src/components/conversation/conversation-transport.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked that the staged Send and receipt read bind to the same Station base and live request authority. Existing direct and relayed conversation transports keep their current capability checks.","inputs":["src-ui/src/components/conversation/conversation-transport.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked that the staged Send and receipt read bind to the same Station base and live request authority. Existing direct and relayed conversation transports keep their current capability checks.","inputs":["src-ui/src/components/conversation/conversation-transport.ts"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked that the staged Send and receipt read bind to the same Station base and live request authority. Existing direct and relayed conversation transports keep their current capability checks.","inputs":["src-ui/src/components/conversation/conversation-transport.ts"]}
+  ]
+}

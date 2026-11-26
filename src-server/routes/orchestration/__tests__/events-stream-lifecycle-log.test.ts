@@ -22,6 +22,7 @@ const CLIENT_SESSION = '0f8fad5b-d9cb-469f-a165-70867728950e';
 function makeService(head = 0) {
   return {
     listSessionReadModel: vi.fn().mockResolvedValue([]),
+    readableEngineStartWaits: () => [],
     canUserReadSession: vi.fn().mockReturnValue(true),
     readEventStreamHead: () => head,
     retainSessionDeletionReader: () => () => {},

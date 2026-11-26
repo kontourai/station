@@ -1,0 +1,47 @@
+{
+  "revision": "93f0684e76a7e620785a371e7362ce1dccc1f481",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked against 93f0684e76: the conversation summary source quotes importedFrom rows (tested, fault-injected); context-compaction summaries read runtime events only; read_conversation returns importedFrom; re-imported rows keep their origin as 'X, via Y' (tested, fault-injected).","inputs":["docs/security/remote-access-threat-model.md","packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"93f0684e76 adds optional importedFrom to ConversationImportMessageV1; other shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"93f0684e76 adds optional importedFrom to ConversationImportMessageV1; other shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"93f0684e76 adds optional importedFrom to ConversationImportMessageV1; other shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"93f0684e76 adds optional importedFrom to ConversationImportMessageV1; other shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/reference/api.md","note":"93f0684e76 adds optional importedFrom to ConversationImportMessageV1; other shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"93f0684e76 adds optional importedFrom to ConversationImportMessageV1; other shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"93f0684e76 adds optional importedFrom to ConversationImportMessageV1; other shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Adds optional importedFrom to ConversationReadMessage; existing fields unchanged.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Adds optional importedFrom to ConversationReadMessage; existing fields unchanged.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Adds optional importedFrom to ConversationReadMessage; existing fields unchanged.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Adds optional importedFrom to ConversationReadMessage; existing fields unchanged.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Adds optional importedFrom to ConversationReadMessage; existing fields unchanged.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Imported copied rows record an existing origin as 'X, via Y'; local fork behavior unchanged.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Imported copied rows record an existing origin as 'X, via Y'; local fork behavior unchanged.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Imported copied rows record an existing origin as 'X, via Y'; local fork behavior unchanged.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Import retry: unreadable or deleted saved import answers 500 indeterminate; key naming another request stays a definite 409. Other routes unchanged.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Import retry: unreadable or deleted saved import answers 500 indeterminate; key naming another request stays a definite 409. Other routes unchanged.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Compact messages carry a bounded importedFrom; paging and admission unchanged.","inputs":["src-server/routes/chat/conversation-reference-read.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Compact messages carry a bounded importedFrom; paging and admission unchanged.","inputs":["src-server/routes/chat/conversation-reference-read.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Only the owner-device bullet's handoff sentences changed; citing pages refer to other sections.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

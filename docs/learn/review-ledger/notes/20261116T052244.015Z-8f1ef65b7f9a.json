@@ -1,0 +1,7 @@
+{
+  "revision": "8747e0aee39c3dcdf0afd3e6f3414ca3d4d9b5b0",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Cites ConversationBody.tsx as the shared conversation body; this change only passes the stream catch-up phase to the status pill, so the routing guidance is unaffected.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

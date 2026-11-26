@@ -9,14 +9,16 @@
  * definitions is `mcp-subregistry-provider.ts`.
  */
 
-import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { hasUnsafeTextChar } from '@kontourai/station-contracts/acp';
 import type {
   RegistryMcpAuthMode,
   RegistryMcpSourceStatus,
 } from '@kontourai/station-contracts/catalog';
+import { errorMessage } from '../../utils/error-message.js';
+import { isRecord } from '../../utils/is-record.js';
 import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger({ name: 'mcp-subregistry' });
@@ -125,10 +127,6 @@ export type McpSubregistryParseResult =
       nextCursor?: string;
     }
   | { ok: false; reason: string };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function plainText(value: unknown, max: number): value is string {
   return (
@@ -892,15 +890,18 @@ export class McpSubregistrySource {
 
   private async saveCache(cached: CachedIndex): Promise<void> {
     if (!this.cacheFile) return;
+    // Unique per save: two overlapping saves in this process must not share
+    // one temporary, or the rename can publish interleaved bytes.
+    const temporary = `${this.cacheFile}.${process.pid}.${randomUUID()}.tmp`;
     try {
       await mkdir(join(this.cacheFile, '..'), { recursive: true });
-      const temporary = `${this.cacheFile}.${process.pid}.tmp`;
       await writeFile(temporary, JSON.stringify(cached), 'utf8');
       await rename(temporary, this.cacheFile);
     } catch (error) {
+      await rm(temporary, { force: true }).catch(() => {});
       logger.warn('Could not save the MCP subregistry copy', {
         source: this.id,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }

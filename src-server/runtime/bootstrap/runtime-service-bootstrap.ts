@@ -20,7 +20,9 @@ import {
   createProviderAdapterRegistry,
   providerAdapterLaunchabilitySource,
 } from '../../providers/registries/registry.js';
+import { engineHostAuthPolicy } from '../../security/managed-engine-limits.js';
 import { ACPManager } from '../../services/acp/acp-bridge.js';
+import { engineLaunchFactsFor } from '../../services/acp/acp-engine-descriptors.js';
 import {
   EngineCredentials,
   registerEngineCredentials,
@@ -32,6 +34,16 @@ import { ConnectionService } from '../../services/connections/connection-service
 import { FileConnectionSmokeEvidenceStore } from '../../services/connections/connection-smoke-evidence-store.js';
 import { ProviderService } from '../../services/connections/provider-service.js';
 import { RuntimeAuthHealthMonitor } from '../../services/connections/runtime-auth-health-monitor.js';
+import {
+  EngineHostAuthService,
+  registerEngineHostAuth,
+} from '../../services/engine-host-auth/service.js';
+import {
+  ManagedInstaller,
+  registerManagedInstaller,
+} from '../../services/engines/managed-install.js';
+import { MANAGED_INSTALL_DEFINITIONS } from '../../services/engines/managed-install-pins.js';
+import { registerManagedRuntimeInstalls } from '../../services/engines/managed-runtime-installs.js';
 import { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { resolveCanonicalSkillSources } from '../../services/flow/flow-agents-skills-source.js';
 import { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
@@ -360,6 +372,24 @@ export function createRuntimeServiceBundle(
   const acpManagedWorkspaceHome = context.configLoader.getProjectHomeDir();
   // Before any engine spawns: every ACP launch reads its stored keys here.
   registerEngineCredentials(new EngineCredentials(acpManagedWorkspaceHome));
+  // Engines Station installs itself (pinned, with consent) and the vault it
+  // signs them in from. Both before any engine spawns: a managed connection
+  // resolves its runtime at launch, and its probe answers the token request.
+  const managedInstaller = new ManagedInstaller(
+    acpManagedWorkspaceHome,
+    MANAGED_INSTALL_DEFINITIONS,
+  );
+  registerManagedInstaller(managedInstaller);
+  registerManagedRuntimeInstalls(managedInstaller);
+  registerEngineHostAuth(
+    new EngineHostAuthService({
+      homeDir: acpManagedWorkspaceHome,
+      policy: engineHostAuthPolicy,
+      launchFacts: engineLaunchFactsFor,
+      audit: (event) =>
+        context.logger?.info?.('Engine host-auth', { ...event }),
+    }),
+  );
 
   const acpBridge =
     factories.createACPManager?.(

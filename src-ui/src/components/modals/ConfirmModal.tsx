@@ -15,6 +15,8 @@ export interface ConfirmModalProps {
   /** Small line above the title, e.g. who is asking. */
   eyebrow?: ReactNode;
   message: string;
+  /** Structured detail under the message, e.g. what a deletion removes. */
+  details?: ReactNode;
   confirmLabel?: string;
   /**
    * Refuse the confirm when the action would change nothing. The dialog stays
@@ -29,7 +31,9 @@ export interface ConfirmModalProps {
   /**
    * `alertdialog` when the prompt interrupts to guard something — unsaved
    * work, a destructive action. Assistive tech announces the two roles
-   * differently, so this is not cosmetic.
+   * differently, so this is not cosmetic. A `danger` confirmation is one by
+   * definition, so it defaults to `alertdialog`; every other variant
+   * defaults to `dialog`.
    */
   role?: 'dialog' | 'alertdialog';
   pending?: boolean;
@@ -62,13 +66,14 @@ export function ConfirmModal({
   isOpen,
   title,
   message,
+  details,
   confirmLabel = 'Confirm',
   confirmDisabled = false,
   cancelLabel = 'Cancel',
   onConfirm,
   onCancel,
   variant = 'default',
-  role = 'dialog',
+  role = variant === 'danger' ? 'alertdialog' : 'dialog',
   pending = false,
   error = null,
   eyebrow,
@@ -153,6 +158,7 @@ export function ConfirmModal({
         }
       >
         <p className="station-dialog__message">{message}</p>
+        {details}
         {error && (
           <p className="editor-error" role="alert">
             {error}

@@ -515,12 +515,29 @@ async function measureIsolatedFixture({
             return candidate;
           })()
         : null;
-    if (controlSocket || peer || isBoardFixture)
+    if (
+      controlSocket ||
+      peer ||
+      isBoardFixture ||
+      fixture.id === 'remote-apply'
+    )
       await page.exposeBinding(
         '__stationInteractiveWorkspacePerformanceDriver',
         async (_source, command) => {
           if (!plainRecord(command) || !validDriverIteration(command.iteration))
             throw new Error('performance driver command is invalid');
+          if (fixture.id === 'remote-apply' && command.kind === 'brief-input') {
+            if (
+              !exactKeys(command, [
+                'kind',
+                'iteration',
+                'workingRevision',
+                'text',
+              ])
+            )
+              throw new Error('Brief input command is invalid');
+            return typeRemoteApplyBrief(page, taskId, command);
+          }
           if (command.kind === 'prepare-100k-corpus') {
             if (
               !controlSocket ||
@@ -596,6 +613,8 @@ async function measureIsolatedFixture({
       throw new Error('attached build receipt mismatch');
     if (taskId && !(await authenticatedTaskAvailable(page, taskId)))
       throw new Error('authenticated Task unavailable');
+    if (fixture.id === 'remote-apply')
+      await prepareRemoteApplyBrief(page, taskId);
     if (fixture.id === 'reconnect-10k-operations') {
       if (!controlSocket)
         throw new Error('reconnect fixture control is unavailable');
@@ -1361,6 +1380,50 @@ function validDriverIteration(value) {
 
 async function epoch(page) {
   return page.evaluate(() => performance.timeOrigin + performance.now());
+}
+
+export async function prepareRemoteApplyBrief(page, taskId) {
+  if (new URL(page.url()).pathname !== `/tasks/${encodeURIComponent(taskId)}`)
+    throw new Error('Brief Task identity changed');
+  await page.getByRole('tab', { name: 'Plan', exact: true }).click();
+  const panel = page.getByRole('tabpanel', { name: 'Plan', exact: true });
+  await panel.getByRole('button', { name: 'Edit brief', exact: true }).click();
+  const editor = panel.getByRole('textbox', {
+    name: 'Task brief',
+    exact: true,
+  });
+  await editor.waitFor({ state: 'visible', timeout: 15_000 });
+  if (
+    !(await editor.isEditable()) ||
+    (await editor.getAttribute('data-station-task-id')) !== taskId
+  )
+    throw new Error('Brief Task editor identity or writability is unavailable');
+}
+
+export async function typeRemoteApplyBrief(page, taskId, command) {
+  if (
+    !/^swsr-v[12]:[0-9a-f]{64}$/.test(command.workingRevision) ||
+    typeof command.text !== 'string' ||
+    !command.text.endsWith(String(command.iteration % 10)) ||
+    new URL(page.url()).pathname !== `/tasks/${encodeURIComponent(taskId)}`
+  )
+    throw new Error('Brief input identity changed');
+  const editor = page
+    .getByRole('tabpanel', { name: 'Plan', exact: true })
+    .getByRole('textbox', { name: 'Task brief', exact: true });
+  if (
+    !(await editor.isVisible()) ||
+    !(await editor.isEditable()) ||
+    (await editor.getAttribute('data-station-task-id')) !== taskId ||
+    (await editor.getAttribute('data-station-working-revision')) !==
+      command.workingRevision ||
+    (await editor.inputValue()) !== command.text.slice(0, -1)
+  )
+    throw new Error('Brief Task editor identity or writability is unavailable');
+  await editor.click();
+  await editor.press('ControlOrMeta+End');
+  await editor.press(String(command.iteration % 10));
+  return { kind: 'brief-input-completed' };
 }
 
 async function clickWhenEnabled(page, name) {

@@ -1,0 +1,7 @@
+{
+  "revision": "6b3e1426d9cd829157b7621179242834a4e0a47f",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Arming removed: the picker now only switches now (draft or catch-up as the first message), matching ConversationHandoffDialog.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css","src-ui/src/hooks/useNewChatSelectionModel.ts"]}
+  ]
+}

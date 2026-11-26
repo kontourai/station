@@ -351,19 +351,22 @@ describe('New Chat repair and return', () => {
     expect(view.onClose).not.toHaveBeenCalled();
   });
 
-  test('phone setup reveals its page and restores the original full chat on return', async () => {
-    screenSize.mobile = true;
-    act(() =>
-      navigationStore.navigate('/', { dock: 'open', maximize: 'true' }),
-    );
-    harness();
-    await openSetup();
-    expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
-    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
-    await returnToChat();
-    expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
-    expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
-  });
+  test.each([false, true])(
+    'setup reveals its page and restores the original full chat on return (mobile: %s)',
+    async (mobile) => {
+      screenSize.mobile = mobile;
+      act(() =>
+        navigationStore.navigate('/', { dock: 'open', maximize: 'true' }),
+      );
+      harness();
+      await openSetup();
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
+      await returnToChat();
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+    },
+  );
   test('retains intentional Project and Model through repair without selecting or sending', async () => {
     const view = harness();
     fireEvent.click(screen.getByRole('button', { name: 'Project: Alpha' }));
@@ -381,7 +384,7 @@ describe('New Chat repair and return', () => {
     expect(screen.getByRole('button', { name: 'Project: Beta' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Model: Chosen' })).toBeTruthy();
     expect(view.onSelect).not.toHaveBeenCalled();
-    fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
+    fireEvent.keyDown(screen.getByPlaceholderText('Search agents…'), {
       key: 'Enter',
     });
     expect(view.onSelect).toHaveBeenCalledWith(
@@ -524,7 +527,7 @@ describe('New Chat repair and return', () => {
     expect(
       screen.getByRole('button', { name: 'Project: Select project' }),
     ).toBeTruthy();
-    fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
+    fireEvent.keyDown(screen.getByPlaceholderText('Search agents…'), {
       key: 'Enter',
     });
     expect(view.onSelect).not.toHaveBeenCalled();
@@ -561,7 +564,7 @@ describe('New Chat retained context safeguards', () => {
     models = [{ id: 'default', name: 'Default' }];
     view.update({ agents: [READY] });
     await returnToChat();
-    fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
+    fireEvent.keyDown(screen.getByPlaceholderText('Search agents…'), {
       key: 'Enter',
     });
     expect(view.onSelect).not.toHaveBeenCalled();
@@ -591,7 +594,7 @@ describe('New Chat retained context safeguards', () => {
       draftContext: { ...draftContext, items: [...draftContext.items] },
     });
     await returnToChat();
-    fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
+    fireEvent.keyDown(screen.getByPlaceholderText('Search agents…'), {
       key: 'Enter',
     });
     expect(view.onSelect).toHaveBeenCalledTimes(1);
@@ -787,7 +790,7 @@ test('opening setup commits the destination before retiring dialog history and k
   const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
   try {
     const view = harness({ agents: [READY] });
-    fireEvent.change(screen.getByPlaceholderText('Search agents...'), {
+    fireEvent.change(screen.getByPlaceholderText('Search agents…'), {
       target: { value: '' },
     });
     view.update({ agents: [NEEDS_SETUP] });
@@ -795,7 +798,7 @@ test('opening setup commits the destination before retiring dialog history and k
     expect(back).not.toHaveBeenCalled();
     view.update({ agents: [READY] });
     await returnToChat();
-    fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
+    fireEvent.keyDown(screen.getByPlaceholderText('Search agents…'), {
       key: 'Enter',
     });
     expect(view.onSelect).toHaveBeenCalledOnce();
@@ -879,8 +882,9 @@ test("a hand-off from Home's composer runs setup here and returns with the promp
     await screen.findByRole('textbox', { name: 'What would you like done?' }),
   ).toHaveProperty('value', 'Keep my Home message');
   expect(screen.getByRole('button', { name: 'Project: Beta' })).toBeTruthy();
+  // The run setup control names the kept Agent and model first.
   expect(
-    screen.getByRole('button', { name: 'Agent: Assistant · Chosen' }),
+    screen.getByRole('button', { name: /^Assistant · Chosen/ }),
   ).toBeTruthy();
   expect(view.onSelect).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Start' }));

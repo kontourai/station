@@ -1,0 +1,15 @@
+{
+  "revision": "04349dac9fa25702d2bd5c984a1fa9902a9d169f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked pages citing ConversationBody (module-map, shell-ownership-and-boards, station-connection, chat-composer): the only change wires the list's onReaderPlaceChange to the window's setReaderPlace; no ownership, connection or placement claim changes.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked pages citing ConversationBody (module-map, shell-ownership-and-boards, station-connection, chat-composer): the only change wires the list's onReaderPlaceChange to the window's setReaderPlace; no ownership, connection or placement claim changes.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked pages citing ConversationBody (module-map, shell-ownership-and-boards, station-connection, chat-composer): the only change wires the list's onReaderPlaceChange to the window's setReaderPlace; no ownership, connection or placement claim changes.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked pages citing ConversationBody (module-map, shell-ownership-and-boards, station-connection, chat-composer): the only change wires the list's onReaderPlaceChange to the window's setReaderPlace; no ownership, connection or placement claim changes.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked pages citing ConversationBody (module-map, shell-ownership-and-boards, station-connection, chat-composer): the only change wires the list's onReaderPlaceChange to the window's setReaderPlace; no ownership, connection or placement claim changes.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

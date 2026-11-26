@@ -24,13 +24,82 @@ name: "PR: Gallery"
 # rule that decides whether its own screens are photographed, and every
 # failure of it answers relevant=true.
 #
-# PRs compare their exact head with its own baseline. Merge groups compare
-# the synthesized candidate with that candidate's baseline, so independently
-# accepted visual changes must also work together before landing.
+# PRs capture their head MERGED INTO THE CURRENT BASE, not the bare head.
+# #4898's last capture photographed a head that predated #4931's new
+# child-chat screens and assertion, passed, landed, and turned four screens
+# red on main for ~10 hours (Nightly: Gallery run 43604570771). Its base tip
+# at that event already held #4931, so the composition would have failed on
+# the PR about 80 minutes before it entered the queue. The merge is done in
+# the job ("Merge the pull request into the current base"): the pinned head
+# from the checkout, plus `github.sha`, which pull_request_target sets to the
+# base branch tip when the event fired. Not
+# `github.event.pull_request.base.sha`: that is the head's merge base (it was
+# afaedd08, two hours behind main, in #4898's run 43567270852). Not
+# `refs/pull/N/merge`: it moves after the event and GitHub recomputes it
+# asynchronously. A conflict fails the job and says to merge main.
+#
+# What composition still does not see: main moving after the PR's last
+# event. In the 7 days to 2026-11-14, 94 of 127 landed, captured PRs had
+# gallery-relevant commits land between their last capture and their merge
+# group (median 1.2 h, p90 8.2 h). Pushing again (or merging main) re-runs it.
+#
+# A re-run of a job keeps the original event's `github.sha`, so it composes
+# with main as it was then; a new push (or a reopened PR) refreshes it.
+#
+# A red capture is then attributed ("Check whether main already fails the
+# same screens"): the failing screens are captured again on the bare base
+# from a worktree of it, judged by scripts/gallery-main-attribution.mjs and
+# the judge from that base. If every failure also fails on main the same way
+# (screen, finding identity, and for a screen that did not render its
+# normalised error), the capture was complete, and the screens that did
+# render pass the comparison's integrity checks, the job passes with a
+# warning naming main's commit, so a break already on main does not turn
+# every unrelated PR red. Anything else, including an attribution that could
+# not run, stays red. A failure main does not have that is only a lazy chunk
+# failing to download (the capture's app-error identity naming a failed chunk
+# request) stays red too, as `attribution: infrastructure` under its own error
+# title rather than as the PR's failure (#5028). Capture and assertions therefore record their outcome
+# (continue-on-error) and the last step, "Gallery verdict", is the one place
+# the job's result is decided.
+#
+# The base's judge is authoritative for an honest PR. It is NOT a security
+# boundary: by the time it runs, the candidate's own code (its install and
+# capture) has run on this runner and could have shimmed `node` or `npm`
+# through GITHUB_PATH (the step runs PATH `npm` for the base install and
+# capture, and for `screenshot:diff`, which also runs from the candidate's
+# tree), set NODE_OPTIONS through GITHUB_ENV, left a process behind, or
+# planted hooks, config or objects in the shared .git. A malicious PR could already forge its
+# own green through its own spec, so this gives an attacker nothing new;
+# nothing downstream may trust the Gallery conclusion, which is why it is not
+# a required check. The cheap hardening below (no replace refs, no hooks
+# for the base checkout, then HEAD and a clean status verified as a second
+# layer, and node by the absolute path resolved before any candidate code
+# ran) keeps an honest PR's accidents out, nothing more.
+#
+# The capture does NOT run on merge-queue candidates. Gallery is not a
+# required ruleset context, so a merge-group verdict could never stop a
+# landing, and in one week 4 of the 9 candidates it failed landed anyway,
+# each after ~18 minutes in a saturated runner pool; nothing showed those
+# results to the PR author. Nightly: Gallery captures main once a day
+# (requested 07:30 UTC, observed hours late) and fails on a capture that
+# does not complete or an invalid comparison, with pixel differences
+# advisory. It does not run this job's product assertions
+# (gallery-ui-findings.mjs).
+#
+# The merge_group trigger stays, with the capture skipped at job level, so the
+# workflow still reports its contexts on every candidate: making Gallery a
+# required context later would otherwise leave the queue waiting on a check
+# that never arrives. Whoever makes it required must also drop that skip, or
+# the requirement passes vacuously. Only the independent allowlist ceiling
+# needs a runner on merge groups.
+#
+# The capture also skips on PR events while a PR is a draft, and for the
+# automation app's same-repository release PR; `ready_for_review` and later
+# pushes to a non-draft PR capture.
 on:
   pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -45,6 +114,7 @@ concurrency:
 jobs:
   classify:
     name: Classify gallery inputs
+    if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     outputs:
@@ -148,10 +218,15 @@ jobs:
   gallery-diff:
     name: Gallery product assertions and pixel report
     needs: classify
-    if: always() && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')
+    # The draft and release-PR guard is identical in build-ios.yml and
+    # windows-pr-verification.yml (scripts/__tests__/ci-workflow-contract.test.ts).
+    # pull_request_target only: see the header for why merge groups skip it.
+    # `!cancelled()`, not `always()`: a failed classifier still captures, but a
+    # cancelled (superseded) run does not start one.
+    if: "!cancelled() && github.event_name == 'pull_request_target' && (github.event_name != 'pull_request_target' || (!github.event.pull_request.draft && (github.event.pull_request.head.ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login != 'station-automation[bot]'))) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')"
     runs-on: ubuntu-22.04
     container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
+      image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe
       options: --ipc=host --init
     timeout-minutes: 60
     defaults:
@@ -170,9 +245,11 @@ jobs:
             exit 1
           fi
 
+      # Full history, so the composition below can find the merge base.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
@@ -191,7 +268,7 @@ jobs:
         run: |
           set -euo pipefail
           bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 --retry 2 --retry-max-time 40 \
             "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
             --output "$bootstrap"
           printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
@@ -203,6 +280,65 @@ jobs:
           set -euo pipefail
           git config --global --add safe.directory "${GITHUB_WORKSPACE}"
           git rev-parse --show-toplevel
+
+      # The one setup step the nightly does not share (ci-workflow-contract
+      # pins its place): see the header for why `github.sha` and not the
+      # event's base.sha or refs/pull/N/merge. A fork's checkout need not
+      # contain the base, so it is fetched by id from this repository, with
+      # no credential. Hooks are off for the merge.
+      - id: compose
+        name: Merge the pull request into the current base
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.sha }}
+          UPSTREAM_URL: https://github.com/${{ github.repository }}.git
+        run: |
+          set -euo pipefail
+          full_sha='^[0-9a-f]{40}$'
+          if [[ ! "$HEAD_SHA" =~ $full_sha || ! "$BASE_SHA" =~ $full_sha ]]; then
+            echo "::error title=Gallery composition::The pull request head (${HEAD_SHA}) and base tip (${BASE_SHA}) must both be full commit ids."
+            exit 1
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]]; then
+            echo "::error title=Gallery composition::The checkout is $(git rev-parse HEAD), not the pinned pull request head ${HEAD_SHA}."
+            exit 1
+          fi
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags --quiet "$UPSTREAM_URL" "$BASE_SHA" || true
+          fi
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "::error title=Gallery composition::Cannot fetch the base tip ${BASE_SHA}, so the pull request cannot be composed with it."
+            exit 1
+          fi
+          if git merge-base --is-ancestor "$BASE_SHA" HEAD; then
+            echo "The pull request head already contains the base tip ${BASE_SHA}."
+          else
+            merge_log="$RUNNER_TEMP/gallery-composition-merge.log"
+            if ! git -c core.hooksPath=/dev/null -c user.name='Gallery composition' \
+                -c user.email='gallery-composition@users.noreply.github.com' \
+                merge --no-ff --no-edit --no-verify "$BASE_SHA" > "$merge_log" 2>&1; then
+              cat "$merge_log"
+              conflicted=$(git diff --name-only --diff-filter=U | head -n 20 | paste -sd ' ' -)
+              git merge --abort 2>/dev/null || true
+              echo "::error title=Gallery composition conflict::The pull request does not merge cleanly into main at ${BASE_SHA}${conflicted:+ (${conflicted})}. Merge main into the branch and push; nothing was captured."
+              exit 1
+            fi
+            cat "$merge_log"
+            if [[ "$(git rev-parse HEAD^1)" != "$HEAD_SHA" || "$(git rev-parse HEAD^2)" != "$BASE_SHA" ]]; then
+              echo "::error title=Gallery composition::The composed commit's parents are not the pull request head and the base tip."
+              exit 1
+            fi
+          fi
+          echo "base=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+          # Resolved before any candidate code runs, for the attribution step.
+          node_bin=$(command -v node)
+          if [[ "$node_bin" != /* ]]; then
+            echo "::error title=Gallery composition::Cannot resolve node to an absolute path."
+            exit 1
+          fi
+          echo "node=${node_bin}" >> "$GITHUB_OUTPUT"
+          printf 'Captured the pull request head %s merged into main at %s (composed %s).\n' \
+            "$HEAD_SHA" "$BASE_SHA" "$(git rev-parse HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Install dependencies
         run: |
@@ -233,13 +369,18 @@ jobs:
 
       # Capture and diff are separate steps so a failure names which half
       # failed: a capture that did not complete is not a pixel change, and
-      # re-baselining over it would bake in a broken render.
+      # re-baselining over it would bake in a broken render. The capture and
+      # the assertions record their outcome instead of ending the job, so a
+      # failure can be attributed to main first; "Gallery verdict" below
+      # fails the job on every outcome the attribution does not excuse.
       - id: capture
         name: Capture screenshot bucket
+        continue-on-error: true
         run: npm run test:e2e:screenshot
 
       - id: diff
         name: Report exact pixel differences
+        if: steps.capture.outcome == 'success'
         run: npm run screenshot:diff -- --report-only --summary="$GITHUB_STEP_SUMMARY"
 
       # Blocking, unlike the pixel report: judged against the shrink-only
@@ -248,7 +389,92 @@ jobs:
       - id: assertions
         name: Judge gallery product assertions
         if: always() && steps.capture.outcome == 'success'
+        continue-on-error: true
         run: node scripts/gallery-ui-findings.mjs check --summary="$GITHUB_STEP_SUMMARY"
+
+      # Only after a screen-level failure, and never after an integrity
+      # failure of the comparison. The attribution script and its judge come
+      # from a worktree of the base commit, checked out without replace refs
+      # or hooks and verified clean, and run with the node resolved before candidate
+      # code ran. That keeps the rule out of an honest PR's reach; it is not
+      # a boundary against a malicious one (see the header). Every path that
+      # cannot decide answers `pr`, which keeps the job red; the step itself
+      # failing does too.
+      - id: attribution
+        name: Check whether main already fails the same screens
+        if: "!cancelled() && steps.compose.outcome == 'success' && steps.diff.outcome != 'failure' && (steps.capture.outcome == 'failure' || steps.assertions.outcome == 'failure')"
+        timeout-minutes: 15
+        env:
+          BASE_SHA: ${{ steps.compose.outputs.base }}
+          CAPTURE: ${{ steps.capture.outcome }}
+          NODE_BIN: ${{ steps.compose.outputs.node }}
+        run: |
+          set -euo pipefail
+          decide() {
+            echo "verdict=$1" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          # Every git command below ignores refs/replace (it covers what
+          # core.useReplaceRefs=false would, so that is not repeated).
+          export GIT_NO_REPLACE_OBJECTS=1
+          base_root="$RUNNER_TEMP/gallery-base"
+          if [[ "$NODE_BIN" != /* ]] ||
+            ! git -c core.hooksPath=/dev/null worktree add --detach "$base_root" "$BASE_SHA" ||
+            [[ "$(git -C "$base_root" rev-parse HEAD)" != "$BASE_SHA" ]] ||
+            [[ -n "$(git -C "$base_root" status --porcelain --untracked-files=all)" ]]; then
+            echo "::warning::Cannot check out a clean copy of main at ${BASE_SHA}; the failure is not attributed."
+            decide pr
+          fi
+          attribution="$base_root/scripts/gallery-main-attribution.mjs"
+          plan="$RUNNER_TEMP/gallery-attribution-plan.json"
+          if ! decision=$("$NODE_BIN" "$attribution" plan --gallery=gallery \
+              --allowlist=tests/gallery-ui-findings.allowlist.json \
+              --base-root="$base_root" --out="$plan"); then
+            echo "::warning::The attribution plan failed; the failure is not attributed."
+            decide pr
+          fi
+          case "$decision" in
+            screens=?*) screens="${decision#screens=}" ;;
+            *)
+              echo "Not attributed to main: ${decision#unattributable=}"
+              decide pr
+              ;;
+          esac
+          echo "Capturing ${screens} on main at ${BASE_SHA}."
+          # The base capture is expected to fail when main fails too; compare
+          # decides from its manifest, and refuses one that is missing or
+          # covers other screens.
+          (
+            cd "$base_root" &&
+              npm run dependencies:ci &&
+              npm run test:e2e:screenshot -- --screens="$screens"
+          ) || echo "The base install or capture exited non-zero."
+          if ! result=$("$NODE_BIN" "$attribution" compare --plan="$plan" \
+              --base-root="$base_root" --base-sha="$BASE_SHA" \
+              --summary="$GITHUB_STEP_SUMMARY"); then
+            echo "::warning::The attribution comparison failed; the failure is not attributed."
+            decide pr
+          fi
+          printf '%s\n' "$result"
+          # A lost lazy chunk main does not reproduce stays red, but is not
+          # reported as the pull request's layout (#5028).
+          case "${result##*$'\n'}" in
+            verdict=main) ;;
+            verdict=infrastructure) decide infrastructure ;;
+            *) decide pr ;;
+          esac
+          # The diff step is skipped after a failed capture, so an excuse
+          # still runs the comparison (integrity and the pixel report) over
+          # every screen that rendered. The excused screens are not compared.
+          if [[ "$CAPTURE" == failure ]]; then
+            passing=$("$NODE_BIN" -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).passing.join(","))' "$plan")
+            if [[ -z "$passing" ]] || ! npm run screenshot:diff -- --report-only \
+                --screens="$passing" --summary="$GITHUB_STEP_SUMMARY"; then
+              echo "::error title=Gallery comparison::The screens that rendered did not pass the comparison's integrity checks, so the failure is not excused."
+              decide pr
+            fi
+          fi
+          decide main
 
       - name: Upload gallery and pixel diffs
         if: always()
@@ -272,6 +498,58 @@ jobs:
           printf '\nReview [%s](%s#artifacts) for captures and red-pixel diffs. Pixel changes do not require a baseline refresh.\n' "$ARTIFACT" "$RUN_URL" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Explain a capture that did not complete
-        if: failure() && steps.capture.outcome == 'failure'
+        if: always() && steps.capture.outcome == 'failure' && steps.attribution.outputs.verdict != 'main'
         run: |
-          echo "::error title=Gallery capture failed::The screenshot capture did not complete, so nothing was compared. This is not a pixel change: do NOT re-baseline from this run. Read the Capture screenshot bucket step, and check whether the nightly gallery on main is red for the same reason."
+          echo "::error title=Gallery capture failed::The screenshot capture did not complete, so nothing was compared. This is not a pixel change: do NOT re-baseline from this run. Read the Capture screenshot bucket step and the attribution step, which says whether main fails the same screens."
+
+      # The job's result. Green needs a composed capture that completed, a
+      # valid comparison and passing assertions, or screen-level failures
+      # that every one also fail on main.
+      - name: Gallery verdict
+        if: always()
+        env:
+          COMPOSE: ${{ steps.compose.outcome }}
+          CAPTURE: ${{ steps.capture.outcome }}
+          DIFF: ${{ steps.diff.outcome }}
+          ASSERTIONS: ${{ steps.assertions.outcome }}
+          ATTRIBUTION: ${{ steps.attribution.outputs.verdict }}
+          BASE_SHA: ${{ steps.compose.outputs.base }}
+        run: |
+          if [[ "$COMPOSE" != success ]]; then
+            echo "::error title=Gallery verdict::The pull request was not composed with main, so nothing it captured counts."
+            exit 1
+          fi
+          case "$CAPTURE" in
+            success)
+              if [[ "$DIFF" != success ]]; then
+                echo "::error title=Gallery verdict::The pixel comparison did not pass its integrity checks."
+                exit 1
+              fi
+              case "$ASSERTIONS" in
+                success)
+                  echo "Gallery passed on the pull request merged into main at ${BASE_SHA}."
+                  exit 0
+                  ;;
+                failure) ;;
+                *)
+                  echo "::error title=Gallery verdict::The product assertions did not run (${ASSERTIONS:-unknown})."
+                  exit 1
+                  ;;
+              esac
+              ;;
+            failure) ;;
+            *)
+              echo "::error title=Gallery verdict::The capture did not run (${CAPTURE:-unknown})."
+              exit 1
+              ;;
+          esac
+          if [[ "$ATTRIBUTION" == main ]]; then
+            echo "::warning title=Gallery failure already on main::Every failure here also fails on main at ${BASE_SHA}; this pull request introduces none. Those screens were not compared or judged for this pull request; the attribution step lists them."
+            exit 0
+          fi
+          if [[ "$ATTRIBUTION" == infrastructure ]]; then
+            echo "::error title=Gallery chunk load failure::A lazy UI chunk failed to download during the capture, and main at ${BASE_SHA} captured those screens cleanly. No layout was judged on those screens, so this is not a layout finding of this pull request; the attribution step names each screen and chunk (#5028). If the same chunk fails again on a re-run, suspect this pull request's change to that chunk."
+            exit 1
+          fi
+          echo "::error title=Gallery verdict::This pull request, merged into main at ${BASE_SHA}, fails the Gallery (attribution: ${ATTRIBUTION:-not run})."
+          exit 1

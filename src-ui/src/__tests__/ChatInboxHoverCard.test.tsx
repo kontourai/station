@@ -177,7 +177,6 @@ function renderRow(
         item={item}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat={false}
         now={NOW}
         onActivate={vi.fn()}
         gitLocation={
@@ -255,7 +254,9 @@ describe('inbox hover card opening (through the real row)', () => {
     hoverRow();
     await screen.findByTestId('inbox-row-hover-card');
     fireEvent.pointerLeave(screen.getByTestId('inbox-row'));
-    expect(screen.queryByTestId('inbox-row-hover-card')).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByTestId('inbox-row-hover-card')).toBeNull(),
+    );
   });
 
   it('focus opens it immediately and blur closes it', async () => {
@@ -547,7 +548,6 @@ describe('the git section on Home', () => {
         remoteUnavailable={[]}
         remoteAuthenticationRequired={[]}
         onOpen={vi.fn()}
-        onViewActivity={vi.fn()}
         onRetry={vi.fn()}
       />
     );
@@ -607,7 +607,6 @@ it('a receiver row never reads or renders host detail data for a colliding conve
         facts={{ hostDetails: false }}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat
         now={NOW}
         onActivate={() => {}}
         gitLocation={{ projectSlug: 'station', workingDir: '/host/private' }}

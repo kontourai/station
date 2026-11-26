@@ -1,3 +1,4 @@
+import type { Context } from 'hono';
 import type { SSEStreamingApi } from 'hono/streaming';
 import { streamSSE as honoStreamSSE } from 'hono/streaming';
 import { SSE_KEEPALIVE_INTERVAL_MS } from '../constants.js';
@@ -10,6 +11,17 @@ export const streamSSE: typeof honoStreamSSE = (c, callback, onError) => {
   c.header('X-Accel-Buffering', 'no');
   return honoStreamSSE(c, callback, onError);
 };
+
+/** Response for streams that check authority at the consumer's pull boundary. */
+export function demandSseResponse(
+  c: Context,
+  body: ReadableStream<Uint8Array>,
+): Response {
+  c.header('X-Accel-Buffering', 'no');
+  c.header('Content-Type', 'text/event-stream');
+  c.header('Cache-Control', 'private, no-store');
+  return c.body(body);
+}
 
 /**
  * The `event: ping` keepalive frame shared by the four event-style ping

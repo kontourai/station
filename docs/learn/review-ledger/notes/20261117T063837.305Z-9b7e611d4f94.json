@@ -1,0 +1,7 @@
+{
+  "revision": "05c7686e80786403aee2f2a383f8194e3b7fdbcb",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Corrected the tool-family admission statements to match codex-adapter.ts after the bound-start hold and the resume rule; checked against codex-tool-families.test.ts.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]}
+  ]
+}

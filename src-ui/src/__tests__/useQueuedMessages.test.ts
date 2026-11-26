@@ -79,3 +79,61 @@ describe('useQueuedMessages — reorder (#613)', () => {
     expect(reorderQueuedMessageMock).not.toHaveBeenCalled();
   });
 });
+
+describe('useQueuedMessages — abandoned edit', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('lowers isEditingQueue when the editor unmounts mid-edit', () => {
+    const { result, unmount } = renderHook(() =>
+      useQueuedMessages('session-1'),
+    );
+    act(() => {
+      result.current.startEdit(0, 'draft');
+    });
+    expect(updateChatMock).toHaveBeenLastCalledWith('session-1', {
+      isEditingQueue: true,
+    });
+
+    unmount();
+
+    expect(updateChatMock).toHaveBeenLastCalledWith('session-1', {
+      isEditingQueue: false,
+    });
+  });
+
+  it('lowers it on the chat it was raised for when the list is handed another chat', () => {
+    const { result, rerender } = renderHook(
+      ({ sessionId }) => useQueuedMessages(sessionId),
+      { initialProps: { sessionId: 'session-1' } },
+    );
+    act(() => {
+      result.current.startEdit(1, 'draft');
+    });
+
+    rerender({ sessionId: 'session-2' });
+
+    expect(updateChatMock).toHaveBeenLastCalledWith('session-1', {
+      isEditingQueue: false,
+    });
+    expect(result.current.editingIndex).toBeNull();
+  });
+
+  it('leaves the flag alone when this instance never raised it, or already lowered it', () => {
+    const idle = renderHook(() => useQueuedMessages('session-1'));
+    idle.unmount();
+    expect(updateChatMock).not.toHaveBeenCalled();
+
+    const cancelled = renderHook(() => useQueuedMessages('session-1'));
+    act(() => {
+      cancelled.result.current.startEdit(0, 'draft');
+    });
+    act(() => {
+      cancelled.result.current.cancelEdit();
+    });
+    updateChatMock.mockClear();
+    cancelled.unmount();
+    expect(updateChatMock).not.toHaveBeenCalled();
+  });
+});

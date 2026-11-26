@@ -1,16 +1,15 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
 
 interface UseFileAttachmentOptions {
   onFilesSelected: (files: File[]) => void | Promise<void>;
 }
 
+/** A hidden file input and the button that opens it. */
 export function useFileAttachment({
   onFilesSelected,
 }: UseFileAttachmentOptions) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachButtonRef = useRef<HTMLButtonElement>(null);
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,20 +30,10 @@ export function useFileAttachment({
     fileInputRef.current?.click();
   }, []);
 
-  const closePreviewImage = useCallback(() => {
-    setPreviewImage(null);
-    attachButtonRef.current?.focus();
-  }, []);
-
   return {
     fileInputRef,
     attachButtonRef,
-    showPreview,
-    setShowPreview,
-    previewImage,
-    setPreviewImage,
     handleFileSelect,
     openFilePicker,
-    closePreviewImage,
   };
 }

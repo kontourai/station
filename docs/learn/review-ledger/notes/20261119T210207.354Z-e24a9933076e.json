@@ -1,0 +1,17 @@
+{
+  "revision": "c0b6b5833cff4b5fab626b9533955d5a5fa74f5d",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Checked the stable swipe-row key against row identity and keyboard navigation. The action stays attached to its engine when the list changes.","inputs":["src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Checked the stable swipe-row key against row identity and keyboard navigation. The action stays attached to its engine when the list changes.","inputs":["src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the stable swipe-row key against row identity and keyboard navigation. The action stays attached to its engine when the list changes.","inputs":["src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Checked the stable swipe-row key against row identity and keyboard navigation. The action stays attached to its engine when the list changes.","inputs":["src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the stable swipe-row key against row identity and keyboard navigation. The action stays attached to its engine when the list changes.","inputs":["src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the stable swipe-row key against row identity and keyboard navigation. The action stays attached to its engine when the list changes.","inputs":["src-ui/src/components/SplitPaneLayout.tsx"]}
+  ]
+}

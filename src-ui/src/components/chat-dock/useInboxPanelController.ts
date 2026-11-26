@@ -1,3 +1,4 @@
+import { linkedPullRequestMatches } from '@kontourai/station-contracts/conversation-pull-request-links';
 import {
   type RefObject,
   useCallback,
@@ -66,7 +67,31 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
   }, [items, workFacts, now, namespace]);
   const [query, setQuery] = useState('');
   const scope = useInboxScope(items, now, workFacts);
-  const groups = useInboxGroups(scope.items, now, workFacts, query);
+  const inboxGroups = useInboxGroups(scope.items, now, workFacts, query);
+  const groups = useMemo(() => {
+    if (scope.pullRequestFilter !== 'priority') return inboxGroups;
+    const states = ['failing', 'awaiting-review', 'ready', 'merged'] as const;
+    const ranks = new Map(
+      scope.items.map((item) => {
+        const links = workFacts?.get(item.id)?.pullRequests ?? [];
+        const rank = states.findIndex((state) =>
+          links.some(
+            ({ status }) =>
+              status.state === 'current' &&
+              linkedPullRequestMatches(status, state),
+          ),
+        );
+        return [item.id, rank < 0 ? states.length : rank];
+      }),
+    );
+    const compare = (a: HomeWorkItem, b: HomeWorkItem) =>
+      (ranks.get(a.id) ?? states.length) - (ranks.get(b.id) ?? states.length);
+    return inboxGroups.map((group) => ({
+      ...group,
+      items: [...group.items].sort(compare),
+      ...(group.older ? { older: [...group.older].sort(compare) } : {}),
+    }));
+  }, [inboxGroups, scope.items, scope.pullRequestFilter, workFacts]);
   const openChatIds = useMemo(
     () =>
       new Set(
@@ -87,7 +112,7 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
   const latest = useRef({
     open,
     authorityKey,
-    filter: scope.value,
+    filter: JSON.stringify([scope.value, scope.pullRequestFilter]),
     query,
     items,
     workFacts,
@@ -95,7 +120,7 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
   latest.current = {
     open,
     authorityKey,
-    filter: scope.value,
+    filter: JSON.stringify([scope.value, scope.pullRequestFilter]),
     query,
     items,
     workFacts,
@@ -108,10 +133,18 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
     void open;
     void authorityKey;
     void scope.value;
+    void scope.pullRequestFilter;
     void query;
     invalidate();
     return invalidate;
-  }, [open, authorityKey, scope.value, query, invalidate]);
+  }, [
+    open,
+    authorityKey,
+    scope.value,
+    scope.pullRequestFilter,
+    query,
+    invalidate,
+  ]);
 
   const activate = async (item: HomeWorkItem) => {
     invalidate();
@@ -119,14 +152,16 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
     const generation = selection.current.generation;
     const abort = new AbortController();
     selection.current.abort = abort;
+    // The row's stable identity: where it lives and which row it is. Not
+    // `chatSessionId` or the chat binding, which the open itself writes when
+    // it binds a dock chat to the row; keyed on those, the selection stopped
+    // being current mid-open and the open was dropped without a word (#4814).
     const rowKey = (row: HomeWorkItem, facts = workFacts) =>
       JSON.stringify([
         authorityKey,
         row.environmentId,
         facts?.get(row.id)?.station?.id,
-        facts?.get(row.id)?.chatBinding?.affinity,
         row.id,
-        row.chatSessionId,
       ]);
     const selectedKey = rowKey(item);
     const current = () =>
@@ -134,7 +169,8 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
       generation === selection.current.generation &&
       latest.current.open &&
       latest.current.authorityKey === authorityKey &&
-      latest.current.filter === scope.value &&
+      latest.current.filter ===
+        JSON.stringify([scope.value, scope.pullRequestFilter]) &&
       latest.current.query === query &&
       authority?.isCurrent() !== false &&
       latest.current.items.some(
@@ -202,9 +238,12 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
     query,
     setQuery,
     groups,
-    openChatIds,
-    hasVisibleItems: groups.some((group) => group.items.length > 0),
+    hasVisibleItems: groups.some(
+      (group) => group.items.length > 0 || Boolean(group.older?.length),
+    ),
     notice: dismissals.notice,
+    dismissSelected: dismissals.dismissSelected,
+    restore: dismissals.restore,
     rowActions: {
       onActivate: (item: HomeWorkItem) => {
         void activate(item);
@@ -227,12 +266,9 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
         beforeRemoval(action);
         dismissals.restore(item);
       },
-      onCloseChat: onCloseChat
-        ? (id: string, action: HTMLButtonElement) => {
-            beforeRemoval(action);
-            onCloseChat(id);
-          }
-        : undefined,
+      // A settled row stays listed (under Settled) and keeps its focus.
+      onSettle: (conversationId: string, settled: boolean) =>
+        dismissals.settle(conversationId, settled),
       onDraftDiscarded: (item: HomeWorkItem, action: HTMLButtonElement) => {
         if (action.closest('.inbox-row')?.contains(document.activeElement))
           beforeRemoval(action);

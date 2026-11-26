@@ -43,8 +43,8 @@ import {
   warmRegionHostImports,
 } from './warmRegionHostImports';
 
-vi.mock('../../views/SessionsView', () => ({
-  SessionsView: () => <div data-testid="sessions-view" />,
+vi.mock('../../workspace-panes/AgentsWorkspacePane', () => ({
+  AgentsWorkspacePane: () => <div data-testid="sessions-view" />,
 }));
 /** The open action Chat's pane sees: the region host's own controller. */
 const openProbe = vi.hoisted(() => ({
@@ -539,7 +539,7 @@ test('without a project a placed coding pane keeps its tab and shows the placeho
   ).toBe('true');
   expect(
     within(menu)
-      .getByRole('menuitem', { name: 'Activity' })
+      .getByRole('menuitem', { name: 'Agents' })
       .getAttribute('aria-disabled'),
   ).toBeNull();
   fireEvent.keyDown(document, { key: 'Escape' });

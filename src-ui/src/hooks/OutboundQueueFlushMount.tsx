@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useStationConnections } from '../connections/StationConnectionsContext';
 import type {
   ChatStationBindingV1,
@@ -21,13 +21,28 @@ import { projectOutboundQueueEntries } from './outboundQueueProjection';
 import { useOutboundQueueFlush } from './useOutboundQueueFlush';
 import { useSurfaceVisibilityFlags } from './useSurfaceVisibilityFlags';
 
+/**
+ * The chats' non-host Station bindings, one per Station, as a string. The
+ * store notifies on every streamed token and composer keystroke; a string
+ * snapshot re-renders this root-level mount only when a binding changes.
+ */
+function readChatStationBindings(): string {
+  const bindings = new Map<string, ChatStationBindingV1>();
+  for (const chat of Object.values(activeChatsStore.getSnapshot())) {
+    const binding = readChatStationBinding(chat.stationBinding);
+    if (binding && binding.affinity.kind !== 'host')
+      bindings.set(stationStateKey(binding), binding);
+  }
+  return JSON.stringify([...bindings.values()]);
+}
+
 /** Retained work keeps its own connection leased, independently of the visible tab. */
 export function OutboundQueueFlushMount({ apiBase }: { apiBase: string }) {
   const { observation, namespace, status } = useAuthorityPersistence();
   const enabled = useSurfaceVisibilityFlags().has('paired-station-chats');
-  const chats = useSyncExternalStore(
+  const chatBindingsSignature = useSyncExternalStore(
     activeChatsStore.subscribe,
-    activeChatsStore.getSnapshot,
+    readChatStationBindings,
   );
   const [rows, setRows] = useState<OutboundDispatchTurn[]>([]);
   const [readyNamespace, setReadyNamespace] = useState<string>();
@@ -72,15 +87,19 @@ export function OutboundQueueFlushMount({ apiBase }: { apiBase: string }) {
       stopRemote();
     };
   }, []);
-  const bindings = new Map<string, ChatStationBindingV1>();
-  for (const candidate of [
-    ...Object.values(chats).map((chat) => chat.stationBinding),
-    ...rows.map((row) => row.station?.binding),
-  ]) {
-    const binding = readChatStationBinding(candidate);
-    if (binding && binding.affinity.kind !== 'host')
-      bindings.set(stationStateKey(binding), binding);
-  }
+  const bindings = useMemo(() => {
+    const chatBindings: unknown[] = JSON.parse(chatBindingsSignature);
+    const next = new Map<string, ChatStationBindingV1>();
+    for (const candidate of [
+      ...chatBindings,
+      ...rows.map((row) => row.station?.binding),
+    ]) {
+      const binding = readChatStationBinding(candidate);
+      if (binding && binding.affinity.kind !== 'host')
+        next.set(stationStateKey(binding), binding);
+    }
+    return next;
+  }, [chatBindingsSignature, rows]);
   if (!namespace || readyNamespace !== namespace || status !== 'verified')
     return null;
   return (

@@ -1,0 +1,7 @@
+{
+  "revision": "56920ae9d20b419b879ed1828ae140fa97ac0832",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Cites metrics.ts for unrelated instruments; this change only adds the two workload scope cleanup instruments.","inputs":["docs/guides/connections.md","src-server/telemetry/metrics.ts"]}
+  ]
+}

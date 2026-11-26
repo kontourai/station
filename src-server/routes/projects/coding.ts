@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
-import { basename, join, relative, resolve, sep } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 import { execFileChildWorkload as execFile } from '@kontourai/station-shared/child-workload';
 import { type Context, Hono, type Next } from 'hono';
 import { z } from 'zod';
@@ -39,7 +39,9 @@ import {
 import { listVerifiedWorktrees } from '../../services/projects/verified-worktrees.js';
 import { readWorkspaceDiff } from '../../services/projects/workspace-diff-service.js';
 import { codingOps } from '../../telemetry/metrics.js';
+import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import { execGit } from '../../utils/git-exec.js';
+import { isCanonicalPathWithin } from '../../utils/path-containment.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
   operatorOnly,
@@ -233,69 +235,59 @@ async function discoverRepos(
   return roots;
 }
 
-/** `fn` over `items`, at most `limit` calls in flight, results in order. */
-async function mapWithConcurrency<T, R>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (next < items.length) {
-        const index = next;
-        next += 1;
-        results[index] = await fn(items[index] as T);
-      }
-    }),
-  );
-  return results;
-}
-
 /** The `/repos` answer body for one workspace. */
 async function scanWorkspaceRepos(
   projectRoot: string,
   workspace: string,
   worktrees: ProjectRepositoryReadOptions['registeredWorktrees'],
+  projectScoped: boolean,
 ) {
+  const readBranch = (folder: string) =>
+    readProjectRepository(
+      projectRoot,
+      folder,
+      { registeredWorktrees: worktrees, timeoutMs: GIT_QUICK_TIMEOUT_MS },
+      (repository) =>
+        execGit([...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'], {
+          cwd: repository.top,
+          encoding: 'utf-8',
+          timeout: GIT_QUICK_TIMEOUT_MS,
+        }).then(
+          ({ stdout }) => stdout.trim(),
+          () => '',
+        ),
+    );
+  const describeRepo = (root: string, branch: string) => ({
+    root,
+    name: basename(root),
+    relativePath: relative(workspace, root) || '.',
+    branch,
+  });
+
   const roots = await discoverRepos(workspace);
+  const workspaceHasMarker = roots.includes(workspace);
+  // Only an admitted Project read can name the enclosing repository. The
+  // same confined reader supplies both its identity and its branch.
+  const enclosingRead =
+    projectScoped && !workspaceHasMarker ? await readBranch(workspace) : null;
+  const enclosing =
+    enclosingRead?.ok && isCanonicalPathWithin(enclosingRead.top, workspace)
+      ? describeRepo(enclosingRead.top, enclosingRead.value)
+      : undefined;
+
   const repos = await mapWithConcurrency(
-    roots,
+    roots.slice(0, DISCOVER_MAX_ROOTS - (enclosing ? 1 : 0)),
     ENRICH_CONCURRENCY,
     async (root) => {
-      // A root whose `.git` is not the Project's own still lists (its
-      // status then says why it is not read), but its branch is another
-      // repository's, so it stays ''.
-      const read = await readProjectRepository(
-        projectRoot,
-        root,
-        { registeredWorktrees: worktrees, timeoutMs: GIT_QUICK_TIMEOUT_MS },
-        (repository) =>
-          execGit(
-            [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
-            {
-              cwd: repository.top,
-              encoding: 'utf-8',
-              timeout: GIT_QUICK_TIMEOUT_MS,
-            },
-          ).then(
-            ({ stdout }) => stdout.trim(),
-            // Detached HEAD / mid-rebase repos still list; branch stays ''.
-            () => '',
-          ),
-      );
-      return {
-        root,
-        name: basename(root),
-        relativePath: relative(workspace, root) || '.',
-        branch: read.ok ? read.value : '',
-      };
+      const read = await readBranch(root);
+      // Unreadable roots still list so their own status can explain why.
+      return describeRepo(root, read.ok ? read.value : '');
     },
   );
+  if (enclosing) repos.unshift(enclosing);
   return {
     workspace,
-    workspaceIsRepo: existsSync(join(workspace, '.git')),
+    workspaceIsRepo: workspaceHasMarker || !!enclosing,
     repos,
   };
 }
@@ -427,7 +419,7 @@ function refusalResponse(c: Context, refusal: CodingGitRefusal): Response {
 }
 
 function isWithin(target: string, root: string): boolean {
-  return target === root || target.startsWith(root + sep);
+  return isCanonicalPathWithin(root, target);
 }
 
 const worktreesByRequest = new WeakMap<
@@ -969,7 +961,14 @@ export function createCodingRoutes(
       );
       if (location instanceof Response) return location;
 
-      const count = Math.min(parseInt(c.req.query('count') || '5', 10), 20);
+      // `git log -<n>` takes the number verbatim: a non-numeric or negative
+      // count falls back to the default instead of reaching git as `-NaN` or
+      // `--5`.
+      const requestedCount = parseInt(c.req.query('count') || '5', 10);
+      const count =
+        Number.isInteger(requestedCount) && requestedCount >= 0
+          ? Math.min(requestedCount, 20)
+          : 5;
       // Non-repo: no commits. git/status drives the "not a git repository"
       // empty state; keep this shape an array for a stable contract.
       return await gitRead(c, location, [], async (repository) => {
@@ -1114,11 +1113,14 @@ export function createCodingRoutes(
       const scanKey = `${slug ?? '\u0000form'}\u0000${projectRoot}\u0000${workspace}`;
       let scan = inFlightRepoScans.get(scanKey);
       if (!scan) {
-        scan = scanWorkspaceRepos(projectRoot, workspace, worktrees).finally(
-          () => {
-            inFlightRepoScans.delete(scanKey);
-          },
-        );
+        scan = scanWorkspaceRepos(
+          projectRoot,
+          workspace,
+          worktrees,
+          !!slug,
+        ).finally(() => {
+          inFlightRepoScans.delete(scanKey);
+        });
         inFlightRepoScans.set(scanKey, scan);
       }
       // A rejected shared scan reaches every waiter here, inside the

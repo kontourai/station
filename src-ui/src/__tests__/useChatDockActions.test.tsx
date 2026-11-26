@@ -182,7 +182,8 @@ describe('useChatDockActions placement-aware actions', () => {
 
     expect(setActiveSessionId).toHaveBeenCalledWith('chat-a');
     expect(setActiveChat).toHaveBeenCalledWith('conversation-a');
-    expect(updateChat).toHaveBeenCalledWith('chat-a', { hasUnread: false });
+    // #3075: read state is the server's; focusing writes no client guess.
+    expect(updateChat).not.toHaveBeenCalled();
     expect(setDockState).not.toHaveBeenCalled();
   });
 

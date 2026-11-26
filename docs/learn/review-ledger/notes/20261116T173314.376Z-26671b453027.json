@@ -1,0 +1,31 @@
+{
+  "revision": "b723ed81529944af9b790bfbd456ffdea9b8bfa9",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/architecture.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/guides/development.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"#5054 only adds a synchronous, non-throwing repeat-summary flush inside gracefulShutdown after workload teardown; shutdown ordering, exit codes, supervisor drain and readiness claims are unchanged.","inputs":["src-server/index.ts"]}
+  ]
+}

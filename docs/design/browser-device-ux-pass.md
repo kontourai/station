@@ -79,7 +79,7 @@ names the agent tool that does the same thing, if one exists.
 | Float over chat | Toolbar | ⋯ › Session | occasional | n/a | n/a |
 | Close (this viewer) | Toolbar | ⋯ › Session | occasional | pane chrome | `device_close` |
 | Power off, End for everyone (manager only) | Toolbar | ⋯, last, on their own (manager only) | power | n/a | gap (owner-gated) |
-| Device hub, sharing, agent device access | Setup wizard only, unreachable once set up | Settings › Advanced › Browser & devices › Open device setup | power | Settings search | no |
+| Device helper, sharing, agent device access | Setup wizard only, unreachable once set up | Settings › Advanced › Browser & devices › Open device setup | power | Settings search | no |
 | SSH device hosts | Settings › Devices | Settings › Advanced › Device hosts | power | Settings search | no |
 | Recording limits | Server constants, no UI | Unchanged; documented in reference | power | n/a | n/a |
 
@@ -123,7 +123,7 @@ and one ⋯. The ⋯ menu has three named groups:
 
 **Settings › Advanced › Browser & devices:** agent JavaScript and shared
 local servers for a chosen Project (the Browser's link opens on its own
-Project), and **Open device setup** for the device hub, sharing and agent
+Project), and **Open device setup** for the device helper, sharing and agent
 device access. **Device hosts** moved from Settings › Devices to Advanced.
 
 **Empty states:** the Browser says "Enter a URL or pick a local server" and

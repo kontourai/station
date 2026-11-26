@@ -13,9 +13,13 @@ import type {
 } from '@kontourai/station-contracts/connection-recovery';
 import {
   type CanonicalRuntimeEvent,
+  type EngineStartAdmissionIntent,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
+  type TurnDispatchOrigin,
   type TurnStartedEvent,
+  turnDispatchOrigin,
+  turnResourceAdmissionIntent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { dispatchableChatAttachments } from '../../providers/sessions/chat-attachments.js';
@@ -63,6 +67,11 @@ export type UsageLimitRecoveryActionResult =
   | { kind: 'retired'; reason: ConnectionRecoveryOutcomeReason }
   /** A person chose, for this stop, what happens at its reset. */
   | { kind: 'chosen'; choice: UsageLimitResumeChoice }
+  /**
+   * "Continue on <label>" did not switch: the profile no longer qualifies,
+   * or credential recovery is paused. The stop keeps waiting as it was.
+   */
+  | { kind: 'not-switched' }
   | { kind: 'not-waiting' };
 
 /**
@@ -119,6 +128,11 @@ export class SessionRecoveryCoordinator {
   private disposed = false;
   private dueScanRetry?: ReturnType<typeof setTimeout>;
   private admissionRetry?: { delayMs: number; retryAt: string };
+  /**
+   * Stops whose session was quarantined but whose retirement could not be
+   * written: still recorded as waiting, so a click must not say so.
+   */
+  private readonly unretiredSessionEnds = new Set<string>();
 
   constructor(
     private readonly options: {
@@ -728,6 +742,89 @@ export class SessionRecoveryCoordinator {
     return result;
   }
 
+  /**
+   * "Continue on <label>": the person's consent to continue this stop on one
+   * other enrolled credential profile now, through the same stage, restart
+   * and replay protocol as automatic credential recovery, with their click in
+   * place of the `automatic` opt-in. The pre-dispatch checks apply first. A
+   * profile that no longer qualifies leaves the stop waiting as it was. While
+   * credential recovery admission is blocked it does nothing: deferring would
+   * replace the reset timer with an admission retry that runs unconsented.
+   */
+  async continueUsageLimitOnProfile(
+    threadId: string,
+    profileRef: string,
+    /** The stop the person was offered this for (`usageLimitStopId`). */
+    stopId: string,
+  ): Promise<UsageLimitRecoveryActionResult> {
+    if (this.stopping || this.disposed || !this.credentialRecovery)
+      return { kind: 'not-waiting' };
+    const waiting = this.waitingUsageLimitIntent(threadId);
+    // A click from an older banner never acts on a newer stop.
+    if (!waiting || waiting.fingerprint !== stopId)
+      return { kind: 'not-waiting' };
+    let result: UsageLimitRecoveryActionResult = { kind: 'not-waiting' };
+    await this.enqueueLifecycle(waiting.fingerprint, async () => {
+      const current = this.ledger.find(waiting.fingerprint);
+      if (
+        !current?.usageLimit ||
+        (current.outcome !== 'armed' && current.outcome !== 'manual')
+      )
+        return;
+      const obstacle = this.dispatchObstacle(current);
+      if (obstacle) {
+        result = this.retireWaiting(current, 'canceled', obstacle)
+          ? { kind: 'retired', reason: obstacle }
+          : { kind: 'not-waiting' };
+        return;
+      }
+      if (this.credentialRecovery?.admission()) {
+        result = { kind: 'not-switched' };
+        return;
+      }
+      const source = this.findSourceEvent(current);
+      if (!this.replayableSource(source)) {
+        await this.failIntent(current);
+        result = { kind: 'failed' };
+        return;
+      }
+      const handled = await this.tryProfileRecoveryOrSchedule(
+        current,
+        source,
+        profileRef,
+      );
+      const after = this.ledger.find(current.fingerprint);
+      if (this.unretiredSessionEnds.delete(current.fingerprint)) {
+        result = { kind: 'not-waiting' };
+        return;
+      }
+      if (!handled) {
+        // Not staged: the stop is back to waiting, so its reset still counts.
+        if (after?.outcome === 'armed' && after.dueAt)
+          this.schedule(after.fingerprint, after.dueAt);
+        result = { kind: 'not-switched' };
+        return;
+      }
+      result =
+        after?.outcome === 'resumed' || after?.outcome === 'succeeded'
+          ? { kind: 'resumed' }
+          : after?.outcome === 'armed' || after?.outcome === 'manual'
+            ? { kind: 'not-switched' }
+            : after?.outcome === 'canceled' && after.outcomeReason
+              ? { kind: 'retired', reason: after.outcomeReason }
+              : { kind: 'failed' };
+    });
+    return result;
+  }
+
+  /**
+   * The opaque identity of the usage-limit stop still waiting in this
+   * Session, which "Continue on <label>" is offered for and must name back.
+   */
+  usageLimitStopId(threadId: string): string | undefined {
+    return this.waitingUsageLimitIntent(threadId)?.fingerprint;
+  }
+
   /** #3157: the user's "Cancel auto-resume": retire the waiting intent unsent. */
   async cancelUsageLimitWaiting(
     threadId: string,
@@ -755,6 +852,7 @@ export class SessionRecoveryCoordinator {
   private async tryProfileRecoveryOrSchedule(
     intent: ConnectionRecoveryIntent,
     source: ReplayableTurnStart,
+    consentedProfileRef?: string,
   ): Promise<boolean> {
     const module = this.credentialRecovery;
     if (!module) return false;
@@ -777,6 +875,7 @@ export class SessionRecoveryCoordinator {
         '',
         controller.signal,
       ),
+      ...(consentedProfileRef !== undefined ? { consentedProfileRef } : {}),
     });
     if (outcome.kind !== 'unavailable') this.admissionRetry = undefined;
     if (outcome.kind === 'unnecessary') {
@@ -793,7 +892,29 @@ export class SessionRecoveryCoordinator {
       return true;
     }
     if (outcome.kind === 'unavailable') {
+      if (consentedProfileRef !== undefined) {
+        // A person's click is not consent to an unattended admission retry;
+        // the stop keeps waiting for its own reset.
+        this.clearIntentRuntime(intent, false);
+        const waiting = this.ledger.find(intent.fingerprint);
+        if (waiting?.outcome === 'armed' && waiting.dueAt)
+          this.schedule(waiting.fingerprint, waiting.dueAt);
+        return true;
+      }
       this.deferAdmission(intent, outcome.reason);
+      return true;
+    }
+    if (outcome.kind === 'session-ended') {
+      // The session was quarantined: nothing may still resume it.
+      this.clearIntentRuntime(intent, true);
+      if (outcome.retired) {
+        this.clearTimer(intent.fingerprint);
+        this.recordIntentOutcome(intent, 'canceled');
+      } else if (consentedProfileRef !== undefined) {
+        // The reset timer stays: its pre-dispatch check finds the closed
+        // session and retires the stop then.
+        this.unretiredSessionEnds.add(intent.fingerprint);
+      }
       return true;
     }
     if (outcome.kind === 'conflicted') {
@@ -806,6 +927,13 @@ export class SessionRecoveryCoordinator {
     const current = this.ledger.find(intent.fingerprint);
     if (outcome.kind === 'indeterminate') {
       this.recordIntentOutcome(intent, 'compensation-required');
+    } else if (
+      outcome.kind === 'rolled-back' &&
+      (current?.outcome === 'failed' || current?.outcome === 'canceled')
+    ) {
+      // The module settled it itself (a definite pre-send refusal).
+      this.clearTimer(intent.fingerprint);
+      this.recordIntentOutcome(intent, current.outcome);
     } else if (current?.outcome === 'resumed') {
       const failed = this.ledger.terminal(
         intent.fingerprint,
@@ -1192,6 +1320,10 @@ export class SessionRecoveryCoordinator {
     modelOptions?: Record<string, string | number | boolean>;
     recoveryCorrelationId: string;
     signal: AbortSignal;
+    dispatchOrigin: TurnDispatchOrigin;
+    resourceAdmissionIntent?: EngineStartAdmissionIntent;
+    sourceTurnId: string;
+    sourceClientTurnId?: string;
   } {
     const dispatchable = dispatchableChatAttachments(source.attachments);
     return {
@@ -1204,6 +1336,13 @@ export class SessionRecoveryCoordinator {
       ...this.sourceModelConfiguration(source),
       recoveryCorrelationId,
       signal,
+      // Attribution and admission policy are independent server-owned facts.
+      dispatchOrigin: turnDispatchOrigin(source),
+      resourceAdmissionIntent: turnResourceAdmissionIntent(source),
+      sourceTurnId: source.turnId,
+      ...(source.clientTurnId
+        ? { sourceClientTurnId: source.clientTurnId }
+        : {}),
     };
   }
 

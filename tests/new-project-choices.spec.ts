@@ -1,0 +1,77 @@
+import { expect } from '@playwright/test';
+import { test } from './helpers/fixture-audit';
+
+test('new project icon choices and Home scope render at desktop and phone widths', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/?dock=open');
+  const showInbox = page.getByRole('button', { name: /^Show chats/ });
+  await expect(
+    showInbox.or(page.getByRole('button', { name: /^Hide chats/ })),
+  ).toBeVisible();
+  if (await showInbox.isVisible()) await showInbox.click();
+  const scope = page.getByRole('combobox', { name: 'Scope for Chats' });
+  await expect(scope).toHaveValue('current-project');
+  await scope.selectOption('all');
+  await expect(scope).toHaveValue('all');
+  for (const theme of ['dark', 'light']) {
+    for (const width of [390, 412, 1440]) {
+      await page.setViewportSize({ width, height: width === 1440 ? 900 : 915 });
+      await page.goto('/?dock=open');
+      const mobileInbox = page.getByRole('button', {
+        name: 'Chats',
+        exact: true,
+      });
+      await expect
+        .poll(
+          async () =>
+            (await scope.isVisible()) ||
+            (await showInbox.isVisible()) ||
+            (await mobileInbox.isVisible()),
+        )
+        .toBe(true);
+      if (!(await scope.isVisible())) {
+        if (await showInbox.isVisible()) await showInbox.click();
+        else await mobileInbox.click();
+      }
+      await expect(scope).toBeVisible();
+      await expect(scope).toHaveValue('all');
+      await page.evaluate(
+        (value) => document.documentElement.setAttribute('data-theme', value),
+        theme,
+      );
+      await page.screenshot({
+        path: testInfo.outputPath(`home-scope-${theme}-${width}.png`),
+        fullPage: true,
+        animations: 'disabled',
+      });
+    }
+  }
+  await page.locator('[data-new-project-trigger]').click();
+  const icon = page.getByRole('button', { name: /^Choose project icon/ });
+  await expect(icon).toHaveAccessibleName('Choose project icon NP');
+  await page
+    .getByRole('textbox', { name: 'Project name' })
+    .fill('Research Lab');
+  await expect(icon).toHaveAccessibleName('Choose project icon RL');
+  await icon.click();
+  const none = page.getByRole('button', { name: 'No icon', exact: true });
+  await expect(none).toHaveAttribute('aria-pressed', 'false');
+  await none.click();
+  await expect(none).toHaveAttribute('aria-pressed', 'true');
+  for (const theme of ['dark', 'light']) {
+    for (const width of [390, 412, 1440]) {
+      await page.setViewportSize({ width, height: width === 1440 ? 900 : 915 });
+      await page.evaluate(
+        (value) => document.documentElement.setAttribute('data-theme', value),
+        theme,
+      );
+      await expect(none).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath(`new-project-icon-${theme}-${width}.png`),
+        fullPage: true,
+        animations: 'disabled',
+      });
+    }
+  }
+});

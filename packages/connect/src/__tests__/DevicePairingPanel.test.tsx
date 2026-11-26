@@ -168,7 +168,44 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+/**
+ * A browser camera as the scanner sees it: the capture API, the device list a
+ * browser exposes before permission, and a stream whose frames never arrive
+ * (jsdom has no media pipeline), so the scanner stays on "Starting camera…".
+ */
+function installCamera({
+  videoInputs = 1,
+  getUserMedia = vi.fn(
+    async () => ({ getTracks: () => [] }) as unknown as MediaStream,
+  ),
+}: {
+  videoInputs?: number;
+  getUserMedia?: () => Promise<MediaStream>;
+} = {}) {
+  const enumerateDevices = vi.fn(async () =>
+    Array.from({ length: videoInputs }, () => ({
+      kind: 'videoinput',
+      deviceId: '',
+      groupId: '',
+      label: '',
+    })),
+  );
+  Object.defineProperty(navigator, 'mediaDevices', {
+    configurable: true,
+    value: { getUserMedia, enumerateDevices },
+  });
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+  vi.stubGlobal(
+    'requestAnimationFrame',
+    vi.fn(() => 1),
+  );
+  vi.stubGlobal('cancelAnimationFrame', vi.fn());
+  return { getUserMedia, enumerateDevices };
+}
+
 afterEach(() => {
+  Reflect.deleteProperty(navigator, 'mediaDevices');
+  vi.unstubAllGlobals();
   setNativePairingExchangeTransport();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -333,6 +370,7 @@ describe('device pairing panels', () => {
       expiresAt: Date.now() + 60_000,
     });
     const onReviewDismissed = vi.fn();
+    installCamera();
     render(
       <JoinDevicePairingPanel
         initialPairingPayload={payload}
@@ -425,6 +463,7 @@ describe('device pairing panels', () => {
   });
 
   test('exposes the selected pairing method to assistive technology', () => {
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
 
     const scan = screen.getByRole('button', { name: 'Scan code' });
@@ -1211,9 +1250,7 @@ describe('device pairing panels', () => {
         'Too many access requests',
       );
       expect(
-        screen
-          .getByRole('button', { name: 'Try again' })
-          .hasAttribute('disabled'),
+        screen.getByRole('button', { name: 'Retry' }).hasAttribute('disabled'),
       ).toBe(false);
       localStorage.removeItem(
         'station-http-development:http://100.64.0.21:3492',
@@ -1284,7 +1321,7 @@ describe('device pairing panels', () => {
     ).toBeTruthy();
     expect(document.body.textContent).not.toContain('network unavailable');
     expect(screen.getAllByRole('alert')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test('defaults the device name from userAgentData high-entropy values while staying editable', async () => {
@@ -2577,6 +2614,7 @@ describe('device pairing panels', () => {
         }),
       );
     const onPaired = vi.fn();
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={onPaired} onCancel={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
@@ -2633,6 +2671,7 @@ describe('device pairing panels', () => {
         }),
       );
     const onPaired = vi.fn();
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={onPaired} onCancel={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
@@ -2703,6 +2742,7 @@ describe('device pairing panels', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       response({ error: 'offer_expired' }, 410),
     );
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
@@ -2727,6 +2767,7 @@ describe('device pairing panels', () => {
     // request" — a false statement about a Station that was never contacted
     // (station#3158 review).
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
@@ -2746,6 +2787,7 @@ describe('device pairing panels', () => {
   });
 
   test('manual HTTP entry requires an explicit exception for the exact origin', async () => {
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
     const address = screen.getByLabelText('Station server address');
@@ -2808,6 +2850,7 @@ describe('device pairing panels', () => {
         }),
       );
     const onPaired = vi.fn();
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={onPaired} onCancel={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
@@ -2907,7 +2950,7 @@ describe('device pairing panels', () => {
         .value,
     ).toBe('stable');
     fireEvent.change(screen.getByLabelText('Pairing client channel'), {
-      target: { value: 'beta' },
+      target: { value: 'nightly' },
     });
     expect(
       (screen.getByLabelText('Pairing QR destination') as HTMLSelectElement)
@@ -2916,14 +2959,14 @@ describe('device pairing panels', () => {
     expect(
       (screen.getByLabelText('Pairing client channel') as HTMLSelectElement)
         .value,
-    ).toBe('beta');
+    ).toBe('nightly');
     await waitFor(() =>
       expect(
         screen.getByTestId('pairing-qr').getAttribute('data-payload'),
-      ).toMatch(/^station-beta:\/\/pair\?/),
+      ).toMatch(/^station-nightly:\/\/pair\?/),
     );
     expect(
-      screen.queryByRole('link', { name: /App Store|Google Play|beta/ }),
+      screen.queryByRole('link', { name: /App Store|Google Play|nightly/ }),
     ).toBeNull();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
@@ -2931,7 +2974,7 @@ describe('device pairing panels', () => {
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
         expect.stringMatching(
-          /^station-beta:\/\/pair\?linkVersion=1&clientChannel=beta&payload=/,
+          /^station-nightly:\/\/pair\?linkVersion=1&clientChannel=nightly&payload=/,
         ),
       ),
     );
@@ -4104,4 +4147,198 @@ test('a pairing code needs both fields, submits on Return, and names a bad addre
   } finally {
     fetchSpy.mockRestore();
   }
+});
+
+describe('pairing by code without a camera', () => {
+  const secureContext = Object.getOwnPropertyDescriptor(
+    window,
+    'isSecureContext',
+  );
+  function setSecureContext(value: boolean) {
+    Object.defineProperty(window, 'isSecureContext', {
+      configurable: true,
+      value,
+    });
+  }
+  afterEach(() => {
+    if (secureContext)
+      Object.defineProperty(window, 'isSecureContext', secureContext);
+    else Reflect.deleteProperty(window, 'isSecureContext');
+  });
+
+  test('opens on code entry with no camera API on an insecure page, focus in the first empty field (the address), never mounting the scanner', () => {
+    expect(navigator.mediaDevices).toBeUndefined();
+    setSecureContext(false);
+    // A scanner that mounts for one commit and is then replaced (a visible
+    // "Starting camera…" frame) leaves its detached subtree in the removed
+    // nodes, so record those as well as the nodes still mounted.
+    const removed: Node[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) removed.push(...record.removedNodes);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+    for (const record of observer.takeRecords())
+      removed.push(...record.removedNodes);
+    observer.disconnect();
+    expect(
+      [document.body, ...removed].some(
+        (node) =>
+          node instanceof Element &&
+          (node.matches('video') ||
+            node.querySelector('video') !== null ||
+            /Starting camera/.test(node.textContent ?? '')),
+      ),
+    ).toBe(false);
+
+    const address = screen.getByLabelText('Station server address');
+    expect(document.activeElement).toBe(address);
+    expect(screen.getByLabelText('Pairing code')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
+    expect(screen.queryByText(/Camera error/)).toBeNull();
+    // Say why scanning is missing, as a note rather than an error.
+    const reason = screen.getByText(
+      'Camera scanning requires HTTPS or localhost.',
+    );
+    expect(reason.closest('[role="alert"]')).toBeNull();
+    expect(reason.className).not.toContain('pairing-error');
+    expect(document.querySelector('video')).toBeNull();
+  });
+
+  test('a secure page without a camera API gets no secure-connection reason', () => {
+    expect(navigator.mediaDevices).toBeUndefined();
+    setSecureContext(true);
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    expect(screen.getByLabelText('Pairing code')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
+    expect(screen.queryByText(/Camera scanning requires/)).toBeNull();
+  });
+
+  test('focuses the first empty field: the code, when the address is already known', () => {
+    render(
+      <JoinDevicePairingPanel
+        initialManualEndpoint="https://station.example.ts.net"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    expect(document.activeElement).toBe(screen.getByLabelText('Pairing code'));
+    expect(screen.queryByText(/Camera error/)).toBeNull();
+  });
+
+  test('an empty device list alone does not hide the scanner: capture is still attempted', async () => {
+    // Before a grant some engines list no camera even when one exists.
+    const { getUserMedia } = installCamera({ videoInputs: 0 });
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+    expect(
+      screen
+        .getByRole('button', { name: 'Scan code' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(document.querySelector('video')).toBeTruthy();
+  });
+
+  test('falls back to code entry, silently, when capture finds no camera (NotFoundError, as Chrome and Firefox report it)', async () => {
+    installCamera({
+      getUserMedia: vi.fn(async () => {
+        throw Object.assign(new Error('Requested device not found'), {
+          name: 'NotFoundError',
+        });
+      }),
+    });
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    const address = await screen.findByLabelText('Station server address');
+    // The field renders one commit before the effect that focuses it.
+    await waitFor(() => expect(document.activeElement).toBe(address));
+    expect(screen.queryByText(/not found|Camera error/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
+    // The camera API exists, so no secure-connection reason is given.
+    expect(screen.queryByText(/Camera scanning requires/)).toBeNull();
+  });
+
+  // Headless Chromium reports a missing camera as NotSupportedError.
+  test('falls back to code entry when capture is unsupported (NotSupportedError, as headless Chromium reports it)', async () => {
+    installCamera({
+      getUserMedia: vi.fn(async () => {
+        throw Object.assign(new Error('Not supported'), {
+          name: 'NotSupportedError',
+        });
+      }),
+    });
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    const address = await screen.findByLabelText('Station server address');
+    // The field renders one commit before the effect that focuses it.
+    await waitFor(() => expect(document.activeElement).toBe(address));
+    expect(screen.queryByText(/Not supported/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
+  });
+
+  test('a code-entry panel keeps offering the scanner when the device list is empty', async () => {
+    const { enumerateDevices } = installCamera({ videoInputs: 0 });
+    render(
+      <JoinDevicePairingPanel
+        initialMode="manual"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    // Let any device-list lookup settle before asserting nothing changed.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(enumerateDevices).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Scan code' })).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByLabelText('Station server address'),
+      ),
+    );
+  });
+
+  test('mounts the scanner when the browser has a camera', async () => {
+    const { getUserMedia } = installCamera();
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Scan code' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+    expect(document.querySelector('video')).toBeTruthy();
+    expect(screen.getByText('Starting camera…')).toBeTruthy();
+    expect(screen.queryByLabelText('Pairing code')).toBeNull();
+  });
+
+  test('a camera that exists but is refused still says so; typing the code instead focuses the first empty field', async () => {
+    installCamera({
+      getUserMedia: vi.fn(async () => {
+        throw Object.assign(new Error('denied'), { name: 'NotAllowedError' });
+      }),
+    });
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    await screen.findByText(
+      'Camera permission denied. Please allow camera access.',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Enter the pairing code manually' }),
+    );
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByLabelText('Station server address'),
+      ),
+    );
+    // The camera exists, so scanning stays on offer and needs no reason.
+    expect(screen.getByRole('button', { name: 'Scan code' })).toBeTruthy();
+    expect(
+      screen.queryByText(/Camera scanning requires HTTPS or localhost\.$/),
+    ).toBeNull();
+  });
 });

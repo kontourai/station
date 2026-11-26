@@ -1,108 +1,354 @@
+/* The Project Tasks board (derived Task lanes). One continuous grid of five
+   lanes under shared dividers, not five rounded panels; a card is the only
+   bordered surface. Tones follow the inbox's four colour meanings: act-now
+   is the action colour, a look-worthy state is caution, in motion is
+   positive, broken is negative; everything else is neutral. */
 .project-task-board {
+  container-type: inline-size;
   display: grid;
-  grid-template-columns: repeat(
-      auto-fit,
-      minmax(min(100%, calc(var(--k-space-6) * 5 + var(--k-space-4))), 1fr)
-    );
-  gap: var(--k-space-3);
+  gap: var(--k-space-4);
   min-width: 0;
 }
 
-.project-task-board__column {
-  min-width: 0;
-  padding: var(--k-space-3);
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-md);
-  background: var(--k-panel);
+.project-task-board__checking .skeleton {
+  height: 4px;
 }
 
-.project-task-board__column h3 {
-  display: flex;
-  justify-content: space-between;
+.project-task-board__lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--k-space-5) var(--k-space-4);
+  min-width: 0;
+}
+
+/* Five across once the board itself is wide enough for a two-line title in
+   each lane. It is a container query, not a viewport one: on a desktop the
+   Project page's own navigation takes a column, and the board's width is
+   what decides. */
+@container (min-width: 880px) {
+  .project-task-board__lanes {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .project-task-board__nothing {
+    display: block;
+  }
+
+  .project-task-board__lane[data-empty="true"]
+    .project-task-board__lane-header {
+    color: var(--k-text);
+    font-weight: 600;
+  }
+}
+
+.project-task-board__lane {
+  display: grid;
+  align-content: start;
   gap: var(--k-space-2);
-  margin: 0 0 var(--k-space-3);
+  min-width: 0;
+}
+
+.project-task-board__lane-header {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding-block: var(--k-space-2);
+  border-bottom: 1px solid var(--k-line-strong);
   color: var(--k-text);
+  font: 600 var(--k-text-sm) / var(--k-leading-normal) var(--k-font-ui);
+}
+
+.project-task-board__lane-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  /* The lane's tone, from the one tone map (taskStatusPresentation.ts). */
+  background: var(--task-tone, var(--k-neutral));
+}
+
+.project-task-board__count {
+  color: var(--k-text-muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+/* An empty lane: on a narrow board just its header row ("Ready to merge
+   0"); five across, a quiet note under the header. */
+.project-task-board__nothing {
+  display: none;
+  color: var(--k-text-faint);
   font-size: var(--k-text-sm);
 }
 
-.project-task-board__column ul {
-  display: grid;
-  gap: var(--k-space-2);
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.project-task-board__lane[data-empty="true"] .project-task-board__lane-header {
+  color: var(--k-text-muted);
+  font-weight: 400;
 }
 
-.project-task-board__card {
-  display: flex;
-  flex-direction: column;
+.project-task-board__cards {
+  display: grid;
   gap: var(--k-space-2);
-  width: 100%;
-  min-height: calc(var(--k-space-6) + var(--k-space-3));
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Card ------------------------------------------------------------------ */
+
+.task-card {
+  position: relative;
+  display: grid;
+  gap: var(--k-space-1);
+  min-width: 0;
   padding: var(--k-space-3);
   border: 1px solid var(--k-line);
   border-radius: var(--k-radius-sm);
   background: var(--k-panel-raised);
   color: var(--k-text);
-  text-align: left;
   overflow-wrap: anywhere;
-  cursor: pointer;
+  transition: border-color var(--k-dur) var(--k-ease);
 }
 
-.project-task-board__card[aria-pressed="true"],
-.project-task-board__card:hover {
-  border-color: var(--k-action);
+.task-card:hover,
+.task-card:focus-within {
+  border-color: var(--k-line-strong);
 }
 
-.project-task-board__card:focus-visible {
-  outline: 2px solid var(--k-focus);
-  outline-offset: 2px;
+.task-card__header {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--k-space-2);
 }
 
-.project-task-board__card span {
+.task-card__status {
+  display: inline-grid;
+  width: 16px;
+  height: calc(var(--k-text-sm) * var(--k-leading-normal));
+  place-items: center;
+  color: var(--k-text-muted);
+}
+
+.task-card__status svg {
+  width: 14px;
+  height: 14px;
+}
+
+.task-card__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Colour comes from the one tone map as --task-tone: the glyph always
+   wears it; the word only where the map says so (needs-you keeps its word
+   in the text colour, as an inbox row does). */
+.task-card__status {
+  color: var(--task-tone, var(--k-text-muted));
+}
+
+.task-card[data-colors-word="true"] .task-card__word {
+  color: var(--task-tone);
+}
+
+/* The title is the card's one link; its box stretches over the whole card
+   so the card opens the Task, while the action and evidence sit above it. */
+.task-card__title {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--k-text);
+  font: 600 var(--k-text-sm) / var(--k-leading-normal) var(--k-font-ui);
+  text-decoration: none;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.task-card__title::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+/* The footer carries the meta line and the one action. The action always
+   takes its space, so nothing reflows when it appears; a fine pointer
+   reveals it on hover or focus. */
+.task-card__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+
+/* The meta line takes the room it needs on one line; when that and the
+   action do not fit side by side, the action moves below it (right
+   aligned) rather than sitting over it. */
+.task-card__footer .task-card__meta {
+  flex: 1 1 auto;
+}
+
+.task-card__footer .task-card__action {
+  margin-inline-start: auto;
+}
+
+.task-card__action {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+/* The shared touch floor: 44px wherever the shell sets it, no query here. */
+.task-card__action .button {
+  min-height: var(--touch-target-min, auto);
+}
+
+/* A fine pointer on a wide board: the action takes no layout space at all
+   (so neither the title nor the meta line ever reflows) and appears over
+   the footer's end on hover or focus, on the card's own surface. */
+/* A fine pointer on a wide board: the action keeps its place in the
+   footer (the meta line wraps beside it, so nothing ever covers a fact or
+   reflows) and only becomes visible on hover or focus. */
+@media (hover: hover) and (pointer: fine) and (min-width: 721px) {
+  .task-card__action {
+    visibility: hidden;
+  }
+
+  .task-card:hover .task-card__action,
+  .task-card:focus-within .task-card__action {
+    visibility: visible;
+  }
+}
+
+.task-card__status-line,
+.task-card__meta {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+}
+
+.task-card__word {
+  color: var(--k-text);
+  font-weight: 500;
+}
+
+.task-card__detail {
+  color: var(--k-text-muted);
+}
+
+/* One muted line of why, above the stretched link so it can be hovered. */
+.task-card__reason {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-card__meta > * {
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.task-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-3);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
 
-.project-task-board__brief {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.task-card__evidence,
+.task-card__chip {
+  position: relative;
+  z-index: 1;
+}
+
+.task-card__evidence {
+  font-family: var(--k-font-mono);
+}
+
+.task-card__chip {
+  /* A branch name can outrun a lane; it wraps, the page never scrolls. */
+  white-space: normal;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-1);
+  font-family: var(--k-font-mono);
+}
+
+.task-card__chip svg {
+  flex-shrink: 0;
+}
+
+.task-card__priority {
+  text-transform: capitalize;
+}
+
+.task-card__priority[data-priority="urgent"],
+.task-card__priority[data-priority="high"] {
+  color: var(--k-caution);
+}
+
+/* Shelves ---------------------------------------------------------------- */
+
+.project-task-board__shelves {
+  display: grid;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+
+.project-task-board__shelf {
+  display: grid;
+  gap: var(--k-space-2);
+  min-width: 0;
+  border-top: 1px solid var(--k-line);
+}
+
+.project-task-board__shelf .disclosure-toggle {
+  min-height: 44px;
+  font: 600 var(--k-text-sm) / var(--k-leading-normal) var(--k-font-ui);
+}
+
+.project-task-board__shelf > .project-task-board__cards {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  padding-bottom: var(--k-space-3);
+}
+
+/* Board presentation in the Project page grid: the board takes the row and
+   draws no frame of its own around the lanes. */
+.project-page__task-list.project-page__task-list--board {
+  min-height: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
 }
 
 .project-page__task-grid.project-page__task-grid--board {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.project-task-board__card strong {
-  display: -webkit-box;
-  font: 600 var(--k-text-sm) / var(--k-leading-normal) var(--k-font-ui);
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.project-page__task-detail a {
-  color: var(--k-action);
-}
 .project-page__task-grid--board {
   margin-top: var(--k-space-3);
 }
 
-.project-task-board__canceled-disclosure {
-  grid-column: 1 / -1;
-  color: var(--k-text-muted);
-  font-size: var(--k-text-sm);
-}
-.project-task-board__canceled-disclosure summary {
-  display: flex;
-  align-items: center;
-  min-height: calc(var(--k-space-6) + var(--k-space-3));
-  width: fit-content;
-  cursor: pointer;
+.project-page__task-detail a {
   color: var(--k-action);
 }
-.project-task-board__canceled-disclosure summary:focus-visible {
-  outline: var(--k-focus-ring-width) solid var(--k-focus);
-  outline-offset: var(--k-focus-ring-offset);
+
+/* `hidden` must win over the list's own display. */
+.project-task-board__cards[hidden] {
+  display: none;
 }

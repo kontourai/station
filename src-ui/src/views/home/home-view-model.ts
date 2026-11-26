@@ -44,10 +44,14 @@ import {
   sessionTitle,
 } from '../../utils/sessionDisplay';
 import { chatWaitsOnUser } from '../../utils/waiting-approvals';
-import { isPeerDelegationRecord } from './work-item-open-policy';
+import {
+  isPeerDelegationRecord,
+  remoteWorkItemId,
+} from './work-item-open-policy';
 
 export interface HomeWorkItem {
   receivedAgentMessage?: true;
+  nextWakeUpAt?: string;
   id: string;
   /** Durable conversation identity when this row represents one. */
   conversationId?: string;
@@ -70,6 +74,19 @@ export interface HomeWorkItem {
   conversationUpdatedAt?: string;
   /** Epoch ms of the inventory version the current user last viewed. */
   acknowledgedAt?: number;
+  /**
+   * #3075: the server's answer to "has this conversation changed since you
+   * last read it?", from the inventory's `readState`. Absent when the server
+   * reports no read state; never derived on the client.
+   */
+  unread?: boolean;
+  /** The inventory version `unread` was computed for (epoch ms). */
+  readVersion?: number;
+  /**
+   * #3075 review: the server keeps read state for this person but could not
+   * read it. Unknown: neither `unread` nor read.
+   */
+  readStateUnavailable?: true;
   /**
    * Epoch ms the work entered its current terminal state, from the server's
    * `lifecycleChangedAt` (#4266). Absent for live work and for hosts that do
@@ -467,6 +484,7 @@ function buildSessionWorkItem(
     model: session.reportedModel ?? session.effectiveModel ?? session.model,
     ...(cwdLabel ? { cwdLabel } : {}),
     turnProgress: activeTurnProgress(session),
+    nextWakeUpAt: session.nextWakeUpAt,
     // #2312 review: a Draft's own clocks move without anyone touching it — a
     // stop (idle reaper, shutdown) rewrites `updatedAt`, engine housekeeping
     // bumps `lastEventAt` — and would keep an abandoned Draft out of the
@@ -542,20 +560,6 @@ export function buildOrchestrationItems(
   return sessions.map((session) =>
     buildSessionWorkItem(session, agents, session.threadId, resolveModelLabel),
   );
-}
-
-/**
- * archive#1097: every remote item's `id` is namespaced
- * (`remote:<environmentId>:<threadId>`) — distinct from every local id
- * shape (`task:*` durable Tasks aside, a local chat/session id is a bare
- * conversationId/threadId, never `remote:`-prefixed) — so a remote item can
- * never alias a local item's stable identity in
- * `home-lane-model.ts`'s `withStableIds`, and therefore can never inherit
- * or disturb a local row's position in the active lane ( ordering
- * invariant, extended to this new source).
- */
-function remoteWorkItemId(environmentId: string, threadId: string): string {
-  return `remote:${environmentId}:${threadId}`;
 }
 
 function buildRemoteSessionItems(
@@ -719,6 +723,7 @@ function mergeHomeWorkItems(
       ...(chat ? { chatSessionId: chat.chatSessionId } : {}),
       updatedAt: Math.max(existing.updatedAt, item.updatedAt),
       lifecycleLabel: mergedLifecycleLabel,
+      nextWakeUpAt: orchestration?.nextWakeUpAt,
       activeReason:
         mergedLifecycleLabel === 'Running'
           ? (orchestration?.activeReason ?? chat?.activeReason)
@@ -1022,12 +1027,93 @@ interface ChatSessionCorrelation {
   updatedAt: string;
 }
 
+/** The server's conversation record for this chat, read as work liveness. */
+function chatServerWorkLive(
+  chat: ChatUIState,
+  sessionId: string,
+): boolean | undefined {
+  const activity = chat.conversationActivity;
+  const childWorkOnOtherExecution =
+    activity?.runningChildWork !== undefined &&
+    chat.conversationId !== activity.conversationId &&
+    activity.currentThreadId !== sessionId &&
+    activity.openTurn === undefined;
+  return childWorkOnOtherExecution ? false : serverWorkLive(chat);
+}
+
+/**
+ * Whether the server reports this conversation's current execution as doing
+ * work: the chat's own copy of the conversation record, or the correlated
+ * session summary (keyed to the conversation's newest execution). A
+ * correlated failure is the server saying the current execution failed, so it
+ * never counts as live here.
+ */
+function serverReportsLiveWork(
+  chat: ChatUIState,
+  sessionId: string,
+  correlated: ChatSessionCorrelation | undefined,
+): boolean {
+  if (correlated?.failed) return false;
+  return (
+    chatServerWorkLive(chat, sessionId) === true ||
+    correlated?.hasActiveTurn === true ||
+    correlated?.hasActiveWork === true
+  );
+}
+
+/**
+ * This chat's outbox messages whose delivery nothing can confirm yet:
+ * Station may have started them (`may-have-started`, never sent again on its
+ * own), or a send got no answer and waits for Station's delivery lookup
+ * (`invoking` with `awaitingLookup`; the lookup sends it once more, with the
+ * same key, only if Station answers that it never received it). Neither
+ * waits on the person, and neither is a send waiting on the connection
+ * (#5398).
+ */
+export function unconfirmedOutboundTurns(
+  chat: ChatUIState,
+): { clientTurnId: string; createdAt: number }[] {
+  return (chat.outboundQueuedTurns ?? [])
+    .filter(
+      (turn) =>
+        turn.status === 'may-have-started' ||
+        (turn.status === 'invoking' && turn.awaitingLookup),
+    )
+    .map(({ clientTurnId, createdAt }) => ({ clientTurnId, createdAt }));
+}
+
+/**
+ * Whether a chat's `queued` status is a send that waits on the connection.
+ * The outbox projection also marks a chat queued while it lists only
+ * unconfirmed or accepted messages; those wait on nothing here, so the
+ * conversation keeps its own status and the row carries the unconfirmed
+ * delivery as a flag (`WorkFacts.unconfirmedDelivery`) instead (#5398).
+ */
+export function chatQueuedToSend(chat: ChatUIState): boolean {
+  if (chat.status !== 'queued') return false;
+  const turns = chat.outboundQueuedTurns ?? [];
+  if (turns.length === 0) return true;
+  const unconfirmed = new Set(
+    unconfirmedOutboundTurns(chat).map((turn) => turn.clientTurnId),
+  );
+  return turns.some(
+    (turn) => turn.status !== 'accepted' && !unconfirmed.has(turn.clientTurnId),
+  );
+}
+
 function chatLifecycleLabel(
   chat: ChatUIState,
   sessionId: string,
   correlated: ChatSessionCorrelation | undefined,
 ): HomeWorkItem['lifecycleLabel'] {
   if (chat.status === 'error' || chat.orchestrationStatus === 'failed') {
+    // An earlier local failure (a send that failed while the server was
+    // restarting, an errored turn on a session a drain replaced) must not
+    // outlive the conversation's current execution. When the server's record
+    // of that execution says work is live (an open turn, or background work
+    // still running) and does not itself say failed, the conversation is
+    // Running — the same answer the server's own label gives.
+    if (serverReportsLiveWork(chat, sessionId, correlated)) return 'Running';
     return 'Failed';
   }
   if (
@@ -1036,20 +1122,14 @@ function chatLifecycleLabel(
     chatWaitsOnUser(chat) ||
     // archive#1224 (offline): a queued (offline) turn needs an
     // actionable label — it won't resolve on its own without the connection
-    // coming back.
-    chat.status === 'queued'
+    // coming back. An unconfirmed delivery is not one (#5398).
+    chatQueuedToSend(chat)
   )
     return 'Needs attention';
   // #2309: the conversation's server record, when there is one, is THE
   // running answer — the same record every device reads. A local `status:
   // 'sending'` counts only inside this composer's unacknowledged send.
-  const activity = chat.conversationActivity;
-  const childWorkOnOtherExecution =
-    activity?.runningChildWork !== undefined &&
-    chat.conversationId !== activity.conversationId &&
-    activity.currentThreadId !== sessionId &&
-    activity.openTurn === undefined;
-  const serverLive = childWorkOnOtherExecution ? false : serverWorkLive(chat);
+  const serverLive = chatServerWorkLive(chat, sessionId);
   if (serverLive === true) return 'Running';
   if (serverLive === undefined && chat.status === 'sending') return 'Running';
   // #765 A2: the server recorded this conversation's current session as
@@ -1164,18 +1244,20 @@ export function buildActiveChatTaskItems({
   const items = Object.entries(chats)
     .filter(([, chat]) => !onlyWork || activeChatHasWork(chat))
     .map<MergeItem>(([id, chat]) => {
-      const agentLabel = safeAgentLabel({
-        slug: chat.agentSlug,
-        name:
-          chat.agentName ||
-          agents.find((agent) => agent.slug === chat.agentSlug)?.name,
-      });
       const host = chatBelongsToStation(chat);
       const currentExecution = host
         ? sessionByThread.get(
             chat.currentSessionId ?? chat.conversationId ?? id,
           )
         : undefined;
+      const agentLabel = safeAgentLabel({
+        slug: chat.agentSlug,
+        name:
+          chat.agentName ||
+          (host
+            ? agents.find((agent) => agent.slug === chat.agentSlug)?.name
+            : undefined),
+      });
       const observedModel =
         currentExecution?.reportedModel ??
         currentExecution?.model ??
@@ -1210,11 +1292,11 @@ export function buildActiveChatTaskItems({
         // `sessionTitle`'s own fallbacks ("Station session") say less than
         // "<Agent> Chat".
         title:
-          chat.title?.trim() ||
+          (chat.title !== 'New chat' ? chat.title?.trim() : undefined) ||
           (currentExecution?.displayTitle?.trim()
             ? sessionTitle(currentExecution)
             : undefined) ||
-          (agentLabel ? `${agentLabel} Chat` : 'Task'),
+          (chat.title === 'New chat' ? 'New chat' : `${agentLabel} Chat`),
         projectLabel: chat.projectName || chat.projectSlug || 'No project',
         agentLabel,
         modelLabel: resolveModelLabel(model),
@@ -1257,6 +1339,38 @@ export function buildActiveChatTaskItems({
         ...(chat.projectSlug ? { projectSlug: chat.projectSlug } : {}),
       };
     });
+  // #5398: two chats can hold one conversation (a reopen mints a new chat
+  // key), and the fold below keeps only one of them. A message waiting to be
+  // sent, or not sent, in ANY of them is owed to the person, so the kept row
+  // reads Needs attention even when the newer chat holds nothing.
+  const queuedToSend = new Set(
+    Object.entries(chats)
+      .filter(([, chat]) => chatQueuedToSend(chat))
+      .map(([id]) => id),
+  );
+  const conversationsQueued = new Set(
+    items
+      .filter(
+        (item) => item.chatSessionId && queuedToSend.has(item.chatSessionId),
+      )
+      .map((item) => item.id),
+  );
+  // The row must open the chat that holds what it is about: of the chats
+  // with a message owed (waiting, not sent, held) or unconfirmed, the newest.
+  // Every reader of the row's chat (open, current, close, read state) takes
+  // `chatSessionId`, so pointing it there is the one place to decide it.
+  const holderByConversation = new Map<string, MergeItem>();
+  for (const item of items) {
+    const chat = item.chatSessionId ? chats[item.chatSessionId] : undefined;
+    if (
+      !chat ||
+      (!chatQueuedToSend(chat) && unconfirmedOutboundTurns(chat).length === 0)
+    )
+      continue;
+    const holder = holderByConversation.get(item.id);
+    if (!holder || item.updatedAt > holder.updatedAt)
+      holderByConversation.set(item.id, item);
+  }
   // A handoff replaces the execution Session while retaining one durable
   // Conversation. Every consumer of this adapter must therefore see the
   // newest child identity, never an arbitrary predecessor map entry.
@@ -1287,6 +1401,24 @@ export function buildActiveChatTaskItems({
       }, new Map<string, MergeItem>())
       .values(),
   ]
-    .map(({ currentSessionId: _currentSessionId, ...item }) => item)
+    .map(({ currentSessionId: _currentSessionId, ...kept }) => {
+      const holder = holderByConversation.get(kept.id)?.chatSessionId;
+      const item =
+        holder && holder !== kept.chatSessionId
+          ? { ...kept, chatSessionId: holder }
+          : kept;
+      if (
+        !conversationsQueued.has(item.id) ||
+        item.lifecycleLabel === 'Needs attention'
+      )
+        return item;
+      // Both are bound to the label they came with (Running, Failed).
+      const {
+        activeReason: _activeReason,
+        failureNotice: _failureNotice,
+        ...rest
+      } = item;
+      return { ...rest, lifecycleLabel: 'Needs attention' as const };
+    })
     .sort(compareTaskRecency);
 }

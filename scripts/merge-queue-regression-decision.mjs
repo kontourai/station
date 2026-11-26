@@ -60,6 +60,10 @@ function decideMergeQueueRegression(planText, { head, base }) {
     return invalid(
       'fast-checks plan does not record mergeQueueRegressionPaths: fail closed',
     );
+  if (plan.relatedDiscovery?.timedOut === true)
+    return invalid(
+      'related discovery timed out: retained suites are diagnostic',
+    );
   const covered = plan.deferredLanes.filter((lane) =>
     FULL_REGRESSION_LANES.includes(lane.id),
   );

@@ -27,6 +27,7 @@ const pendingSchema = z
         name: z.string().min(1),
         slug: z.string().min(1),
         icon: z.string().optional(),
+        iconDisabled: z.boolean().optional(),
         description: z.string().optional(),
         workingDirectory: z.string().optional(),
         repositoryAcquisitionId: z.string().uuid().optional(),
@@ -42,6 +43,7 @@ const pendingSchema = z
       })
       .strict(),
     starterLayoutId: z.string().nullable(),
+    continuationId: z.string().uuid().optional(),
     startIntent: z
       .enum(['workspace', 'knowledge', 'connections', 'blank'])
       .optional(),
@@ -177,6 +179,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
       draft: ProjectCreationDraft,
       starterLayoutId: string | null,
       startIntent: ProjectStartIntent = 'workspace',
+      continuationId?: string,
     ): Promise<PendingCreation | null> {
       if (current.corrupt)
         throw new StationUiError(
@@ -201,6 +204,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
         draft,
         starterLayoutId,
         startIntent,
+        continuationId,
       });
       if (
         new TextEncoder().encode(
@@ -225,6 +229,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
           JSON.stringify(existing.pending.draft) !==
             JSON.stringify(pending.draft) ||
           existing.pending.starterLayoutId !== starterLayoutId ||
+          existing.pending.continuationId !== continuationId ||
           (existing.pending.startIntent ?? 'workspace') !== startIntent
         )
           throw new StationUiError(

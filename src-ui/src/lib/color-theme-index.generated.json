@@ -1,7 +1,7 @@
 {
   "families": {
     "catppuccin": {
-      "stylesheet": "/color-themes/catppuccin.css?v=e4a47673",
+      "stylesheet": "/color-themes/catppuccin.css?v=54f0e774",
       "light": {
         "id": "latte",
         "background": "#e6e9ef",
@@ -10,7 +10,6 @@
         "accentContrast": "#eff1f5",
         "channelContrast": {
           "dev": "#ffffff",
-          "beta": "#ffffff",
           "nightly": "#ffffff"
         }
       },
@@ -23,7 +22,6 @@
           "accentContrast": "#232634",
           "channelContrast": {
             "dev": "#1b1205",
-            "beta": "#06080b",
             "nightly": "#06080b"
           }
         },
@@ -35,7 +33,6 @@
           "accentContrast": "#181926",
           "channelContrast": {
             "dev": "#1b1205",
-            "beta": "#06080b",
             "nightly": "#06080b"
           }
         },
@@ -47,7 +44,6 @@
           "accentContrast": "#11111b",
           "channelContrast": {
             "dev": "#1b1205",
-            "beta": "#06080b",
             "nightly": "#06080b"
           }
         }
@@ -72,7 +68,7 @@
       "defaultAccent": "mauve"
     },
     "rose-pine": {
-      "stylesheet": "/color-themes/rose-pine.css?v=14c139cf",
+      "stylesheet": "/color-themes/rose-pine.css?v=9ddb0a07",
       "light": {
         "id": "dawn",
         "background": "#faf4ed",
@@ -81,7 +77,6 @@
         "accentContrast": "#fffaf3",
         "channelContrast": {
           "dev": "#ffffff",
-          "beta": "#ffffff",
           "nightly": "#ffffff"
         }
       },
@@ -94,7 +89,6 @@
           "accentContrast": "#191724",
           "channelContrast": {
             "dev": "#1b1205",
-            "beta": "#06080b",
             "nightly": "#06080b"
           }
         },
@@ -106,7 +100,6 @@
           "accentContrast": "#232136",
           "channelContrast": {
             "dev": "#1b1205",
-            "beta": "#06080b",
             "nightly": "#06080b"
           }
         }
@@ -123,7 +116,7 @@
       "defaultAccent": "iris"
     },
     "gruvbox": {
-      "stylesheet": "/color-themes/gruvbox.css?v=c5736a71",
+      "stylesheet": "/color-themes/gruvbox.css?v=ac25797c",
       "light": {
         "id": "light",
         "background": "#f2e5bc",
@@ -132,7 +125,6 @@
         "accentContrast": "#fbf1c7",
         "channelContrast": {
           "dev": "#ffffff",
-          "beta": "#ffffff",
           "nightly": "#ffffff"
         }
       },
@@ -145,7 +137,6 @@
           "accentContrast": "#1d2021",
           "channelContrast": {
             "dev": "#1b1205",
-            "beta": "#06080b",
             "nightly": "#06080b"
           }
         }
@@ -163,7 +154,7 @@
       "defaultAccent": "orange"
     },
     "nord": {
-      "stylesheet": "/color-themes/nord.css?v=af91296a",
+      "stylesheet": "/color-themes/nord.css?v=d7d3a840",
       "light": {
         "id": "snow-storm",
         "background": "#e5e9f0",
@@ -172,7 +163,6 @@
         "accentContrast": "#eceff4",
         "channelContrast": {
           "dev": "#ffffff",
-          "beta": "#ffffff",
           "nightly": "#ffffff"
         }
       },
@@ -185,7 +175,6 @@
           "accentContrast": "#2e3440",
           "channelContrast": {
             "dev": "#1b1205",
-            "beta": "#06080b",
             "nightly": "#06080b"
           }
         }
@@ -205,7 +194,7 @@
       "defaultAccent": "frost"
     },
     "tokyo-night": {
-      "stylesheet": "/color-themes/tokyo-night.css?v=cceca5b5",
+      "stylesheet": "/color-themes/tokyo-night.css?v=bd16964b",
       "light": {
         "id": "day",
         "background": "#d0d5e3",
@@ -214,7 +203,6 @@
         "accentContrast": "#e1e2e7",
         "channelContrast": {
           "dev": "#ffffff",
-          "beta": "#ffffff",
           "nightly": "#ffffff"
         }
       },
@@ -227,7 +215,6 @@
           "accentContrast": "#16161e",
           "channelContrast": {
             "dev": "#1b1205",
-            "beta": "#06080b",
             "nightly": "#06080b"
           }
         },
@@ -239,7 +226,6 @@
           "accentContrast": "#1f2335",
           "channelContrast": {
             "dev": "#1b1205",
-            "beta": "#06080b",
             "nightly": "#06080b"
           }
         }

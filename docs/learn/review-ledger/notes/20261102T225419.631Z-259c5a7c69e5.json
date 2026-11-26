@@ -1,7 +1,0 @@
-{
-  "revision": "c10d16480851380ffd75092ce395e4f754f4e52c",
-
-  "notes": [
-    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed upstream Nightly ledger update and its generated projection; this branch changes no release or deployment state.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
-  ]
-}

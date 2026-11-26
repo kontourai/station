@@ -69,7 +69,7 @@ export function createTaskMemberAdmission(deps: {
         share.scope.portableProjectId
     )
       return undefined;
-    return deps
+    const admission = deps
       .admissions(principalId)
       .find(
         ({ scope, member }) =>
@@ -77,6 +77,7 @@ export function createTaskMemberAdmission(deps: {
           member.status === 'active' &&
           member.actions.includes(action),
       );
+    return admission && { ...admission, shareId: share.shareId };
   }
   return {
     admitPrincipal,

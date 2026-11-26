@@ -1,0 +1,7 @@
+{
+  "revision": "bba211df7703cac944a969178b8f452d2bf1c340",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Checked against run-e2e-suite.mjs: the manifest gate change does not touch the browser smoke suite, its reporters or evidence. No prose change needed.","inputs":["docs/testing/browser-smoke.md","scripts/run-e2e-suite.mjs"]}
+  ]
+}

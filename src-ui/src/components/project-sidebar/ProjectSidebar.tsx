@@ -1,4 +1,6 @@
+import { attentionProjectCounts } from '@kontourai/station-contracts/attention';
 import {
+  useAttentionQuery,
   useOrchestrationSessionsQuery,
   useReorderProjectsMutation,
 } from '@kontourai/station-sdk';
@@ -33,11 +35,15 @@ import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../../utils/focusable';
 import {
   projectLiveCount,
   projectLiveLabel,
   projectLiveLanesBySlug,
 } from '../../views/project-page/project-live-work-model';
+import { useProjectOverviewPreview } from '../../views/project-page/projectOverviewPreview';
+import { useWaitingOnYouCounts } from '../../views/project-page/waitingOnYouStore';
+import { DisclosureToggle } from '../DisclosureToggle';
 import { HomeGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { Skeleton } from '../state';
@@ -53,6 +59,14 @@ const loadProjectSidebarFooter = () =>
   import('./ProjectSidebarFooter').then((module) => ({
     default: module.ProjectSidebarFooter,
   }));
+
+// #5064: the Waiting on you count runs in its own chunk, only while the
+// project-overview preview is on, so the sidebar's first paint reads no
+// Tasks and carries no Overview rule.
+const loadWaitingOnYouSource = () =>
+  import('../../views/project-page/ProjectWaitingOnYouSource').then(
+    (module) => ({ default: module.ProjectWaitingOnYouSource }),
+  );
 
 const loadProjectSidebarBoards = () =>
   import('./ProjectSidebarBoards').then((module) => ({
@@ -153,12 +167,25 @@ function ProjectSidebarImpl() {
     () => projects.map((project) => project.slug),
     [projects],
   );
+  const archivedCount = projects.filter(
+    (project) => project.lifecycle?.state === 'archived',
+  ).length;
+  const [showArchived, setShowArchived] = useState(false);
   // archive#3315: server-owned order. The list arrives pre-sorted by the
   // persisted positions; a commit sends the full desired slug order back.
   // #481: the reorder captures the host authority at call time, so the
   // optimistic write/rollback/settle target THIS authority's list cache and
   // never another home's.
   const hostRequestAuthority = useHostRequestAuthorityScope();
+  const canReadAttention = !!hostRequestAuthority?.isCurrent();
+  const { data: attention } = useAttentionQuery(hostRequestAuthority, {
+    enabled: canReadAttention && projects.length > 0,
+  });
+  const attentionItems = canReadAttention ? attention?.items : undefined;
+  const attentionByProject = useMemo(
+    () => attentionProjectCounts(attentionItems ?? []),
+    [attentionItems],
+  );
   const { namespace: durableAuthorityNamespace } = useAuthorityPersistence();
   const reorderProjectsMutation = useReorderProjectsMutation();
   const { rowReorderProps, announcement: reorderAnnouncement } =
@@ -186,6 +213,8 @@ function ProjectSidebarImpl() {
   // list it sends the reader to cannot disagree. The badge previously folded
   // the conversation inventory here inline; see that module for what changed
   // and why.
+  const projectOverviewOn = useProjectOverviewPreview();
+  const waitingOnYouBySlug = useWaitingOnYouCounts();
   const liveLanesByProject = useMemo(
     () =>
       projectLiveLanesBySlug({
@@ -281,21 +310,14 @@ function ProjectSidebarImpl() {
     }
     if (event.key !== 'Tab') return;
 
-    const focusable = Array.from(
-      navigationRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    ).filter((element) => element.getClientRects().length > 0);
-    const first = focusable[0];
-    const last = focusable.at(-1);
-    if (!first || !last) return;
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    wrapTabFocus(
+      event,
+      Array.from(
+        navigationRef.current?.querySelectorAll<HTMLElement>(
+          FOCUSABLE_SELECTOR,
+        ) ?? [],
+      ).filter((element) => element.getClientRects().length > 0),
+    );
   };
 
   return (
@@ -315,6 +337,7 @@ function ProjectSidebarImpl() {
       >
         <nav
           id="mobile-navigation"
+          data-surface="sidebar"
           data-escape-owner={isMobile && mobileOpen ? '' : undefined}
           ref={navigationRef}
           className={buildSidebarClassName({
@@ -416,6 +439,15 @@ function ProjectSidebarImpl() {
               : null}
             {projects.map((project, index) => {
               const isActive = selectedProject === project.slug;
+              // #5069: an archived Project leaves the list unless it is open
+              // or the person shows archived ones. The row keeps its index,
+              // so a reorder still sends the whole order.
+              if (
+                project.lifecycle?.state === 'archived' &&
+                !isActive &&
+                !showArchived
+              )
+                return null;
               const liveLanes = liveLanesByProject.get(project.slug) ?? [];
               return (
                 <ProjectSidebarRow
@@ -433,12 +465,32 @@ function ProjectSidebarImpl() {
                   accent={accentBySlug.get(project.slug)}
                   liveCount={projectLiveCount(liveLanes)}
                   liveLabel={projectLiveLabel(liveLanes)}
+                  attentionCount={attentionByProject.get(project.slug) ?? 0}
+                  waitingOnYou={waitingOnYouBySlug.get(project.slug) ?? 0}
                 />
               );
             })}
+            {archivedCount > 0 && !effectiveCollapsed && (
+              <DisclosureToggle
+                className="sidebar__archived-toggle"
+                expanded={showArchived}
+                onToggle={() => setShowArchived((shown) => !shown)}
+              >
+                Archived ({archivedCount})
+              </DisclosureToggle>
+            )}
             {/* A keyboard reorder is otherwise silent: the rows swap with no
               announcement and no visible change a screen reader can report.
               Keyboard-only — a pointer drag already shows what it did. */}
+            {projectOverviewOn && (
+              <LazyBoundary
+                key={`waiting-on-you:${durableAuthorityNamespace ?? ''}`}
+                load={loadWaitingOnYouSource}
+                pending={null}
+                unavailable={() => null}
+                componentProps={{}}
+              />
+            )}
             <LazyBoundary
               key={durableAuthorityNamespace ?? ''}
               load={loadProjectSidebarBoards}

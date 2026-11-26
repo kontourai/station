@@ -224,7 +224,7 @@ export function QueuedMessages({
       ? [{ key: 'outbox', node: outbox.node }]
       : []),
     ...[...localRows].reverse().map(({ row, idx }) => ({
-      key: `local:${row.id}`,
+      key: metadata?.[idx]?.id ? `turn:${metadata[idx].id}` : `local:${row.id}`,
       node: renderLocalRow(row, idx),
     })),
     ...[...heldEntries]
@@ -235,7 +235,9 @@ export function QueuedMessages({
           (a.entry.position ?? Number.MAX_SAFE_INTEGER),
       )
       .map(({ entry, index }) => ({
-        key: `held:${entry.clientTurnId ?? `${entry.createdAt}:${index}`}`,
+        key: entry.clientTurnId
+          ? `turn:${entry.clientTurnId}`
+          : `held:${entry.createdAt}:${index}`,
         node: renderHeldRow(entry),
       })),
   ];
@@ -437,6 +439,12 @@ export function QueuedMessages({
 
   function renderHeldRow(entry: ConversationInboxEntry) {
     const key = entry.clientTurnId;
+    const restoreEndedSteer =
+      key &&
+      entry.ownedByCaller &&
+      entry.kind === 'steer' &&
+      entry.state === 'refused' &&
+      entry.reasonCode === 'steer_turn_ended';
     const removable =
       key && ['queued', 'unconfirmed', 'refused'].includes(entry.state);
     const verb = entry.state === 'queued' ? 'Remove' : 'Dismiss';
@@ -451,6 +459,16 @@ export function QueuedMessages({
         </span>
         <div className="queued-message__text" title={entry.message}>
           <span className="queued-message__body">{entry.message}</span>
+          {entry.attachments?.length ? (
+            <span
+              className="queued-message__files"
+              title={entry.attachments.map((file) => file.name).join(', ')}
+            >
+              {entry.attachments.length === 1
+                ? entry.attachments[0]!.name
+                : `${entry.attachments.length} files`}
+            </span>
+          ) : null}
           <MessageDeliveryNote
             variant="inline"
             state={
@@ -485,16 +503,20 @@ export function QueuedMessages({
             <span className="queued-message__status">{entry.reason}</span>
           )}
         </div>
-        {entry.kind === 'steer' &&
-          entry.state === 'unconfirmed' &&
+        {(restoreEndedSteer ||
+          (entry.kind === 'steer' && entry.state === 'unconfirmed')) &&
           held?.onResend && (
             <Button
               variant="ghost"
               disabled={held.removing}
-              title="This may duplicate the original steer. Review the text before sending."
+              title={
+                restoreEndedSteer
+                  ? 'Restore the message to an empty draft'
+                  : 'This may duplicate the original steer. Review the text before sending.'
+              }
               onClick={() => held.onResend?.(entry)}
             >
-              Review and resend
+              {restoreEndedSteer ? 'Restore to draft' : 'Review and resend'}
             </Button>
           )}
 

@@ -1,7 +1,0 @@
-{
-  "revision": "68b5f26225f25000a68cbab9738f8532a18d277e",
-
-  "notes": [
-    {"path":"src-server/AGENTS.md","note":"Upstream development.md only gained the self-contained Seeding a dev home from real data section (scripts/seed-dev-home.mjs); no claim here depends on it.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
-  ]
-}

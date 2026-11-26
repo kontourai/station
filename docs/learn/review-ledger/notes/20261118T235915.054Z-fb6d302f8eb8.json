@@ -1,0 +1,187 @@
+{
+  "revision": "3bcfc825093c11df36d89162276af3ea90eccef1",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Rechecked owner-only deletion through the authenticated route, live re-resolution of the same principal, the fork lifecycle queue and the file-store queue. When a fork retirement commits before authority loss, the 409 reports the incomplete saved-file cleanup.","inputs":["docs/reference/api.md","src-server/routes/chat/conversations.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"The CLI uses the scoped DELETE result. The real CLI/HTTP tests observe currentness loss, revoked fork retirement, partial deletion after the SQLite tombstone, and a changed persisted owner.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/terminal.md","note":"The owned saved-conversation leaf documents its partial outcome and currentness checks. Other API routes and integrating clients keep their existing contracts.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The owned saved-conversation leaf documents its partial outcome and currentness checks. Other API routes and integrating clients keep their existing contracts.","inputs":["docs/reference/api.md"]},
+
+    {"path":"README.md","note":"The added sentence explains the scoped deletion result. Existing command examples, targeting guidance and release availability claims retain their documented scope.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The added sentence explains the scoped deletion result. Existing command examples, targeting guidance and release availability claims retain their documented scope.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"The added sentence explains the scoped deletion result. Existing command examples, targeting guidance and release availability claims retain their documented scope.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The added sentence explains the scoped deletion result. Existing command examples, targeting guidance and release availability claims retain their documented scope.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"The added sentence explains the scoped deletion result. Existing command examples, targeting guidance and release availability claims retain their documented scope.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The scoped deletion reads the file's current owner inside the existing per-conversation mutation queue, checks authority and submits the admitted unlinks without yielding between paths. It holds the queue until all unlinks settle. Legacy file deletion still traverses its ordered assets.","inputs":["src-server/adapters/file/memory-adapter-conversations.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Rechecked the scoped delete only. The route revalidates the same person after async reads, passes currentness to both effect owners, and reports an already retired fork if file cleanup cannot finish. Legacy delete, update and runtime read paths continue through their existing behavior.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Rechecked the scoped delete only. The route revalidates the same person after async reads, passes currentness to both effect owners, and reports an already retired fork if file cleanup cannot finish. Legacy delete, update and runtime read paths continue through their existing behavior.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Added actual CLI to runtime controls for changed stored ownership and authority loss at the lookup, before fork retirement and after an SQLite tombstone. Existing Station Control scope tests still pass.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"The saved-conversation person admission now compares the live principal ID with the one that began the request when an expected ID is supplied. Saved search and unrelated route capabilities keep their existing currentness and authentication requirements.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the optional currentness predicate adjacent to the synchronous unstarted-fork tombstone. Existing fork preparation, stored-read, activation and callers without the predicate retain their existing paths.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked the optional currentness predicate adjacent to the synchronous unstarted-fork tombstone. Existing fork preparation, stored-read, activation and callers without the predicate retain their existing paths.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the optional currentness predicate adjacent to the synchronous unstarted-fork tombstone. Existing fork preparation, stored-read, activation and callers without the predicate retain their existing paths.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"The unstarted fork deletion passes the optional currentness witness after entering its existing lifecycle queue. Other orchestration dispatch, authority, event and inspection routes did not change, including the retained request-inspection capture inputs.","inputs":["src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

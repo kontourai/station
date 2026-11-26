@@ -174,6 +174,10 @@ describe('a scheduled job', () => {
       agentSlug: 'station',
       prompt: 'run',
       principal: { jobId: 'job-1', runId: 'run-1' },
+      // #2377 slice D: the stored job and the owner its runs act as.
+      receipt: {
+        job: { name: 'job', createdBy: { userId: 'human:local:operator' } },
+      },
       signal: new AbortController().signal,
     } as never);
     expect(outcome).toEqual({

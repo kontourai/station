@@ -1,0 +1,7 @@
+{
+  "revision": "812cb50cf5a744612155c7dcddf993bbec006003",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the shared run pill's intrinsic cqw sizing and per-composer label budget against its consumers. Replaced additional responsive at-rules with intrinsic sizing, preserving the mobile CSS ratchet at 102/102 without baseline changes. Final CSS recapture is separate runtime evidence.","inputs":["docs/design/chat-composer.md","src-ui/src/components/ComposerRunControl.css","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/chat/chat.css"]}
+  ]
+}

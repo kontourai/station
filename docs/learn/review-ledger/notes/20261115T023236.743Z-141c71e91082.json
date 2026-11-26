@@ -1,0 +1,9 @@
+{
+  "revision": "eed803222d9aa398bbe40ce4ffc7c40bd6f3fd35",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"One new child-process test (deploy-ledger-nightly-batch.test.ts) classified beside deploy-ledger-commit.test.ts; the manifest's scheduling role described here is unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"One new child-process test (deploy-ledger-nightly-batch.test.ts) classified beside deploy-ledger-commit.test.ts; the manifest's scheduling role described here is unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

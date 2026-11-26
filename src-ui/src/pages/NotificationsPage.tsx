@@ -2,14 +2,15 @@ import type { Notification } from '@kontourai/station-contracts/notification';
 import {
   type AttentionItem,
   acknowledgeAttentionItem,
+  dismissNotification,
   useQueryClient,
 } from '@kontourai/station-sdk';
 import { useMutation } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AttentionSection } from '../components/attention/AttentionSection';
-import { ACKNOWLEDGE_ATTENTION_ACTION } from '../components/attention/notificationRowActions';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { NotificationSection } from '../components/notifications/NotificationSection';
+import { PersonMentionsSection } from '../components/notifications/PersonMentionsSection';
 import { PageFrameActions } from '../components/page-frame';
 import {
   describeReadFailure,
@@ -34,6 +35,7 @@ import '../views/page-layout.css';
 import './NotificationsPage.css';
 import { Button } from '../components/Button';
 import { SearchGlyph } from '../components/icons/Glyph';
+import { failedTurnPairs } from '../components/notifications/failed-turn-pairs';
 import {
   attentionKindMark,
   InboxMarkTile,
@@ -45,6 +47,10 @@ import {
   useInboxSnooze,
 } from '../components/notifications/snooze';
 import {
+  offerUndoableAction,
+  usePendingUndoKeys,
+} from '../components/undo/undoable-actions';
+import {
   EMPTY_NOTIFICATION_HISTORY_FILTERS,
   filterNotificationHistory,
   hasNotificationHistoryFilters,
@@ -54,6 +60,15 @@ import {
   readNotificationHistoryFilters,
   writeNotificationHistoryFilters,
 } from './notificationHistoryFilters';
+
+/**
+ * The bulk acknowledgement keeps its own word: it acts on every eligible
+ * attention row at once, behind a confirmation, not on one row.
+ */
+const BULK_ACKNOWLEDGE_LABEL = 'Dismiss';
+
+const attentionDoneKey = (id: string) => `inbox-attention:${id}`;
+const notificationDoneKey = (id: string) => `inbox-notification:${id}`;
 
 export function NotificationsPage() {
   const { navigate } = useNavigation();
@@ -119,6 +134,8 @@ export function NotificationsPage() {
         : null,
     [pairingTarget, inbox.items],
   );
+  // Rows marked done whose write still waits behind its Undo read as gone.
+  const markingDone = usePendingUndoKeys();
   const attentionItems = useMemo(() => {
     const pending = pendingAttentionItems(filtered.items);
     const targets = [exactApproval, exactPairing].flatMap((item) =>
@@ -126,8 +143,22 @@ export function NotificationsPage() {
         ? [item]
         : [],
     );
-    return [...targets, ...pending];
-  }, [exactApproval, exactPairing, filtered.items]);
+    return [...targets, ...pending].filter(
+      (item) => !markingDone.has(attentionDoneKey(item.id)),
+    );
+  }, [exactApproval, exactPairing, filtered.items, markingDone]);
+  // The heading's count leaves out rows hidden behind a pending Undo, so it
+  // never counts a row the list no longer shows. The bell keeps the server's
+  // number until the write lands (slice 4.15 owns the bell).
+  const markingDoneCount = useMemo(
+    () =>
+      countPendingAttention(
+        pendingAttentionItems(inbox.items).filter((item) =>
+          markingDone.has(attentionDoneKey(item.id)),
+        ),
+      ),
+    [inbox.items, markingDone],
+  );
   const dismissibleItems = attentionItems.filter(
     isAcknowledgeableAttentionItem,
   );
@@ -148,14 +179,25 @@ export function NotificationsPage() {
         : [],
     [filtered.notifications, snooze.enabled],
   );
-  const activityTotal = snooze.enabled
-    ? inbox.notifications.filter(
-        (notification) => !isDeferredNotification(notification),
-      ).length
-    : inbox.notifications.length;
+  // One failed run is one row: the failed-Session item stands for its
+  // thread's failed-turn notification whether it is still pending or was
+  // already marked done, so the notification never comes back on its own.
+  const pairs = useMemo(
+    () => failedTurnPairs(inbox.items, inbox.notifications),
+    [inbox.items, inbox.notifications],
+  );
+  const paired = useMemo(() => new Set([...pairs.values()].flat()), [pairs]);
+  const activityTotal = inbox.notifications.filter(
+    (notification) =>
+      !paired.has(notification.id) &&
+      !(snooze.enabled && isDeferredNotification(notification)),
+  ).length;
   const activityNotifications = useMemo(() => {
     const current = filtered.notifications.filter(
-      (notification) => !deferredNotifications.includes(notification),
+      (notification) =>
+        !deferredNotifications.includes(notification) &&
+        !paired.has(notification.id) &&
+        !markingDone.has(notificationDoneKey(notification.id)),
     );
     return exactApprovalNotification &&
       !current.some(
@@ -167,8 +209,56 @@ export function NotificationsPage() {
     deferredNotifications,
     exactApprovalNotification,
     filtered.notifications,
+    paired,
+    markingDone,
   ]);
   const queryClient = useQueryClient();
+  const currentApiBase = useRef(apiBase);
+  currentApiBase.current = apiBase;
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['attention'] }),
+      queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+    ]);
+  /**
+   * Mark done on this page holds its write behind the notice's Undo (and
+   * ⌘Z): the server cannot take back an acknowledgement or a notification
+   * dismissal, so Undo cancels the write before it happens instead.
+   */
+  const markAttentionDone = (item: AttentionItem) => {
+    const pairedIds = pairs.get(item.id) ?? [];
+    const base = apiBase;
+    offerUndoableAction({
+      key: attentionDoneKey(item.id),
+      message: 'Marked done',
+      restoredMessage: 'Reopened',
+      failureMessage: "Couldn't mark it done.",
+      isCurrent: () => currentApiBase.current === base,
+      commit: async () => {
+        await Promise.all([
+          item.kind === 'approval'
+            ? dismissNotification(item.source.notificationId)
+            : acknowledgeAttentionItem(item.id, base),
+          ...pairedIds.map((id) => dismissNotification(id)),
+        ]);
+        await refresh();
+      },
+    });
+  };
+  const markNotificationDone = (id: string) => {
+    const base = apiBase;
+    offerUndoableAction({
+      key: notificationDoneKey(id),
+      message: 'Marked done',
+      restoredMessage: 'Reopened',
+      failureMessage: "Couldn't mark it done.",
+      isCurrent: () => currentApiBase.current === base,
+      commit: async () => {
+        await dismissNotification(id);
+        await refresh();
+      },
+    });
+  };
   const dismissAllAttention = useMutation({
     // `allSettled`, not `all`: these acknowledgements are independent and
     // already persisted server-side one by one, so there is nothing to roll
@@ -185,6 +275,13 @@ export function NotificationsPage() {
       const outcomes = await Promise.allSettled(
         dismissibleItems.map((item) =>
           acknowledgeAttentionItem(item.id, apiBase),
+        ),
+      );
+      // A failed run's notification goes with its row, as one row's Mark
+      // done takes it too.
+      await Promise.allSettled(
+        dismissibleItems.flatMap((item) =>
+          (pairs.get(item.id) ?? []).map((id) => dismissNotification(id)),
         ),
       );
       const failures = outcomes.filter(
@@ -248,6 +345,8 @@ export function NotificationsPage() {
             navigate('/settings', { view: 'notifications' })
           }
         />
+        {/* The reader's own mentions (#4799), whatever else is pending. */}
+        <PersonMentionsSection />
         <SkeletonList count={4} label="Loading notifications" />
         <RecentAppMessages />
       </div>
@@ -310,13 +409,21 @@ export function NotificationsPage() {
              right now" on evidence that does not support it. An unreadable
              source keeps the sectioned layout, which says what it could not
              read. */
-          <Empty
-            variant="prominent"
-            label="All caught up"
-            description="Nothing needs your attention right now."
+          // The person's own mentions decide whether this is truly empty.
+          <PersonMentionsSection
+            loading={<SkeletonList count={4} label="Loading notifications" />}
+            empty={
+              <Empty
+                variant="prominent"
+                label="All caught up"
+                description="Nothing needs your attention right now."
+              />
+            }
           />
         ) : (
           <>
+            {/* The reader's own mentions (#4799), above their inbox. */}
+            <PersonMentionsSection />
             <NotificationHistoryFilterBar
               categories={categories}
               filters={filters}
@@ -324,25 +431,23 @@ export function NotificationsPage() {
             />
             <AttentionSection
               items={attentionItems}
-              pendingTotal={inbox.pendingCount}
+              pendingTotal={Math.max(0, inbox.pendingCount - markingDoneCount)}
               pendingVisible={countPendingAttention(attentionItems)}
               filtered={filtersActive}
               focusedApprovalId={approvalTarget || undefined}
               focusedPairingRequestId={pairingTarget || undefined}
               unavailableSources={inbox.unavailableSources}
+              onMarkDone={markAttentionDone}
             />
             {approvalTarget && !exactApproval && !exactApprovalNotification && (
-              <p role="status">
-                That approval request isn’t available, and Station won’t open a
-                different one in its place.
-              </p>
+              <p role="status">That approval request is no longer available.</p>
             )}
             {pairingTarget && !exactPairing && (
               <p role="status">That pairing request is no longer available.</p>
             )}
             <NotificationSection
               notifications={activityNotifications}
-              onDismiss={inbox.dismiss}
+              onDismiss={markNotificationDone}
               filtered={filtersActive}
               focusedNotificationId={
                 exactApproval ? undefined : approvalTarget || undefined
@@ -379,13 +484,13 @@ export function NotificationsPage() {
        */}
       <ConfirmModal
         isOpen={showDismissConfirm}
-        title={`${ACKNOWLEDGE_ATTENTION_ACTION.label} eligible attention items`}
-        message={`${ACKNOWLEDGE_ATTENTION_ACTION.label} ${
+        title={`${BULK_ACKNOWLEDGE_LABEL} eligible attention items`}
+        message={`${BULK_ACKNOWLEDGE_LABEL} ${
           dismissibleItems.length
         } eligible item${
           dismissibleItems.length === 1 ? '' : 's'
         }${filtersActive ? ' in this view' : ''}? Activity stays.`}
-        confirmLabel={`${ACKNOWLEDGE_ATTENTION_ACTION.label} eligible items`}
+        confirmLabel={`${BULK_ACKNOWLEDGE_LABEL} eligible items`}
         variant="warning"
         onConfirm={() => {
           dismissAllAttention.mutate();
@@ -564,9 +669,9 @@ function SnoozedSection({
               onClick={() => onUnsnooze(item)}
               pending={item.id === unsnoozingItemId}
               disabled={isUnsnoozing}
-              pendingLabel="Unsnoozing…"
+              pendingLabel="Waking…"
             >
-              Unsnooze
+              Wake now
             </Button>
           </li>
         ))}
@@ -667,7 +772,7 @@ function NotificationsHeader({
    * eligible scope keeps the control from promising rows it will not touch;
    * the count stays on the confirmation, where the rows it names are visible.
    */
-  const bulkLabel = `${ACKNOWLEDGE_ATTENTION_ACTION.label} eligible items${
+  const bulkLabel = `${BULK_ACKNOWLEDGE_LABEL} eligible items${
     filtered ? ' in this view' : ''
   }`;
   return (

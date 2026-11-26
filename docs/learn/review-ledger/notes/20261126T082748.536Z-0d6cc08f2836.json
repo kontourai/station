@@ -1,0 +1,165 @@
+{
+  "revision": "dfba7840397b3b1d3517613cf0e6a043e33e6047",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the queue-removal interval, review gate evidence and GitLab applicability against the contract tests and the server and UI projections.","inputs":["docs/reference/contracts.md","packages/contracts/src/conversation-pull-request-links.ts","src-server/routes/pull-requests/__tests__/conversation-pull-request-links.test.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the Task header's optional scope against the request URL, the Project board's unchanged request, and the route regression excluding another Task's kept pull request.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/taskGraph.ts","packages/sdk/src/queryFactories.ts","src-server/routes/orchestration/tasks.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed snapshot freshness, feedback query separation, queue-removal settings, and workspace expiry and batching against the implementation and focused regressions.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/tasks.ts","src-server/runtime/routes/runtime-routes.ts","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Compared the optional taskId parameter with the Project match and the existing bounded Task facts projection. The route regression verifies only the selected Task reaches the provider.","inputs":["docs/reference/api.md","src-server/routes/chat/conversations.ts","src-server/routes/orchestration/tasks.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Compared the conversation inventory wiring and its request-scoped visibility checks before and after batching workspace enrichment. The root is resolved once per Project, and the same authorized current execution supplies workspace metadata. Other route families and the retained captures continue to use their original entry points.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the inventory's workspace batch against the existing page, lineage, read marker, and pagination behavior. The route test verifies both enrichment and omission on a page of two conversations.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the inventory's workspace batch against the existing page, lineage, read marker, and pagination behavior. The route test verifies both enrichment and omission on a page of two conversations.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Compared Project-wide and taskId-scoped facts reads against the existing authentication and kept-output authority. The new Task scope uses the existing Task reader and Project match before forge reads.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Compared Project-wide and taskId-scoped facts reads against the existing authentication and kept-output authority. The new Task scope uses the existing Task reader and Project match before forge reads.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Compared Project-wide and taskId-scoped facts reads against the existing authentication and kept-output authority. The new Task scope uses the existing Task reader and Project match before forge reads.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Compared Project-wide and taskId-scoped facts reads against the existing authentication and kept-output authority. The new Task scope uses the existing Task reader and Project match before forge reads.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Compared Project-wide and taskId-scoped facts reads against the existing authentication and kept-output authority. The new Task scope uses the existing Task reader and Project match before forge reads.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Compared Project-wide and taskId-scoped facts reads against the existing authentication and kept-output authority. The new Task scope uses the existing Task reader and Project match before forge reads.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Compared Project-wide and taskId-scoped facts reads against the existing authentication and kept-output authority. The new Task scope uses the existing Task reader and Project match before forge reads.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed queue-removal expiration, explicit forge merge readiness, and landing applicability against the filter callers and Task rollup. Unknown checks remain unknown.","inputs":["packages/contracts/src/conversation-pull-request-links.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the preview-gated header call and confirmed it now scopes the same facts projection to the current Task. The room document, editor, and layout behavior shown in retained captures are outside this change.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Checked the preview-gated header call and confirmed it now scopes the same facts projection to the current Task. The room document, editor, and layout behavior shown in retained captures are outside this change.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Checked the preview-gated header call and confirmed it now scopes the same facts projection to the current Task. The room document, editor, and layout behavior shown in retained captures are outside this change.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the preview-gated header call and confirmed it now scopes the same facts projection to the current Task. The room document, editor, and layout behavior shown in retained captures are outside this change.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Checked the preview-gated header call and confirmed it now scopes the same facts projection to the current Task. The room document, editor, and layout behavior shown in retained captures are outside this change.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the preview-gated header call and confirmed it now scopes the same facts projection to the current Task. The room document, editor, and layout behavior shown in retained captures are outside this change.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked the preview-gated header call and confirmed it now scopes the same facts projection to the current Task. The room document, editor, and layout behavior shown in retained captures are outside this change.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the preview-gated header call and confirmed it now scopes the same facts projection to the current Task. The room document, editor, and layout behavior shown in retained captures are outside this change.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the preview-gated header call and confirmed it now scopes the same facts projection to the current Task. The room document, editor, and layout behavior shown in retained captures are outside this change.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked that the board alone enables the Project-wide facts read and still renders the preview rollup. List presentation, Starter Work, settlement, and dispatch remain on their original paths.","inputs":["src-ui/src/views/project-page/ProjectTasksSection.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the regression with the feature preview enabled, including the list and board query observations. Starter Work fixtures remain unchanged.","inputs":["src-ui/src/__tests__/ProjectTasksSection.test.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the optional taskId scope, Project-first cache key, and existing refusal and refresh behavior through the Task header and Project board callers.","inputs":["packages/sdk/src/query-domains/taskGraph.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked that a Task-scoped facts key extends its Project-wide key and that existing merge invalidation still covers both. Other query families retain their previous keys.","inputs":["packages/sdk/src/queryFactories.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked that a Task-scoped facts key extends its Project-wide key and that existing merge invalidation still covers both. Other query families retain their previous keys.","inputs":["packages/sdk/src/queryFactories.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked that a Task-scoped facts key extends its Project-wide key and that existing merge invalidation still covers both. Other query families retain their previous keys.","inputs":["packages/sdk/src/queryFactories.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked that a Task-scoped facts key extends its Project-wide key and that existing merge invalidation still covers both. Other query families retain their previous keys.","inputs":["packages/sdk/src/queryFactories.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked that a Task-scoped facts key extends its Project-wide key and that existing merge invalidation still covers both. Other query families retain their previous keys.","inputs":["packages/sdk/src/queryFactories.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the new expiry regression and its preceding warm-cache control against the existing observation and identity contract.","inputs":["src-server/routes/pull-requests/__tests__/conversation-pull-request-links.test.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated the Corpus from the reviewed module map; the public topic format and topic count are unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

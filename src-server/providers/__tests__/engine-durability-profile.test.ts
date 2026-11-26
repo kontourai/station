@@ -10,16 +10,23 @@ import { AcpAdapter } from '../adapters/acp-adapter.js';
 import { BedrockAdapter } from '../adapters/bedrock-adapter.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
+import { CopilotSdkAdapter } from '../adapters/copilot-sdk-adapter.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import { OllamaAdapter } from '../adapters/ollama-adapter.js';
+import { OpenCodeAdapter } from '../adapters/opencode-adapter.js';
 import { StationAgentAdapter } from '../adapters/station-agent-adapter.js';
 
 const eventBus = new EventBus();
 const adapters = [
   new ClaudeAdapter(),
   new CodexAdapter(),
+  new CopilotSdkAdapter({
+    preview: { select: ({ disabled }) => disabled() },
+  }),
   new AcpAdapter({ getConnections: async () => [] }),
-  new MuseAdapter(),
+  new OpenCodeAdapter({ getConnections: async () => [] }),
+  // As the Station runtime builds it: sessions run on `muse serve`.
+  new MuseAdapter({ serve: {} }),
   new BedrockAdapter(),
   new OllamaAdapter(),
   new StationAgentAdapter({
@@ -51,14 +58,20 @@ describe('built-in adapter durability conformance', () => {
     '$provider has an executable proof for every native durability claim',
     (adapter) => {
       // The native steer claims are exercised through the scripted SDK input
-      // and app-server RPC in claude-adapter.test and codex-adapter.test.
-      // Any additional native cell needs its own executable proof first.
+      // and app-server RPC in claude-adapter.test and codex-adapter.test,
+      // and through the replayed `muse serve` 1.4.18 capture in
+      // muse-serve-adapter.test. Copilot steering is covered by the scripted
+      // SDK conversation in copilot-sdk-adapter.test. Any additional native cell needs its own
+      // executable proof first.
       const claims = Object.entries(adapter.metadata.durability ?? {})
         .filter(([, cell]) => cell.state === 'native')
         .map(([key]) => key)
         .sort();
       expect(claims).toEqual(
-        adapter.provider === 'claude' || adapter.provider === 'codex'
+        adapter.provider === 'claude' ||
+          adapter.provider === 'codex' ||
+          adapter.provider === 'copilot-sdk' ||
+          adapter.provider === 'muse'
           ? ['steerPlacement']
           : [],
       );
@@ -98,4 +111,10 @@ describe('built-in adapter durability conformance', () => {
       Object.keys(UNKNOWN_EXTERNAL_ENGINE_MATRIX.durability).sort(),
     ).toEqual(Object.keys(fields).sort());
   });
+});
+
+test('a Muse adapter without muse serve declares no steering', () => {
+  expect(new MuseAdapter().metadata.durability?.steerPlacement.state).toBe(
+    'none',
+  );
 });

@@ -212,11 +212,9 @@ test('a refused connection explains account-management access without exposing r
   );
   vi.stubGlobal('fetch', requests);
   mount();
-  await screen.findByText(
-    /This connection does not have operator account-management access/,
-  );
+  await screen.findByText(/This device can’t manage accounts/);
   expect(screen.getByRole('status').textContent).toContain(
-    'operator session on the Station host',
+    'Open Settings on the computer running Station',
   );
   expect(screen.queryByText('insufficient_scope')).toBeNull();
   expect(screen.queryByRole('alert')).toBeNull();

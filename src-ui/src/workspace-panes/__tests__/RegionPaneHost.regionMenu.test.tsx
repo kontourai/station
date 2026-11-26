@@ -7,8 +7,8 @@
  * + `RegionChromeBar` — against the real region model, navigation and device
  * stores. Chat's renderer is stubbed by a pane that does what
  * `ChatDockHeader` does with the context: absorb the rows while mounted and
- * offer them as buttons. Activity's renderer absorbs nothing, so a bar showing
- * Activity keeps its own buttons.
+ * offer them as buttons. Agents's renderer absorbs nothing, so a bar showing
+ * Agents keeps its own buttons.
  */
 
 import {
@@ -33,8 +33,8 @@ import {
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { useRegionChromeSlots } from '../RegionChromeSlots';
 
-vi.mock('../../views/SessionsView', () => ({
-  SessionsView: () => <div data-testid="sessions-view" />,
+vi.mock('../../workspace-panes/AgentsWorkspacePane', () => ({
+  AgentsWorkspacePane: () => <div data-testid="sessions-view" />,
 }));
 
 function AbsorbingChatPane() {
@@ -211,9 +211,9 @@ test('the rows act on the region: maximize, then move the pane', async () => {
   );
 });
 
-test('a pane that does not fold them (Activity) gets the bar’s own buttons back', async () => {
+test('a pane that does not fold them (Agents) gets the bar’s own buttons back', async () => {
   await mountShells();
-  act(() => currentModel().placeSurface('activity', 'bottom'));
+  act(() => currentModel().placeSurface('workspace-agents', 'bottom'));
   await act(async () => {
     await vi.dynamicImportSettled();
   });
@@ -222,7 +222,7 @@ test('a pane that does not fold them (Activity) gets the bar’s own buttons bac
   // Chat's pane unmounted with its tab, and released the rows.
   expect(screen.queryByTestId('ambient-chat-occupant')).toBeNull();
   expect(
-    within(bar()).getByRole('button', { name: 'Move Activity' }),
+    within(bar()).getByRole('button', { name: 'Move Agents' }),
   ).toBeTruthy();
   expect(within(bar()).getByLabelText('Add pane to Bottom')).toBeTruthy();
   expect(

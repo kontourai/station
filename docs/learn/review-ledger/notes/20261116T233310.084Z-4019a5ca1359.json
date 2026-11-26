@@ -1,0 +1,7 @@
+{
+  "revision": "f084d02891d336e26bc962557b185243c0064d2e",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Rewrote the flow-agents sentence: scripts/lib/server-static-imports.mjs now has BOOT_DENIED_EXACT_STATIC_IMPORTS = ['@kontourai/flow-agents'], subpaths allowed; rebuilt dist-server and confirmed the bundle's static flow-agents imports are subpaths only, and a reinjected root import fails the build. Async-only subpaths load via src-server/services/evidence/load-flow-agents.ts.","inputs":["docs/guides/desktop-build.md","package.json#/dependencies/@kontourai~1flow-agents","scripts/lib/server-static-imports.mjs"]}
+  ]
+}

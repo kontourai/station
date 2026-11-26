@@ -1,7 +1,0 @@
-{
-  "revision": "7986e9d028e6eb9223bd9e0ddec3a12b6fd2e7a4",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed the regression test type-narrowing repair after hosted TS2339. The persisted event must explicitly be session.configured before the test reads metadata. The owner-only first turn and preservation of confirmed model route/capability delivery remain the same assertions; a missing or different event now fails an explicit prerequisite. Both focused cases and the affected server/tests TypeScript lane passed. Runtime behavior, the documented startup guarantee and prior owner/configuration fault controls are unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/session-start-ownership.test.ts"]}
-  ]
-}

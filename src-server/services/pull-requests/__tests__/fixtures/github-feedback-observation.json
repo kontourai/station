@@ -1,0 +1,229 @@
+{
+  "data": {
+    "viewer": {
+      "login": "station-bot"
+    },
+    "repository": {
+      "pullRequest": {
+        "number": 42,
+        "url": "https://github.com/acme/widgets/pull/42",
+        "state": "OPEN",
+        "merged": false,
+        "isDraft": false,
+        "headRefOid": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+        "baseRefOid": "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432",
+        "headRefName": "station/task/t-91",
+        "baseRefName": "main",
+        "headRepositoryOwner": {
+          "login": "acme"
+        },
+        "mergeable": "CONFLICTING",
+        "reviewDecision": "CHANGES_REQUESTED",
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "oid": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+                "statusCheckRollup": {
+                  "contexts": {
+                    "totalCount": 5,
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "name": "unit-tests",
+                        "status": "COMPLETED",
+                        "conclusion": "FAILURE",
+                        "detailsUrl": "https://github.com/acme/widgets/actions/runs/1001/job/2001",
+                        "title": "Process completed with exit code 1.",
+                        "isRequired": true,
+                        "checkSuite": {
+                          "workflowRun": {
+                            "workflow": {
+                              "name": "ci"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "e2e",
+                        "status": "QUEUED",
+                        "conclusion": null,
+                        "detailsUrl": "https://github.com/acme/widgets/actions/runs/1001/job/2002",
+                        "title": null,
+                        "isRequired": false,
+                        "checkSuite": {
+                          "workflowRun": {
+                            "workflow": {
+                              "name": "ci"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "lint",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/acme/widgets/actions/runs/1001/job/2003",
+                        "title": null,
+                        "isRequired": true,
+                        "checkSuite": {
+                          "workflowRun": {
+                            "workflow": {
+                              "name": "ci"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "publish",
+                        "status": "COMPLETED",
+                        "conclusion": "CANCELLED",
+                        "detailsUrl": "https://github.com/acme/widgets/actions/runs/1001/job/2004",
+                        "title": null,
+                        "isRequired": false,
+                        "checkSuite": {
+                          "workflowRun": {
+                            "workflow": {
+                              "name": "release"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "security/scan",
+                        "state": "ERROR",
+                        "targetUrl": "https://github.com/acme/widgets/security",
+                        "description": "Scan could not finish",
+                        "isRequired": false
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "reviewThreads": {
+          "totalCount": 4,
+          "nodes": [
+            {
+              "id": "PRRT_open1",
+              "isResolved": false,
+              "isOutdated": false,
+              "path": "src/foo.ts",
+              "line": 42,
+              "subjectType": "LINE",
+              "comments": {
+                "totalCount": 2,
+                "nodes": [
+                  {
+                    "databaseId": 9001,
+                    "author": {
+                      "login": "alice"
+                    },
+                    "body": "The null check is missing here.",
+                    "url": "https://github.com/acme/widgets/pull/42#discussion_r9001",
+                    "createdAt": "2026-11-10T10:00:00Z"
+                  },
+                  {
+                    "databaseId": 9002,
+                    "author": {
+                      "login": "bob"
+                    },
+                    "body": "Agreed, please add it.",
+                    "url": "https://github.com/acme/widgets/pull/42#discussion_r9002",
+                    "createdAt": "2026-11-10T11:00:00Z"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_resolved",
+              "isResolved": true,
+              "isOutdated": false,
+              "path": "src/resolved.ts",
+              "line": 7,
+              "subjectType": "LINE",
+              "comments": {
+                "totalCount": 1,
+                "nodes": [
+                  {
+                    "databaseId": 9003,
+                    "author": {
+                      "login": "alice"
+                    },
+                    "body": "Fixed already.",
+                    "url": "https://github.com/acme/widgets/pull/42#discussion_r9003",
+                    "createdAt": "2026-11-10T10:05:00Z"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_outdated",
+              "isResolved": false,
+              "isOutdated": true,
+              "path": "src/old.ts",
+              "line": 3,
+              "subjectType": "LINE",
+              "comments": {
+                "totalCount": 1,
+                "nodes": [
+                  {
+                    "databaseId": 9004,
+                    "author": {
+                      "login": "alice"
+                    },
+                    "body": "Old line.",
+                    "url": "https://github.com/acme/widgets/pull/42#discussion_r9004",
+                    "createdAt": "2026-11-10T10:06:00Z"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_file",
+              "isResolved": false,
+              "isOutdated": false,
+              "path": "docs/guide.md",
+              "line": null,
+              "subjectType": "FILE",
+              "comments": {
+                "totalCount": 1,
+                "nodes": [
+                  {
+                    "databaseId": 9005,
+                    "author": {
+                      "login": "bob"
+                    },
+                    "body": "Mention the backoff.",
+                    "url": "https://github.com/acme/widgets/pull/42#discussion_r9005",
+                    "createdAt": "2026-11-10T10:07:00Z"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "latestReviews": {
+          "nodes": [
+            {
+              "databaseId": 7001,
+              "author": {
+                "login": "alice"
+              },
+              "state": "CHANGES_REQUESTED",
+              "submittedAt": "2026-11-10T10:08:00Z",
+              "url": "https://github.com/acme/widgets/pull/42#pullrequestreview-7001",
+              "body": "Please add the null check before merging."
+            }
+          ]
+        }
+      }
+    }
+  }
+}

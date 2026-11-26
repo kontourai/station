@@ -6,14 +6,12 @@ describe('task experiences', () => {
     const experiences = resolveTaskExperiences();
 
     expect(
-      experiences.map(({ id, authority, availability }) => ({
+      experiences.map(({ id, owner, availability }) => ({
         id,
-        authority,
+        owner,
         availability,
       })),
-    ).toEqual([
-      { id: 'direct', authority: 'Station', availability: 'available' },
-    ]);
+    ).toEqual([{ id: 'direct', owner: 'Station', availability: 'available' }]);
   });
 
   test('adds only owner experiences whose capability is attached', () => {
@@ -35,7 +33,7 @@ describe('task experiences', () => {
     const allowedKeys = new Set([
       'id',
       'label',
-      'authority',
+      'owner',
       'description',
       'unavailableDescription',
       'alternativeHref',

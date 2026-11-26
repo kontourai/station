@@ -77,7 +77,7 @@ and the [integration guide](docs/guides/integrating-station.md).
 ## Work surfaces
 
 The shell contains **regions**. A placement **Surface**, such as Chat or
-Activity, occupies a region. A Project **Layout** or Surface can contain a
+Agents, occupies a region. A Project **Layout** or Surface can contain a
 **pane host**, whose tabs and splits arrange **Workspace Pane instances**.
 A **Panel** is a visual grouping inside that UI, not a persisted Pane.
 These terms are separate from the Kontour product named Surface.

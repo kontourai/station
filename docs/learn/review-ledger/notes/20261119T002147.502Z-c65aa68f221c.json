@@ -1,0 +1,7 @@
+{
+  "revision": "3d64b8a2f14b539dc600b655112204f6fc3345b9",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the Project repository setup entry language. Git discovery, clone credentials, and checkout authority still belong to the same Station; the workspace option only changes how the form reaches that action.","inputs":["docs/guides/connections.md"]}
+  ]
+}

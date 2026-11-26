@@ -47,12 +47,24 @@ category.
 - [connection-broker.md](connection-broker.md) — Optional Station connection broker
 - [connection-list-recovery.md](connection-list-recovery.md) — Connection-list recovery without a backup
 - [connections-onboarding.md](connections-onboarding.md) — Design: Connections onboarding & capability passthrough
+- [connections-overhaul.md](connections-overhaul.md) — Connections overhaul and the resource-hub kit
 - [conversation-state.md](conversation-state.md) — Design: conversation state — channel-home logs, signed proposals, per-noun consistency
 - [developer-surface.md](developer-surface.md) — Developer surface
 - [ended-task-resume.md](ended-task-resume.md) — Resuming ended Tasks
 - [entity-hierarchy.md](entity-hierarchy.md) — Design: Entity Hierarchy & Navigation Restructure
 - [event-content-spill.md](event-content-spill.md) — Event content spill: keep runtime events small, store large values once
 - [event-store-ledger-migration.md](event-store-ledger-migration.md) — EventStore ledger migration order
+- [first-release-agents-skills-tools.md](first-release-agents-skills-tools.md) — First-release design: Agents, Skills and Tools
+- [first-release-apps.md](first-release-apps.md) — First-release design: Apps
+- [first-release-automations-inbox.md](first-release-automations-inbox.md) — First-release design: Automations and inbox
+- [first-release-chat.md](first-release-chat.md) — First-release design: Chat: usage, work, setup and actions
+- [first-release-customize.md](first-release-customize.md) — First-release design: Customize: engines, providers and knowledge
+- [first-release-first-run.md](first-release-first-run.md) — First-release design: First run and connecting a device
+- [first-release-navigation.md](first-release-navigation.md) — First-release design: Navigation, Home and Customize
+- [first-release-projects.md](first-release-projects.md) — First-release design: Projects
+- [first-release-settings.md](first-release-settings.md) — First-release design: Settings, Developer and Usage
+- [first-release-station.md](first-release-station.md) — First-release design: Station: devices, people and other Stations
+- [first-release.md](first-release.md) — Station for its first release: the agreed design
 - [hosted-execution-isolation.md](hosted-execution-isolation.md) — Hosted execution and plugin isolation
 - [identity.md](identity.md) — Design: Identity (pluggable sources, local-first invariant)
 - [inference-fleet.md](inference-fleet.md) — Design: the inference fleet — receipted model routing across your Stations

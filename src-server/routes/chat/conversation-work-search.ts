@@ -1,6 +1,6 @@
 import { isHostedSessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
@@ -12,6 +12,7 @@ import {
   stationControlRefusal,
   stationControlRefusalBody,
 } from '../../tools/station-control-policy.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   ConversationLineageTooLongError,
   type ConversationMessageRead,
@@ -66,13 +67,15 @@ export function createConversationWorkSearchRoutes(deps: {
   memory?: Pick<FileMemoryAdapter, 'getConversationsByUserId'>;
   search?: RuntimeSearch;
   current(request: Request): boolean;
+  maySearchAsPerson?: (context: Context) => boolean;
 }) {
   const app = new Hono();
   const admit = createConversationReadAdmission(deps.read);
   app.get('/work/search', async (c) => {
     c.header('Cache-Control', 'private, no-store');
     const authority = stationControlRequestAuthority(c.req.raw);
-    if (authority?.kind !== 'caller')
+    const caller = authority?.kind === 'caller' ? authority.caller : undefined;
+    if (!caller && (authority || !deps.maySearchAsPerson?.(c)))
       return c.json(
         stationControlRefusalBody(
           stationControlRefusal('station_control_caller_required'),
@@ -89,15 +92,16 @@ export function createConversationWorkSearchRoutes(deps: {
         },
         400,
       );
-    const caller = authority.caller;
     const { query, agent, limit } = parsed.data;
-    const projectSlug = parsed.data.projectSlug ?? caller.projectSlug;
+    const projectSlug = parsed.data.projectSlug ?? caller?.projectSlug;
     const readAuthority = deps.read.authorityFor(c.req.raw);
     const current = () => deps.current(c.req.raw) && !c.req.raw.signal.aborted;
     if (!current())
       return c.json({ success: false, error: 'Search unavailable' }, 503);
     try {
-      const sessions = await deps.sessions.listSessionReadModel(readAuthority);
+      const sessions = await deps.sessions.listSessionReadModel(readAuthority, {
+        purpose: 'work-search',
+      });
       const candidates = new Map<string, Candidate>();
       for (const session of sessions) {
         const id =
@@ -268,7 +272,7 @@ export function createConversationWorkSearchRoutes(deps: {
       });
     } catch (error) {
       deps.read.logger.warn('Failed to search conversations', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return c.json({ success: false, error: 'Search unavailable' }, 503);
     }

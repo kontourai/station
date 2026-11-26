@@ -119,7 +119,7 @@ describe('AttachedSessionAdoption', () => {
     await expect(
       new AttachedSessionAdoption(deps).adopt(source.threadId, receipt()),
     ).rejects.toThrow(
-      'Station has not established independent continuation support for this engine.',
+      'Station lists these sessions read-only and has no evidence that resuming one keeps its history.',
     );
     expect(adapterRequests).toBe(0);
   });

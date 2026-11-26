@@ -50,7 +50,14 @@ function entry(catalog: ReturnType<typeof map>, id: string) {
 describe('public registry listings as catalogue entries', () => {
   test('a listing whose id is a built-in only enriches it with display facts', () => {
     const catalog = map();
-    for (const id of ['goose', 'cursor', 'kimi', 'factory-droid', 'opencode']) {
+    for (const id of [
+      'goose',
+      'cursor',
+      'kimi',
+      'factory-droid',
+      'opencode',
+      'gemini',
+    ]) {
       expect(entry(catalog, id)).toBeUndefined();
     }
     const goose = catalog.enrichments.get('goose');
@@ -226,13 +233,15 @@ describe('public registry listings as catalogue entries', () => {
 
   test('package-runner listings are listed with a reason and never connectable', () => {
     const catalog = map();
-    const gemini = entry(catalog, 'gemini');
-    expect(gemini?.publicRegistry?.hostLaunch).toBeUndefined();
-    expect(gemini?.publicRegistry?.packages).toEqual([
-      { kind: 'npx', package: '@google/gemini-cli@0.65.0', args: ['--acp'] },
+    // Gemini CLI, the earlier example, is now a built-in that this listing
+    // only enriches (above).
+    const dirac = entry(catalog, 'dirac');
+    expect(dirac?.publicRegistry?.hostLaunch).toBeUndefined();
+    expect(dirac?.publicRegistry?.packages).toEqual([
+      { kind: 'npx', package: 'dirac-cli@0.5.22', args: ['--acp'] },
     ]);
-    expect(gemini?.publicRegistry?.unavailableReason).toBe(
-      'Gemini CLI runs from the @google/gemini-cli@0.65.0 package, which Station would have to download and run (npx). Station does not do that; install Gemini CLI yourself, then add it as a custom engine.',
+    expect(dirac?.publicRegistry?.unavailableReason).toBe(
+      'Dirac runs from the dirac-cli@0.5.22 package, which Station would have to download and run (npx). Station does not do that; install Dirac yourself, then add it as a custom engine.',
     );
     expect(
       entry(catalog, 'fast-agent')?.publicRegistry?.unavailableReason,

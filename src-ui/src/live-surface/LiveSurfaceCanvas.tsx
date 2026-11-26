@@ -1504,8 +1504,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     surface.producerStatus.videoMode === 'snapshot-poll' &&
     surface.activeCodec !== 'h264'
       ? surface.producerStatus.videoDegradedReason === 'decoder-unavailable'
-        ? 'Showing a still screenshot about once a second: live video needs a video decoder (ffmpeg) that is not installed on the Station host.'
-        : 'Showing a still screenshot about once a second: live video stopped working on the Station host.'
+        ? 'Showing a screenshot each second. Install ffmpeg on the computer running Station for live video.'
+        : 'Live video stopped. Showing a screenshot each second.'
       : null;
 
   return (
@@ -1535,7 +1535,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       {immersive
         ? null
         : props.renderHeader?.({ surface, inputReady, sendInput })}
-      {/* With host controls the toolbar is left only for "Try again"; the
+      {/* With host controls the toolbar is left only for "Retry"; the
           immersive bar replaces it. */}
       {(props.hostControls || immersive) &&
       surface.status !== 'unavailable' &&
@@ -1568,7 +1568,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
                 className="live-surface__claim"
                 onClick={surface.retry}
               >
-                Try again
+                Retry
               </Button>
             ) : null}
           </div>

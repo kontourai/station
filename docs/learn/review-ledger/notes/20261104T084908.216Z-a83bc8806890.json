@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"packages/cli/README.md","note":"#4517 managed settings. Cited docs edited: docs/reference/cli.md. Searched it for claims about app config loading and writes, settings provenance, the managed policy, project overrides and workspace isolation; none describes the changed behavior, so it remains accurate.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
-  ]
-}

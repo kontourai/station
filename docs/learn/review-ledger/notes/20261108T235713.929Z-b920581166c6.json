@@ -1,7 +1,0 @@
-{
-  "revision": "3895c5630f1cc95f3aea61fd72edc8ce5d93b9af",
-
-  "notes": [
-    {"path":"docs/guides/development.md","note":"Added the self-contained Free scripted turns section; checked the commands, scenario names, port and loopback claims against scripts/dev-scripted-model.mjs and its test.","inputs":["docs/guides/development.md"]}
-  ]
-}

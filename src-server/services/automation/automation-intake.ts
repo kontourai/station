@@ -17,6 +17,7 @@ import type {
   AutomationSource,
 } from '@kontourai/station-contracts/automation';
 import {
+  automationAuthorityFingerprint,
   automationIntentId,
   automationPolicyFingerprint,
 } from './automation-intent.js';
@@ -97,7 +98,7 @@ export type AutomationIntakeResult = Readonly<{
  * episode is opened.
  *
  * Only `live` rules open episodes or retain intents (#4509); a matching
- * `closeOn` closes the rule's episode in either mode. When a source is given, every matched non-notify rule also gets a
+ * `closeOn` closes the rule's episode in either mode. When a source is given, every matched rule also gets a
  * per-rule decision: `observe` rules are evaluated by the ledger without
  * writing anything a consumer could claim, so neither action consumer can
  * start work for them, now or after the rule is switched to `live`.
@@ -139,10 +140,38 @@ export function recordAutomationEvent(input: {
       outcome,
       ...(rowRule ? { ruleId: rowRule.id } : {}),
     },
+    taskObservations: rules.flatMap((rule) => {
+      const taskId = rule.episode?.recurringTaskId;
+      const episodeKey = automationEpisodeKey(rule, event);
+      const url = event.fields['run.html_url'];
+      const attempt = event.fields['run.run_attempt'];
+      const recovered = closing.includes(rule);
+      if (
+        !taskId ||
+        !episodeKey ||
+        !url ||
+        rule.mode !== 'live' ||
+        (!acting.includes(rule) && !recovered)
+      )
+        return [];
+      return [
+        {
+          ruleId: rule.id,
+          episodeKey,
+          taskId,
+          url: attempt && attempt !== '1' ? `${url}/attempts/${attempt}` : url,
+          label: recovered
+            ? 'Recovered'
+            : event.fields['run.conclusion'] === 'failure'
+              ? 'Workflow failed'
+              : `Workflow ${event.fields['run.conclusion']?.replaceAll('_', ' ') ?? 'matched'}`,
+        },
+      ];
+    }),
     openings: acting.flatMap((rule) => {
       const episodeKey =
         automationEpisodeKey(rule, event) ??
-        (input.source && rule.action.kind !== 'notify'
+        (input.source
           ? JSON.stringify([rule.id, event.semanticKey])
           : undefined);
       return episodeKey
@@ -160,7 +189,6 @@ export function recordAutomationEvent(input: {
     }),
     intents: input.source
       ? acting.flatMap((rule) => {
-          if (rule.action.kind === 'notify') return [];
           const episodeKey =
             automationEpisodeKey(rule, event) ??
             JSON.stringify([rule.id, event.semanticKey]);
@@ -173,6 +201,10 @@ export function recordAutomationEvent(input: {
               episodeKey,
               episodeId,
               policyFingerprint: automationPolicyFingerprint(
+                input.source!,
+                rule,
+              ),
+              authorityFingerprint: automationAuthorityFingerprint(
                 input.source!,
                 rule,
               ),
@@ -192,7 +224,7 @@ export function recordAutomationEvent(input: {
     }),
     decisions: input.source
       ? matched.flatMap((rule): RuleDecisionCandidate[] => {
-          if (rule.action.kind === 'notify' || rule.mode === 'off') return [];
+          if (rule.mode === 'off') return [];
           return [
             {
               ruleId: rule.id,

@@ -1,0 +1,10 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Read images from the system clipboard when the person asks to paste one, take images shared into Station from another app (`take_shared_images`), and listen for the `sharedImages` nudge. Returns image bytes only; never writes the clipboard or opens a URI the person did not share."
+permissions = [
+  "allow-read-clipboard-images",
+  "allow-take-shared-images",
+  "allow-register-listener",
+  "allow-remove-listener",
+]

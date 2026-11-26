@@ -22,22 +22,22 @@ function descriptionFor(reason: CodingEvidencePaneUnavailableReason): string {
 describe('coding evidence unavailable copy (archive#3158)', () => {
   test('an unreachable capability is not described as a grant problem', () => {
     const copy = descriptionFor('capability-unavailable');
-    expect(copy).toContain('cannot reach');
-    expect(copy).not.toMatch(/grant/i);
+    expect(copy).toContain('can’t reach');
+    expect(copy).not.toMatch(/access/i);
   });
 
   test('a denied grant is not described as an unreachable capability', () => {
     // The discriminating pair: one is something a user can grant their way
     // out of and the other is not.
     const copy = descriptionFor('grant-denied');
-    expect(copy).toContain('not granted');
-    expect(copy).not.toMatch(/cannot reach/i);
+    expect(copy).toContain('doesn’t have access');
+    expect(copy).not.toMatch(/can’t reach/i);
   });
 
   test('both causes at once names both, not one of them', () => {
     const copy = descriptionFor('capability-unavailable-and-grant-denied');
-    expect(copy).toContain('cannot reach');
-    expect(copy).toContain('and the Pane is not granted');
+    expect(copy).toContain('can’t reach');
+    expect(copy).toContain('doesn’t have access');
   });
 
   // The defect this replaced was one sentence for every cause; a future edit

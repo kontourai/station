@@ -33,6 +33,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -223,7 +224,9 @@ function portFree(port: number): Promise<boolean> {
 /** A server port block (port..port+3) and a UI port, all free on loopback. */
 async function freePorts(): Promise<{ server: number; ui: number }> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const server = 41_000 + Math.floor(Math.random() * 18_000);
+    // Stay below the default ephemeral ranges so loopback clients cannot
+    // claim these ports between closing the probes and launching Station.
+    const server = 16_000 + Math.floor(Math.random() * 12_000);
     const ui = server + 10;
     const ports = [server, server + 1, server + 2, server + 3, ui];
     if (ports.includes(3141) || ports.includes(3000)) continue;
@@ -409,6 +412,124 @@ async function startServiceRun(
 }
 
 describe('station start, restart and stop under the process supervisor', () => {
+  it(
+    'waits for an admitted replacement when the timed-out first generation serves late readiness',
+    async () => {
+      const root = makeHomeRoot('svl-late-');
+      const home = join(root, 'h');
+      const tracePath = join(root, 'startup-events.jsonl');
+      const env = isolatedEnv(root, { FIXTURE_LATE_READY_TRACE: tracePath });
+      const ports = await freePorts();
+      const target = [`--home=${home}`, `--instance=${INSTANCE}`];
+      const apiBase = `http://127.0.0.1:${ports.server}`;
+      const supervisorPath = join(SERVER_DIR, 'station-supervisor.js');
+      const originalSupervisor = join(SERVER_DIR, 'original-supervisor.js');
+      const corePath = join(SERVER_DIR, 'command-station.js');
+      const originalCore = join(SERVER_DIR, 'original-core.js');
+      const fixture = new URL(
+        './fixtures/late-ready-core.mjs',
+        import.meta.url,
+      );
+
+      renameSync(supervisorPath, originalSupervisor);
+      renameSync(corePath, originalCore);
+      try {
+        writeFileSync(
+          supervisorPath,
+          `
+        if (!process.argv.includes('--request')) process.argv.push('--readiness-timeout-ms', '2000', '--drain-deadline-ms', '20000', '--kill-grace-ms', '20000');
+        await import('./original-supervisor.js');
+      `,
+        );
+        writeFileSync(
+          corePath,
+          `await import(${JSON.stringify(fixture.href)});`,
+        );
+        let returnedCode: number | undefined;
+        const start = station(
+          [
+            'start',
+            ...target,
+            `--port=${ports.server}`,
+            `--ui-port=${ports.ui}`,
+            '--host=127.0.0.1',
+          ],
+          env,
+        ).then((result) => {
+          returnedCode = result.code;
+          return result;
+        });
+        await waitUntil(
+          () => existsSync(RECORD),
+          REQUEST_TIMEOUT_MS,
+          'launcher instance record',
+        );
+        const record = readRecord();
+        launchedPids.add(record.serverPid);
+        launchedPids.add(record.uiPid);
+        const trace = () =>
+          existsSync(tracePath) ? readFileSync(tracePath, 'utf8') : '';
+        await waitUntil(
+          () =>
+            returnedCode !== undefined ||
+            trace()
+              .split('\n')
+              .filter((line) =>
+                line.includes('"event":"identity","generation":1'),
+              ).length >= 2,
+          REQUEST_TIMEOUT_MS,
+          'launcher retries the draining generation',
+        );
+        expect(returnedCode).toBeUndefined();
+        expect(trace()).toMatch(
+          /"event":"drain","generation":1[^\n]*\n[^\n]*"event":"ready","generation":1/,
+        );
+        const lateStatus = await station(
+          ['supervisor', 'status', '--json', ...target],
+          env,
+        );
+        expect(lateStatus.code, lateStatus.stderr).toBe(0);
+        expect(JSON.parse(lateStatus.stdout)).toMatchObject({
+          active: null,
+          trial: { generation: 1, state: 'draining' },
+        });
+        const lateLiveness = await fetch(`${apiBase}/api/system/liveness`);
+        expect(lateLiveness.status).toBe(200);
+        expect(await lateLiveness.json()).toEqual({ generation: 1 });
+        const released = await fetch(`${apiBase}/fixture/release`, {
+          method: 'POST',
+        });
+        expect(released.status).toBe(200);
+        const started = await start;
+        expect(started.code, started.stderr).toBe(0);
+        const status = await station(
+          ['supervisor', 'status', '--json', ...target],
+          env,
+        );
+        expect(status.code, status.stderr).toBe(0);
+        const active = JSON.parse(status.stdout);
+        expect(active).toMatchObject({
+          state: 'serving',
+          active: { generation: 2, state: 'serving', port: ports.server },
+        });
+        launchedPids.add(active.active.pid);
+        const liveness = await fetch(`${apiBase}/api/system/liveness`);
+        expect(liveness.status).toBe(200);
+        expect(await liveness.json()).toEqual({ generation: 2 });
+      } finally {
+        // Also releases a failed pre-fix run before asking the supervisor to stop.
+        await fetch(`${apiBase}/fixture/release`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(1000),
+        }).catch(() => undefined);
+        await station(['stop', ...target], env);
+        renameSync(originalCore, corePath);
+        renameSync(originalSupervisor, supervisorPath);
+      }
+    },
+    CLI_TIMEOUT_MS + 10_000,
+  );
+
   it('starts a supervised core, restarts it with no refused connection, and stops every process', async () => {
     const root = makeHomeRoot('svl-');
     const home = join(root, 'h');

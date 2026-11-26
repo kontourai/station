@@ -1,0 +1,7 @@
+{
+  "revision": "15d1df3bc49207263bdced8d75ab7d26443b44f0",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Checked the added paragraph against outside-agent-token-audience.ts, which matches only oat_/ort_/oac_ plus 43 characters, and oauth-store.ts, which now mints oar_ request IDs and oag_ grant IDs, so those identifiers are not matched as tokens. The parser claim follows parseCoreArgs in packages/cli core-api.ts treating any argument starting with -- as a flag. The host-routes focused case exercises this through the real store, CLI and host routes.","inputs":["docs/reference/outside-agent-oauth.md","src-server/services/outside-agent/oauth-store.ts"]}
+  ]
+}

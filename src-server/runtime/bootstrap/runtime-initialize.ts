@@ -2,6 +2,7 @@ import type { ACPConfig } from '@kontourai/station-contracts/acp';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { BuiltinAgentEngineBinding } from '@kontourai/station-contracts/engine-capability-matrix';
+import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { tenantExecutionContextFromSession } from '@kontourai/station-contracts/tenancy';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
@@ -32,8 +33,10 @@ import {
 import type { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import type { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
+import type { CopilotSdkAdapter } from '../../providers/adapters/copilot-sdk-adapter.js';
 import type { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import type { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
+import { OpenCodeAdapter } from '../../providers/adapters/opencode-adapter.js';
 import {
   createRegistryAwareHasAgent,
   StationAgentAdapter,
@@ -57,6 +60,7 @@ import {
 } from '../../providers/registries/registry.js';
 import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
+import { loadConfinedNetworkPlan } from '../../security/confinement/confinement-provider.js';
 import {
   createRuntimeNativeForkReadAdmissionDomain,
   type NativeForkReadAdmissionDomain,
@@ -73,6 +77,7 @@ import { getAgentPolicyService } from '../../services/agents/agent-policy-servic
 import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { createGuardianConversationReader } from '../../services/approvals/guardian-conversation.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';
 import { configurePlatformMutationGate } from '../../services/evidence/platform-mutation-gate.js';
@@ -111,6 +116,7 @@ import type {
 import { createProjectChatDefaultsService } from '../../services/projects/project-chat-defaults.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import { observeCwdShadow } from '../../services/projects/project-resource-shadow.js';
+import type { ProjectSessionContextSource } from '../../services/projects/project-session-context-source.js';
 import { createProjectSessionDirectoryResolver } from '../../services/projects/project-session-directory.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
@@ -124,6 +130,7 @@ import type { VoiceSessionService } from '../../voice/voice-session.js';
 import type { AgentHooksDeps } from '../agents/agent-hooks.js';
 import { stationAgentRuntimeOwner } from '../agents/durable-agent-owner.js';
 import { configureDurableAgentRecovery } from '../agents/durable-agent-recovery.js';
+import { createFeedbackAnalyzer } from '../agents/feedback-analysis-agent.js';
 import type { StagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
 import { initializeRuntimeAgents } from '../agents/runtime-agent-registry.js';
 import {
@@ -159,8 +166,8 @@ import {
 } from '../work-item-capture.js';
 import { acpResumeCursorSupport } from './acp-resume-cursor-support.js';
 import { composeAgentExecutionConfigLoader } from './agent-execution-config-loader.js';
+import { credentialPrincipal } from './orchestration-request-principal.js';
 import {
-  scheduleRuntimeDailyReload,
   scheduleRuntimeEngineSpawnTmpReaping,
   scheduleRuntimePluginUpdateCheck,
   startRuntimeACPConnections,
@@ -194,6 +201,18 @@ export interface InitializeRuntimeDeps {
   stationInstructionsEnabled?: () => boolean;
   /** `codex-bound-browser-device-tools` Feature Preview, read per Session start. */
   codexBoundToolsEnabled?: () => boolean;
+  /** #2376 slice 3: `CodexAdapter.toolFamiliesAdmitted`, read per Session start. */
+  codexToolFamiliesAdmitted?: (
+    threadId: string,
+    eligible?: boolean,
+  ) => Promise<boolean>;
+  /**
+   * #2377 slice D: the station-control caller records for Station's own
+   * engine, read lazily per call (`StationAgentAdapter`).
+   */
+  stationControlCallerRecords?: () =>
+    | import('../mcp/station-control-caller.js').StationControlCallerRecordResolver
+    | undefined;
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -213,6 +232,10 @@ export interface InitializeRuntimeDeps {
     // #3429: this Station's Environment, which a continued attached
     // conversation records as its execution binding.
     | 'readExistingRecord'
+    // #2377 slice D: the voice socket's credential resolves to its person.
+    | 'verifyOperatorCredential'
+    | 'credentialLocality'
+    | 'credentialHasOwnerStanding'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -256,6 +279,18 @@ export interface InitializeRuntimeDeps {
   orchestrationEventStore: EventStore;
   /** The `chat-host-images` Feature Preview selector, passed to orchestration. */
   hostImagesPreview?: FeaturePreviewSelector;
+  /** #3628: absent on a hosted Station, where no chat is a coordinator. */
+  coordinatorSessionPreview?: FeaturePreviewSelector;
+  /** #5062/#5065: the Project brief and memory every new Session starts from. */
+  projectSessionContext?: ProjectSessionContextSource;
+  /** #5068: a Project's coordinator effort, while its preview is on. */
+  projectCoordinatorEffort?: (projectSlug: string) => string | undefined;
+  /**
+   * `opencode-native-engine`: whether new chats on an OpenCode connection
+   * run on the `opencode` engine, and whether it may use OpenCode 2's own
+   * server. Read at every claim, start, resume and server spawn.
+   */
+  openCodeNativeEnginePreview?: FeaturePreviewSelector;
   durableAgentPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -289,6 +324,8 @@ export interface InitializeRuntimeDeps {
   resolveAcpPreToolPolicy?: (
     input: ProviderSessionStartInput,
   ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
+  /** Whether an external session's own Agent changed after its policy was bound. */
+  preToolPolicyReplaced?: (threadId: string) => Promise<boolean>;
   /** #3994: an ACP agent's terminals as command terminal sessions. */
   acpAgentTerminals?: AcpAdapterOptions['agentTerminals'];
   modelCatalog?: BedrockModelCatalog;
@@ -299,10 +336,10 @@ export interface InitializeRuntimeDeps {
   claudeAdapter: ClaudeAdapter;
   codexAdapter: CodexAdapter;
   museAdapter: MuseAdapter;
+  copilotSdkAdapter: CopilotSdkAdapter;
   ollamaAdapter: OllamaAdapter;
   createVoltAgentInstance: (slug: string) => Promise<Agent>;
   configureRoutes: (app: any) => void;
-  reloadAgents: () => Promise<void>;
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
@@ -420,10 +457,10 @@ export async function initializeRuntime(
     claudeAdapter,
     codexAdapter,
     museAdapter,
+    copilotSdkAdapter,
     ollamaAdapter,
     createVoltAgentInstance,
     configureRoutes,
-    reloadAgents,
     replaceTemplateVariables,
     checkBedrockCredentials,
     createDefaultSkillRegistryProvider,
@@ -441,15 +478,7 @@ export async function initializeRuntime(
   // Keep this tiny forwarding seam stable, then install the real catalog
   // authority below before adapter streams can emit usage events.
   let usagePricingSnapshotCapture: UsagePricingSnapshotCapture | undefined;
-  const features = (process.env.STATION_FEATURES || '')
-    .split(',')
-    .filter(Boolean);
-  // SUNSET(#3909): delete once the persisted `runtime` setting is the only
-  // runtime selector, or Strands is the default.
-  if (features.includes('strands-runtime')) {
-    appConfig.runtime = 'strands';
-  }
-
+  // The persisted `runtime` setting is the only runtime selector (#3909).
   const runtime = appConfig.runtime || 'voltagent';
   const framework: RuntimeFramework =
     runtime === 'strands'
@@ -466,9 +495,9 @@ export async function initializeRuntime(
 
   applyConfiguredLogLevel(appConfig.logLevel, logger);
 
-  const acpAdapter = new AcpAdapter({
-    getConnections: async () =>
-      ((await configLoader.loadACPConfig()) as ACPConfig).connections,
+  const getAcpConnections = async () =>
+    ((await configLoader.loadACPConfig()) as ACPConfig).connections;
+  const acpAdapterOptions = {
     logger,
     resolveToolServer: (id) =>
       configLoader.loadIntegration(id).catch(() => null),
@@ -530,6 +559,23 @@ export async function initializeRuntime(
     },
     revokeStationControlMcpAuth: (threadId: string, serverId) =>
       revokeStationControlMcpToken(threadId, serverId),
+  } satisfies Omit<AcpAdapterOptions, 'getConnections'>;
+  const acpAdapter = new AcpAdapter({
+    ...acpAdapterOptions,
+    getConnections: getAcpConnections,
+  });
+  // Always registered: a chat that started on `opencode` keeps it after the
+  // preview is turned off, and then runs over ACP (ruling R2). The preview
+  // decides which provider a new OpenCode chat gets (`claimsAcpConnection`)
+  // and whether OpenCode 2's own server may run.
+  const openCodeAdapter = new OpenCodeAdapter({
+    getConnections: getAcpConnections,
+    acp: acpAdapterOptions,
+    nativeEnabled: () =>
+      deps.openCodeNativeEnginePreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) === true,
   });
   let stationAgentsReady = false;
   const durableOwner = stationAgentRuntimeOwner(
@@ -588,9 +634,23 @@ export async function initializeRuntime(
     isAgentRegistryReady: () => stationAgentsReady,
     approvalRegistry,
     eventBus,
+    ...(deps.stationControlCallerRecords
+      ? { stationControlCallerRecords: deps.stationControlCallerRecords }
+      : {}),
   });
+  // `copilotSdkAdapter` is always registered; it selects the
+  // `copilot-sdk-engine` preview at every entry point that starts work
+  // (copilot-sdk-adapter.ts).
   registerProviderAdapters(
-    [claudeAdapter, codexAdapter, museAdapter, acpAdapter, stationAgentAdapter],
+    [
+      claudeAdapter,
+      codexAdapter,
+      museAdapter,
+      copilotSdkAdapter,
+      acpAdapter,
+      openCodeAdapter,
+      stationAgentAdapter,
+    ],
     { builtin: true, source: 'station-core' },
   );
   registerACPConnectionRegistryProvider(
@@ -602,6 +662,11 @@ export async function initializeRuntime(
   const flowRunService = new FlowRunService();
   const hostedTenantRegistry = loadHostedTenantRegistryFromEnvironment();
   const publicAdapterRegistry = createProviderAdapterRegistry();
+  const coordinatorEnabled = () =>
+    deps.coordinatorSessionPreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) === true;
   // archive#895 wave A: resolve per-agent capability delivery (ACP tool servers,
   // Claude skills) into a session's ResolvedAgentDefinition before dispatch.
   // Fail-open closures, mirroring the ClaudeAdapter skills wiring above:
@@ -614,6 +679,7 @@ export async function initializeRuntime(
     resolveProjectToolServers: deps.resolveProjectToolServers,
     stationInstructionsEnabled: deps.stationInstructionsEnabled,
     codexBoundToolsEnabled: deps.codexBoundToolsEnabled,
+    codexToolFamiliesAdmitted: deps.codexToolFamiliesAdmitted,
     loadAgentSpec: loadSessionAgentSpec,
     resolveToolServer: (id) =>
       configLoader.loadIntegration(id).catch(() => null),
@@ -629,6 +695,7 @@ export async function initializeRuntime(
     // #3628: read at each Session start, so a designation reaches the
     // coordinator's next Session (and a successor Session of it).
     isCoordinatorSession: (threadId) => {
+      if (!coordinatorEnabled()) return false;
       try {
         const conversationId =
           orchestrationEventStore.conversationForSession(threadId)
@@ -685,15 +752,28 @@ export async function initializeRuntime(
   );
   const orchestrationService = new OrchestrationService({
     recoverDurableTurn: (input) => durableOwner.recover(input),
+    ...(deps.preToolPolicyReplaced
+      ? { preToolPolicyReplaced: deps.preToolPolicyReplaced }
+      : {}),
     nativeForkStoredReadVerifier: nativeForkStoredReadDomain.verifyForService,
     ...(deps.hostImagesPreview
       ? { hostImagesPreview: deps.hostImagesPreview }
+      : {}),
+    ...(deps.projectSessionContext
+      ? { projectSessionContext: deps.projectSessionContext }
+      : {}),
+    ...(deps.projectCoordinatorEffort
+      ? { projectCoordinatorEffort: deps.projectCoordinatorEffort }
       : {}),
     ...(idleSessionParkAfterMs !== undefined ? { idleSessionParkAfterMs } : {}),
     // #1796: revoking a device's full access re-confines the sessions its
     // grant unconfined, from their next turn.
     isFullAccessGrantorCurrent: (deviceId) =>
       deps.environmentSecurityService.deviceHoldsFullAccess(deviceId),
+    // #4769: read at each start that requires confinement, so a changed
+    // policy applies from the next such start.
+    confinedNetworkPolicy: () =>
+      loadConfinedNetworkPlan(() => configLoader.loadAppConfig()),
     // Bedrock and Ollama are Station-engine model-provider implementations,
     // not public engine connections. Keep them available for dispatch without
     // publishing them through the registry that feeds New Chat inventory.
@@ -732,6 +812,10 @@ export async function initializeRuntime(
     // approval rules Station sets at launch.
     acpApprovalControl: (connectionId) =>
       acpBridge.approvalControl(connectionId),
+    isAcpConnectionConfigured: async (connectionId) =>
+      (await getAcpConnections()).some(
+        (connection) => connection.id === connectionId,
+      ),
     adoptionLedger,
     credentialProfileRecoveryAdapter: deps.credentialProfileRecoveryAdapter,
     requireTenantExecutionContext: isHostedTenantExecutionRequired,
@@ -777,7 +861,7 @@ export async function initializeRuntime(
     // directory of its own, read from the same config the adapter reads, so
     // a scoped dispatch is decided on the directory it will run in.
     resolveConnectionDefaultCwd: async (provider, connectionId) => {
-      if (provider !== 'acp') return undefined;
+      if (!isAcpFamilyEngine(provider)) return undefined;
       const connection = (
         (await configLoader.loadACPConfig()) as ACPConfig
       ).connections.find((candidate) => candidate.id === connectionId);
@@ -827,6 +911,7 @@ export async function initializeRuntime(
     agentPolicyService: getAgentPolicyService(logger),
     workflowSidecarService: new WorkflowSidecarService({ logger }),
     resolveSessionAgent,
+    coordinatorEnabled,
     coordinatorGenerationForSession: (threadId) =>
       coordinatorGeneration(
         orchestrationEventStore.conversationForSession(threadId)
@@ -1059,11 +1144,6 @@ export async function initializeRuntime(
     createDefaultSkillRegistryProvider,
   });
 
-  scheduleRuntimeDailyReload({
-    timers,
-    reloadAgents,
-  });
-
   // `new VoltAgent(...)` synchronously invokes configureFullApp. Publish every
   // service that configureRoutes captures before constructing it.
   await onRouteServicesReady({
@@ -1165,6 +1245,9 @@ export async function initializeRuntime(
           logger,
           modelCatalog,
           projectHomeDir: configLoader.getProjectHomeDir(),
+          readConversation: createGuardianConversationReader(
+            orchestrationEventStore,
+          ),
         }),
       })) as Record<string, Agent>,
     createVoltAgentInstance,
@@ -1282,13 +1365,24 @@ export async function initializeRuntime(
   await eventLog.loadRecentEvents();
   await startHealthChecks();
 
-  feedbackService.setAnalyzeCallback(async (prompt: string) => {
-    const agent =
-      activeAgents.get('default') || activeAgents.values().next().value;
-    if (!agent) throw new Error('No agents available for feedback analysis');
-    const result = await agent.generateText(prompt);
-    return result.text;
-  });
+  // #2377 slice D: Station's own utility work, on the default agent's model
+  // with no tools (it acts for no person, so it has no station-control caller).
+  feedbackService.setAnalyzeCallback(
+    createFeedbackAnalyzer({
+      framework,
+      resolveSpec: () =>
+        deps.agentSpecs.get('default') ?? deps.agentSpecs.values().next().value,
+      createModel: (spec) =>
+        createRuntimeFrameworkModel(spec, {
+          framework,
+          appConfig,
+          projectHomeDir: configLoader.getProjectHomeDir(),
+          modelCatalog,
+          listProviderConnections: () =>
+            storageAdapter.listProviderConnections(),
+        }),
+    }),
+  );
   feedbackService.start();
 
   // Plugin-contributed ACP entries are durable identities before any probe;
@@ -1329,6 +1423,19 @@ export async function initializeRuntime(
         PAIRING_WS_SCOPES.voice,
         credential,
       ),
+    // #2377 slice D: the person the credential is becomes the caller of the
+    // session's Station tools. Personal Stations only: a hosted credential's
+    // tenant has no request here to read, so its sessions get no tools.
+    ...(isHostedTenantExecutionRequired()
+      ? {}
+      : {
+          resolvePrincipal: (credential: string) =>
+            credentialPrincipal(credential, deps.environmentSecurityService)
+              ?.id,
+          // The local UI's HttpOnly device cookie, read on a loopback upgrade.
+          recognizesDeviceCredential: (credential: string) =>
+            deps.environmentSecurityService.identifyDevice(credential) !== null,
+        }),
     limiter: new RuntimeAuthFailureLimiter(),
     browserOrigins: stationOriginPolicy({ port, host }),
     audit: (record) => logger.warn('Voice authentication denied', record),

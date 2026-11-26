@@ -1,0 +1,7 @@
+{
+  "revision": "d7c32634930b555d9703502e5cc66e1eb26ec1b3",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Fix round 2 (Muse): re-read the Muse steering, sandbox and profile-key paragraphs against muse-adapter.ts (learnSandbox, exec refusal, reportEngineMcpServers omitEnv), muse-serve-session.ts (reportedSandbox, steer turnId and settled guard) and cli-auth.ts omitEnv. Updated: a steer reply must name the steered turn and a muse-opened turn does not affect a confirmed steer; the no-sandbox fact is learned even when session/start then fails, and only an explicit available clears it; the MCP server listing is among the key-dropping profile runs. Evidence: muse-serve-adapter and muse-adapter suites with fault injection.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/muse-adapter.ts","src-server/providers/adapters/muse-serve-session.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"addJobSchema accepts optional projectId; editJobSchema unchanged, so an edit cannot move a job's Project.","inputs":["src-server/routes/schemas/schema-definitions/scheduler.ts"]}
+  ]
+}

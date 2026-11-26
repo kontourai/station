@@ -1,15 +1,8 @@
-import { randomUUID } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
+import { loadConfigFile, writeConfigFileAtomically } from './config.js';
 import { withRequestTimeout } from './core-api.js';
 import { PROJECT_HOME } from './helpers.js';
 import {
@@ -100,32 +93,20 @@ function readJsonStringField(path: string, field: string): string | undefined {
   }
 }
 
-/** Same-directory temp-file-then-rename so a concurrent reader never sees a torn write. */
+/**
+ * Stores `registryUrl` in `config/app.json` through the loader and writer
+ * `station config set --offline` uses, so the two commands cannot diverge
+ * again. The loader refuses a file that is not a JSON object (and says so)
+ * instead of treating it as empty: this write replaces the whole file, so
+ * "empty" would discard every other setting the operator had in it.
+ */
 function persistRegistryUrl(registryUrl: string): void {
   // #4517: `registryUrl` is a Station setting the managed policy can lock.
   if (Object.keys(withoutManagedNoOpsOffline({ registryUrl })).length === 0)
     return;
-  const configDir = join(PROJECT_HOME, 'config');
-  mkdirSync(configDir, { recursive: true });
-  let config: Record<string, unknown> = {};
-  if (existsSync(APP_CONFIG_PATH)) {
-    try {
-      config = JSON.parse(readFileSync(APP_CONFIG_PATH, 'utf-8'));
-    } catch {}
-  }
+  const config = loadConfigFile();
   config.registryUrl = registryUrl;
-  const tempPath = join(
-    configDir,
-    `app.json.${process.pid}.${randomUUID()}.tmp`,
-  );
-  writeFileSync(tempPath, JSON.stringify(config, null, 2), 'utf-8');
-  try {
-    renameSync(tempPath, APP_CONFIG_PATH);
-  } finally {
-    try {
-      rmSync(tempPath, { force: true });
-    } catch {}
-  }
+  writeConfigFileAtomically(config);
 }
 
 function readStoredAppConfig(): Record<string, unknown> {
@@ -167,7 +148,9 @@ function readConfiguredRegistryUrl(): string | undefined {
         persistRegistryUrl(legacy);
       } catch {
         // Best-effort forward-copy; the legacy value still resolves this
-        // call even if the copy fails (e.g. read-only home directory).
+        // call even if the copy fails (e.g. read-only home directory, or
+        // an `app.json` that cannot be parsed, which the copy refuses to
+        // replace).
       }
     }
   }

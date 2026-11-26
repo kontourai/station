@@ -15,8 +15,9 @@ import { invokedDirectly } from './module-entry.mjs';
 
 const PUB_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const HTTPS_URL_PATTERN = /^https:\/\/\S+$/;
-const RELEASE_VERSION_PATTERN =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-preview\.([1-9]\d*))?$/;
+// Tagged desktop feeds carry the bare base version: release candidates build
+// as X.Y.Z too, and Beta has no feed (#4929).
+const RELEASE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const PLATFORM_ASSET_TOKENS = Object.freeze({
   'darwin-aarch64': ['macos', 'aarch64'],
   'darwin-x86_64': ['macos', 'x86_64'],
@@ -278,15 +279,8 @@ function releaseVersionParts(version) {
   const match =
     typeof version === 'string' ? RELEASE_VERSION_PATTERN.exec(version) : null;
   if (!match)
-    fail(
-      `version ${JSON.stringify(version)} is not a stable or preview release version`,
-    );
-  return [
-    Number(match[1]),
-    Number(match[2]),
-    Number(match[3]),
-    match[4] === undefined ? Number.POSITIVE_INFINITY : Number(match[4]),
-  ];
+    fail(`version ${JSON.stringify(version)} is not a stable release version`);
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
 function readManifestVersion(path, label) {

@@ -1,0 +1,7 @@
+{
+  "revision": "6c83a4dda393952f3bcc8ab18441af9354e84c9c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Added Known qualification failures: the manifest producers, the list's rules (nothing skipped, exact identities only, entry counts only while its issue is open, anything not explicitly explained alerts) and report mode. Verified against scripts/lib/qualification-failure-manifest.mjs, qualification-failure-signal.mjs, run-vitest-corpus.mjs, run-full-regression-phases.mjs, run-e2e-suite.mjs and config/qualification-known-failures.json.","inputs":["docs/guides/testing.md",".github/workflows/full-regression.yml","scripts/run-vitest-corpus.mjs","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

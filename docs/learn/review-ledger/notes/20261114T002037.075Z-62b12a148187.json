@@ -1,0 +1,7 @@
+{
+  "revision": "14014b92dbe0d4f97d3352062a5188d8acf11864",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Checked after documentation.md changed only its PR: Docs kit trigger sentence (main now gets the merge queue's verdict instead of a push run). This document makes no claim about Docs kit triggers, so it remains accurate.","inputs":["docs/README.md","docs/guides/documentation.md"]}
+  ]
+}

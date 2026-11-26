@@ -1,0 +1,7 @@
+{
+  "revision": "ad4ba1fe3213dd95c33889b1b13cbcb92ad14636",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Cites connections.md; the only change there is a focus note in the Forget paragraph; no claim here about forgetting or the switcher changes.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

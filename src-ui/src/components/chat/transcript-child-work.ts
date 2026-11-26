@@ -34,6 +34,7 @@ export interface TranscriptChild {
   toolAnchor: boolean;
   /** The engine of the session that reported the child (its event envelope). */
   provider?: string;
+  stationName?: string;
 }
 
 export type TranscriptChildren = ReadonlyMap<string, TranscriptChild>;
@@ -245,6 +246,7 @@ export const TranscriptTurnContext = createContext<
       messageId?: string;
       firstRow?: boolean;
       wholeTurn?: boolean;
+      browserOwner?: string;
     }
   | undefined
 >(undefined);

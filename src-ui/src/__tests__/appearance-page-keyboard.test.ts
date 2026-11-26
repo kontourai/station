@@ -1,9 +1,13 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { type Browser, chromium, type Page } from '@playwright/test';
 import { build } from 'esbuild';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { chromiumIsInstalled } from '../../../tests/helpers/css-cascade-fixture';
+import {
+  assertNoImportsSurvive,
+  chromiumIsInstalled,
+  resolveCssImports,
+} from '../../../tests/helpers/css-cascade-fixture';
 
 /**
  * The Appearance page's keyboard contract in Chromium, which jsdom cannot
@@ -19,31 +23,9 @@ const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 const ORIGIN = 'http://station.test';
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 const PUBLIC_DIR = resolve(REPO_ROOT, 'src-ui/public');
-/**
- * The product-level :focus-visible rules from the real index.css (the plain
- * one and its channel/brand override), so the page is measured against the
- * outline every build actually draws, not an absent one.
- */
-const PRODUCT_FOCUS_RULES = (() => {
-  const css = readFileSync(resolve(REPO_ROOT, 'src-ui/src/index.css'), 'utf8');
-  const rules = css.match(
-    /(?:^|\n)(?::where\(|:is\(\n\s+:root\[data-brand-focus\])[^{]*\):focus-visible\s*\{[^}]*\}/g,
-  );
-  if (!rules || rules.length < 2)
-    throw new Error('index.css focus-visible rules not found');
-  return rules.join('\n');
-})();
-/**
- * The global `button:hover` rule from the real index.css. Its `background`
- * shorthand resets `background-clip`, so a page control that clips its paint
- * must survive it.
- */
-const PRODUCT_BUTTON_HOVER_RULE = (() => {
-  const css = readFileSync(resolve(REPO_ROOT, 'src-ui/src/index.css'), 'utf8');
-  const rule = css.match(/(?:^|\n)button:hover\s*\{[^}]*\}/);
-  if (!rule) throw new Error('index.css button:hover rule not found');
-  return rule[0];
-})();
+const PRODUCT_STYLES = resolveCssImports(
+  resolve(REPO_ROOT, 'src-ui/src/index.css'),
+);
 const NORD_DARK_BACKGROUND = (
   JSON.parse(
     readFileSync(
@@ -56,6 +38,8 @@ const NORD_DARK_BACKGROUND = (
 const HARNESS = `
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
+import { ConnectionsProvider } from '@kontourai/station-connect';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { KeyboardShortcutsProvider } from './src-ui/src/contexts/KeyboardShortcutsContext';
 import { bindColorThemeToSettings } from './src-ui/src/lib/color-theme-apply';
 import { deviceSettingsStore } from './src-ui/src/lib/device-settings-store';
@@ -63,7 +47,11 @@ import { AppearancePage } from './src-ui/src/pages/AppearancePage';
 bindColorThemeToSettings(document.documentElement, deviceSettingsStore);
 window.store = deviceSettingsStore;
 createRoot(document.getElementById('root')).render(
-  createElement(KeyboardShortcutsProvider, null, createElement(AppearancePage)),
+  createElement(QueryClientProvider, { client: new QueryClient() },
+    createElement(ConnectionsProvider, { seedDefault: false },
+      createElement(KeyboardShortcutsProvider, null, createElement(AppearancePage)),
+    ),
+  ),
 );
 `;
 
@@ -83,6 +71,35 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
       platform: 'browser',
       jsx: 'automatic',
       loader: { '.svg': 'dataurl', '.png': 'dataurl' },
+      plugins: [
+        {
+          name: 'connect-from-source',
+          setup(builder) {
+            builder.onResolve(
+              { filter: /^@kontourai\/station-connect$/ },
+              () => ({
+                path: resolve(REPO_ROOT, 'packages/connect/src/index.ts'),
+              }),
+            );
+          },
+        },
+        {
+          // The Custom section reads the person's server document through the
+          // Station connection, which this page-only harness does not seed.
+          name: 'stub-custom-appearance-section',
+          setup(builder) {
+            builder.onResolve({ filter: /CustomAppearanceSection$/ }, () => ({
+              path: 'custom-appearance-section',
+              namespace: 'stub',
+            }));
+            builder.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
+              contents:
+                'export function CustomAppearanceSection() { return null; }',
+              loader: 'js',
+            }));
+          },
+        },
+      ],
       define: {
         'import.meta.env': JSON.stringify({ DEV: false, PROD: true }),
         'process.env.NODE_ENV': '"production"',
@@ -92,12 +109,23 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     script = bundled.outputFiles.find((file) =>
       file.path.endsWith('.js'),
     )!.text;
-    styles =
+    const pageStyles =
       bundled.outputFiles.find((file) => file.path.endsWith('.css'))?.text ??
       '';
     // The page's own rules must be in the sheet, or the focus assertion below
     // would be measuring nothing.
-    expect(styles).toContain('.appearance-theme');
+    expect(pageStyles).toContain('.appearance-theme');
+    // Distinct fixture tokens identify the focus and selection paint owners.
+    styles = `${PRODUCT_STYLES}
+      :root {
+        --accent-primary: #ff0000;
+        --k-text: #00ff00;
+        --k-focus: #ff0000;
+        --text-primary: #0000ff;
+        --text-secondary: #888888;
+      }
+      ${pageStyles}`;
+    assertNoImportsSurvive(styles);
   }, 60_000);
 
   afterAll(async () => {
@@ -125,6 +153,20 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
       const path = new URL(route.request().url()).pathname;
       if (path === '/harness.js')
         return route.fulfill({ contentType: 'text/javascript', body: script });
+      const font = /^\/fonts\/([a-z0-9-]+\.woff2)$/.exec(path)?.[1];
+      if (font) {
+        const stationFont = resolve(PUBLIC_DIR, 'fonts', font);
+        return route.fulfill({
+          contentType: 'font/woff2',
+          path: existsSync(stationFont)
+            ? stationFont
+            : resolve(
+                REPO_ROOT,
+                'node_modules/@kontourai/ui/tokens/fonts',
+                font,
+              ),
+        });
+      }
       const sheet = /^\/color-themes\/([a-z-]+)\.css$/.exec(path);
       if (sheet) {
         requests.push(sheet[1]!);
@@ -142,13 +184,12 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
       }
       return route.fulfill({
         contentType: 'text/html',
-        // `--accent-primary` is defined so the focus ring has a colour to
-        // resolve; without it the declaration is invalid and draws nothing.
-        body: `<!doctype html><html data-theme="dark"><head><style>:root{--accent-primary:#ff0000;--k-text:#00ff00;--k-focus:#ff0000;--text-primary:#0000ff;--text-secondary:#888888}${PRODUCT_FOCUS_RULES}${PRODUCT_BUTTON_HOVER_RULE}${styles}</style></head><body><div id="root"></div><script src="/harness.js"></script></body></html>`,
+        body: `<!doctype html><html data-theme="dark"><head><style>${styles}</style></head><body><div id="root"></div><script src="/harness.js"></script></body></html>`,
       });
     });
     await page.goto(`${ORIGIN}/`);
     await page.getByRole('radiogroup', { name: 'Color theme' }).waitFor();
+    await page.evaluate(() => document.fonts.ready);
     expect(errors).toEqual([]);
     return page;
   }
@@ -300,7 +341,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
         .textContent(),
     ).toBe('Not loaded');
 
-    await page.getByRole('button', { name: 'Try again' }).click();
+    await page.getByRole('button', { name: 'Retry' }).click();
     await untilTheme(page, 'catppuccin');
     await alert.waitFor({ state: 'detached' });
     expect(await rootAttribute(page, 'data-color-theme-failed')).toBeNull();
@@ -372,7 +413,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
       .getByRole('radio', { name: /^Catppuccin/ })
       .locator('xpath=ancestor::label[1]')
       .click();
-    const tryAgain = page.getByRole('button', { name: 'Try again' });
+    const tryAgain = page.getByRole('button', { name: 'Retry' });
     await tryAgain.waitFor({ timeout: 10_000 });
     await tryAgain.focus();
     await page.keyboard.press('Enter');
@@ -556,6 +597,81 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
       (button) => getComputedStyle(button).backgroundClip,
     );
     expect(clip).toBe('content-box');
+    await page.close();
+  });
+
+  test('Density and Motion are labelled radio groups that arrow keys change and apply (#4692)', async () => {
+    const page = await open();
+    const density = page.getByRole('radiogroup', { name: 'Density' });
+    const comfortable = density.getByRole('radio', { name: 'Comfortable' });
+    // Comfortable is the default and is on the root before anything is chosen.
+    expect(await comfortable.isChecked()).toBe(true);
+    expect(await rootAttribute(page, 'data-density')).toBe('comfortable');
+    await comfortable.focus();
+    await page.keyboard.press('ArrowRight');
+    expect(
+      await density.getByRole('radio', { name: 'Compact' }).isChecked(),
+    ).toBe(true);
+    expect(await rootAttribute(page, 'data-density')).toBe('compact');
+    // The ring is drawn on the visible option, not the clipped input.
+    expect(
+      await page.evaluate(
+        () =>
+          getComputedStyle(document.activeElement!.closest('label')!)
+            .outlineStyle,
+      ),
+    ).toBe('solid');
+    await page.keyboard.press('ArrowLeft');
+    expect(await rootAttribute(page, 'data-density')).toBe('comfortable');
+
+    const motion = page.getByRole('radiogroup', { name: 'Motion' });
+    await motion.getByRole('radio', { name: 'System' }).focus();
+    expect(await rootAttribute(page, 'data-motion')).toBeNull();
+    await page.keyboard.press('ArrowRight');
+    expect(
+      await motion.getByRole('radio', { name: 'Reduced' }).isChecked(),
+    ).toBe(true);
+    expect(await rootAttribute(page, 'data-motion')).toBe('reduce');
+    await page.close();
+  });
+
+  test('each Density and Motion option takes a 44px hit area at 390px (#4692)', async () => {
+    const page = await open();
+    await page.setViewportSize({ width: 390, height: 844 });
+    for (const density of ['comfortable', 'compact']) {
+      await page.evaluate(
+        (value) =>
+          (
+            window as unknown as {
+              store: { merge: (v: Record<string, unknown>) => void };
+            }
+          ).store.merge({ density: value }),
+        density,
+      );
+      const hits = await page.evaluate(() =>
+        [
+          ...document.querySelectorAll<HTMLElement>(
+            '[role="radiogroup"][aria-label="Density"] label, [role="radiogroup"][aria-label="Motion"] label',
+          ),
+        ].map((target) => {
+          target.scrollIntoView({ block: 'center' });
+          const box = target.getBoundingClientRect();
+          const cx = box.left + box.width / 2;
+          const cy = box.top + box.height / 2;
+          const owns = (x: number, y: number) => {
+            const hit = document.elementFromPoint(x, y);
+            return hit === target || target.contains(hit);
+          };
+          return {
+            name: target.textContent,
+            ok: owns(cx, cy - 21) && owns(cx, cy + 21),
+          };
+        }),
+      );
+      expect(hits).toHaveLength(4);
+      for (const hit of hits)
+        expect(hit, `${density} ${hit.name}`).toMatchObject({ ok: true });
+    }
     await page.close();
   });
 

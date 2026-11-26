@@ -1,9 +1,0 @@
-{
-  "revision": "a5d2204d99fdecbfc71b058d1d622e85e039ae2b",
-
-  "notes": [
-    {"path":"docs/conformance/tool-policy-delivery.md","note":"The phone e2e (orchestration-chat-flow.spec.ts) now asserts that a request Station reports already settled leaves the approval sheet (the sheet closes when it was the only request), matching the already-settled sentence this PR added to 'Answering on a phone and recovering delivery'.","inputs":["docs/conformance/tool-policy-delivery.md","tests/orchestration-chat-flow.spec.ts"]},
-
-    {"path":"docs/testing/browser-smoke.md","note":"Only one assertion in orchestration-chat-flow.spec.ts changed (the phone sheet after an already-settled answer now expects the sheet hidden); this document's claims about the browser smoke lane and its specs make no statement about that assertion, so it remains accurate.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
-  ]
-}

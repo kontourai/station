@@ -78,6 +78,7 @@ describe('plugin CLI API authority', () => {
     target.source = 'loopback';
     target.station = undefined;
     vi.spyOn(console, 'log').mockImplementation(() => {});
+    process.exitCode = undefined;
   });
 
   test.each(['parent', 'dependency'])(
@@ -430,6 +431,391 @@ describe('plugin CLI API authority', () => {
       install(PLUGIN_SOURCE, [], { ...parsed, flags: { yes: true } }, null),
     ).resolves.toEqual({ pluginName: 'demo', version: '1.0.0' });
     expect(authenticatedFetch).toHaveBeenCalledTimes(2);
+  });
+
+  test('reports an install saved without completing its activation as installed but not active, not as a failed request', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    authenticatedFetch
+      .mockResolvedValueOnce(
+        Response.json({
+          valid: true,
+          manifest: { name: 'demo', version: '1.0.0' },
+          components: [],
+          conflicts: [],
+          contentDigest: 'sha256:reviewed',
+          grantRevision: 'parent-reviewed-revision',
+          permissions: {
+            required: ['plugin.server'],
+            autoGranted: [],
+            pendingConsent: [{ permission: 'plugin.server', tier: 'trusted' }],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            success: false,
+            plugin: { name: 'demo', version: '1.0.0' },
+            permissions: {
+              pendingConsent: [
+                { permission: 'plugin.server', tier: 'trusted' },
+              ],
+            },
+            configurationActivation: {
+              status: 'pending',
+              recovery: 'required',
+              reason: 'saved',
+            },
+          },
+          { status: 202 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ success: false }, { status: 202 }),
+      );
+    const { install, installRegistryPlugin } = await import(
+      '../commands/install.js'
+    );
+
+    await expect(
+      install(PLUGIN_SOURCE, [], { ...parsed, flags: { yes: true } }, null),
+    ).resolves.toEqual({ pluginName: 'demo', version: '1.0.0' });
+    const printed = log.mock.calls.map((call) => String(call[0]));
+    expect(printed).toContain(
+      '⚠️ Installed demo@1.0.0, but its activation did not finish, so it is not active.',
+    );
+    // Not the host-approval list: that review refuses an inactive plugin.
+    expect(printed.join('\n')).not.toContain('requires host approval');
+    expect(authenticatedFetch).toHaveBeenCalledTimes(2);
+    // Installed but not active is not a success a script should continue
+    // from (the CLI's distinct-outcome precedent).
+    expect(process.exitCode).toBe(2);
+    process.exitCode = undefined;
+
+    // A 202 that does not say pending is still a refusal.
+    await expect(installRegistryPlugin('curated-demo', parsed)).rejects.toThrow(
+      'Registry install failed with HTTP 202',
+    );
+  });
+
+  test('an older server that sends no recovery field defers to the plugin row and does not exit 2', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    process.exitCode = undefined;
+    authenticatedFetch
+      .mockResolvedValueOnce(
+        Response.json({
+          valid: true,
+          manifest: { name: 'demo', version: '1.0.0' },
+          components: [],
+          conflicts: [],
+          contentDigest: 'sha256:reviewed',
+          grantRevision: 'parent-reviewed-revision',
+          permissions: { required: [], autoGranted: [], pendingConsent: [] },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            success: false,
+            plugin: { name: 'demo', version: '1.0.0' },
+            configurationActivation: { status: 'pending', reason: 'saved' },
+          },
+          { status: 202 },
+        ),
+      );
+    const { install } = await import('../commands/install.js');
+
+    await install(PLUGIN_SOURCE, [], { ...parsed, flags: { yes: true } }, null);
+    const printed = log.mock.calls.map((call) => String(call[0]));
+    expect(printed).toContain(
+      '⚠️ Installed demo@1.0.0, but Station did not say whether it is active.',
+    );
+    // Nothing known says the plugin is inactive, so nothing is a failure.
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  test('reports a saved update by its recovery field and a saved removal as removed', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const saved = {
+      success: false,
+      plugin: { name: 'demo', version: '1.1.0' },
+      configurationActivation: {
+        status: 'pending',
+        recovery: 'required',
+        deadlineMs: 10_000,
+        reason: 'saved',
+      },
+    };
+    const finishing = {
+      ...saved,
+      configurationActivation: { status: 'pending', recovery: 'none' },
+    };
+    authenticatedFetch
+      .mockResolvedValueOnce(Response.json(saved, { status: 202 }))
+      .mockResolvedValueOnce(Response.json(finishing, { status: 202 }))
+      .mockResolvedValueOnce(Response.json(finishing, { status: 202 }))
+      .mockResolvedValueOnce(
+        Response.json({ success: false }, { status: 202 }),
+      );
+    const { update, remove } = await import('../commands/install.js');
+
+    await update('demo', parsed);
+    expect(process.exitCode).toBe(2);
+    process.exitCode = undefined;
+    await update('demo', parsed);
+    await remove('demo', parsed);
+    // Finishing on its own, and a saved removal, are successes.
+    expect(process.exitCode).toBeUndefined();
+    const printed = log.mock.calls.map((call) => String(call[0]));
+    expect(printed).toContain(
+      '⚠️ Updated demo@1.1.0, but its activation did not finish within 10 seconds, so it is not active.',
+    );
+    // A legacy update the server says finishes on its own is not a recovery.
+    expect(printed).toContain(
+      '✅ Updated demo@1.1.0 through Station; it finishes applying in the background.',
+    );
+    expect(printed).toContain(
+      '✅ Removed demo through Station; it finishes unloading in the background',
+    );
+    await expect(remove('demo', parsed)).rejects.toThrow(
+      'Plugin request failed with HTTP 202',
+    );
+  });
+
+  test('refuses to install another copy of a plugin that is installed but not active, unless --reinstall', async () => {
+    const preview = {
+      valid: true,
+      manifest: { name: 'demo', version: '1.0.0' },
+      components: [],
+      conflicts: [],
+      contentDigest: 'sha256:reviewed',
+      grantRevision: 'parent-reviewed-revision',
+      permissions: { required: [], autoGranted: [], pendingConsent: [] },
+    };
+    listPlugins.mockResolvedValue([
+      {
+        name: 'demo',
+        version: '1.0.0',
+        installationReadiness: { state: 'pending', recovery: 'review' },
+      },
+    ]);
+    authenticatedFetch.mockImplementation(async () => Response.json(preview));
+    const { install } = await import('../commands/install.js');
+
+    await expect(
+      install(PLUGIN_SOURCE, [], { ...parsed, flags: { yes: true } }, null),
+    ).rejects.toThrow(
+      'demo is already installed but not active. Run `station plugin recover demo` to activate it, or pass --reinstall to install another copy of its code. Nothing was installed.',
+    );
+    expect(authenticatedFetch).toHaveBeenCalledTimes(1);
+
+    authenticatedFetch
+      .mockReset()
+      .mockResolvedValueOnce(Response.json(preview))
+      .mockResolvedValueOnce(
+        Response.json({
+          success: true,
+          plugin: { name: 'demo', version: '1.0.0' },
+        }),
+      );
+    await expect(
+      install(
+        PLUGIN_SOURCE,
+        [],
+        { ...parsed, flags: { yes: true, reinstall: true } },
+        null,
+      ),
+    ).resolves.toEqual({ pluginName: 'demo', version: '1.0.0' });
+  });
+
+  test('does not call an activating plugin stopped: no Recover advice and no second install, unless --reinstall', async () => {
+    const preview = {
+      valid: true,
+      manifest: { name: 'demo', version: '1.0.0' },
+      components: [],
+      conflicts: [],
+      contentDigest: 'sha256:reviewed',
+      grantRevision: 'parent-reviewed-revision',
+      permissions: { required: [], autoGranted: [], pendingConsent: [] },
+    };
+    listPlugins.mockResolvedValue([
+      {
+        name: 'demo',
+        version: '1.0.0',
+        installationReadiness: { state: 'pending', recovery: 'review' },
+        activationInFlight: true,
+      },
+    ]);
+    authenticatedFetch.mockImplementation(async () => Response.json(preview));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    log.mockClear();
+    const { install } = await import('../commands/install.js');
+
+    await expect(
+      install(PLUGIN_SOURCE, [], { ...parsed, flags: { yes: true } }, null),
+    ).resolves.toEqual({ pluginName: 'demo', version: '1.0.0' });
+    const printed = log.mock.calls.map((call) => String(call[0]));
+    expect(printed).toEqual([
+      'demo is still activating. Check again shortly with `station plugin list`. Nothing was installed.',
+    ]);
+    expect(process.exitCode).toBeUndefined();
+    // Only the preview was sent: no install.
+    expect(authenticatedFetch).toHaveBeenCalledTimes(1);
+
+    authenticatedFetch
+      .mockReset()
+      .mockResolvedValueOnce(Response.json(preview))
+      .mockResolvedValueOnce(
+        Response.json({
+          success: true,
+          plugin: { name: 'demo', version: '1.0.0' },
+        }),
+      );
+    await install(
+      PLUGIN_SOURCE,
+      [],
+      { ...parsed, flags: { yes: true, reinstall: true } },
+      null,
+    );
+    expect(authenticatedFetch).toHaveBeenCalledTimes(2);
+  });
+
+  describe('plugin recover', () => {
+    test('says an activating plugin is still activating and sends nothing', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      log.mockClear();
+      listPlugins.mockResolvedValue([
+        {
+          name: 'demo',
+          version: '1.0.0',
+          installationReadiness: { state: 'pending', recovery: 'review' },
+          activationInFlight: true,
+        },
+      ]);
+      const { recover } = await import('../commands/install.js');
+
+      await recover('demo', { ...parsed, flags: { yes: true } }, null);
+      expect(log.mock.calls.map((call) => String(call[0]))).toEqual([
+        'demo is still activating. Check again shortly with `station plugin list`. Nothing was recovered.',
+      ]);
+      expect(authenticatedFetch).not.toHaveBeenCalled();
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    const review = {
+      manifest: { name: 'demo', version: '1.0.0' },
+      recoveryRevision: 'review-1',
+      contentDigest: 'sha256:retained',
+      grantRevision: 'grant-1',
+      registryTrust: { state: 'unrecorded' },
+      permissions: {
+        required: ['plugin.server'],
+        pendingConsent: [{ permission: 'plugin.server', tier: 'trusted' }],
+      },
+      dependencies: [
+        {
+          id: 'child',
+          consent: {
+            contentDigest: 'sha256:child',
+            permissions: [],
+            dependencies: [],
+            grantRevision: 'child-grant',
+          },
+        },
+      ],
+    };
+
+    test('prints the review and recovers nothing without an explicit decision', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      authenticatedFetch.mockImplementation(async () => Response.json(review));
+      const { recover } = await import('../commands/install.js');
+
+      await expect(recover('demo', parsed, null)).rejects.toThrow(
+        /Not recovered: nothing approved it/,
+      );
+      await expect(recover('demo', parsed, async () => false)).rejects.toThrow(
+        /Not recovered: the recovery was not approved/,
+      );
+      const printed = log.mock.calls.map((call) => String(call[0]));
+      expect(printed).toContain('  requires  plugin.server');
+      expect(printed).toContain('  approving plugin.server (trusted)');
+      expect(printed).toContain('  dependency child requires no permissions');
+      // Only the two review reads: no recovery was sent.
+      expect(
+        authenticatedFetch.mock.calls.map((call) => String(call[0])),
+      ).toEqual([
+        'http://127.0.0.1:3141/api/plugins/demo/recovery-preview',
+        'http://127.0.0.1:3141/api/plugins/demo/recovery-preview',
+      ]);
+    });
+
+    test('sends exactly the reviewed revisions and names the host approval still owed', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      authenticatedFetch
+        .mockResolvedValueOnce(Response.json(review))
+        .mockResolvedValueOnce(
+          Response.json({
+            success: true,
+            permissions: {
+              pendingConsent: [
+                { permission: 'plugin.server', tier: 'trusted' },
+              ],
+            },
+          }),
+        );
+      const { recover } = await import('../commands/install.js');
+
+      await recover('demo', parsed, approve);
+      const [url, init] = authenticatedFetch.mock.calls[1]!;
+      expect(String(url)).toBe(
+        'http://127.0.0.1:3141/api/plugins/demo/recover',
+      );
+      expect(JSON.parse(String(init.body))).toEqual({
+        recoveryRevision: 'review-1',
+        consent: {
+          contentDigest: 'sha256:retained',
+          grantRevision: 'grant-1',
+          permissions: ['plugin.server'],
+          dependencies: ['child'],
+          dependencyApprovals: [
+            { id: 'child', ...review.dependencies[0]!.consent },
+          ],
+        },
+      });
+      const printed = log.mock.calls.map((call) => String(call[0]));
+      expect(printed).toContain(
+        '  demo requires host approval for plugin.server.',
+      );
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    test('a recovery stopped again says why, how to get out, and exits 2', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      authenticatedFetch
+        .mockResolvedValueOnce(Response.json(review))
+        .mockResolvedValueOnce(
+          Response.json(
+            {
+              success: false,
+              configurationActivation: {
+                status: 'pending',
+                recovery: 'required',
+                deadlineMs: 10_000,
+              },
+            },
+            { status: 202 },
+          ),
+        );
+      const { recover } = await import('../commands/install.js');
+
+      await recover('demo', { ...parsed, flags: { yes: true } }, null);
+      const printed = log.mock.calls.map((call) => String(call[0]));
+      expect(printed).toContain(
+        '⚠️ Recovery of demo was saved, but it is still not active: its activation did not finish within 10 seconds.',
+      );
+      expect(process.exitCode).toBe(2);
+      process.exitCode = undefined;
+    });
   });
 
   test('refuses when the server reports no basis to approve', async () => {

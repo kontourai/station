@@ -1,10 +1,12 @@
-import type {
-  PluginInstallationReadiness,
-  PluginInstallationRevision,
-  PluginInstallResult,
-  PluginManifest,
-  PluginPermissionPrompt,
-  RejectedInstalledPluginRecord,
+import {
+  type PluginInstallationReadiness,
+  type PluginInstallationRevision,
+  type PluginInstallResult,
+  type PluginManifest,
+  type PluginPermissionPrompt,
+  type PluginUpdateCheck,
+  type RejectedInstalledPluginRecord,
+  readPluginLifecycleResponse,
 } from '@kontourai/station-contracts/plugin';
 import {
   isPluginRegistryTrust,
@@ -19,11 +21,82 @@ import {
 } from './http';
 import { rethrowDeadline } from './request-deadline';
 
+export type PluginUpdateCheckResult = Omit<PluginUpdateCheck, 'status'> & {
+  status: PluginUpdateCheck['status'] | 'unknown';
+};
+
+export async function checkPluginUpdates(
+  apiBase: string,
+  opts?: ClientRequestOptions,
+): Promise<PluginUpdateCheckResult> {
+  const response = await getJson(`${apiBase}/api/plugins/check-updates`, opts);
+  let result: unknown;
+  try {
+    result = await response.json();
+  } catch (error) {
+    rethrowDeadline(error);
+    if (!response.ok)
+      throw envelopeError(
+        response,
+        undefined,
+        'Could not check for plugin updates',
+      );
+    throw error;
+  }
+  if (!response.ok)
+    throw envelopeError(response, result, 'Could not check for plugin updates');
+  if (!result || typeof result !== 'object' || Array.isArray(result))
+    throw new Error('Plugin update check response is malformed');
+  const { status, updates, managedByPolicy, success } = result as Record<
+    string,
+    unknown
+  >;
+  if (success === false)
+    throw envelopeError(response, result, 'Could not check for plugin updates');
+  if (
+    !Array.isArray(updates) ||
+    updates.some(
+      (update) =>
+        !update ||
+        typeof update !== 'object' ||
+        typeof update.name !== 'string' ||
+        typeof update.currentVersion !== 'string' ||
+        typeof update.latestVersion !== 'string' ||
+        typeof update.source !== 'string',
+    ) ||
+    (status !== undefined &&
+      status !== 'complete' &&
+      status !== 'partial' &&
+      status !== 'unavailable') ||
+    (managedByPolicy !== undefined &&
+      (!Array.isArray(managedByPolicy) ||
+        managedByPolicy.some(
+          (entry) =>
+            !entry ||
+            typeof entry !== 'object' ||
+            typeof entry.name !== 'string' ||
+            typeof entry.message !== 'string',
+        )))
+  )
+    throw new Error('Plugin update check response is malformed');
+  return {
+    status: status ?? 'unknown',
+    updates,
+    ...(managedByPolicy !== undefined ? { managedByPolicy } : {}),
+  };
+}
+
 export type InstalledPluginRecord =
   | (PluginManifest & {
       hasBundle?: boolean;
       retainedOnRemoval?: boolean;
       installationReadiness?: PluginInstallationReadiness;
+      /**
+       * Set while this server is still activating the plugin: its install
+       * request is open and settles on its own, so no recovery is offered.
+       * Absent from an older server, and once the activation was stopped.
+       */
+      activationInFlight?: true;
       /** The selected generation's persisted registry verification receipt. */
       registryTrust?: PluginRegistryTrust;
       /**
@@ -295,6 +368,7 @@ export interface PluginRecoveryPreview {
   dependencies: Array<{
     id: string;
     expectedInstallation: PluginInstallationRevision;
+    registryTrust?: PluginRegistryTrust;
     consent: {
       contentDigest: string;
       permissions: string[];
@@ -305,10 +379,8 @@ export interface PluginRecoveryPreview {
   }>;
   skip: string[];
 }
-export type PluginRecoveryResult = PluginInstallResult & {
-  /** Acceptance-time receipt, not a live activation subscription. */
-  configurationActivation?: { status: 'applied' | 'pending'; reason?: string };
-};
+/** `configurationActivation` is an acceptance-time receipt, not a live activation subscription. */
+export type PluginRecoveryResult = PluginInstallResult;
 
 export async function previewPluginRecovery(
   apiBase: string,
@@ -337,6 +409,19 @@ export async function previewPluginRecovery(
     'registryTrust' in result &&
     result.registryTrust !== undefined &&
     !isPluginRegistryTrust(result.registryTrust)
+  )
+    throw new Error('Plugin recovery preview response is malformed');
+  if (
+    !('dependencies' in result) ||
+    !Array.isArray(result.dependencies) ||
+    result.dependencies.some(
+      (dependency) =>
+        !dependency ||
+        typeof dependency !== 'object' ||
+        Array.isArray(dependency) ||
+        (dependency.registryTrust !== undefined &&
+          !isPluginRegistryTrust(dependency.registryTrust)),
+    )
   )
     throw new Error('Plugin recovery preview response is malformed');
   return result as PluginRecoveryPreview;
@@ -368,12 +453,7 @@ export async function recoverPlugin(
   }
   // The server uses 202 + success:false for persisted work awaiting activation.
   if (
-    !response.ok ||
-    (!result.success &&
-      !(
-        response.status === 202 &&
-        result.configurationActivation?.status === 'pending'
-      ))
+    readPluginLifecycleResponse(response.status, result).state === 'refused'
   ) {
     throw envelopeError(response, result, refused);
   }

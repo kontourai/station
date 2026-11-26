@@ -1,7 +1,0 @@
-{
-  "revision": "c7730967d6d4a9526adac10bbbbba133a666c77f",
-
-  "notes": [
-    {"path":"packages/agent-runtime/README.md","note":"Reviewed physical v2 effect headers and batched partial migration together with logical safety validation, conservative takeover and per-command changed-record checks. This source binding covers the effect owner that the earlier map omitted.","inputs":["packages/agent-runtime/README.md","packages/agent-runtime/src/turn-effects.ts"]}
-  ]
-}

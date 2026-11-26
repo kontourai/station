@@ -106,7 +106,7 @@ use limits: for approvals, [`limits.maxApprovalMode`](#approval-mode-ceiling) is
 | `defaultLLMProvider` | An Agent's own model connection and the connection a person picks for a chat still apply. |
 | `invokeModel` | An invoke request that names its own model still uses it. |
 | `structureModel` | `approvalGuardian`'s own model, `reviewGuideModel` for review guides, and an invoke request that names a structure model still apply first. |
-| `defaultMaxTurns` | An Agent's own step limit (`maxSteps` or `guardrails.maxSteps`) still applies first. |
+| `defaultMaxTurns` | On VoltAgent, an Agent's own `maxSteps` still applies first. |
 | `defaultMaxOutputTokens` | An Agent's own `guardrails.maxTokens` still applies first. |
 | `defaultWorkspaceIsolation` | Task runs, Station delegations and adopted attached sessions always use the shared checkout, and a continued conversation keeps the isolation it started in. |
 | `defaultChatFontSize` | A person's own Chat font size (an account setting) still applies first. |
@@ -243,6 +243,15 @@ Muse Code's `muse exec` mode has no way to ask for approval, so it always
 runs as Auto inside Muse's sandbox. Under a ceiling of `ask`, a Muse chat
 that would run through `muse exec` (because `muse serve` is turned off or
 fails to start) does not start, and says why. Under `auto` it runs as usual.
+
+Separately from any ceiling, a `muse serve` host that reports it cannot
+enforce its sandbox (`sandboxAvailability: unavailable`) refuses Auto, which
+relies on that sandbox as its only containment: the start is refused
+(`sandbox_unavailable`) without falling back to `muse exec`, and so is a turn
+asking for Auto. Other approval modes still run on `muse serve`, with a
+`muse-sandbox-unavailable` warning, but never fall back to `muse exec`, which
+would run them unprompted without the sandbox: only Full access (`never`)
+does.
 
 A plugin Agent's tool approvals (`autoApprove`, `unattendedAutoApprove`) can
 be removed or narrowed under a ceiling, but not added to.
@@ -617,10 +626,20 @@ Station launches are started.
 | --- | --- |
 | `allowed` | The engines that may run: any of `claude`, `codex`, `muse`, `acp` (every ACP connection) and `station-agent` (Station's own agent). Leave it out to allow every engine. An engine a plugin adds is never on the list, so an allow list turns plugin engines off. |
 | `acpRegistryAgents` | `false` stops ACP connections added from the public ACP registry from running and from being added. A custom ACP connection is still allowed while `acp` is. `true` is refused. |
+| `engineHostAuth` | `"off"` stops Station giving any engine an access token from its own engine sign-in store (Kiro without kiro-cli asks for one). Engines that keep their own sign-in, such as kiro-cli, are unaffected. `"allowed"`, or leaving it out, lets it. Also off whenever `acp` is not allowed. |
+| `remoteTasks` | The remote task engines that may be used: any of `devin`, `github-copilot` and `cursor`. A remote task runs on the vendor's machines, so prompts and repository code leave the computer. Unlike every other key here, leaving it out restricts: on a machine with a policy, a vendor this list does not name is off. Without any policy, the Feature Preview and each connection's acknowledgement decide. See [remote task engines](../decisions/remote-task-engines.md). |
 | `instances.<engine>` | How every connection of `claude`, `codex`, `muse` or `acp` is launched. `station-agent` runs inside Station and has no launch to pin. |
 
 Station refuses an unknown engine id, a repeated one, and an `instances`
 entry for an engine `allowed` leaves out.
+
+OpenCode has no id of its own here. The `acp` entry covers it in every form: an
+OpenCode ACP connection, and the `opencode` engine behind the OpenCode native
+engine Feature Preview, natively or over ACP, with the preview on or off.
+`instances.acp` pins it too. Natively, the pinned binary and environment apply
+to `opencode serve`, but pinned arguments do not, because they belong to the
+`acp` command line. Turning the preview on neither widens nor narrows a
+policy. See [the decision](../decisions/opencode-native-transport.md#managed-policy-r5).
 
 ### An engine that is not allowed
 
@@ -879,6 +898,8 @@ Every value is in `HKLM\SOFTWARE\Policies\Kontour\Station`.
 | Allow the nightly channel | `NightlyChannel` (`REG_DWORD`) | `limits.updates.allowNightly: false` when Disabled |
 | Allowed engines | `AllowedEngines` (`REG_DWORD` state), `EngineClaude`, `EngineCodex`, `EngineMuse`, `EngineAcp`, `EngineStationAgent` (`REG_DWORD` each, 1 checked) | `limits.engines.allowed`, the checked engine ids |
 | Allow ACP registry agents | `AcpRegistryAgents` (`REG_DWORD`) | `limits.engines.acpRegistryAgents: false` when Disabled |
+| Allow Station to sign engines in | `EngineHostAuth` (`REG_DWORD`) | `limits.engines.engineHostAuth: "off"` when Disabled |
+| Allowed remote task engines | `RemoteTaskEngines` (`REG_DWORD` state), `RemoteTaskDevin`, `RemoteTaskGitHubCopilot`, `RemoteTaskCursor` (`REG_DWORD` each, 1 checked) | `limits.engines.remoteTasks`, the checked vendor ids. Not Configured allows none. |
 | Engine launch configuration (JSON) | `EngineInstances` (`REG_DWORD` state), `EngineInstancesJson` (`REG_MULTI_SZ`, lines joined) | `limits.engines.instances` |
 
 The template carries a setting for every limit this release enforces. Later
@@ -995,6 +1016,13 @@ not retry; restarting cannot fix it. `station start` checks the policy the
 way `station policy check` does before it starts anything: it prints the same
 line and exits `1` without starting a server or the UI, so nothing listens
 while the policy is unusable.
+A supervised server generation uses exit code `78` for an unusable managed
+policy or a home that requires reset. The supervisor retains the refusal line
+and stops after that first attempt; ordinary crashes still use its retry budget.
+`station restart` checks the installed policy before asking the supervisor to
+drain the running generation. If that check refuses, the current generation
+continues serving. The policy can change after this read; the new generation
+still performs its own startup validation and fails closed.
 Fix or remove the policy, then start Station again.
 
 ## What clients see

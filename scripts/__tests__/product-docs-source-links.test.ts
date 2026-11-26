@@ -290,12 +290,15 @@ describe('public product documentation source links', () => {
     const index = readFileSync('docs/pages/index.html', 'utf8');
     const pagesScreens = [
       ...index.matchAll(
-        /(?:src="\.\/media\/|content="https:\/\/kontourai\.github\.io\/station\/media\/)([a-z0-9-]+)\.png"/g,
+        /(?:(?:src|srcset)="\.\/media\/|content="https:\/\/kontourai\.github\.io\/station\/media\/)([a-z0-9-]+)\.png"/g,
       ),
     ].map(([, name]) => name);
     expect(index).toMatch(/<meta property="og:image" content="https:/);
     expect(index).toMatch(/<meta name="twitter:image" content="https:/);
     expect(pagesScreens.length).toBeGreaterThanOrEqual(3);
+    // Dark and phone captures load only through <source srcset>.
+    expect(pagesScreens).toContain('room-long-dark-mobile');
+    expect(index).not.toMatch(/srcset="[^"]*[\s,]/);
     for (const name of pagesScreens)
       expect(PAGES_GALLERY_SCREENS, `Pages image ${name}`).toContain(name);
 
@@ -306,6 +309,82 @@ describe('public product documentation source links', () => {
         `baseline image ${name}`,
       ).toBe(true);
     }
+  });
+
+  it('reserves each Pages picture variant at the size of the capture it loads', () => {
+    // A source without width/height borrows its <img>'s box. When that box
+    // differs from the capture the source loads, a lazy image above an anchor
+    // grows the page after a jump (#4801: a 390px jump to #self-host landed
+    // 548px short when the phone Task capture filled a 1440x900 box).
+    const baseline = JSON.parse(
+      readFileSync('tests/screenshots.baseline.json', 'utf8'),
+    ) as { screens: Array<{ name: string; width: number; height: number }> };
+    const size = new Map(
+      baseline.screens.map((screen) => [
+        screen.name,
+        `${screen.width}x${screen.height}`,
+      ]),
+    );
+    const index = readFileSync('docs/pages/index.html', 'utf8');
+    const attribute = (tag: string, name: string) =>
+      new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
+    const pictures = [...index.matchAll(/<picture\b[\s\S]*?<\/picture>/g)].map(
+      ([picture]) => picture,
+    );
+    expect(pictures.length).toBeGreaterThanOrEqual(5);
+    let variants = 0;
+    for (const picture of pictures) {
+      const img = /<img\b[^>]*>/.exec(picture)?.[0] ?? '';
+      const imgBox = `${attribute(img, 'width')}x${attribute(img, 'height')}`;
+      for (const tag of picture.match(/<(?:source|img)\b[^>]*>/g) ?? []) {
+        const file = attribute(tag, tag.startsWith('<img') ? 'src' : 'srcset');
+        const name = /^\.\/media\/([a-z0-9-]+)\.png$/.exec(file ?? '')?.[1];
+        expect(name, `picture variant ${file}`).toBeDefined();
+        const width = attribute(tag, 'width');
+        const height = attribute(tag, 'height');
+        const reserved = width && height ? `${width}x${height}` : imgBox;
+        expect(reserved, `reserved box for ${name}`).toBe(size.get(name!));
+        // The manifest's size must be the committed PNG's own: read the
+        // IHDR width and height (bytes 16-23) so a resized image fails even
+        // when the JSON and HTML are unchanged.
+        const png = readFileSync(`tests/screenshots.baseline/${name}.png`);
+        expect(
+          png.subarray(0, 8).equals(Buffer.from('\x89PNG\r\n\x1a\n', 'latin1')),
+          `${name} is a PNG`,
+        ).toBe(true);
+        expect(png.subarray(12, 16).toString('latin1'), `${name} IHDR`).toBe(
+          'IHDR',
+        );
+        expect(
+          `${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`,
+          `${name} PNG size`,
+        ).toBe(size.get(name!));
+        variants += 1;
+      }
+    }
+    // 12 captures: the hero pair, two phone figures and the Task figure.
+    expect(variants).toBe(12);
+
+    // Engines that ignore <source> width/height still reserve the right box
+    // from CSS: the Task figure's ratio follows the capture each breakpoint
+    // loads, under the same media condition as its phone <source>.
+    const css = readFileSync('docs/pages/styles.css', 'utf8');
+    const ratio = (block: string) =>
+      /\.story-media\.task-figure img\s*\{\s*aspect-ratio:\s*(\d+)\s*\/\s*(\d+);/
+        .exec(block)
+        ?.slice(1)
+        .join('x');
+    const phoneSource = /<source media="\(max-width: (\d+)px\)"/.exec(index);
+    expect(phoneSource, 'Task phone <source> media').not.toBeNull();
+    const phoneBlock = new RegExp(
+      `@media \\(max-width: ${phoneSource![1]}px\\) \\{\\s*\\.story-media\\.task-figure img \\{[^}]*\\}`,
+    ).exec(css)?.[0];
+    expect(ratio(css), 'Task figure desktop ratio').toBe(
+      size.get('task-capabilities-light-desktop'),
+    );
+    expect(ratio(phoneBlock ?? ''), 'Task figure phone ratio').toBe(
+      size.get('task-capabilities-light-mobile'),
+    );
   });
 
   it('links contributors to the repository and public documentation boundaries', () => {

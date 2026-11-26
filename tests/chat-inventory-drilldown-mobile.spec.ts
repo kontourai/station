@@ -17,6 +17,7 @@ import {
   closeFixtureServer,
   startOllamaFixture,
 } from './helpers/ollama-fixture';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 /**
@@ -191,13 +192,16 @@ test.describe('Chat inventory item drill-down on a phone', () => {
     await page.setViewportSize({ width: WIDTH, height: HEIGHT });
     await page.goto(baseURL);
     const draft = page.getByRole('form', { name: 'Start work' });
-    await draft
-      .getByRole('button', { name: /^Agent:/ })
-      .click({ timeout: 30_000 });
+    await (
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', { name: /^Agent:/ }),
+      )
+    ).click({ timeout: 30_000 });
     await page
       .getByRole('dialog', { name: 'Choose agent' })
       .locator(`.new-chat-modal__agent[data-agent-slug="${agentSlug}"]`)
       .click({ timeout: 30_000 });
+    await closeRunSetup(page);
     await draft
       .getByRole('textbox', { name: 'What would you like done?', exact: true })
       .fill(PROMPT);
@@ -215,7 +219,7 @@ test.describe('Chat inventory item drill-down on a phone', () => {
       timeout: 30_000,
     });
 
-    // The header stays one row: Chat actions and New chat are 44px targets
+    // The header stays one row: navigation, size and chat actions are 44px targets
     // inside it, clear of each other and of the chat title, and Chat inventory
     // is a row of the Chat actions sheet rather than a third bar control
     // (#4192: it wrapped above ⋯ as a floating pill). 320px is the narrowest
@@ -237,10 +241,14 @@ test.describe('Chat inventory item drill-down on a phone', () => {
           header.locator('.chat-dock__mobile-identity'),
         );
         const actionBoxes = [
-          await box(chatActions),
+          await box(header.getByRole('button', { name: 'Chats', exact: true })),
           await box(
-            header.getByRole('button', { name: 'New chat', exact: true }),
+            header.getByRole('button', {
+              name: 'Restore chat size',
+              exact: true,
+            }),
           ),
+          await box(chatActions),
         ];
         expect(headerBox.width).toBe(width);
         for (const action of actionBoxes) {
@@ -254,9 +262,15 @@ test.describe('Chat inventory item drill-down on a phone', () => {
           expect(action.y + action.height).toBeLessThanOrEqual(
             headerBox.y + headerBox.height + 0.5,
           );
-          expect(action.x).toBeGreaterThanOrEqual(
-            titleBox.x + titleBox.width - 0.5,
-          );
+          // Back leads the title; extent and overflow trail it.
+          if (action === actionBoxes[0])
+            expect(action.x + action.width).toBeLessThanOrEqual(
+              titleBox.x + 0.5,
+            );
+          else
+            expect(action.x).toBeGreaterThanOrEqual(
+              titleBox.x + titleBox.width - 0.5,
+            );
           // One row: level with the title, not stacked above or below it.
           expect(
             Math.abs(
@@ -264,8 +278,8 @@ test.describe('Chat inventory item drill-down on a phone', () => {
             ),
           ).toBeLessThan(1);
         }
-        expect(actionBoxes[1].x).toBeGreaterThanOrEqual(
-          actionBoxes[0].x + actionBoxes[0].width - 0.5,
+        expect(actionBoxes[2].x).toBeGreaterThanOrEqual(
+          actionBoxes[1].x + actionBoxes[1].width - 0.5,
         );
         // Nothing else in the bar sits where the wrapped pill did.
         for (const button of await header.getByRole('button').all()) {

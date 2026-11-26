@@ -24,6 +24,12 @@ import {
   buildHomeWorkItems,
 } from '../views/home/home-view-model';
 
+// The app supplies connection authority; these isolated row tests supply the
+// project catalogue used by the scope labels without starting remote reads.
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 const CONVERSATION = 'claude:conv-inbox-2309';
 const CHILD = `${CONVERSATION}:session:child`;
 const NOW = Date.parse('2026-09-22T19:00:00.000Z');
@@ -154,7 +160,7 @@ describe('#2309 inbox running state from the conversation record', () => {
     );
     // The row is still listed (the chat is open), without the in-motion status.
     expect(
-      screen.getByLabelText('Lineage inbox chat, No project'),
+      screen.getByRole('button', { name: /^Lineage inbox chat.*No project/ }),
     ).not.toBeNull();
     expect(
       document.querySelector('.inbox-row__status[data-tone="active"]'),

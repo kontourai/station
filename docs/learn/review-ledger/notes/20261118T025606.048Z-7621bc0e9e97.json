@@ -1,0 +1,39 @@
+{
+  "revision": "6e01cc856862de8c4a5291cc4755e3aa089bfb24",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"The config reference delta describes the Kontour receiver capability. The abstraction recommendations do not rely on its Full choice.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the product receiver and settings boundaries. The operator commit and personal analytics contracts remain as described.","inputs":["docs/architecture/module-map.md","src-server/services/usage-telemetry-service.ts","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The Lite-only author check leaves the operator diagnostics and configured operator delivery paths as described.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/decisions/rc-promotion-provenance.md","note":"The build check now samples the deployed Lite URL. Stable RC stamping and exact-commit promotion retain their existing rules.","inputs":["docs/decisions/rc-promotion-provenance.md","docs/guides/release-rings.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked the independent operator Detailed save and the staged, per-publisher settings architecture. The Lite-only Kontour receiver requires no Detailed acknowledgement.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md","src-server/domain/telemetry-configuration.ts","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/terminal.md","note":"The cited API change is confined to telemetry sharing and carries no Terminal route changes.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The cited API change is confined to telemetry sharing and carries no integration authentication, transport or client API changes.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the operator receiver, OTLP and personal Insights against author-only gating. The guide’s monitoring and transport probe claims remain accurate.","inputs":["docs/guides/monitoring.md","src-server/domain/telemetry-configuration.ts","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Checked release URL injection and Stable/Nightly stamping. Installed acceptance requires both outbox and private receiver evidence. The bundle and Worker fixture prove local behavior.","inputs":["docs/guides/release-rings.md","scripts/check-author-telemetry-build.mjs"]},
+
+    {"path":"docs/privacy-policy.md","note":"The Lite-only receiver gets the same daily fields after notice. The sender withholds Detailed batches from it. Existing conditional Full and OTLP inventory declarations remain accurate.","inputs":["docs/privacy-policy.md","src-server/domain/telemetry-configuration.ts","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The status distinguishes a configured Lite receiver from Detailed availability. The acknowledgement refuses Detailed on that route with 409. Credential gates remain in effect.","inputs":["docs/reference/api.md","src-server/domain/telemetry-configuration.ts","src-server/routes/operations/usage-telemetry-disclosure.ts","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the saved preference, Lite-only effective tier, independent operator choices and managed-policy precedence.","inputs":["docs/reference/config.md","src-server/domain/telemetry-configuration.ts","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Traced the official build input to the server banner and the Lite-only cap. The operator and OTLP environment paths remain as described.","inputs":["docs/reference/env-vars.md","src-server/domain/telemetry-configuration.ts","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"The author Lite receiver receives the same fields. The change reduces unsupported Detailed sending and preserves the declared data categories.","inputs":["docs/reference/play-data-safety.md","src-server/domain/telemetry-configuration.ts","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked the save handler against the Privacy & sharing route and catalogue disclosure. The confirmation is scoped to the destination selected for Detailed.","inputs":["docs/reference/settings-deep-links.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked first run, Advanced, existing saved Detailed choices and the acknowledgement guard. A Stable sender and Worker fixture passed through ingestion and the exact private aggregate read.","inputs":["docs/reference/usage-telemetry.md","src-server/domain/telemetry-configuration.ts","src-server/routes/operations/usage-telemetry-disclosure.ts","src-server/services/__tests__/telemetry-publishers.test.ts","src-server/services/usage-telemetry-service.ts","src-ui/src/components/UsageSharingChoices.tsx","src-ui/src/components/UsageSharingPrompt.tsx","src-ui/src/components/UsageTelemetryDisclosure.tsx","src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/TelemetryTierSettings.tsx"]},
+
+    {"path":"packages/telemetry-broker/README.md","note":"The operator broker retains its Detailed receipt, PostgreSQL, and private storage contracts. The official author receiver follows the Lite path.","inputs":["packages/telemetry-broker/README.md","src-server/domain/telemetry-configuration.ts","src-server/services/usage-telemetry-service.ts"]}
+  ]
+}

@@ -96,7 +96,6 @@ function session(messageCount = 10) {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle' as const,
     createdAt: 1,
     updatedAt: 1,
@@ -539,23 +538,98 @@ describe('a finger on the transcript', () => {
     expect(scrollToBottomButton()).not.toBeNull();
   });
 
+  const withDisclosure = {
+    renderOverride: (message: { content?: string }, index: number) =>
+      index === 9 ? (
+        <button type="button" aria-expanded="false">
+          {message.content}
+        </button>
+      ) : (
+        <>{message.content}</>
+      ),
+  } as Props;
+  /** The last row reports `height` from now on. */
+  function lastRowGrowsTo(scroller: HTMLElement, height: number) {
+    const rows = scroller.querySelectorAll<HTMLElement>('.chat-message-anchor');
+    const last = rows[rows.length - 1]!;
+    last.getBoundingClientRect = () => {
+      const top = (rows.length - 1) * 100 - scroller.scrollTop;
+      return { top, bottom: top + height, height } as DOMRect;
+    };
+    return last;
+  }
+
   test('a row the reader opens near the end opens in place', () => {
-    const { scroller, geometry } = renderList();
+    const { scroller, geometry, base, rerender } = renderList(withDisclosure);
     vi.advanceTimersByTime(2_000);
     scroller.scrollTop = 1_600;
     fireEvent.scroll(scroller);
-    // A press inside the transcript expands a tool card: content grows below.
-    fireEvent.pointerDown(scroller, { pointerType: 'mouse', button: 0 });
+    // A press on the last row's disclosure expands it: content grows below.
+    fireEvent.pointerDown(screen.getByRole('button', { expanded: false }), {
+      pointerType: 'mouse',
+      button: 0,
+    });
     fireEvent.pointerUp(window, { pointerType: 'mouse' });
     // Past the press's own scroll grace: only the interaction window holds.
     vi.advanceTimersByTime(500);
     geometry.scrollHeight = 2_300;
-    deliverResize(scroller.querySelector('.chat-message-anchor')!);
+    deliverResize(lastRowGrowsTo(scroller, 400));
     expect(scroller.scrollTop).toBe(1_600);
-    // Growth well after the interaction is the content's own: followed.
+    // What it opened can finish rendering well after the interaction (a
+    // code-split detail): the reader's row still stays where it is.
     vi.advanceTimersByTime(2_000);
     geometry.scrollHeight = 2_400;
-    deliverResize(scroller.querySelector('.chat-message-anchor')!);
+    deliverResize(lastRowGrowsTo(scroller, 500));
+    expect(scroller.scrollTop).toBe(1_600);
+    // A new answer arriving while held is not followed either.
+    geometry.scrollHeight = 2_500;
+    const answer = { role: 'assistant' as const, timestamp: 99 };
+    rerender({
+      ...withDisclosure,
+      activeSession: {
+        ...base,
+        messages: [...base.messages, { ...answer, content: 'a new answer' }],
+      },
+    });
+    expect(scroller.scrollTop).toBe(1_600);
+    // Back at the end, new content is followed again.
+    scroller.scrollTop = 2_500 - geometry.clientHeight;
+    fireEvent.scroll(scroller);
+    geometry.scrollHeight = 2_700;
+    rerender({
+      ...withDisclosure,
+      activeSession: {
+        ...base,
+        messages: [
+          ...base.messages,
+          { ...answer, content: 'a new answer' },
+          { ...answer, content: 'another answer', timestamp: 100 },
+        ],
+      },
+    });
+    expect(scroller.scrollTop).toBe(2_700);
+  });
+
+  test('untouched late growth is followed, after an incidental press too', () => {
+    const { scroller, geometry } = renderList(withDisclosure);
+    vi.advanceTimersByTime(2_000);
+    scroller.scrollTop = 1_600;
+    fireEvent.scroll(scroller);
+    // A press on text, not a disclosure.
+    fireEvent.pointerDown(scroller.querySelector('.chat-message-anchor')!, {
+      pointerType: 'mouse',
+      button: 0,
+    });
+    fireEvent.pointerUp(window, { pointerType: 'mouse' });
+    vi.advanceTimersByTime(500);
+    geometry.scrollHeight = 2_300;
+    deliverResize(lastRowGrowsTo(scroller, 400));
+    // Inside the interaction window nothing moves...
+    expect(scroller.scrollTop).toBe(1_600);
+    // ...and growth after it is the content's own: followed.
+    vi.advanceTimersByTime(2_000);
+    geometry.scrollHeight = 2_400;
+    deliverResize(lastRowGrowsTo(scroller, 500));
     expect(scroller.scrollTop).toBe(2_400);
   });
 });

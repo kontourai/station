@@ -1,7 +1,0 @@
-{
-  "revision": "6d24a3afcdae185bf6a3c83de81d231783f95cc8",
-
-  "notes": [
-    {"path":"docs/design/agent-engine-unification.md","note":"Reviewed the edited System prompt row of the seed matrix against claude-adapter.ts: the append happens only with an authored prompt, station-instructions text and station-control in the servers actually given (claudeStationInstructionsAppended), and stationInstructions.delivered records it. Codex and ACP columns are unchanged.","inputs":["docs/design/agent-engine-unification.md","src-server/services/orchestration/session-agent-resolution.ts"]}
-  ]
-}

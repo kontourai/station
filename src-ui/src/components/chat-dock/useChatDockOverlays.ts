@@ -13,14 +13,28 @@ import {
   type DeviceSettingsActions,
   useDeviceSettings,
 } from '../../contexts/DeviceSettingsContext';
-import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import {
+  type SurfaceIntentRecord,
+  useRegionModelOptional,
+} from '../../contexts/RegionModelContext';
 import { useExitTransition } from '../../hooks/useExitTransition';
-import type {
-  NewChatClosedOutcome,
-  NewChatIntent,
+import {
+  type NewChatClosedOutcome,
+  type NewChatIntent,
+  newChatIntentCarriesPayload,
 } from '../../lib/newChatIntent';
 import type { ActiveWorkPanel } from './ActiveWorkContextFrame';
 import { CHAT_DOCK_INBOX_EXIT_MS } from './chat-dock-utils';
+
+/**
+ * The chat the dock is working in, when it runs on this Station: its tab id,
+ * and whether a reporting session belongs to it (`threadInChat`, the Agents
+ * pane's own membership rule).
+ */
+export interface WorkingParent {
+  id: string;
+  owns: (threadId: string | undefined) => boolean;
+}
 
 /**
  * The dock's overlay open flags and the toggles that drive them: history,
@@ -40,6 +54,9 @@ export function useChatDockOverlays({
   setShowNewChatModalState,
   hasConversationIntent,
   onReaderIntent,
+  hostSessionRef,
+  workingParentPending = false,
+  newChatScopeRef,
 }: {
   isMobile: boolean;
   composerMenuTriggerRef: RefObject<HTMLButtonElement | null>;
@@ -47,6 +64,18 @@ export function useChatDockOverlays({
   setShowNewChatModalState: (open: boolean) => void;
   hasConversationIntent: boolean;
   onReaderIntent: () => void;
+  hostSessionRef?: RefObject<WorkingParent | null>;
+  /**
+   * The requested chat is open but not yet the working one (a cold load).
+   * A child request waits for it, so it is not read against a parent that
+   * has not bound yet.
+   */
+  workingParentPending?: boolean;
+  /**
+   * The Project the open New chat draft was opened for (`''` for none), as
+   * the dock last rendered it. Kept draft text belongs to that scope.
+   */
+  newChatScopeRef?: RefObject<string>;
 }) {
   const [mobileInboxOpen, setMobileInboxOpen] = useState(
     isMobile && !hasConversationIntent,
@@ -56,19 +85,57 @@ export function useChatDockOverlays({
   );
   const regionModel = useRegionModelOptional();
   const incoming = regionModel?.surfaceIntents.chat;
+  const [readerSurfaceIntent, setReaderSurfaceIntent] = useState<
+    SurfaceIntentRecord & { workingSessionId?: string }
+  >();
   const consumeIntent = regionModel?.consumeSurfaceIntent;
   useEffect(() => {
     if (!incoming?.session) return;
+    const opensChild = Boolean(
+      (incoming.childId || incoming.childSessionId) &&
+        !incoming.messageAnchor &&
+        !incoming.focus,
+    );
+    if (opensChild && workingParentPending) return;
     onReaderIntent();
     setMobileInboxOpen(false);
-    setImportedSessionId(incoming.session);
+    const hostSession = hostSessionRef?.current;
+    const reusesWorkingParent = Boolean(
+      opensChild && hostSession?.owns(incoming.session),
+    );
+    setImportedSessionId(reusesWorkingParent ? null : incoming.session);
+    setReaderSurfaceIntent({
+      ...incoming,
+      workingSessionId: reusesWorkingParent ? hostSession!.id : undefined,
+    });
     consumeIntent?.('chat', incoming.token);
-  }, [incoming, consumeIntent, onReaderIntent]);
+  }, [
+    incoming,
+    consumeIntent,
+    onReaderIntent,
+    hostSessionRef,
+    workingParentPending,
+  ]);
+  const consumeChildIntent = useCallback(
+    (token: number) =>
+      setReaderSurfaceIntent((current) =>
+        current?.token === token && (current.childId || current.childSessionId)
+          ? {
+              ...current,
+              childId: undefined,
+              childSessionId: undefined,
+              childTitle: undefined,
+            }
+          : current,
+      ),
+    [],
+  );
   // An imported conversation occupies the same reading surface as an owned chat.
   const onOpenInboxSession = useCallback(
     (threadId: string) => {
       onReaderIntent();
       setMobileInboxOpen(false);
+      setReaderSurfaceIntent(undefined);
       setImportedSessionId(threadId);
     },
     [onReaderIntent],
@@ -89,6 +156,18 @@ export function useChatDockOverlays({
   const reportNewChatDraft = useCallback((text: string) => {
     newChatDraftText.current = text;
   }, []);
+  // What a draft held when it was left without starting, by the Project it
+  // was opened for (`''` for none): the next plain New chat for that same
+  // scope opens with it, as a chat keeps its unsent draft. A draft a sender
+  // opened hands its text back to that sender instead. It lives as long as
+  // this dock does.
+  const keptNewChatText = useRef(new Map<string, string>());
+  const keptNewChatTextFor = useCallback(
+    (scope: string) => keptNewChatText.current.get(scope),
+    [],
+  );
+  // Whether the open request is a plain one, which takes the kept text.
+  const [newChatRestoresKept, setNewChatRestoresKept] = useState(false);
   const [newChatStartWithDefault, setNewChatStartWithDefault] = useState(false);
   const [newChatSelection, setNewChatSelection] =
     useState<NewChatIntent['selection']>();
@@ -103,11 +182,20 @@ export function useChatDockOverlays({
       /** Why an open request ends: its chat started, or it was dismissed. */
       closedAs: NewChatClosedOutcome = 'dismissed',
     ) => {
-      newChatOnClosed.current?.(closedAs, newChatDraftText.current);
+      const closingText = newChatDraftText.current;
+      const scope = newChatScopeRef?.current ?? '';
+      if (newChatOnClosed.current)
+        newChatOnClosed.current(closedAs, closingText);
+      else if (closedAs === 'started') keptNewChatText.current.delete(scope);
+      else if (closingText !== undefined) {
+        if (closingText.trim()) keptNewChatText.current.set(scope, closingText);
+        else keptNewChatText.current.delete(scope);
+      }
       newChatDraftText.current = undefined;
       newChatOnClosed.current = open ? options?.onClosed : undefined;
       setNewChatTaskShaping(open && options?.taskShaping === true);
       setNewChatInitialPrompt(open ? options?.initialPrompt : undefined);
+      setNewChatRestoresKept(open && !newChatIntentCarriesPayload(options));
       setNewChatInitialFiles(open ? options?.initialFiles : undefined);
       setNewChatStartWithDefault(open && options?.startWithDefault === true);
       setNewChatSelection(open ? options?.selection : undefined);
@@ -116,12 +204,13 @@ export function useChatDockOverlays({
       if (open) {
         onReaderIntent();
         setMobileInboxOpen(false);
+        setReaderSurfaceIntent(undefined);
         setImportedSessionId(null);
         setNewChatRequestEpoch((epoch) => epoch + 1);
       }
       setShowNewChatModalState(open);
     },
-    [setShowNewChatModalState, onReaderIntent],
+    [setShowNewChatModalState, onReaderIntent, newChatScopeRef],
   );
 
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -183,11 +272,10 @@ export function useChatDockOverlays({
   }, []);
 
   // Stable callback identities for the memoized dock subtree (
-  // ChatDockProjectContext / ChatDockContentArea): the dock re-renders every
+  // ChatDockContentArea): the dock re-renders every
   // rAF-coalesced frame while a resize drag is live, and inline arrow props
   // would defeat React.memo by changing identity on every one of those
   // renders even though the callbacks themselves never change behavior.
-  const toggleHistory = useCallback(() => setIsHistoryOpen((v) => !v), []);
   const toggleInbox = useCallback(
     () => setDeviceSetting('inboxOpen', !isInboxOpen),
     [isInboxOpen, setDeviceSetting],
@@ -197,12 +285,16 @@ export function useChatDockOverlays({
 
   return {
     importedSessionId,
+    readerSurfaceIntent,
+    consumeChildIntent,
     setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,
     newChatStartWithDefault,
     newChatTaskShaping,
     newChatInitialPrompt,
+    newChatRestoresKept,
+    keptNewChatTextFor,
     newChatInitialFiles,
     newChatSelection,
     newChatHandoff,
@@ -210,7 +302,6 @@ export function useChatDockOverlays({
     reportNewChatDraft,
     setShowNewChatModal,
     isHistoryOpen,
-    toggleHistory,
     openInboxHistory,
     closeHistory,
     isInboxOpen,

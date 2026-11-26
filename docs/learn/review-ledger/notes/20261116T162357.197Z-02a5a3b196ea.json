@@ -1,0 +1,7 @@
+{
+  "revision": "ad4ba1fe3213dd95c33889b1b13cbcb92ad14636",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Forget paragraph: edited to state the menu stays open with focus on the next Station; matches StationSwitcherMenu forget() and the Gallery after-forget screens.","inputs":["docs/guides/connections.md","src-ui/src/components/header/StationSwitcherMenu.tsx"]}
+  ]
+}

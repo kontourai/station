@@ -1,7 +1,0 @@
-{
-  "revision": "dfa150cef8cacaefcb7b573af12c2a95f1e4edb8",
-
-  "notes": [
-    {"path":"README.md","note":"Checked the new hero picture and three-up: every src/srcset resolves to a non-volatile screen in tests/screenshots.baseline.json (enforced by product-docs-source-links.test.ts); alt text describes the pictured Home, phone Home and Task room screens; the caption states they are gallery captures with sample data. No product claims changed.","inputs":["README.md"]}
-  ]
-}

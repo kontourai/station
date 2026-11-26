@@ -116,6 +116,7 @@ export function acceptConversationHandoffUiState(
     // is the conversation's, and the server applies it to the successor; a
     // queued pick still rides the next send (#2436).
     lastAppliedApprovalMode: undefined,
+    reportedApprovalReviewer: undefined,
     approvalEscalationRejected: undefined,
     approvalTakeoverFailed: undefined,
     isProcessingStep: false,
@@ -132,6 +133,9 @@ export function acceptConversationHandoffUiState(
     activityHint: undefined,
     backgroundTasks: [],
     liveUsage: undefined,
+    engineMcpServers: undefined,
+    engineMcpReconnect: undefined,
+    engineMcpComplete: undefined,
     status: 'sending',
     sendAwaitingTurnStart: true,
     orchestrationSessionStarted: true,

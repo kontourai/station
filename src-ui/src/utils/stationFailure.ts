@@ -8,6 +8,12 @@ import {
 import { StationUiError } from './StationUiError';
 import { isStationTransportFailure } from './stationTransportFailure';
 
+/** Shared with `describeReadFailure` so a read and a request say the same thing. */
+export const STATION_FAILURE_UNREADABLE =
+  'Station sent a response this app could not read.';
+export const STATION_FAILURE_UNREACHABLE =
+  'Could not reach Station. Check the connection, then try again.';
+
 const TERMINAL_RECOVERY_COPY = new Map([
   [
     'raw-egress-unavailable',
@@ -152,7 +158,7 @@ export function describeStationFailure(
   )
     return {
       title: 'Response unavailable',
-      body: 'Station sent a response this app could not read.',
+      body: STATION_FAILURE_UNREADABLE,
       authority,
       delivery: 'uncertain',
       recovery: 'check',
@@ -160,7 +166,7 @@ export function describeStationFailure(
   if (value && isStationTransportFailure(value))
     return {
       title: 'Connection unavailable',
-      body: 'Could not reach Station. Check the connection, then try again.',
+      body: STATION_FAILURE_UNREACHABLE,
       authority,
       delivery: 'uncertain',
       recovery: 'check',
@@ -190,4 +196,21 @@ export function describeStationFailure(
     delivery: refused ? 'refused' : 'uncertain',
     recovery: refused ? 'retry' : 'check',
   };
+}
+
+/**
+ * Why a saved engine has not connected, from its last probe. A failure the
+ * probe could name (`code`) is said in Station's words; any other probe text
+ * is not shown, and the reason reads as the request-failure fallback.
+ */
+export function describeEngineProbeFailure(
+  lastError: { message: string; phase: string; code?: string },
+  engineName: string,
+): string {
+  if (lastError.code === 'managed-runtime-not-installed')
+    return `${engineName} isn't installed yet. Install it from its sign-in panel.`;
+  // Station composes this text itself from the engine's built-in entry and
+  // the version it read, so it is shown as is.
+  if (lastError.code === 'engine-update-required') return lastError.message;
+  return describeStationFailure(lastError).body;
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "ccdfe42f0f3c896cb89ab73fad712f127e2a1d40",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Caution copy is now two sentences (no em dash, per the UI copy-style gate); behaviour claims unchanged.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

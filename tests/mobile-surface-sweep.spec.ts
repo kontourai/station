@@ -35,7 +35,6 @@ const ROUTES: readonly string[] = [
   '/profile',
   '/registry',
   '/automations',
-  '/?surface=activity',
   '/settings',
 ];
 
@@ -171,10 +170,7 @@ test.describe('Mobile surface sweep at 390x844', () => {
       // wait for the route's own heading before measuring. Activity opens as
       // a dock pane titled by an h2, and Home's h1 stays in the DOM under it,
       // hidden; every other route is a page with its own h1.
-      const heading =
-        route === '/?surface=activity'
-          ? page.getByRole('heading', { level: 2, name: 'Activity' })
-          : page.locator('h1').filter({ visible: true }).first();
+      const heading = page.locator('h1').filter({ visible: true }).first();
       await expect(heading).toBeVisible({
         timeout: 30_000,
       });

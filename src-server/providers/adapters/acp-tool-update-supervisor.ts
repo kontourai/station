@@ -1,6 +1,12 @@
 import crypto from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
+import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
+import {
+  type AcpIdentityHandshake,
+  matchesAcpHandshakeIdentity,
+} from '../../services/acp/acp-handshake-facts.js';
 import {
   acpToolUpdateSupervisorBytes,
   acpToolUpdateSupervisorOperations,
@@ -45,6 +51,8 @@ function toolIdentity(
   id: string,
   call: CallState,
 ): { toolName: string; toolKind?: EngineToolKind } {
+  if (call.proxiedMcpToolName)
+    return { toolName: call.proxiedMcpToolName, toolKind: 'other' };
   return {
     toolName: call.name || call.title || id,
     ...(call.kind ? { toolKind: call.kind } : {}),
@@ -116,6 +124,7 @@ type AcpToolUpdate = {
   kind?: unknown;
   rawInput?: unknown;
   rawOutput?: unknown;
+  handshake?: AcpIdentityHandshake | null;
   content?: unknown;
   status?: string | null;
   hasTitle?: boolean;
@@ -128,8 +137,10 @@ type AcpToolUpdate = {
 };
 
 type CallState = {
+  reportedStart?: true;
   name?: string;
   title?: string;
+  proxiedMcpToolName?: string;
   /** The engine's ACP `kind`, kept across updates: OpenCode's `completed`
    * update omits it, and the terminal must still say what the call was. */
   kind?: EngineToolKind;
@@ -238,6 +249,34 @@ function dataProperty(value: unknown, key: PropertyKey): unknown {
   } catch {
     return undefined;
   }
+}
+
+// agy reports call_mcp_tool as an execute call with the MCP identity in rawInput.
+function antigravityMcpToolName(
+  update: AcpToolUpdate,
+  call: CallState,
+): string | undefined {
+  if (
+    call.kind !== 'execute' ||
+    !update.handshake ||
+    !matchesAcpHandshakeIdentity(update.handshake, {
+      agentInfoName: 'Antigravity ACP Server',
+    })
+  )
+    return undefined;
+  const server = dataProperty(update.rawInput, 'ServerName');
+  const tool = dataProperty(update.rawInput, 'ToolName');
+  const name = /^[a-zA-Z0-9_.-]{1,128}$/u;
+  if (
+    typeof server !== 'string' ||
+    typeof tool !== 'string' ||
+    !name.test(server) ||
+    !name.test(tool) ||
+    call.title !== `MCP Tool ${tool}`
+  ) {
+    return undefined;
+  }
+  return `${server}/${tool}`;
 }
 
 function safeArrayEntries(value: unknown): {
@@ -694,6 +733,34 @@ function displayContent(
   return joined || undefined;
 }
 
+const FAILED_WITHOUT_REASON =
+  'The engine reported that this tool call failed but gave no reason.';
+
+/** The failure text an engine put in rawOutput, as one readable string. */
+function displayRawOutput(call: CallState): string | undefined {
+  if (!call.hasRawOutput) return undefined;
+  const raw = call.rawOutput;
+  if (typeof raw === 'string') return raw.trim() || undefined;
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    const record = raw as Record<string, unknown>;
+    for (const key of ['error', 'message', 'stderr', 'output']) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+      if (value && typeof value === 'object') {
+        const nested = (value as Record<string, unknown>).message;
+        if (typeof nested === 'string' && nested.trim()) return nested.trim();
+      }
+    }
+  }
+  try {
+    const serialized = JSON.stringify(raw);
+    return serialized && serialized !== '{}' ? serialized : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function receiptFor(call: CallState): ToolOutputReceipt | undefined {
   const sources = [
     call.rawInputReceipt,
@@ -796,12 +863,17 @@ export class AcpToolUpdateSupervisor {
     // last valid one; an unchanged kind is not new metadata.
     const nextKind = update.hasKind ? engineToolKind(update.kind) : undefined;
     const kindChanged = nextKind !== undefined && nextKind !== call.kind;
-    const metadataChanged =
+    const hasMetadataUpdate =
       start ||
       update.hasName ||
       update.hasTitle ||
       kindChanged ||
       update.hasRawInput;
+    const previousIdentity =
+      call.reportedStart && hasMetadataUpdate
+        ? toolIdentity(update.toolCallId, call)
+        : undefined;
+    const previousInput = call.rawInput;
     if (update.hasName)
       call.name = typeof update.name === 'string' ? update.name : undefined;
     if (update.hasTitle)
@@ -810,14 +882,25 @@ export class AcpToolUpdateSupervisor {
     // claim the engine made, and an unknown string is not that claim.
     if (kindChanged) call.kind = nextKind;
     if (update.hasRawInput) {
+      call.proxiedMcpToolName ??= antigravityMcpToolName(update, call);
+      // Full HTML in a render call can otherwise consume the entire budget
+      // needed to retain the publication reference returned by Station.
+      const resultBytes =
+        stationControlToolName(
+          call.proxiedMcpToolName ?? call.name ?? call.title,
+        ) === 'html_render'
+          ? 2048
+          : 0;
+      const input = call.proxiedMcpToolName
+        ? (dataProperty(update.rawInput, 'Arguments') ?? update.rawInput)
+        : update.rawInput;
       const rawInput =
-        update.rawInput === null
+        input === null
           ? ({ value: undefined, bytes: 0 } satisfies RawProjection)
           : projectRaw(
-              update.rawInput,
+              input,
               ACP_TOOL_UPDATE_LIMITS.maxRetainedBytesPerCall -
-                call.rawOutputBytes -
-                call.contentBytes,
+                Math.max(call.rawOutputBytes + call.contentBytes, resultBytes),
             );
       if (
         this.replaceRetained(
@@ -897,7 +980,17 @@ export class AcpToolUpdateSupervisor {
         }
       }
     }
-    if (metadataChanged) this.emitStarted(update.toolCallId, call);
+    if (
+      hasMetadataUpdate &&
+      (!isDeepStrictEqual(
+        previousIdentity,
+        toolIdentity(update.toolCallId, call),
+      ) ||
+        !isDeepStrictEqual(previousInput, call.rawInput))
+    ) {
+      call.reportedStart = true;
+      this.emitStarted(update.toolCallId, call);
+    }
     if (terminal) {
       this.flushCall(call);
       this.complete(update.toolCallId, call, update.status ?? 'failed');
@@ -984,11 +1077,14 @@ export class AcpToolUpdateSupervisor {
     this.schedule();
   }
   private complete(id: string, call: CallState, status: string): void {
-    const projectedOutput = call.hasContent
-      ? call.content
-      : call.hasRawOutput
-        ? call.rawOutput
-        : undefined;
+    const fallBackToRenderResult =
+      stationControlToolName(
+        call.proxiedMcpToolName ?? call.name ?? call.title,
+      ) === 'html_render' && !call.content?.length;
+    const projectedOutput =
+      call.hasContent && !fallBackToRenderResult
+        ? call.content
+        : (call.rawOutput ?? call.content);
     // What was not kept is stated wherever the result renders: in the output
     // for every output shape, and in the error text of a failed call.
     const omissions = summarizeImageOmissions(call.imageOmissions);
@@ -1011,10 +1107,16 @@ export class AcpToolUpdateSupervisor {
               : 'error',
         ...(status === 'failed'
           ? {
+              // Some engines (Antigravity) report a failure only in rawOutput,
+              // and some give no reason at all. A failed call never reaches
+              // the person or the Agent as a blank error.
               error:
-                [displayContent(call.content), omissions]
+                [
+                  displayContent(call.content) ?? displayRawOutput(call),
+                  omissions,
+                ]
                   .filter(Boolean)
-                  .join('\n') || undefined,
+                  .join('\n') || FAILED_WITHOUT_REASON,
             }
           : output === undefined
             ? {}

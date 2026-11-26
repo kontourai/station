@@ -2,22 +2,28 @@
  * Scheduler Routes — scheduled job management
  */
 
-import type {
-  SchedulerAutomationCreator,
-  SchedulerAutomationTarget,
-  SchedulerJob,
-  SchedulerManualRunReceipt,
+import {
+  SCHEDULER_JOB_NAME_TAKEN,
+  type SchedulerAutomationCreator,
+  type SchedulerAutomationTarget,
+  type SchedulerJob,
+  type SchedulerManualRunReceipt,
 } from '@kontourai/station-contracts/scheduler';
 import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import { type Context, Hono } from 'hono';
-import { SchedulerJobConflictError } from '../../services/scheduling/builtin-scheduler.js';
+import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
+import {
+  SchedulerJobConflictError,
+  SchedulerJobNotFoundError,
+} from '../../services/scheduling/builtin-scheduler.js';
 import { SchedulerStorageUnavailableError } from '../../services/scheduling/scheduler-ledger.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { SchedulerScheduleInvalidError } from '../../services/scheduling/scheduler-service.js';
-import { schedulerJobRuns } from '../../telemetry/metrics.js';
+import { schedulerManagementOperations } from '../../telemetry/metrics.js';
+import { boundedIntQuery } from '../../utils/bounded-int-query.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   addJobSchema,
@@ -56,9 +62,17 @@ function publicManualRunReceipt(
   return { outcome: result.outcome, message, runId: result.runId };
 }
 
-function observeManualRunRequest() {
+function observeSchedulerManagement(
+  op:
+    | 'create_job'
+    | 'edit_job'
+    | 'run_job'
+    | 'enable_job'
+    | 'disable_job'
+    | 'delete_job',
+) {
   try {
-    schedulerJobRuns.add(1, { op: 'run_job' });
+    schedulerManagementOperations.add(1, { op });
   } catch {
     // Metrics are observability only. Do not change an authenticated run's
     // provider outcome because an OTel exporter is unavailable.
@@ -142,7 +156,14 @@ export type AutomationJobAdmission = (
   c: Context,
   job: SchedulerJob,
 ) =>
-  | { readonly ok: true }
+  | {
+      readonly ok: true;
+      /**
+       * Admitted only by the operator-in-person override on a job someone
+       * else owns: the operator may manage it, never repoint it.
+       */
+      readonly operatorOverride?: true;
+    }
   | {
       readonly ok: false;
       readonly status: 403 | 404;
@@ -164,7 +185,7 @@ export function createSchedulerReadProjection(
   const canReadJob = (c: Context, job: SchedulerJob) =>
     options.mayReadAutomationJob
       ? options.mayReadAutomationJob(c, job)
-      : !job.target;
+      : !job.target && !job.projectId;
   const canReadRunSummary = (
     c: Context,
     job: SchedulerJob,
@@ -208,6 +229,8 @@ export function createSchedulerReadProjection(
         lastRunMs,
         lastSuccessAt,
         consecutiveFailures,
+        recentOutcomes,
+        pausedItself,
         ...redacted
       } = job;
       return redacted;
@@ -231,6 +254,22 @@ export function createSchedulerRoutes(
     jobProposals?: JobProposalApproval;
     /** Absent: a body with a `target` is refused (no conversation runs). */
     admitAutomationTarget?: AutomationTargetAdmission;
+    /**
+     * #2377 slice D: who an untargeted job's runs act as, resolved from the
+     * creating request (a person, or an agent's dispatch actor). Absent or
+     * unresolved: the job is stored with no owner and its runs have no
+     * Station tools (`ownerNeeded`).
+     */
+    jobOwner?: (c: Context) => SchedulerAutomationCreator | undefined;
+    /**
+     * Whether the recorded creator may execute in an existing Project.
+     * Absent when this Station cannot create Project jobs.
+     */
+    maySetProjectJob?: (projectId: string, creatorId: string) => boolean;
+    /** The `project-schedules` preview: off refuses a body with `projectId`. */
+    projectJobsPreview?: {
+      select<T>(branches: { enabled: () => T; disabled: () => T }): T;
+    };
     /** Absent: every action on a job with a stored target is refused. */
     admitAutomationJob?: AutomationJobAdmission;
     mayReadAutomationJob?: (c: Context, job: SchedulerJob) => boolean;
@@ -243,34 +282,80 @@ export function createSchedulerRoutes(
 ) {
   const app = new Hono();
 
+  const projectJobNotFound = (c: Context) =>
+    c.json(
+      {
+        success: false,
+        code: 'project_not_found',
+        error: 'Project not found.',
+      },
+      404,
+    );
+  const jobNotFound = (c: Context) =>
+    c.json({ success: false, error: 'Job not found' }, 404);
+  const findJobByName = async (name: string) =>
+    (await schedulerService.listJobs()).find((job) => job.name === name);
+
   /**
-   * The refusal for acting on `name`, or undefined when it may proceed.
-   * Jobs without a target keep their existing (operator) authority.
+   * Returns the stored job the caller may act on, or a refusal. A legacy
+   * ownerless job without a target or Project keeps its operator authority.
    */
-  const refuseStoredTarget = async (
+  const admitStoredJob = async (
     c: Context,
     name: string,
-  ): Promise<Response | undefined> => {
-    const job = (await schedulerService.listJobs()).find(
-      (candidate) => candidate.name === name,
-    );
-    if (!job?.target) return undefined;
+    optionsForAction: {
+      readonly requiresProjectExecute?: boolean;
+      readonly edit?: { readonly target?: unknown };
+    } = {},
+  ): Promise<SchedulerJob | Response> => {
+    const job = await findJobByName(name);
+    if (!job) return jobNotFound(c);
+    if (!job.target && !job.createdBy && !job.projectId) return job;
     if (!options.admitAutomationJob)
       return c.json(
-        {
-          success: false,
-          code: 'automation_target_unavailable',
-          error: "This Station can't run an automation in a conversation.",
-        },
+        job.target
+          ? {
+              success: false,
+              code: 'automation_target_unavailable',
+              error: "This Station can't run an automation in a conversation.",
+            }
+          : {
+              success: false,
+              code: 'automation_owner_unavailable',
+              error: "This Station can't check who owns this job.",
+            },
         503,
       );
     const admitted = options.admitAutomationJob(c, job);
-    return admitted.ok
-      ? undefined
-      : c.json(
-          { success: false, code: admitted.code, error: admitted.error },
-          admitted.status,
-        );
+    if (!admitted.ok)
+      return c.json(
+        { success: false, code: admitted.code, error: admitted.error },
+        admitted.status,
+      );
+    if (
+      optionsForAction.requiresProjectExecute &&
+      job.projectId &&
+      (!job.createdBy ||
+        !options.maySetProjectJob?.(job.projectId, job.createdBy.userId))
+    )
+      return projectJobNotFound(c);
+    // Its runs act as the owner, so a target the operator chose would run
+    // as the owner in a conversation the owner never chose (a dedicated one
+    // would even be started as them). Only the owner points their own job.
+    if (
+      admitted.operatorOverride &&
+      optionsForAction.edit?.target !== undefined &&
+      optionsForAction.edit.target !== null
+    )
+      return c.json(
+        {
+          success: false,
+          code: 'automation_target_owner_only',
+          error: "Only this job's owner can point it at a conversation.",
+        },
+        403,
+      );
+    return job;
   };
 
   const { canReadJob, canReadRunSummary, visibleJobs } =
@@ -358,7 +443,16 @@ export function createSchedulerRoutes(
 
   app.get('/jobs', async (c) => {
     try {
-      const data = await visibleJobs(c);
+      const jobs = await visibleJobs(c);
+      const weekStart = c.req.query('weekStart');
+      const data =
+        weekStart === undefined
+          ? jobs
+          : schedulerService.projectWeek(
+              jobs,
+              weekStart,
+              c.req.query('displayZone'),
+            );
       return c.json({ success: true, data });
     } catch (error: unknown) {
       logger.error('Failed to list scheduler jobs', { error });
@@ -445,6 +539,10 @@ export function createSchedulerRoutes(
           (job) => job.provider === provider,
         ).length;
       }
+      if (isOperatorInPersonNotAgent(c.req.raw) && data.providers['built-in']) {
+        data.providers['built-in'].rowIssues =
+          schedulerService.readBuiltinRowIssues();
+      }
       return c.json({ success: true, data });
     } catch (error: unknown) {
       logger.error('Failed to get scheduler status', { error });
@@ -460,7 +558,9 @@ export function createSchedulerRoutes(
       const cron = c.req.query('cron');
       if (!cron)
         return c.json({ success: false, error: 'cron is required' }, 400);
-      const count = parseInt(c.req.query('count') || '5', 10);
+      // The projection caps a preview at 1000 occurrences.
+      const count =
+        boundedIntQuery(c.req.query('count'), { min: 0, max: 1000 }) ?? 5;
       // #1536 D1: the zone travels with the expression or the projection is
       // wrong for every zoned schedule.
       const timezone = c.req.query('timezone') || undefined;
@@ -489,8 +589,10 @@ export function createSchedulerRoutes(
           candidate.name === name &&
           (!providerId || candidate.provider === providerId),
       );
-      if (!job) return c.json({ success: false, error: 'Job not found' }, 404);
-      const count = parseInt(c.req.query('count') || '20', 10);
+      if (!job) return jobNotFound(c);
+      if (job.projectId && !canReadJob(c, job)) return jobNotFound(c);
+      const count =
+        boundedIntQuery(c.req.query('count'), { min: 1, max: 1000 }) ?? 20;
       const data = providerId
         ? await schedulerService.getJobLogsForProvider(
             providerId,
@@ -503,8 +605,7 @@ export function createSchedulerRoutes(
           ? options.mayReadAutomationRun(c, job, run)
           : canReadJob(c, job),
       );
-      if (!canReadJob(c, job) && visible.length === 0)
-        return c.json({ success: false, error: 'Job not found' }, 404);
+      if (!canReadJob(c, job) && visible.length === 0) return jobNotFound(c);
       return c.json({ success: true, data: visible });
     } catch (error: unknown) {
       logger.error('Failed to get job logs', { error });
@@ -536,6 +637,38 @@ export function createSchedulerRoutes(
           { success: false, code: approval.code, error: approval.error },
           approval.status,
         );
+      if (body.projectId !== undefined && !options.maySetProjectJob) {
+        approval?.revert();
+        return c.json(
+          {
+            success: false,
+            code: 'project_schedule_unavailable',
+            error: "This Station can't run a schedule as a Project Task.",
+          },
+          503,
+        );
+      }
+      if (
+        body.projectId !== undefined &&
+        options.projectJobsPreview?.select({
+          enabled: () => false,
+          disabled: () => true,
+        })
+      ) {
+        approval?.revert();
+        return c.json(
+          {
+            success: false,
+            error:
+              'Enable Project schedules in Settings → Advanced → Feature previews.',
+            code: 'feature_preview_disabled',
+            previewId: 'project-schedules',
+            settingsPath:
+              '/settings?view=feature-previews&highlight=feature-previews',
+          },
+          404,
+        );
+      }
       const admitted = admitTarget(
         c,
         options.admitAutomationTarget,
@@ -545,20 +678,46 @@ export function createSchedulerRoutes(
         approval?.revert();
         return admitted.refused;
       }
-      schedulerJobRuns.add(1, { op: 'create_job' });
-      let output: Awaited<ReturnType<SchedulerService['addJob']>>;
+      let created: Awaited<ReturnType<SchedulerService['createJob']>>;
       try {
-        output = await schedulerService.addJob({ ...body, ...admitted });
+        // #2377 slice D: an untargeted job records its owner too.
+        const owner = body.target ? undefined : options.jobOwner?.(c);
+        const projectId = body.projectId?.trim();
+        if (
+          projectId !== undefined &&
+          (!owner || !options.maySetProjectJob?.(projectId, owner.userId))
+        ) {
+          approval?.revert();
+          return projectJobNotFound(c);
+        }
+        observeSchedulerManagement('create_job');
+        created = await schedulerService.createJob({
+          ...body,
+          ...(projectId === undefined ? {} : { projectId }),
+          ...admitted,
+          ...(owner ? { createdBy: owner } : {}),
+        });
       } catch (error) {
         approval?.revert();
         throw error;
       }
       approval?.commit();
-      return c.json({ success: true, data: { output } });
+      // `name` is the slug the job was stored under, which the scheduler may
+      // have picked from the display name.
+      return c.json({
+        success: true,
+        data: { output: created.output, name: created.name },
+      });
     } catch (error: unknown) {
       logger.error('Failed to add job', { error });
       return c.json(
-        { success: false, error: errorMessage(error) },
+        {
+          success: false,
+          error: errorMessage(error),
+          ...(error instanceof SchedulerJobConflictError
+            ? { code: SCHEDULER_JOB_NAME_TAKEN }
+            : {}),
+        },
         schedulerErrorStatus(error),
       );
     }
@@ -567,19 +726,24 @@ export function createSchedulerRoutes(
   app.put('/jobs/:target', validate(editJobSchema), async (c) => {
     try {
       const opts = getBody(c) as Record<string, unknown>;
-      const stored = await refuseStoredTarget(c, param(c, 'target'));
-      if (stored) return stored;
+      const name = param(c, 'target');
+      const job = await admitStoredJob(c, name, {
+        requiresProjectExecute: true,
+        edit: opts,
+      });
+      if (job instanceof Response) return job;
       const admitted = admitTarget(
         c,
         options.admitAutomationTarget,
         opts.target as SchedulerAutomationTarget | null | undefined,
       );
       if ('refused' in admitted) return admitted.refused;
-      schedulerJobRuns.add(1, { op: 'edit_job' });
-      const output = await schedulerService.editJob(param(c, 'target'), {
-        ...opts,
-        ...admitted,
-      });
+      observeSchedulerManagement('edit_job');
+      const output = await schedulerService.editJob(
+        name,
+        { ...opts, ...admitted },
+        job,
+      );
       return c.json({ success: true, data: { output } });
     } catch (error: unknown) {
       logger.error('Failed to edit job', { error });
@@ -593,10 +757,12 @@ export function createSchedulerRoutes(
   app.post('/jobs/:target/run', async (c) => {
     const target = param(c, 'target');
     try {
-      const stored = await refuseStoredTarget(c, target);
-      if (stored) return stored;
-      observeManualRunRequest();
-      const result = await schedulerService.runJob(target);
+      const job = await admitStoredJob(c, target, {
+        requiresProjectExecute: true,
+      });
+      if (job instanceof Response) return job;
+      observeSchedulerManagement('run_job');
+      const result = await schedulerService.runJob(target, job);
       // Provider/storage diagnostics belong to the protected run record, not
       // this public envelope. Keep the old output field stable and add only a
       // projected, non-authorizing receipt.
@@ -652,7 +818,10 @@ export function createSchedulerRoutes(
 
   app.post('/jobs/:target/monitor/restart', async (c) => {
     try {
-      const output = await schedulerService.restartMonitor(param(c, 'target'));
+      const target = param(c, 'target');
+      const job = await findJobByName(target);
+      if (!job || job.projectId) return jobNotFound(c);
+      const output = await schedulerService.restartMonitor(target);
       return c.json({ success: true, data: { output } });
     } catch (error: unknown) {
       return c.json(
@@ -664,6 +833,9 @@ export function createSchedulerRoutes(
 
   app.post('/jobs/:target/monitor/resolve', async (c) => {
     try {
+      const target = param(c, 'target');
+      const job = await findJobByName(target);
+      if (!job || job.projectId) return jobNotFound(c);
       const body = getBody(c) as Record<string, unknown>;
       if (typeof body.triggerId !== 'string' || body.action !== 'resolve')
         return c.json(
@@ -671,7 +843,7 @@ export function createSchedulerRoutes(
           400,
         );
       const output = await schedulerService.resolveIndeterminateMonitor(
-        param(c, 'target'),
+        target,
         {
           triggerId: body.triggerId,
           action: 'resolve',
@@ -688,10 +860,13 @@ export function createSchedulerRoutes(
 
   app.put('/jobs/:target/enable', async (c) => {
     try {
-      const stored = await refuseStoredTarget(c, param(c, 'target'));
-      if (stored) return stored;
-      schedulerJobRuns.add(1, { op: 'enable_job' });
-      await schedulerService.enableJob(param(c, 'target'));
+      const name = param(c, 'target');
+      const job = await admitStoredJob(c, name, {
+        requiresProjectExecute: true,
+      });
+      if (job instanceof Response) return job;
+      observeSchedulerManagement('enable_job');
+      await schedulerService.enableJob(name, job);
       return c.json({ success: true });
     } catch (error: unknown) {
       logger.error('Failed to enable job', { error });
@@ -704,10 +879,11 @@ export function createSchedulerRoutes(
 
   app.put('/jobs/:target/disable', async (c) => {
     try {
-      const stored = await refuseStoredTarget(c, param(c, 'target'));
-      if (stored) return stored;
-      schedulerJobRuns.add(1, { op: 'disable_job' });
-      await schedulerService.disableJob(param(c, 'target'));
+      const name = param(c, 'target');
+      const job = await admitStoredJob(c, name);
+      if (job instanceof Response) return job;
+      observeSchedulerManagement('disable_job');
+      await schedulerService.disableJob(name, job);
       return c.json({ success: true });
     } catch (error: unknown) {
       logger.error('Failed to disable job', { error });
@@ -720,10 +896,11 @@ export function createSchedulerRoutes(
 
   app.delete('/jobs/:target', async (c) => {
     try {
-      const stored = await refuseStoredTarget(c, param(c, 'target'));
-      if (stored) return stored;
-      schedulerJobRuns.add(1, { op: 'delete_job' });
-      await schedulerService.removeJob(param(c, 'target'));
+      const name = param(c, 'target');
+      const job = await admitStoredJob(c, name);
+      if (job instanceof Response) return job;
+      observeSchedulerManagement('delete_job');
+      await schedulerService.removeJob(name, job);
       return c.json({ success: true });
     } catch (error: unknown) {
       logger.error('Failed to remove job', { error });
@@ -737,11 +914,12 @@ export function createSchedulerRoutes(
   return app;
 }
 
-function schedulerErrorStatus(error: unknown): 400 | 409 | 500 | 503 {
+function schedulerErrorStatus(error: unknown): 400 | 404 | 409 | 500 | 503 {
   // #1536 R3: a schedule the projector cannot evaluate is the CALLER's, so it
   // is a 400 carrying `validateSchedule`'s own message — not a 500 that reads
   // as a server fault for an operator's typo in a zone name.
   if (error instanceof SchedulerScheduleInvalidError) return 400;
   if (error instanceof SchedulerJobConflictError) return 409;
+  if (error instanceof SchedulerJobNotFoundError) return 404;
   return error instanceof SchedulerStorageUnavailableError ? 503 : 500;
 }

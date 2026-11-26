@@ -1,0 +1,7 @@
+{
+  "revision": "7395400a056be9a932e846141349e46df19875a6",
+
+  "notes": [
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed against execution-target-execution.ts: the only change drops the export of keepConversationProvider, which nothing outside the file imported; its behavior (a conversation keeps the provider it started with) and every claim this document makes about foreground execution are unchanged.","inputs":["docs/design/channel-home-authority.md","src-server/services/execution-target/execution-target-execution.ts"]}
+  ]
+}

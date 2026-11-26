@@ -1,0 +1,7 @@
+{
+  "revision": "8d908c396441c33d2735dbe78977883515774947",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Replaced the turn_start_held paragraph with the three codes in packages/contracts/src/orchestration.ts and what clears each, checked against the coordinator errors and the UI translations.","inputs":["docs/reference/contracts.md","packages/contracts/src/orchestration.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/utils/chatErrorTranslation.ts"]}
+  ]
+}

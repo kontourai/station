@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runWithAgentTurn } from '@kontourai/agent-runtime';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -12,6 +13,7 @@ import {
   unattendedGrantStorePath,
 } from '../../../services/agents/unattended-grant-store.js';
 import { ApprovalGuardianService } from '../../../services/approvals/approval-guardian.js';
+import { NO_PERSON_INTENT } from '../../../services/approvals/guardian-conversation.js';
 import { MCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
 import {
   type MCPToolNameMappingEntry,
@@ -105,7 +107,9 @@ describe('createAgentHooks', () => {
 
     expect(approved).toMatchObject({
       allowed: false,
-      reason: expect.stringContaining('runtime configuration changed'),
+      reason: expect.stringContaining(
+        "this agent's configuration changed after this session started. Retrying in this turn will be refused again",
+      ),
     });
     expect(deps.logger.warn).toHaveBeenCalledWith(
       'Stale agent generation blocked tool execution',
@@ -113,6 +117,7 @@ describe('createAgentHooks', () => {
         toolName: 'github_create_issue',
         agentSlug: 'planner',
         conversationId: 'conv-1',
+        generation: 'replaced',
       },
     );
     expect(toolDenials.add).toHaveBeenCalledWith(1, {
@@ -195,6 +200,7 @@ describe('createAgentHooks', () => {
     const guardian = {
       isEnabled: vi.fn(() => true),
       getMode: vi.fn(() => 'review'),
+      readConversation: () => NO_PERSON_INTENT,
       reviewToolCall: vi.fn().mockResolvedValue({
         decision: 'allow',
         reason: 'Safe and scoped.',
@@ -221,6 +227,7 @@ describe('createAgentHooks', () => {
         approvalGuardian: {
           isEnabled: () => true,
           getMode: () => 'enforce',
+          readConversation: () => NO_PERSON_INTENT,
           reviewToolCall: vi.fn().mockResolvedValue({
             decision: 'deny',
             reason: 'Too destructive.',
@@ -252,12 +259,94 @@ describe('createAgentHooks', () => {
     });
   });
 
+  // #4827: the ledger is shared by every Agent's hooks, so each test below
+  // uses a conversation id of its own.
+  test('after three guardian denials in a row the next refused call goes to the conversation approval requester', async () => {
+    const reviewToolCall = vi.fn().mockResolvedValue({
+      decision: 'deny',
+      reason: 'Force push was not asked for.',
+    });
+    const hooks = createAgentHooks(
+      createDeps({
+        approvalGuardian: {
+          isEnabled: () => true,
+          getMode: () => 'enforce',
+          readConversation: () => NO_PERSON_INTENT,
+          reviewToolCall,
+        },
+      }),
+    );
+    const requester = vi.fn().mockResolvedValue(true);
+    hooks.registerApprovalRequester('conv-escalate-4827', requester);
+    const call = {
+      toolName: 'run_terminal',
+      toolCallId: 'tool-1',
+      toolArgs: { command: 'git push --force' },
+    };
+    const invocation = {
+      agentSlug: 'planner',
+      conversationId: 'conv-escalate-4827',
+    };
+
+    for (let index = 0; index < 3; index += 1)
+      await expect(
+        hooks.beforeToolCall!(call, invocation),
+      ).resolves.toMatchObject({
+        allowed: false,
+        reason: expect.stringContaining('Force push was not asked for.'),
+      });
+    expect(requester).not.toHaveBeenCalled();
+
+    await expect(hooks.beforeToolCall!(call, invocation)).resolves.toBe(true);
+    expect(requester).toHaveBeenCalledOnce();
+    expect(requester).toHaveBeenCalledWith(
+      call,
+      'Force push was not asked for.',
+    );
+    expect(reviewToolCall).toHaveBeenCalledTimes(4);
+  });
+
+  test('with no approval requester the escalation stays a guardian denial', async () => {
+    const hooks = createAgentHooks(
+      createDeps({
+        approvalGuardian: {
+          isEnabled: () => true,
+          getMode: () => 'enforce',
+          readConversation: () => NO_PERSON_INTENT,
+          reviewToolCall: vi.fn().mockResolvedValue({
+            decision: 'deny',
+            reason: 'Force push was not asked for.',
+          }),
+        },
+      }),
+    );
+    const invocation = {
+      agentSlug: 'planner',
+      conversationId: 'conv-unattended-4827',
+    };
+    for (let index = 0; index < 5; index += 1)
+      await expect(
+        hooks.beforeToolCall!(
+          {
+            toolName: 'run_terminal',
+            toolCallId: 'tool-1',
+            toolArgs: { command: 'git push --force' },
+          },
+          invocation,
+        ),
+      ).resolves.toMatchObject({
+        allowed: false,
+        reason: expect.stringContaining('was denied by the approval guardian'),
+      });
+  });
+
   test('falls back to human approval when the guardian defers', async () => {
     const hooks = createAgentHooks(
       createDeps({
         approvalGuardian: {
           isEnabled: () => true,
           getMode: () => 'review',
+          readConversation: () => NO_PERSON_INTENT,
           reviewToolCall: vi.fn().mockResolvedValue({
             decision: 'defer',
             reason: 'Unclear.',
@@ -331,6 +420,133 @@ describe('createAgentHooks', () => {
       adapter.updateConversation.mock.calls[0]?.[1]?.metadata?.stats;
     expect(persistedStats).not.toHaveProperty('inputTokens');
     expect(persistedStats).toMatchObject({ outputTokens: 7, totalTokens: 7 });
+  });
+});
+
+describe('createAgentHooks — turns a model reported no usage for (#5390)', () => {
+  function statsAdapter() {
+    let metadata: Record<string, unknown> = {};
+    return {
+      getConversation: vi.fn(async () => ({ resourceId: 'station', metadata })),
+      getMessages: vi.fn().mockResolvedValue([
+        { role: 'user', content: 'hello there' },
+        { role: 'assistant', content: 'You said: hello there' },
+      ]),
+      updateConversation: vi.fn(
+        async (_id: string, update: { metadata: Record<string, unknown> }) => {
+          metadata = update.metadata;
+        },
+      ),
+      removeLastMessage: vi.fn().mockResolvedValue(undefined),
+      addMessage: vi.fn().mockResolvedValue(undefined),
+      applyEnrichmentUsage: vi.fn().mockResolvedValue(undefined),
+      stats: () => metadata.stats as Record<string, unknown> | undefined,
+    };
+  }
+  const turn = { agentSlug: 'default', conversationId: 'c1', userId: 'u1' };
+
+  test('counts each turn and its tool calls, and leaves token counts and cost absent', async () => {
+    const adapter = statsAdapter();
+    const hooks = createAgentHooks(
+      createDeps({
+        appConfig: { defaultModel: 'scripted-echo' },
+        configLoader: { loadAgent: vi.fn().mockResolvedValue({}) },
+        memoryAdapters: new Map([['default', adapter]]),
+      }),
+    );
+
+    await hooks.afterInvocation!({ invocation: turn, toolCallCount: 2 });
+    await hooks.afterInvocation!({ invocation: turn, toolCallCount: 1 });
+
+    const stats = adapter.stats()!;
+    expect(stats).toMatchObject({ turns: 2, toolCalls: 3 });
+    for (const field of ['inputTokens', 'outputTokens', 'totalTokens'])
+      expect(stats, field).not.toHaveProperty(field);
+    expect(stats.estimatedCost).toBeNull();
+    // Nothing was reported, so the last message is not re-written.
+    expect(adapter.removeLastMessage).not.toHaveBeenCalled();
+  });
+
+  test('a durable turn replayed under one invocation id is folded into the stats once', async () => {
+    // A durable runtime can run the turn-end hook again for the same
+    // invocation (a resumed turn); the receipt must keep it from counting twice.
+    const adapter = statsAdapter();
+    const hooks = createAgentHooks(
+      createDeps({
+        appConfig: { defaultModel: 'scripted-echo' },
+        configLoader: { loadAgent: vi.fn().mockResolvedValue({}) },
+        memoryAdapters: new Map([['default', adapter]]),
+      }),
+    );
+    const lease = { key: { invocationId: 'invocation-1' } } as any;
+    const end = () =>
+      runWithAgentTurn(lease, () =>
+        hooks.afterInvocation!({
+          invocation: turn,
+          usage: { promptTokens: 4, completionTokens: 2 },
+          toolCallCount: 1,
+        }),
+      );
+
+    await end();
+    await end();
+
+    expect(adapter.stats()).toMatchObject({
+      turns: 1,
+      toolCalls: 1,
+      inputTokens: 4,
+      outputTokens: 2,
+    });
+  });
+
+  test('a failed turn with nothing reported records nothing', async () => {
+    const adapter = statsAdapter();
+    const hooks = createAgentHooks(
+      createDeps({
+        configLoader: { loadAgent: vi.fn().mockResolvedValue({}) },
+        memoryAdapters: new Map([['default', adapter]]),
+      }),
+    );
+
+    await hooks.afterInvocation!({
+      invocation: turn,
+      toolCallCount: 0,
+      error: new Error('model failed'),
+    });
+
+    expect(adapter.updateConversation).not.toHaveBeenCalled();
+  });
+
+  test("records the built-in agent's reported usage although it has no agent file", async () => {
+    // The built-in Station agent: loading its agent file throws. That used to
+    // drop every turn's stats, so a model that did report usage read as one
+    // that reported none.
+    const adapter = statsAdapter();
+    const deps = createDeps({
+      appConfig: { defaultModel: 'scripted-echo' },
+      configLoader: {
+        loadAgent: vi
+          .fn()
+          .mockRejectedValue(new Error("Agent 'default' not found")),
+      },
+      memoryAdapters: new Map([['default', adapter]]),
+    });
+    const hooks = createAgentHooks(deps);
+
+    await hooks.afterInvocation!({
+      invocation: turn,
+      usage: { promptTokens: 1, completionTokens: 0, totalTokens: 1 },
+      toolCallCount: 0,
+    });
+
+    expect(deps.logger.error).not.toHaveBeenCalled();
+    // A reported 0 stays 0.
+    expect(adapter.stats()).toMatchObject({
+      inputTokens: 1,
+      outputTokens: 0,
+      totalTokens: 1,
+      turns: 1,
+    });
   });
 });
 
@@ -580,6 +796,7 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
             approvalGuardian: {
               isEnabled: () => true,
               getMode: () => 'enforce',
+              readConversation: () => NO_PERSON_INTENT,
               reviewToolCall: vi.fn().mockResolvedValue({
                 decision: 'allow',
                 reason: 'Safe and scoped.',
@@ -599,6 +816,7 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
             approvalGuardian: {
               isEnabled: () => true,
               getMode: () => 'enforce',
+              readConversation: () => NO_PERSON_INTENT,
               reviewToolCall: vi.fn().mockResolvedValue({
                 decision: 'deny',
                 reason: 'Too destructive.',
@@ -805,6 +1023,7 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
         approvalGuardian: {
           isEnabled: () => true,
           getMode: () => 'enforce',
+          readConversation: () => NO_PERSON_INTENT,
           reviewToolCall: vi.fn().mockResolvedValue({
             decision: 'deny',
             reason: 'destructive operation',
@@ -1274,6 +1493,7 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
         approvalGuardian: {
           isEnabled: () => true,
           getMode: () => 'enforce',
+          readConversation: () => NO_PERSON_INTENT,
           reviewToolCall,
         },
       },
@@ -1438,6 +1658,7 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
     return {
       isEnabled: () => true,
       getMode: () => mode,
+      readConversation: () => NO_PERSON_INTENT,
       reviewToolCall: vi
         .fn()
         .mockResolvedValue({ decision, reason: 'Unsure.' }),

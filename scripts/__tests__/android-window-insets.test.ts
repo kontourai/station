@@ -11,11 +11,7 @@ import { expect, test } from 'vitest';
 import { applyAndroidNativeBootstrap } from '../apply-android-native-bootstrap.mjs';
 import { activityWithAndroidInsets } from '../lib/android-window-insets.mjs';
 
-test.each([
-  'io.kontourai.station',
-  'io.kontourai.station.beta',
-  'io.kontourai.station.nightly',
-])(
+test.each(['io.kontourai.station', 'io.kontourai.station.nightly'])(
   'the native build bootstrap restores inset delivery after regenerating %s',
   (namespace) => {
     const root = mkdtempSync(join(tmpdir(), 'station-insets-'));
@@ -40,7 +36,7 @@ test.each([
       // exercises the real caller without silently skipping its manifest step.
       writeFileSync(
         join(app, 'src/main/AndroidManifest.xml'),
-        '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application /></manifest>',
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application><activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter></activity></application></manifest>',
       );
       for (let build = 0; build < 2; build++) {
         writeFileSync(

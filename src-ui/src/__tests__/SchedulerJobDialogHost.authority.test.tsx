@@ -39,6 +39,7 @@ const inputs = vi.hoisted(() => ({
 vi.mock('@kontourai/station-sdk', () => ({
   // A host that has not advertised chat automations: the form's file run.
   useScheduledConversationTargetCapability: () => ({ data: false }),
+  useSchedulerJobDisplayNameCapability: () => ({ data: true }),
   useAgentsQuery: () => ({
     data: inputs.agents,
     isSuccess: true,
@@ -67,6 +68,7 @@ vi.mock('../hooks/useScheduler', () => ({
   useAddJob: () => ({ isPending: false, mutate: inputs.add }),
   useEditJob: () => ({ isPending: false, mutate: inputs.edit }),
   usePreviewSchedule: () => ({ data: [], isLoading: false }),
+  useSchedulerJobs: () => ({ data: [] }),
 }));
 
 const ready = {

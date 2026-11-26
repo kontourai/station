@@ -9,6 +9,7 @@ import {
 } from '@kontourai/station-contracts/chat-attachment';
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
+import { readBoundedRequestBodyBytes } from '../../security/bounded-request-body.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import {
   type AttachmentStageDescriptor,
@@ -157,27 +158,13 @@ async function readBoundedRawText(
   ) {
     return undefined;
   }
-  const reader = request.body?.getReader();
-  if (!reader) return undefined;
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      return undefined;
-    }
-    chunks.push(value);
-  }
-  if (total === 0 || total !== expectedLength) return undefined;
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  // A body that is absent, oversized, or fails part-way (the client went
+  // away) is refused like any other unusable upload, with the reader released.
+  const result = await readBoundedRequestBodyBytes(request, maxBytes);
+  if (result.status !== 'ok') return undefined;
+  const { bytes } = result;
+  if (bytes.byteLength === 0 || bytes.byteLength !== expectedLength)
+    return undefined;
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {

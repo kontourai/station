@@ -1,0 +1,7 @@
+{
+  "revision": "118885a904428b83efc585ce693754dfca2bd104",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Renamed the person-stop outcome to stopped; byPerson now comes from the route's personCredentialRequest (no delegation-kind device, no agent-originated request); stopSession and the owned cascade stated as gaps; ceiling 12 hours with its cost (rule slot and a concurrent action slot for budget plus 12 hours, Agent-lengthened wall time, unresolved requests pause until the ceiling); approval card prefix is the Task title, not the prompt-derived Session title. Checked against the runtime, supervisor, person-wait, orchestration route and approval-inbox.","inputs":["docs/design/automations.md","src-server/runtime/routes/runtime-route-support.ts"]}
+  ]
+}

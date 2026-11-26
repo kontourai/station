@@ -1,3 +1,4 @@
+import { useChatStatusPill } from '../components/chat-dock/useChatStatusPill';
 /**
  * @vitest-environment jsdom
  *
@@ -10,9 +11,70 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  fetchSessionEventWindowCapability: async () => true,
+  fetchOrchestrationConversationEventWindow: async (
+    conversationId: string,
+  ) => ({
+    protocolVersion: 1,
+    conversationId,
+    currentSessionId: 'pill-session',
+    watermark: 0,
+    hasMore: false,
+    events: [],
+    handoffs: [],
+    contextBoundaries: [],
+  }),
+}));
+
+const scheduled = vi.hoisted(() => ({ enabled: false }));
+vi.mock('../hooks/useAgentSchedule', () => ({
+  useAgentSchedule: () => ({
+    schedule: {
+      wakeUps: scheduled.enabled
+        ? [
+            {
+              id: 'wake',
+              dueAt: '2026-11-15T23:00:00Z',
+              state: 'pending',
+              note: 'Check results',
+            },
+          ]
+        : [],
+      jobProposals: [],
+      automationProposals: [],
+    },
+    loaded: true,
+    cancelWakeUp: {},
+    approveWakeUp: {},
+    declineWakeUp: {},
+    declineProposal: {},
+    approveProposal: {},
+    confirmAutomationProposal: {},
+    declineAutomationProposal: {},
+  }),
+}));
+
+const revealRequest = vi.hoisted(() => vi.fn());
+vi.mock('../components/status/approvalReveal', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../components/status/approvalReveal')
+    >();
+  revealRequest.mockImplementation(actual.revealApprovalCard);
+  return { ...actual, revealApprovalCard: revealRequest };
+});
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
 
@@ -125,6 +187,7 @@ import {
   getApprovalClaims,
   OPEN_APPROVAL_QUEUE_EVENT,
 } from '../components/status/approvalReveal';
+import { backgroundTasksStore } from '../contexts/background-tasks-store';
 import { setStreamConnectionState } from '../hooks/orchestration/streamConnectionState';
 import type { ChatSession } from '../types';
 
@@ -174,7 +237,6 @@ function buildSession(overrides: Partial<ChatSession> = {}): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -190,10 +252,10 @@ function renderDock(session: ChatSession) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const dock = (current: ChatSession) => (
     <QueryClientProvider client={queryClient}>
       <ChatDockBody
-        activeSession={session}
+        activeSession={current}
         chatFontSize={14}
         dockHeight={400}
         showStatsPanel={false}
@@ -205,15 +267,51 @@ function renderDock(session: ChatSession) {
         chatInput={buildChatInput() as any}
         setShowStatsPanel={vi.fn()}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(dock(session));
+  return {
+    ...view,
+    update: (current: ChatSession) => view.rerender(dock(current)),
+  };
 }
 
 afterEach(() => {
+  scheduled.enabled = false;
   vi.useRealTimers();
 });
 
 const pill = () => document.querySelector('[data-chat-status-pill]');
+
+test('an armed check-back waits in Working details until the live turn ends', async () => {
+  scheduled.enabled = true;
+  const id = 'scheduled-conversation';
+  const session = buildSession({
+    conversationId: id,
+    orchestrationSessionStarted: true,
+    orchestrationTurnOpen: true,
+    status: 'sending',
+    messages: [{ role: 'user', content: 'Check again later', timestamp: 1 }],
+  });
+  const working = renderDock(session);
+  const expand = await screen.findByRole('button', { name: 'Working' });
+  expect(screen.queryByText(/Checking back at/)).toBeNull();
+  fireEvent.click(expand);
+  expect(await screen.findByText(/Checking back at/)).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: /Cancel check-back/ }),
+  ).toBeTruthy();
+  fireEvent.click(expand);
+  expect(screen.queryByText(/Checking back at/)).toBeNull();
+  working.update(buildSession({ conversationId: id }));
+  const waiting = await screen.findByRole('button', { name: /^Waiting/ });
+  expect(waiting.textContent).toContain('Waiting');
+  expect(
+    waiting.querySelector('.chat-status-pill__clock')?.textContent,
+  ).toBeTruthy();
+  fireEvent.click(waiting);
+  expect(await screen.findByText(/Checking back at/)).toBeTruthy();
+});
 
 describe('ChatDockBody composer status pill', () => {
   test('a pending approval is the pill, and no inline approval row repeats it', async () => {
@@ -366,5 +464,137 @@ describe('ChatDockBody composer status pill', () => {
     // …and the app-wide queue still owns this chat's approval.
     expect(getApprovalClaims().size).toBe(0);
     vi.doUnmock('../components/status/ChatStatusPillView');
+  });
+});
+
+test('mixed-request pill routes to permission first even when the question arrived first', async () => {
+  revealRequest.mockClear();
+  revealRequest.mockResolvedValueOnce(true);
+  renderDock(
+    buildSession({
+      orchestrationStatus: 'awaiting-approval',
+      pendingApprovals: ['question', 'permission'],
+      pendingRequestKinds: { question: 'input', permission: 'approval' },
+    }),
+  );
+  await waitFor(() => expect(pill()?.textContent).toContain('Needs approval'));
+  fireEvent.click(pill()!);
+  expect(revealRequest).toHaveBeenCalledWith(
+    expect.objectContaining({ requestId: 'permission' }),
+  );
+});
+
+function WindowQuestionPill({
+  approvalHint = false,
+}: {
+  approvalHint?: boolean;
+}) {
+  const { pill } = useChatStatusPill({
+    activeSession: buildSession(
+      approvalHint
+        ? { pendingRequestKinds: { 'window-question': 'approval' } }
+        : {},
+    ),
+    streamStatus: undefined,
+    turnLive: false,
+    enabled: true,
+    windowRequests: [
+      {
+        requestId: 'window-question',
+        threadId: 'question-thread',
+        requestKind: 'input',
+      },
+    ],
+  });
+  return <>{pill}</>;
+}
+
+test('a question found only in the event window renders Needs input without snapshot metadata', async () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <WindowQuestionPill />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(pill()?.textContent).toContain('Needs input'));
+});
+
+test('known window input outranks an older conservative approval hint', async () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <WindowQuestionPill approvalHint />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(pill()?.textContent).toContain('Needs input'));
+});
+
+// Last in the file: these settled chats start the transcript reader, whose
+// failed reads (no server here) leave module state that later docks see.
+describe('ChatDockBody status pill after the turn', () => {
+  // The conversation's live tool record, in the partition its events land
+  // in: this chat has no Station, so its API base.
+  function toolRunningAfterTurn() {
+    backgroundTasksStore.ingest(
+      {
+        provider: 'claude',
+        threadId: 'pill-background',
+        createdAt: '2026-11-16T10:00:00.000Z',
+        method: 'tool.started',
+        toolCallId: 'bg-tool',
+        toolName: 'Bash',
+        arguments: { description: 'Run gate:for' },
+      } as never,
+      'http://localhost:3242',
+    );
+  }
+  const settledWithAgent = (runningChildWork?: number) =>
+    buildSession({
+      // Its own chat: the transcript reader keeps state per chat id.
+      id: 'pill-background',
+      orchestrationSessionStarted: true,
+      orchestrationTurnOpen: false,
+      status: 'idle',
+      messages: [
+        { role: 'user', content: 'Go', timestamp: 1 },
+        { role: 'assistant', content: 'Started.', timestamp: 2 },
+      ],
+      backgroundTasks: [
+        { taskId: 'agent-1', backgrounded: true, description: 'Inventory' },
+      ],
+      ...(runningChildWork === undefined
+        ? {}
+        : {
+            conversationActivity: {
+              conversationId: 'pill-background',
+              asOfSequence: 3,
+              runningChildWork: { count: runningChildWork, producers: [] },
+            },
+          }),
+    } as Partial<ChatSession>);
+
+  test('after the turn, the pill counts the agents and tools the strip counts', async () => {
+    backgroundTasksStore.reset();
+    toolRunningAfterTurn();
+    // No Station activity record: the counts come from the chat alone.
+    renderDock(settledWithAgent());
+    try {
+      await waitFor(() =>
+        expect(pill()?.textContent).toContain('1 agent and 1 tool running'),
+      );
+    } finally {
+      backgroundTasksStore.reset();
+    }
+  });
+
+  test("with Station still at zero, the pill names the chat's own running agent", async () => {
+    backgroundTasksStore.reset();
+    renderDock(settledWithAgent(0));
+    try {
+      await waitFor(() =>
+        expect(pill()?.textContent).toContain('1 agent running'),
+      );
+      expect(pill()?.textContent).not.toContain('Waiting for background reply');
+    } finally {
+      backgroundTasksStore.reset();
+    }
   });
 });

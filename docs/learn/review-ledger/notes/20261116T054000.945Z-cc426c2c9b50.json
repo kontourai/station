@@ -1,0 +1,7 @@
+{
+  "revision": "3168abfc4a0a82e58f210529bcc1d7a625d56378",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Edited (#3593): fixed names 'normally' serve the newest build, with the delete-then-upload gap and the failed-upload case (publish-nightly-desktop.mjs replaces each alias with gh release upload --clobber); earlier versioned downloads 'may be removed after about two weeks' (retention keeps the newest 30 cohorts at about two a day, and is report-only until the owner enables it, hence 'may'). SHA256SUMS and checksum instructions unchanged and still match the publisher.","inputs":["docs/user/getting-started.md","scripts/lib/publish-nightly-desktop.mjs"]}
+  ]
+}

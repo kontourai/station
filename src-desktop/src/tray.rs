@@ -26,7 +26,6 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, Wry};
 use tauri_plugin_opener::OpenerExt;
 
 const STATION_TRAY_ICON: &[u8] = include_bytes!("../icons/icon.png");
-const BETA_TRAY_ICON: &[u8] = include_bytes!("../icons/beta/icon.png");
 const NIGHTLY_TRAY_ICON: &[u8] = include_bytes!("../icons/nightly/icon.png");
 const DEV_TRAY_ICON: &[u8] = include_bytes!("../icons/dev/icon.png");
 /// The installed-service browser fallback opens the service's own fixed
@@ -911,7 +910,7 @@ struct LocalClientBuildManifest {
 /// Read only its packaged resource; service HTTP/mtime/environment metadata
 /// would conflate backend deployment and local artifact provenance.
 fn local_client_build_label(app: &AppHandle) -> Option<String> {
-    let resource_dir = app.path().resource_dir().ok()?;
+    let resource_dir = crate::desktop_runtime_resource_dir(app).ok()?;
     let manifest =
         read_local_client_build_manifest(&resource_dir.join("dist-server/station-build.json"))?;
     compact_utc_build_label(&manifest.built_at)
@@ -1373,7 +1372,6 @@ pub(crate) fn invalidate_pending_navigation(app: &AppHandle, reason: &str) {
 fn tray_icon_bytes(channel: Option<&str>) -> &'static [u8] {
     match channel {
         Some("stable") => STATION_TRAY_ICON,
-        Some("beta") => BETA_TRAY_ICON,
         Some("nightly") => NIGHTLY_TRAY_ICON,
         // An unpackaged debug build is Dev; production config only maps the
         // reviewed stable, beta, and nightly identifiers above.
@@ -2311,7 +2309,6 @@ mod tests {
     #[test]
     fn selects_the_tray_icon_from_the_packaged_channel() {
         assert_eq!(tray_icon_bytes(Some("stable")), STATION_TRAY_ICON);
-        assert_eq!(tray_icon_bytes(Some("beta")), BETA_TRAY_ICON);
         assert_eq!(tray_icon_bytes(Some("nightly")), NIGHTLY_TRAY_ICON);
         assert_eq!(tray_icon_bytes(None), DEV_TRAY_ICON);
         assert_eq!(tray_icon_bytes(Some("unrecognized")), DEV_TRAY_ICON);

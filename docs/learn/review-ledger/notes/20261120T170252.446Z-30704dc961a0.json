@@ -1,0 +1,27 @@
+{
+  "revision": "98cea4b18c4d5c8bfb43fdda359638e78851351d",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"Traced the TestFlight upload runner assignment through the shared workflow, staged IPA and exact-source admission, App Store Connect preflight, provider reconciliation and receipt. Both channels use the same hosted pool as the IPA build. Their artifacts, signing and publication authority still follow the existing checks.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Traced the TestFlight upload runner assignment through the shared workflow, staged IPA and exact-source admission, App Store Connect preflight, provider reconciliation and receipt. Both channels use the same hosted pool as the IPA build. Their artifacts, signing and publication authority still follow the existing checks.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Traced the TestFlight upload runner assignment through the shared workflow, staged IPA and exact-source admission, App Store Connect preflight, provider reconciliation and receipt. Both channels use the same hosted pool as the IPA build. Their artifacts, signing and publication authority still follow the existing checks.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Traced the TestFlight upload runner assignment through the shared workflow, staged IPA and exact-source admission, App Store Connect preflight, provider reconciliation and receipt. Both channels use the same hosted pool as the IPA build. Their artifacts, signing and publication authority still follow the existing checks.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Traced the TestFlight upload runner assignment through the shared workflow, staged IPA and exact-source admission, App Store Connect preflight, provider reconciliation and receipt. Both channels use the same hosted pool as the IPA build. Their artifacts, signing and publication authority still follow the existing checks.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/nightly.md","note":"Traced the TestFlight upload runner assignment through the shared workflow, staged IPA and exact-source admission, App Store Connect preflight, provider reconciliation and receipt. Both channels use the same hosted pool as the IPA build. Their artifacts, signing and publication authority still follow the existing checks.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Traced the TestFlight upload runner assignment through the shared workflow, staged IPA and exact-source admission, App Store Connect preflight, provider reconciliation and receipt. Both channels use the same hosted pool as the IPA build. Their artifacts, signing and publication authority still follow the existing checks.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Traced the TestFlight upload runner assignment through the shared workflow, staged IPA and exact-source admission, App Store Connect preflight, provider reconciliation and receipt. Both channels use the same hosted pool as the IPA build. Their artifacts, signing and publication authority still follow the existing checks.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Traced the TestFlight upload runner assignment through the shared workflow, staged IPA and exact-source admission, App Store Connect preflight, provider reconciliation and receipt. Both channels use the same hosted pool as the IPA build. Their artifacts, signing and publication authority still follow the existing checks.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Traced the TestFlight upload runner assignment through the shared workflow, staged IPA and exact-source admission, App Store Connect preflight, provider reconciliation and receipt. Both channels use the same hosted pool as the IPA build. Their artifacts, signing and publication authority still follow the existing checks.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Traced the TestFlight upload runner assignment through the shared workflow, staged IPA and exact-source admission, App Store Connect preflight, provider reconciliation and receipt. Both channels use the same hosted pool as the IPA build. Their artifacts, signing and publication authority still follow the existing checks.","inputs":[".github/workflows/testflight-delivery.yml"]}
+  ]
+}

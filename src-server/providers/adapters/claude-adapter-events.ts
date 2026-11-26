@@ -11,6 +11,7 @@ import {
   CLAUDE_ARTIFACT_TOOL_NAME,
   parseClaudeArtifactPublish,
 } from '@kontourai/station-contracts/claude-artifact';
+import { CLAUDE_PROXY_VERSION_FAILURE } from '@kontourai/station-contracts/connection';
 import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orchestration';
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
@@ -54,6 +55,7 @@ import { claudeSourceResumeCursor } from './claude-resume-cursor.js';
 import {
   type ClaudeSdkTurnContext,
   type ClaudeSdkTurnLedger,
+  claudeReplyWasStopped,
   claudeTurnTerminalMetadata,
   clearClaudeSdkTurns,
   ensureClaudeTurnStartPublished,
@@ -226,6 +228,7 @@ function claudeDeferredToolUse(
 
 export interface ClaudeMessageState extends ClaudeUsageLimitState {
   session: ProviderSession;
+  configuredClaudeEndpoint?: boolean;
   /** Set only for the temporary delivery Agent and its matching authored MCP server. */
   deliveryProbeServerId?: string;
   requireNativeResumeIdentity?: true;
@@ -273,6 +276,30 @@ export interface ClaudeMessageState extends ClaudeUsageLimitState {
    * Lazily initialized so existing record constructors stay valid.
    */
   activeTasks?: Map<string, ClaudeActiveTask>;
+  /**
+   * #2540: housekeeping tasks the SDK keeps out of the transcript
+   * (`skip_transcript`, e.g. a post-turn memory save) that have not ended.
+   * They publish nothing and are no child work, but they run in the engine,
+   * so the finished-session park waits for them.
+   */
+  housekeepingTasks?: Set<string>;
+  /**
+   * #2540: whether the engine's last `init` reported only Station's own
+   * in-process (`sdk`) MCP servers. Anything else (a user, project or plugin
+   * server, or one whose origin the engine does not report) can hold state
+   * in a process Station cannot see. Absent until an `init`.
+   */
+  mcpServersStationOnly?: boolean;
+  /**
+   * #2540: the engine ran a hook Station did not install: it reported a
+   * `hook_started` (Station's own hooks are SDK callbacks, which report no
+   * hook events). Such a hook may still run, or rewake the engine, after the
+   * turn (`async`, `asyncRewake`), so it holds the engine for the rest of
+   * this process's life as far as the finished-session park is concerned.
+   */
+  foreignHookObserved?: boolean;
+  /** #2540: the CLI version the engine's last `init` reported. */
+  claudeCodeVersion?: string;
   /**
    * #2348: called with a task's id when the engine reports it ended (either
    * terminal). The adapter withdraws the permission requests THAT subagent
@@ -576,6 +603,15 @@ export function mapClaudeSdkMessage({
     record.stationBrowserVerified = stationBrowserVerifiedByInit(
       message.mcp_servers,
     );
+    record.claudeCodeVersion =
+      typeof message.claude_code_version === 'string'
+        ? message.claude_code_version
+        : undefined;
+    record.mcpServersStationOnly =
+      Array.isArray(message.mcp_servers) &&
+      message.mcp_servers.every(
+        (server: { source?: string }) => server.source === 'sdk',
+      );
     record.session.status = 'ready';
     record.session.updatedAt = createdAt;
     if (message.permissionMode) {
@@ -656,10 +692,20 @@ export function mapClaudeSdkMessage({
     return;
   }
 
+  // #2540: every hook the engine runs is reported (`includeHookEvents`), and
+  // Station's own hooks are SDK callbacks, which report none: any hook seen
+  // here is one Station did not install.
+  if (message.type === 'system' && message.subtype === 'hook_started') {
+    record.foreignHookObserved = true;
+    return;
+  }
+
   if (message.type === 'system' && message.subtype === 'task_started') {
     if (message.skip_transcript === true) {
       // Ambient/housekeeping task — the SDK asks consumers to keep it out
-      // of the inline transcript.
+      // of the inline transcript. It still runs in the engine (#2540).
+      if (!record.housekeepingTasks) record.housekeepingTasks = new Set();
+      record.housekeepingTasks.add(message.task_id);
       return;
     }
     const toolCallId = message.tool_use_id ?? message.task_id;
@@ -726,7 +772,10 @@ export function mapClaudeSdkMessage({
   if (message.type === 'system' && message.subtype === 'task_updated') {
     observeClaudeTaskUpdated(childWorkContext, message);
     const terminal = mapClaudeTaskStatus(message.patch?.status);
-    if (terminal) record.onTaskSettled?.(message.task_id);
+    if (terminal) {
+      record.onTaskSettled?.(message.task_id);
+      record.housekeepingTasks?.delete(message.task_id);
+    }
     const tracked = record.activeTasks?.get(message.task_id);
     if (!tracked) return;
     if (terminal) {
@@ -752,6 +801,8 @@ export function mapClaudeSdkMessage({
       ownedBySubagent: tracked?.ownedBySubagent === true,
     });
     record.onTaskSettled?.(message.task_id);
+    // Any notification ends a housekeeping task, whatever its status says.
+    record.housekeepingTasks?.delete(message.task_id);
     const status = mapClaudeTaskStatus(message.status);
     // SDK/CLI version skew must not turn an unrecognised terminal status into
     // a persisted tool success. This matches task_updated's no-op contract.
@@ -848,6 +899,7 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'stream_event') {
+    if (claudeReplyWasStopped(record, message)) return;
     const streamEvent = message.event as any;
     if (
       message.parent_tool_use_id === null &&
@@ -939,11 +991,15 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'result') {
-    const usageLimit = takeClaudeUsageLimitDetails(record, message);
     // #2324: the result closes the turn it names (its user uuids), else the
     // running turn — never "whichever turn Station allocated last". Resolved
     // before anything is published so its usage lands on the same turn.
     const target = resolveClaudeResultTarget(record, message);
+    if (target.kind === 'stale-stop') {
+      record.interruptedResultObserved = true;
+      return;
+    }
+    const usageLimit = takeClaudeUsageLimitDetails(record, message);
     const resultTurn =
       target.kind === 'turn' && target.turn.kind !== 'untracked'
         ? target.turn
@@ -1017,12 +1073,18 @@ export function mapClaudeSdkMessage({
       record.session.status = outcome === 'binding-dead' ? 'dead' : 'error';
       if (target.kind === 'turn') settleClaudeResultTarget(turnContext, target);
       clearClaudeSdkTurns(turnContext);
+      const failureText = claudeResultFailureText(message);
+      const proxyVersionFailure =
+        outcome === 'failed' &&
+        !usageLimit &&
+        record.configuredClaudeEndpoint &&
+        /\binvalid_request_error\b/.test(failureText) &&
+        /\bdoes not support this model; version \d+\.\d+(?:\.\d+)? or newer is required\b/.test(
+          failureText,
+        );
       const startupFailure =
-        outcome === 'failed' && !usageLimit
-          ? classifyEngineStartupFailure(
-              'claude',
-              claudeResultFailureText(message),
-            )
+        outcome === 'failed' && !usageLimit && !proxyVersionFailure
+          ? classifyEngineStartupFailure('claude', failureText)
           : undefined;
       publish({
         eventId: crypto.randomUUID(),
@@ -1049,7 +1111,9 @@ export function mapClaudeSdkMessage({
             ? ENGINE_SESSION_BINDING_DEAD_CODE
             : ENGINE_TURN_FAILED_CODE,
         retriable: false,
-        message: claudeResultFailureText(message),
+        message: proxyVersionFailure
+          ? CLAUDE_PROXY_VERSION_FAILURE
+          : failureText,
         ...(startupFailure ? engineStartupFailureEvent(startupFailure) : {}),
         ...(usageLimit ? { details: { ...usageLimit } } : {}),
         // #2324 review F1: a failed turn the engine opened on its own ends
@@ -1161,7 +1225,10 @@ export function mapClaudeSdkMessage({
           ? 'other'
           : message.stop_reason === 'tool_use'
             ? 'tool-calls'
-            : 'stop',
+            : // The reply stopped at the output limit: it is incomplete.
+              message.stop_reason === 'max_tokens'
+              ? 'max-tokens'
+              : 'stop',
         outputText:
           message.type === 'result' && 'result' in message
             ? message.result
@@ -1207,6 +1274,11 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'assistant') {
+    if (
+      message.parent_tool_use_id === null &&
+      claudeReplyWasStopped(record, message)
+    )
+      return;
     if (message.parent_tool_use_id === null && message.error === 'rate_limit')
       record.usageLimitReply = true;
     // #2324: before the model capture below — a frame that starts a turn

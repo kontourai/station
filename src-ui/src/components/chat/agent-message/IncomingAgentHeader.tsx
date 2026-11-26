@@ -21,13 +21,37 @@ function senderAgentLabel(sender: ClientOriginSender): string | undefined {
   );
 }
 
+const PULL_REQUEST_FEEDBACK_LABEL = 'Pull request feedback from Station';
+
+/** Which Station flow sent a row nobody typed (`stationTurnOrigin`). */
+export type IncomingStationOrigin = 'delegation' | 'automation';
+
+/**
+ * An unattributed row a known Station flow sent says which flow: a delegated
+ * Task's brief is the delegating agent's instructions, not "sender unknown".
+ */
+function unattributedLabel(origin: IncomingStationOrigin | undefined): string {
+  if (origin === 'delegation') return 'Task brief from the delegating agent';
+  if (origin === 'automation') return 'Automation run started by Station';
+  return 'Automated message · sender unknown';
+}
+
 /** The accessible name of the whole incoming message. */
-export function incomingMessageLabel(sender: ClientOriginSender): string {
+export function incomingMessageLabel(
+  sender: ClientOriginSender,
+  origin?: IncomingStationOrigin,
+): string {
   if (sender.kind === 'unattributed')
-    return 'Non-person input: sender not recorded';
+    return origin
+      ? `${unattributedLabel(origin)}, not from you`
+      : 'Automated message: sender unknown';
   if (sender.kind === 'provider') return 'The engine replied on its own';
   if (sender.kind === 'coordinator') return 'Update from Station';
+  if (sender.kind === 'pull-request-feedback')
+    return `${PULL_REQUEST_FEEDBACK_LABEL}, not from you`;
   const agent = senderAgentLabel(sender);
+  const source = agent ?? senderSessionLabel(sender);
+  if (sender.kind === 'delegation-result') return `Task result from ${source}`;
   return `Message from another agent: ${senderSessionLabel(sender)}${agent ? `, ${agent}` : ''}`;
 }
 
@@ -38,14 +62,19 @@ export function incomingMessageLabel(sender: ClientOriginSender): string {
  */
 export function IncomingAgentHeader({
   sender,
+  origin,
 }: {
   sender: ClientOriginSender;
+  origin?: IncomingStationOrigin;
 }) {
   if (sender.kind === 'unattributed')
     return (
-      <p className="agent-cause">
+      <p
+        className="agent-cause"
+        {...(origin ? { 'data-station-origin': origin } : {})}
+      >
         <InboxGlyph />
-        Non-person input · sender not recorded
+        {unattributedLabel(origin)}
       </p>
     );
   if (sender.kind === 'provider')
@@ -62,6 +91,15 @@ export function IncomingAgentHeader({
         Update from Station
       </p>
     );
+  // Station composed it from the pull request's checks and reviews: not a
+  // link, since no Session sent it.
+  if (sender.kind === 'pull-request-feedback')
+    return (
+      <p className="agent-cause">
+        <InboxGlyph />
+        {PULL_REQUEST_FEEDBACK_LABEL}
+      </p>
+    );
   const session = senderSessionLabel(sender);
   const agent = senderAgentLabel(sender);
   return (
@@ -76,7 +114,9 @@ export function IncomingAgentHeader({
         className="agent-incoming__link"
         label={`Open ${session}, the Session that sent this message`}
       >
-        <span className="agent-incoming__from">From</span>{' '}
+        <span className="agent-incoming__from">
+          {sender.kind === 'delegation-result' ? 'Task result from' : 'From'}
+        </span>{' '}
         <span className="agent-incoming__session">{session}</span>
         {agent ? (
           <>
@@ -96,28 +136,37 @@ export function IncomingAgentHeader({
 /** The phone cause stays one row until the reader asks for its details. */
 export function IncomingAgentCause({
   sender,
+  origin,
   children,
 }: {
   sender: ClientOriginSender;
+  origin?: IncomingStationOrigin;
   children?: ReactNode;
 }) {
   const label =
     sender.kind === 'unattributed'
-      ? 'Non-person input · sender not recorded'
+      ? unattributedLabel(origin)
       : sender.kind === 'provider'
         ? 'The engine replied on its own'
         : sender.kind === 'coordinator'
           ? 'Update from Station'
-          : `From ${senderSessionLabel(sender)}${senderAgentLabel(sender) ? ` · ${senderAgentLabel(sender)}` : ''}`;
+          : sender.kind === 'pull-request-feedback'
+            ? PULL_REQUEST_FEEDBACK_LABEL
+            : sender.kind === 'delegation-result'
+              ? incomingMessageLabel(sender)
+              : `From ${senderSessionLabel(sender)}${senderAgentLabel(sender) ? ` · ${senderAgentLabel(sender)}` : ''}`;
   return (
-    <details className="agent-cause-disclosure">
+    <details
+      className="agent-cause-disclosure"
+      open={sender.kind === 'delegation-result' || undefined}
+    >
       <summary className="agent-cause">
         <InboxGlyph />
         <span>{label}</span>
         <ArrowDownGlyph className="agent-cause__caret" />
       </summary>
       <div className="agent-cause-disclosure__details agent-incoming">
-        <IncomingAgentHeader sender={sender} />
+        <IncomingAgentHeader sender={sender} origin={origin} />
         {sender.kind === 'provider' && (
           <p>
             {senderAgentLabel(sender) ?? 'The engine'} started this turn without

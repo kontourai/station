@@ -1,7 +1,0 @@
-{
-  "revision": "c2d1556338edf942c3100b77839ab182cb74bf2e",
-
-  "notes": [
-    {"path":"docs/guides/agent-configuration.md","note":"Change under review (#4480): the start-session hook binds the accepted start's server-stamped owner (startInput.metadata.userId) in SessionAuthorization, and canReadSessionForCommand uses it only while the store has no durable owner yet (the adapter's echoed session.started still retrying under SQLite contention); the positive owner cache and read paths are unchanged. Searched this document for owner-establishment, owner-cache, command-gate and session.started ownership claims: none describe them, so the prose citing orchestration-service.ts remains accurate.","inputs":["docs/guides/agent-configuration.md","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

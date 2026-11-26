@@ -226,6 +226,9 @@
 }
 
 .session-context-card__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--k-space-1);
   margin-top: auto;
   padding: var(--k-space-2);
   border-top: var(--k-border-thin, 1px) solid var(--border-primary);
@@ -317,4 +320,13 @@
   max-height: min(80dvh, 640px);
   border-radius: 14px 14px 0 0;
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* The clipboard commands share one wrapping line under Chat inventory: three
+   compact 44px-tall targets rather than three more full-width rows. */
+.session-context-card__link[data-kind="copy"] {
+  width: auto;
+  flex: 0 0 auto;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }

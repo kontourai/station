@@ -1,0 +1,7 @@
+{
+  "revision": "e94e61016756929bf46b9fbf65d5a93254bc7144",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked NewChatModal change: setup-begin and repair hand-off choices are now untilReady; no module ownership, persistence or boundary claim changed.","inputs":["docs/architecture/module-map.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

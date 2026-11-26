@@ -1,4 +1,10 @@
-import type { ConversationStatsMeasurement } from '@kontourai/station-contracts/runtime';
+import type {
+  ConversationEngineMcpStatus,
+  ConversationEngineUsage,
+  ConversationReportedCost,
+  ConversationStatsMeasurement,
+  ConversationStatsResponse,
+} from '@kontourai/station-contracts/runtime';
 import {
   calculateContextWindowPercentage,
   getMessageTextContent,
@@ -22,6 +28,14 @@ export interface ConversationStats {
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
   contextTokens?: number;
+  /** The engine's own context reading, 0-100, when it reports one. */
+  contextPercent?: number;
+  /** Engine-reported costs in their own units; never converted. */
+  reportedCosts?: ConversationReportedCost[];
+  /** The engine's folded MCP status; only the engine-events path has one. */
+  engineMcp?: ConversationEngineMcpStatus;
+  /** #5389: each engine's own figures; only the engine-events path has them. */
+  engines?: ConversationEngineUsage[];
   turns: number;
   toolCalls: number;
   estimatedCost?: number;
@@ -65,20 +79,24 @@ export function buildEmptyConversationStatsView({
   contextWindowTokens,
 }: {
   modelId: string;
-  systemPromptTokens: number;
+  /** Absent when the agent's prompt is unknown. */
+  systemPromptTokens: number | undefined;
   mcpServerTokens: number;
   notFound?: boolean;
   contextWindowTokens?: number;
-}) {
-  const contextTokens = systemPromptTokens + mcpServerTokens;
+}): ConversationStatsResponse {
+  // Without the prompt, the estimate would leave out what the agent sends.
+  const contextTokens =
+    systemPromptTokens === undefined
+      ? undefined
+      : systemPromptTokens + mcpServerTokens;
+  // No turn recorded any usage here, so token counts and cost are absent
+  // ("not reported"), never a zero nobody measured. The context figures
+  // below are Station's own estimates of its prompt and tools.
   return {
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
     contextTokens,
     turns: 0,
     toolCalls: 0,
-    estimatedCost: 0,
     contextWindowPercentage: calculateContextWindowPercentage(
       contextTokens,
       contextWindowTokens,
@@ -87,11 +105,8 @@ export function buildEmptyConversationStatsView({
     systemPromptTokens,
     mcpServerTokens,
     userMessageTokens: 0,
-    assistantMessageTokens: 0,
     contextFilesTokens: 0,
-    // Station's own accounting is what this view represents: it covers
-    // every turn it ran, so its zeros are counted zeros.
-    measurement: { source: 'station-memory' as const },
+    measurement: { source: 'station-memory' },
     ...(notFound ? { notFound: true } : {}),
   };
 }
@@ -123,7 +138,7 @@ export function buildConversationStatsView({
   if (!stats) {
     return buildEmptyConversationStatsView({
       modelId,
-      systemPromptTokens: systemPromptTokens ?? 0,
+      systemPromptTokens,
       mcpServerTokens: mcpServerTokens ?? 0,
       notFound,
       contextWindowTokens,
@@ -145,8 +160,9 @@ export function buildConversationStatsView({
     ? (stats.contextTokens ?? stats.totalTokens)
     : stats.contextTokens;
 
+  const { contextPercent, ...reported } = stats;
   return {
-    ...stats,
+    ...reported,
     // A cost figure survives only if it is usable; an absent one stays
     // absent instead of collapsing to a `$0.0000` nobody measured.
     estimatedCost:
@@ -156,10 +172,10 @@ export function buildConversationStatsView({
         ? stats.estimatedCost
         : undefined,
     contextTokens,
-    contextWindowPercentage: calculateContextWindowPercentage(
-      contextTokens,
-      contextWindowTokens,
-    ),
+    // The token pair when there is one; otherwise the engine's own reading.
+    contextWindowPercentage:
+      calculateContextWindowPercentage(contextTokens, contextWindowTokens) ??
+      contextPercent,
     conversationId,
     modelId,
     modelStats: modelStatsForWire(modelStats),

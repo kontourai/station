@@ -78,7 +78,8 @@ machinery:
 - [keep reviews fresh](documentation-review-ledger.md#keep-reviews-fresh): after
   committing reviewed bytes, run `npm run docs:freshness:check`, inspect each
   document it names, and record what you checked with
-  `npm run docs:review:record -- <doc> --note "..."`;
+  `npm run docs:review:record -- <doc> --note "..."` (`--input <source>`
+  writes that note for every document citing one changed source);
 - the [ledger layout and merge rules](documentation-review-ledger.md#ledger-layout-and-merges),
   including the append-only note guards;
 - [generated release records and removed notes](documentation-review-ledger.md#generated-release-records-and-removed-notes).
@@ -277,11 +278,24 @@ reader's parser and rendered heading IDs. It checks relative and self links,
 including section anchors, and GitHub `main` or exact-current-revision links
 that the reader opens locally. Historical revision links remain external;
 this check does not crawl external sites. Fenced and inline code examples are
-not links. Duplicate headings receive unique suffixes. For a stable explicit
+not links. A valid leading YAML metadata block supplies no
+rendered anchors. Link diagnostics still use original source line numbers.
+Duplicate headings receive unique suffixes. For a stable explicit
 anchor, the reader accepts an empty `<a id="stable-name"></a>` or
 `<span id="stable-name"></span>` with a safe ID; arbitrary raw HTML stays escaped.
 The learning generator runs the same validation against the captured document
 bytes before producing a snapshot.
+
+`docs:public:hygiene` also compares the public promise on the README, the
+Pages home and `corpus.json` with its
+[single source](../strategy/differentiators.md). The GitHub repository
+description is outside the checkout, and the gates make no network calls.
+After changing the promise, compare it by hand and update it with
+`gh repo edit kontourai/station --description "<promise>"`:
+
+```bash
+gh repo view kontourai/station --json description --jq .description
+```
 
 These check links, indexes, public content policy, examples, source paths,
 documentation tests, and generated Pages output. They do not prove every prose
@@ -296,12 +310,19 @@ bundle-only document (`"publish": false`, so it gets no page) and mirrors the
 `docs/learn/mcp-topics.json` topics as anchors into it, so the shared server
 answers with the same sections as Station Docs. `docs-kit-manifest.test.ts`
 fails when either drifts. `PR: Docs kit` runs `corpus check` on pull
-requests, merge-queue entries and main as an advisory, non-required check; run
+requests and merge-queue entries (main gets the queue's verdict for the same
+SHA, or a manual dispatch) as an advisory, non-required check; run
 `npx -y github:kontourai/corpus#<sha> check` locally for faster
 feedback.
 
 The learning atlas and Station Docs MCP share the concept catalog and module
 map. The [shipped manual](../reference/station-docs.md) owns the MCP's introductory
 and authoring topics. Run `npm run docs:mcp:generate` when those inputs change;
-do not hand-edit `src-server/tools/station-docs-content.ts`. Keep generated
-payloads static so documentation retrieval cannot acquire live-state access.
+do not hand-edit `src-server/tools/station-docs-content.ts`. It is one Corpus
+docs bundle, validated with Corpus's bundle shape check, which list, get, and
+search all read; search ranks it with `@kontourai/corpus/search`. Its
+identity, `builtOn` and `synonyms` come from `corpus.json`. The advisory docs
+gate and the Pages bundle still pin Corpus 0.7 source, which refuses a
+`synonyms` key, so add product synonyms only after that pin moves. Keep
+generated payloads static so documentation retrieval cannot acquire
+live-state access.

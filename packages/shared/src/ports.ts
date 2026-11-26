@@ -8,7 +8,7 @@ export type StationChannel = keyof typeof STATION_CHANNEL_PORTS;
 
 /**
  * Installable release rings and the runtime channel each installs as
- * (`preview` installs as `beta`). A prerelease ring's tags are
+ * Stable and Nightly retain separate runtime identities. A prerelease ring's tags are
  * `vX.Y.Z-<ring>.N`; the non-prerelease ring owns `vX.Y.Z`.
  */
 export const STATION_RELEASE_RINGS = STATION_RELEASE_RINGS_DATA;

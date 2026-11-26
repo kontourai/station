@@ -1,0 +1,13 @@
+{
+  "revision": "2ff9ffc7c0655c354ee3802324a02ef950bd0018",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Reviewed: registers finished-alert-episodes.json as a state store, so home backup and maintenance treat it like other state files. No other classification changes.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Reviewed: registers finished-alert-episodes.json as a state store, so home backup and maintenance treat it like other state files. No other classification changes.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed: registers finished-alert-episodes.json as a state store, so home backup and maintenance treat it like other state files. No other classification changes.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed: registers finished-alert-episodes.json as a state store, so home backup and maintenance treat it like other state files. No other classification changes.","inputs":["packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

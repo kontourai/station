@@ -30,6 +30,7 @@ import {
   resolve,
 } from 'node:path';
 import { fsyncDirectorySync, fsyncFileSync } from './fs-windows-compat.js';
+import { isObjectRecord } from './object-record.js';
 import { SQLITE_CORRUPTION_MARKER_FILE } from './sqlite-corruption-marker.js';
 import { openAndCheckSqliteIntegrity } from './sqlite-store-integrity.js';
 import {
@@ -438,10 +439,6 @@ function fail(message: string, cause?: unknown): never {
   throw new StationHomeArchiveError(message, { cause });
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
 function canonicalLimits(
   options: {
     maxFiles?: number;
@@ -780,7 +777,7 @@ function strictManifest(
   limits: ReturnType<typeof canonicalLimits>,
   kind: BackupKind = 'home',
 ): StationHomeBackupManifest {
-  if (!isPlainRecord(value)) fail('backup manifest must be an object');
+  if (!isObjectRecord(value)) fail('backup manifest must be an object');
   const update = kind === 'update';
   const currentSchema = update
     ? STATION_HOME_UPDATE_BACKUP_SCHEMA
@@ -826,7 +823,7 @@ function strictManifest(
   let totalBytes = 0;
   const files = value.files.map((entry): StationHomeBackupFile => {
     if (
-      !isPlainRecord(entry) ||
+      !isObjectRecord(entry) ||
       Object.keys(entry).sort().join(',') !==
         ['mode', 'path', 'sha256', 'size'].sort().join(',') ||
       !Array.isArray(entry.path) ||
@@ -911,7 +908,7 @@ function strictManifest(
     fail('backup manifest exceeds the file-count limit');
   const symlinks = rawSymlinks.map((entry): StationHomeBackupSymlink => {
     if (
-      !isPlainRecord(entry) ||
+      !isObjectRecord(entry) ||
       Object.keys(entry).sort().join(',') !== 'directory,path,target' ||
       !Array.isArray(entry.path) ||
       typeof entry.directory !== 'boolean'

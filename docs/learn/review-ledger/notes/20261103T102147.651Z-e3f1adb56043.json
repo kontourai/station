@@ -1,7 +1,0 @@
-{
-  "revision": "d41d29ef25e7ac07f6246fca334daf6832ae8ec3",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.webm","note":"Change under review (#4480 round three on fix/start-owner-gate-followups-20261103): an exit consumed while a thread's start is still underway records the start as settled so the start hook binds no interim owner; a replaced adapter's late session.started or session.exited settles only a thread that adapter still owns; settleStartEvent moved above publishObservedEvent's docblock. The single publishObservedEvent continue-gate and its scan-owned ordering are unchanged. Checked this request-inspector capture: an already-owned session's pending request inspector; nothing rendered depends on the start-owner window.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

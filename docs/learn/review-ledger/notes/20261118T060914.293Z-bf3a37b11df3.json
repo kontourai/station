@@ -1,0 +1,13 @@
+{
+  "revision": "f26bfe3b238d6a5a06e05d4c7a63b761ac932a8d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked narrowing of the actual invocation result while leaving an absent result for pre-invocation failures. Both paths preserve stream and finalization behavior.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked narrowing of the actual invocation result while leaving an absent result for pre-invocation failures. Both paths preserve stream and finalization behavior.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked narrowing of the actual invocation result while leaving an absent result for pre-invocation failures. Both paths preserve stream and finalization behavior.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked narrowing of the actual invocation result while leaving an absent result for pre-invocation failures. Both paths preserve stream and finalization behavior.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]}
+  ]
+}

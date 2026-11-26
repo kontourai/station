@@ -2,7 +2,6 @@
 pub fn desktop_channel_from_identifier(identifier: &str) -> Option<&'static str> {
     match identifier {
         "io.kontourai.station" => Some("stable"),
-        "io.kontourai.station.beta" => Some("beta"),
         "io.kontourai.station.nightly" => Some("nightly"),
         _ => None,
     }
@@ -11,7 +10,6 @@ pub fn desktop_channel_from_identifier(identifier: &str) -> Option<&'static str>
 pub fn default_desktop_port(channel: Option<&str>) -> Option<u16> {
     match channel {
         Some("stable") => Some(18_141),
-        Some("beta") => Some(28_141),
         Some("nightly") => Some(38_141),
         _ => None,
     }
@@ -20,7 +18,6 @@ pub fn default_desktop_port(channel: Option<&str>) -> Option<u16> {
 pub fn default_desktop_ui_port(channel: Option<&str>) -> Option<u16> {
     match channel {
         Some("stable") => Some(18_000),
-        Some("beta") => Some(28_000),
         Some("nightly") => Some(38_000),
         _ => None,
     }
@@ -30,7 +27,6 @@ pub fn default_desktop_ui_port(channel: Option<&str>) -> Option<u16> {
 pub fn default_desktop_consent_port(channel: Option<&str>) -> Option<u16> {
     match channel {
         Some("stable") => Some(18_144),
-        Some("beta") => Some(28_144),
         Some("nightly") => Some(38_144),
         _ => None,
     }
@@ -39,7 +35,6 @@ pub fn default_desktop_consent_port(channel: Option<&str>) -> Option<u16> {
 pub fn station_instance_directory(channel: Option<&str>) -> &'static str {
     match channel {
         Some("stable") => "stable",
-        Some("beta") => "beta",
         Some("nightly") => "nightly",
         _ => "dev",
     }

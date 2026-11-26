@@ -1,7 +1,0 @@
-{
-  "revision": "014424f65285df198ad0e98241ae589f5aa455ee",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"Terminal epic integration: POST /:terminalId/restart contract unchanged (same id, new segment, confined directory, command/server launches 403); the restart fix only resets internal end markers.","inputs":["docs/reference/api.md","src-server/services/terminal/terminal-sessions.ts"]}
-  ]
-}

@@ -1,0 +1,7 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Opened from a Project, the form creates a Project job (Run in: a Task in this Project); other uses unchanged.","inputs":["src-ui/src/components/scheduler/JobFormModal.tsx"]}
+  ]
+}

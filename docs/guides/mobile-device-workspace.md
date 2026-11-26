@@ -43,6 +43,11 @@ Everything else is in **⋯**: **Save screenshot**, **Record to Task**, **Logs**
 - **End for everyone** ends the session for every viewer. **Power off** stops
   the device. Only the operator can do either.
 
+On a phone, **Device settings** fills the Device pane. Press Escape or use Close
+to return focus to the **⋯** button. On a wide screen the drawer sits beside
+the device when there is room. Location distinguishes a position reported by
+the device from the last position set in Station.
+
 ## Share a device and give Agents access
 
 Devices belong to the operator. In **Settings → Advanced → Browser & devices**,
@@ -50,7 +55,9 @@ Devices belong to the operator. In **Settings → Advanced → Browser & devices
 
 - share a device with a Project, so that Project's admins and owners can view
   and drive it;
-- turn on agent device access, so bound Agents can use the `device_*` tools.
+- turn on agent device access, so bound Agents can use the `device_*` tools
+  (except a session whose network Station restricts, which is never given
+  them: a device has its own network, outside that session's sandbox).
 
 Turning agent access off also revokes Agents' current access. See
 [Agent tools](../reference/browser-and-devices.md#view-control-and-end-a-session)

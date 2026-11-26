@@ -1,7 +1,0 @@
-{
-  "revision": "728add956c0a145f06080b8eccf4fd753e6635d4",
-
-  "notes": [
-    {"path":"deployment/telemetry/README.md","note":"Archive staging now also copies the pinned Node distribution's own npm into runtime/ and keeps the Windows birth helper; the telemetry companion staging, envelope and verification claims here are unaffected.","inputs":["deployment/telemetry/README.md","scripts/lib/portable-server-archive.mjs"]}
-  ]
-}

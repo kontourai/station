@@ -18,11 +18,13 @@ import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import type { HumanController } from '../services/live-surface/control-lease.js';
 import {
   claimHumanControl,
+  closeHumanInputSource,
   dispatchHumanInput,
   keepHumanControlAlive,
   type LiveSurfaceDecision,
   type LiveSurfaceEntry,
   type LiveSurfaceRegistry,
+  openHumanInputSource,
   releaseHumanControl,
 } from '../services/live-surface/registry.js';
 
@@ -134,7 +136,7 @@ const KNOWN_FRAMES_QUERY_KEYS: ReadonlySet<string> = new Set([
 function failure(
   c: Context,
   code: LiveSurfaceRouteErrorCode,
-  status: 400 | 403 | 404 | 413 | 503,
+  status: 400 | 403 | 404 | 409 | 413 | 503,
   /** The query key a frames request was refused for (#4418). */
   field?: string,
 ) {
@@ -390,6 +392,7 @@ export function createLiveSurfaceRoutes(
       human,
       batch.epoch,
       batch.events,
+      batch.sourceId,
     );
     return c.json(
       { success: result.ok, data: result },
@@ -417,6 +420,31 @@ export function createLiveSurfaceRoutes(
     if (!request) return failure(c, 'invalid-request', 400);
     if (!options.isRequestPrincipalCurrent(c.req.raw))
       return failure(c, 'access-denied', 403);
+    if (
+      request.action === 'open-input-source' ||
+      request.action === 'close-input-source'
+    ) {
+      const inputAccess = await authorize(c, found.value, ['input']);
+      if (!inputAccess.ok) return inputAccess.response;
+      if (!options.isRequestPrincipalCurrent(c.req.raw))
+        return failure(c, 'access-denied', 403);
+      if (request.action === 'open-input-source') {
+        const sourceId = openHumanInputSource(found.value, human);
+        return sourceId
+          ? c.json({ success: true, data: { sourceId } })
+          : failure(c, 'invalid-request', 409);
+      }
+      const closed = await closeHumanInputSource(
+        found.value,
+        human,
+        request.sourceId,
+      );
+      return closed === null
+        ? failure(c, 'access-denied', 403)
+        : closed
+          ? c.json({ success: true })
+          : failure(c, 'invalid-request', 503);
+    }
     const result: LiveSurfaceLeaseResult =
       request.action === 'claim'
         ? claimHumanControl(found.value, human)

@@ -81,6 +81,7 @@ const QUESTION_IN_OPEN_TURN = folded('questionInOpenTurn');
 const INTERRUPTED = folded('interrupted');
 const BLOCKED = folded('blocked');
 const TURN_COMPLETED = folded('turnCompleted');
+const TURN_CUT_OFF = folded('turnCutOff');
 const FAILED = folded('failed');
 
 function rowFor(summary: OrchestrationSessionSummary): {
@@ -100,7 +101,47 @@ function statusOf(summary: OrchestrationSessionSummary) {
   return { line, lane, rung };
 }
 
+it('keeps an armed check-back in Working after its turn settles, without hiding running work or attention', () => {
+  const nextWakeUpAt = '2026-09-30T10:10:00.000Z';
+  const waiting = rowFor({ ...TURN_COMPLETED, nextWakeUpAt });
+  expect(workStatus(waiting.item, NOW, waiting.facts)).toMatchObject({
+    word: 'Waiting',
+    lane: 'running',
+    rung: 'scheduled',
+  });
+  expect(statusOf({ ...RUNNING_TOOL, nextWakeUpAt })).toEqual(
+    statusOf(RUNNING_TOOL),
+  );
+  expect(statusOf({ ...APPROVAL_IN_OPEN_TURN, nextWakeUpAt })).toEqual(
+    statusOf(APPROVAL_IN_OPEN_TURN),
+  );
+  expect(statusOf(TURN_COMPLETED).lane).not.toBe('running');
+});
+
 describe('the status ladder, from real server summaries', () => {
+  it('a turn cut off at the output limit reads Cut off, not Done, and still finished', () => {
+    expect(statusOf(TURN_CUT_OFF)).toEqual({
+      rung: 'cutOff',
+      lane: 'finished',
+      line: 'Cut off',
+    });
+    expect(statusOf(TURN_COMPLETED).line).toBe('Done');
+  });
+
+  it('a read, cut-off result of a resumable delegation returns to open work, as Done does', () => {
+    const row = rowFor(TURN_CUT_OFF);
+    const read = { ...row.item, unread: false };
+    const facts = { ...row.facts, resumableDelegationResult: true as const };
+    expect(workStatus(read, NOW, facts)).toMatchObject({
+      rung: 'cutOff',
+      lane: 'idle',
+      word: 'Cut off',
+    });
+    expect(workStatus({ ...read, unread: true }, NOW, facts).lane).toBe(
+      'finished',
+    );
+  });
+
   it('a running row with a pending approval reads as needs-approval, never as running', () => {
     // The turn really is still open on this summary; the shared attention
     // fold files it as awaiting anyway, and the row follows.
@@ -116,7 +157,7 @@ describe('the status ladder, from real server summaries', () => {
     expect(statusOf(QUESTION_IN_OPEN_TURN)).toEqual({
       rung: 'answer',
       lane: 'needsYou',
-      line: 'Needs answer',
+      line: 'Needs input',
     });
   });
 
@@ -141,7 +182,7 @@ describe('the status ladder, from real server summaries', () => {
     expect(statusOf(RUNNING_TOOL)).toEqual({
       rung: 'running',
       lane: 'running',
-      line: 'Running · Bash · 1m',
+      line: 'Running · Bash · 1m 12s',
     });
   });
 
@@ -154,7 +195,7 @@ describe('the status ladder, from real server summaries', () => {
     expect(statusOf(summary)).toEqual({
       rung: 'childWork',
       lane: 'running',
-      line: '3 sub-agents · 1m',
+      line: '3 sub-agents · 1m 12s',
     });
   });
 
@@ -179,7 +220,7 @@ describe('the status ladder, from real server summaries', () => {
       tone: 'caution',
       // One number: how long it has been quiet (6m), not the turn's age
       // beside a second count baked into the word.
-      line: 'No progress · 6m',
+      line: 'No progress · 6m 0s',
     });
     // Never drawn as the healthy run it sits beside.
     const healthy = rowFor(RUNNING_TOOL);
@@ -295,7 +336,7 @@ describe('the status ladder, from real server summaries', () => {
       currentThreadId: 'T',
       runningChildWork: { count: 3 },
     });
-    expect(statusOf(current).line).toBe('3 sub-agents · 1m');
+    expect(statusOf(current).line).toBe('3 sub-agents · 1m 12s');
     expect(statusOf({ ...current, threadId: 'earlier-child' })).toEqual({
       rung: 'running',
       lane: 'running',
@@ -380,7 +421,7 @@ const TABLE: ReadonlyArray<
     'needs answer',
     { lifecycleLabel: 'Needs attention' },
     { attention: 'answer' },
-    'Needs answer',
+    'Needs input',
     'needsYou',
     'needsYou',
   ],
@@ -464,7 +505,7 @@ const TABLE: ReadonlyArray<
     'sub-agents running',
     { lifecycleLabel: 'Running' },
     { activity: { ...ACTIVITY, childWorkCount: 2 } },
-    '2 sub-agents · 1m',
+    '2 sub-agents · 1m 12s',
     'running',
     'running',
   ],
@@ -480,7 +521,7 @@ const TABLE: ReadonlyArray<
     'running a tool',
     { lifecycleLabel: 'Running', activeReason: 'turn' },
     { activity: ACTIVITY },
-    'Running · Bash · 1m',
+    'Running · Bash · 1m 12s',
     'running',
     'running',
   ],
@@ -488,7 +529,7 @@ const TABLE: ReadonlyArray<
     'running, but the watchdog reports no progress',
     { lifecycleLabel: 'Running', activeReason: 'turn', turnProgress: SILENCE },
     { activity: ACTIVITY },
-    'No progress · Bash · 6m',
+    'No progress · Bash · 6m 0s',
     'running',
     'running',
   ],
@@ -645,10 +686,10 @@ describe('the status ladder, state by state', () => {
     expect(formatDuration(0)).toBe('0s');
     expect(formatDuration(42_900)).toBe('42s');
     expect(formatDuration(59_999)).toBe('59s');
-    expect(formatDuration(60_000)).toBe('1m');
-    expect(formatDuration(72_000)).toBe('1m');
-    expect(formatDuration(250_000)).toBe('4m');
-    expect(formatDuration(3_599_999)).toBe('59m');
+    expect(formatDuration(60_000)).toBe('1m 0s');
+    expect(formatDuration(72_000)).toBe('1m 12s');
+    expect(formatDuration(250_000)).toBe('4m 10s');
+    expect(formatDuration(3_599_999)).toBe('59m 59s');
     expect(formatDuration(3_600_000)).toBe('1h');
     expect(formatDuration(3_840_000)).toBe('1h 4m');
     expect(formatDuration(-5)).toBe('0s');
@@ -708,20 +749,22 @@ describe('status facts for chat, task and merged rows', () => {
     ).toBe('Queued to send');
   });
 
-  it('an uncertain message reads as delivery unconfirmed instead of queued to send', () => {
-    expect(
-      build({
-        status: 'queued',
-        outboundQueuedTurns: [
-          {
-            clientTurnId: 'uncertain',
-            content: 'continue',
-            createdAt: NOW,
-            status: 'may-have-started',
-          },
-        ],
-      }).line,
-    ).toBe('Delivery unconfirmed');
+  it('an uncertain message is a flag beside the status, not queued to send (#5398)', () => {
+    const built = build({
+      status: 'queued',
+      outboundQueuedTurns: [
+        {
+          clientTurnId: 'uncertain',
+          content: 'continue',
+          createdAt: NOW,
+          status: 'may-have-started',
+        },
+      ],
+    });
+    expect(built.line).toBe('Idle');
+    expect(built.facts?.unconfirmedDelivery).toEqual([
+      { chatSessionId: 'c1', clientTurnId: 'uncertain', createdAt: NOW },
+    ]);
   });
 
   it('a send queued while offline reads as queued', () => {
@@ -770,10 +813,10 @@ describe('status facts for chat, task and merged rows', () => {
   );
 
   it.each([
-    ['in_progress', 1, 'Task · Needs answer', 'needsYou', 'answer'],
-    ['todo', 2, 'Task · Needs answer', 'needsYou', 'answer'],
+    ['in_progress', 1, 'Task · Needs input', 'needsYou', 'answer'],
+    ['todo', 2, 'Task · Needs input', 'needsYou', 'answer'],
     // The answer is what a person can act on, ahead of the lock.
-    ['blocked', 1, 'Task · Needs answer', 'needsYou', 'answer'],
+    ['blocked', 1, 'Task · Needs input', 'needsYou', 'answer'],
     ['in_progress', 0, 'Task · In progress', 'idle', 'idle'],
     // A finished Task's leftover question asks nobody.
     ['done', 3, 'Task · Done', 'finished', 'done'],
@@ -841,4 +884,58 @@ describe('status facts for chat, task and merged rows', () => {
     expect(settled.facts?.attention).toBeUndefined();
     expect(settled.facts?.activity).toBeUndefined();
   });
+});
+
+describe('blocking forms from server summaries across work surfaces', () => {
+  it.each([false, true])(
+    'uses Needs input with a real session and chat=%s',
+    (withChat) => {
+      // Shaped like the real writer: forms stay a pending review on the server.
+      const summary = folded('approvalInOpenTurn', {
+        pendingReview: true,
+        openRequestIds: ['form'],
+        blockingOpenRequestIds: ['form'],
+        openRequestKinds: { form: 'input' },
+      });
+      const chats: Record<string, ChatUIState> = withChat
+        ? {
+            c1: {
+              ...createDefaultChatState(),
+              conversationId: summary.threadId,
+              orchestrationStatus: 'awaiting-approval' as const,
+              pendingApprovals: ['form'],
+              pendingRequestKinds: { form: 'input' as const },
+            },
+          }
+        : {};
+      const items = buildHomeWorkItems({
+        chats,
+        sessions: [summary],
+        tasks: [],
+        agents: [],
+      });
+      const facts = buildWorkFacts({ items, chats, sessions: [summary] });
+      expect(items).toHaveLength(1);
+      expect(workStatus(items[0], NOW, facts.get(items[0].id)).word).toBe(
+        'Needs input',
+      );
+      expect(sessionWorkStatus(summary, [], NOW).word).toBe('Needs input');
+      const mixed = {
+        ...summary,
+        blockingOpenRequestIds: ['form', 'permission'],
+        openRequestKinds: {
+          form: 'input' as const,
+          permission: 'approval' as const,
+        },
+      };
+      expect(sessionWorkStatus(mixed, [], NOW).word).toBe('Needs approval');
+      const mixedFacts = buildWorkFacts({ items, chats, sessions: [mixed] });
+      expect(workStatus(items[0], NOW, mixedFacts.get(items[0].id)).word).toBe(
+        'Needs approval',
+      );
+      expect(
+        sessionWorkStatus({ ...summary, openRequestKinds: {} }, [], NOW).word,
+      ).toBe('Needs approval');
+    },
+  );
 });

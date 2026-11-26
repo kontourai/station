@@ -88,7 +88,12 @@ export function toRegionArrangementRecord(
       visible: state.visible,
       size: state.size,
       occupant: toOccupantRecord(state),
-      maximized: state.maximized,
+      // A maximize belongs to the page where it was made, never to the
+      // device: a stored one would follow the person to every freshly loaded
+      // page and, through cross-tab adoption, into every other open tab. The
+      // field is still written, as false, so a build that predates this one
+      // and reads the record finds what it expects.
+      maximized: false,
     };
   }
   return { version: REGION_ARRANGEMENT_RECORD_VERSION, regions };
@@ -102,16 +107,6 @@ function parseVisible(
   // `main` is the primary area and is never hidden, whatever was stored.
   if (id === 'main') return true;
   return typeof value === 'boolean' ? value : fallback;
-}
-
-/**
- * `maximized` is additive (#928 slice iii): absent in a record written before
- * it existed, and false then. Only a literal `true` maximizes; the arrangement
- * invariants below (`main` never, a hidden or empty region never, one region
- * at most) are applied after every region is read.
- */
-function parseMaximized(value: unknown): boolean {
-  return value === true;
 }
 
 function parseSize(value: unknown, id: RegionId, fallback: number): number {
@@ -137,9 +132,11 @@ function parseSurfaceEntry(
 ): string | null {
   if (!isPlainRecord(value)) return null;
   if (value.kind !== 'surface' || typeof value.id !== 'string') return null;
-  if (!resolveRegionSurface(value.id, registry)?.regions.includes(id))
+  const surfaceId =
+    value.id === 'activity' ? (id === 'main' ? 'home' : 'chat') : value.id;
+  if (!resolveRegionSurface(surfaceId, registry)?.regions.includes(id))
     return null;
-  return value.id;
+  return surfaceId;
 }
 
 /**
@@ -172,7 +169,13 @@ function parseOccupant(
       const surface = parseSurfaceEntry(entry, id, registry);
       return surface === null ? [] : [surface];
     }),
-    typeof selected === 'string' ? selected : null,
+    selected === 'activity'
+      ? id === 'main'
+        ? 'home'
+        : 'chat'
+      : typeof selected === 'string'
+        ? selected
+        : null,
   );
 }
 
@@ -207,6 +210,24 @@ export function parseRegionArrangementRecord(
   if (!isPlainRecord(value)) return null;
   if (value.version !== REGION_ARRANGEMENT_RECORD_VERSION) return null;
   const storedRegions = isPlainRecord(value.regions) ? value.regions : {};
+  const storedEntries = (region: unknown): string[] => {
+    if (!isPlainRecord(region) || !isPlainRecord(region.occupant)) return [];
+    const occupant = region.occupant;
+    const entries =
+      occupant.kind === 'surface'
+        ? [occupant]
+        : Array.isArray(occupant.panes)
+          ? occupant.panes
+          : [];
+    return entries.flatMap((entry) =>
+      isPlainRecord(entry) && typeof entry.id === 'string' ? [entry.id] : [],
+    );
+  };
+  const originalChat = REGION_IDS.find(
+    (id) =>
+      resolveRegionSurface('chat', registry)?.regions.includes(id) &&
+      storedEntries(storedRegions[id]).includes('chat'),
+  );
   const seen = new Set<string>();
   const arrangement = {} as RegionArrangement;
   for (const id of REGION_IDS) {
@@ -221,9 +242,27 @@ export function parseRegionArrangementRecord(
           visible: parseVisible(stored.visible, id, fallback.visible),
           size: parseSize(stored.size, id, fallback.size),
           ...parseOccupant(stored.occupant, id, registry),
-          maximized: parseMaximized(stored.maximized),
+          // A stored `maximized` is never read: this build writes false, and
+          // a `true` an earlier build wrote (#928 slice iii) would maximize a
+          // page the person did not maximize (see `toRegionArrangementRecord`).
+          maximized: false,
         }
       : { ...fallback };
+    const legacyPanes = storedEntries(stored);
+    if (
+      originalChat &&
+      originalChat !== id &&
+      legacyPanes.includes('activity')
+    ) {
+      Object.assign(
+        state,
+        normalizeRegionPanes(
+          id,
+          state.panes.filter((pane) => pane !== 'chat'),
+          state.occupant,
+        ),
+      );
+    }
     if (state.panes.some((pane) => seen.has(pane))) {
       // A duplicate — a SHELL surface only, since `seen` no longer records
       // an instance-keyed id (#2159 slice A) — is dropped from the later
@@ -233,8 +272,7 @@ export function parseRegionArrangementRecord(
       // would close a region the record says is open on the strength of a
       // pane it does not get to keep. This matches the live model's CLOSE
       // rule (`removeRegionPane` keeps an emptied region's visibility); a
-      // MOVE hides, but a parse is neither. The maximize clamp below still
-      // applies: an empty region is never maximized.
+      // MOVE hides, but a parse is neither.
       Object.assign(
         state,
         normalizeRegionPanes(
@@ -244,6 +282,15 @@ export function parseRegionArrangementRecord(
         ),
       );
     }
+    // Retiring a duplicate Activity tab must not leave a visible blank dock.
+    if (
+      id !== 'main' &&
+      legacyPanes.some(
+        (pane) => pane === 'activity' || pane.startsWith('activity-review:'),
+      ) &&
+      state.panes.length === 0
+    )
+      state.visible = false;
     // Only a SHELL surface is recorded as seen, so only a shell surface is
     // de-duped across regions (#2159 slice A): an instance-keyed id is left
     // out of `seen` and therefore survives in every region that names it.
@@ -251,25 +298,7 @@ export function parseRegionArrangementRecord(
     // happens in `normalizeRegionPanes`, above, for ids of both kinds.
     for (const pane of state.panes)
       if (!isInstanceSurface(pane)) seen.add(pane);
-    // The same invariants `updateRegion` holds for live state: `main` is
-    // never maximized, nor is a hidden or empty region. Stored bytes can say
-    // anything; the shell must never mount a blank full-height panel from
-    // them (archive#795's shape).
-    if (
-      state.maximized &&
-      (id === 'main' || !state.visible || state.occupant === null)
-    ) {
-      state.maximized = false;
-    }
     arrangement[id] = state;
-  }
-  // At most one region is maximized: the first in `REGION_IDS` order keeps
-  // it, matching the duplicate-occupant rule above.
-  let maximizedSeen = false;
-  for (const id of REGION_IDS) {
-    if (!arrangement[id].maximized) continue;
-    if (maximizedSeen) arrangement[id].maximized = false;
-    maximizedSeen = true;
   }
   return arrangement;
 }
@@ -300,10 +329,10 @@ export function regionArrangementRecordsEqual(
     return (
       left.visible === right.visible &&
       left.size === right.size &&
-      occupantsEqual(left.occupant, right.occupant) &&
-      // Additive field: a record written before `maximized` existed reads
-      // equal to one that spells out `false`.
-      (left.maximized ?? false) === (right.maximized ?? false)
+      // `maximized` is not compared: it is never read back
+      // (`parseRegionArrangementRecord`), so two records that differ only
+      // there describe the same arrangement.
+      occupantsEqual(left.occupant, right.occupant)
     );
   });
 }

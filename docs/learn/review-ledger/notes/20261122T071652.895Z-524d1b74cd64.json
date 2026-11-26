@@ -1,0 +1,7 @@
+{
+  "revision": "016f5106e259573caeba7474046ebf6fd3fa0b39",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Added that scanning is offered only with a camera API; the manager and Connect Station dialog changes match the guide's other connection claims.","inputs":["docs/guides/connections.md","packages/connect/src/__tests__/DevicePairingPanel.test.tsx","packages/connect/src/react/connection-manager-modal-utils.ts","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","src-ui/src/__tests__/ConnectStationDialog.test.tsx","src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]}
+  ]
+}

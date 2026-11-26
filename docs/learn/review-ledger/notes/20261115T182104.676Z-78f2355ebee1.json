@@ -1,0 +1,21 @@
+{
+  "revision": "6a6c6126f5ea777a92ed38a161fa2eabcaef1fc0",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Added that contrast is rated on the palette with custom CSS out of the cascade, so a background set without its text colour is not caught; checked against preview.ts computedRoles/withoutCustomCss and the agent guide text in the contract.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/reference/api.md","note":"Removed the dropped owner field from the GET shape, added 413 custom_appearance_store_full and the (sheet) refusal entry in the render report; checked against routes/me/custom-appearance.ts, services/identity/custom-appearance.ts and sanitize-css.ts refuse().","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"theming.md only gained a sentence about custom appearance contrast rating; nothing this document cites from it changed.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]},
+
+    {"path":"docs/design/terminal.md","note":"api.md changed only in the /api/me/appearance section; nothing this document cites from it changed.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md changed only in the /api/me/appearance section; nothing this document cites from it changed.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a useDecisionSurface registration, which only switches off a person's custom CSS sheet while this UI is mounted (for NotificationContainer: any notification carrying actions). Rendering, actions, authorization and copy are unchanged; the citing documents' claims remain accurate.","inputs":["src-ui/src/components/notifications/NotificationContainer.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a useDecisionSurface registration, which only switches off a person's custom CSS sheet while this UI is mounted (for NotificationContainer: any notification carrying actions). Rendering, actions, authorization and copy are unchanged; the citing documents' claims remain accurate.","inputs":["src-ui/src/views/settings/AccountPreferencesSection.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a useDecisionSurface registration, which only switches off a person's custom CSS sheet while this UI is mounted (for NotificationContainer: any notification carrying actions). Rendering, actions, authorization and copy are unchanged; the citing documents' claims remain accurate.","inputs":["src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx"]}
+  ]
+}

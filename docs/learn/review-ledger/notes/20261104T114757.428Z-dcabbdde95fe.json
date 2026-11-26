@@ -1,7 +1,0 @@
-{
-  "revision": "c95d6f1c1120934213bd486a6e7017b9f69e3b96",
-
-  "notes": [
-    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Bounded transitive-trigger disposition ONLY. ADR classified design/historical: reading-status routes current operations to Knowledge guide; July2026 decision/probes remain historical. Reviewed committed guide diff7e0706: Capture Save preserves submitted text and successful upload names file/review-before-save unsaved semantics. These paragraphs do not change store/index authority decision, historical versions/timings/sizes/rankings, root scope caveats or current-guide routing. No ADR prose change justified. Supported Windows example npm build interface unchanged; buildJS9186 is not installed qualification. No provider/migration/Neo4j/compile/native/Cancel recertification; same-UI-preview body and skip prerequisites keep repairedinstalled journey BLOCKED, oldinstalled9DD632 preserved. Other ADR source bindings not independently requalified by this note. Deployment ledger JSON/MD unchanged in actual2dd-to-c95 range and outside this review; no generated publication stamp.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md"]}
-  ]
-}

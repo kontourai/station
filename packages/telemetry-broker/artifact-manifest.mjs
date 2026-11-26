@@ -6,6 +6,8 @@ import { version as esbuildVersion } from 'esbuild';
 import { execFileSyncBounded } from '../../scripts/lib/bounded-capture.mjs';
 import { createPackagedReleaseManifest } from '../../scripts/lib/container-release-metadata.mjs';
 import { sanitizedGitEnvironment } from '../../scripts/lib/git-environment.mjs';
+import { isReleaseTag } from '../../scripts/lib/release-tag.mjs';
+import { CHANNEL_VERSION } from '../shared/src/release-manifest.mjs';
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const SHA = /^[0-9a-f]{40}$/;
@@ -25,6 +27,7 @@ export const RECEIVER_REQUIRED_BUILD_INPUTS = [
   'scripts/lib/git-environment.mjs',
   'scripts/lib/container-release-metadata.mjs',
   'scripts/lib/module-entry.mjs',
+  'scripts/lib/release-tag.mjs',
   'packages/shared/src/release-manifest.mjs',
   'packages/shared/src/portable-server-targets.mjs',
   'packages/shared/src/release-rings.generated.mjs',
@@ -75,6 +78,22 @@ async function inputPath(repoRoot, file) {
   return path.split(sep).join('/');
 }
 
+function assertDeclaredRelease({ ref, sha, createdAt }) {
+  const knownTag =
+    typeof ref === 'string' &&
+    ref.startsWith('v') &&
+    (isReleaseTag(ref) ||
+      Object.values(CHANNEL_VERSION).some((shape) => shape.test(ref.slice(1))));
+  if (
+    !knownTag ||
+    !SHA.test(sha ?? '') ||
+    typeof createdAt !== 'string' ||
+    !Number.isFinite(Date.parse(createdAt)) ||
+    new Date(createdAt).toISOString() !== createdAt
+  )
+    throw new Error('Invalid receiver source provenance');
+}
+
 export async function receiverBuildProvenance(repoRoot) {
   if (existsSync(join(repoRoot, '.git'))) {
     const git = (args) =>
@@ -95,16 +114,44 @@ export async function receiverBuildProvenance(repoRoot) {
       await regularBytes(join(repoRoot, '.station-release.json'), 64 * 1024)
     ).toString('utf8'),
   );
-  const release = createPackagedReleaseManifest({
-    tag: supplied.ref,
+  let ref = supplied.ref;
+  if (supplied.schemaVersion === 3) {
+    const release = createPackagedReleaseManifest({
+      tag: `v${supplied.version}`,
+      sha: supplied.sha,
+      createdAt: supplied.createdAt,
+    });
+    const expected = [
+      'channel',
+      'createdAt',
+      'prerelease',
+      'releaseChannel',
+      'schemaVersion',
+      'sha',
+      'version',
+    ];
+    if (
+      JSON.stringify(Object.keys(supplied).sort()) !==
+        JSON.stringify(expected) ||
+      supplied.channel !== release.channel ||
+      supplied.releaseChannel !== release.releaseChannel ||
+      supplied.prerelease !== release.prerelease ||
+      supplied.version !==
+        (release.schemaVersion === 3 ? release.version : release.ref.slice(1))
+    )
+      throw new Error('Invalid receiver source provenance');
+    ref = `v${supplied.version}`;
+  }
+  assertDeclaredRelease({
+    ref,
     sha: supplied.sha,
     createdAt: supplied.createdAt,
   });
   return {
     kind: 'declared-release',
-    head: release.sha,
-    ref: release.ref,
-    createdAt: release.createdAt,
+    head: supplied.sha,
+    ref,
+    createdAt: supplied.createdAt,
   };
 }
 
@@ -286,8 +333,8 @@ export async function readReceiverArtifactManifest(outdir, repoRoot) {
   } else {
     if (!fields(manifest.provenance, ['kind', 'head', 'ref', 'createdAt']))
       throw new Error('Invalid receiver source provenance');
-    createPackagedReleaseManifest({
-      tag: manifest.provenance.ref,
+    assertDeclaredRelease({
+      ref: manifest.provenance.ref,
       sha: manifest.provenance.head,
       createdAt: manifest.provenance.createdAt,
     });

@@ -15,3 +15,20 @@
   border-block-start: 1px solid var(--k-line);
   padding-block-start: var(--k-space-5);
 }
+
+/* Search/filter controls share a line with compact actions without overflowing. */
+.filter-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+
+.filter-toolbar > .control {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.filter-toolbar > :not(.control) {
+  flex: 0 0 auto;
+}

@@ -32,7 +32,9 @@ import { EventBus } from '../../services/orchestration/event-bus.js';
 import { AcpAdapter } from '../adapters/acp-adapter.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
+import { CopilotSdkAdapter } from '../adapters/copilot-sdk-adapter.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
+import { OpenCodeAdapter } from '../adapters/opencode-adapter.js';
 import { StationAgentAdapter } from '../adapters/station-agent-adapter.js';
 
 function stationAgentApprovalDeps() {
@@ -82,6 +84,20 @@ const INTERACTIVE_DISPATCH_ADAPTERS: {
       .capabilities,
   },
   { matrixKey: 'muse', capabilities: new MuseAdapter().metadata.capabilities },
+  {
+    // Refuses attachments (`sendTurn`); its matrix cell is `unsupported`.
+    matrixKey: 'copilot-sdk',
+    capabilities: new CopilotSdkAdapter({
+      preview: { select: (branches) => branches.disabled() },
+    }).metadata.capabilities,
+  },
+  {
+    // Declares `image-input`: native sends images as prompt files; the ACP
+    // fallback refuses them unless its handshake advertised images.
+    matrixKey: 'opencode',
+    capabilities: new OpenCodeAdapter({ getConnections: async () => [] })
+      .metadata.capabilities,
+  },
 ];
 
 describe('engine imageInput declaration', () => {
@@ -131,6 +147,7 @@ describe('engine imageInput declaration', () => {
       // the join already agree; only this list was stale, so the per-engine
       // cross-check above passed while this one failed.
       'muse',
+      'opencode',
       'station',
     ]);
   });

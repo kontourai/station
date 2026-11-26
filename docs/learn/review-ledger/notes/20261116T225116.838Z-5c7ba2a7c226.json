@@ -1,0 +1,7 @@
+{
+  "revision": "49d3686c30b44cceb123de098f921e17d9605557",
+
+  "notes": [
+    {"path":"src-ui/CLAUDE.md","note":"src-ui/AGENTS.md only added ConversationLoadingStage to the Loading row of its primitives table. This page's claims (theming and splash motion, frontend query/loading patterns, or the AGENTS.md import) are unchanged. The stage's steps are derived from reads actually in flight, not a timer-driven sequence, consistent with the splash guidance.","inputs":["src-ui/CLAUDE.md","src-ui/AGENTS.md"]}
+  ]
+}

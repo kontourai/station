@@ -1,0 +1,7 @@
+{
+  "revision": "26c578e7ceddf5db56c4d27bdeefd256ea35a1c9",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Delta-review round for the handoff UX lane: per-conversation armed-handoff state, dialog keying, composer blocked-reason wording and Undo disabling do not touch any claim this document makes about the cited sources.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

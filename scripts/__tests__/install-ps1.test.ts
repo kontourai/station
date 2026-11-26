@@ -107,6 +107,41 @@ function versionDirs(f: Fixture): string[] {
 }
 
 describe('install.ps1 installer core: stage-only (#2675 W1)', () => {
+  it('stages version-bound Stable archive bytes without a producer tag in provenance', () => {
+    const f = fixture('stable');
+    const archive = buildWindowsArchive(f.dir, '1.2.3', {
+      provenance: { schemaVersion: 3, ref: undefined, version: '1.2.3' },
+    });
+    const manifest = signWindowsManifest(f.dir, archive, f.key, RELEASE_KEY_ID);
+    const result = stage(f, manifest, { STATION_CHANNEL: 'stable' });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.lastLine).toBe('STATION_STAGED_VERSION=1.2.3');
+    const again = stage(f, manifest, { STATION_CHANNEL: 'stable' });
+    expect(again.status, again.stderr).toBe(0);
+    expect(again.stdout).toContain('reusing verified files');
+  });
+
+  it.each([
+    ['wrong version', { version: '1.2.4' }],
+    ['wrong source', { sha: 'b'.repeat(40) }],
+    ['extra origin ref', { ref: 'v1.2.3-rc.1' }],
+  ])('refuses version-bound Windows provenance with %s', (_label, invalid) => {
+    const f = fixture('stable');
+    const archive = buildWindowsArchive(f.dir, '1.2.3', {
+      provenance: {
+        schemaVersion: 3,
+        ref: undefined,
+        version: '1.2.3',
+        ...invalid,
+      },
+    });
+    const manifest = signWindowsManifest(f.dir, archive, f.key, RELEASE_KEY_ID);
+    const result = stage(f, manifest, { STATION_CHANNEL: 'stable' });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('release provenance is invalid');
+    expect(versionDirs(f)).toEqual([]);
+  });
+
   it('stages a signed archive as a sealed, complete version and nothing else', () => {
     const f = fixture();
     const archive = buildWindowsArchive(f.dir, '0.7.0-nightly.12');
@@ -470,10 +505,10 @@ describe('install.ps1 installer core: stage-only (#2675 W1)', () => {
         'public ecosystem manifest publishes no server archive for this host (linux-x64)',
     },
     {
-      name: 'a nightly manifest for a beta install',
+      name: 'a Nightly manifest for a Stable install',
       run: (f) =>
         stage(f, signed(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12')), {
-          STATION_CHANNEL: 'beta',
+          STATION_CHANNEL: 'stable',
         }),
       message: 'requested channel does not match public ecosystem manifest',
     },

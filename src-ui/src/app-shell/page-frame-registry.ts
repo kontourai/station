@@ -52,15 +52,17 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'connections-model-edit': SPLIT_PANE,
   'connections-engines': SPLIT_PANE,
   'connections-engine-edit': SPLIT_PANE,
-  // A deep link into Add engine renders the same split pane as the rest of
-  // the Engines section, so it shares its frame.
-  'connections-engine-new': SPLIT_PANE,
+  'connections-engine-new': {
+    width: 'narrow',
+    body: 'flow',
+    title: 'Add engine',
+  },
   'connections-tools': SPLIT_PANE,
   'connections-tool-edit': SPLIT_PANE,
   'connections-knowledge': {
     eyebrow: 'Connections',
     title: 'Knowledge',
-    subtitle: 'The knowledge store and its attached namespaces.',
+    subtitle: 'What agents can look up',
     width: 'narrow',
   },
   'connections-computers': { width: 'full', body: 'flow', flush: true },
@@ -79,7 +81,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   developer: { eyebrow: 'Developer', width: 'full', body: 'fill' },
   schedule: {
     title: 'Automations',
-    subtitle: 'Recurring work and check-backs that run in a chat',
+    subtitle: 'Work an agent does on a schedule',
     firstRunAnchor: 'schedule',
   },
   settings: {
@@ -91,7 +93,6 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   },
   appearance: {
     title: 'Appearance',
-    subtitle: 'Mode, color theme and accent.',
     width: 'narrow',
   },
   profile: {
@@ -103,7 +104,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     title: 'Notifications',
     // states the page's model in its own subtitle, and the two regions
     // below are named for exactly these two halves.
-    subtitle: 'Things that need you, and what happened.',
+    subtitle: 'Things that need you, and what happened',
     width: 'narrow',
     // #2065: the first-run "Decisions are part of the record" step points
     // here now that the global review queue is retired.
@@ -203,5 +204,7 @@ const RESOLVED_FRAMES = ((): Record<
 })();
 
 export function resolvePageFrame(view: NavigationView): PageFrameSpec | null {
+  if (view.type === 'connections-engine-edit' && view.id === 'new')
+    return RESOLVED_FRAMES['connections-engine-new'];
   return RESOLVED_FRAMES[view.type];
 }

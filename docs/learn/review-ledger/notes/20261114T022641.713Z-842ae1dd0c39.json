@@ -1,0 +1,15 @@
+{
+  "revision": "1bfdd7e2f075d4c928995f53466bccec70d58454",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#4852 fix round 1: the real-Station spec showed an account-bound device starts read-only, so a room write (message, reaction, edit, delete, file upload) also needs the operator's grant of operate scope to that Device. The Project room files bullet now says reads are open and writes need that grant; checked against pairing-route-scopes.ts (projects family operate tier) and the spec's 403 insufficient_scope before the grant.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#4852 fix round 1: the real-Station spec showed an account-bound device starts read-only, so a room write (message, reaction, edit, delete, file upload) also needs the operator's grant of operate scope to that Device. The Project-room files rationale now says an upload also needs the Device's operate scope, not granted by account binding by default; the #4136 reasoning is unchanged.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/design/automations.md","note":"#4852 fix round 1: the threat model changed only its Project-room files sentence (operate scope for uploads). This design cites the threat model for automation authority, not room files; prose unchanged.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/design/terminal.md","note":"#4852 fix round 1: api.md changed only the Project room files bullet (operate scope for account-bound writes). Nothing this design cites is affected; prose unchanged.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#4852 fix round 1: api.md changed only the Project room files bullet (operate scope for account-bound writes). This guide's integration claims do not cover it; prose unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

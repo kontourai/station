@@ -13,6 +13,8 @@ import { ComposerIconAction } from './ComposerIconAction';
 import { composerDisplayValue } from './composer-mentions';
 
 interface PortableDraftsMenuProps {
+  hideTrigger?: boolean;
+  textOnly?: boolean;
   quotes?: readonly DraftQuote[];
   input: string;
   attachments: FileAttachment[];
@@ -23,17 +25,29 @@ interface PortableDraftsMenuProps {
 
 export function PortableDraftsMenu({
   input,
+  hideTrigger = false,
+  textOnly = false,
   quotes = [],
   attachments,
   open,
   onOpenChange,
   onRestore,
 }: PortableDraftsMenuProps) {
-  const drafts = useSyncExternalStore(
+  const savedDrafts = useSyncExternalStore(
     chatDraftsStore.subscribe,
     chatDraftsStore.getPortableSnapshot,
     chatDraftsStore.getPortableSnapshot,
   );
+  const drafts = textOnly
+    ? savedDrafts.filter(
+        (draft) =>
+          draft.text.trim() &&
+          !draft.attachments.length &&
+          !draft.quotes?.length &&
+          !draft.droppedImageNames.length &&
+          !draft.unreadableImageNames.length,
+      )
+    : savedDrafts;
   const nameId = useId();
   const [name, setName] = useState('');
   const [saved, setSaved] = useState(false);
@@ -42,25 +56,27 @@ export function PortableDraftsMenu({
 
   return (
     <>
-      <ComposerIconAction
-        label="Drafts"
-        className="chat-input__drafts-button"
-        expanded={open}
-        onClick={() => onOpenChange(true)}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="18"
-          height="18"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden="true"
+      {!hideTrigger && (
+        <ComposerIconAction
+          label="Drafts"
+          className="chat-input__drafts-button"
+          expanded={open}
+          onClick={() => onOpenChange(true)}
         >
-          <path d="M7 3h8l4 4v14H7z" />
-          <path d="M15 3v5h4M10 12h6M10 16h6M3 7v14" />
-        </svg>
-      </ComposerIconAction>
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M7 3h8l4 4v14H7z" />
+            <path d="M15 3v5h4M10 12h6M10 16h6M3 7v14" />
+          </svg>
+        </ComposerIconAction>
+      )}
       {open && (
         <Dialog
           title="Saved drafts"
@@ -117,7 +133,9 @@ export function PortableDraftsMenu({
             <p className="portable-drafts-menu__hint" role="status">
               {saved
                 ? 'Draft saved. Your current message is still in the composer.'
-                : 'Saves a copy of your message, attachments, and quoted context.'}
+                : textOnly
+                  ? 'Saves the text of this message.'
+                  : 'Saves a copy of your message, attachments, and quoted context.'}
             </p>
           </form>
           <h3 className="portable-drafts-menu__heading">Saved prompts</h3>

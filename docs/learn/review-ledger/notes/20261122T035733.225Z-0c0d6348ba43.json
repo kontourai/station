@@ -1,0 +1,7 @@
+{
+  "revision": "8d0ef57aa9e2e6e3dccc5faa86f41f82f807da41",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read the Fork bullet against ChatDock after the fix rounds: Fork from here opens ConversationForkDialog; Regenerate / Edit and resend fork with the message's Agent without the dialog while it can run (toast while running), and the dialog appears on failure or when the Agent cannot run, staying through a retry. Cancel fork, the retry-safe key (now per turn and target Agent, released once the fork opens) and the source Project claims match.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

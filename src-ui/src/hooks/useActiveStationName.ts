@@ -2,6 +2,7 @@ import { useConnections } from '@kontourai/station-connect';
 import type { DevicePresentation } from '@kontourai/station-contracts/system-status';
 import { QueryClientContext } from '@tanstack/react-query';
 import { useCallback, useContext, useSyncExternalStore } from 'react';
+import { useBundledServerStatus } from '../platform/useBundledServerStatus';
 
 /**
  * The name `@kontourai/station-connect` gives the connection it seeds for
@@ -64,6 +65,19 @@ export function useCachedStationStatus(): CachedStationStatus | undefined {
 export function useActiveStationName(): string | undefined {
   const { activeConnection } = useConnections();
   const status = useCachedStationStatus();
+  const generatedLocalName =
+    activeConnection?.name !== undefined &&
+    /^local(?:-[0-9]+|-bundled)?$/i.test(activeConnection.name);
+  const bundled = useBundledServerStatus(
+    generatedLocalName && !!activeConnection?.ownerId,
+  );
+  if (
+    activeConnection?.ownerId &&
+    bundled?.ownership === 'sidecar' &&
+    bundled.instanceId === activeConnection.ownerId &&
+    generatedLocalName
+  )
+    return 'This computer';
   return stationDisplayName(
     activeConnection?.name,
     status?.devicePresentation?.hostName,

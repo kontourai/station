@@ -1,0 +1,11 @@
+{
+  "revision": "52ed0aa6aabf748c9ee05e71166d5643f077e086",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Checked the diff: the server build now calls assertAsciiServerBundles after every esbuild output is written and fails if any server .js/.mjs bundle holds a non-ASCII byte. Entry points, outputs, externals, banner globals (build identity, author telemetry endpoint) and source map settings are unchanged, so the cited claims stay accurate.","inputs":["esbuild.config.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Checked the diff: the server build now calls assertAsciiServerBundles after every esbuild output is written and fails if any server .js/.mjs bundle holds a non-ASCII byte. Entry points, outputs, externals, banner globals (build identity, author telemetry endpoint) and source map settings are unchanged, so the cited claims stay accurate.","inputs":["esbuild.config.mjs"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the diff: the server build now calls assertAsciiServerBundles after every esbuild output is written and fails if any server .js/.mjs bundle holds a non-ASCII byte. Entry points, outputs, externals, banner globals (build identity, author telemetry endpoint) and source map settings are unchanged, so the cited claims stay accurate.","inputs":["esbuild.config.mjs"]}
+  ]
+}

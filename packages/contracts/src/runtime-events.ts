@@ -3,11 +3,14 @@ import type { ChatHostImageSource } from './chat-host-images.js';
 import type { ChildWorkDelta } from './child-work.js';
 import type { ClaudeArtifactLink } from './claude-artifact.js';
 import type { ClientOrigin } from './client-origin.js';
+import type { CustomAppearanceProposalReference } from './custom-appearance.js';
 import type { HtmlReplyReference } from './html-reply.js';
 import type { PrincipalRef } from './principal.js';
 import {
   type ApprovalMode,
+  type EngineApprovalReviewer,
   type EngineId,
+  isAcpFamilyEngine,
   PROVIDER_CODEX,
 } from './provider.js';
 import type { ProviderFailure } from './provider-failure.js';
@@ -35,6 +38,10 @@ import type {
  * a silent no-op. (Distinct from the per-session CanonicalRuntimeEvent methods
  * below, which describe agent-runtime events, not EventBus channels.)
  */
+/** A committed attached continuation changed the exact session detail read. */
+export const ATTACHED_SESSION_CONTINUATION_REFRESH =
+  'attached-session-continuation';
+
 export const SERVER_EVENTS = {
   /** Exact answer assessment changed; identity-bearing and intentionally scoped. */
   ANSWER_ASSESSMENT_UPDATED: 'answer.assessment.updated',
@@ -93,6 +100,13 @@ export const SERVER_EVENTS = {
   ORCHESTRATION_SESSION_PROJECTION_UPDATED:
     'orchestration:session-projection-updated',
   /**
+   * #4568: a person's engine start began or stopped waiting for the one
+   * engine-start slot. Non-durable; the wire frame is
+   * `OrchestrationEngineStartWaitFrame`, relayed only to readers its
+   * producer authorizes.
+   */
+  ORCHESTRATION_ENGINE_START_WAIT_CHANGED: 'orchestration:engine-start-wait',
+  /**
    * A Project's plugin draft built a new revision (epic #2323 S3). Payload is
    * `{ projectSlug, draftId, generation }`. Deliberately NOT under the
    * `plugins:` namespace: that namespace is gated by installed-plugin
@@ -100,6 +114,12 @@ export const SERVER_EVENTS = {
    * Project read authority instead.
    */
   PLUGIN_DRAFTS_REBUILT: 'plugin-drafts:rebuilt',
+  /**
+   * #3075: a person's read marker moved forward. The bus payload carries the
+   * person key so the orchestration stream can deliver it to that person's
+   * own clients only; the wire frame carries nothing ("re-read").
+   */
+  READ_MARKERS_CHANGED: 'read-markers:changed',
   PLUGINS_INSTALLED: 'plugins:installed',
   PLUGINS_REMOVED: 'plugins:removed',
   PLUGINS_UPDATED: 'plugins:updated',
@@ -217,6 +237,9 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // `{threadId}` names one session, so this follows the same ownership gate
   // as canonical orchestration events on the dedicated stream.
   [SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED]: 'scoped',
+  // #4568: names the thread a person is starting; readable only by that
+  // start's owner (or the Session's readers once one exists).
+  [SERVER_EVENTS.ORCHESTRATION_ENGINE_START_WAIT_CHANGED]: 'scoped',
   // #2067: these six were 'broadcast', which in the SSE relay means relayed
   // to EVERY listener unconditionally. Each payload names a plugin, so a
   // collaborator who merely held the stream open watched the instance's
@@ -228,6 +251,7 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // Names a Project by slug. Relayed only to subscribers who may read that
   // Project, through the events route's dedicated plugin-draft gate.
   [SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT]: 'scoped',
+  [SERVER_EVENTS.READ_MARKERS_CHANGED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_INSTALLED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_REMOVED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_UPDATED]: 'scoped',
@@ -352,6 +376,20 @@ export interface SessionConfiguredEvent extends CanonicalRuntimeEventBase {
   metadata?: Record<string, unknown>;
 }
 
+/** A mode confirmed by the engine for the existing Session. */
+export interface SessionEngineModeObservedEvent
+  extends CanonicalRuntimeEventBase {
+  method: 'session.engine-mode-observed';
+  modeId: string;
+}
+
+/** An engine-owned setting observed within the current Session binding. */
+export interface SessionApprovalReviewerObservedEvent
+  extends CanonicalRuntimeEventBase {
+  method: 'session.approval-reviewer-observed';
+  reviewer: EngineApprovalReviewer;
+}
+
 export interface SessionStateChangedEvent extends CanonicalRuntimeEventBase {
   method: 'session.state-changed';
   sessionId: string;
@@ -469,6 +507,29 @@ export function turnDispatchOrigin(event: {
     : 'unknown';
 }
 
+/** Admission policy recorded separately from the source actor's attribution. */
+export const ENGINE_START_ADMISSION_INTENTS = [
+  'interactive_user',
+  'queued_background',
+  'delegated_background',
+  'webhook',
+  'recovery',
+] as const;
+export type EngineStartAdmissionIntent =
+  (typeof ENGINE_START_ADMISSION_INTENTS)[number];
+
+export function turnResourceAdmissionIntent(event: {
+  resourceAdmissionIntent?: unknown;
+}): EngineStartAdmissionIntent | undefined {
+  if (event.resourceAdmissionIntent === undefined) return undefined;
+  return typeof event.resourceAdmissionIntent === 'string' &&
+    (ENGINE_START_ADMISSION_INTENTS as readonly string[]).includes(
+      event.resourceAdmissionIntent,
+    )
+    ? (event.resourceAdmissionIntent as EngineStartAdmissionIntent)
+    : 'queued_background';
+}
+
 export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.started';
   turnId: string;
@@ -491,6 +552,27 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
    * `unknown`.
    */
   dispatchOrigin?: TurnDispatchOrigin;
+  /** Server-owned admission policy; adapter/client values are replaced at dispatch. */
+  resourceAdmissionIntent?: EngineStartAdmissionIntent;
+  /**
+   * #4827: the turn's `prompt` is not text the sender typed. `mcp-prompt`:
+   * the server-verified expansion of an MCP prompt (a slash command the
+   * person chose), which an MCP server authored. Stamped by Station from the
+   * verified prompt origin it admitted the send with; an adapter-supplied
+   * value is dropped, like `dispatchOrigin`. Absent means the prompt is the
+   * sender's own input.
+   */
+  promptSource?: 'mcp-prompt';
+  /**
+   * #4827: the prompt is text a person typed into one of Station's own
+   * clients (the chat composer's send or steer, or that send queued on the
+   * conversation inbox). Stamped by Station only, at those entry points; an
+   * adapter-supplied value is dropped, like `dispatchOrigin`. Absent means
+   * not known to be the person's: a peer Station, a delegated or background
+   * send, a handoff, a bridge, voice, a webhook, a Task, an Automation, an
+   * agent's tool call, the CLI, and every turn recorded before this field.
+   */
+  authoredBy?: 'person';
   /** Distinguishes input appended inside an already-running turn. */
   inputKind?: 'steer';
   /**
@@ -527,7 +609,9 @@ export interface TurnCompletedEvent extends CanonicalRuntimeEventBase {
    * shared vocabulary cannot express it (it then reads `'other'`). Opaque
    * engine text: an ACP agent reports `refusal` or `max_turn_requests` here,
    * which would otherwise be indistinguishable from any other `'other'`
-   * stop. It does not change the turn's outcome: the turn still completed.
+   * stop. Older rows carry this field on the terminal completion; current
+   * ACP producers report unsuccessful stops as runtime.error with the
+   * same bounded reason in details.stopReason.
    */
   stopReason?: string;
   outputText?: SpillableText;
@@ -585,6 +669,14 @@ export interface SessionStopSettledEvent extends CanonicalRuntimeEventBase {
    * forward sets it.
    */
   initiatedBy?: 'user' | 'stall';
+  /**
+   * Set by the command route when its person check
+   * (`personCredentialRequest`) passes for the Stop request. A
+   * delegation-kind device or an agent-originated request does not count: it
+   * is still `initiatedBy: 'user'` but carries no `byPerson`. An automation
+   * reads it to tell a person's Stop from its own budget interrupt.
+   */
+  byPerson?: true;
 }
 
 /**
@@ -771,6 +863,8 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    * see `station-control-refusal.ts`.
    */
   stationControlRefusal?: StationControlRefusalView;
+  /** Exact appearance proposal identity retained before output excerpts or spill. */
+  appearanceProposal?: CustomAppearanceProposalReference;
   method: 'tool.completed';
   /** Station stamps this from an already-open tool definition, never from result metadata. */
   mcpAppResourceUri?: string;
@@ -892,6 +986,8 @@ export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
   blocking?: boolean;
   requestType: 'approval' | 'permission' | 'confirmation' | 'input';
   title: string;
+  /** Bounded quotation stamped by Station's approval guardian policy. */
+  guardianReason?: string;
   description?: SpillableText;
   payload?: Record<string, unknown>;
   purpose?: string;
@@ -983,6 +1079,114 @@ export interface RuntimeErrorEvent
   metadata?: Record<string, unknown>;
 }
 
+const ACP_STOP_FAILURE_CODES = [
+  'acp-turn-refused',
+  'acp-turn-request-limit',
+  'acp-turn-outcome-unknown',
+] as const;
+const ACP_STOP_FAILURE_MESSAGES = [
+  'Request declined.',
+  'Request limit reached.',
+  'Result unconfirmed.',
+] as const;
+
+type AcpCompletionEvidence = {
+  provider: string;
+  finishReason?: unknown;
+  stopReason?: unknown;
+};
+
+function acpStopReasonIndex(stopReason: unknown): 0 | 1 | 2 {
+  return stopReason === 'refusal'
+    ? 0
+    : stopReason === 'max_turn_requests'
+      ? 1
+      : 2;
+}
+
+function isHistoricalAcpStop(event: AcpCompletionEvidence): boolean {
+  // Native OpenCode shares the id but does not supply an ACP stop reason.
+  return (
+    event.finishReason === 'other' &&
+    isAcpFamilyEngine(event.provider) &&
+    (event.provider === 'acp' || Boolean(event.stopReason))
+  );
+}
+
+/** Fixed transcript copy for an inconclusive historical ACP completion. */
+export function acpCompletionFailureMessage(
+  event: AcpCompletionEvidence,
+): string | undefined {
+  if (isHistoricalAcpStop(event))
+    return ACP_STOP_FAILURE_MESSAGES[acpStopReasonIndex(event.stopReason)];
+}
+
+/** Display-safe explanation for both wire shapes at the delegation and notice seams. */
+export function describeAcpTurnStopFailure(event: {
+  method?: unknown;
+  provider?: unknown;
+  finishReason?: unknown;
+  stopReason?: unknown;
+  code?: unknown;
+}): { code: string; message: string } | undefined {
+  if (typeof event.provider !== 'string') return undefined;
+  let index: number | undefined;
+  if (event.method === 'turn.completed') {
+    if (isHistoricalAcpStop({ ...event, provider: event.provider }))
+      index = acpStopReasonIndex(event.stopReason);
+  } else if (
+    event.method === 'runtime.error' &&
+    isAcpFamilyEngine(event.provider)
+  ) {
+    index = ACP_STOP_FAILURE_CODES.findIndex((code) => code === event.code);
+  }
+  const code = index === undefined ? undefined : ACP_STOP_FAILURE_CODES[index];
+  const message =
+    index === undefined ? undefined : ACP_STOP_FAILURE_MESSAGES[index];
+  return code && message ? { code, message } : undefined;
+}
+
+/**
+ * Use the established runtime failure event for a non-successful ACP stop.
+ * Read projections may interpret older rows through this same function
+ * without modifying the raw event or honoring its former success stamp.
+ */
+export function interpretAcpTurnStop(
+  event: TurnCompletedEvent,
+  source?: 'acp-transport',
+): TurnCompletedEvent | ProviderRuntimeErrorEvent {
+  if (
+    source === 'acp-transport'
+      ? event.finishReason !== 'other'
+      : !isHistoricalAcpStop(event)
+  )
+    return event;
+  const index = acpStopReasonIndex(event.stopReason);
+  const {
+    finishReason: _finishReason,
+    stopReason,
+    outputText: _outputText,
+    sessionState: _sessionState,
+    previousState: _previousState,
+    transitionReason: _transitionReason,
+    transitionSource: _transitionSource,
+    ...identity
+  } = event;
+  const unknownOutcome = index === 2;
+  return {
+    ...identity,
+    code: ACP_STOP_FAILURE_CODES[index],
+    message: ACP_STOP_FAILURE_MESSAGES[index],
+    method: 'runtime.error',
+    severity: 'error',
+    kind: unknownOutcome ? 'indeterminate' : 'provider_error',
+    failurePhase: unknownOutcome ? 'indeterminate' : 'failed',
+    retryable: false,
+    retriable: false,
+    ...(stopReason ? { details: { stopReason } } : {}),
+  };
+}
+
 /**
  * archive#3451: the ONE `runtime.error` publish this repo's own
  * audit documents as not proof the turn is over — codex's `'error'`
@@ -1053,6 +1257,7 @@ export interface RuntimeWarningEvent extends CanonicalRuntimeEventBase {
 
 export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
   method: 'token-usage.updated';
+  servedModelObservation?: UsageReceipt['servedModelObservation'];
   /** Separate reported reasoning tokens; tariff rules decide whether output already includes them. */
   reasoningTokens?: number;
   /** Contemporaneous route observation, never reconstructed from the current connection. */
@@ -1097,10 +1302,106 @@ export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
    * must declare its scope there.
    *
    * A currency other than USD has no home here: an adapter whose engine
-   * reports, say, EUR must not convert (Station has no rate policy) and so
-   * reports no cost at all — see the ACP `usage_update` mapping.
+   * reports, say, EUR must not convert (Station has no rate policy). Such a
+   * cost, and any cost whose scope is the engine's own (ACP `usage_update`
+   * reports a cumulative session cost in any currency), rides
+   * `reportedCost` instead.
    */
   reportedCostUsd?: number;
+  /**
+   * A cost the engine reported in its own unit (an ISO currency, USD
+   * included, or a vendor unit such as Kiro's `credit`), carried as reported
+   * and never converted or added to `reportedCostUsd`. `scope` says what it covers: `turn` is this turn alone
+   * (the latest report for a turn replaces earlier ones); `session` is the
+   * engine session's running total. Absent means none was reported, which
+   * is different from a reported zero.
+   */
+  reportedCost?: EngineReportedCost;
+  /**
+   * The engine's own reading of how full its context window is, 0-100. An
+   * engine that reports this rarely reports the token pair, so it is kept
+   * apart from `contextTokens`/`contextWindowTokens` and never derived from
+   * them.
+   */
+  contextPercent?: number;
+}
+
+export interface EngineReportedCost {
+  amount: number;
+  /** As the engine spelled it: `USD`, `EUR`, `credit`. */
+  unit: string;
+  scope: 'turn' | 'session';
+}
+
+/**
+ * The engine moved work onto a different model than the one asked for (a
+ * refusal or availability fallback). Reported after the fact; Station does
+ * not second-guess it. `scope: 'session'` means the engine pinned `toModel`
+ * as the session's model, so the current model changes; `turn` means the next
+ * turn starts on the requested model again.
+ */
+export interface ModelReroutedEvent extends CanonicalRuntimeEventBase {
+  method: 'model.rerouted';
+  fromModel: string;
+  /** Absent when the engine did not say where it went. */
+  toModel?: string;
+  trigger: 'refusal' | 'availability' | 'other';
+  scope: 'turn' | 'session';
+  /** The child work (engine subagent) the reroute happened in, if any. */
+  childWorkId?: string;
+}
+
+/**
+ * `configured`: the engine's own configuration enables the server, and the
+ * engine reports no connection state for it (Muse Code, whose stable
+ * protocol has no MCP status). Never a claim that it started or connected.
+ */
+export type EngineMcpServerState =
+  | 'starting'
+  | 'ready'
+  | 'failed'
+  | 'needs-auth'
+  | 'disabled'
+  | 'configured';
+
+/** One MCP server as the engine reports it. Engine-attributed, never Station's own view. */
+/** The longest MCP server name an engine status names; a longer one is dropped. */
+export const ENGINE_MCP_SERVER_NAME_MAX_CHARS = 128;
+/** The most MCP servers one status report carries; the rest are dropped. */
+export const ENGINE_MCP_STATUS_MAX_SERVERS = 64;
+/** The longest engine error text one server carries; adapters shorten longer text. */
+export const ENGINE_MCP_ERROR_MAX_CHARS = 512;
+
+export interface EngineMcpServerStatus {
+  /** At most {@link ENGINE_MCP_SERVER_NAME_MAX_CHARS} characters. */
+  name: string;
+  state: EngineMcpServerState;
+  toolCount?: number;
+  /** Engine-supplied text, bounded by the adapter. */
+  error?: string;
+  /**
+   * A sign-in link the engine reported. Passive: the engine may no longer be
+   * listening for its callback, so a sign-in asks the engine to start one.
+   */
+  authUrl?: string;
+  /** `session`: Station passed this server; `engine-config`: the engine's own. */
+  scope: 'session' | 'engine-config';
+}
+
+/**
+ * The engine's MCP servers. `complete: true` lists every server and replaces
+ * the previous list; `complete: false` updates only the servers named.
+ */
+export interface EngineMcpStatusEvent extends CanonicalRuntimeEventBase {
+  method: 'engine-mcp.status';
+  servers: EngineMcpServerStatus[];
+  complete: boolean;
+  /**
+   * `true` when this session's engine can reconnect one of these servers on
+   * request (and start its sign-in); absent otherwise. Set by the adapter
+   * from what the engine declared, never guessed from the engine's name.
+   */
+  reconnect?: true;
 }
 
 /**
@@ -1153,18 +1454,55 @@ export interface FlowRunAttachedEvent extends CanonicalRuntimeEventBase {
   freshness?: FlowRunFreshness;
 }
 
-export type FlowGateVerdict = 'pass' | 'route-back' | 'block' | 'wait';
+export type FlowGateVerdict =
+  | 'pass'
+  | 'route-back'
+  | 'block'
+  | 'wait'
+  | 'not-evaluated';
+
+/** The older empty-outcome fallback looked like a pass without naming a gate. */
+export function isUnevaluatedFlowGateObservation(event: {
+  verdict?: unknown;
+  gateId?: unknown;
+  summary?: unknown;
+}): boolean {
+  return (
+    event.verdict === 'not-evaluated' ||
+    (event.verdict === 'pass' &&
+      event.gateId === undefined &&
+      event.summary === 'all gates passed')
+  );
+}
+
+export interface FlowGateDiagnosticDetails {
+  claims: Array<{
+    expectationId?: string;
+    reason?: string;
+    specificReason?: string;
+    surfaceGaps?: Array<{ type?: string; message?: string }>;
+  }>;
+  truncated?: true;
+}
+
+export interface FlowGateReevaluationDetails {
+  gateId: string;
+  verdict: 'route-back' | 'block' | 'wait';
+  missing: string[];
+  diagnostics?: FlowGateDiagnosticDetails;
+}
 
 /**
  * Emitted by the orchestration layer when a Flow-bound session requests
- * completion and its run is evaluated. A non-pass verdict means the session
- * was NOT marked complete; the event carries the actionable guidance.
+ * completion. A holding verdict carries the actionable guidance.
+ * A not-evaluated observation records a completed run without asserting a gate ran.
  */
 export interface FlowGateVerdictEvent extends CanonicalRuntimeEventBase {
   method: 'flow.gate-verdict';
   runId: string;
   verdict: FlowGateVerdict;
   gateId?: string;
+  diagnostics?: FlowGateDiagnosticDetails;
   summary?: string;
   /** Flow's `state.next_action` text — assistant-visible guidance. */
   nextAction?: string;
@@ -1174,7 +1512,7 @@ export interface FlowGateVerdictEvent extends CanonicalRuntimeEventBase {
   maxAttempts?: number;
   /** Missing expectation ids (verdicts 'wait' and 'block'). */
   missing?: string[];
-  /** Workspace-relative report paths (verdict 'pass'). */
+  /** Workspace-relative report paths for an observed completed run. */
   reportPaths?: { json: string; markdown: string };
   /** True when only a human-accepted exception can unblock (verdict 'block'). */
   exceptionRequired?: boolean;
@@ -1398,6 +1736,8 @@ export interface ConversationForkedEvent extends CanonicalRuntimeEventBase {
 export type CanonicalRuntimeEvent =
   | SessionStartedEvent
   | SessionConfiguredEvent
+  | SessionEngineModeObservedEvent
+  | SessionApprovalReviewerObservedEvent
   | SessionStateChangedEvent
   | SessionExitedEvent
   | SessionCancellationRequestedEvent
@@ -1427,7 +1767,9 @@ export type CanonicalRuntimeEvent =
   | PlanUpdatedEvent
   | ExtensionEvent
   | ChildWorkUpdatedEvent
-  | ConversationForkedEvent;
+  | ConversationForkedEvent
+  | ModelReroutedEvent
+  | EngineMcpStatusEvent;
 
 /** Built-in adapter writers must classify failures; legacy stored readers remain compatible. */
 export type ProviderRuntimeErrorEvent = RuntimeErrorEvent & ProviderFailure;

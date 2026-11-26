@@ -1,7 +1,0 @@
-{
-  "revision": "3831ca263d86143df44c78309727a4a9db30d325",
-
-  "notes": [
-    {"path":"deployment/telemetry/README.md","note":"Reviewed the updated low-signal dashboard explanation, unchanged fixed-domain noisy weekly publication, pagination and private Node operator boundary. Live Worker public page matches the captured before/after screenshots; signed-in Worker insights now read through a separate Access-verified route. This does not qualify the optional Node deployment or overall collection coverage.","inputs":["deployment/telemetry/README.md"]}
-  ]
-}

@@ -1,23 +1,22 @@
 import type { Server } from 'node:http';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
-import type { StarterScheduledCheckObservation } from '@kontourai/station-contracts/starter-work';
 import { expect, test } from './helpers/authenticated-request';
 import {
   closeFixtureServer,
   startOllamaFixture,
 } from './helpers/ollama-fixture';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 
 const MODEL = 'station-clean-install:latest';
 const USER_MESSAGE = 'Confirm this clean Station can complete real work.';
 const FIXTURE_REPLY = 'Clean-install Station work completed.';
-const STARTER_JOB = 'station-starter-check';
 
 type ApiEnvelope<T> = { success: boolean; data: T };
 
 test.use({ actionTimeout: 20_000 });
 
-test('fresh Station completes real Work and opts into the developer Scheduler check', async ({
+test('fresh Station completes real Work', async ({
   authenticatedRequest,
   baseURL,
   page,
@@ -59,31 +58,19 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       readData<RunSummary[]>('/api/runs?source=schedule'),
     ).resolves.toEqual([]);
 
-    await page.getByRole('button', { name: 'Continue Without Setup' }).click();
-    const disclosure = page.getByTestId('first-run-disclosure');
-    await expect(disclosure).toBeVisible({ timeout: 20_000 });
-    await disclosure
-      .getByRole('button', { name: /^(Turn it off|Keep usage telemetry off)$/ })
-      .click();
-    // Intent-first Home (#3082): the usage decision returns to the task and
-    // defers the rest of the run as a resumable snooze, rather than walking
-    // on into the engines chapter.
-    await expect(disclosure).toHaveCount(0);
+    await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
     await expect(page.getByTestId('first-run-home-card')).toBeVisible();
     await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
-    await expect
-      .poll(async () => {
-        const config = await readData<{
-          firstRun?: { status?: string };
-        }>('/config/app');
-        return config.firstRun?.status;
-      })
-      .toBe('skipped');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
 
     // Home's start composer is the one way to start a chat (#3371); the
     // Station Agent's own Connect action on its Agent menu leads to setup.
     const homeDraft = page.getByRole('form', { name: 'Start work' });
-    await homeDraft.getByRole('button', { name: /^Agent:/ }).click();
+    await (
+      await runSetupControl(homeDraft, (panel) =>
+        panel.getByRole('button', { name: /^Agent:/ }),
+      )
+    ).click();
     const agentMenu = page.getByRole('dialog', { name: 'Choose agent' });
     await expect(agentMenu).toBeVisible();
     await agentMenu.getByRole('button', { name: 'Connect Station' }).click();
@@ -100,7 +87,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
     await page.getByLabel('Base URL').fill(ollama.origin);
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(page).toHaveURL(/\/connections\/models\/[^/?]+(?:\?|$)/);
-    await page.getByRole('button', { name: 'Test Connection' }).click();
+    await page.getByRole('button', { name: 'Test connection' }).click();
     await expect(page.getByText('Connection healthy')).toBeVisible();
 
     await expect
@@ -114,7 +101,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       .toBe(true);
 
     await page.goto(baseURL);
-    await page.getByRole('button', { name: 'Personalize Station' }).click();
+    await page.getByRole('button', { name: 'Open setup' }).click();
     const resumedEngines = page.getByTestId('first-run-engines');
     await expect(resumedEngines).toBeVisible({ timeout: 20_000 });
     await resumedEngines.getByRole('button', { name: 'Continue' }).click();
@@ -160,7 +147,11 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
         { timeout: 30_000 },
       )
       .toBe(true);
-    await draft.getByRole('button', { name: /^Agent:/ }).click();
+    await (
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', { name: /^Agent:/ }),
+      )
+    ).click();
     const chooseAgent = page.getByRole('dialog', { name: 'Choose agent' });
     const stationAgent = chooseAgent.locator(
       '.new-chat-modal__agent[data-agent-slug="station"]',
@@ -169,8 +160,11 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
     await stationAgent.click();
     await expect(chooseAgent).toHaveCount(0);
     await expect(
-      draft.getByRole('button', { name: /^Agent: Station/ }),
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', { name: /^Agent: Station/ }),
+      ),
     ).not.toHaveAttribute('aria-label', /needs setup/);
+    await closeRunSetup(page);
     await draft
       .getByRole('textbox', { name: 'What would you like done?', exact: true })
       .fill(USER_MESSAGE);
@@ -207,120 +201,8 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       ]),
     });
 
-    await page.getByRole('button', { name: 'Home', exact: true }).click();
-    const starter = page.getByRole('region', {
-      name: 'Run a scheduled readiness check',
-    });
-    await expect(starter).toHaveCount(0);
-    // Settings is reached through the sidebar footer's account menu.
-    await page.getByRole('button', { name: /^Profile and settings:/ }).click();
-    await page.getByRole('menuitem', { name: 'Open settings' }).click();
-    // Developer tools live on Settings' Advanced page (#3143).
-    await page.getByRole('link', { name: 'Advanced', exact: true }).click();
-    const developerTools = page.getByRole('switch', {
-      name: 'Enable developer tools',
-    });
-    await expect(developerTools).not.toBeChecked();
-    await developerTools.check();
-    await expect(developerTools).toBeChecked();
-    await page.getByRole('button', { name: 'Home', exact: true }).click();
-    await expect(starter).toBeVisible();
-    await starter.getByRole('button', { name: 'Run check' }).click();
-    await expect
-      .poll(() => new URL(page.url()).pathname, { timeout: 30_000 })
-      .toBe('/automations');
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('run'))
-      .toMatch(/^schedule:built-in:station-starter-check:/);
-    const exactRunId = new URL(page.url()).searchParams.get('run');
-    expect(exactRunId).toBeTruthy();
-
-    await expect
-      .poll(async () => {
-        const run = await readData<RunSummary>(
-          `/api/runs/${encodeURIComponent(exactRunId!)}`,
-        );
-        return {
-          runId: run.runId,
-          source: run.source,
-          sourceId: run.sourceId,
-          status: run.status,
-        };
-      })
-      .toEqual({
-        runId: exactRunId,
-        source: 'schedule',
-        sourceId: STARTER_JOB,
-        status: 'completed',
-      });
-
-    const observation = await readData<StarterScheduledCheckObservation>(
-      '/api/starter-work/run-scheduled-check/observation',
-    );
-    expect(observation).toMatchObject({
-      starterId: 'run-scheduled-check',
-      receipt: { id: exactRunId, owner: 'scheduler-run' },
-      href: `/schedule?run=${encodeURIComponent(exactRunId!)}`,
-      completion: { state: 'completed' },
-      evidence: { state: 'NOT_VERIFIED' },
-    });
-    const jobs = await readData<SchedulerJob[]>('/scheduler/jobs');
-    expect(jobs).toEqual([
-      expect.objectContaining({
-        name: STARTER_JOB,
-        provider: 'built-in',
-        agent: 'station',
-        enabled: false,
-        retryCount: 0,
-        schedule: { kind: 'every', everyMs: 86_400_000 },
-      }),
-    ]);
-    await expect.poll(() => chatRequests.length).toBe(2);
-    expect(chatRequests[1]).toMatchObject({
-      model: MODEL,
-      messages: expect.arrayContaining([
-        expect.objectContaining({
-          role: 'user',
-          content: expect.stringMatching(
-            /current readiness[\s\S]*Do not change configuration or Work/,
-          ),
-        }),
-      ]),
-    });
-
-    await page.getByRole('button', { name: 'Home', exact: true }).click();
-    await page.reload();
-    const completedStarter = page.getByRole('region', {
-      name: 'Run a scheduled readiness check',
-    });
-    await expect(completedStarter).toContainText(
-      'evidence input, not a gate verdict',
-    );
-    await completedStarter
-      .getByRole('button', { name: 'Open scheduled check' })
-      .click();
-    expect(new URL(page.url()).searchParams.get('run')).toBe(exactRunId);
-
-    const focusedRun = page.locator(`[data-run-id="${exactRunId}"]`);
-    await expect(focusedRun).toBeFocused({ timeout: 20_000 });
-    await expect(
-      focusedRun.getByText('Completed', { exact: true }),
-    ).toBeVisible();
-    await expect(focusedRun.getByText(/Passed|Verified/i)).toHaveCount(0);
-    await focusedRun.getByRole('button', { name: 'Output' }).click();
-    const output = page.getByRole('dialog', {
-      name: `${STARTER_JOB} — Run Output`,
-    });
-    await expect(output).toContainText(FIXTURE_REPLY);
-    await expect(
-      output.getByText(/Passed|Verified|gate satisfied/i),
-    ).toHaveCount(0);
-
     await expect(readData<unknown[]>('/api/projects')).resolves.toEqual([]);
     await expect(readData<unknown[]>('/api/tasks')).resolves.toEqual([]);
-    await expect(
-      readData<RunSummary[]>('/api/runs?source=schedule'),
-    ).resolves.toHaveLength(1);
   } finally {
     await closeFixtureServer(ollamaServer);
   }

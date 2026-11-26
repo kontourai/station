@@ -52,6 +52,10 @@ these two — there is no third shape.
   `page` token must be present).
 - **Header component:** `src-ui/src/components/DetailHeader.tsx` (sticky header: title left,
   action buttons right; optional `subtitle`, `badge`, `statusDot`, `icon` props).
+  The identity and actions share a row while their contents fit the available
+  region. A tablet keeps its 44px action targets when the cluster moves to
+  another row. The subtitle wraps within the identity, including long
+  unbroken references.
 - **Proven reference instances:**
   - `src-ui/src/views/SkillsView.tsx` — root is literally `<div className="page page--full">`
     (verified) and imports/renders `DetailHeader` for its detail-pane header.
@@ -351,3 +355,11 @@ This Knowledge port (this PR) creates **no new exception of either kind** — it
 CSS, it doesn't add inline styles or hex literals. This section is left in place for the next
 five ports to append to, per the steal-list's instruction to record allowlist decisions as they
 happen rather than after the fact.
+
+### Add engine flow
+
+The Engines collection uses `SplitPaneLayout`. **Add engine** leaves that
+collection for a narrow flow page: choose an engine, complete setup, then
+return to the collection with the new engine selected. Both the plain
+`/connections/engines/new` route and engine-specific setup links use this frame.
+The collection rail and its Add action stay on the collection page.

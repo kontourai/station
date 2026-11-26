@@ -121,7 +121,7 @@ export function MemberPasskeys({
           title="Passkeys are unavailable"
           description={userFacingErrorMessage(passkeys.error)}
           action={
-            <Button onClick={() => void passkeys.refetch()}>Try again</Button>
+            <Button onClick={() => void passkeys.refetch()}>Retry</Button>
           }
         />
       ) : passkeys.data.length === 0 ? (

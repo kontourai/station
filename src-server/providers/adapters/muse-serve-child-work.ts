@@ -5,6 +5,7 @@ import {
   type ChildWorkDelta,
   type ChildWorkItem,
   type ChildWorkRegistryState,
+  type ChildWorkSummarySource,
   type ChildWorkTerminalStatus,
   type ChildWorkUsage,
   childWorkForReporter,
@@ -42,6 +43,28 @@ import { isRecord } from '../../utils/is-record.js';
  * `completed` — that is the engine's own verdict, and `failed` in the contract
  * means "the engine said it failed" — but its summary leads with that fact,
  * so it never reads as a clean success.
+ *
+ * Muse Code 1.4.18 adds two sources, mapped here too (live captures in
+ * `__tests__/fixtures/muse-serve-1.4.18-workflow-child-steer.jsonl` and
+ * `-background-task-stop.jsonl`):
+ *
+ * - A `subagent` item per child, with `subagentId` equal to the workflow's
+ *   `childId`, `workflowRunId`, `depth`, `usage` and, once it reports,
+ *   `result.summary`: the child's OWN result, attributed to that child
+ *   whatever the workflow's size. A workflow child's lifecycle still comes
+ *   from the workflow item; its `subagent` item only adds the result. A
+ *   `subagent` item without `workflowRunId` (a native spawn, which this
+ *   build's default agent offered no tool for in the captures) is mapped on
+ *   its own from the same fields, its terminal from the item's `status`.
+ * - A `toolCall` still running when its turn completes is a background task
+ *   (`task/list` lists it `executionMode: background`; nothing else on the
+ *   item says so). Its row closes as a call that returned, and the task is
+ *   child work (`workKind: command`) until the item's own terminal.
+ *
+ * A running child can be steered with `subagent/sendMessage` (queued, then
+ * delivered into the child's next step) and stopped: a subagent with
+ * `subagent/stop`, a background task with `task/stop`. Those two id spaces
+ * do not mix: muse refuses `task/stop` on a subagent id (`invalid_target`).
  */
 
 const PROVIDER = 'muse' as const;
@@ -67,6 +90,8 @@ export interface MuseServeWorkflowChild {
 
 interface TrackedWorkflow {
   turnId?: string;
+  /** The reconciliation said every child tool failed (set at completion). */
+  allToolsFailed?: boolean;
   toolCallId?: string;
   background: boolean;
   /** childId → the latest revision's entry. */
@@ -89,7 +114,22 @@ export interface MuseServeChildWorkState {
   launchCallIds: Map<string, string>;
   /** Children Station asked muse to stop. */
   stopRequested: Set<string>;
+  /** Workflow childId → its own `subagent` item's result summary. */
+  subagentSummaries: Map<string, string>;
+  /** Open `toolCall`s of live turns, by call id: background candidates. */
+  openToolCalls: Map<string, MuseServeOpenToolCall>;
+  /** Background task id (the `toolCall` item id) → its call. */
+  tasks: Map<string, MuseServeOpenToolCall>;
   closed: boolean;
+}
+
+interface MuseServeOpenToolCall {
+  itemId: string;
+  callId: string;
+  tool: string;
+  turnId: string;
+  title?: string;
+  output?: string;
 }
 
 export interface MuseServeChildWorkContext {
@@ -135,8 +175,22 @@ export function createMuseServeChildWorkState(): MuseServeChildWorkState {
     workflows: new Map(),
     launchCallIds: new Map(),
     stopRequested: new Set(),
+    subagentSummaries: new Map(),
+    openToolCalls: new Map(),
+    tasks: new Map(),
     closed: false,
   };
+}
+
+/** Bound on the per-session id maps beside the registry, oldest first. */
+const TRACKED_IDS_MAX = 128;
+
+function remember<K, V>(map: Map<K, V>, key: K, value: V): void {
+  if (!map.has(key) && map.size >= TRACKED_IDS_MAX) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
+  map.set(key, value);
 }
 
 function readString(value: unknown): string | undefined {
@@ -323,7 +377,17 @@ function baseItem(
     // The child outlives the turn that launched it: the workflow item says
     // so, or that turn has already ended while the child is still listed.
     backgrounded: workflow.background || !turnLive,
-    controls: { stop: 'provider-task-stop' },
+    controls: {
+      stop: 'provider-task-stop',
+      // `subagent/sendMessage` reaches a running workflow child (live: queued,
+      // delivered, and the child's reply carried it, after the launching turn
+      // had ended). Offered for as long as the child runs: muse ends that
+      // turn at launch, and the adapter declares its children outlive it
+      // (`childSteerOutlivesParentTurn`), so orchestration admits the steer
+      // without a running parent turn. The launching turn is the token; the
+      // send names the child.
+      ...(workflow.turnId ? { steer: { turnId: workflow.turnId } } : {}),
+    },
   };
 }
 
@@ -331,18 +395,21 @@ function settle(
   context: MuseServeChildWorkContext,
   childId: string,
   status: ChildWorkTerminalStatus,
-  extra: { usage?: ChildWorkUsage; summary?: string } = {},
+  extra: {
+    usage?: ChildWorkUsage;
+    summary?: string;
+    source?: ChildWorkSummarySource;
+  } = {},
 ): void {
   const summary = extra.summary?.slice(0, CHILD_WORK_SUMMARY_MAX_CHARS + 1);
+  const source = extra.source ?? 'provider-summary';
   const changed = emit(context, {
     kind: 'settle',
     producer: 'engine-subagent',
     reporterThreadId: context.reporterThreadId,
     childId,
     status,
-    ...(summary
-      ? { result: { summary, source: 'provider-summary' as const } }
-      : {}),
+    ...(summary ? { result: { summary, source } } : {}),
     ...(extra.usage ? { usage: extra.usage } : {}),
     identity: { endedAt: context.nowIso() },
   });
@@ -481,28 +548,308 @@ export function observeMuseWorkflowItem(
       }
     }
     const reconciliation = parseMuseWorkflowReconciliation(item.message);
-    if (workflow.children.size === 1) {
-      const [only] = workflow.children.values();
-      const summary = reconciliation.allToolsFailed
-        ? [MUSE_CHILD_ALL_TOOLS_FAILED_PREFIX, reconciliation.summary]
-            .filter(Boolean)
-            .join(' ')
-        : reconciliation.summary;
-      const current = itemFor(context, only.childId);
-      if (summary && current && current.status !== 'running') {
-        // Enrichment of the settle already recorded: the reducer fills the
-        // result a sticky terminal lacked, and never changes its status.
-        settle(
+    workflow.allToolsFailed = reconciliation.allToolsFailed;
+    for (const child of workflow.children.values()) {
+      // The child's own result first; the workflow's summary only when it
+      // ran exactly this one child.
+      const own = state.subagentSummaries.get(child.childId);
+      const summary = workflowChildSummary(
+        workflow,
+        own ??
+          (workflow.children.size === 1 ? reconciliation.summary : undefined),
+      );
+      enrichSettled(context, child.childId, summary);
+    }
+  }
+}
+
+/** A workflow child's summary, led by the all-tools-failed fact when known. */
+function workflowChildSummary(
+  workflow: TrackedWorkflow,
+  summary: string | undefined,
+): string | undefined {
+  if (!workflow.allToolsFailed || workflow.children.size !== 1) return summary;
+  return [MUSE_CHILD_ALL_TOOLS_FAILED_PREFIX, summary]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * Enrichment of the settle already recorded: the reducer fills the result a
+ * sticky terminal lacked, and never changes its status.
+ */
+function enrichSettled(
+  context: MuseServeChildWorkContext,
+  childId: string,
+  summary: string | undefined,
+): void {
+  const current = itemFor(context, childId);
+  if (!summary || !current || current.status === 'running') return;
+  settle(context, childId, current.status as ChildWorkTerminalStatus, {
+    summary,
+  });
+}
+
+/** The child's own reported result summary, from a `subagent` item. */
+function subagentResultSummary(
+  item: Record<string, unknown>,
+): string | undefined {
+  return isRecord(item.result) ? readString(item.result.summary) : undefined;
+}
+
+function tokenUsageOf(
+  item: Record<string, unknown>,
+): ChildWorkUsage | undefined {
+  const usage = isRecord(item.usage) ? item.usage : undefined;
+  const inputTokens = readCount(usage?.inputTokens);
+  const outputTokens = readCount(usage?.outputTokens);
+  const durationMs = readCount(item.durationMs);
+  const result: ChildWorkUsage = {};
+  if (inputTokens !== undefined || outputTokens !== undefined) {
+    result.totalTokens = (inputTokens ?? 0) + (outputTokens ?? 0);
+  }
+  if (durationMs !== undefined) result.durationMs = durationMs;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * One revision of a `subagent` item. A workflow child's (it names
+ * `workflowRunId`) only contributes its result: the workflow item owns its
+ * lifecycle. Any other is a native subagent, mapped from the item alone.
+ */
+export function observeMuseSubagentItem(
+  context: MuseServeChildWorkContext,
+  item: Record<string, unknown>,
+): void {
+  const { state } = context;
+  if (state.closed) return;
+  const childId = readString(item.subagentId);
+  if (!childId) return;
+  const summary = subagentResultSummary(item);
+  if (readString(item.workflowRunId)) {
+    if (!summary) return;
+    remember(state.subagentSummaries, childId, summary);
+    // A result reported after its workflow completed fills the settle now.
+    for (const workflow of state.workflows.values()) {
+      if (workflow.completed && workflow.children.has(childId)) {
+        enrichSettled(
           context,
-          only.childId,
-          current.status as ChildWorkTerminalStatus,
-          {
-            summary,
-          },
+          childId,
+          workflowChildSummary(workflow, summary),
         );
       }
     }
+    return;
   }
+  const turnId = readString(item.turnId);
+  const existing = itemFor(context, childId);
+  const usage = tokenUsageOf(item);
+  const status = readString(item.status);
+  if (!existing) {
+    emit(context, {
+      kind: 'snapshot',
+      producer: 'engine-subagent',
+      reporterThreadId: context.reporterThreadId,
+      running: [
+        ...runningItems(context),
+        nativeSubagentItem(context, item, childId, turnId, usage),
+      ],
+    });
+  } else if (existing.status === 'running' && status === 'inProgress') {
+    emit(context, {
+      kind: 'upsert',
+      item: {
+        ...nativeSubagentItem(context, item, childId, turnId, usage),
+        ...(existing.startedAt ? { startedAt: existing.startedAt } : {}),
+      },
+    });
+  }
+  if (!status || status === 'inProgress') return;
+  state.stopRequested.delete(childId);
+  const failureReason = readString(item.failureReason);
+  settle(context, childId, mapMuseChildTerminal(status), {
+    ...(usage ? { usage } : {}),
+    ...(summary
+      ? { summary }
+      : failureReason
+        ? { summary: failureReason, source: 'provider-error' as const }
+        : {}),
+  });
+}
+
+function nativeSubagentItem(
+  context: MuseServeChildWorkContext,
+  item: Record<string, unknown>,
+  childId: string,
+  turnId: string | undefined,
+  usage: ChildWorkUsage | undefined,
+): ChildWorkItem {
+  const role = readString(item.role);
+  const objective = readString(item.objective);
+  const depth = readCount(item.depth);
+  const turnLive = turnId !== undefined && context.isTurnLive(turnId);
+  return {
+    producer: 'engine-subagent',
+    reporterThreadId: context.reporterThreadId,
+    childId,
+    status: 'running',
+    ...(turnId ? { parent: { turnId } } : {}),
+    ...(depth !== undefined && depth >= 1 ? { depth } : {}),
+    ...((objective ?? role)
+      ? { title: (objective ?? role ?? '').slice(0, TITLE_MAX_CHARS) }
+      : {}),
+    kindLabel: role ? role.slice(0, TITLE_MAX_CHARS) : 'subagent',
+    workKind: 'agent',
+    backgrounded: !turnLive,
+    startedAt: context.nowIso(),
+    ...(usage ? { usage } : {}),
+    controls: {
+      stop: 'provider-task-stop',
+      // As for a workflow child: steerable while it runs, its launching turn
+      // live or not.
+      ...(turnId ? { steer: { turnId } } : {}),
+    },
+  };
+}
+
+function readCommand(args: unknown): string | undefined {
+  if (typeof args !== 'string') return undefined;
+  try {
+    const decoded: unknown = JSON.parse(args);
+    return isRecord(decoded) ? readString(decoded.command) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * One revision of a `toolCall` item. Returns `true` when the item is a
+ * background task's (its row already closed), so the caller does not treat
+ * it as a call of the turn.
+ */
+export function observeMuseToolCallItem(
+  context: MuseServeChildWorkContext,
+  item: Record<string, unknown>,
+): boolean {
+  const { state } = context;
+  if (state.closed) return false;
+  const itemId = readString(item.itemId);
+  const callId = readString(item.callId);
+  const tool = readString(item.tool);
+  const turnId = readString(item.turnId);
+  const status = readString(item.status);
+  if (!itemId || !callId || !tool) return false;
+  const task = state.tasks.get(itemId);
+  if (task) {
+    if (!status || status === 'inProgress') return true;
+    state.tasks.delete(itemId);
+    state.stopRequested.delete(itemId);
+    const output = readString(item.visibleOutput);
+    const failureReason = readString(item.failureReason);
+    // The command's own output; for a task that did not complete, muse's
+    // reason first.
+    const ended =
+      status !== 'completed' && failureReason
+        ? { summary: failureReason, source: 'provider-error' as const }
+        : output
+          ? { summary: output, source: 'tool-return' as const }
+          : {};
+    settle(context, itemId, mapMuseChildTerminal(status), ended);
+    return true;
+  }
+  if (status === 'inProgress' && turnId) {
+    const command = readCommand(item.args);
+    const title = readString(item.bashTitle) ?? command;
+    const output = readString(item.visibleOutput);
+    remember(state.openToolCalls, callId, {
+      itemId,
+      callId,
+      tool,
+      turnId,
+      ...(title ? { title: title.slice(0, TITLE_MAX_CHARS) } : {}),
+      ...(output ? { output } : {}),
+    });
+  } else {
+    state.openToolCalls.delete(callId);
+  }
+  return false;
+}
+
+/**
+ * The turn `turnId` completed with these calls still open: each one muse is
+ * still running is a background task from here on. Returns the calls taken,
+ * with the output each returned to the model, so their rows can close as
+ * calls that returned rather than as calls whose fate is unknown.
+ */
+export function adoptMuseBackgroundTasks(
+  context: MuseServeChildWorkContext,
+  turnId: string,
+  openCallIds: Iterable<string>,
+): Array<{ callId: string; output?: string }> {
+  const { state } = context;
+  if (state.closed) return [];
+  const adopted: MuseServeOpenToolCall[] = [];
+  for (const callId of openCallIds) {
+    const call = state.openToolCalls.get(callId);
+    if (!call || call.turnId !== turnId) continue;
+    state.openToolCalls.delete(callId);
+    remember(state.tasks, call.itemId, call);
+    adopted.push(call);
+  }
+  if (adopted.length > 0) {
+    emit(context, {
+      kind: 'snapshot',
+      producer: 'engine-subagent',
+      reporterThreadId: context.reporterThreadId,
+      running: [
+        ...runningItems(context),
+        ...adopted.map(
+          (call): ChildWorkItem => ({
+            producer: 'engine-subagent',
+            reporterThreadId: context.reporterThreadId,
+            childId: call.itemId,
+            status: 'running',
+            parent: { turnId: call.turnId, toolCallId: call.callId },
+            title: call.title ?? call.tool,
+            kindLabel: call.tool,
+            workKind: 'command',
+            backgrounded: true,
+            startedAt: context.nowIso(),
+            controls: { stop: 'provider-task-stop' },
+          }),
+        ),
+      ],
+    });
+  }
+  return adopted.map((call) => ({
+    callId: call.callId,
+    ...(call.output ? { output: call.output } : {}),
+  }));
+}
+
+/** How a running child is stopped: a task by `task/stop`, else a subagent. */
+export function museServeChildStopMethod(
+  context: MuseServeChildWorkContext,
+  childId: string,
+): 'task/stop' | 'subagent/stop' {
+  return context.state.tasks.has(childId) ? 'task/stop' : 'subagent/stop';
+}
+
+/**
+ * Whether `childId` can take a steer under `turnId`: a running subagent (a
+ * workflow child or a native one, never a background task) whose advertised
+ * steer token is that turn.
+ */
+export function museServeChildSteerable(
+  context: MuseServeChildWorkContext,
+  childId: string,
+  turnId: string,
+): boolean {
+  if (context.state.tasks.has(childId)) return false;
+  const current = itemFor(context, childId);
+  return (
+    current?.status === 'running' && current.controls?.steer?.turnId === turnId
+  );
 }
 
 /**
@@ -536,5 +883,8 @@ export function settleOpenMuseChildren(
     context.state.workflows.clear();
     context.state.launchCallIds.clear();
     context.state.stopRequested.clear();
+    context.state.subagentSummaries.clear();
+    context.state.openToolCalls.clear();
+    context.state.tasks.clear();
   }
 }

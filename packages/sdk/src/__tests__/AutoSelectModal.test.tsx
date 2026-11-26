@@ -100,6 +100,34 @@ describe('AutoSelectModal', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  test('typing a query returns the keyboard selection to the first match', () => {
+    installKeyboardViewport();
+    const onSelect = vi.fn();
+    render(
+      <AutoSelectModal
+        isOpen
+        title="Open Conversation"
+        items={[
+          { id: 'one', title: 'First session' },
+          { id: 'two', title: 'Second session' },
+          { id: 'three', title: 'Third session' },
+        ]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const search = screen.getByPlaceholderText('Search...');
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    // The list is now one row long; the selection was on its third row.
+    fireEvent.change(search, { target: { value: 'Second' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'two' }),
+    );
+  });
+
   test('dismisses on backdrop click without putting the backdrop in the tab order', () => {
     installKeyboardViewport();
     const onClose = vi.fn();

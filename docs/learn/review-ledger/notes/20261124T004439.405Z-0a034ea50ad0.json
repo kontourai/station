@@ -1,0 +1,7 @@
+{
+  "revision": "950d9152fcd4bc2298237df2b5983fa3d2f13b1b",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Review fix round: the session-wide grant paragraph now says an ACP engine (not agent) is never sent allow-always, the canonical runtime term the product-docs category check requires. Content otherwise as reviewed in this round: undeclaring adapters have sessionGrantAll stripped before storage, the adapter mints no tool grant and sends allow-once, an allow-always-only ACP request goes to a person, a native reply in flight across a mode change grants nothing.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

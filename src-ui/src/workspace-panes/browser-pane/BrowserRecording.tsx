@@ -374,11 +374,7 @@ export function BrowserRecordingStatus({
       {recording.phase === 'ready' ||
       recording.phase === 'failed' ||
       recording.error ? (
-        <IconButton
-          aria-label="Dismiss"
-          title="Dismiss"
-          onClick={recording.reset}
-        >
+        <IconButton aria-label="Dismiss" onClick={recording.reset}>
           <CloseGlyph />
         </IconButton>
       ) : null}

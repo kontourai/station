@@ -1,7 +1,0 @@
-{
-  "revision": "be8c3fe46a5f41ee6b02d698dc2eb259ae0287a1",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.webm","note":"Inspected video frames showing opening the inspector, identity expansion/collapse and closing with the request still pending. Current service delta only changes queued unknown-profile steering; no request inspection/response path changed. Retain original recording revision, no-decision/provider-effect claim and historical chrome limits; this is semantic review, not a recapture.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

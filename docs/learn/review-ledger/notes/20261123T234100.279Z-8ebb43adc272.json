@@ -1,0 +1,9 @@
+{
+  "revision": "d06522ce8a6a8f34d35aee39ba241b56c9ebae33",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"orchestration-service.ts changed only in respondToRequest: an acceptForSession with sessionGrantScope 'all' to an adapter that does not declare it is sent as the plain per-tool answer (scope dropped before the edit-mode check). The captured request-inspection flow (opening and inspecting a request, not answering it with a session scope) does not depend on that path, so the capture stays accurate.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"orchestration-service.ts changed only in respondToRequest: an acceptForSession with sessionGrantScope 'all' to an adapter that does not declare it is sent as the plain per-tool answer (scope dropped before the edit-mode check). The captured request-inspection flow (opening and inspecting a request, not answering it with a session scope) does not depend on that path, so the capture stays accurate.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

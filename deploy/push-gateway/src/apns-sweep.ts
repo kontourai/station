@@ -1,8 +1,8 @@
 // The scheduled sweep: deletes every broadcast channel Apple holds in a swept
 // scope that the channel ledger (channel-ledger.ts) does not record, once it
-// has stayed unrecorded for the ledger's ten-minute grace. So every leak (a
-// Station that never deletes, a failed compensating delete, a crash between
-// create and record) is reclaimed within about 12 hours and a sweep interval.
+// has stayed unrecorded for the ledger's ten-minute grace. Listing and ledger
+// triage are admitted before deletes, whose remaining budget is shared in
+// rounds across scopes.
 //
 // The sweep manages only the scopes (environment + bundle) it is told to.
 // Within a swept scope every channel must come from this gateway and this
@@ -64,7 +64,13 @@ export function parseSweepScopes(
       console.error(`apns sweep scope ignored: ${trimmed.slice(0, 128)}`);
       continue;
     }
-    scopes.push({ environment, bundleId });
+    if (
+      !scopes.some(
+        (scope) =>
+          scope.environment === environment && scope.bundleId === bundleId,
+      )
+    )
+      scopes.push({ environment, bundleId });
   }
   return scopes;
 }
@@ -99,7 +105,10 @@ export async function sweepChannels(input: {
       );
     });
   }
-  for (const { bundleId, environment } of scopes) {
+  const candidates: Array<{ scope: SweepScope; due: string[]; next: number }> =
+    [];
+  for (const scope of scopes) {
+    const { bundleId, environment } = scope;
     const label = `${environment}:${bundleId}`;
     // Listing and triage are two subrequests; without them a scope is left
     // whole for the next run.
@@ -126,21 +135,8 @@ export async function sweepChannels(input: {
       report.listed += listed.length;
       report.kept += triage.recorded;
       report.waiting += triage.waiting;
-      for (const channelId of triage.due) {
-        if (budget < 1 || deletesLeft < 1) {
-          report.deferred += 1;
-          continue;
-        }
-        budget -= 1;
-        deletesLeft -= 1;
-        const outcome = await sender.deleteChannel(
-          bundleId,
-          environment,
-          channelId,
-        );
-        if (outcome.kind === 'deleted') report.deleted += 1;
-        else report.failed += 1;
-      }
+      if (triage.due.length > 0)
+        candidates.push({ scope, due: triage.due, next: 0 });
     } catch (error) {
       console.error(
         `apns channel sweep skipped ${label}:`,
@@ -149,5 +145,32 @@ export async function sweepChannels(input: {
       report.skipped.push(label);
     }
   }
+  while (candidates.length > 0 && budget > 0 && deletesLeft > 0) {
+    const candidate = candidates.shift()!;
+    const { bundleId, environment } = candidate.scope;
+    const channelId = candidate.due[candidate.next++]!;
+    budget -= 1;
+    deletesLeft -= 1;
+    try {
+      const outcome = await sender.deleteChannel(
+        bundleId,
+        environment,
+        channelId,
+      );
+      if (outcome.kind === 'deleted') report.deleted += 1;
+      else report.failed += 1;
+      if (candidate.next < candidate.due.length) candidates.push(candidate);
+    } catch (error) {
+      console.error(
+        `apns channel sweep skipped ${environment}:${bundleId}:`,
+        error instanceof Error ? error.message : 'unknown error',
+      );
+      report.skipped.push(`${environment}:${bundleId}`);
+    }
+  }
+  report.deferred += candidates.reduce(
+    (total, item) => total + item.due.length - item.next,
+    0,
+  );
   return report;
 }

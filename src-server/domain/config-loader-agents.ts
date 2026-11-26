@@ -2,15 +2,17 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, renameSync } from 'node:fs';
 import { mkdir, open, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
-import type {
-  AgentMetadata,
-  AgentSpec,
+import {
+  type AgentMetadata,
+  type AgentSpec,
+  withoutRetiredAgentConfigFields,
 } from '@kontourai/station-contracts/agent';
 import {
   agentId,
   isStationAgentIdentity,
 } from '@kontourai/station-contracts/agent-identity';
 import type { WorkflowMetadata } from '@kontourai/station-contracts/runtime';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { assertSafeContextText } from '../services/orchestration/context-safety.js';
@@ -33,6 +35,7 @@ import {
 import { readRegularFileNoFollow } from './home-schema-gate.js';
 import {
   PLUGIN_AGENT_OWNER_FILE,
+  pluginAgentInstallationBinding,
   pluginAgentOwner,
 } from './plugin-agent-ownership.js';
 import { validator } from './validator.js';
@@ -40,6 +43,46 @@ import { validator } from './validator.js';
 const logger = createLogger({ name: 'config-loader' });
 
 const WORKFLOW_EXTENSIONS = ['.ts', '.js', '.mjs', '.cjs'];
+
+const AGENT_INCARNATION_FILE = '.station-agent-incarnation.json';
+const AGENT_INCARNATION_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** Read after loading the definition, under the Agent identity mutation lock. */
+export function agentIncarnationUnderLock(
+  homeDir: string,
+  slug: string,
+  initialize: boolean,
+): string | undefined {
+  const agentsDir = join(homeDir, 'agents');
+  const agentDir = join(agentsDir, agentId(slug));
+  if (!lstatSync(agentsDir).isDirectory() || !lstatSync(agentDir).isDirectory())
+    return undefined;
+  if (
+    lstatSync(join(agentDir, PLUGIN_AGENT_OWNER_FILE), {
+      throwIfNoEntry: false,
+    })
+  ) {
+    const owner = pluginAgentInstallationBinding(agentDir);
+    return owner?.generation
+      ? JSON.stringify(['plugin', owner.plugin, owner.generation])
+      : undefined;
+  }
+  const marker = join(agentDir, AGENT_INCARNATION_FILE);
+  if (lstatSync(marker, { throwIfNoEntry: false })) {
+    const incarnation: unknown = JSON.parse(
+      readRegularFileNoFollow(homeDir, marker, { maxBytes: 64 }),
+    );
+    return typeof incarnation === 'string' &&
+      AGENT_INCARNATION_PATTERN.test(incarnation)
+      ? incarnation
+      : undefined;
+  }
+  if (!initialize) return undefined;
+  const incarnation = randomUUID();
+  writeJsonDurably(marker, incarnation);
+  return incarnation;
+}
 
 function agentPersistenceLockPath(
   projectHomeDir: string,
@@ -74,10 +117,12 @@ async function withAgentPersistenceLock<T>(
   projectHomeDir: string,
   slug: string,
   operation: () => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
+  signal?.throwIfAborted();
   const lockPath = agentPersistenceLockPath(projectHomeDir, slug);
   await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
-  const release = await acquireFileMutationLockAsync(lockPath);
+  const release = await acquireFileMutationLockAsync(lockPath, { signal });
   try {
     return await operation();
   } finally {
@@ -218,7 +263,8 @@ async function loadAgentConfigAsStored(
 }
 
 function parseAgentConfigContent(content: string, slug: string): AgentSpec {
-  const data = JSON.parse(content);
+  const decoded: unknown = JSON.parse(content);
+  const data = withoutRetiredAgentConfigFields(decoded);
   dropRetiredToolAliases(slug, data);
   validator.validateAgentSpec(data, slug);
   assertSafeAgentSpec(slug, data);
@@ -400,10 +446,11 @@ async function saveAgentConfigWithOwnedLock(
 ): Promise<AgentSpec> {
   assertCustomAgentIdentity(slug);
   assertRegistryIntegrityAtHomeSync(projectHomeDir);
+  const canonical = withoutRetiredAgentConfigFields(spec);
   const persisted = isStationAgentIdentity(slug)
-    ? withoutReservedStationBinding(spec)
-    : spec;
-  if (persisted !== spec) {
+    ? withoutReservedStationBinding(canonical)
+    : canonical;
+  if (persisted !== canonical) {
     logger.debug(
       'Dropped the engine binding from the Station Agent record; the app-level selection owns it',
       { agent: slug },
@@ -447,6 +494,7 @@ export function resolveAgentConfigSlug(spec: AgentSpec): string {
 export async function createAgentConfig(
   projectHomeDir: string,
   spec: AgentSpec,
+  signal?: AbortSignal,
 ): Promise<{ slug: string; spec: AgentSpec }> {
   const slug = resolveAgentConfigSlug(spec);
   const { slug: _ignored, ...cleanSpec } = spec as AgentSpec & {
@@ -467,6 +515,7 @@ export async function createAgentConfig(
       }
       return saveAgentConfigWithOwnedLock(projectHomeDir, slug, cleanSpec);
     },
+    signal,
   );
   return { slug, spec: persisted };
 }
@@ -581,15 +630,21 @@ export async function mutateAgentConfig(
   projectHomeDir: string,
   slug: string,
   updater: (current: AgentSpec) => AgentSpec | null,
+  signal?: AbortSignal,
 ): Promise<AgentSpec | null> {
-  return withAgentPersistenceLock(projectHomeDir, slug, async () => {
-    assertCustomAgentIdentity(slug);
-    assertRegistryIntegrityAtHomeSync(projectHomeDir);
-    const existing = await loadAgentConfigAsStored(projectHomeDir, slug);
-    const next = updater(structuredClone(existing));
-    if (next === null) return null;
-    return saveAgentConfigWithOwnedLock(projectHomeDir, slug, next);
-  });
+  return withAgentPersistenceLock(
+    projectHomeDir,
+    slug,
+    async () => {
+      assertCustomAgentIdentity(slug);
+      assertRegistryIntegrityAtHomeSync(projectHomeDir);
+      const existing = await loadAgentConfigAsStored(projectHomeDir, slug);
+      const next = updater(structuredClone(existing));
+      if (next === null) return null;
+      return saveAgentConfigWithOwnedLock(projectHomeDir, slug, next);
+    },
+    signal,
+  );
 }
 
 export async function deleteAgentConfig(
@@ -997,19 +1052,6 @@ function assertSafeAgentSpec(slug: string, spec: AgentSpec): void {
   if (typeof spec.prompt === 'string' && spec.prompt.length > 0) {
     assertSafeContextText(spec.prompt, {
       source: `agent '${slug}' prompt`,
-    });
-  }
-
-  for (const quickPrompt of spec.ui?.quickPrompts || []) {
-    if (
-      typeof quickPrompt.prompt !== 'string' ||
-      quickPrompt.prompt.length === 0
-    ) {
-      continue;
-    }
-
-    assertSafeContextText(quickPrompt.prompt, {
-      source: `agent '${slug}' quick prompt '${quickPrompt.id}'`,
     });
   }
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "1e60e3e22157f5ccdbadec86c7242067ea232db6",
+
+  "notes": [
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Re-read against changed-verification.test.ts: the only change adds one governed workflow reader to the expected inventory; the demo fixture, its 120-second liveness limit and the measurement guidance are unchanged.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}

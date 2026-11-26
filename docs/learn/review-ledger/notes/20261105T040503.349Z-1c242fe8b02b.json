@@ -1,7 +1,0 @@
-{
-  "revision": "a181e79c7019ef41b27fa991ded874929c4effbc",
-
-  "notes": [
-    {"path":"docs/privacy-policy.md","note":"Reordered the adoption disclosure in privacy-inventory.ts so the first-turn undercount sentence describes resume baselining, then the separate statement that adopted outside Codex sessions contribute no tokens (codex-adapter.ts withholds all their usage updates). Regenerated from the inventory; pinned by privacy-inventory.test.ts.","inputs":["docs/privacy-policy.md","src-server/services/privacy-inventory.ts"]}
-  ]
-}

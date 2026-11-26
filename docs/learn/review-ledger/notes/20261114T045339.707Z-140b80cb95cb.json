@@ -1,0 +1,13 @@
+{
+  "revision": "cd7098496df778f093c45126f4c138070661ba93",
+
+  "notes": [
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Grepped for event store, persistence, journal and ledger claims; none depend on the hub. The implementation route cites flow/evidence services instead.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The only usage-receipt mention is a terminology boundary pointing to the usage-telemetry reference, not a claim about how the hub stores receipts; other claims route to scheduler/notification/telemetry owners.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The server-side steer/queue claims are implemented by the thread inbox store (persist-before-claim, head fence, unconfirmed state) and the post-tool inbox; EventStore only lazily constructs the inbox over its handle. Queued file bytes live in the attachment blob store.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/thread-inbox.ts","src-server/services/orchestration/post-tool-inbox.ts","src-server/services/orchestration/attachment-blob-store.ts","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"The doc never mentions EventStore; its persistence claims are implemented in the working-state worker and the 512 KiB CHECK is in migration 008, neither of which is cited. The hub only forwards its database path.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/project-task-room-working-state-worker.ts","src-server/domain/migrations/008-project-task-room-revision-publication.ts","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

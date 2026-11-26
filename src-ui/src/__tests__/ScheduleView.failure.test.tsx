@@ -43,7 +43,7 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const schedulerHooks = vi.hoisted(() => ({
   jobs: { data: [], isLoading: false, isError: false, error: null } as {
@@ -65,14 +65,31 @@ const schedulerHooks = vi.hoisted(() => ({
   },
   runs: [] as Array<Record<string, unknown>>,
   runsQuery: vi.fn(),
+  /** Week forecast reads by week start; absent: the job list, forecast empty. */
+  weeks: {} as Record<
+    string,
+    { data: unknown[] | undefined; isLoading: boolean; isError: boolean }
+  >,
 }));
+const weekReads = vi.hoisted(() => vi.fn());
 
+const loadOutput = vi.hoisted(() => vi.fn());
 const runMutation = vi.hoisted(() => ({
   mutate: vi.fn(),
   isPending: false,
   variables: undefined as string | undefined,
 }));
 const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
+const toggleMutation = vi.hoisted(() => ({
+  mutate: vi.fn(),
+  isPending: false,
+  variables: undefined as { target: string; enabled: boolean } | undefined,
+}));
+const deleteMutation = vi.hoisted(() => ({
+  mutate: vi.fn(),
+  isPending: false,
+  variables: undefined as string | undefined,
+}));
 const retryQueries = vi.hoisted(() => ({
   jobs: vi.fn(),
   status: vi.fn(),
@@ -83,11 +100,53 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   useHostRequestAuthorityScope: () => null,
 }));
 
-vi.mock('../hooks/useScheduler', () => ({
-  useSchedulerJobs: () => ({
-    ...schedulerHooks.jobs,
-    refetch: retryQueries.jobs,
+// The reader's zone, pinned so day boundaries do not depend on the machine.
+vi.mock('../components/scheduler/scheduleValue', async (importOriginal) => {
+  const original =
+    await importOriginal<
+      typeof import('../components/scheduler/scheduleValue')
+    >();
+  return {
+    ...original,
+    browserTimeZone: () => 'UTC',
+    localCronSchedule: (expr: string, zone = 'UTC') =>
+      original.localCronSchedule(expr, zone),
+    weekdayMorningSchedule: (zone = 'UTC') =>
+      original.weekdayMorningSchedule(zone),
+  };
+});
+
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => [
+    { slug: 'helper', name: 'Release helper', engineDisplayName: 'Codex' },
+  ],
+}));
+
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({
+    projects: [{ id: 'project-1', slug: 'notes', name: 'Notes API' }],
+    isLoading: false,
+    isConfirmedLoaded: true,
   }),
+}));
+
+vi.mock('../hooks/useScheduler', () => ({
+  useSchedulerJobs: (weekStart?: string, zone?: string) => {
+    if (weekStart === undefined)
+      return { ...schedulerHooks.jobs, refetch: retryQueries.jobs };
+    weekReads(weekStart, zone);
+    return {
+      ...(schedulerHooks.weeks[weekStart] ?? {
+        data: schedulerHooks.jobs.data.map((job) => ({
+          ...(job as object),
+          weekOccurrences: { times: [], truncated: false },
+        })),
+        isLoading: false,
+        isError: false,
+      }),
+      refetch: vi.fn(),
+    };
+  },
   useSchedulerStatus: () => ({
     ...schedulerHooks.status,
     refetch: retryQueries.status,
@@ -95,15 +154,19 @@ vi.mock('../hooks/useScheduler', () => ({
   useSchedulerStats: () => ({ data: undefined, isLoading: false }),
   useSchedulerProviders: () => ({ data: [] }),
   useRunsQuery: schedulerHooks.runsQuery,
-  useFetchRunOutputRef: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useFetchRunOutputRef: () => ({
+    mutate: loadOutput,
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
   useSchedulerEvents: () => ({
     isRunning: () => false,
     markErrorShown: vi.fn(),
     getMissedCount: () => 0,
   }),
   useRunJob: () => runMutation,
-  useToggleJob: () => ({ mutate: vi.fn() }),
-  useDeleteJob: () => ({ mutate: vi.fn() }),
+  useToggleJob: () => toggleMutation,
+  useDeleteJob: () => deleteMutation,
   // Added when useScheduler gained it and the view adopted it. This
   // factory must name EVERY export the view reaches, so each new hook
   // reds this suite until listed (archive#4292). The partial-mock form
@@ -175,6 +238,16 @@ function bothQueriesFail(error: unknown) {
   };
 }
 
+/** Opens an automation's ⋯ menu and returns its Run now item. */
+function runNow(label: string): HTMLButtonElement {
+  fireEvent.click(screen.getByRole('button', { name: `Actions for ${label}` }));
+  return screen.getByRole('menuitem', { name: 'Run now' }) as HTMLButtonElement;
+}
+
+function closeMenu() {
+  fireEvent.keyDown(document, { key: 'Escape' });
+}
+
 describe('ScheduleView scheduler failure banner (station#3252)', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/schedule');
@@ -183,6 +256,8 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
       data: schedulerHooks.runs,
       isLoading: false,
     }));
+    schedulerHooks.weeks = {};
+    weekReads.mockReset();
     schedulerHooks.jobs = {
       data: [],
       isLoading: false,
@@ -195,12 +270,42 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
       isError: false,
       error: null,
     };
+    loadOutput.mockReset();
     runMutation.mutate.mockReset();
     runMutation.isPending = false;
     runMutation.variables = undefined;
     toast.showToast.mockReset();
     retryQueries.jobs.mockReset();
     retryQueries.status.mockReset();
+  });
+
+  test('keeps a healthy Run now action beside the damaged-row notice', () => {
+    schedulerHooks.jobs.data = [
+      {
+        name: 'healthy',
+        enabled: true,
+        provider: 'built-in',
+        prompt: 'fixture',
+      },
+    ];
+    schedulerHooks.status.data = {
+      providers: {
+        'built-in': {
+          running: true,
+          rowIssues: [
+            { jobId: 'damaged-id', name: 'broken', reason: 'invalid-json' },
+          ],
+        },
+      },
+    };
+    render(<ScheduleView />);
+    expect(screen.getByText('Schedules that need repair')).toBeTruthy();
+    expect(screen.getByText(/cannot be decoded/)).toBeTruthy();
+    fireEvent.click(runNow('healthy'));
+    expect(runMutation.mutate).toHaveBeenCalledWith(
+      'healthy',
+      expect.any(Object),
+    );
   });
 
   test('retries both failed scheduler reads and returns to the job list after recovery', async () => {
@@ -364,6 +469,43 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  test('orders automations by the name people read, not the slug, paused last', () => {
+    schedulerHooks.jobs.data = [
+      {
+        name: 'aaa-sort',
+        displayName: 'Zebra report',
+        provider: 'built-in',
+        enabled: true,
+        prompt: 'z',
+      },
+      {
+        name: 'zzz-sort',
+        displayName: 'Apple report',
+        provider: 'built-in',
+        enabled: true,
+        prompt: 'a',
+      },
+      {
+        name: 'aa-paused',
+        displayName: 'Aardvark report',
+        provider: 'built-in',
+        enabled: false,
+        prompt: 'p',
+      },
+    ];
+    render(<ScheduleView />);
+    const names = screen
+      .getAllByTestId(/^job-row-/)
+      .map((row) => row.querySelector('.automations-row__name')?.textContent);
+    expect(names).toEqual(['Apple report', 'Zebra report', 'Aardvark report']);
+    // Every row, its disclosure and its menu say the display name.
+    expect(
+      screen.getByRole('button', { name: 'Actions for Zebra report' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Zebra report' })).toBeTruthy();
+    expect(screen.queryByText(/aaa-sort|zzz-sort|aa-paused/)).toBeNull();
+  });
+
   function seedTwoRunnableJobs() {
     schedulerHooks.jobs = {
       data: [
@@ -394,9 +536,6 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     };
   }
 
-  const runButton = (job: string) =>
-    screen.getByRole('button', { name: `Run ${job}` }) as HTMLButtonElement;
-
   const starterRun = (logId: string) => ({
     runId: `schedule:built-in:station-starter-check:${logId}`,
     providerId: 'built-in',
@@ -426,48 +565,6 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
       error: null,
     };
   }
-
-  test('opens, closes and reopens the selected job history from the keyboard', async () => {
-    seedTwoRunnableJobs();
-    const user = userEvent.setup();
-    render(<ScheduleView />);
-
-    const disclosure = screen.getByRole('button', { name: 'nightly-digest' });
-    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
-    for (
-      let step = 0;
-      step < 12 && document.activeElement !== disclosure;
-      step += 1
-    ) {
-      await user.tab();
-    }
-    expect(document.activeElement).toBe(disclosure);
-
-    await user.keyboard('{Enter}');
-    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
-    expect(
-      screen.getByText('nightly-digest — Run History', { exact: true }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByText('weekly-report — Run History', { exact: true }),
-    ).toBeNull();
-
-    await user.keyboard(' ');
-    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
-    expect(
-      screen.queryByText('nightly-digest — Run History', { exact: true }),
-    ).toBeNull();
-    expect(document.activeElement).toBe(disclosure);
-
-    await user.keyboard('{Enter}');
-    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
-    expect(
-      screen.getByText('nightly-digest — Run History', { exact: true }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByText('weekly-report — Run History', { exact: true }),
-    ).toBeNull();
-  });
 
   test('focuses exact Scheduler runs and follows same-view history changes', async () => {
     seedStarterJob();
@@ -500,9 +597,9 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     schedulerHooks.runs = [run];
     window.history.replaceState({}, '', `/schedule?run=${run.runId}`);
     render(<ScheduleView />);
-    expect(screen.getByText('Scheduled check receipt')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Scheduled run' })).toBeTruthy();
     expect(
-      screen.getByText('The owning job was removed; its durable run remains.'),
+      screen.getByText('The job was removed, but this run was kept.'),
     ).toBeTruthy();
     await waitFor(() =>
       expect(document.querySelector('.schedule__log--focused')).toBeTruthy(),
@@ -591,7 +688,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
       );
       expect(reads).toBe(0);
       expect(
-        within(parent).queryByText(/That scheduled run isn’t available/i),
+        within(parent).queryByText(/That run is no longer available/i),
       ).toBeNull();
       expect(
         within(parent).getByLabelText('Loading scheduled run'),
@@ -599,7 +696,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
       await act(async () => onlineManager.setOnline(true));
       await waitFor(() => expect(reads).toBe(1));
       expect(
-        within(parent).queryByText(/That scheduled run isn’t available/i),
+        within(parent).queryByText(/That run is no longer available/i),
       ).toBeNull();
       await act(async () => {
         resolveFirst(
@@ -613,7 +710,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
         expect(client.getQueryState(['runs'])?.status).toBe('error'),
       );
       expect(
-        within(parent).queryByText(/That scheduled run isn’t available/i),
+        within(parent).queryByText(/That run is no longer available/i),
       ).toBeNull();
       expect(document.querySelector('.schedule__log--focused')).toBeNull();
       const refusal = within(parent).getByRole('alert');
@@ -640,7 +737,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
           retry.getAttribute('aria-busy') === 'true',
       ).toBe(true);
       expect(
-        within(parent).queryByText(/That scheduled run isn’t available/i),
+        within(parent).queryByText(/That run is no longer available/i),
       ).toBeNull();
       expect(new URLSearchParams(window.location.search).get('run')).toBe(
         target.runId,
@@ -665,10 +762,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
       );
       fireEvent(window, new PopStateEvent('popstate'));
       expect(
-        within(parent).getByText(/That scheduled run isn’t available/i),
-      ).toBeTruthy();
-      expect(
-        within(parent).getByText(/won’t open a different one in its place/i),
+        within(parent).getByText(/That run is no longer available/i),
       ).toBeTruthy();
       expect(document.querySelector('.schedule__log--focused')).toBeNull();
       expect(unexpected).toEqual([]);
@@ -709,9 +803,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
 
     render(<ScheduleView />);
 
-    expect(
-      screen.getByText(/That scheduled run isn’t available/i),
-    ).toBeTruthy();
+    expect(screen.getByText(/That run is no longer available/i)).toBeTruthy();
     expect(screen.getByText('nightly-digest')).toBeTruthy();
     expect(document.querySelector('.schedule__log--focused')).toBeNull();
   });
@@ -742,7 +834,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     );
     render(<ScheduleView />);
 
-    fireEvent.click(runButton('nightly-digest'));
+    fireEvent.click(runNow('nightly-digest'));
     expect(toast.showToast).toHaveBeenCalledWith(
       "Failed to run 'nightly-digest': Try again in a moment.",
     );
@@ -755,7 +847,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     seedTwoRunnableJobs();
     render(<ScheduleView />);
 
-    fireEvent.click(runButton('nightly-digest'));
+    fireEvent.click(runNow('nightly-digest'));
     expect(runMutation.mutate).toHaveBeenCalledWith(
       'nightly-digest',
       expect.any(Object),
@@ -765,7 +857,8 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
   test('a pending Run now disables that job only, not every job', () => {
     seedTwoRunnableJobs();
     const { rerender } = render(<ScheduleView />);
-    expect(runButton('nightly-digest').disabled).toBe(false);
+    expect(runNow('nightly-digest').disabled).toBe(false);
+    closeMenu();
 
     // React Query reports the in-flight mutation's own variables; the button
     // state is scoped to the job that was actually asked to run.
@@ -773,8 +866,9 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     runMutation.variables = 'nightly-digest';
     rerender(<ScheduleView />);
 
-    expect(runButton('nightly-digest').disabled).toBe(true);
-    expect(runButton('weekly-report').disabled).toBe(false);
+    expect(runNow('nightly-digest').disabled).toBe(true);
+    closeMenu();
+    expect(runNow('weekly-report').disabled).toBe(false);
   });
 
   test('an auth failure whose body is an object never renders [object Object]', async () => {
@@ -796,5 +890,590 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
         'The scheduler service answered with HTTP 403 but gave no reason.',
       ),
     ).toBeTruthy();
+  });
+});
+
+describe('Automations list (first-release automations-inbox-01 and -02)', () => {
+  const healthy = {
+    data: { providers: { 'built-in': { running: true, healthy: true } } },
+    isLoading: false,
+    isError: false,
+    error: null,
+  };
+
+  beforeEach(() => {
+    toggleMutation.mutate = vi.fn();
+    toggleMutation.isPending = false;
+    toggleMutation.variables = undefined;
+    deleteMutation.mutate = vi.fn();
+    deleteMutation.isPending = false;
+    deleteMutation.variables = undefined;
+    toast.showToast.mockReset();
+    window.history.replaceState({}, '', '/automations');
+    schedulerHooks.runs = [];
+    schedulerHooks.runsQuery.mockImplementation(() => ({
+      data: schedulerHooks.runs,
+      isLoading: false,
+    }));
+    schedulerHooks.weeks = {};
+    weekReads.mockReset();
+    schedulerHooks.status = { ...healthy };
+    schedulerHooks.jobs = {
+      data: [],
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+  });
+
+  function job(overrides: Record<string, unknown>) {
+    return {
+      name: 'digest',
+      provider: 'built-in',
+      enabled: true,
+      prompt: 'Summarize',
+      schedule: { kind: 'cron', expr: '0 8 * * 1-5', timezone: 'UTC' },
+      ...overrides,
+    };
+  }
+
+  test('loading shows one skeleton for the page', () => {
+    schedulerHooks.jobs = {
+      data: [],
+      isLoading: true,
+      isError: false,
+      error: null,
+    };
+    render(<ScheduleView />);
+    expect(
+      screen.getByRole('status', { name: 'Loading automations' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('An agent, a task, a time')).toBeNull();
+  });
+
+  test('with none, the page explains an automation, offers the four templates and two chat examples', () => {
+    render(<ScheduleView />);
+    expect(
+      screen.getByRole('heading', { name: 'An agent, a task, a time' }),
+    ).toBeTruthy();
+    const parts = screen.getByRole('list', { name: 'For example' });
+    expect(within(parts).getAllByRole('listitem')).toHaveLength(3);
+    for (const [name, text, when] of [
+      [
+        'Daily repo digest',
+        'Merged commits, open pull requests and failing checks since the last run.',
+        'Weekdays at 8:00 AM',
+      ],
+      [
+        'Check back on open work',
+        'Goes back over open work in a chat: what is unfinished and what should happen next.',
+        'Weekdays at 4:00 PM',
+      ],
+      [
+        'Weekly dependency check',
+        "Updates and security advisories for a project's dependencies, most urgent first.",
+        'Mondays at 9:00 AM',
+      ],
+      [
+        'Stale pull requests',
+        'Pull requests with no activity for a week, with a next step for each.',
+        'Fridays at 2:00 PM',
+      ],
+    ])
+      expect(
+        screen.getByRole('button', { name: new RegExp(`^${name}`) })
+          .textContent,
+      ).toBe(`${name}${text} ${when}`);
+    expect(
+      screen.getByText(/Every morning, tell me which tests failed/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Remind me Friday to review open pull requests/),
+    ).toBeTruthy();
+    // No tiles, tabs or table chrome on an empty page.
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByText(/success rate|total runs/i)).toBeNull();
+  });
+
+  test('a row says the schedule, the next run, recent outcomes, status and who runs it', () => {
+    schedulerHooks.jobs.data = [
+      job({
+        displayName: 'Daily repo digest',
+        target: { kind: 'dedicated', agent: 'helper' },
+        nextRun: '2026-11-23T08:00:00.000Z',
+        lastRun: '2026-11-20T08:00:00.000Z',
+        recentOutcomes: {
+          outcomes: ['worked', 'skipped', 'worked', 'failed', 'unknown'],
+          more: true,
+        },
+      }),
+    ];
+    render(<ScheduleView />);
+    const row = screen.getByTestId('job-row-digest');
+    expect(
+      within(row).getByText('Release helper · Codex · its own chat'),
+    ).toBeTruthy();
+    expect(within(row).getByText(/^Weekdays at 8:00 AM/)).toBeTruthy();
+    expect(within(row).getByText(/^Next: /)).toBeTruthy();
+    expect(
+      within(row).getByRole('img', {
+        name: 'Last 5 runs: 2 worked, 1 failed, 1 skipped, 1 outcome unknown',
+      }).children,
+    ).toHaveLength(5);
+    expect(within(row).getByText('Active')).toBeTruthy();
+    expect(within(row).queryByRole('alert')).toBeNull();
+    // The legend names Unknown only because a row shows one.
+    expect(
+      within(screen.getByRole('list', { name: 'Run outcomes' }))
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Worked', 'Failed', 'Skipped', 'Unknown']);
+  });
+
+  test('outcomes the list read did not carry are unknown, not "no runs"', () => {
+    schedulerHooks.jobs.data = [
+      job({ name: 'older-host' }),
+      job({ name: 'never-ran', recentOutcomes: { outcomes: [], more: false } }),
+    ];
+    render(<ScheduleView />);
+    expect(
+      within(screen.getByTestId('job-row-older-host')).getByText(
+        'Recent runs unknown',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('job-row-never-ran')).getByText('No runs yet'),
+    ).toBeTruthy();
+  });
+
+  test('failures are a flag beside Active; Station pausing itself is a flag beside Paused', () => {
+    schedulerHooks.jobs.data = [
+      job({ name: 'failing', consecutiveFailures: 2 }),
+      job({
+        name: 'self-paused',
+        enabled: false,
+        consecutiveFailures: 5,
+        pausedItself: { failures: 5, at: '2026-11-22T02:00:00.000Z' },
+      }),
+      job({ name: 'person-paused', enabled: false }),
+    ];
+    render(<ScheduleView />);
+    const failing = screen.getByTestId('job-row-failing');
+    expect(within(failing).getByText(/Last 2 runs didn't work/)).toBeTruthy();
+    expect(within(failing).getByText('Active')).toBeTruthy();
+    const selfPaused = screen.getByTestId('job-row-self-paused');
+    expect(
+      within(selfPaused).getByText(
+        /Paused itself after 5 runs that didn't work/,
+      ),
+    ).toBeTruthy();
+    expect(within(selfPaused).queryByText(/Last 5 runs/)).toBeNull();
+    expect(within(selfPaused).getByText('Paused')).toBeTruthy();
+    expect(within(selfPaused).getByText("Won't run while paused")).toBeTruthy();
+    const personPaused = screen.getByTestId('job-row-person-paused');
+    expect(within(personPaused).getByText('Paused')).toBeTruthy();
+    expect(within(personPaused).queryByText(/Paused itself/)).toBeNull();
+  });
+
+  test('the row menu holds Run now, Pause, Edit, Duplicate and Delete; Pause and Resume toggle', () => {
+    const toggle = vi.fn();
+    toggleMutation.mutate = toggle;
+    schedulerHooks.jobs.data = [
+      job({ name: 'on', displayName: 'On job' }),
+      job({ name: 'off', displayName: 'Off job', enabled: false }),
+    ];
+    render(<ScheduleView />);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for On job' }));
+    expect(
+      screen.getAllByRole('menuitem').map((item) => item.textContent),
+    ).toEqual(['Run now', 'Pause', 'Edit', 'Duplicate', 'Delete']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pause' }));
+    expect(toggle).toHaveBeenCalledWith(
+      { target: 'on', enabled: false },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Off job' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Resume' }));
+    expect(toggle).toHaveBeenCalledWith(
+      { target: 'off', enabled: true },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
+    // Status is a word, not a control.
+    expect(screen.queryByRole('button', { name: /^(on|off)$/i })).toBeNull();
+  });
+
+  test('a one-time automation that has run reads Done, offers no Pause or Resume, and sorts last', () => {
+    const at = Date.now() - 3_600_000;
+    schedulerHooks.jobs.data = [
+      job({
+        name: 'once',
+        displayName: 'Aaa once',
+        enabled: false,
+        schedule: { kind: 'at', timeMs: at, deleteAfterRun: true },
+        lastRun: new Date(at + 2_000).toISOString(),
+        recentOutcomes: { outcomes: ['worked'], more: false },
+      }),
+      job({ name: 'paused', displayName: 'Zz paused', enabled: false }),
+      job({ name: 'active', displayName: 'Mm active' }),
+    ];
+    render(<ScheduleView />);
+    expect(
+      screen
+        .getAllByTestId(/^job-row-/)
+        .map((row) => row.querySelector('.automations-row__name')?.textContent),
+    ).toEqual(['Mm active', 'Zz paused', 'Aaa once']);
+    const row = screen.getByTestId('job-row-once');
+    expect(within(row).getByText('Done')).toBeTruthy();
+    expect(within(row).getByText(/^Ran /)).toBeTruthy();
+    expect(within(row).queryByText("Won't run while paused")).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Aaa once' }),
+    );
+    expect(
+      screen.getAllByRole('menuitem').map((item) => item.textContent),
+    ).toEqual(['Run now', 'Edit', 'Duplicate', 'Delete']);
+  });
+
+  test('a failed pause, resume or delete says so on the page', () => {
+    schedulerHooks.jobs.data = [
+      job({ name: 'on', displayName: 'On job' }),
+      job({ name: 'off', displayName: 'Off job', enabled: false }),
+    ];
+    const refuse = (_: unknown, options: { onError: (e: Error) => void }) =>
+      options.onError(new Error('Scheduler storage is unavailable.'));
+    toggleMutation.mutate = vi.fn(refuse);
+    deleteMutation.mutate = vi.fn(refuse);
+    render(<ScheduleView />);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for On job' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pause' }));
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /^Couldn't pause 'On job': /,
+    );
+    expect(toast.showToast).toHaveBeenLastCalledWith(
+      screen.getByRole('alert').textContent,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Off job' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Resume' }));
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /^Couldn't resume 'Off job': /,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Off job' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /^Couldn't delete 'Off job': /,
+    );
+  });
+
+  test('while a pause or delete is in flight the row says so and its menu waits', () => {
+    schedulerHooks.jobs.data = [
+      job({ name: 'on', displayName: 'On job' }),
+      job({ name: 'gone', displayName: 'Gone job' }),
+    ];
+    toggleMutation.isPending = true;
+    toggleMutation.variables = { target: 'on', enabled: false };
+    const { rerender } = render(<ScheduleView />);
+    const row = screen.getByTestId('job-row-on');
+    expect(within(row).getByText('Pausing…')).toBeTruthy();
+    expect(row.getAttribute('aria-busy')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for On job' }));
+    expect(
+      (screen.getByRole('menuitem', { name: 'Pause' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole('menuitem', { name: 'Delete' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    closeMenu();
+    toggleMutation.isPending = false;
+    deleteMutation.isPending = true;
+    deleteMutation.variables = 'gone';
+    rerender(<ScheduleView />);
+    expect(
+      within(screen.getByTestId('job-row-gone')).getByText('Deleting…'),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('job-row-on')).queryByText('Pausing…'),
+    ).toBeNull();
+  });
+
+  test('cancelling a delete returns focus to the row’s ⋯', async () => {
+    schedulerHooks.jobs.data = [job({ displayName: 'Daily briefing' })];
+    render(<ScheduleView />);
+    const trigger = screen.getByRole('button', {
+      name: 'Actions for Daily briefing',
+    });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(deleteMutation.mutate).not.toHaveBeenCalled();
+  });
+
+  test('deleting asks first, naming the display name', () => {
+    schedulerHooks.jobs.data = [job({ displayName: 'Daily briefing' })];
+    render(<ScheduleView />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Daily briefing' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    expect(
+      screen.getByText("Delete 'Daily briefing'? This cannot be undone."),
+    ).toBeTruthy();
+  });
+
+  test('the filter appears only past 15 automations', () => {
+    schedulerHooks.jobs.data = Array.from({ length: 15 }, (_, index) =>
+      job({ name: `job-${index}`, displayName: `Report ${index}` }),
+    );
+    const { unmount } = render(<ScheduleView />);
+    expect(screen.queryByPlaceholderText('Filter automations…')).toBeNull();
+    unmount();
+    schedulerHooks.jobs.data = Array.from({ length: 16 }, (_, index) =>
+      job({ name: `job-${index}`, displayName: `Report ${index}` }),
+    );
+    render(<ScheduleView />);
+    fireEvent.change(screen.getByPlaceholderText('Filter automations…'), {
+      target: { value: 'Report 12' },
+    });
+    expect(screen.getAllByTestId(/^job-row-/)).toHaveLength(1);
+    // A query that matches nothing says so and offers to clear it.
+    fireEvent.change(screen.getByPlaceholderText('Filter automations…'), {
+      target: { value: 'no such automation' },
+    });
+    expect(screen.queryAllByTestId(/^job-row-/)).toHaveLength(0);
+    expect(
+      screen.getByText('Nothing in automations matches “no such automation”'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
+    expect(screen.getAllByTestId(/^job-row-/)).toHaveLength(16);
+  });
+
+  test('a stopped scheduler is a notice, and a healthy one says nothing', () => {
+    schedulerHooks.jobs.data = [job({})];
+    schedulerHooks.status = {
+      ...healthy,
+      data: { providers: { 'built-in': { running: false, healthy: false } } },
+    };
+    const { unmount } = render(<ScheduleView />);
+    expect(
+      screen.getByText("Automations aren't running: the scheduler is stopped."),
+    ).toBeTruthy();
+    unmount();
+    schedulerHooks.status = {
+      ...healthy,
+      data: {
+        providers: {
+          'built-in': {
+            running: true,
+            healthy: false,
+            lastTickAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+          },
+        },
+      },
+    };
+    const stale = render(<ScheduleView />);
+    expect(screen.getByText(/Automations aren't running on time/)).toBeTruthy();
+    stale.unmount();
+    schedulerHooks.status = { ...healthy };
+    render(<ScheduleView />);
+    expect(screen.queryByText(/Automations aren't running/)).toBeNull();
+    expect(screen.queryByText(/Healthy/)).toBeNull();
+  });
+
+  test('a failed status read keeps the list and offers a retry', () => {
+    schedulerHooks.jobs.data = [job({ displayName: 'Daily briefing' })];
+    schedulerHooks.status = {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('nope'),
+    };
+    render(<ScheduleView />);
+    expect(
+      screen.getByText(
+        "Station couldn't check whether automations are running",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Daily briefing' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retryQueries.status).toHaveBeenCalled();
+  });
+});
+
+describe('Next 7 days', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    schedulerHooks.weeks = {};
+    weekReads.mockReset();
+    schedulerHooks.status = {
+      data: { providers: { 'built-in': { running: true, healthy: true } } },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  function seed(
+    jobs: Array<Record<string, unknown>>,
+    weeks: Record<string, Array<Record<string, unknown>>>,
+  ) {
+    schedulerHooks.jobs = {
+      data: jobs,
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    for (const [start, data] of Object.entries(weeks))
+      schedulerHooks.weeks[start] = { data, isLoading: false, isError: false };
+  }
+
+  test('reads this week and next, starts today, names automations by display name, and bounds each day', () => {
+    // Saturday 21 November 2026, noon UTC.
+    vi.setSystemTime(new Date('2026-11-21T12:00:00.000Z'));
+    const base = { provider: 'built-in', enabled: true, prompt: 'x' };
+    const digest = {
+      ...base,
+      name: 'digest',
+      displayName: 'Daily repo digest',
+    };
+    const busy = Array.from({ length: 5 }, (_, index) => ({
+      ...base,
+      name: `busy-${index}`,
+      displayName: `Busy ${index}`,
+    }));
+    seed([digest, ...busy], {
+      '2026-11-16': [
+        {
+          ...digest,
+          weekOccurrences: {
+            // Earlier today is over; later today is ahead.
+            times: ['2026-11-21T08:00:00.000Z', '2026-11-21T16:00:00.000Z'],
+            truncated: false,
+          },
+        },
+        ...busy.map((job) => ({
+          ...job,
+          weekOccurrences: { times: [], truncated: false },
+        })),
+      ],
+      '2026-11-23': [
+        {
+          ...digest,
+          weekOccurrences: {
+            // Saturday 28 is the eighth day: outside the window.
+            times: ['2026-11-23T08:00:00.000Z', '2026-11-28T08:00:00.000Z'],
+            truncated: false,
+          },
+        },
+        ...busy.map((job, index) => ({
+          ...job,
+          weekOccurrences: {
+            times: [`2026-11-24T1${index}:00:00.000Z`],
+            truncated: false,
+          },
+        })),
+      ],
+    });
+    render(<ScheduleView />);
+    expect(weekReads.mock.calls.map(([start]) => start)).toContain(
+      '2026-11-23',
+    );
+    expect(weekReads.mock.calls.map(([start]) => start)).toContain(
+      '2026-11-16',
+    );
+    const week = screen.getByRole('list', { name: 'Next 7 days' });
+    const days = within(week).getAllByRole('listitem', {
+      name: /2026|November/,
+    });
+    expect(days).toHaveLength(7);
+    const today = days[0]!;
+    expect(today.getAttribute('aria-label')).toMatch(/^Today/);
+    expect(within(today).getAllByText('Daily repo digest')).toHaveLength(1);
+    expect(within(today).getByRole('time').getAttribute('datetime')).toBe(
+      '2026-11-21T16:00:00.000Z',
+    );
+    expect(within(days[1]!).getByText('Nothing scheduled')).toBeTruthy();
+    // Five runs on Tuesday: three shown, then "2 more".
+    const tuesday = days[3]!;
+    expect(within(tuesday).getAllByText(/^Busy /)).toHaveLength(3);
+    expect(within(tuesday).getByText('2 more')).toBeTruthy();
+    expect(
+      within(week)
+        .getAllByRole('time')
+        .some(
+          (time) =>
+            time.getAttribute('datetime') === '2026-11-28T08:00:00.000Z',
+        ),
+    ).toBe(false);
+    // On a phone: the next three, and how many more.
+    const nextUp = screen.getByRole('list', { name: 'Next up' });
+    expect(
+      within(nextUp).getAllByText(/^(Daily repo digest|Busy \d)$/),
+    ).toHaveLength(3);
+    expect(within(nextUp).getByText('4 more in the next 7 days')).toBeTruthy();
+    expect(screen.queryByText('digest', { exact: true })).toBeNull();
+  });
+
+  test('a forecast the server did not give is unknown, not an empty week', () => {
+    vi.setSystemTime(new Date('2026-11-21T12:00:00.000Z'));
+    const job = {
+      name: 'older',
+      provider: 'built-in',
+      enabled: true,
+      prompt: 'x',
+    };
+    seed([job], { '2026-11-16': [job], '2026-11-23': [job] });
+    render(<ScheduleView />);
+    expect(screen.getByText("The next 7 days can't be shown")).toBeTruthy();
+    expect(screen.queryByText('Nothing scheduled')).toBeNull();
+    expect(screen.getByRole('button', { name: 'older' })).toBeTruthy();
+  });
+
+  test('a day chip opens its automation and moves focus to it', async () => {
+    vi.setSystemTime(new Date('2026-11-21T12:00:00.000Z'));
+    const digest = {
+      name: 'digest',
+      displayName: 'Daily repo digest',
+      provider: 'built-in',
+      enabled: true,
+      prompt: 'x',
+    };
+    seed([digest], {
+      '2026-11-16': [
+        {
+          ...digest,
+          weekOccurrences: {
+            times: ['2026-11-21T16:00:00.000Z'],
+            truncated: false,
+          },
+        },
+      ],
+      '2026-11-23': [
+        { ...digest, weekOccurrences: { times: [], truncated: false } },
+      ],
+    });
+    render(<ScheduleView />);
+    const chip = within(
+      screen.getByRole('list', { name: 'Next 7 days' }),
+    ).getByRole('button', { name: /Daily repo digest/ });
+    expect(chip.getAttribute('title')).toMatch(/ Daily repo digest$/);
+    // Its name says the day, so a week of the same automation is told apart.
+    expect(chip.textContent).toMatch(/^Today, .* Daily repo digest$/);
+    const name = screen.getByRole('button', { name: 'Daily repo digest' });
+    expect(name.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(chip);
+    await waitFor(() =>
+      expect(name.getAttribute('aria-expanded')).toBe('true'),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(name));
   });
 });

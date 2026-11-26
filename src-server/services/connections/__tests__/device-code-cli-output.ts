@@ -12,12 +12,13 @@
  * actually emit, including the ANSI attributes codex writes even to a pipe,
  * rather than against a tidied-up transcription of them.
  *
- * `muse` is here for parser power, not because Station can enrol it: the muse
- * adapter has no `getAppHomeEnv`, so a muse credential profile would be signed
- * in and then never used by a session. Its output is a second, independently
- * shaped real example — no ANSI, code embedded in the URL query — which is
- * what makes the parser's structural assumptions testable rather than
- * codex-shaped by accident.
+ * `muse` was first here for parser power; since #1942 Station enrols it too
+ * (the muse adapter's `getAppHomeEnv` points a session at the profile's
+ * `XDG_CONFIG_HOME`). Its output is a second, independently shaped real
+ * example — no ANSI, code embedded in the URL query — which is what makes the
+ * parser's structural assumptions testable rather than codex-shaped by
+ * accident. Re-captured through Station's own device-code service against
+ * Muse Code 1.4.18 on 2026-11-13 (same shape; that code is not kept).
  */
 
 /** `codex login --device-auth`, codex-cli 0.154.0. */
@@ -102,5 +103,18 @@ export const CLAUDE_LOGIN_HELP_STDOUT = [
   '  --email <email>  Pre-populate email address on the login page',
   '  -h, --help       Display help for command',
   '  --sso            Force SSO login flow',
+  '',
+].join('\n');
+
+/**
+ * `muse login --help`, Muse Code 1.4.18 (1.4.18-R8587.1), captured live
+ * 2026-11-13. `muse login` IS the device-code flow: no flag selects it, so the
+ * capability probe matches the sentence that says so.
+ */
+export const MUSE_LOGIN_HELP_STDOUT = [
+  'usage: muse login',
+  '',
+  'Log in with your Meta account: approve a code in your browser.',
+  'META_API_KEY always takes priority over the account login.',
   '',
 ].join('\n');

@@ -301,6 +301,58 @@ describe('survey-review-workbench server module', () => {
       expect(Array.isArray(bundle.evidence)).toBe(true);
     });
 
+    it('derives verified for the reviewed claim through the bundled Survey review policy', async () => {
+      // Survey 9 ships the `survey.review-outcome.v1` policy and the review as
+      // attestation evidence. Without them Surface 5+ derives a reviewed
+      // claim as `proposed`; with them, Station's trust panel (which validates
+      // and reports through Surface's validateTrustBundle/buildTrustReport)
+      // shows it as `verified`. The decision carries no note, so this also
+      // covers an empty review rationale, which must not invalidate the bundle.
+      const created = await harness.app.request(
+        `/projects/${PROJECT}/review-sessions`,
+        jsonRequest('POST', { example: 'public-directory', name: 'demo-3' }),
+      );
+      const { session } = await created.json();
+      const item = session.snapshot.items[0] as ExampleSnapshotItem;
+      await harness.app.request(
+        `/projects/${PROJECT}/review-sessions/demo-3`,
+        jsonRequest('PUT', {
+          events: [decisionEvent(item, 'accept-proposed')],
+          expectedEventCount: 0,
+        }),
+      );
+      const res = await harness.app.request(
+        `/projects/${PROJECT}/trust-bundles`,
+        jsonRequest('POST', { sessionName: 'demo-3' }),
+      );
+      expect(res.status).toBe(200);
+      const bundle = JSON.parse(
+        await readFile((await res.json()).path, 'utf-8'),
+      );
+
+      expect(
+        bundle.policies.map((policy: { id: string }) => policy.id),
+      ).toEqual(['survey.review-outcome.v1']);
+      const reviewed = bundle.claims.filter(
+        (claim: { verificationPolicyId?: string }) =>
+          claim.verificationPolicyId === 'survey.review-outcome.v1',
+      );
+      expect(reviewed.length).toBeGreaterThan(0);
+      expect(
+        bundle.evidence.some(
+          (evidence: { method?: string; sourceRef?: string }) =>
+            evidence.method === 'attestation' &&
+            evidence.sourceRef?.startsWith('survey:review-outcome:'),
+        ),
+      ).toBe(true);
+
+      const { buildTrustReport, validateTrustBundle } = await import(
+        '@kontourai/surface'
+      );
+      const report = buildTrustReport(validateTrustBundle(bundle));
+      expect(report.summary.byStatus.verified ?? 0).toBeGreaterThan(0);
+    });
+
     it('falls back to station home when the project has no workspace', async () => {
       const local = createHarness({ workingDirectory: false });
       try {

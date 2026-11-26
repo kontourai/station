@@ -1,0 +1,7 @@
+{
+  "revision": "648c125c9ee583f7c059a11723c85fbfa9659850",
+
+  "notes": [
+    {"path":"packages/telemetry-broker/README.md","note":"Re-read for #4994: receiver behavior is unchanged; its 429 Retry-After and 503 busy answers are now honoured/backed off by the sender, and same-UUID retry dedupe still justifies keeping receipt_invalid retryable.","inputs":["packages/telemetry-broker/README.md","packages/contracts/src/product-telemetry.ts","src-server/services/usage-telemetry-service.ts"]}
+  ]
+}

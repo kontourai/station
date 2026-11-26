@@ -1,7 +1,0 @@
-{
-  "revision": "e6ef56dcae6abaf3c746648b8b32e9f4658a6630",
-
-  "notes": [
-    {"path":"docs/guides/knowledge.md","note":"Reviewed private rebuild, import and migration behavior against their route, service, index provider and focused regression tests. The registry lease is released during embedding; an already-dispatched embedding call cannot be recalled.","inputs":["docs/guides/knowledge.md","src-server/knowledge-index/migrate-pre-index-knowledge.ts","src-server/knowledge-index/sqlite-vec-index-provider.ts","src-server/routes/knowledge/knowledge-index-routes.ts","src-server/services/knowledge/knowledge-document-import-service.ts"]}
-  ]
-}

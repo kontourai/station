@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import {
   isManagedEngineRefusal,
@@ -12,8 +12,11 @@ import {
   ModelSelectionRequiredError,
 } from '../../services/connections/connection-service.js';
 import { boundFleetContributionManifest } from '../../services/inference/fleet-inference-service.js';
+import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
 import {
+  connectionAddressRefusal,
   connectionSchema,
+  connectionUpdateSchema,
   errorMessage,
   getBody,
   param,
@@ -29,6 +32,58 @@ import {
   restoreConnectionSecrets,
 } from './provider-secrets.js';
 
+const CONNECTION_INVENTORY_DEADLINE_MS = 5_000;
+
+async function readEngineInventory<T extends object>(
+  c: Context,
+  read: (signal: AbortSignal) => Promise<T>,
+) {
+  const deadline = new AbortController();
+  const timeout = setTimeout(
+    () =>
+      deadline.abort(
+        new DOMException(
+          'Connection inventory deadline exceeded.',
+          'TimeoutError',
+        ),
+      ),
+    CONNECTION_INVENTORY_DEADLINE_MS,
+  );
+  const requester = c.req.raw.signal;
+  const signal = AbortSignal.any([requester, deadline.signal]);
+  try {
+    throwIfAborted(signal);
+    const inventory = await raceWithSignal(read(signal), signal);
+    throwIfAborted(signal);
+    return c.json({ success: true, ...inventory });
+  } catch (error: unknown) {
+    if (requester.aborted) {
+      return c.json(
+        {
+          success: false,
+          code: 'connection_inventory_cancelled',
+          error: 'The connection inventory request was cancelled.',
+        },
+        503,
+      );
+    }
+    if (deadline.signal.aborted) {
+      return c.json(
+        {
+          success: false,
+          code: 'connection_inventory_timed_out',
+          error:
+            'Station could not finish checking connections in time. Check Connections again shortly.',
+        },
+        504,
+      );
+    }
+    return c.json({ success: false, error: errorMessage(error) }, 500);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export function createConnectionRoutes(
   connectionService: ConnectionService,
   options: {
@@ -36,6 +91,12 @@ export function createConnectionRoutes(
   } = {},
 ) {
   const app = new Hono();
+  const validateWrite = validate(connectionSchema, {
+    refusal: connectionAddressRefusal,
+  });
+  const validateUpdate = validate(connectionUpdateSchema, {
+    refusal: connectionAddressRefusal,
+  });
 
   const mutate = <T>(operation: () => Promise<T>) =>
     captureConfigurationMutation(
@@ -62,17 +123,13 @@ export function createConnectionRoutes(
       : {}),
   });
 
-  app.get('/', async (c) => {
-    try {
-      const data = await connectionService.listConnections();
-      return c.json({
-        success: true,
-        data: data.map(redactConnectionSecrets),
-      });
-    } catch (error: unknown) {
-      return c.json({ success: false, error: errorMessage(error) }, 500);
-    }
-  });
+  app.get('/', (c) =>
+    readEngineInventory(c, async (signal) => ({
+      data: (await connectionService.listConnections({ signal })).map(
+        redactConnectionSecrets,
+      ),
+    })),
+  );
 
   /**
    * archive#3748: `failures` is always present, and it is the difference
@@ -94,24 +151,19 @@ export function createConnectionRoutes(
     }
   });
 
-  app.get('/agents', async (c) => {
-    try {
+  app.get('/agents', (c) =>
+    readEngineInventory(c, async (signal) => {
       const { connections, failures } =
-        await connectionService.listRuntimeConnectionInventory();
-      return c.json({ success: true, data: connections, failures });
-    } catch (error: unknown) {
-      return c.json({ success: false, error: errorMessage(error) }, 500);
-    }
-  });
+        await connectionService.listRuntimeConnectionInventory({ signal });
+      return { data: connections, failures };
+    }),
+  );
 
-  app.get('/agents/catalog', async (c) => {
-    try {
-      const data = await connectionService.listRuntimeConnectionCatalog();
-      return c.json({ success: true, data });
-    } catch (error: unknown) {
-      return c.json({ success: false, error: errorMessage(error) }, 500);
-    }
-  });
+  app.get('/agents/catalog', (c) =>
+    readEngineInventory(c, async (signal) => ({
+      data: await connectionService.listRuntimeConnectionCatalog({ signal }),
+    })),
+  );
 
   /**
    * archive#1398 §5.3 / §10 OQ-2 — the CONTRIBUTED-SUBSET projection, gated
@@ -190,7 +242,7 @@ export function createConnectionRoutes(
     }
   });
 
-  app.post('/', validate(connectionSchema), async (c) => {
+  app.post('/', validateWrite, async (c) => {
     try {
       const body = getBody(c) as ConnectionConfig;
       const mutation = await saveConnection(
@@ -218,7 +270,7 @@ export function createConnectionRoutes(
     }
   });
 
-  app.put('/:id', validate(connectionSchema), async (c) => {
+  app.put('/:id', validateUpdate, async (c) => {
     try {
       const body = getBody(c) as ConnectionConfig;
       const id = param(c, 'id');

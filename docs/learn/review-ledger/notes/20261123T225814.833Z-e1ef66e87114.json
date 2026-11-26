@@ -1,0 +1,7 @@
+{
+  "revision": "5315944c0dbbf951e91929b1ea162f6c6962f58c",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Reviewed the option normalizer at its internal call site. The documentation describes request preparation, provider option validation and confined lab limits. Those descriptions still match the preparer, whose option normalization is now private.","inputs":["src-server/runtime/conversation/native-text-model-request.ts"]}
+  ]
+}

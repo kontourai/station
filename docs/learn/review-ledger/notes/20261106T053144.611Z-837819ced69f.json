@@ -1,9 +1,0 @@
-{
-  "revision": "c10f0968cc8ed6e15dac01da284ff3018b74d323",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"Bounded parent-merge review: preserved Sources opt-in GitHub CLI parsing and preview/actor/cancellation release gates while retaining upstream webhook managed-policy refusal and its bounded reason limit. The sole textual conflict was imports in integration-status-service.ts; combined its authentication parser, limits and managed-capability imports. Inspected the merged GitHub and webhook probe branches and the documented observations-versus-authority distinction; no prose change is needed. All 30 tests passed across integration-status route, managed webhook refusal, real managed-capability server process and mounted ProjectRepositorySources consumers. Lint passed. Existing provider, native, fleet and per-repository credential limits remain; this note does not qualify hosted or release behavior.","inputs":["docs/guides/connections.md","src-server/services/integrations/integration-status-service.ts"]},
-
-    {"path":"docs/guides/machine-relationships.md","note":"Bounded parent-merge review: preserved Sources opt-in GitHub CLI parsing and preview/actor/cancellation release gates while retaining upstream webhook managed-policy refusal and its bounded reason limit. The sole textual conflict was imports in integration-status-service.ts; combined its authentication parser, limits and managed-capability imports. Inspected the merged GitHub and webhook probe branches and the documented observations-versus-authority distinction; no prose change is needed. All 30 tests passed across integration-status route, managed webhook refusal, real managed-capability server process and mounted ProjectRepositorySources consumers. Lint passed. Existing provider, native, fleet and per-repository credential limits remain; this note does not qualify hosted or release behavior.","inputs":["docs/guides/machine-relationships.md"]}
-  ]
-}

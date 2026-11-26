@@ -14,8 +14,14 @@ import {
   inputRequestFromRequestEvent,
   inputRequestOutcome,
   inputRequestSummary,
+  inputRequestUrlFromRequestEvent,
+  isCardAnsweredRequestEvent,
+  isInputRequestEvent,
   readInputRequestForm,
+  readInputRequestLink,
   readInputRequestResponse,
+  readInputRequestUrl,
+  readInputRequestUrlResponse,
   readLegacyHarnessQuestions,
   validateInputRequestContent,
 } from '../input-request.js';
@@ -366,11 +372,32 @@ describe('decisions and outcomes', () => {
         decisionOptionResponse(option),
       ]),
     ).toEqual([
-      ['Allow Once', 'allow', 'once', 'accept'],
+      ['Allow once', 'allow', 'once', 'accept'],
       ['Allow Bash for this session', 'allow', 'session', 'acceptForSession'],
       ['Deny', 'deny', 'once', 'decline'],
     ]);
     expect(approvalDecisionBody(undefined).options).toHaveLength(2);
+  });
+
+  test('the session-wide choice is the last session option and carries its typed scope', () => {
+    const body = approvalDecisionBody(
+      'Allow all shell calls for this session',
+      undefined,
+      undefined,
+      'Allow everything for this session',
+    );
+    expect(
+      body.options.map((option) => [
+        option.label,
+        decisionOptionResponse(option),
+        option.sessionGrantScope,
+      ]),
+    ).toEqual([
+      ['Allow once', 'accept', undefined],
+      ['Allow all shell calls for this session', 'acceptForSession', undefined],
+      ['Allow everything for this session', 'acceptForSession', 'all'],
+      ['Deny', 'decline', undefined],
+    ]);
   });
 
   test('a resolution status reads as the outcome its kind names', () => {
@@ -745,5 +772,157 @@ describe('inputRequestSummary', () => {
 
   test('a short single line is returned whole', () => {
     expect(inputRequestSummary('  Which mode?  ')).toBe('Which mode?');
+  });
+});
+
+test('shared request classification preserves plan decisions and legacy input type', () => {
+  for (const toolName of ['ExitPlanMode', 'cursor/create_plan']) {
+    expect(
+      isInputRequestEvent({ payload: { toolName, inputRequest: FORM } }),
+    ).toBe(false);
+    expect(
+      isInputRequestEvent({
+        requestType: 'input',
+        payload: { toolName, inputRequest: FORM },
+      }),
+    ).toBe(true);
+  }
+  expect(
+    isInputRequestEvent({
+      payload: { toolName: 'AskUserQuestion', inputRequest: FORM },
+    }),
+  ).toBe(true);
+  expect(isInputRequestEvent({ requestType: 'input' })).toBe(true);
+  expect(isInputRequestEvent({ requestType: 'permission' })).toBe(false);
+  expect(
+    isInputRequestEvent({
+      payload: {
+        inputRequest: {
+          schema: 'station.input-request/v1',
+          source: 'mcp:github',
+          requester: 'github',
+          message: 'Sign in to github',
+          body: {
+            kind: 'url',
+            url: 'https://example.com/oauth/authorize',
+            purpose: 'mcp-sign-in',
+          },
+        },
+      },
+    }),
+  ).toBe(true);
+});
+
+describe('URL requests', () => {
+  const request = {
+    schema: 'station.input-request/v1',
+    source: 'mcp:github',
+    requester: 'github',
+    message: 'Sign in to github',
+    body: {
+      kind: 'url',
+      url: 'https://example.com/oauth/authorize?state=abc',
+      purpose: 'mcp-sign-in',
+    },
+  };
+
+  test('reads a URL request and keeps the link exactly as sent', () => {
+    expect(readInputRequestUrl(request)).toEqual(request);
+    expect(
+      readInputRequestUrl({
+        ...request,
+        body: { ...request.body, purpose: 'elicitation', elicitationId: 'e1' },
+      })?.body,
+    ).toEqual({ ...request.body, purpose: 'elicitation', elicitationId: 'e1' });
+  });
+
+  test.each([
+    ['plain http', 'http://example.com/a'],
+    ['user info', 'https://user:pass@example.com/a'],
+    ['a javascript URL', 'javascript:alert(1)'],
+    ['an unparseable value', 'not a url'],
+    [
+      'one character over the cap',
+      `https://example.com/${'a'.repeat(2048 - 19)}`,
+    ],
+  ])('refuses a link with %s', (_, url) => {
+    expect(readInputRequestLink(url)).toBeNull();
+    expect(
+      readInputRequestUrl({ ...request, body: { ...request.body, url } }),
+    ).toBeNull();
+  });
+
+  test('accepts a link at exactly the cap', () => {
+    const url = `https://example.com/${'a'.repeat(2048 - 20)}`;
+    expect(url.length).toBe(2048);
+    expect(readInputRequestLink(url)).toBe(url);
+  });
+
+  test('refuses an unknown purpose, an extra key and an approval source', () => {
+    expect(
+      readInputRequestUrl({
+        ...request,
+        body: { ...request.body, purpose: 'other' },
+      }),
+    ).toBeNull();
+    expect(
+      readInputRequestUrl({
+        ...request,
+        body: { ...request.body, open: true },
+      }),
+    ).toBeNull();
+    expect(readInputRequestUrl({ ...request, source: 'approval' })).toBeNull();
+  });
+
+  test('a URL answer is accept or cancel, nothing else', () => {
+    expect(readInputRequestUrlResponse({ action: 'accept' })).toEqual({
+      action: 'accept',
+    });
+    expect(readInputRequestUrlResponse({ action: 'cancel' })).toEqual({
+      action: 'cancel',
+    });
+    // One vocabulary: `opened` is the transcript outcome, never an answer.
+    expect(readInputRequestUrlResponse({ action: 'opened' })).toBeNull();
+    expect(
+      readInputRequestUrlResponse({ action: 'accept', url: 'https://x' }),
+    ).toBeNull();
+  });
+
+  test('a URL request event is read as a link answered on its own card', () => {
+    const inputRequest = {
+      schema: 'station.input-request/v1',
+      source: 'harness:kiro',
+      requester: 'Kiro',
+      message: 'Sign in to the docs server',
+      body: {
+        kind: 'url',
+        url: 'https://auth.example.com/authorize?x=1',
+        purpose: 'mcp-sign-in',
+      },
+    };
+    const event = { payload: { inputRequest } };
+    expect(inputRequestUrlFromRequestEvent(event)).toEqual(inputRequest);
+    expect(isCardAnsweredRequestEvent(event)).toBe(true);
+    // Not a form, and an approval with no input request is neither.
+    expect(inputRequestFromRequestEvent(event)).toBeNull();
+    expect(isCardAnsweredRequestEvent({ payload: { toolName: 'bash' } })).toBe(
+      false,
+    );
+    // A link Station would not show is no card at all.
+    expect(
+      inputRequestUrlFromRequestEvent({
+        payload: {
+          inputRequest: {
+            ...inputRequest,
+            body: { ...inputRequest.body, url: 'http://insecure.example.com' },
+          },
+        },
+      }),
+    ).toBeNull();
+  });
+
+  test('a resolved URL request records opened or cancelled', () => {
+    expect(inputRequestOutcome('url', 'approved')).toBe('opened');
+    expect(inputRequestOutcome('url', 'denied')).toBe('cancelled');
   });
 });

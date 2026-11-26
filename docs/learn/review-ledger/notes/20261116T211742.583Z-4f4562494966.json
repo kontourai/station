@@ -1,0 +1,13 @@
+{
+  "revision": "baed78ba589ddd8de6f0dd585ad28162b12e2954",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"One entry added: the pull request feedback strip's __actions rows, registered as an exception (global 44px floor applies, measured live at 390px; no committed 390px fixture). No existing entry, strategy or the inventory format changed, so no claim these pages cite from it changed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"One entry added: the pull request feedback strip's __actions rows, registered as an exception (global 44px floor applies, measured live at 390px; no committed 390px fixture). No existing entry, strategy or the inventory format changed, so no claim these pages cite from it changed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"One entry added: the pull request feedback strip's __actions rows, registered as an exception (global 44px floor applies, measured live at 390px; no committed 390px fixture). No existing entry, strategy or the inventory format changed, so no claim these pages cite from it changed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"One entry added: the pull request feedback strip's __actions rows, registered as an exception (global 44px floor applies, measured live at 390px; no committed 390px fixture). No existing entry, strategy or the inventory format changed, so no claim these pages cite from it changed.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

@@ -1,7 +1,0 @@
-{
-  "revision": "fdbe1562a7b7c3159bd92d20f4a7bb215216df72",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Terminal epic integration (#4453 restart x #4454 retention): restart drops endedAt/hostStopped so its own exit dates expiry and restore; corrected the stale 'Restart is refused' channel sentence (#4453 implemented the socket restart command).","inputs":["docs/design/terminal.md","src-server/services/terminal/terminal-sessions.ts"]}
-  ]
-}

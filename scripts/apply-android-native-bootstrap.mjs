@@ -96,6 +96,69 @@ export function activityWithTauriOnCreate(source, packageName) {
   );
 }
 
+const SHARE_BUFFER_MARKER =
+  '// STATION IMAGE SHARE BUFFER. AUTO-GENERATED. DO NOT REMOVE.';
+const SHARE_BUFFER_IMPORT =
+  'io.kontourai.station.mediaintake.ShareIntentBuffer';
+const SHARE_BUFFER_BLOCK = `  ${SHARE_BUFFER_MARKER}
+  // Tauri forwards a new intent only to plugins already loaded and never
+  // updates the activity's intent. After process death a share can arrive
+  // before the media-intake plugin loads, so keep it for that plugin.
+  override fun onNewIntent(intent: Intent) {
+    setIntent(intent)
+    ShareIntentBuffer.offer(intent)
+    super.onNewIntent(intent)
+  }
+  ${SHARE_BUFFER_MARKER}`;
+
+/**
+ * Give the generated MainActivity an onNewIntent that records the intent
+ * (setIntent) and offers it to the media-intake plugin's buffer before Tauri
+ * forwards it. Marker-managed and idempotent; refuses an unmanaged override.
+ */
+export function activityWithShareIntentBuffer(source, packageName) {
+  if (!source.startsWith(`package ${packageName}`)) {
+    throw new Error(`MainActivity.kt does not declare package ${packageName}.`);
+  }
+  const pieces = source.split(SHARE_BUFFER_MARKER);
+  if (pieces.length !== 1 && pieces.length !== 3)
+    throw new Error('Malformed MainActivity share buffer markers.');
+  let next = source;
+  if (pieces.length === 3) {
+    if (source.includes(SHARE_BUFFER_BLOCK)) {
+      next = source;
+    } else {
+      next = pieces[0].replace(/ *$/, '') + pieces[2].replace(/^\n/, '');
+    }
+  }
+  if (!next.includes(SHARE_BUFFER_BLOCK)) {
+    if (/override fun onNewIntent\(/.test(next))
+      throw new Error(
+        'Unmanaged MainActivity onNewIntent; refusing to add a second one.',
+      );
+    const end = next.lastIndexOf('}');
+    if (end < 0 || !/class MainActivity\s*:\s*TauriActivity\(\)/.test(next))
+      throw new Error('Expected one Android MainActivity.');
+    next = `${next.slice(0, end).replace(/\s*$/, '')}\n\n${SHARE_BUFFER_BLOCK}\n}\n`;
+  }
+  for (const imported of ['android.content.Intent', SHARE_BUFFER_IMPORT])
+    next = withImportAfterLast(next, imported);
+  return next;
+}
+
+/** Add an import after the existing ones (or after `package`), once. */
+function withImportAfterLast(source, imported) {
+  const line = `import ${imported}`;
+  if (source.split('\n').includes(line)) return source;
+  const imports = [...source.matchAll(/^import [^\n]+$/gm)];
+  if (imports.length > 0) {
+    const last = imports.at(-1);
+    const at = last.index + last[0].length;
+    return `${source.slice(0, at)}\n${line}${source.slice(at)}`;
+  }
+  return source.replace(/^(package [^\n]+\n)/, `$1\n${line}\n`);
+}
+
 /** Restore camera and voice declarations after Tauri regenerates AndroidManifest.xml. */
 export function manifestWithMediaPermissions(source) {
   if (
@@ -175,6 +238,49 @@ export function manifestWithMediaPermissions(source) {
   return next;
 }
 
+const IMAGE_SHARE_MARKER =
+  '<!-- STATION IMAGE SHARE TARGET. AUTO-GENERATED. DO NOT REMOVE. -->';
+const IMAGE_SHARE_BLOCK = `${IMAGE_SHARE_MARKER}
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            ${IMAGE_SHARE_MARKER}`;
+
+/**
+ * Restore the image share target on the generated MainActivity after Tauri
+ * regenerates AndroidManifest.xml. The station-media-intake plugin adopts the
+ * delivered intent; it cannot declare the filter itself, because the
+ * activity's package follows each channel's identifier.
+ */
+export function manifestWithImageShareTarget(source) {
+  const activities = [
+    ...source.matchAll(
+      /<activity\b[^>]*android:name="(?:\.?|[a-zA-Z0-9_.]+\.)MainActivity"[^>]*>[\s\S]*?<\/activity>/g,
+    ),
+  ];
+  if (activities.length !== 1)
+    throw new Error('Expected one generated Android MainActivity.');
+  const activity = activities[0][0];
+  const pieces = activity.split(IMAGE_SHARE_MARKER);
+  if (pieces.length !== 1 && pieces.length !== 3)
+    throw new Error('Malformed generated image share target markers.');
+  if (pieces.length === 3 && activity.includes(IMAGE_SHARE_BLOCK))
+    return source;
+  const clean = pieces.length === 3 ? pieces[0] + pieces[2] : activity;
+  if (/android\.intent\.action\.SEND(?:_MULTIPLE)?"/.test(clean))
+    throw new Error(
+      'Unmanaged share intent filter on MainActivity; refusing to duplicate it.',
+    );
+  const next = clean.replace(
+    /\s*<\/activity>$/,
+    `\n            ${IMAGE_SHARE_BLOCK}\n        </activity>`,
+  );
+  return source.replace(activity, next);
+}
+
 function manifestWithBackupExclusions(source) {
   return source.replace(/<application\b[^>]*>/, (application) => {
     for (const [attribute, value] of [
@@ -202,8 +308,8 @@ export function applyAndroidNativeBootstrap({ root = ROOT } = {}) {
   const appRoot = join(root, GENERATED_ANDROID);
   const manifestPath = join(appRoot, 'src', 'main', 'AndroidManifest.xml');
   const manifest = readFileSync(manifestPath, 'utf8');
-  const patchedManifest = manifestWithBackupExclusions(
-    manifestWithMediaPermissions(manifest),
+  const patchedManifest = manifestWithImageShareTarget(
+    manifestWithBackupExclusions(manifestWithMediaPermissions(manifest)),
   );
   if (patchedManifest !== manifest)
     writeFileSync(manifestPath, patchedManifest);
@@ -256,6 +362,9 @@ export function applyAndroidNativeBootstrap({ root = ROOT } = {}) {
   const next = activityWithTauriOnCreate(current, namespace);
   if (next !== current) writeFileSync(activityPath, next);
   applyAndroidInsets(activityPath, namespace);
+  const withInsets = readFileSync(activityPath, 'utf8');
+  const withBuffer = activityWithShareIntentBuffer(withInsets, namespace);
+  if (withBuffer !== withInsets) writeFileSync(activityPath, withBuffer);
 
   // A bridge left by an earlier bootstrap would invite the double
   // initialization back; the generated project must not carry one.

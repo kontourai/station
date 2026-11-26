@@ -4,7 +4,10 @@ import type {
 } from '@kontourai/station-contracts/catalog';
 import type { LayoutCatalogItem } from '@kontourai/station-contracts/distribution';
 import type { LayoutComponentRef } from '@kontourai/station-contracts/layout';
-import type { PluginInstallResult } from '@kontourai/station-contracts/plugin';
+import {
+  type PluginInstallResult,
+  readPluginLifecycleResponse,
+} from '@kontourai/station-contracts/plugin';
 import { _getApiBase } from '../api';
 import type { RegistryCatalogTab } from './catalog';
 
@@ -191,7 +194,13 @@ export async function requestRegistryCatalogAction<
     error?: string;
     message?: string;
   };
-  if (!result.success) {
+  // A plugin install's or uninstall's designed saved `202` is accepted, as
+  // in `requestPluginRegistryInstallAction`.
+  const accepted =
+    tab === 'plugins'
+      ? readPluginLifecycleResponse(response.status, result).state !== 'refused'
+      : result.success;
+  if (!accepted) {
     throw new Error(
       apiErrorMessage(result, result.message || `${action} failed`),
     );
@@ -254,10 +263,20 @@ export async function requestIntegrationAccount<T>(
 export interface RegistrySourceAction {
   action: 'add' | 'enable' | 'disable' | 'remove' | 'refresh';
   id?: string;
+  /**
+   * A source to add: a location and, for a repository, an optional ref. The
+   * server detects what it provides from its content.
+   */
   source?: {
-    displayName: string;
-    adapter: 'manifest' | 'directory' | 'github';
     location: string;
+    ref?: string;
+    /** A label; the server derives one from the location when absent. */
+    displayName?: string;
+    /**
+     * @deprecated Ignored: the kinds come from the source's content. Still
+     * accepted, and used only to read a local path that does not exist yet.
+     */
+    adapter?: 'manifest' | 'directory' | 'github';
   };
 }
 

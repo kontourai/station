@@ -536,7 +536,8 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
 
       vi.setSystemTime(t0 + 600_000);
       await waitFor(
-        () => expect(view.container.textContent).toContain('Working for 10:00'),
+        () =>
+          expect(view.container.textContent).toContain('Working for 10m 0s'),
         { timeout: 3_000 },
       );
 
@@ -546,7 +547,7 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
       await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
       // Refetch in flight: no start is known, so no duration is stated.
       expect(view.container.textContent).toContain('Working…');
-      expect(view.container.textContent).not.toMatch(/\d+:\d\d/u);
+      expect(view.container.textContent).not.toMatch(/\d+(?:h|m|s)\b/u);
       await act(async () => {
         deliverAfterGap?.({
           protocolVersion: 1,
@@ -576,7 +577,7 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
         ),
       );
       await waitFor(
-        () => expect(view.container.textContent).toContain('Working for 0:10'),
+        () => expect(view.container.textContent).toContain('Working for 10s'),
         { timeout: 3_000 },
       );
       view.unmount();
@@ -620,7 +621,7 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
         await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
         vi.setSystemTime(t0 + 300_000);
         await waitFor(
-          () => expect(view.container.textContent).toContain(`${label}5:00`),
+          () => expect(view.container.textContent).toContain(`${label}5m 0s`),
           { timeout: 3_000 },
         );
 
@@ -635,12 +636,12 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
         vi.setSystemTime(t0 + 305_000);
         if (statusLabel) {
           await waitFor(
-            () => expect(view.container.textContent).toContain(`${label}5:05`),
+            () => expect(view.container.textContent).toContain(`${label}5m 5s`),
             { timeout: 3_000 },
           );
         } else {
           expect(view.container.textContent).toContain('Working…');
-          expect(view.container.textContent).not.toMatch(/\d+:\d\d/u);
+          expect(view.container.textContent).not.toMatch(/\d+(?:h|m|s)\b/u);
         }
 
         await act(async () => {
@@ -653,7 +654,7 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
         );
         vi.setSystemTime(t0 + 310_000);
         await waitFor(
-          () => expect(view.container.textContent).toContain(`${label}5:10`),
+          () => expect(view.container.textContent).toContain(`${label}5m 10s`),
           { timeout: 3_000 },
         );
         view.unmount();
@@ -700,7 +701,7 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
       const view = render(<DockClock />);
       await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
       await waitFor(
-        () => expect(view.container.textContent).toContain('Working for 60:00'),
+        () => expect(view.container.textContent).toContain('Working for 1h'),
         { timeout: 3_000 },
       );
       vi.setSystemTime(t0 + 60_000);
@@ -714,7 +715,7 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
         await new Promise((resolve) => setTimeout(resolve, 1_200));
       });
       expect(view.container.textContent).toContain('Working…');
-      expect(view.container.textContent).not.toMatch(/\d+:\d\d/u);
+      expect(view.container.textContent).not.toMatch(/\d+(?:h|m|s)\b/u);
 
       await act(async () => {
         handleTurnStartedEvent({
@@ -725,7 +726,7 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
         } as never);
       });
       await waitFor(
-        () => expect(view.container.textContent).toContain('Working for 0:35'),
+        () => expect(view.container.textContent).toContain('Working for 35s'),
         { timeout: 3_000 },
       );
       view.unmount();
@@ -769,7 +770,7 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
         await new Promise((resolve) => setTimeout(resolve, 1_200));
       });
       expect(view.container.textContent).toContain('Working…');
-      expect(view.container.textContent).not.toMatch(/\d+:\d\d/u);
+      expect(view.container.textContent).not.toMatch(/\d+(?:h|m|s)\b/u);
       await act(async () => {
         handleTurnStartedEvent({
           method: 'turn.started',
@@ -779,10 +780,10 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
           prompt: 'Long job',
         } as never);
       });
-      expect(view.container.textContent).toContain('Working for 0:00');
+      expect(view.container.textContent).toContain('Working for 0s');
       vi.setSystemTime(t0 + 32_000);
       await waitFor(
-        () => expect(view.container.textContent).toContain('Working for 0:02'),
+        () => expect(view.container.textContent).toContain('Working for 2s'),
         { timeout: 3_000 },
       );
       view.unmount();

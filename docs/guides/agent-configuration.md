@@ -17,7 +17,7 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | Field | Description |
 |-------|-------------|
 | `name` | Display name |
-| `prompt` | Agent instructions (supports `{{key}}` template variables); delivered as a system prompt where supported, or with the first message on Codex and other first-turn engines |
+| `prompt` | Agent instructions. Station expands `{{key}}` when it builds the prompt. External engines receive authored text. Delivered as a system prompt where supported, or with the first message on Codex and other first-turn engines (and again with the next message when an ACP engine had to start a new session in place of the conversation; see [the ACP guide](acp.md#creation)) |
 | `model` | Station-engine model preference; see resolution order below |
 | `execution.agentConnectionId` | Saved engine connection binding; absence selects Station's engine |
 | `execution.modelConnectionId` | Model connection selection for Station's engine; separate from the engine binding |
@@ -25,7 +25,8 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | `execution.sharedTurns` | Optional operator declaration for separately negotiated shared model-only turns; shared execution is not yet available |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
 | (Station guidance) | With the `station-orchestration-instructions` Feature Preview on, Agents offered `station-control` also get Station-written guidance on using it, kept separate from `prompt`. See [orchestration instructions](self-configuring-agent.md#orchestration-instructions) |
-| `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
+| Step cap | Top-level `maxSteps` for VoltAgent, 1–100 |
+| `guardrails` | `maxTokens`, `temperature` |
 | `audience` | Who besides the operator may list, read and use the Agent; absent means operator only ([reference](../reference/config.md#audience)) |
 
 ### MCP Tool Configuration
@@ -52,7 +53,8 @@ proposal in the Board. **Build with chat** offers context in a new projectless
 chat without sending it; see [Personal Boards](../user/personal-boards.md).
 
 Station Control publishes native MCP titles, behavioral annotations and
-`ai.kontour/tool-group` hints. These catalog hints do not grant access or change
+`ai.kontour/tool-group` hints. Each tool's group is stated, not inferred from
+its name; device and browser tools are grouped as Devices and Browser. These catalog hints do not grant access or change
 approval rules. MCP has no standard category field; grouping does not require
 separate servers.
 
@@ -130,8 +132,11 @@ permissions. Missing Agent definitions or unreadable Project policy refuse
 engine startup; the conversation stays recoverable after the cause is fixed.
 
 **Browser access** is a separate Agent capability. Claude Code receives the
-Project's Station browser in process. Codex can use the same browser through
-the default-off **Codex browser and device tools** Feature Preview; ACP remains
+Project's Station browser in process, except in a session whose network
+Station restricts ([`confinedNetwork`](../reference/config.md#optional-fields)):
+the browser runs outside that session's sandbox, so it is not offered there. Codex can use the same browser through
+the default-off **Codex browser and device tools** Feature Preview, which also
+moves a new Codex Session's Station Control onto that bound channel; ACP remains
 unavailable. The editor's engine status may not reflect that preview. **Workflow
 files** holds the workflow editor. Browser access is independent of attaching
 MCP sources. See the [bound-channel decision](../decisions/browser-agent-actions-and-bound-channel.md)
@@ -144,8 +149,10 @@ the harness configuration; existing Agents keep their previous behavior until
 you change this switch. Turning it off replaces the configured MCP list; the harness keeps its built-in tools. Claude
 also offers **Harness default**, **On demand**, and **Always available** loading.
 On demand uses Claude's native tool search and requires a compatible model and
-endpoint; it is not a Station search proxy. Other engines keep their own loading
-behavior.
+endpoint; it is not a Station search proxy. Only On demand also adds Station's
+line telling Claude to load the Station tools it names with ToolSearch; under
+Harness default, Claude Code decides whether to defer tools. Other engines keep
+their own loading behavior.
 
 `tools` selects MCP connections and exposed tools. Station applies its runtime
 filter; Claude applies SDK exclusions plus a pre-tool refusal, and Codex receives
@@ -221,7 +228,7 @@ Station guardrail declaration does not establish external enforcement:
 }
 ```
 
-- `maxSteps` — top-level Agent step cap applied by VoltAgent; the Agent file schema rejects it inside `guardrails`. Strands does not apply this configured cap.
+- `maxSteps` — top-level model-step cap per VoltAgent turn. Set 1–100 or leave it unset to inherit the Station fallback. Strands and external engines use their own limits.
 - `maxTokens` — maximum output tokens per model call (overrides `defaultMaxOutputTokens` from app.json)
 - `temperature` / `topP` — standard inference parameters. On VoltAgent, `topP` is ignored when `temperature` is also set (see the [config reference](../reference/config.md)).
 - `stopSequences` — accepted and typed, but not currently applied by any engine. Do not rely on it to constrain model output.
@@ -278,7 +285,66 @@ legacy SSE approval transport. Canonical orchestration clients instead read
 The [staged evaluator](../../src-server/runtime/agents/pre-tool-policy.ts)
 can allow, deny, or request an interactive decision. It checks current runtime
 generation, delegation and configuration protection before grants; the approval
-guardian can also decide a call. The following is the interactive branch, not
+guardian can also decide a call.
+
+The runtime-generation check refuses a call decided by policy that has since
+been replaced. On Station's engine, an Agent's hooks are replaced when that
+Agent is rebuilt, and its next turn uses the rebuilt Agent. An external engine
+(Claude Code, Codex, OpenCode and other ACP engines) keeps the policy it was
+started with for the whole session, together with the grants and tool servers
+its engine process was launched with. A
+[policy generation](../../src-server/runtime/agents/pre-tool-policy-generation.ts)
+therefore re-reads what the session was launched with when any configuration
+change lands: its Agent record, the Agent definition resolved the way a start
+resolves it (each tool server's definition, whether it exists and is enabled,
+its disabled tools, Project default tool servers, skills and grants), the
+tool servers an ACP or OpenCode connection provides by itself
+(`provideToolServers`, also kept beside the Agent's own with
+`mcpMode: 'add'`), and the engine connection it runs on (Claude and Codex
+connection config with their model proxy connection and active credential
+profile, or the ACP connection record). Recovery bookkeeping, probe
+timestamps and the order of tool-name lists do not count. A probe that finds
+a new tool does count when the session was given that server's tool list
+(its Agent or integration selects or disables tools by name). If all of that is
+unchanged, the session keeps running, whatever else changed. If any of it
+changed, or the Agent was deleted, every later call in that session is
+refused. The conversation's next message then restarts the engine in place
+from its resume cursor under the current configuration, or, for an engine
+that cannot resume, starts a successor session and stops the old engine if
+it is idle. A
+session still running work it started under the old configuration refuses
+that message until the work ends, so a conversation never has two engines.
+A session whose engine has exited, or whose engine takes no more turns after
+a failure (Claude Code), is never restarted in place: its next message starts
+a successor once that engine process has stopped. An engine that keeps taking
+turns after a failed turn is restarted in place like any other. If stopping
+the old engine for a restart fails, that message and any sent meanwhile are
+refused, never run under the old configuration, and the next message tries
+again.
+While a change is still being applied, or the configuration cannot be read,
+a call is refused with a request to retry it.
+
+Codex's own MCP calls never pass through this evaluator, on any build: it
+decides only Station's bound dynamic tools (browser and device tools, and the
+Station Control tools a session serves on that channel). A bound call refused
+because the configuration was replaced returns the refusal's text to the
+model as the tool's result, so the model can tell the person what happened. A Codex Agent session
+still holds a launch binding, so when its Agent or integrations change, its
+next turn restarts it under the current configuration; until then it keeps
+calling the tools it was launched with, for the rest of the turn in
+progress too.
+
+The launch also binds Claude's Artifact tool setting and, for a session
+started confined, the confined network policy its egress broker copied at
+start; changing either replaces such a session. New-chat defaults (approval
+mode, workspace isolation, the no-Project folder) apply to the next chat
+only. A session that started while a change was still being applied
+refuses its tools and restarts at its next turn. Known limit: nothing in the
+conversation shows that a session was replaced until its next message
+restarts it. Known limit: a predecessor still running work when its
+successor starts is not stopped, since stopping it would kill that work; it
+stays resident with its tools refused until the idle sweep parks it (never,
+with idle parking turned off). The following is the interactive branch, not
 every possible tool outcome:
 
 1. `beforeToolCall` invokes the staged policy with the current invocation.
@@ -299,7 +365,7 @@ without that reference uses its persisted notification's Allow/Deny actions;
 `review_pending` without one opens the session. `needs_input` sends a normal
 orchestration turn to the owning session. An item for a delegated task that
 runs on a paired Station offers no reply. It says to answer on that Station
-and opens the Activity detail. The header
+and opens the Chat reader. The header
 badge is the same deduplicated active-attention count shown in the Inbox.
 Concrete approval requests suppress a duplicate lifecycle item for the same
 session. Gate exceptions also suppress that session's lifecycle duplicate;
@@ -316,12 +382,13 @@ enforce tenant ownership. See the [Session API attention contract](../reference/
 ### Questions from agent harnesses
 
 Claude Code's `AskUserQuestion`, Codex's `requestUserInput` and questions an
-ACP engine asks through Cursor's `cursor/ask_question` appear as one form in the Session, rendered by the same card as a tool server's form
+ACP engine asks through Cursor's `cursor/ask_question` or Grok Build's
+`_x.ai/ask_user_question` appear as one form in the Session, rendered by the same card as a tool server's form
 (#3390): inline on desktop, and in the request sheet on a phone. Each
 question keeps the engine's short header above it, when it has one. Select an
 option, choose several where the harness supports it, or choose Other to
-enter a custom answer (`cursor/ask_question` offers no Other: the engine
-takes back only the options it offered). Send checks every question first; an unanswered one is
+enter a custom answer (`cursor/ask_question` and `_x.ai/ask_user_question`
+offer no Other: the engine takes back only the options it offered). Send checks every question first; an unanswered one is
 marked on its own field with its reason, and focus moves to the first.
 Ctrl/Cmd+Enter sends. Decline and Cancel return that action to the engine
 instead of an answer. Answering a question never grants permission to later
@@ -357,6 +424,10 @@ Claude Code these always reach a person:
   (#2932);
 - a chained Bash command (`a && b`, a pipeline) when any part raises a
   safety check, and every PowerShell command (#2932);
+- a Bash command the engine flags with a command-analysis warning, such as
+  "A variable in this command can't be checked before it runs" or a `cd`
+  before a version-control command. A person's own "Allow all Bash commands
+  for this session" covers these; a pattern does not;
 - a sandbox network-host ask (each new host prompts), a call that disables
   the sandbox, a tool whose approval is the user's own interaction, and an
   MCP tool the organization requires approval for (#2932);
@@ -369,8 +440,8 @@ whole plan as a form, labelled **Plan review** rather than **Question**, to
 approve or reject; only an approved plan replaces the
 Session's plan. Station doesn't resume the engine after approval: send a
 message to continue. A plan too long to show whole lists its todos as a count,
-and only as a last resort is cut with a note saying how much was left out. ACP reports no other escalation signal. Codex and Muse do not
-honour `autoApprove`. Station reads why Claude Code asks from the engine's
+and only as a last resort is cut with a note saying how much was left out. ACP reports no other escalation signal. Codex, Muse and the
+GitHub Copilot (SDK) preview engine do not honour `autoApprove`. Station reads why Claude Code asks from the engine's
 own request, and a request it cannot read counts as an escalation, so a
 pattern never answers one. A pattern such as `Bash` covers chained commands
 too, and the engine does not report what their parts raise. So the first
@@ -383,18 +454,49 @@ prompts ([delivery boundary](../conformance/tool-policy-delivery.md)).
 
 An approval-guardian allow has the same limits on these engines (#2947). The
 guardian reviews the tool's name and arguments (and, on ACP, the call's
-title); it isn't shown the session's working directories or why the engine
-asks. On Claude Code its allow answers a plain call without a prompt, unless an
+title) against what the person typed in the conversation; it isn't shown the
+session's working directories or why the engine asks. On Claude Code its allow answers a plain call without a prompt, unless an
 effective authored Ask rule requires approval, for the input it reviewed, and everything in the list above still reaches a person,
 including a read outside the working directories that the guardian allowed.
-Like a `Bash` pattern, a guardian allow answers a chained Bash command,
+Like a `Bash` pattern, a guardian allow answers a chained Bash command that
+carries no command-analysis warning,
 including the chained-command gaps described above: an ask rule or an
 outside-directory write hidden inside the chain does not prompt. On ACP engines its allow answers any call except a
 plan exit, a question, or a sandbox network-host ask. A guardian deny in
-`enforce` mode still blocks the call. A delegated child that cannot grant
+`enforce` mode still blocks the call, except the escalation described in
+[What the guardian sees](#what-the-approval-guardian-sees). A delegated child that cannot grant
 approvals is denied an escalation at once, guardian allow or not. With the
 guardian enabled, a headless run on these engines that reaches an escalation
 waits on an approval request where it used to run on the guardian's allow.
+
+### A person's session answer, full access, and authority tools
+
+A person's own **Allow … for this session** is offered on every tool
+approval, including the escalations listed above (owner decision,
+2026-11-16). It covers what it was given on: an answer to a plain call
+covers later plain calls of that tool, and only an answer to an escalation
+also covers the tool's later escalations. A pattern and a guardian allow keep
+the limits above.
+
+On OpenCode and other ACP engines, a request that is not addressed to a
+person also offers **Allow everything for this session**: Station then
+answers every later request in that session itself, after the Agent's
+policy, never a plan exit, a question or an OpenCode configuration edit that
+must go to a person. It suits a session that cannot run at full access, such
+as a confined automation task, and changes neither its confinement nor its
+approval mode; a change of approval mode ends it. Claude and other engines
+take the answer as the per-tool grant.
+
+Full access means no prompts: the untrusted-content ask is not raised at full
+access on Claude Code, Codex, OpenCode or a Station-governed ACP session; a
+tool set to refuse after untrusted content still refuses.
+
+The station-control tools that change who or what holds authority (Station
+configuration, creating or updating Agents, plugins, deleting integrations,
+skills and SSH hosts) ask a person on every call on every engine, at full
+access too, and offer no session option. On Station's own engine an approval
+guardian you enabled may still allow one, as it may any mutation there
+([delivery boundary](../conformance/tool-policy-delivery.md#built-in-tools-that-change-authority)).
 
 ### Unattended runs
 
@@ -426,6 +528,12 @@ legacy `autoApprove` against the runtime name only, so the usual
 `mcp/station-control/list_agents` keys also apply unattended. Existing patterns
 that match the runtime name, including `*`, keep working as before. Effective
 Ask rules still require a person.
+
+The Agent editor's Tools tab shows the configured patterns under **Unattended
+approvals**. Removing an integration clears its integration-specific patterns.
+Disabling tools narrows those patterns to the remaining selected tools.
+Agent-wide patterns such as `*` remain in effect. Copies start without
+unattended approval patterns.
 
 To let an agent run a tool unattended, list it in `unattendedAutoApprove`. For
 a scheduled job, an operator can instead record an unattended tool grant for
@@ -468,6 +576,69 @@ built-in destructive or sensitive tool-class ceiling on guardian allows.
 Explicit `askBeforeUse` rules, Project policy and the preceding allow/block and
 config-protection checks still bound execution.
 
+### What the approval guardian sees
+
+The guardian ([source](../../src-server/services/approvals/approval-guardian.ts))
+judges a call against what the person asked for (#4827). Its prompt holds:
+
+- **What the person typed in this conversation**, oldest first: the prompts
+  of turns Station marked `authoredBy: 'person'`, steers included. Station
+  sets that mark only where a person typed into one of its own clients: a
+  send or steer from the web, desktop or mobile chat composer, or a message
+  the composer queued on the conversation's inbox, made with the operator's
+  credential or session or a paired personal device. Everything else is
+  excluded, whatever credential it used. That covers:
+  - `/chat/delegated` (including a peer Station's delegation) and
+    `/chat/background`;
+  - handoffs and memory continuations;
+  - Discord and other chat bridges, and voice;
+  - webhooks, Tasks, Automations and Project or Task rooms;
+  - an agent's Station Control sends;
+  - the CLI and MCP clients.
+
+  An engine or adapter cannot set the mark; Station drops it if one tries.
+  A server-expanded MCP prompt is excluded even from the composer: the
+  person chose the command, but the MCP server wrote the text. Tool results
+  and replies are never included. The prompts are read across the
+  conversation's newest 16 Sessions. The newest 20 are kept, each cut to
+  1,500 characters, and older ones are dropped past 8,000 characters in
+  total. When older messages are left out, including those in Sessions past
+  the 16th, the prompt says earlier messages are not shown. When nobody
+  typed anything (a scheduled or delegated run), the prompt says so, so no
+  "only if asked" rule can be met. The same test is available to other
+  features as `isPersonAuthoredTurn` and `isCurrentTurnPersonAuthored`
+  ([source](../../src-server/services/orchestration/turn-authorship.ts)).
+- **The call**: the agent, and the tool's name, description and arguments,
+  each inside a per-review random fence marking them as tool-authored data.
+
+It decides by three built-in rule lists, and the Settings **Guardian
+instructions** are added after them as house rules:
+
+- *Never*: sending credentials anywhere, touching Station's own home or
+  configuration, and disabling Station's checks.
+- *Only if the person asked for exactly this*: download-and-run, sending
+  private files to an address the person did not name, mass deletion,
+  destructive git, startup files, keys and hooks, sudo, publishing, and
+  spending money. A general request is not enough: "clean up the repo" does
+  not authorize a force push.
+- *Ordinary work, allowed*: project edits, installing declared dependencies,
+  building and testing, and a normal push.
+
+**Escalation in `enforce` mode.** After the guardian has denied three calls in
+a row in one conversation, or 20 in all, its next denial becomes a required
+approval request to the person, through the same approval inbox as any other,
+instead of another automatic deny. An allow, or an escalation, starts a new
+run of three. This happens only when a person can answer: on Station's engine,
+a chat with a live approval channel; on an external engine, a conversation
+whose current turn a person sent; never for a delegated child that cannot
+grant approvals. Otherwise the denial stands, as before. The counts are kept
+per conversation, so a successor Session continues them. They live in server
+memory, so a restart starts them again.
+
+An escalated request quotes the guardian’s reason under **Approval guardian**
+in the Inbox and request inspector. The quote is separate from the tool’s
+description. It carries the rule the guardian named in its explanation.
+
 Structured generation now reaches the configured model on both VoltAgent and
 Strands. Previously, their schema adapter errors made guardian reviews fall back
 to `defer`; configured guardians can now issue real `allow` and `deny` decisions.
@@ -479,10 +650,12 @@ Tool names, descriptions and arguments remain untrusted model input. Fencing
 keeps them separate from the guardian's instructions, but a prompt-injected tool
 argument can still persuade the model to return `allow`.
 
-Attended chat ignores `unattendedAutoApprove`; when the guardian defers, it asks
-the person as before. External engines (Claude Code, ACP) do not deliver Station's
-unattended checks ([delivery boundary](../conformance/tool-policy-delivery.md)),
-so the opt-in has no effect on them.
+Attended chat ignores `unattendedAutoApprove`. An enforce-mode defer in
+attended chat leaves the ordinary approval path in charge. When the configured
+external policy hook observes an unattended turn, an enforce-mode defer denies
+the call before it reaches the engine’s approval flow. The managed unattended
+opt-in still applies only to Station’s own engine. See the
+[tool policy delivery boundary](../conformance/tool-policy-delivery.md).
 
 ### Tool purpose display support
 
@@ -516,11 +689,11 @@ approval paths; these hooks do not establish external policy enforcement.
 | Hook | When it fires | What it does |
 |------|--------------|--------------|
 | `beforeToolCall` | Before any tool executes | Checks auto-approve and the untrusted-content permission; triggers approval flow if needed |
-| `afterToolCall` | After a tool returns | Debug logging; marks the turn when the result came from an integration classified untrusted |
+| `afterToolCall` | After a tool returns | Debug logging; marks the turn when the result came from an integration classified untrusted, or from the HTTP request built-in |
 | `endInvocation` | Once when the turn ends, including on error and abort | Releases the turn's untrusted-content state; the conversation's mark stays until a person clears it |
-| `afterInvocation` | After the full turn completes | Updates conversation stats (tokens, cost, tool call count) in the memory adapter |
+| `afterInvocation` | After the full turn completes | Updates conversation stats (turns, tool call count, tokens, cost) in the memory adapter |
 
-`afterInvocation` also enriches the last assistant message with model metadata and pricing from the Bedrock model catalog.
+`afterInvocation` also enriches the last assistant message with model metadata and pricing from the Bedrock model catalog. A turn whose model reported no usage still counts as a turn with its tool calls; its token counts and cost stay absent and read "Not reported". A failed turn with nothing reported records nothing; one that failed after reporting usage keeps its tokens. The Strands framework reports no error to the hook (it fires on success, failure and a cancelled invocation alike), so there a turn that ends without an assistant answer counts as failed. VoltAgent ends a stream whose provider sent an error with an output whose finish reason is `error`, which the adapter passes on as a failure. A person's Stop, or any abort, ends a VoltAgent turn with no output and is not counted (VoltAgent can also deliver an abort after a turn completed, which must not count again). The usage passed on is the turn's total over all model steps, so a turn that called tools counts every step.
 
 ---
 

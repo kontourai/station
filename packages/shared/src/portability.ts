@@ -18,6 +18,7 @@ import type {
   PortabilityLoss,
   ToolDef,
 } from '@kontourai/station-contracts';
+import { withoutRetiredAgentConfigFields } from '@kontourai/station-contracts/agent';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 
 const APP_CONFIG_GUIDANCE_KEYS = [
@@ -261,7 +262,7 @@ export function buildAgentsMdDocument(
       workspace: buildGuidanceWorkspace(input.appConfig),
       agents: input.agents.map((agent) => ({
         slug: agent.slug,
-        spec: structuredClone(agent.spec),
+        spec: structuredClone(withoutRetiredAgentConfigFields(agent.spec)),
       })),
       integrations,
     },
@@ -429,7 +430,7 @@ export function buildAgentsMdImportPlan(input: {
     appConfig: structuredClone(input.parsed.document.guidance.workspace),
     agents: input.parsed.document.guidance.agents.map((agent) => ({
       slug: agent.slug,
-      spec: structuredClone(agent.spec),
+      spec: structuredClone(withoutRetiredAgentConfigFields(agent.spec)),
     })),
     integrations:
       input.parsed.document.guidance.integrations.map(denormalizeMcpConfig),

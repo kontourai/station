@@ -50,6 +50,12 @@
     }
   }
   root.dataset.theme = theme;
+  // Density and motion (#4692), from the same source as the mode and resolved
+  // like lib/display-preferences.ts: anything but `compact` is Comfortable,
+  // anything but `reduce` follows the device.
+  root.dataset.density =
+    saved?.density === 'compact' ? 'compact' : 'comfortable';
+  if (saved?.motion === 'reduce') root.dataset.motion = 'reduce';
 
   // Color theme (docs/decisions/user-color-themes.md): stamp the selection the
   // generated stylesheet keys on, and its page canvas as theme-color, before
@@ -59,7 +65,7 @@
   // it has no prior key. The index below is generated from the catalog.
   // BEGIN GENERATED COLOR THEMES (npm run gen:color-themes; do not edit)
   const COLOR_THEMES = JSON.parse(
-    '{"catppuccin":{"stylesheet":"/color-themes/catppuccin.css?v=e4a47673","light":{"id":"latte","background":"#e6e9ef"},"dark":[{"id":"frappe","background":"#292c3c"},{"id":"macchiato","background":"#1e2030"},{"id":"mocha","background":"#181825"}],"defaultDarkFlavor":"mocha","accents":["rosewater","flamingo","pink","mauve","red","maroon","peach","yellow","green","teal","sky","sapphire","blue","lavender"],"defaultAccent":"mauve"},"rose-pine":{"stylesheet":"/color-themes/rose-pine.css?v=14c139cf","light":{"id":"dawn","background":"#faf4ed"},"dark":[{"id":"main","background":"#191724"},{"id":"moon","background":"#232136"}],"defaultDarkFlavor":"main","accents":["love","gold","rose","pine","foam","iris"],"defaultAccent":"iris"},"gruvbox":{"stylesheet":"/color-themes/gruvbox.css?v=c5736a71","light":{"id":"light","background":"#f2e5bc"},"dark":[{"id":"dark","background":"#1d2021"}],"defaultDarkFlavor":"dark","accents":["red","green","yellow","blue","purple","aqua","orange"],"defaultAccent":"orange"},"nord":{"stylesheet":"/color-themes/nord.css?v=af91296a","light":{"id":"snow-storm","background":"#e5e9f0"},"dark":[{"id":"polar-night","background":"#2e3440"}],"defaultDarkFlavor":"polar-night","accents":["frost","teal","blue","deep-blue","red","orange","yellow","green","purple"],"defaultAccent":"frost"},"tokyo-night":{"stylesheet":"/color-themes/tokyo-night.css?v=cceca5b5","light":{"id":"day","background":"#d0d5e3"},"dark":[{"id":"night","background":"#16161e"},{"id":"storm","background":"#1f2335"}],"defaultDarkFlavor":"night","accents":["blue","cyan","teal","green","yellow","orange","red","magenta","purple"],"defaultAccent":"blue"}}',
+    '{"catppuccin":{"stylesheet":"/color-themes/catppuccin.css?v=54f0e774","light":{"id":"latte","background":"#e6e9ef"},"dark":[{"id":"frappe","background":"#292c3c"},{"id":"macchiato","background":"#1e2030"},{"id":"mocha","background":"#181825"}],"defaultDarkFlavor":"mocha","accents":["rosewater","flamingo","pink","mauve","red","maroon","peach","yellow","green","teal","sky","sapphire","blue","lavender"],"defaultAccent":"mauve"},"rose-pine":{"stylesheet":"/color-themes/rose-pine.css?v=9ddb0a07","light":{"id":"dawn","background":"#faf4ed"},"dark":[{"id":"main","background":"#191724"},{"id":"moon","background":"#232136"}],"defaultDarkFlavor":"main","accents":["love","gold","rose","pine","foam","iris"],"defaultAccent":"iris"},"gruvbox":{"stylesheet":"/color-themes/gruvbox.css?v=ac25797c","light":{"id":"light","background":"#f2e5bc"},"dark":[{"id":"dark","background":"#1d2021"}],"defaultDarkFlavor":"dark","accents":["red","green","yellow","blue","purple","aqua","orange"],"defaultAccent":"orange"},"nord":{"stylesheet":"/color-themes/nord.css?v=d7d3a840","light":{"id":"snow-storm","background":"#e5e9f0"},"dark":[{"id":"polar-night","background":"#2e3440"}],"defaultDarkFlavor":"polar-night","accents":["frost","teal","blue","deep-blue","red","orange","yellow","green","purple"],"defaultAccent":"frost"},"tokyo-night":{"stylesheet":"/color-themes/tokyo-night.css?v=bd16964b","light":{"id":"day","background":"#d0d5e3"},"dark":[{"id":"night","background":"#16161e"},{"id":"storm","background":"#1f2335"}],"defaultDarkFlavor":"night","accents":["blue","cyan","teal","green","yellow","orange","red","magenta","purple"],"defaultAccent":"blue"}}',
   );
   // END GENERATED COLOR THEMES
   try {
@@ -120,8 +126,7 @@
   // launch has none yet and shows the stable mark until the report arrives.
   try {
     const mark = localStorage.getItem('station-startup-mark');
-    if (mark === 'dev' || mark === 'beta' || mark === 'nightly')
-      root.dataset.startupMark = mark;
+    if (mark === 'dev' || mark === 'nightly') root.dataset.startupMark = mark;
   } catch {
     // Without storage the stable mark is the honest default.
   }

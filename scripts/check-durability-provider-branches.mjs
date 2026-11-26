@@ -198,6 +198,13 @@ const REVIEWED_PROTOCOL_BRANCHES = [
       'Validates the two sign-in response wire formats; no conversation durability decision.',
   },
   {
+    file: 'src-server/providers/sessions/acp-session-list-source.ts',
+    expression: "session.provider !== 'acp'",
+    count: 1,
+    reason:
+      'Decodes only the ACP-owned session cursor for this attached-session source.',
+  },
+  {
     file: 'src-server/providers/sessions/grok-session-source.ts',
     expression: "session.provider !== 'acp'",
     count: 1,
@@ -224,6 +231,20 @@ const REVIEWED_PROTOCOL_BRANCHES = [
     count: 1,
     reason:
       'Reads the ACP initialize/loadSession handshake for that connection; not a fidelity default.',
+  },
+  {
+    file: 'src-server/runtime/bootstrap/station-runtime.ts',
+    expression: "input.provider === 'claude'",
+    count: 1,
+    reason:
+      'Selects which connection settings a launch binds (engine settings and credential profile, or an ACP connection record) for the pre-tool policy fingerprint; no conversation durability decision.',
+  },
+  {
+    file: 'src-server/runtime/bootstrap/station-runtime.ts',
+    expression: "input.provider === 'codex'",
+    count: 1,
+    reason:
+      'Selects which connection settings a launch binds (engine settings and credential profile, or an ACP connection record) for the pre-tool policy fingerprint; no conversation durability decision.',
   },
   {
     file: 'src-server/services/orchestration/event-store.ts',
@@ -258,13 +279,6 @@ const REVIEWED_PROTOCOL_BRANCHES = [
     count: 1,
     reason:
       'Decodes Codex retriable runtime.error as advisory rather than a terminal; preserves the shared event protocol.',
-  },
-  {
-    file: 'src-ui/src/hooks/useChatInput.ts',
-    expression: "activeChatState?.provider === 'acp'",
-    count: 1,
-    reason:
-      'Applies ACP wire model-selection restrictions; not a durability capability or fallback.',
   },
 ];
 

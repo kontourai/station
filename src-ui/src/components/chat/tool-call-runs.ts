@@ -1,4 +1,8 @@
-import type { HtmlReplyReference } from '@kontourai/station-contracts/html-reply';
+import {
+  HTML_REPLY_PUBLICATION_ID_PREFIX,
+  type HtmlReplyReference,
+} from '@kontourai/station-contracts/html-reply';
+import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
 import { htmlReplyReference } from './html-reply-reference';
 import { transcriptMcpToolRef } from './mcp-app-tool-ref';
 
@@ -19,12 +23,15 @@ import { transcriptMcpToolRef } from './mcp-app-tool-ref';
  */
 
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
+import { isAppearanceProposalCall } from './appearance-proposal-result';
 import { claudeArtifactLinkOf } from './claude-artifact-link';
 
 /** A call shown as its own row rather than one line of a collapsed run. */
 function hasOwnCallRow(part: ToolCallLike): boolean {
   return (
-    hasStationControlCallRow(part) || claudeArtifactLinkOf(part) !== undefined
+    hasStationControlCallRow(part) ||
+    isAppearanceProposalCall(part) ||
+    claudeArtifactLinkOf(part) !== undefined
   );
 }
 
@@ -32,7 +39,8 @@ function hasOwnCallRow(part: ToolCallLike): boolean {
 function isArtifactRun(block: { calls: { part: ToolCallLike }[] }): boolean {
   return (
     block.calls.length === 1 &&
-    claudeArtifactLinkOf(block.calls[0]!.part) !== undefined
+    (claudeArtifactLinkOf(block.calls[0]!.part) !== undefined ||
+      isAppearanceProposalCall(block.calls[0]!.part))
   );
 }
 
@@ -104,12 +112,29 @@ function buildRun<P extends ToolCallLike>(
   return { type: 'tool-call-run', key, calls };
 }
 
+/**
+ * `run` without the calls in `drawnElsewhere` (a call that spawned child work
+ * is drawn as that child's card). Same object when nothing is dropped, so a
+ * memoised batch keeps its identity.
+ */
+export function runWithoutCalls<P extends ToolCallLike>(
+  run: ToolCallRun<P>,
+  drawnElsewhere: ReadonlySet<string>,
+): ToolCallRun<P> {
+  if (drawnElsewhere.size === 0) return run;
+  const calls = run.calls.filter(
+    ({ part }) => !part.toolCallId || !drawnElsewhere.has(part.toolCallId),
+  );
+  return calls.length === run.calls.length ? run : { ...run, calls };
+}
+
 /** Adjacent tools and visible reasoning share an activity run. Prose, artifacts
  * and requests keep their own rows. Reasoning without a tool stays standalone. */
 export function splitToolCallRuns<P extends ToolCallLike>(
   parts: P[] | undefined | null,
   appTools: ReadonlySet<string> = new Set(),
   showReasoning = true,
+  anchoredCallIds: ReadonlySet<string> = new Set(),
 ): RunBlock<P>[] {
   if (!parts || parts.length === 0) return [];
 
@@ -157,24 +182,29 @@ export function splitToolCallRuns<P extends ToolCallLike>(
       isToolCallPart(part) &&
       !appTools.has(transcriptMcpToolRef(part) ?? '')
     ) {
-      pending.push({ part, index });
+      const previous = pending.at(-1)?.part.toolCallId;
+      const anchored = anchoredCallIds.has(part.toolCallId ?? '');
+      if (pending.length && anchored !== anchoredCallIds.has(previous ?? ''))
+        flushRun();
       const name = part.toolName ?? part.name ?? part.type;
+      const reference =
+        stationControlToolName(name) === 'html_render'
+          ? (htmlReplyReference(part) ??
+            htmlReplyReference(part.output ?? part.result))
+          : undefined;
       if (
-        /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/.test(
-          name,
-        )
-      ) {
-        const reference =
-          htmlReplyReference(part) ??
-          htmlReplyReference(part.output ?? part.result);
-        if (reference) {
-          flushRun();
-          blocks.push({
-            type: 'html-reply',
-            key: `html-reply:${part.toolCallId ?? index}:${reference.pageId}`,
-            reference,
-          });
-        }
+        !reference ||
+        part.toolCallId !==
+          `${HTML_REPLY_PUBLICATION_ID_PREFIX}${reference.pageId}`
+      )
+        pending.push({ part, index });
+      if (reference) {
+        flushRun();
+        blocks.push({
+          type: 'html-reply',
+          key: `html-reply:${part.toolCallId ?? index}:${reference.pageId}`,
+          reference,
+        });
       }
       return;
     }
@@ -198,7 +228,7 @@ function isFoldableProse(part: ToolCallLike): boolean {
 }
 
 /**
- * The phone transcript's shape for a SETTLED assistant turn: every tool call
+ * The transcript's shape for a settled assistant turn: every tool call
  * from the first to the last — and the narration between them — becomes ONE
  * run, placed where the first call was. Text after the last call (the
  * outcome) and text before the first (the intent) stay as they were.
@@ -214,10 +244,38 @@ export function foldTurnWork<P extends ToolCallLike>(
   parts: P[] | undefined | null,
   appTools: ReadonlySet<string> = new Set(),
   showReasoning = true,
+  anchoredCallIds: ReadonlySet<string> = new Set(),
 ): RunBlock<P>[] {
-  const blocks = splitToolCallRuns(parts, appTools, showReasoning);
-  if (!parts) return blocks;
-  if (blocks.some((block) => block.type === 'html-reply')) return blocks;
+  const blocks = splitToolCallRuns(
+    parts,
+    appTools,
+    showReasoning,
+    anchoredCallIds,
+  );
+  const folded: RunBlock<P>[] = [];
+  let start = 0;
+  for (const [index, block] of blocks.entries()) {
+    const childRow =
+      block.type === 'tool-call-run' &&
+      block.calls.some(
+        ({ part }) => part.toolCallId && anchoredCallIds.has(part.toolCallId),
+      );
+    if (
+      !childRow &&
+      block.type !== 'html-reply' &&
+      !(block.type === 'content-part' && isToolCallPart(block.part))
+    )
+      continue;
+    folded.push(...foldToolRuns(blocks.slice(start, index), childRow), block);
+    start = index + 1;
+  }
+  return [...folded, ...foldToolRuns(blocks.slice(start))];
+}
+
+function foldToolRuns<P extends ToolCallLike>(
+  blocks: RunBlock<P>[],
+  followedByChild = false,
+): RunBlock<P>[] {
   const runCount = blocks.filter((b) => b.type === 'tool-call-run').length;
   if (runCount < 2) return blocks;
 
@@ -236,7 +294,10 @@ export function foldTurnWork<P extends ToolCallLike>(
     } else if (block.type === 'tool-call-run') {
       calls.push(...block.calls);
       interludes.push(...(block.interludes ?? []));
-    } else if (block.type === 'content-part' && isFoldableProse(block.part)) {
+    } else if (
+      block.type === 'content-part' &&
+      (block.part.type === 'reasoning' || isFoldableProse(block.part))
+    ) {
       interludes.push({ part: block.part, index: block.index });
     } else {
       kept.push(block);
@@ -260,7 +321,7 @@ export function foldTurnWork<P extends ToolCallLike>(
     lastProse -= 1;
   }
   const lastWords =
-    !hasOutcome && lastProse >= 0
+    !followedByChild && !hasOutcome && lastProse >= 0
       ? interludes.splice(lastProse, 1)[0]
       : undefined;
   if (lastWords) {

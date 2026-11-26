@@ -1,0 +1,7 @@
+{
+  "revision": "92b391b81dbf4ca101c22dc7dee4134074cfcd9e",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Refresh inbox no longer exists; the request for fresh observations is the inbox's Retry on a failed read (ChatDockInboxPanel.tsx) or Resync on the conversation.","inputs":["docs/user/concepts.md"]}
+  ]
+}

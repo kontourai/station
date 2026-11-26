@@ -17,8 +17,8 @@ import { describeStationFailure } from '../../utils/stationFailure';
  * 2. **WHERE.** The chapters rendered as fixed bottom-right cards at
  *    `--layer-notice`, on every route, above modal scrims and the command
  *    palette. This renders inside Home (`HomeView`) and nowhere else, as a
- *    `ResponsiveDialogSurface` — the same chrome the New Project modal uses,
- *    at `--layer-dialog`, with its scrim, focus trap and Escape handling.
+ *    shared `Dialog` — the same chrome as Station's other dialogs, at
+ *    `--layer-dialog`, with its scrim, focus trap and Escape handling.
  *    Leaving Home ends the render; there is nothing left to follow the user.
  *
  * 3. **HOW IT ENDS.** "Not now" is a decision and is written down, so the
@@ -43,12 +43,9 @@ import { useManagedRemoteClientsLimit } from '../../hooks/useManagedRemoteClient
 import { useSystemStatus } from '../../hooks/useSystemStatus';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { Button } from '../Button';
+import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import { PageCallout } from '../PageCallout';
-import {
-  ResponsiveDialogHeader,
-  ResponsiveDialogSurface,
-} from '../ResponsiveDialogSurface';
 import { SkeletonBlock } from '../state';
 import {
   dismissUsageTelemetryDisclosure,
@@ -128,9 +125,9 @@ export function firstRunStepCounterLabel(
 
 const STEP_TITLES: Record<ChapterStep, string> = {
   disclosure: 'Usage sharing',
-  engines: 'Which agents do you use?',
+  engines: 'Which engines do you use?',
   'engine-role': 'Choose what powers Station',
-  'about-you': 'Two questions, and the next answer is tuned to you',
+  'about-you': 'About you',
 };
 
 /**
@@ -145,16 +142,18 @@ function FirstRunHomeCard({ onOpen }: { onOpen: () => void }) {
   return (
     <PageCallout
       calloutId="first-run-setup"
-      ariaLabel="Personalize Station"
+      // PageCallout renders its title as a paragraph, not a heading, so the
+      // region still needs its own accessible name.
+      ariaLabel="Finish setup"
       data-testid="first-run-home-card"
-      title="Personalize Station"
+      title="Finish setup"
       action={
         <Button variant="primary" onClick={onOpen}>
-          Personalize Station
+          Open setup
         </Button>
       }
     >
-      Optional preferences and AI app management. Return whenever you need them.
+      Usage sharing, engines and preferences. Optional.
     </PageCallout>
   );
 }
@@ -164,7 +163,6 @@ export function FirstRunHomeChapter({
 }: {
   intentFirst?: boolean;
 }) {
-  const explicitSetup = useRef(false);
   // #4519: under the managed limit the "Connect another device" exit is off.
   const pairingLimit = useManagedRemoteClientsLimit();
   const config = useConfig();
@@ -185,7 +183,7 @@ export function FirstRunHomeChapter({
   // before the network says anything, and a restored query has data and is
   // therefore never "loading". Reading that as settled opened the chapter on
   // last session's "chat is ready" and left this session's launcher rendering
-  // underneath its scrim, with "Continue Without Setup" unclickable — caught
+  // underneath its scrim, with the launcher's dismiss control unclickable — caught
   // by the first-run E2E bucket after main's merge. It still goes false on an
   // ERROR, so a status query that fails lets the run open rather than
   // stranding it, which is the RT-02 failure mode.
@@ -302,7 +300,7 @@ export function FirstRunHomeChapter({
     // RESTORED answer from the previous session. Firing on either answered the
     // launcher question before it had been asked for this session: the chapter
     // opened, and the launcher then rendered UNDER its scrim, which made
-    // "Continue Without Setup" unclickable (caught by the first-run E2E
+    // the launcher's dismiss control unclickable (caught by the first-run E2E
     // bucket, twice — once for each of those two cases).
     if (systemStatusUnconfirmed) return;
     // AND ONLY ONCE THE DISCLOSURE QUERY HAS ANSWERED. It decides whether the
@@ -311,19 +309,14 @@ export function FirstRunHomeChapter({
     // wait is bounded by the query's own retry budget (~10s of 503s on a cold
     // boot, then an error, which answers as "nothing to disclose").
     if (!disclosureSettled) return;
-    if (intentFirst && !disclosureOutstanding) return;
+    if (intentFirst) return;
     autoOpened.current = true;
-    if (intentFirst) {
-      setSteps(['disclosure']);
-      setStep('disclosure');
-      setOpen(true);
-    } else openChapter();
+    openChapter();
   }, [
     offer.autoOpen,
     launcherWouldShow,
     configSettled,
     intentFirst,
-    disclosureOutstanding,
     systemStatusUnconfirmed,
     disclosureSettled,
     progress.deferred,
@@ -507,34 +500,27 @@ export function FirstRunHomeChapter({
     <>
       <FirstRunHomeCard
         onOpen={() => {
-          explicitSetup.current = true;
           openChapter();
         }}
       />
       {open ? (
-        <ResponsiveDialogSurface
-          layer="dialog"
+        <Dialog
+          title={
+            <span id="first-run-chapter-title">
+              {step === 'engine-role'
+                ? (roleTitle ?? STEP_TITLES['engine-role'])
+                : STEP_TITLES[step]}
+            </span>
+          }
+          subtitle={firstRunStepCounterLabel(steps, step)}
+          closeLabel="Close setup"
+          onClose={defer}
           initialFocusRef={
             step === 'disclosure' ? disclosureChoiceRef : undefined
           }
           initialFocusPolicy={step === 'disclosure' ? 'always' : 'panel'}
-          onClose={defer}
-          ariaLabelledBy="first-run-chapter-title"
-          overlayClassName="first-run-chapter__overlay"
           panelClassName="first-run-chapter"
         >
-          <ResponsiveDialogHeader
-            title={
-              <span id="first-run-chapter-title">
-                {step === 'engine-role'
-                  ? (roleTitle ?? STEP_TITLES['engine-role'])
-                  : STEP_TITLES[step]}
-              </span>
-            }
-            subtitle={firstRunStepCounterLabel(steps, step)}
-            closeLabel="Close setup"
-            onClose={defer}
-          />
           {/* #1582 L2: focus, when a step swaps.
               `ResponsiveDialogSurface` focuses its panel on MOUNT and only
               then; the panel stays mounted across steps, so activating the
@@ -553,10 +539,6 @@ export function FirstRunHomeChapter({
                 dismissNoticeRef={disclosureDismissRef}
                 initialChoiceRef={disclosureChoiceRef}
                 onAdvance={() => {
-                  if (intentFirst && !explicitSetup.current) {
-                    defer();
-                    return;
-                  }
                   firstRunStore.enterChapter('engines');
                   setStep('engines');
                 }}
@@ -580,13 +562,12 @@ export function FirstRunHomeChapter({
                 componentProps={{
                   variant: 'step' as const,
                   // The step's title, or the picker resolves its own default
-                  // ("Choose what powers your default assistant") and reports
+                  // ("Choose the engine for the Station agent") and reports
                   // THAT up — the shared header then prints a name for this
                   // step that the run's own table does not have. Caught in the
                   // live screenshot of the rebuilt tree.
                   title: STEP_TITLES['engine-role'],
-                  description:
-                    'Choose the engine that runs the Station agent. Station Control and Station Docs stay attached to the role.',
+                  description: 'Choose the engine that runs the Station agent.',
                   onChosen: continueToAboutYou,
                   onDismiss: continueToAboutYou,
                   // The picker answers a different question when nothing on
@@ -636,7 +617,7 @@ export function FirstRunHomeChapter({
               />
             )}
           </div>
-        </ResponsiveDialogSurface>
+        </Dialog>
       ) : null}
     </>
   );

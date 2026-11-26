@@ -31,9 +31,23 @@ export interface RelayManagementView {
   readonly keyId: string;
   readonly setupLinks: {
     readonly stable: string;
-    readonly beta: string;
     readonly nightly: string;
   };
   readonly approvals: readonly RelaySetupApproval[];
   readonly pendingDevices: readonly RelayPendingDevice[];
+  /** Read-only legacy records held outside the active channel/action model. */
+  readonly retiredRecords?: {
+    readonly approvals: number;
+    readonly pendingDevices: number;
+  };
 }
+
+/** Protocol-1 wire compatibility only; the deprecated link is public route intent, not enrollment authority. */
+export type RelayManagementWireView = Omit<
+  RelayManagementView,
+  'setupLinks' | 'retiredRecords'
+> & {
+  readonly setupLinks: RelayManagementView['setupLinks'] & {
+    readonly beta: string;
+  };
+};

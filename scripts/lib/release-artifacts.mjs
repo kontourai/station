@@ -1,4 +1,6 @@
-import { RELEASE_TAG_PATTERN, releaseVariants } from './release-variants.mjs';
+import { validateStoreAuthority } from '../promote-store-release.mjs';
+import { parseReleaseTag } from './release-tag.mjs';
+import { releaseVariants } from './release-variants.mjs';
 
 export { releaseVariants } from './release-variants.mjs';
 
@@ -29,6 +31,12 @@ import {
   validateSbomBytes,
   validateSbomDescriptorSet,
 } from './release-sboms.mjs';
+import {
+  assertWindowsReleaseSigningReceipt,
+  windowsPlatformSigningClaim,
+  windowsPlatformSigningClaims,
+  windowsSigningReceiptAsset,
+} from './windows-release-signing.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 const CHECKSUM = /^[0-9a-f]{64}$/;
@@ -73,8 +81,18 @@ const DEFAULT_MANIFEST_KEYS = new URL(
   import.meta.url,
 );
 
+/**
+ * Every tagged release, candidate or final, is the Stable ring (#4929).
+ * Throws for a tag that is not a release tag.
+ */
 function tagChannel(tag) {
-  return tag.includes('-preview.') ? 'preview' : 'stable';
+  parseReleaseTag(tag);
+  return 'stable';
+}
+
+/** The version the release's bytes carry: the tag's bare base version. */
+function tagVersion(tag) {
+  return parseReleaseTag(tag).baseVersion;
 }
 
 /**
@@ -207,6 +225,16 @@ export function verifyTauriUpdaterSignature({
 function ancillaryAssets(tag) {
   return [
     { name: 'station-updater-public-key.txt', role: 'updater-public-key' },
+    // #3591: records whether the Windows MSI carries Authenticode.
+    { name: windowsSigningReceiptAsset(tag), role: 'platform-signing-receipt' },
+    ...(parseReleaseTag(tag).kind === 'rc'
+      ? [
+          {
+            name: 'station-release-store-authority.json',
+            role: 'store-promotion-authority',
+          },
+        ]
+      : []),
     {
       name: 'station-portable.tar.gz.sha256',
       role: 'portable-checksum',
@@ -411,7 +439,11 @@ export function createReleaseInventory({
   containerDescriptor,
   dependencyLifecycle,
 }) {
-  if (!RELEASE_TAG_PATTERN.test(tag)) fail(`invalid tag ${tag}`);
+  try {
+    parseReleaseTag(tag);
+  } catch {
+    fail(`invalid tag ${tag}`);
+  }
   if (!SHA.test(sourceSha)) fail(`invalid source SHA ${sourceSha}`);
   const descriptorPath =
     containerDescriptor ?? join(assetsDir, 'station-container-release.json');
@@ -424,7 +456,7 @@ export function createReleaseInventory({
   const inventory = {
     schemaVersion: 2,
     tag,
-    version: tag.slice(1),
+    version: tagVersion(tag),
     sourceSha,
     channel: tagChannel(tag),
     generatedAt,
@@ -433,6 +465,14 @@ export function createReleaseInventory({
     variants: releaseVariants(tag).map(({ files, ...variant }) => variant),
     assets: collectAssets(tag, assetsDir),
   };
+  const windowsClaim = windowsPlatformSigningClaim(
+    readWindowsSigningReceipt(inventory, assetsDir),
+  );
+  inventory.variants = inventory.variants.map((variant) =>
+    variant.id === WINDOWS_VARIANT
+      ? { ...variant, platformSigning: windowsClaim }
+      : variant,
+  );
   inventory.sboms = readSbomDescriptors(inventory, assetsDir);
   validateReleaseInventory(inventory, { assetsDir, updaterPublicKey });
   return inventory;
@@ -457,6 +497,66 @@ function validateSchema(inventory) {
   fail(`schema validation failed: ${details || 'unknown schema error'}`);
 }
 
+const WINDOWS_VARIANT = 'windows-x86_64';
+
+function sameClaim(left, right) {
+  return left?.state === right.state && left?.proof === right.proof;
+}
+
+/**
+ * The signing receipt release.yml's desktop-windows job staged, bound to the
+ * inventory's Windows MSI checksum (validateAssets ties that to the bytes).
+ */
+function readWindowsSigningReceipt(inventory, assetsDir) {
+  const file = regularFile(
+    join(assetsDir, windowsSigningReceiptAsset(inventory.tag)),
+    'Windows signing receipt',
+  );
+  const installer = inventory.assets.find(
+    (asset) => asset.variantId === WINDOWS_VARIANT && asset.role === 'primary',
+  );
+  try {
+    return assertWindowsReleaseSigningReceipt(
+      JSON.parse(readFileSync(file, 'utf8')),
+      {
+        tag: inventory.tag,
+        sourceSha: inventory.sourceSha,
+        installerSha256: installer?.sha256,
+      },
+    );
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * The draft release body. It discloses an unsigned Windows MSI from the
+ * inventory claim, so the release page states what the receipt recorded.
+ */
+export function releaseDraftNotes(inventory) {
+  const lines = [
+    'Validated release inventory; publish through the protected Release: Publish workflow.',
+  ];
+  const windows = inventory.variants.find(({ id }) => id === WINDOWS_VARIANT);
+  if (windows?.platformSigning.state !== 'signed')
+    lines.push(
+      '',
+      `The Windows installer (\`station-${inventory.tag}-windows-x86_64.msi\`) is not Authenticode-signed yet (#3591); \`${windowsSigningReceiptAsset(inventory.tag)}\` records this. Microsoft Defender SmartScreen shows "Windows protected your PC" on first run: choose **More info**, then **Run anyway**. In-app updates are still verified with Station's updater signing key.`,
+    );
+  return `${lines.join('\n')}\n`;
+}
+
+/** The Windows claim must be the one its receipt records, never assumed. */
+function validateWindowsSigning(inventory, assetsDir) {
+  if (!assetsDir) return;
+  const claim = windowsPlatformSigningClaim(
+    readWindowsSigningReceipt(inventory, assetsDir),
+  );
+  const variant = inventory.variants.find(({ id }) => id === WINDOWS_VARIANT);
+  if (!sameClaim(variant?.platformSigning, claim))
+    fail(`${WINDOWS_VARIANT} platformSigning differs from its signing receipt`);
+}
+
 function validateVariants(inventory) {
   const expected = releaseVariants(inventory.tag);
   const expectedVariants = new Map(
@@ -479,16 +579,26 @@ function validateVariants(inventory) {
       if (variant[key] !== expectedVariant[key])
         fail(`${variant.id} has an invalid ${key}`);
     }
+    // Owner decision 2026-11-13 (#3591): Windows may ship without
+    // Authenticode; validateWindowsSigning binds the claim to its receipt.
+    const unsignedWindows =
+      variant.id === WINDOWS_VARIANT &&
+      windowsPlatformSigningClaims().some(
+        (claim) =>
+          claim.state === 'unsigned' &&
+          sameClaim(variant.platformSigning, claim),
+      );
     for (const claim of ['platformSigning', 'updaterSigning']) {
-      if (
-        variant[claim].state !== expectedVariant[claim].state ||
-        variant[claim].proof !== expectedVariant[claim].proof
-      )
+      const allowed =
+        claim === 'platformSigning' && variant.id === WINDOWS_VARIANT
+          ? windowsPlatformSigningClaims()
+          : [expectedVariant[claim]];
+      if (!allowed.some((expected) => sameClaim(variant[claim], expected)))
         fail(`${variant.id} makes an invalid ${claim} claim`);
     }
     if (
       variant.distribution === 'distributable' &&
-      (variant.platformSigning.state === 'unsigned' ||
+      ((variant.platformSigning.state === 'unsigned' && !unsignedWindows) ||
         variant.updaterSigning.state === 'unsigned')
     )
       fail(`${variant.id} is unsigned but distributable`);
@@ -608,7 +718,9 @@ function validateSidecars(inventory, assetsDir) {
       JSON.stringify(expectedKeys) ||
     ring.schemaVersion !== 1 ||
     ring.channel !== inventory.channel ||
-    ring.prerelease !== (inventory.channel === 'preview') ||
+    // `prerelease` is a property of the ring, and Stable is not one; a
+    // candidate is still the Stable ring (#4929).
+    ring.prerelease !== false ||
     ring.ref !== inventory.tag ||
     ring.sha !== inventory.sourceSha ||
     ring.createdAt !== inventory.generatedAt ||
@@ -654,7 +766,10 @@ function validateHostStream(inventory, assetsDir, manifestKeys) {
   if (
     payload.channel !== inventory.channel ||
     payload.version !== inventory.version ||
-    payload.releaseTag !== inventory.tag ||
+    // The payload names the release by its base version (the shared payload
+    // contract binds releaseTag to v<version>); the artifact URLs below name
+    // where the bytes live, which is this release's tag (#4929).
+    payload.releaseTag !== `v${inventory.version}` ||
     payload.sourceSha !== inventory.sourceSha
   )
     fail('host manifest payload does not name this release');
@@ -724,12 +839,9 @@ export function validateReleaseInventory(
   { assetsDir, updaterPublicKey, containerDescriptor, manifestKeys } = {},
 ) {
   validateSchema(inventory);
-  if (inventory.version !== inventory.tag.slice(1))
+  if (inventory.version !== tagVersion(inventory.tag))
     fail('version does not match tag');
-  if (
-    inventory.channel !==
-    (inventory.tag.includes('-preview.') ? 'preview' : 'stable')
-  )
+  if (inventory.channel !== tagChannel(inventory.tag))
     fail('channel does not match tag');
   validateVariants(inventory);
   validateAssets(inventory, assetsDir);
@@ -755,6 +867,31 @@ export function validateReleaseInventory(
     }
   }
   validateSidecars(inventory, assetsDir);
+  validateWindowsSigning(inventory, assetsDir);
+  if (assetsDir && parseReleaseTag(inventory.tag).kind === 'rc') {
+    const authority = validateStoreAuthority(
+      JSON.parse(
+        readFileSync(
+          join(assetsDir, 'station-release-store-authority.json'),
+          'utf8',
+        ),
+      ),
+    );
+    const asset = (suffix) =>
+      inventory.assets.find(
+        ({ name }) => name === `station-${inventory.tag}-${suffix}`,
+      )?.sha256;
+    if (
+      !authority.android ||
+      !authority.ios ||
+      authority.producerTag !== inventory.tag ||
+      authority.sourceSha !== inventory.sourceSha ||
+      authority.version !== inventory.version ||
+      authority.android.aabSha256 !== asset('android-universal.aab') ||
+      authority.ios.ipaSha256 !== asset('ios-device.ipa')
+    )
+      fail('store promotion authority does not bind this candidate');
+  }
   validateHostStream(inventory, assetsDir, manifestKeys);
   validateContainer(inventory, assetsDir, containerDescriptor);
   validateUpdaterPairs(inventory, assetsDir, updaterPublicKey);
@@ -787,13 +924,14 @@ export function readInventory(file) {
 export function assertOnlyExpectedAssets(
   assetsDir,
   tag,
-  { allowSignedHostManifest = false } = {},
+  { allowSignedHostManifest = false, allowPromotionReceipt = false } = {},
 ) {
   const allowed = new Set(expectedAssets(tag).keys());
   allowed.add('station-release-inventory.json');
   allowed.add('station-release-checksums.txt');
   // Attached by publish-release.yml; validateReleaseInventory verifies it.
   if (allowSignedHostManifest) allowed.add(signedHostManifestAsset(tag));
+  if (allowPromotionReceipt) allowed.add('station-release-promotion.json');
   for (const entry of readdirSync(assetsDir, { withFileTypes: true })) {
     if (!allowed.has(entry.name)) fail(`unexpected asset ${entry.name}`);
     if (entry.isSymbolicLink() || !entry.isFile())

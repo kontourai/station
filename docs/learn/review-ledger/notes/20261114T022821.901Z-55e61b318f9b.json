@@ -1,0 +1,11 @@
+{
+  "revision": "06146aea8361654314ab67c265c8c388c3f38c25",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"docs/guides/testing.md delta: one added sentence in the Windows portable floor paragraph naming the release Authenticode observation suite. This file only routes to testing.md for lanes and test guidance; its routes and rules are unaffected and still accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"docs/guides/testing.md delta: one added sentence in the Windows portable floor paragraph naming the release Authenticode observation suite. This file only routes to testing.md for lanes and test guidance; its routes and rules are unaffected and still accurate.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"docs/guides/testing.md delta: one added sentence in the Windows portable floor paragraph naming the release Authenticode observation suite. This file only routes to testing.md for lanes and test guidance; its routes and rules are unaffected and still accurate.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

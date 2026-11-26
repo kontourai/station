@@ -26,6 +26,11 @@ import type { ParsedCoreArgs } from './core-api.js';
  */
 const NO_REQUEST_DEADLINE = { timeoutMs: null } as const;
 
+/**
+ * Lenient on purpose, unlike `optionalValueFlag` in `core-api.ts`: the
+ * documented `--root <id>` and `--project <slug>` forms parse as a bare flag
+ * plus a positional, and the callers below fall back to that positional.
+ */
 function optionalStringFlag(
   parsed: ParsedCoreArgs,
   flag: string,

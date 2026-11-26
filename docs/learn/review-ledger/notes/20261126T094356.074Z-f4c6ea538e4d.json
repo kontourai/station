@@ -1,0 +1,7 @@
+{
+  "revision": "5771ec3eb643fd2809e344e152ee5efa770e2486",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Updated the NewChatAction placement sentence for #5592: the open dock now shows the start composer itself and keeps NewChatAction on the card only while no Agent can start a chat. Mobile half-sheet behaviour checked against the dock draft tests.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

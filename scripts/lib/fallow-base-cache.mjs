@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { homedir as osHomedir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
 
 /**
  * Where `fallow audit` keeps its base snapshot for one run (#2529).
@@ -12,9 +12,12 @@ import { join } from 'node:path';
  * merge-base differs, so the system temp directory filled a 926 GB disk
  * (648 checkouts, ~43 GB, in a day).
  *
- * Each run therefore gets a private temp directory under
- * `<Station temp root>/fallow/`, removed when the run ends. Nothing is shared
- * between runs. Sharing would need to know which checkouts are in use, and
+ * Each run therefore gets a private directory under the fallow cache root
+ * ({@link resolveFallowCacheRoot}), removed when the run ends. The root is
+ * disk-backed on purpose (#5080): where `/tmp` is tmpfs, a checkout under
+ * `os.tmpdir()` is RAM charged to the caller's memory cgroup, about 1.2 GiB
+ * on the host whose Station engine was OOM-killed beside a 5 GiB audit.
+ * Nothing is shared between runs. Sharing would need to know which checkouts are in use, and
  * fallow cannot say: it writes those stamps once, at creation, never on reuse,
  * and `.lock` is a plain file rather than an OS lock. What sharing would save
  * is one checkout per audit whose base fallow's per-worktree analysis cache
@@ -23,29 +26,37 @@ import { join } from 'node:path';
  * nine seconds here.
  *
  * A run that is killed before its `finally` leaves its directory behind. Runs
- * are bounded at two minutes (`runFallowAnalysis`), so a run directory older
+ * are bounded at four minutes (`runFallowAnalysis`), so a run directory older
  * than {@link FALLOW_RUN_DIRECTORY_MAX_AGE_MS} belongs to no live run, and the
  * next run removes it. That rests on the bound being enforced: if the audit
  * script itself dies and the fallow child it detached then hangs for over an
  * hour, a later run would remove the hung child's directory.
  */
 
-/** Older than this, a run directory belongs to no live run (runs are bounded at two minutes). */
+/** Older than this, a run directory belongs to no live run (runs are bounded at four minutes). */
 const FALLOW_RUN_DIRECTORY_MAX_AGE_MS = 60 * 60 * 1000;
 
 const RUN_DIRECTORY_PREFIX = 'run-';
 
+/** Overrides the directory that holds run directories. */
+const FALLOW_CACHE_DIR_ENV = 'STATION_FALLOW_CACHE_DIR';
+
 /**
- * The directory that holds run directories. Mirrors `stationTempRoot()` in
- * packages/shared/src/temp-dir.ts (`STATION_TEMP_ROOT`, else
- * `<os tmpdir>/station`), which a script cannot import.
+ * The directory that holds run directories: `STATION_FALLOW_CACHE_DIR`, else
+ * `$XDG_CACHE_HOME/station/fallow` (when absolute, as the XDG spec requires),
+ * else `~/.cache/station/fallow`. Never `os.tmpdir()` by default, which is RAM
+ * on a tmpfs host (#5080).
+ *
+ * @param {{ env?: NodeJS.ProcessEnv, homedir?: string }} [options]
  */
-function fallowTempRoot(env = process.env) {
-  const root =
-    env.STATION_TEMP_ROOT && env.STATION_TEMP_ROOT.length > 0
-      ? env.STATION_TEMP_ROOT
-      : join(tmpdir(), 'station');
-  return join(root, 'fallow');
+export function resolveFallowCacheRoot({
+  env = process.env,
+  homedir = osHomedir(),
+} = {}) {
+  if (env[FALLOW_CACHE_DIR_ENV]) return env[FALLOW_CACHE_DIR_ENV];
+  const xdg = env.XDG_CACHE_HOME;
+  const cacheHome = xdg && isAbsolute(xdg) ? xdg : join(homedir, '.cache');
+  return join(cacheHome, 'station', 'fallow');
 }
 
 /** The environment a fallow child runs with: every temp variable points at its run directory. */
@@ -84,12 +95,13 @@ export function removeAbandonedFallowRuns(
 }
 
 /**
- * Create this run's private temp directory (after clearing abandoned ones).
+ * Create this run's private directory (after clearing abandoned ones).
  * Returns it and a `release` that removes it; call `release` when fallow exits.
  */
 export function prepareFallowRun(env = process.env) {
-  const root = fallowTempRoot(env);
-  mkdirSync(root, { recursive: true });
+  const root = resolveFallowCacheRoot({ env });
+  // Owner-only: a run directory holds a full checkout of the base commit.
+  mkdirSync(root, { recursive: true, mode: 0o700 });
   removeAbandonedFallowRuns(root);
   const directory = mkdtempSync(join(root, RUN_DIRECTORY_PREFIX));
   return {

@@ -65,12 +65,19 @@ vi.mock('@kontourai/station-sdk', async () => ({
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS: 60_000,
 }));
 
+import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import {
+  raiseSequencedLiveFloor,
   recordSequencedLiveEvent,
   resetSequencedLiveEventsForTests,
 } from '../hooks/orchestration/sequencedLiveEvents';
+import {
+  clearTranscriptWindowCache,
+  readTranscriptWindow,
+  transcriptWindowCacheKey,
+} from '../hooks/orchestration/transcriptWindowCache';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
@@ -95,6 +102,161 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('loaded pages are history, while arrivals in the open chat keep entry motion', async () => {
+    const apiBase = 'http://entry-motion.test';
+    const first = event('e3', 'turn.started', {
+      turnId: 'existing',
+      prompt: 'Existing question',
+    });
+    const completed = event('e4', 'turn.completed', {
+      turnId: 'existing',
+      outputText: 'Existing answer',
+    });
+    const incoming = event('e5', 'turn.started', {
+      turnId: 'arriving',
+      prompt: 'New question',
+    });
+    const answer = event('e6', 'turn.completed', {
+      turnId: 'arriving',
+      outputText: 'New answer',
+    });
+    const publish = (frame: ReturnType<typeof event>) =>
+      recordSequencedLiveEvent(
+        apiBase,
+        frame.event as Parameters<typeof recordSequencedLiveEvent>[1],
+        frame.sequence,
+      );
+    publish(first);
+    publish(completed);
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 4,
+      hasMore: true,
+      nextCursor: 'older',
+      events: [first, completed],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript(apiBase, baseSession),
+    );
+    const isHistory = (text: string) =>
+      result.current.messages.find((message) => message.content === text)
+        ?.historyEntry === true;
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(isHistory('Existing question')).toBe(true);
+    expect(isHistory('Existing answer')).toBe(true);
+
+    act(() => {
+      publish(incoming);
+      publish(answer);
+    });
+    expect(result.current.messages.map((message) => message.content)).toEqual([
+      'Existing question',
+      'Existing answer',
+      'New question',
+      'New answer',
+    ]);
+    expect(isHistory('New question')).toBe(false);
+    expect(isHistory('New answer')).toBe(false);
+
+    const earlier = [
+      event('e1', 'turn.started', {
+        turnId: 'older',
+        prompt: 'Earlier question',
+      }),
+      event('e2', 'turn.completed', {
+        turnId: 'older',
+        outputText: 'Earlier answer',
+      }),
+    ];
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 4,
+      hasMore: false,
+      events: earlier,
+    });
+    await act(async () => result.current.loadOlder());
+    expect(isHistory('Earlier question')).toBe(true);
+    expect(isHistory('Earlier answer')).toBe(true);
+    expect(isHistory('New question')).toBe(false);
+    expect(isHistory('New answer')).toBe(false);
+
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 6,
+      hasMore: false,
+      events: [first, completed, incoming, answer],
+    });
+    await act(async () => result.current.reload());
+    expect(isHistory('New question')).toBe(false);
+    expect(isHistory('New answer')).toBe(false);
+  });
+
+  test('an open that moves the chat forward is not undone by its settled transcript', async () => {
+    const id = 'adoption-conversation';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Child adoption',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    activeChatsStore.updateChat(id, {
+      currentSessionId: 'first-child',
+      conversationOpenPending: false,
+    });
+    const session = () =>
+      ({
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[id],
+        id,
+      }) as ChatSession;
+    let readable = 'first-child';
+    let tail = readable;
+    fetchConversationWindow.mockImplementation(async () => ({
+      protocolVersion: 1,
+      conversationId: id,
+      currentSessionId: tail,
+      session: { threadId: readable },
+      events: [],
+      hasMore: false,
+      watermark: 2,
+    }));
+    const view = renderHook(
+      ({ chat }) => useActiveChatTranscript('http://station.test', chat),
+      { initialProps: { chat: session() } },
+    );
+    try {
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      activeChatsStore.updateChat(id, {
+        currentSessionId: 'second-child',
+        conversationOpenPending: false,
+      });
+      view.rerender({ chat: session() });
+      expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+        currentSessionId: 'second-child',
+        conversationOpenPending: false,
+      });
+
+      readable = 'second-child';
+      tail = 'third-child';
+      await act(async () => view.result.current.reload());
+      expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+        currentSessionId: 'second-child',
+        conversationOpenPending: false,
+      });
+
+      readable = 'third-child';
+      await act(async () => view.result.current.reload());
+      expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+        currentSessionId: 'third-child',
+        conversationOpenPending: true,
+      });
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
+  });
+
   test('a settled receiver window retains readable text across reload without feeding it into live messages', async () => {
     const station = conversationConnection('relay');
     activeChatsStore.initChat('thread-1', {
@@ -357,6 +519,190 @@ describe('useActiveChatTranscript', () => {
       expect(view.result.current.events.map((item) => item.sequence)).toEqual([
         1, 2, 3, 4, 5, 6,
       ]);
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+      resetSequencedLiveEventsForTests();
+    }
+  });
+  // Page load during a streaming turn. The window read is served at its
+  // watermark; the stream's first connect is served later, and its snapshot
+  // delivers no events: only what comes after the snapshot's cursor arrives
+  // live. Events between the two are in neither source until something
+  // re-reads the window.
+  test('a window served before the stream snapshot is re-read for the events between them', async () => {
+    const id = 'first-attach';
+    const apiBase = 'http://first-attach.test';
+    const openTurn = {
+      turnId: 'turn-attach',
+      threadId: id,
+      startedAt: '2026-09-24T00:00:00.000Z',
+    };
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'First attach',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    activeChatsStore.updateChat(id, {
+      conversationActivity: { conversationId: id, asOfSequence: 3, openTurn },
+      orchestrationTurnOpen: true,
+    });
+    const started = {
+      ...event('e1', 'turn.started', {
+        threadId: id,
+        turnId: 'turn-attach',
+        prompt: 'Question',
+      }),
+      sequence: 1,
+    };
+    const delta = (sequence: number, text: string) => ({
+      ...event(`e${sequence}`, 'content.text-delta', {
+        threadId: id,
+        turnId: 'turn-attach',
+        itemId: 'answer',
+        delta: text,
+      }),
+      sequence,
+    });
+    const answer = (view: {
+      result: { current: ReturnType<typeof useActiveChatTranscript> };
+    }) =>
+      view.result.current.messages
+        .filter((row) => row.role === 'assistant')
+        .map((row) => row.content)
+        .join('');
+    fetchWindow.mockReset();
+    fetchCapability.mockResolvedValue(true);
+    fetchConversationWindow.mockImplementation((...args: unknown[]) =>
+      fetchWindow(...args),
+    );
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 3,
+      hasMore: false,
+      events: [started, delta(2, 'A'), delta(3, 'B')],
+    });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 6,
+      hasMore: false,
+      events: [
+        started,
+        delta(2, 'A'),
+        delta(3, 'B'),
+        delta(4, 'C'),
+        delta(5, 'D'),
+        delta(6, 'E'),
+      ],
+    });
+    const session = () =>
+      ({
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[id],
+        id,
+      }) as ChatSession;
+    const view = renderHook(
+      ({ chat }) => useActiveChatTranscript(apiBase, chat),
+      { initialProps: { chat: session() } },
+    );
+    try {
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      expect(answer(view)).toBe('AB');
+      expect(fetchWindow).toHaveBeenCalledTimes(1);
+
+      // The stream's first snapshot is served at cursor 5, where this
+      // conversation's newest event also is; frame 6 then arrives live.
+      act(() => {
+        raiseSequencedLiveFloor(apiBase, 5);
+        activeChatsStore.updateChat(id, {
+          conversationActivity: {
+            conversationId: id,
+            asOfSequence: 5,
+            openTurn,
+          },
+        });
+        const live = delta(6, 'E');
+        recordSequencedLiveEvent(
+          apiBase,
+          live.event as Parameters<typeof recordSequencedLiveEvent>[1],
+          live.sequence,
+        );
+      });
+      view.rerender({ chat: session() });
+
+      await waitFor(() => expect(answer(view)).toBe('ABCDE'));
+      expect(fetchWindow).toHaveBeenCalledTimes(2);
+      // The transcript on screen is never blanked for this read.
+      expect(view.result.current.catchingUp).toBe(false);
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+      resetSequencedLiveEventsForTests();
+    }
+  });
+  // The snapshot's cursor is the Station's head; a window's watermark is its
+  // own conversation's newest event. For a conversation at rest the second is
+  // lower than the first for good, so comparing them alone would re-read, and
+  // hold, every idle conversation.
+  test('a conversation at rest below the stream snapshot cursor is neither re-read nor held', async () => {
+    const id = 'at-rest-below-snapshot';
+    const apiBase = 'http://at-rest-below-snapshot.test';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'At rest',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    activeChatsStore.updateChat(id, {
+      conversationActivity: { conversationId: id, asOfSequence: 2 },
+    });
+    fetchWindow.mockReset();
+    fetchCapability.mockResolvedValue(true);
+    fetchConversationWindow.mockImplementation((...args: unknown[]) =>
+      fetchWindow(...args),
+    );
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 2,
+      hasMore: false,
+      events: [
+        {
+          ...event('e1', 'turn.started', {
+            threadId: id,
+            turnId: 'done',
+            prompt: 'Question',
+          }),
+          sequence: 1,
+        },
+        {
+          ...event('e2', 'turn.completed', {
+            threadId: id,
+            turnId: 'done',
+            outputText: 'Answer',
+          }),
+          sequence: 2,
+        },
+      ],
+    });
+    const session = {
+      ...baseSession,
+      ...activeChatsStore.getSnapshot()[id],
+      id,
+    } as ChatSession;
+    const view = renderHook(() => useActiveChatTranscript(apiBase, session));
+    try {
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      // Other conversations took the Station's head to 5,000.
+      act(() => raiseSequencedLiveFloor(apiBase, 5_000));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(fetchWindow).toHaveBeenCalledTimes(1);
+      expect(view.result.current.catchingUp).toBe(false);
+      expect(view.result.current.messages.map((row) => row.content)).toContain(
+        'Answer',
+      );
     } finally {
       view.unmount();
       activeChatsStore.removeChat(id);
@@ -821,6 +1167,7 @@ describe('useActiveChatTranscript', () => {
         ? Promise.resolve({
             protocolVersion: 1,
             currentSessionId: 'parent-execution',
+            session: { threadId: 'parent-execution' },
             watermark: 1,
             hasMore: false,
             events: [],
@@ -872,6 +1219,7 @@ describe('useActiveChatTranscript', () => {
         resolveFork({
           protocolVersion: 1,
           currentSessionId: 'fork-execution',
+          session: { threadId: 'fork-execution' },
           watermark: 1,
           hasMore: false,
           events: [],
@@ -905,6 +1253,7 @@ describe('useActiveChatTranscript', () => {
       hasMore: false,
       events: [],
       currentSessionId: 'new-child',
+      session: { threadId: 'new-child' },
     });
     const session: ChatSession = {
       ...baseSession,
@@ -1210,6 +1559,431 @@ describe('useActiveChatTranscript', () => {
     ]);
   });
 
+  test('open naming the current child mid-read neither restarts nor unsettles the window', async () => {
+    const page = {
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      currentSessionId: 'opened-child',
+      events: [
+        event('e1', 'turn.started', {
+          turnId: 'turn-1',
+          prompt: 'kept question',
+        }),
+      ],
+    };
+    let answerFirst: (value: typeof page) => void = () => {};
+    fetchConversationWindow
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (answerFirst = resolve)),
+      )
+      .mockResolvedValue(page);
+    const session: ChatSession = {
+      ...baseSession,
+      id: 'open-lands-mid-read',
+      conversationId: 'open-lands-mid-read',
+    };
+    const { result, rerender } = renderHook(
+      ({ session }) => useActiveChatTranscript('http://station.test', session),
+      { initialProps: { session } },
+    );
+    await waitFor(() =>
+      expect(fetchConversationWindow).toHaveBeenCalledTimes(1),
+    );
+    // `/open` lands while the first window read is still in flight.
+    rerender({ session: { ...session, currentSessionId: 'opened-child' } });
+    await act(async () => answerFirst(page));
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(result.current.messages.map((message) => message.content)).toContain(
+      'kept question',
+    );
+    // Settled stays settled across a later child change too.
+    rerender({ session: { ...session, currentSessionId: 'later-child' } });
+    expect(result.current.settled).toBe(true);
+    expect(result.current.currentSessionId).toBeUndefined();
+    expect(result.current.messages.map((message) => message.content)).toContain(
+      'kept question',
+    );
+    expect(fetchConversationWindow).toHaveBeenCalledTimes(1);
+  });
+
+  describe('reopen cache', () => {
+    const NS_A = 'v1|env=a|principal=human:a|grant=operator';
+    const NS_B = 'v1|env=a|principal=human:b|grant=operator';
+    const page = (prompt: string, watermark = 1) => ({
+      protocolVersion: 1,
+      watermark,
+      hasMore: false,
+      events: [
+        event(`e${watermark}`, 'turn.started', { turnId: 'turn-1', prompt }),
+      ],
+    });
+    const chat = (id: string): ChatSession => ({
+      ...baseSession,
+      id,
+      conversationId: id,
+    });
+    function renderReader(initial: ChatSession, namespace: { value: string }) {
+      return renderHook(
+        ({ session }) =>
+          useActiveChatTranscript('http://station.test', session),
+        {
+          initialProps: { session: initial },
+          wrapper: ({ children }) =>
+            createElement(
+              AuthorityPersistenceContext.Provider,
+              {
+                value: {
+                  status: 'verified',
+                  namespace: namespace.value,
+                  observation: null,
+                } as never,
+              },
+              children,
+            ),
+        },
+      );
+    }
+    afterEach(() => clearTranscriptWindowCache());
+
+    test('switching back paints the cached rows settled, then revalidates in place', async () => {
+      const namespace = { value: NS_A };
+      fetchConversationWindow.mockImplementation(async (id: string) =>
+        id === 'reopen-a' ? page('first answer question') : page('other'),
+      );
+      const view = renderReader(chat('reopen-a'), namespace);
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      view.rerender({ session: chat('reopen-b') });
+      await waitFor(() =>
+        expect(
+          view.result.current.messages.map((message) => message.content),
+        ).toContain('other'),
+      );
+      // The revalidating read is held open: whatever paints is the cache.
+      let answer: (value: ReturnType<typeof page>) => void = () => {};
+      fetchConversationWindow.mockImplementation(
+        () => new Promise((resolve) => (answer = resolve)),
+      );
+      view.rerender({ session: chat('reopen-a') });
+      expect(view.result.current.settled).toBe(true);
+      expect(view.result.current.catchingUp).toBe(false);
+      expect(view.result.current.revalidating).toBe(true);
+      expect(
+        view.result.current.messages.map((message) => message.content),
+      ).toContain('first answer question');
+      expect(view.result.current.messages[0]?.historyEntry).toBe(true);
+      // The revalidating read is the normal one, for the same conversation.
+      await waitFor(() =>
+        expect(
+          fetchConversationWindow.mock.calls.map((call) => call[0]),
+        ).toEqual(['reopen-a', 'reopen-b', 'reopen-a']),
+      );
+      await act(async () => answer(page('revalidated question', 2)));
+      await waitFor(() => expect(view.result.current.revalidating).toBe(false));
+      expect(
+        view.result.current.messages.map((message) => message.content),
+      ).toContain('revalidated question');
+      expect(view.result.current.messages[0]?.historyEntry).toBe(true);
+      expect(view.result.current.settled).toBe(true);
+    });
+
+    test('a cached paint never names the current child over the one open bound since', async () => {
+      const namespace = { value: NS_A };
+      activeChatsStore.initChat('adopt-a', {
+        agentSlug: 'codex',
+        agentName: 'Codex',
+        title: 'Adopt',
+      });
+      activeChatsStore.updateChat('adopt-a', {
+        conversationId: 'adopt-a',
+        currentSessionId: 'child-1',
+        orchestrationSessionStarted: true,
+      });
+      const fromStore = (): ChatSession =>
+        ({
+          ...baseSession,
+          ...activeChatsStore.getSnapshot()['adopt-a'],
+          id: 'adopt-a',
+        }) as unknown as ChatSession;
+      fetchConversationWindow.mockImplementation(async (id: string) =>
+        id === 'adopt-a'
+          ? { ...page('adopt question'), currentSessionId: 'child-1' }
+          : page('other'),
+      );
+      const view = renderReader(fromStore(), namespace);
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      view.rerender({ session: chat('adopt-b') });
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      // While away, the conversation moved on and `/open` bound its new child.
+      activeChatsStore.updateChat('adopt-a', {
+        currentSessionId: 'child-2',
+        conversationOpenPending: false,
+        orchestrationTurnOpen: true,
+        openTurnId: 'live-turn',
+      });
+      let answer: (value: unknown) => void = () => {};
+      fetchConversationWindow.mockImplementation(
+        () => new Promise((resolve) => (answer = resolve)),
+      );
+      view.rerender({ session: fromStore() });
+      expect(view.result.current.revalidating).toBe(true);
+      await waitFor(() =>
+        expect(fetchConversationWindow).toHaveBeenLastCalledWith(
+          'adopt-a',
+          expect.anything(),
+          expect.anything(),
+          expect.anything(),
+        ),
+      );
+      expect(activeChatsStore.getSnapshot()['adopt-a']).toMatchObject({
+        currentSessionId: 'child-2',
+        conversationOpenPending: false,
+        orchestrationTurnOpen: true,
+        openTurnId: 'live-turn',
+      });
+      await act(async () =>
+        answer({ ...page('adopt question', 2), currentSessionId: 'child-2' }),
+      );
+      await waitFor(() => expect(view.result.current.revalidating).toBe(false));
+      expect(activeChatsStore.getSnapshot()['adopt-a']).toMatchObject({
+        currentSessionId: 'child-2',
+        conversationOpenPending: false,
+        openTurnId: 'live-turn',
+      });
+      view.unmount();
+      activeChatsStore.removeChat('adopt-a');
+    });
+
+    test.each([
+      { label: 'refused (404)', failure: { status: 404 } },
+      { label: 'offline', failure: new Error('Failed to fetch') },
+    ])(
+      'a $label re-read drops the cached rows so its failure shows, and forgets them',
+      async ({ failure }) => {
+        const namespace = { value: NS_A };
+        fetchConversationWindow.mockImplementation(async (id: string) =>
+          id === 'gone-a' ? page('cached only question') : page('other'),
+        );
+        const view = renderReader(chat('gone-a'), namespace);
+        await waitFor(() => expect(view.result.current.settled).toBe(true));
+        view.rerender({ session: chat('gone-b') });
+        await waitFor(() =>
+          expect(
+            view.result.current.messages.map((message) => message.content),
+          ).toContain('other'),
+        );
+        const key = transcriptWindowCacheKey({
+          namespace: NS_A,
+          apiBase: 'http://station.test',
+          conversationId: 'gone-a',
+        });
+        expect(readTranscriptWindow(key)).toBeDefined();
+        fetchConversationWindow.mockRejectedValue(failure);
+        view.rerender({ session: chat('gone-a') });
+        await waitFor(() => expect(view.result.current.error).toBeTruthy());
+        expect(view.result.current.messages).toEqual([]);
+        expect(view.result.current.events).toEqual([]);
+        expect(view.result.current.settled).toBe(true);
+        expect(view.result.current.revalidating).toBe(false);
+        expect(readTranscriptWindow(key)).toBeUndefined();
+      },
+    );
+
+    test('the reopen copy carries no current child, and a cached paint names none', async () => {
+      const namespace = { value: NS_A };
+      fetchConversationWindow.mockImplementation(async (id: string) =>
+        id === 'seed-a'
+          ? { ...page('seed question'), currentSessionId: 'seed-child' }
+          : page('other'),
+      );
+      const view = renderReader(chat('seed-a'), namespace);
+      await waitFor(() =>
+        expect(view.result.current.currentSessionId).toBe('seed-child'),
+      );
+      view.rerender({ session: chat('seed-b') });
+      await waitFor(() =>
+        expect(
+          view.result.current.messages.map((message) => message.content),
+        ).toContain('other'),
+      );
+      const key = transcriptWindowCacheKey({
+        namespace: NS_A,
+        apiBase: 'http://station.test',
+        conversationId: 'seed-a',
+      });
+      expect(readTranscriptWindow(key)).toBeDefined();
+      expect(readTranscriptWindow(key)).not.toHaveProperty('currentSessionId');
+      fetchConversationWindow.mockImplementation(() => new Promise(() => {}));
+      view.rerender({ session: chat('seed-a') });
+      expect(view.result.current.revalidating).toBe(true);
+      expect(
+        view.result.current.messages.map((message) => message.content),
+      ).toContain('seed question');
+      expect(view.result.current.currentSessionId).toBeUndefined();
+    });
+
+    test('a failed re-read past the live buffer shows its failure, not an endless catch-up', async () => {
+      const namespace = { value: NS_A };
+      fetchConversationWindow.mockImplementation(async (id: string) =>
+        id === 'gap-a' ? page('gap question') : page('other'),
+      );
+      const view = renderReader(chat('gap-a'), namespace);
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      view.rerender({ session: chat('gap-b') });
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      // More live events than the buffer keeps: everything up to the overflow
+      // is truncated, far past the cached window's watermark.
+      act(() => {
+        for (let sequence = 10; sequence < 10 + 2_100; sequence += 1)
+          recordSequencedLiveEvent(
+            'http://station.test',
+            {
+              eventId: `live-${sequence}`,
+              method: 'content.text-delta',
+              provider: 'codex',
+              threadId: 'elsewhere',
+              createdAt: '2026-11-01T00:00:00.000Z',
+            } as never,
+            sequence,
+          );
+      });
+      fetchConversationWindow.mockRejectedValue({ status: 404 });
+      view.rerender({ session: chat('gap-a') });
+      await waitFor(() => expect(view.result.current.error).toBeTruthy());
+      expect(view.result.current.revalidating).toBe(false);
+      expect(view.result.current.catchingUp).toBe(false);
+      expect(view.result.current.messages).toEqual([]);
+    });
+
+    // The chat's OWN live events past the buffer: the stitched tail would
+    // start mid-conversation, so a failed, empty window draws none of it.
+    test('a failed re-read past the live buffer draws none of its own truncated tail', async () => {
+      const namespace = { value: NS_A };
+      fetchConversationWindow.mockImplementation(async (id: string) =>
+        id === 'gap-a' ? page('gap question') : page('other'),
+      );
+      const view = renderReader(chat('gap-a'), namespace);
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      view.rerender({ session: chat('gap-b') });
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      act(() => {
+        for (let sequence = 10; sequence < 10 + 2_100; sequence += 1)
+          recordSequencedLiveEvent(
+            'http://station.test',
+            {
+              eventId: `own-${sequence}`,
+              method: 'turn.started',
+              provider: 'codex',
+              threadId: 'gap-a',
+              turnId: `own-turn-${sequence}`,
+              prompt: `tail prompt ${sequence}`,
+              createdAt: '2026-11-01T00:00:00.000Z',
+            } as never,
+            sequence,
+          );
+      });
+      fetchConversationWindow.mockRejectedValue({ status: 404 });
+      view.rerender({ session: chat('gap-a') });
+      await waitFor(() => expect(view.result.current.error).toBeTruthy());
+      expect(view.result.current.catchingUp).toBe(false);
+      expect(view.result.current.messages).toEqual([]);
+      // The live tail's events stay available (e.g. to answer a live
+      // approval), as they do while catching up.
+      expect(view.result.current.events.length).toBeGreaterThan(0);
+    });
+
+    test('another authority never paints a cached window for the same conversation id', async () => {
+      const namespace = { value: NS_A };
+      fetchConversationWindow.mockResolvedValue(page('authority A only'));
+      const view = renderReader(chat('shared-id'), namespace);
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      view.rerender({ session: chat('elsewhere') });
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      fetchConversationWindow.mockImplementation(() => new Promise(() => {}));
+      namespace.value = NS_B;
+      view.rerender({ session: chat('shared-id') });
+      expect(view.result.current.settled).toBe(false);
+      expect(view.result.current.revalidating).toBe(false);
+      expect(view.result.current.messages).toEqual([]);
+    });
+  });
+
+  test('a 404 the fallback could not take is read again once the reader names the conversation itself', async () => {
+    fetchConversationWindow.mockRejectedValue({ status: 404 });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [
+        event('legacy-1', 'turn.started', {
+          turnId: 'legacy-turn',
+          prompt: 'legacy after child cleared',
+        }),
+      ],
+    });
+    const session: ChatSession = {
+      ...baseSession,
+      id: 'legacy-conversation',
+      conversationId: 'legacy-conversation',
+      currentSessionId: 'legacy-child',
+    };
+    const { result, rerender } = renderHook(
+      ({ session }) => useActiveChatTranscript('http://station.test', session),
+      { initialProps: { session } },
+    );
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    expect(fetchWindow).not.toHaveBeenCalled();
+    rerender({ session: { ...session, currentSessionId: undefined } });
+    await waitFor(() =>
+      expect(
+        result.current.messages.map((message) => message.content),
+      ).toContain('legacy after child cleared'),
+    );
+    expect(fetchWindow).toHaveBeenCalledTimes(1);
+  });
+
+  test('a 404 for a read sent with the child id falls back even when the child was cleared in flight', async () => {
+    let refuse: (reason: unknown) => void = () => {};
+    fetchConversationWindow
+      .mockImplementationOnce(
+        () => new Promise((_resolve, reject) => (refuse = reject)),
+      )
+      .mockRejectedValue({ status: 404 });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [
+        event('legacy-1', 'turn.started', {
+          turnId: 'legacy-turn',
+          prompt: 'legacy cleared mid-flight',
+        }),
+      ],
+    });
+    const session: ChatSession = {
+      ...baseSession,
+      id: 'legacy-flight',
+      conversationId: 'legacy-flight',
+      currentSessionId: 'legacy-flight-child',
+    };
+    const { result, rerender } = renderHook(
+      ({ session }) => useActiveChatTranscript('http://station.test', session),
+      { initialProps: { session } },
+    );
+    await waitFor(() =>
+      expect(fetchConversationWindow).toHaveBeenCalledTimes(1),
+    );
+    // `/open` clears the child while the read sent with it is in flight.
+    rerender({ session: { ...session, currentSessionId: undefined } });
+    await act(async () => refuse({ status: 404 }));
+    await waitFor(() =>
+      expect(
+        result.current.messages.map((message) => message.content),
+      ).toContain('legacy cleared mid-flight'),
+    );
+    expect(fetchWindow).toHaveBeenCalledTimes(1);
+  });
+
   test('falls back once to a legacy single-session endpoint when an older channel lacks conversation reads', async () => {
     fetchConversationWindow.mockRejectedValueOnce({ status: 404 });
     fetchWindow.mockResolvedValueOnce({
@@ -1444,6 +2218,220 @@ describe('useActiveChatTranscript', () => {
       ['user', undefined, 'boundary-5c'],
       ['user', undefined, 'boundary-6'],
     ]);
+  });
+
+  test('a restart notice after a failed turn stays where the restart happened, above the turns that followed', async () => {
+    // Recovery publishes no abort for a turn its own `runtime.error` already
+    // ended, so the projection still holds that turn open when the notice
+    // arrives. The conversation then continues in a successor Session, and
+    // is interrupted again there.
+    const successor = 'thread-1:session:b';
+    const claude = (threadId: string, fields: Record<string, unknown>) => ({
+      provider: 'claude-code',
+      threadId,
+      ...fields,
+    });
+    const failure = (eventId: string, threadId: string, turnId: string) =>
+      event(
+        eventId,
+        'runtime.error',
+        claude(threadId, {
+          turnId,
+          message: 'Claude Code process exited with code 143',
+        }),
+      );
+    const notice = (
+      eventId: string,
+      threadId: string,
+      boundaryId: string,
+      turnId: string,
+    ) =>
+      event(
+        eventId,
+        'session.state-changed',
+        claude(threadId, {
+          sessionId: threadId,
+          from: 'running',
+          to: 'awaiting-approval',
+          reason: TURN_INTERRUPTED_MESSAGE,
+          sessionState: 'needs_input',
+          transitionReason: 'runtime_exit',
+          transitionSource: 'system_recovery',
+          interruptedTurnBoundary: {
+            boundaryId,
+            priorState: 'accepted',
+            providerTurnId: turnId,
+            ownerId: 'owner-1',
+            boundaryCreatedAt: '2026-08-09T00:00:01.000Z',
+            boundaryUpdatedAt: '2026-08-09T00:00:01.000Z',
+          },
+        }),
+      );
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 10,
+      hasMore: false,
+      sessionLineage: [{ sessionId: 'thread-1' }, { sessionId: successor }],
+      events: [
+        event(
+          'e1',
+          'turn.started',
+          claude('thread-1', { turnId: 'turn-1', prompt: 'Fix the build' }),
+        ),
+        failure('e2', 'thread-1', 'turn-1'),
+        notice('e3', 'thread-1', 'boundary-1', 'turn-1'),
+        event(
+          'e4',
+          'turn.started',
+          claude(successor, {
+            turnId: 'turn-2',
+            prompt: 'Are you still there?',
+          }),
+        ),
+        event(
+          'e5',
+          'content.text-delta',
+          claude(successor, {
+            turnId: 'turn-2',
+            delta: 'Yes, picking up again.',
+          }),
+        ),
+        event('e6', 'turn.completed', claude(successor, { turnId: 'turn-2' })),
+        event(
+          'e7',
+          'turn.started',
+          claude(successor, { turnId: 'turn-3', prompt: 'Run the tests' }),
+        ),
+        failure('e8', successor, 'turn-3'),
+        notice('e9', successor, 'boundary-3', 'turn-3'),
+        event(
+          'e10',
+          'turn.started',
+          claude(successor, { turnId: 'turn-4', prompt: 'And now?' }),
+        ),
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    const notices = (text: string | undefined) =>
+      text?.includes('[TURN_INTERRUPTED]') ? 'notice' : text;
+    expect(
+      result.current.messages.map((message) => [
+        message.role,
+        notices(message.content),
+        message.interruptedTurnBoundaryId,
+      ]),
+    ).toEqual([
+      ['user', 'Fix the build', undefined],
+      ['assistant', '⚠️ Claude Code process exited with code 143', undefined],
+      ['user', 'notice', 'boundary-1'],
+      ['user', 'Are you still there?', undefined],
+      ['assistant', 'Yes, picking up again.', undefined],
+      ['user', 'Run the tests', undefined],
+      ['assistant', '⚠️ Claude Code process exited with code 143', undefined],
+      ['user', 'notice', 'boundary-3'],
+      ['user', 'And now?', undefined],
+    ]);
+  });
+
+  test('a row without a usable time keeps its place after the row before it', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 5,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'First' }),
+        event('e2', 'turn.completed', {
+          turnId: 'turn-1',
+          outputText: 'First answer',
+        }),
+        // A marker whose date cannot be read projects with no timestamp.
+        {
+          ...event('e3', 'model.rerouted', {
+            fromModel: 'model-a',
+            toModel: 'model-b',
+            trigger: 'availability',
+            scope: 'session',
+          }),
+          event: {
+            ...event('e3', 'model.rerouted', {
+              fromModel: 'model-a',
+              toModel: 'model-b',
+              trigger: 'availability',
+              scope: 'session',
+            }).event,
+            createdAt: 'not a date',
+          },
+        },
+        event('e4', 'turn.started', { turnId: 'turn-2', prompt: 'Second' }),
+        event('e5', 'turn.completed', {
+          turnId: 'turn-2',
+          outputText: 'Second answer',
+        }),
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    const rows = result.current.messages.map((message) =>
+      message.role === 'system' || message.contentParts?.[0]?.type !== 'text'
+        ? 'marker'
+        : message.content,
+    );
+    expect(rows.indexOf('marker')).toBe(rows.indexOf('First answer') + 1);
+    expect(rows.indexOf('Second')).toBeGreaterThan(rows.indexOf('marker'));
+  });
+
+  test('an untimed row last in its group takes the row before it, not a later group row', async () => {
+    const rerouted = event('e3', 'model.rerouted', {
+      fromModel: 'model-a',
+      toModel: 'model-b',
+      trigger: 'availability',
+      scope: 'session',
+    });
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 3,
+      hasMore: false,
+      // Another group's row, later than everything the projection holds.
+      contextBoundaries: [
+        {
+          boundaryId: 'boundary-later',
+          successorSessionId: 'thread-1',
+          policy: 'empty-next-cold-start',
+          priorTranscriptInjected: false,
+          consumedAt: '2026-08-09T00:00:30.000Z',
+        },
+      ],
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'First' }),
+        event('e2', 'turn.completed', {
+          turnId: 'turn-1',
+          outputText: 'First answer',
+        }),
+        // Last in the projection, with a date that cannot be read.
+        { ...rerouted, event: { ...rerouted.event, createdAt: 'not a date' } },
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    const rows = result.current.messages.map((message) => {
+      const type = message.contentParts?.[0]?.type;
+      if (type === 'conversation-context-boundary') return 'boundary';
+      return message.role === 'system' || type !== 'text'
+        ? 'marker'
+        : message.content;
+    });
+    // The row before it (First answer) lends its time, which is earlier than
+    // the boundary's; the next row's time (none in its group) would sink it
+    // past the boundary.
+    expect(rows).toEqual(['First', 'First answer', 'marker', 'boundary']);
   });
 
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
@@ -2858,6 +3846,76 @@ describe('useActiveChatTranscript', () => {
     expect(fetchWindow).toHaveBeenCalledTimes(3);
   });
 
+  // A jump reads older pages on the same request slot as the newest-window
+  // read, so it retires one that is still in flight. That read was the
+  // catch-up for a bumped revision: it must be asked again once the jump is
+  // done, or the transcript stays held until some later revision.
+  test('a turn jump during catch-up re-runs the catch-up read it retired', async () => {
+    const newest = {
+      protocolVersion: 1,
+      watermark: 30,
+      hasMore: true,
+      nextCursor: 'older',
+      events: [
+        event('e30', 'turn.started', { turnId: 'latest', prompt: 'Latest' }),
+      ],
+    };
+    fetchWindow
+      .mockResolvedValueOnce(newest)
+      // The catch-up read: still in flight when the jump starts.
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 30,
+        hasMore: false,
+        events: [
+          event('e10', 'turn.started', {
+            turnId: 'chosen',
+            prompt: 'Chosen older turn',
+          }),
+        ],
+      })
+      .mockResolvedValueOnce({
+        ...newest,
+        watermark: 31,
+        events: [
+          ...newest.events,
+          event('e31', 'turn.completed', {
+            turnId: 'latest',
+            outputText: 'Caught up',
+          }),
+        ],
+      });
+    const view = renderHook(
+      ({ chat }) => useActiveChatTranscript('http://station.test', chat),
+      { initialProps: { chat: baseSession } },
+    );
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+
+    view.rerender({
+      chat: { ...baseSession, orchestrationHistoryRevision: 1 } as ChatSession,
+    });
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+    expect(view.result.current.catchingUp).toBe(true);
+
+    let found = false;
+    await act(async () => {
+      found = await view.result.current.loadTurn('chosen');
+    });
+    expect(found).toBe(true);
+
+    await waitFor(() => expect(view.result.current.catchingUp).toBe(false));
+    expect(fetchWindow).toHaveBeenCalledTimes(4);
+    // The re-run is a newest-window read, not another older page.
+    expect(fetchWindow.mock.calls[2]?.[2]).toMatchObject({ cursor: 'older' });
+    expect(fetchWindow.mock.calls[3]?.[2]).toMatchObject({ turnLimit: 10 });
+    expect(fetchWindow.mock.calls[3]?.[2]).not.toHaveProperty('cursor');
+    const contents = view.result.current.messages.map((row) => row.content);
+    expect(contents).toContain('Chosen older turn');
+    expect(contents).toContain('Caught up');
+    view.unmount();
+  });
+
   test('a cancelled turn jump does not fetch older pages', async () => {
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,
@@ -3717,6 +4775,351 @@ describe('useActiveChatTranscript', () => {
       expect(fetchWindow).toHaveBeenCalledTimes(3);
     });
 
+    // The counterpart: a reader away from the end keeps what is held across
+    // reloads, so the rows they read never leave the window; back at the
+    // end, the next reload returns it to the bounded page.
+    test('a reader away from the end keeps what is held until they are back at the end', async () => {
+      const starts = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_, offset) =>
+          event(`e${from + offset}`, 'turn.started', {
+            turnId: `turn-${from + offset}`,
+            prompt: `Q${from + offset}`,
+          }),
+        );
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 10,
+          hasMore: true,
+          nextCursor: 'below-6',
+          events: starts(6, 10),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'below-8',
+          events: starts(8, 12),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: true,
+          nextCursor: 'below-10',
+          events: starts(10, 14),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://reader-away.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([6, 7, 8, 9, 10]),
+      );
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'turn-6' }),
+      );
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 7, 8, 9, 10, 11, 12,
+        ]),
+      );
+      act(() => result.current.setReaderPlace({ away: false }));
+      rerender({ revision: 2 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([10, 11, 12, 13, 14]),
+      );
+      expect(result.current.hasMore).toBe(true);
+    });
+
+    // Away for hours, the kept window is bounded by turns, and trimmed only
+    // above the turn the reader is reading.
+    test('a window kept for a reader away is capped above the turn they read', async () => {
+      const starts = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_, offset) =>
+          event(`e${from + offset}`, 'turn.started', {
+            turnId: `turn-${from + offset}`,
+            prompt: `Q${from + offset}`,
+          }),
+        );
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 200,
+          hasMore: true,
+          nextCursor: 'below-1',
+          events: starts(1, 200),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 210,
+          hasMore: true,
+          nextCursor: 'below-195',
+          events: starts(195, 210),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://reader-away-cap.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.events).toHaveLength(200));
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'turn-150' }),
+      );
+      rerender({ revision: 1 });
+      // 210 turns held: the oldest 10 go, all far above turn 150.
+      await waitFor(() => expect(sequences(result.current.events)[0]).toBe(11));
+      expect(result.current.events).toHaveLength(200);
+      expect(sequences(result.current.events).at(-1)).toBe(210);
+    });
+
+    // The cap never reaches the turn being read, nor the five turns above it.
+    test('a trim at the cap keeps the five turns above the turn being read', async () => {
+      const starts = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_, offset) =>
+          event(`e${from + offset}`, 'turn.started', {
+            turnId: `turn-${from + offset}`,
+            prompt: `Q${from + offset}`,
+          }),
+        );
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 200,
+          hasMore: true,
+          nextCursor: 'below-1',
+          events: starts(1, 200),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 210,
+          hasMore: true,
+          nextCursor: 'below-195',
+          events: starts(195, 210),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://reader-away-margin.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.events).toHaveLength(200));
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'turn-8' }),
+      );
+      rerender({ revision: 1 });
+      // 210 turns held, 10 over the cap, but only turns 1 and 2 lie more than
+      // five above turn 8: the window keeps turns 3 to 210.
+      await waitFor(() => expect(sequences(result.current.events)[0]).toBe(3));
+      expect(sequences(result.current.events)).toEqual(
+        Array.from({ length: 208 }, (_, offset) => offset + 3),
+      );
+    });
+
+    // A Station whose event log was replaced answers with a log the held
+    // events are not in: a reader away from the end keeps none of them.
+    const storeEvents = (store: string, from: number, to: number) =>
+      Array.from({ length: to - from + 1 }, (_, offset) =>
+        event(`${store}-e${from + offset}`, 'turn.started', {
+          turnId: `${store}-turn-${from + offset}`,
+          prompt: `${store} Q${from + offset}`,
+        }),
+      );
+    const eventIds = (events: readonly { event: { eventId?: string } }[]) =>
+      events.map((item) => item.event.eventId);
+
+    test('a replaced event log replaces what a reader away from the end holds', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 50,
+          hasMore: true,
+          nextCursor: 'below-46',
+          events: storeEvents('old', 46, 50),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 3,
+          hasMore: false,
+          events: storeEvents('new', 1, 3),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://replaced-log-away.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.events).toHaveLength(5));
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'old-turn-46' }),
+      );
+      rerender({ revision: 1 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(eventIds(result.current.events)).toEqual([
+          'new-e1',
+          'new-e2',
+          'new-e3',
+        ]),
+      );
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    // A replaced log whose head has passed what is held still numbers a
+    // shared event differently.
+    test('a shared event at another sequence replaces what a reader away holds', async () => {
+      const renumbered = storeEvents('old', 49, 50).map((item, offset) => ({
+        ...item,
+        sequence: 61 + offset,
+      }));
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 50,
+          hasMore: true,
+          nextCursor: 'below-46',
+          events: storeEvents('old', 46, 50),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 62,
+          hasMore: true,
+          nextCursor: 'below-61',
+          events: renumbered,
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://replaced-log-renumbered.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.events).toHaveLength(5));
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'old-turn-46' }),
+      );
+      rerender({ revision: 1 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([61, 62]),
+      );
+    });
+
+    test('a replaced event log replaces the older pages a reader loaded', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 50,
+          hasMore: true,
+          nextCursor: 'below-46',
+          events: storeEvents('old', 46, 50),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 50,
+          hasMore: false,
+          events: storeEvents('old', 41, 45),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 3,
+          hasMore: false,
+          events: storeEvents('new', 1, 3),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://replaced-log-older.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.events).toHaveLength(5));
+      await act(async () => {
+        await result.current.loadOlder();
+      });
+      await waitFor(() => expect(result.current.events).toHaveLength(10));
+      rerender({ revision: 1 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(3));
+      await waitFor(() =>
+        expect(eventIds(result.current.events)).toEqual([
+          'new-e1',
+          'new-e2',
+          'new-e3',
+        ]),
+      );
+    });
+
+    // The reader's place is the last conversation's list's; a switch leaves
+    // the next conversation's window bounded.
+    test('a switch to another conversation forgets that the reader was away', async () => {
+      const starts = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_, offset) =>
+          event(`e${from + offset}`, 'turn.started', {
+            turnId: `turn-${from + offset}`,
+            prompt: `Q${from + offset}`,
+          }),
+        );
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 10,
+          hasMore: true,
+          nextCursor: 'below-6',
+          events: starts(6, 10),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'below-1',
+          events: starts(1, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 7,
+          hasMore: true,
+          nextCursor: 'below-3',
+          events: starts(3, 7),
+        });
+      const { result, rerender } = renderHook(
+        ({ id, revision }) =>
+          useActiveChatTranscript('http://reader-away-switch.test', {
+            ...baseSession,
+            id,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { id: 'thread-1', revision: 0 } },
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([6, 7, 8, 9, 10]),
+      );
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'turn-6' }),
+      );
+      rerender({ id: 'thread-2', revision: 0 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([1, 2, 3, 4, 5]),
+      );
+      rerender({ id: 'thread-2', revision: 1 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(3));
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([3, 4, 5, 6, 7]),
+      );
+    });
+
     // A finished turn is followed by a turnless `session.state-changed`, and a
     // steer re-announces the turn mid-way: neither may hide where it started.
     test('a finished, steered turn still reads whole', async () => {
@@ -3942,6 +5345,7 @@ describe('useActiveChatTranscript', () => {
       fetchWindow
         .mockResolvedValueOnce({
           protocolVersion: 1,
+          currentSessionId: 'predecessor',
           watermark: 5,
           hasMore: true,
           nextCursor: 'older-a',
@@ -3949,6 +5353,7 @@ describe('useActiveChatTranscript', () => {
         })
         .mockResolvedValueOnce({
           protocolVersion: 1,
+          currentSessionId: 'predecessor',
           watermark: 5,
           hasMore: true,
           nextCursor: 'older-b',
@@ -3956,6 +5361,7 @@ describe('useActiveChatTranscript', () => {
         })
         .mockResolvedValueOnce({
           protocolVersion: 1,
+          currentSessionId: 'accepted-child',
           watermark: 7,
           hasMore: true,
           nextCursor: 'newest-only',
@@ -3964,6 +5370,7 @@ describe('useActiveChatTranscript', () => {
         })
         .mockResolvedValueOnce({
           protocolVersion: 1,
+          currentSessionId: 'predecessor',
           watermark: 5,
           hasMore: false,
           events: turnEvents(1, 2),
@@ -3987,6 +5394,7 @@ describe('useActiveChatTranscript', () => {
       expect(sequences(result.current.events)).toEqual([1, 2, 3, 4, 5, 6, 7]);
       expect(fetchWindow).toHaveBeenCalledTimes(4);
       expect(result.current.hasMore).toBe(false);
+      expect(result.current.currentSessionId).toBe('accepted-child');
     });
   });
 
@@ -5052,12 +6460,16 @@ describe('useActiveChatTranscript stored memory kill', () => {
     },
   );
 
-  test('another failure in the newest turn gets no recreated card', async () => {
+  // Another failure in the newest turn gets its ordinary card back (Send
+  // again, Troubleshoot this), never the memory card and its Continue.
+  test('another failure in the newest turn gets its ordinary card, not the memory card', async () => {
     const found = await read(
       killed('turn-1', 'codex-turn-orphaned', 'The Codex turn was orphaned.'),
     );
-    expect(found).toHaveLength(1);
-    expect(found[0]?.content ?? '').not.toContain('[CHAT_ERROR');
+    expect(found.map((message) => message.content)).toEqual([
+      '[SYSTEM_EVENT] [CHAT_ERROR:codex-turn-orphaned] The Codex turn was orphaned.',
+    ]);
+    expect(found[0]?.turnId).toBe('turn-1');
   });
 
   test('a later retriable Codex error prevents the memory Continue card', async () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "368355359c70493841cbbdce9475db72de3db663",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Added the review-round rules to Known qualification failures (failed files including hook failures, repeated identities and extra failed steps are unexplained; flaky retried tests are not failures), the two inherent identity limits, the extra JSON-report output line with the gate on, and the exact enforce value. Verified against qualification-failure-manifest.mjs, qualification-failure-signal.mjs, run-vitest-corpus.mjs and vitest-failure-reporter.mjs.","inputs":["docs/guides/testing.md","scripts/run-vitest-corpus.mjs"]}
+  ]
+}

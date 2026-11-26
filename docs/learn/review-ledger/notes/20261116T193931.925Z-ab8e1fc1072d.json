@@ -1,0 +1,15 @@
+{
+  "revision": "fc983600440cb2bc1241c5fca9250fcc2d047f43",
+
+  "notes": [
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"Formatting only (biome); the journey's assertions are unchanged from the reviewed version.","inputs":["tests/child-transcript-chat.spec.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"Formatting only (biome); the journey's assertions are unchanged from the reviewed version.","inputs":["tests/child-transcript-chat.spec.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"Formatting only (biome); the journey's assertions are unchanged from the reviewed version.","inputs":["tests/child-transcript-chat.spec.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"Formatting only (biome); the journey's assertions are unchanged from the reviewed version.","inputs":["tests/child-transcript-chat.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Formatting only (biome); the journey's assertions are unchanged from the reviewed version.","inputs":["tests/child-transcript-chat.spec.ts"]}
+  ]
+}

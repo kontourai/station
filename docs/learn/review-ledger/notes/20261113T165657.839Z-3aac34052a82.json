@@ -1,0 +1,13 @@
+{
+  "revision": "c3070c6afd355e952d5f72b9fe8eef37c3940a7f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed per-request sessionAttentionKind and ChatMessageList fallback labels. Removed obsolete separate pendingReview predicate: all remaining blocking IDs must be known input; Home/Inbox exclude locally answered IDs. Pill and Inbox retain Needs approval/Needs input; transcript permission waits retain Waiting for approval and known questions read Needs input. Shared duration words unchanged; classification and authorization unchanged. Tests and limits recorded in PR.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Re-reviewed ChatMessageList delta: permission transcript wait phrase restored to Waiting for approval; known input still uses Needs input. No placement, key, roster, expansion, or reader ownership change. Shared child duration words remain as previously reviewed. No additional prose change; source review only.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Re-reviewed transcript fallback status-label change against classified design claims for form delivery and request surfaces. Permission wait wording restored while known questions read Needs input. No form sender, authorization, or action routing change; historical design classification retained. No prose change.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Task review clip assertion and request-settlement fixture changes. Shared duration floors 12500ms to 12s; clip lazy video read/release contract unchanged. Summary fixtures now explicitly carry empty or per-ID openRequestKinds, matching producer projection; settlement ownership unchanged. No broader runtime/provider/device qualification inferred.","inputs":["docs/architecture/module-map.md","src-ui/src/views/task-workspace/review/__tests__/TaskReviewTab.test.tsx"]}
+  ]
+}

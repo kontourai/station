@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { resolve } from 'node:path';
 import { BUILTIN_CODING_LAYOUT } from '@kontourai/station-contracts/layout';
 import {
   createWorkspaceCodingDiffPaneInstance,
@@ -8,6 +9,7 @@ import {
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
+import { chromium } from '@playwright/test';
 import {
   act,
   fireEvent,
@@ -16,9 +18,15 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useContext, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createUiModuleGraph } from '../../../../../scripts/lib/ui-module-graph.mjs';
+import {
+  assertNoImportsSurvive,
+  chromiumIsInstalled,
+  resolveCssImports,
+} from '../../../../../tests/helpers/css-cascade-fixture';
 import { requestCenterChatPage } from '../../../app-shell/chat-placement';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
@@ -31,6 +39,9 @@ import type { WorkspacePaneHostOpenAction } from '../../../workspace-panes/Works
 import { workspacePaneHostScopeKey } from '../../../workspace-panes/workspacePaneHostNavigation';
 import { WORKSPACE_PANE_OPENED } from '../../../workspace-panes/workspacePaneHostOpenOutcome';
 import { ActionOverflowMenu } from '../../ActionOverflowMenu';
+import { ChatDockActiveIdentity } from '../../chat-dock/ChatDockActiveIdentity';
+import { ChildChatNavigation } from '../../chat-dock/ChildChatNavigation';
+import { MobileDockHeaderLeadingContext } from '../../chat-dock/MobileDockHeaderLeading';
 import { CodingWorkbench } from '../CodingWorkbench';
 import {
   resolveCodingStackLocation,
@@ -62,6 +73,8 @@ const harness = vi.hoisted(() => ({
   needsYou: 0,
   /** How many times Chat has rendered: geometry must not render it. */
   chatRenders: 0,
+  /** What Chat's toolbar puts in the bar's leading slot (its identity). */
+  leading: null as ReactNode,
 }));
 
 // Station's one Chat controller is its own subject; here it is the page's
@@ -75,6 +88,8 @@ vi.mock('../../chat-dock/ChatDock', () => ({
     harness.chatProps = props;
     harness.chatRenders += 1;
     const slots = useRegionChromeSlots();
+    // The real phone header draws the host's leading control first.
+    const headerLeading = useContext(MobileDockHeaderLeadingContext);
     harness.chatSlots = slots;
     useEffect(() => {
       harness.chatMounts += 1;
@@ -87,10 +102,16 @@ vi.mock('../../chat-dock/ChatDock', () => ({
     }, [onPresentationTitleChange]);
     return (
       <div data-testid="center-chat">
+        {headerLeading ? (
+          <div data-testid="chat-dock-mobile-header">{headerLeading}</div>
+        ) : null}
         <div className="chat-input">
           <textarea aria-label="Message" />
         </div>
         <aside className="chat-dock-inbox">inbox</aside>
+        {slots?.leading && harness.leading
+          ? createPortal(harness.leading, slots.leading)
+          : null}
         {slots?.trailing
           ? createPortal(
               <button type="button" aria-label="New chat">
@@ -109,6 +130,7 @@ vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
 }));
 
 vi.mock('../../../hooks/useKeyboardShortcut', () => ({
+  useShortcutDisplay: () => '',
   useKeyboardShortcut: (
     id: string,
     key: string,
@@ -308,6 +330,33 @@ test('central phone chat preserves the ambient dock state while mounting and lea
   expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
 });
 
+test('phone Chat page: the tool picker leads the chat header and the bar takes no row', async () => {
+  harness.isMobile = true;
+  renderStack();
+  const header = screen.getByTestId('chat-dock-mobile-header');
+  expect(
+    within(header).getByRole('button', { name: 'Switch tool, current: Chat' }),
+  ).toBeTruthy();
+  // The chat header has its own Inbox button; the bar's back control and
+  // its Open Browser button are gone with the bar.
+  expect(screen.queryByRole('button', { name: 'Chats' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Open Browser' })).toBeNull();
+  expect(
+    window.document
+      .querySelector('.coding-workbench__bar')
+      ?.hasAttribute('hidden'),
+  ).toBe(true);
+  // Drilled into a tool, the bar is back with its way home to Chat.
+  await drillInto('Files');
+  expect(
+    window.document
+      .querySelector('.coding-workbench__bar')
+      ?.hasAttribute('hidden'),
+  ).toBe(false);
+  expect(screen.getByRole('button', { name: 'Chat' })).toBeTruthy();
+  expect(screen.queryByTestId('chat-dock-mobile-header')).toBeNull();
+});
+
 test('phone tool picker switches through canonical history and preserves the chat draft', async () => {
   harness.isMobile = true;
   renderStack();
@@ -420,7 +469,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     expect(drillInPage().getAttribute('data-active')).toBe('false');
     expect(drillInPage().hasAttribute('inert')).toBe(true);
     expect(drillInPage().getAttribute('aria-hidden')).toBe('true');
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle]);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle]);
     // The bar is the breadcrumb alone: Back and Forward are the browser's and
     // the chords', not buttons.
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
@@ -457,7 +506,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     // its toasts must reach the reader.
     expect(harness.chatProps).toMatchObject({ onScreen: false });
     expect(chatPage().hasAttribute('inert')).toBe(true);
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Diff']);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle, 'Diff']);
     // The conversation stays mounted behind the pane (its draft, its scroll).
     expect(
       window.document.querySelector('[data-testid="center-chat"]'),
@@ -477,7 +526,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     expect(chatPage().getAttribute('data-active')).toBe('true');
     expect(chatPage().getAttribute('data-enter')).toBe('pop');
     expect(harness.chatProps).toMatchObject({ onScreen: true });
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle]);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle]);
 
     // Back on the conversation, focus went to its composer; the chords are for
     // the reader who has left it.
@@ -489,7 +538,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
       );
     });
     expect(drillInPage().getAttribute('data-active')).toBe('true');
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Diff']);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle, 'Diff']);
   });
 
   test('Back (the chord) on a drill-in reached from outside the layout goes UP to the Chat page', async () => {
@@ -499,7 +548,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
       paneScope: scopeKey,
     });
     renderStack();
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Files']);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle, 'Files']);
     const index = navigationStore.getHistoryIndex();
 
     act(() => harness.shortcuts.get('codingStack.back')?.handler());
@@ -649,7 +698,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     deviceSettingsStore.set('inboxOpen', false);
     renderStack();
     await drillInto('Files');
-    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Chats' }));
     await historyBackSettled();
     expect(chatPage().getAttribute('data-active')).toBe('true');
     expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
@@ -943,7 +992,7 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     expect(railItem('Diff').getAttribute('aria-pressed')).toBe('true');
     expect(railItem('Diff').getAttribute('aria-controls')).toBe(sidePanel().id);
     expect(railItem('Diff').hasAttribute('aria-current')).toBe(false);
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle]);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle]);
     expect(
       within(sidePanel()).getByRole('heading', { name: 'Diff' }),
     ).toBeTruthy();
@@ -1242,7 +1291,7 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     );
     await act(async () => undefined);
     expect(chatPage().getAttribute('data-active')).toBe('false');
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Diff']);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle, 'Diff']);
     expect(harness.chatMounts).toBe(mounts);
   });
 });
@@ -1377,9 +1426,57 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
     // #4401: focus handed back to a rail item after a pointer interaction
     // (a closed panel restores it) is not visible focus, so it raises no tip
     // that would stay over the rail once the pointer has gone.
-    act(() => railItem('Files').focus());
-    expect(window.document.activeElement).toBe(railItem('Files'));
-    expect(screen.queryByRole('tooltip')).toBeNull();
+    // jsdom 31 aliases :focus-visible to :focus: it has no input-modality
+    // heuristic. Model only that browser-owned selector here, retaining real
+    // focus events and both outcomes. tests/chat-dock-bounds.spec.ts exercises
+    // pointer-close restoration and keyboard focus in Chromium without a mock.
+    const filesItem = railItem('Files');
+    const matches = filesItem.matches.bind(filesItem);
+    let keyboardFocus = false;
+    const focusVisible = vi
+      .spyOn(filesItem, 'matches')
+      .mockImplementation((selector) =>
+        selector === ':focus-visible' ? keyboardFocus : matches(selector),
+      );
+    try {
+      act(() => filesItem.focus());
+      expect(window.document.activeElement).toBe(railItem('Files'));
+      expect(screen.queryByRole('tooltip')).toBeNull();
+
+      act(() => filesItem.blur());
+      keyboardFocus = true;
+      act(() => filesItem.focus());
+      expect(window.document.activeElement).toBe(filesItem);
+      expect(screen.getByRole('tooltip').textContent).toBe('src/app/files.ts');
+    } finally {
+      focusVisible.mockRestore();
+    }
+  });
+
+  test('a zero count draws no badge and is not announced', () => {
+    const { container } = render(
+      <NavigationProvider>
+        <CodingWorkbench
+          stackName={BUILTIN_CODING_LAYOUT.name}
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          location={{ page: 'chat', paneId: null }}
+          scope={scope}
+          instances={instances}
+          hostDocument={() => document}
+          paneLabel={label}
+          badges={{ [diff.descriptorId]: 0 }}
+          hostOpen={null}
+          onOpenCatalog={vi.fn()}
+        >
+          <div />
+        </CodingWorkbench>
+      </NavigationProvider>,
+    );
+    expect(railItem('Diff').getAttribute('aria-label')).toBe('Diff');
+    expect(container.querySelector('.coding-workbench__rail-count')).toBeNull();
   });
 });
 
@@ -1410,7 +1507,7 @@ describe('CodingWorkbench — the folded inbox’s edge, and the fold judged aga
     ).toBe('2');
     expect(
       strip.parentElement?.querySelector('[role="tooltip"]')?.textContent,
-    ).toBe('Show inbox, 2 need you');
+    ).toBe('Show chats, 2 need you');
     // A Needs-you count is what lifts the strip's rule to the accent.
     expect(
       strip.classList.contains('coding-workbench__inbox-edge--needs-you'),
@@ -1424,7 +1521,7 @@ describe('CodingWorkbench — the folded inbox’s edge, and the fold judged aga
     const strip = edge()!;
     expect(
       strip.parentElement?.querySelector('[role="tooltip"]')?.textContent,
-    ).toBe('Show inbox');
+    ).toBe('Show chats');
     expect(strip.classList.contains('coding-workbench__inbox-edge')).toBe(true);
     expect(
       strip.classList.contains('coding-workbench__inbox-edge--needs-you'),
@@ -1773,7 +1870,7 @@ describe('CodingWorkbench — review round: file links, the fold’s owner, geom
     await act(async () => undefined);
     expect(urlPane()).toBe(terminal.instanceId);
     expect(navigationStore.getHistoryIndex()).toBe(index);
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Terminal']);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle, 'Terminal']);
     // No lower panel below the fold: the host draws the Terminal there.
     expect(lowerPanel()).toBeNull();
   });
@@ -1880,6 +1977,16 @@ describe('CodingWorkbench — design audit round: the flyout, Escape, the way ba
     const trigger = within(rail()).getByRole('button', {
       name: 'Open Browser pane',
     });
+    // It adds another pane beside any Browser on the rail, and says so: a
+    // "+" on its globe and its tip, so the two globes do not read as one.
+    expect(
+      trigger.querySelector('.coding-workbench__rail-add-mark')?.textContent,
+    ).toBe('+');
+    fireEvent.pointerEnter(trigger.parentElement!);
+    expect(screen.getByRole('tooltip').textContent).toBe(
+      'Open a new Browser pane',
+    );
+    fireEvent.pointerLeave(trigger.parentElement!);
     expect(screen.queryByRole('region', { name: 'Browser' })).toBeNull();
     // A pointer click focuses the button it lands on; jsdom's does not.
     trigger.focus();
@@ -2233,5 +2340,182 @@ test.each([null, 'same-conversation'])(
       otherKey,
     );
     expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+  },
+);
+
+describe.skipIf(!chromiumIsInstalled(resolve('.')))(
+  'the Coding bar while a subagent chat is open (real cascade)',
+  () => {
+    afterEach(() => {
+      harness.leading = null;
+    });
+    test('names the parent once, spaces every separator alike, and keeps Open Browser on one line', async () => {
+      const parentTitle =
+        'Is this machine getting overwhelmed? Seems like station process/server is slow';
+      harness.chatTitle = parentTitle;
+      // Chat's real identity with its child trail, as the dock renders it
+      // into the bar while a subagent chat is open.
+      harness.leading = (
+        <ChildChatNavigation
+          rootKey="parent"
+          title={parentTitle}
+          dockOutlet
+          initialChild={{
+            title: 'Inventory event-row readers for retention',
+            threadId: 'parent',
+            childId: 'child',
+            connection: { apiBase: 'https://station.test' },
+          }}
+        >
+          <div className="chat-dock__header-identity chat-dock__header-identity--pane">
+            <ChatDockActiveIdentity
+              session={{ id: 'parent', title: parentTitle }}
+              onClose={() => {}}
+            />
+          </div>
+        </ChildChatNavigation>
+      );
+      const view = render(
+        <NavigationProvider>
+          <CodingWorkbench
+            stackName="Coding"
+            drillInOrder={BUILTIN_CODING_DRILL_INS}
+            projectId="project-uuid"
+            projectSlug="demo"
+            centerChat
+            wide
+            location={{ page: 'chat', paneId: null }}
+            scope={scope}
+            instances={instances}
+            hostDocument={() => document}
+            paneLabel={label}
+            hostOpen={{ open: vi.fn(() => WORKSPACE_PANE_OPENED) }}
+            onOpenCatalog={vi.fn()}
+            browserPreviewAvailability={{
+              state: 'available',
+              reason: { code: 'ready', source: 'resolver' },
+            }}
+          >
+            <div />
+          </CodingWorkbench>
+        </NavigationProvider>,
+      );
+      await screen.findByRole('navigation', { name: 'Chat breadcrumb' });
+      // A copy: React still owns the mounted bar.
+      const bar = view.container
+        .querySelector('.coding-workbench__bar')!
+        .cloneNode(true) as Element;
+      // The mock Chat's New chat stub carries an unstyled glyph; the real
+      // toolbar's controls are not this test's subject.
+      bar.querySelector('[aria-label="New chat"]')?.remove();
+      const graph = createUiModuleGraph();
+      const styles = [
+        'src-ui/src/index.css',
+        ...[
+          ...graph.closure(
+            [
+              'src-ui/src/components/coding-layout/CodingWorkbench.tsx',
+              'src-ui/src/components/chat-dock/ChatDockHeader.tsx',
+              'src-ui/src/components/chat-dock/ChildChatNavigation.tsx',
+            ],
+            { followDynamic: false },
+          ),
+        ].filter((path) => path.endsWith('.css')),
+      ]
+        .map((path) => resolveCssImports(resolve(path)))
+        .join('\n');
+      assertNoImportsSurvive(styles);
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({
+          viewport: { width: 620, height: 120 },
+        });
+        await page.setContent(
+          `<!doctype html><html data-theme="dark"><head><style>${styles}</style></head><body style="margin:0">${bar.outerHTML}</body></html>`,
+        );
+        const facts = await page.evaluate(() => {
+          const bar = window.document.querySelector('.coding-workbench__bar')!;
+          const shown = (element: Element) =>
+            getComputedStyle(element).display !== 'none' &&
+            element.getClientRects().length > 0;
+          const textBox = (element: Element) => {
+            const range = window.document.createRange();
+            range.selectNodeContents(element);
+            return range.getBoundingClientRect();
+          };
+          const lines = (element: Element) => {
+            const range = window.document.createRange();
+            range.selectNodeContents(element);
+            return new Set(
+              [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+            ).size;
+          };
+          // The visible crumbs in order, and each separator's glyph.
+          const inbox = bar.querySelector('.coding-workbench__crumb-link')!;
+          const parent = bar.querySelector('.child-chat-trail__label')!;
+          const child = bar.querySelector('.child-chat-trail [aria-current]')!;
+          const before = getComputedStyle(
+            bar.querySelector('.child-chat-trail')!,
+            '::before',
+          );
+          const separator = bar.querySelector('.child-chat-trail__separator')!;
+          const trail = bar.querySelector('.child-chat-trail')!;
+          // The trail's own leading "/" is a pseudo-element: its box is the
+          // trail's start plus its margin, its width the glyph's.
+          const trailBox = trail.getBoundingClientRect();
+          const firstSlashLeft =
+            trailBox.left + Number.parseFloat(before.marginLeft);
+          const separatorBox = textBox(separator);
+          // A crumb cut to an ellipsis: its own box is what shows.
+          const parentBox = parent.getBoundingClientRect();
+          return {
+            parentNames: [
+              ...bar.querySelectorAll(
+                '.coding-workbench__crumb-current, .child-chat-trail__label',
+              ),
+            ].filter(shown).length,
+            browserLines: lines(
+              [...bar.querySelectorAll('button')].find(
+                (button) => button.textContent === 'Open Browser',
+              )!,
+            ),
+            // The parent yields first: the child keeps more of the bar.
+            childReadable:
+              child.getBoundingClientRect().width >
+              parent.getBoundingClientRect().width,
+            back: shown(bar.querySelector('.child-chat-trail__back')!),
+            firstSlash: before.content,
+            separator: separator.textContent,
+            gaps: {
+              inboxToSlash: firstSlashLeft - textBox(inbox).right,
+              slashToParent:
+                parentBox.left -
+                // The leading "/" is the same glyph as the trail's own.
+                (firstSlashLeft + separatorBox.width),
+              parentToSlash: separatorBox.left - parentBox.right,
+              slashToChild: textBox(child).left - separatorBox.right,
+            },
+          };
+        });
+        await page.screenshot({
+          path: resolve(
+            'test-results/child-chat-coding-bar/coding-bar-620-dark.png',
+          ),
+        });
+        expect({ ...facts, gaps: undefined }).toEqual({
+          parentNames: 1,
+          browserLines: 1,
+          childReadable: true,
+          back: false,
+          firstSlash: '"/"',
+          separator: '/',
+          gaps: undefined,
+        });
+        const gaps = Object.values(facts.gaps);
+        expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThanOrEqual(2);
+      } finally {
+        await browser.close();
+      }
+    });
   },
 );

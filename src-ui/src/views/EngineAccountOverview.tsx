@@ -1,4 +1,5 @@
 import type {
+  EngineAccountEngine,
   EngineAccountProviderMoney,
   EngineAccountUsageHistory,
   EngineAccountUsageMetadata,
@@ -23,15 +24,22 @@ import { Empty, SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useCoarseNow } from '../hooks/useCoarseNow';
 import { openExternalLink } from '../platform/openExternalLink';
+import { formatDuration } from '../utils/relativeTime';
 import { describeStationFailure } from '../utils/stationFailure';
 import './EngineAccountOverview.css';
+
+const ENGINE_ACCOUNT_LABELS: Record<EngineAccountEngine, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  muse: 'Muse Code',
+};
 
 export function EngineAccountOverview({
   connectionId,
   engine,
 }: {
   connectionId: string;
-  engine: 'claude' | 'codex';
+  engine: EngineAccountEngine;
 }) {
   const scope = useHostRequestAuthorityScope();
   const authority = useQuery({
@@ -86,7 +94,7 @@ function AccountPage({
   canReadActivity,
 }: {
   connectionId: string;
-  engine: 'claude' | 'codex';
+  engine: EngineAccountEngine;
   scope: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
   canManage: boolean;
   canLogin: boolean;
@@ -152,7 +160,7 @@ function AccountPage({
   return (
     <section
       className="engine-account-overview"
-      aria-label={`${engine === 'codex' ? 'Codex' : 'Claude'} account and usage`}
+      aria-label={`${ENGINE_ACCOUNT_LABELS[engine]} account and usage`}
     >
       <div className="engine-account-overview__toolbar">
         <label>
@@ -377,7 +385,7 @@ function AccountPage({
         <small>
           {activityScope === 'engine'
             ? 'This Station · this engine · all accounts'
-            : 'This Station · selected profile · attributed runs'}
+            : 'This Station · selected account · attributed runs'}
         </small>
         {!canReadActivity ? (
           <p>Activity requires credential-management permission.</p>
@@ -841,42 +849,33 @@ function AccountMetadata({
                 : 'Anthropic OAuth usage',
             ],
             [
-              'Credential source',
+              'Stored in',
               capture.credentialStorage === 'secure-store'
-                ? 'Selected secure-store namespace'
+                ? 'Secure store'
                 : capture.credentialStorage === 'file'
-                  ? 'Selected credential file'
+                  ? 'Credential file'
                   : undefined,
             ],
+            ['History', 'Keeps allowance readings only'],
             [
-              'Storage',
-              'Live reading; history retains allowance observations only',
-            ],
-            [
-              'Unmapped fields',
+              "Fields Station didn't recognize",
               capture.unhandledFields.length
                 ? capture.unhandledFields.join(', ')
-                : 'None in this response',
+                : 'None',
             ],
             [
               'Excluded fields',
               capture.excludedFields.length
                 ? capture.excludedFields.join(', ')
-                : 'None in this response',
+                : 'None',
             ],
             [
-              'Shape audit',
-              capture.truncated
-                ? 'Incomplete: response exceeded audit bounds'
-                : 'Completed for this response',
+              'Complete',
+              capture.truncated ? 'No, the response was too large' : 'Yes',
             ],
           ]}
         />
-        <small>
-          Field names identify gaps; unrecognized values and credentials stay
-          private. Empty fields, value validation and other provider endpoints
-          are outside this audit.
-        </small>
+        <small>Values and credentials are never shown.</small>
       </details>
     </>
   );
@@ -902,15 +901,7 @@ function historyWindowKey(
 }
 function historyDuration(seconds: number | undefined): string {
   if (seconds === undefined) return 'duration unknown';
-  const [value, unit]: [number, string] =
-    seconds >= 86400
-      ? [seconds / 86400, 'd']
-      : seconds >= 3600
-        ? [seconds / 3600, 'h']
-        : seconds >= 60
-          ? [seconds / 60, 'm']
-          : [seconds, 's'];
-  return `${percentFormatter.format(value)}${unit}`;
+  return formatDuration(seconds * 1000);
 }
 function AllowanceHistory({
   history,

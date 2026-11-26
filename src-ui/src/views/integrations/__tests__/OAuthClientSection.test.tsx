@@ -136,11 +136,11 @@ describe('OAuthClientSection', () => {
       target: { value: 'gmail-client' },
     });
     expect(
-      (screen.getByRole('button', { name: 'Bind' }) as HTMLButtonElement)
+      (screen.getByRole('button', { name: 'Link' }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
     expect(
-      screen.getByText('Save an authorization server first to bind a secret.'),
+      screen.getByText('Save an authorization server first to link a secret.'),
     ).toBeTruthy();
   });
 
@@ -244,7 +244,7 @@ describe('OAuthClientSection', () => {
       'gmail-client',
     ]);
     fireEvent.change(select, { target: { value: 'gmail-client' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Bind' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }));
     await waitFor(() =>
       expect(mocks.bind).toHaveBeenCalledWith({
         id: 'gmail-client',
@@ -264,7 +264,7 @@ describe('OAuthClientSection', () => {
     mocks.unbind.mockResolvedValue({ outcome: 'complete' });
     render(<Harness initial={{ ...base, oauthClient: { clientId: 'c' } }} />);
     expect(screen.getByText('Gmail client secret')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unlink' }));
     await waitFor(() =>
       expect(mocks.unbind).toHaveBeenCalledWith({
         id: 'gmail-client',
@@ -279,14 +279,14 @@ describe('OAuthClientSection', () => {
       <Harness initial={{ ...base, oauthClient: { clientId: 'c' } }} isNew />,
     );
     expect(
-      screen.getByText('Save the integration to choose a secret binding.'),
+      screen.getByText('Save the integration to choose a secret.'),
     ).toBeTruthy();
   });
 
   test('a failed binding read offers a retry that refetches', () => {
     mocks.bindingsError = new Error('offline');
     render(<Harness initial={{ ...base, oauthClient: { clientId: 'c' } }} />);
-    expect(screen.getByText('Could not load secret bindings')).toBeTruthy();
+    expect(screen.getByText('Couldn’t load secrets')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(mocks.bindingsRefetch).toHaveBeenCalled();
   });

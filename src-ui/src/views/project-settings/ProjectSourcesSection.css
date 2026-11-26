@@ -3,6 +3,10 @@
   display: grid;
   gap: var(--k-space-4);
 }
+/* The grid's gap already separates the repository source fields. */
+.project-sources__form > .editor-field {
+  margin-bottom: 0;
+}
 .project-sources__list {
   padding: 0;
   list-style: none;
@@ -123,7 +127,8 @@
   margin: 0;
 }
 .project-repositories__card {
-  padding: var(--k-space-4);
+  padding: var(--k-space-2) var(--k-space-3);
+  gap: var(--k-space-1);
   border: 1px solid var(--k-line);
   border-radius: var(--k-radius-md);
   background: var(--k-panel);
@@ -195,4 +200,95 @@
 .project-repositories__problem {
   border-inline-start: 2px solid var(--k-caution);
   padding-inline-start: var(--k-space-3);
+}
+
+.project-sources__repo-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.project-sources__repo-add[open] {
+  flex: 1 0 100%;
+}
+
+.project-sources__repo-add > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  box-sizing: border-box;
+  padding-inline: var(--k-space-3);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-action);
+  color: var(--k-action-contrast);
+  font-weight: 600;
+  list-style: none;
+}
+
+.project-sources__repo-add > summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-sources__repo-add[open] > .project-sources__form {
+  margin-block: var(--k-space-3);
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+
+.project-repositories__external {
+  flex: none;
+  color: var(--k-text-muted);
+}
+
+.project-repositories__ready {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.project-repositories__ready svg {
+  flex: none;
+  color: var(--k-positive);
+}
+
+.project-repositories__card > details > summary,
+.project-sources__group > details > summary {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.project-repositories--compact .project-repositories__list {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+
+.project-repositories--compact .project-repositories__card {
+  border: 0;
+  border-radius: 0;
+  padding: var(--k-space-2) var(--k-space-3);
+}
+
+.project-repositories--compact
+  .project-repositories__card
+  + .project-repositories__card {
+  border-top: 1px solid var(--k-line);
+}
+
+.project-repositories--compact .project-repositories__usage {
+  padding: var(--k-space-1) var(--k-space-2);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+}
+
+.project-repositories--compact .project-repositories__row-heading {
+  justify-content: flex-start;
 }

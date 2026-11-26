@@ -1,0 +1,7 @@
+{
+  "revision": "85534836acfda54b33644dc5fc2847ffd7065aab",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Pure-merge paragraph: documentation freshness is skipped on a pure merge and otherwise warns until the branch records reviews, then refuses; checked against .githooks/pre-push and scripts/check-prepush-docs-freshness.mjs.","inputs":["docs/guides/testing.md",".githooks/pre-push","scripts/__tests__/prepush-typecheck.test.ts","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

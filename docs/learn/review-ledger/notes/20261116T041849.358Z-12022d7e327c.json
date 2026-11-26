@@ -1,0 +1,7 @@
+{
+  "revision": "16e88eff3858c698bd785254d4e7a7573581a6fe",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"orchestration.ts gained CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE, a string constant beside the handoff field lists; the contracts reference's module-level claims are unaffected.","inputs":["docs/reference/contracts.md","packages/contracts/src/orchestration.ts"]}
+  ]
+}

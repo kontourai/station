@@ -1,0 +1,23 @@
+{
+  "revision": "8d0ef57aa9e2e6e3dccc5faa86f41f82f807da41",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"ChatDock's fix rounds touch only the fork path: runFork now goes through runForkAttempt and forkOpenExecution, the dialog closes before a follow-up focuses the composer, and Regenerate / Edit and resend run without the picker while their Agent can run. No claim in this page about panes, placement, responsive layout, API, config, concepts, getting started or boards depends on those internals.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"ChatDock's fix rounds touch only the fork path: runFork now goes through runForkAttempt and forkOpenExecution, the dialog closes before a follow-up focuses the composer, and Regenerate / Edit and resend run without the picker while their Agent can run. No claim in this page about panes, placement, responsive layout, API, config, concepts, getting started or boards depends on those internals.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"ChatDock's fix rounds touch only the fork path: runFork now goes through runForkAttempt and forkOpenExecution, the dialog closes before a follow-up focuses the composer, and Regenerate / Edit and resend run without the picker while their Agent can run. No claim in this page about panes, placement, responsive layout, API, config, concepts, getting started or boards depends on those internals.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"ChatDock's fix rounds touch only the fork path: runFork now goes through runForkAttempt and forkOpenExecution, the dialog closes before a follow-up focuses the composer, and Regenerate / Edit and resend run without the picker while their Agent can run. No claim in this page about panes, placement, responsive layout, API, config, concepts, getting started or boards depends on those internals.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"ChatDock's fix rounds touch only the fork path: runFork now goes through runForkAttempt and forkOpenExecution, the dialog closes before a follow-up focuses the composer, and Regenerate / Edit and resend run without the picker while their Agent can run. No claim in this page about panes, placement, responsive layout, API, config, concepts, getting started or boards depends on those internals.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDock's fix rounds touch only the fork path: runFork now goes through runForkAttempt and forkOpenExecution, the dialog closes before a follow-up focuses the composer, and Regenerate / Edit and resend run without the picker while their Agent can run. No claim in this page about panes, placement, responsive layout, API, config, concepts, getting started or boards depends on those internals.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"ChatDock's fix rounds touch only the fork path: runFork now goes through runForkAttempt and forkOpenExecution, the dialog closes before a follow-up focuses the composer, and Regenerate / Edit and resend run without the picker while their Agent can run. No claim in this page about panes, placement, responsive layout, API, config, concepts, getting started or boards depends on those internals.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"ChatDock's fix rounds touch only the fork path: runFork now goes through runForkAttempt and forkOpenExecution, the dialog closes before a follow-up focuses the composer, and Regenerate / Edit and resend run without the picker while their Agent can run. No claim in this page about panes, placement, responsive layout, API, config, concepts, getting started or boards depends on those internals.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"ChatDock's fix rounds touch only the fork path: runFork now goes through runForkAttempt and forkOpenExecution, the dialog closes before a follow-up focuses the composer, and Regenerate / Edit and resend run without the picker while their Agent can run. No claim in this page about panes, placement, responsive layout, API, config, concepts, getting started or boards depends on those internals.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

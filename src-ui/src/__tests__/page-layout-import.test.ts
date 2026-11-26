@@ -459,6 +459,7 @@ describe('project-page-frame.css import guard (#1636)', () => {
     // then pass over nothing.
     expect([...FRAME_TOKENS].sort()).toEqual([
       'project-page',
+      'project-page--room-screen',
       'project-page__inner',
       'project-page__modal-description',
     ]);

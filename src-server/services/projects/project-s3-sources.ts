@@ -2,11 +2,6 @@ import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import {
-  GetObjectCommand,
-  ListObjectsV2Command,
-  S3Client,
-} from '@aws-sdk/client-s3';
 import { fromIni } from '@aws-sdk/credential-providers';
 import type {
   ProjectS3ObjectPage,
@@ -275,10 +270,21 @@ export class ProjectS3Sources {
       await release();
     }
   }
-  private client(
+  private async loadClient(
     expected: ProjectS3Source,
     authority: ProjectS3Authority,
-  ): S3Client {
+  ) {
+    this.current(expected, authority);
+    // The single server bundle can defer SDK evaluation without another file.
+    return import('@aws-sdk/client-s3').catch((error: unknown) =>
+      this.refusal(error),
+    );
+  }
+  private client(
+    s3: typeof import('@aws-sdk/client-s3'),
+    expected: ProjectS3Source,
+    authority: ProjectS3Authority,
+  ) {
     const entry = this.current(expected, authority);
     const current = () => this.current(expected, authority);
     class SourceHttpHandler extends NodeHttpHandler {
@@ -287,7 +293,7 @@ export class ProjectS3Sources {
         return super.handle(...args);
       }
     }
-    return new S3Client({
+    return new s3.S3Client({
       region: entry.region,
       credentials: fromIni({ profile: entry.profile }),
       maxAttempts: 1,
@@ -323,11 +329,13 @@ export class ProjectS3Sources {
       AbortSignal.timeout(20000),
       ...(authority.signal ? [authority.signal] : []),
     ]);
-    const client = this.client(expected, { ...authority, signal });
+    const requestAuthority = { ...authority, signal };
+    const commands = await this.loadClient(expected, requestAuthority);
+    const client = this.client(commands, expected, requestAuthority);
     try {
       const response = await awaitS3(
         client.send(
-          new ListObjectsV2Command({
+          new commands.ListObjectsV2Command({
             Bucket: expected.bucket,
             ExpectedBucketOwner: expected.accountId,
             Prefix: expected.prefix,
@@ -403,11 +411,13 @@ export class ProjectS3Sources {
       AbortSignal.timeout(20000),
       ...(authority.signal ? [authority.signal] : []),
     ]);
-    const client = this.client(expected, { ...authority, signal });
+    const requestAuthority = { ...authority, signal };
+    const commands = await this.loadClient(expected, requestAuthority);
+    const client = this.client(commands, expected, requestAuthority);
     try {
       const response = await awaitS3(
         client.send(
-          new GetObjectCommand({
+          new commands.GetObjectCommand({
             Bucket: expected.bucket,
             ExpectedBucketOwner: expected.accountId,
             Key: input.key,

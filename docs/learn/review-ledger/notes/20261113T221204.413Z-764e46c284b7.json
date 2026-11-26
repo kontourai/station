@@ -1,0 +1,7 @@
+{
+  "revision": "146c1838d5c4226a12251d66f5cd567583025d50",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Re-read the Muse sandbox paragraph against muse-serve-session.ts connect(): unavailable is recorded before the fingerprint and durability refusals, available only after them; the paragraph now says an unverified host's missing-sandbox report also refuses the exec fallback and cannot clear it.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/muse-serve-session.ts"]}
+  ]
+}

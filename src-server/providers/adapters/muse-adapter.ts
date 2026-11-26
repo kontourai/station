@@ -6,15 +6,25 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
-import { EXTERNAL_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
+import {
+  EXTERNAL_ENGINE_DURABILITY,
+  STEERING_ENGINE_DURABILITY,
+} from '@kontourai/station-contracts/engine-capability-matrix';
+import type {
+  EngineCommandOutcome,
+  EngineCommandRoute,
+} from '@kontourai/station-contracts/engine-commands';
 import {
   type ApprovalMode,
+  ENGINE_SESSION_BINDING_DEAD_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MUSE_HELD_TURN_UNFINISHED_CODE,
   MUSE_LINGERING_CHILD_REAPED_CODE,
+  MUSE_SANDBOX_UNAVAILABLE_CODE,
   MUSE_SERVE_STOP_UNCONFIRMED_CODE,
   MUSE_SERVE_UNAVAILABLE_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -26,6 +36,14 @@ import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
+import {
+  parseSessionGoalCommand,
+  SESSION_GOAL_OBJECTIVE_MAX_CHARS,
+  type SessionGoalCapability,
+  type SessionGoalCommand,
+  type SessionGoalControlResult,
+  type SessionGoalRead,
+} from '@kontourai/station-contracts/session-goal';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
@@ -59,21 +77,41 @@ import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   type ProviderAdapterMetadata,
+  type ProviderAdapterModelCatalog,
   type ProviderAdapterShape,
+  type ProviderChildSteerResult,
+  type ProviderNativeSessionIdentity,
   type ProviderSendTurnInput,
   type ProviderSession,
   type ProviderSessionStartInput,
   type ProviderTaskStopResult,
+  ProviderTurnEndedError,
   type ProviderTurnStartResult,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../adapter-shape.js';
-import type { CliAuthState, CliCommandResult } from '../auth/cli-auth.js';
+import {
+  CredentialProfileEnvironmentError,
+  type ResolvedAppHome,
+} from '../app-home/app-home-profiles.js';
+import type { CliCommandResult } from '../auth/cli-auth.js';
 import {
   buildCliRuntimePrerequisites,
   findCliBinary,
   resolveAugmentedPathSync,
+  runCliCommand,
 } from '../auth/cli-auth.js';
-import { providerFailureForCode } from '../provider-failure.js';
+import {
+  MUSE_API_KEY_ENV,
+  MUSE_UNATTENDED_LAUNCHER_ENV,
+  museCredentialPath,
+  museCredentialState,
+  withoutAmbientMuseApiKey,
+} from '../auth/muse-auth.js';
+import {
+  providerFailure,
+  providerFailureForCode,
+} from '../provider-failure.js';
 import {
   AsyncEventQueue,
   type AsyncEventStreamOptions,
@@ -83,6 +121,12 @@ import {
   rejectFileAttachments,
 } from '../sessions/chat-attachments.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
+import {
+  adapterActionFor,
+  engineCommandOutcomeText,
+  readSlashCommandInvocation,
+  type SlashCommandInvocation,
+} from './engine-command-dispatch.js';
 import {
   buildMuseExecArgs,
   museBackgroundTaskRowId,
@@ -101,23 +145,46 @@ import type {
 } from './muse-adapter-types.js';
 import {
   isMuseProviderMode,
+  isMuseReasoningEffort,
   MUSE_MODEL_LAUNCH,
   MUSE_PROVIDER_MODES,
+  MUSE_REASONING_EFFORTS,
+  type MuseReasoningEffort,
 } from './muse-adapter-types.js';
+import {
+  type MuseMcpListRunner,
+  museMcpStatusFromList,
+} from './muse-mcp-status.js';
 import { museExecChildWorkNotReportedEvent } from './muse-serve-child-work.js';
+import {
+  type MuseDiscoveryDeps,
+  museModelCatalog,
+  museQuotaFailure,
+  museQuotaResult,
+  withMuseDiscoveryHost,
+} from './muse-serve-discovery.js';
 import type {
   MuseServeProcessLike,
   MuseServeSpawnResult,
 } from './muse-serve-rpc.js';
 import { museUuidV7 } from './muse-serve-rpc.js';
 import {
+  type MuseSchemaCommandRunner,
+  type MuseServeSchemaCheck,
+  MuseServeSchemaVerifier,
+} from './muse-serve-schema.js';
+import {
   MUSE_APPROVAL_DEADLINE_MS,
   MUSE_SERVE_APPROVAL_ACKNOWLEDGEMENT,
   MUSE_SERVE_HANDSHAKE_TIMEOUT_MS,
   MUSE_SERVE_INTERRUPT_SETTLE_MS,
   MUSE_SERVE_REQUEST_TIMEOUT_MS,
+  MuseSandboxUnavailableError,
   type MuseServeHostPosture,
+  MuseServeResumeRefusedError,
+  type MuseServeSandboxReport,
   MuseServeSession,
+  museSandboxLabel,
 } from './muse-serve-session.js';
 import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
@@ -138,8 +205,37 @@ export interface MuseAdapterOptions {
     args: string[],
     cwd?: string,
     tmpDir?: string,
+    /** The session's credential-profile home (`getAppHomeEnv`), when one applies. */
+    envOverrides?: Record<string, string>,
   ) => MuseSpawnResult;
   now?: () => Date;
+  /**
+   * #1942: the credential-profile (app-home) env for a session, from
+   * `createCredentialProfileAppHomeEnvResolver({ engine: 'muse' })`:
+   * `XDG_CONFIG_HOME` naming the profile, under which muse reads its
+   * credential. `undefined` (or `{ profileRef: null }` with no env) keeps
+   * the user's own Muse config. A selected profile that cannot be prepared
+   * throws, and the session is refused rather than run on another account.
+   * Applied to the session's serve host, every exec turn, the allowance
+   * read (the connection's profile) and the model catalog (the active
+   * profile), so each reads the account the connection runs on.
+   */
+  getAppHomeEnv?: (
+    credentialProfileRef?: string,
+  ) => Promise<ResolvedAppHome | undefined>;
+  /**
+   * #1942: the same env, resolved WITHOUT creating anything
+   * (`createCredentialProfileAppHomeEnvPeek`), so readiness reports the
+   * credential store a fresh session would read.
+   */
+  peekAppHomeEnv?: () => Promise<ResolvedAppHome | undefined>;
+  /**
+   * Reads the engine's own MCP servers at session start
+   * (`muse-mcp-status.ts`), published as `engine-mcp.status`. Absent means
+   * none is read: the Station runtime passes `runMuseMcpList`, and this
+   * suite's adapters stay spawn-free.
+   */
+  listMcpServers?: MuseMcpListRunner;
   /** Mints the durable `--session-id` handed to every turn of a session. */
   newSessionId?: () => string;
   terminateProcess?: (processHandle: MuseProcessLike) => Promise<void>;
@@ -164,6 +260,8 @@ export interface MuseAdapterOptions {
     command: string,
     args: string[],
     signal?: AbortSignal,
+    /** {@link MUSE_UNATTENDED_LAUNCHER_ENV}, layered over Station's env. */
+    envOverlay?: Record<string, string>,
   ) => Promise<CliCommandResult | null>;
   /**
    * Declared absolute per-turn budget in milliseconds (wall-clock from turn
@@ -211,6 +309,8 @@ export interface MuseServeAdapterOptions {
     cwd?: string,
     /** chat-host-images: the session's temp folder, the host's TMPDIR. */
     tmpDir?: string,
+    /** #1942: the session's credential-profile home env, when one applies. */
+    envOverrides?: Record<string, string>,
   ) => MuseServeSpawnResult;
   terminateHost?: (spawned: MuseServeSpawnResult) => Promise<void>;
   /** Station's bound on an unanswered approval (default 30 minutes). */
@@ -231,6 +331,15 @@ export interface MuseServeAdapterOptions {
   requestTimeoutMs?: number;
   interruptSettleMs?: number;
   newCommandId?: () => string;
+  /**
+   * Runs `muse --version` and `muse schema generate-json-schema` for the
+   * structural check of a host whose schema fingerprint nobody verified
+   * (`muse-serve-schema.ts`). Absent: such a host is refused, as before;
+   * the Station runtime passes `runMuseSchemaCommand`.
+   */
+  schemaCommandRunner?: MuseSchemaCommandRunner;
+  /** Bound on one schema check (default 15 s). */
+  schemaCheckTimeoutMs?: number;
 }
 
 /**
@@ -267,6 +376,10 @@ export interface MuseServeAdapterOptions {
  * turn, not a live turn.
  */
 export const MUSE_LINGERING_CHILD_REAP_MS = 30 * 60_000;
+/** How long one successful `model/list` read is reused. */
+const MUSE_MODEL_CATALOG_CACHE_MS = 60_000;
+/** Bound on catalog rows kept from one `model/list`. */
+const MUSE_MODEL_CATALOG_MAX_ENTRIES = 200;
 export const MUSE_MAX_SUPERVISION_TIMEOUT_MS = 24 * 60 * 60_000;
 /**
  * Resolution of the lingering-child reap window: a positive finite number
@@ -366,6 +479,63 @@ export const MUSE_CANCELLED_TOOL_OUTPUT =
  * or the turn closed for another reason — before muse reported the task's
  * fate, which is then unknown.
  */
+/**
+ * Commands a `muse serve` session runs as Station's own action rather than
+ * as prompt text. `/compact` is MSP `session/compact` (muse's own `/compact`
+ * gesture); live against Muse Code 1.4.18 it is refused `run_active` while a
+ * turn runs and `compaction_unavailable` on a model without a summarizer
+ * (`muse-serve-1.4.18-background-task-stop.jsonl`).
+ */
+const MUSE_SERVE_COMMANDS = [
+  {
+    name: 'compact',
+    description:
+      "Compact this session's conversation context (muse writes the summary).",
+    passthrough: true,
+    route: { kind: 'adapter-action', action: 'compact' },
+  },
+] as const satisfies ReadonlyArray<{
+  name: string;
+  description: string;
+  passthrough: boolean;
+  route: EngineCommandRoute;
+}>;
+
+/**
+ * The resume cursor of a `muse serve` session: the durable muse session id,
+ * re-attached on a fresh host with `session/resume`. An exec-fallback
+ * session has none (exec turns are not resumed across Station restarts).
+ */
+interface MuseResumeCursor {
+  museSessionId: string;
+}
+
+function readMuseResumeCursor(value: unknown): MuseResumeCursor | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
+  const id = (value as Record<string, unknown>).museSessionId;
+  return typeof id === 'string' && id.length > 0 && id.length <= 200
+    ? { museSessionId: id }
+    : undefined;
+}
+
+/**
+ * What a serve session offers of muse's goal (MSP `goal/*`). Read, pause and
+ * clear only: `goal/set` and `goal/resume` wake a goal turn at once on an
+ * idle session (live 1.4.18: `goal/set` answered with the new turn's id and
+ * that turn started), which would run work outside Station's turn
+ * admission, the same reason Codex's goal resume is unsupported. Muse
+ * reports no token budget, token use or elapsed time for a goal.
+ */
+const MUSE_GOAL_CAPABILITY: SessionGoalCapability = {
+  implementation: 'engine',
+  operations: ['read', 'pause', 'clear'],
+  maxObjectiveChars: SESSION_GOAL_OBJECTIVE_MAX_CHARS,
+  tokenBudget: 'unsupported',
+  completion: 'implementation-reported',
+  saveState: 'paused',
+};
+
 export const MUSE_BACKGROUND_TASK_COMPLETED_OUTPUT =
   'Muse reported this background task completed.';
 const MUSE_BACKGROUND_TASK_FAILED_OUTPUT =
@@ -424,6 +594,23 @@ export class MuseTurnSlotReleasingError extends SendTurnRefusedError {
 }
 
 /**
+ * `muse exec` (the serve fallback) runs `--approval-mode never` and relies
+ * on muse's sandbox, which this machine's serve host said it cannot
+ * enforce. A pre-effect refusal: nothing was spawned.
+ */
+class MuseExecSandboxUnavailableError extends SendTurnRefusedError {
+  constructor(readonly reason: string | undefined) {
+    super(
+      `Muse cannot enforce its sandbox on this machine${
+        reason ? ` (${reason})` : ''
+      }, and \`muse serve\` is unavailable, so its fallback, \`muse exec\`, would run every command uncontained without asking. Choose Full access if that is intended.`,
+      'permission_denied',
+    );
+    this.name = 'MuseExecSandboxUnavailableError';
+  }
+}
+
+/**
  * Human form of a Station-owned duration, for user-facing warnings. Exact:
  * whole hours or whole minutes when the value is one, otherwise seconds
  * (fractional when needed) — a 90 s limit reads "90 seconds", never a
@@ -437,32 +624,9 @@ export function formatMuseDuration(ms: number): string {
   return unit(ms / 1_000, 'second');
 }
 
-/**
- * Where the muse CLI stores its credential, honoring XDG. Presence only —
- * the file is never opened, so no secret material is read (the detection line
- * in docs/design/connections-onboarding.md §1).
- */
-export function museCredentialPath(env: NodeJS.ProcessEnv): string {
-  const configHome = env.XDG_CONFIG_HOME?.trim();
-  return configHome
-    ? join(configHome, 'muse', 'auth.json')
-    : join(homedir(), '.config', 'muse', 'auth.json');
-}
-
-/**
- * `authenticated` means "a credential is available to muse", derived from an
- * env key or the presence of the credential file — never from the CLI merely
- * running. Validity is proven on first use, not here.
- */
-export function museCredentialState(
-  env: NodeJS.ProcessEnv,
-  fileExists: (path: string) => boolean,
-): CliAuthState {
-  if (env.META_API_KEY?.trim()) return 'authenticated';
-  return fileExists(museCredentialPath(env))
-    ? 'authenticated'
-    : 'unauthenticated';
-}
+// #1942: the credential-store read moved to `auth/muse-auth.ts`, beside the
+// Claude and Codex ones, so the app-home route reads it without this file.
+export { museCredentialPath, museCredentialState };
 
 /**
  * Names the startup provider a CONTAINED run may put on `muse exec`.
@@ -699,15 +863,65 @@ function museLaunch(args: readonly string[], envOverrides: NodeJS.ProcessEnv) {
   );
 }
 
+/**
+ * `modelOptions.effort` as a Muse tier, or `undefined` when none was asked
+ * for. A value muse has no tier for is refused before anything reaches the
+ * engine (`input_unsupported`), never coerced to a nearby tier and never
+ * dropped while the turn runs as if it had applied.
+ */
+function readMuseReasoningEffort(
+  modelOptions: Record<string, unknown> | undefined,
+): MuseReasoningEffort | undefined {
+  const value = modelOptions?.effort;
+  if (value === undefined || value === null) return undefined;
+  if (isMuseReasoningEffort(value)) return value;
+  throw new SendTurnRefusedError(
+    `Muse Code has no reasoning effort ${JSON.stringify(
+      typeof value === 'string'
+        ? value.slice(0, MUSE_REFUSED_VALUE_MAX_CHARS)
+        : value,
+    )}. It offers: ${MUSE_REASONING_EFFORTS.join(', ')}.`,
+    'input_unsupported',
+  );
+}
+
+/**
+ * A muse child's final environment. #1942: under a credential profile (an
+ * `XDG_CONFIG_HOME` override), the ambient `META_API_KEY` is removed, so the
+ * run signs in as the profile and never bills the key's account.
+ */
+function museChildEnv(
+  launchEnv: Record<string, string | undefined>,
+  tmpDir: string | undefined,
+  profileEnv: Record<string, string> | undefined,
+): NodeJS.ProcessEnv {
+  const env = childProcessEnvironment({
+    ...launchEnv,
+    TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
+  });
+  return museProfileOmitsApiKey(profileEnv)
+    ? withoutAmbientMuseApiKey(env)
+    : env;
+}
+
+/** #1942: whether a muse run under `profileEnv` must drop the ambient key. */
+function museProfileOmitsApiKey(
+  profileEnv: Record<string, string> | undefined,
+): boolean {
+  return profileEnv?.XDG_CONFIG_HOME !== undefined;
+}
+
 /** Exported for the #4520 spawn-level test; the adapter is its caller. */
 export function createMuseProcess(
   args: string[],
   cwd?: string,
   /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`). */
   tmpDir?: string,
+  /** #1942: the session's credential-profile home env. */
+  envOverrides?: Record<string, string>,
 ): MuseSpawnResult {
   // #4520: a managed policy's pinned launch fields (`managedEngineLaunch`).
-  const launch = museLaunch(args, {});
+  const launch = museLaunch(args, { ...envOverrides });
   // Mirrors the Codex spawn recipe (windowsHide + detached + piped stdio +
   // a Station-owned TMPDIR), routed through `spawnOwnedChild` so a per-turn
   // spawner's children are registered and reapable if Station dies without
@@ -716,10 +930,7 @@ export function createMuseProcess(
     cwd,
     // #2663: the PATH `muse` was resolved from, so a launcher script found
     // off the service PATH can find its interpreter (see spawnCodexProcess).
-    env: childProcessEnvironment({
-      ...launch.env,
-      TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
-    }),
+    env: museChildEnv(launch.env, tmpDir, envOverrides),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   return { process: proc as unknown as MuseProcessLike, release };
@@ -745,18 +956,17 @@ export function createMuseServeHost(
   cwd?: string,
   dataHome?: string,
   tmpDir?: string,
+  /** #1942: the session's credential-profile home env. */
+  envOverrides?: Record<string, string>,
 ): MuseServeSpawnResult {
-  const launch = museLaunch(
-    buildMuseServeArgs(posture),
-    museServeEnvOverrides(dataHome),
-  );
+  const launch = museLaunch(buildMuseServeArgs(posture), {
+    ...envOverrides,
+    ...museServeEnvOverrides(dataHome),
+  });
   if (dataHome) mkdirSync(dataHome, { recursive: true });
   const { proc, release } = spawnOwnedChild(launch.command, [...launch.args], {
     cwd,
-    env: childProcessEnvironment({
-      ...launch.env,
-      TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
-    }),
+    env: museChildEnv(launch.env, tmpDir, envOverrides),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   return { process: proc as unknown as MuseServeProcessLike, release };
@@ -877,14 +1087,17 @@ export class MuseAdapter implements ProviderAdapterShape {
   private static readonly baseMetadata = {
     displayName: 'Muse Code',
     durability: EXTERNAL_ENGINE_DURABILITY,
+    // `resume` is declared per instance (constructor): only a serve adapter
+    // resumes. `muse serve` has `session/fork` (live 1.4.18: a new session
+    // with `forkedFrom`), but Station's conversation fork is replay-only and
+    // no route activates a native fork, so none is claimed. `rewind` is
+    // experimental-only in MSP.
     continuity: { resume: 'none', fork: 'none', rewind: 'none' },
     builtin: true,
     engineId: engineId('muse'),
-    // No `abortSettlement`: it is consulted only where a discovery call has
-    // to settle before an abort resolves (`ConnectionInspector`
-    // wraps `listModelCatalog`/`listModels`), and this adapter implements
-    // neither. Declaring it would be a settlement policy with nothing behind
-    // it.
+    // `abortSettlement` is declared per instance (constructor): only an
+    // adapter that lists its catalog through a `muse serve` host has a
+    // discovery call to settle.
     //
     // The one model channel muse genuinely has, declared once in
     // `MUSE_MODEL_LAUNCH`. Without this, `resolveModelLaunchPlan` returns
@@ -900,6 +1113,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     args: string[],
     cwd?: string,
     tmpDir?: string,
+    envOverrides?: Record<string, string>,
   ) => MuseSpawnResult;
   private readonly now: () => Date;
   private readonly newSessionId: () => string;
@@ -941,6 +1155,45 @@ export class MuseAdapter implements ProviderAdapterShape {
    */
   private readonly providerRefusal: MuseProviderOverrideRefusal | undefined;
   private providerNoticeReported = false;
+  /**
+   * #2266: muse's catalog (`model/list`) and allowance (`usage/read`), read
+   * through a short-lived `muse serve` host. Present only on an adapter that
+   * runs serve and selects models (not under the `echo` override, where no
+   * model is ever applied); absent, Station reads no catalog and no quota.
+   */
+  readonly listModelCatalog?: ProviderAdapterShape['listModelCatalog'];
+  readonly listModels?: ProviderAdapterShape['listModels'];
+  readonly readQuotaSnapshot?: ProviderAdapterShape['readQuotaSnapshot'];
+  /**
+   * The commands Station runs itself on a `muse serve` session
+   * ({@link MUSE_SERVE_COMMANDS}). Absent where no session can run serve.
+   */
+  readonly getCommands?: ProviderAdapterShape['getCommands'];
+  /**
+   * A serve session's children keep running, and keep taking a steer
+   * (`subagent/sendMessage`), after the turn that launched them ended: muse
+   * ends a workflow's turn at launch (`muse-serve-1.4.18-workflow-child-steer`).
+   * Absent on an exec-only adapter, whose sessions name no child.
+   */
+  readonly childSteerOutlivesParentTurn?: true;
+  /** Muse's goal on a serve session ({@link MUSE_GOAL_CAPABILITY}). */
+  readonly goals?: ProviderAdapterShape['goals'];
+  private catalogCache?: {
+    /** The profile env the catalog was read under (`''` for global). */
+    account: string;
+    observedAt: number;
+    catalog: ProviderAdapterModelCatalog;
+  };
+  /**
+   * The last serve host's report that it cannot enforce its sandbox. MSP
+   * defines availability as a property of the machine, the same for every
+   * host, so a later start can refuse a posture that relies on it before
+   * the start boundary (`preflightStart`). Cleared by a host that reports
+   * otherwise.
+   */
+  private sandboxUnavailable: MuseServeSandboxReport | undefined;
+  /** Structural schema verdicts, per fingerprint, for this adapter's hosts. */
+  private schemaVerifier?: MuseServeSchemaVerifier;
 
   constructor(private readonly options: MuseAdapterOptions = {}) {
     // `resume` and `tool-calls` are NOT claimed: Station implements no
@@ -950,9 +1203,16 @@ export class MuseAdapter implements ProviderAdapterShape {
     // cannot ask (`muse-serve-unavailable`).
     this.metadata = {
       ...MuseAdapter.baseMetadata,
+      // Mid-turn input rides `turn/steer`, which only `muse serve` carries;
+      // an exec-only adapter cannot steer at all, and a serve adapter's
+      // exec-fallback session says so per session (`canSteerTurn`).
+      durability: options.serve
+        ? STEERING_ENGINE_DURABILITY
+        : EXTERNAL_ENGINE_DURABILITY,
+
       description: options.serve
-        ? 'Muse Code runtime over the local muse CLI: one `muse serve` host per session, `muse exec` per turn as the fallback.'
-        : 'Muse Code runtime over the local muse CLI, one `muse exec` per turn.',
+        ? 'Muse Code engine over the local muse CLI: one `muse serve` host per session, `muse exec` per turn as the fallback.'
+        : 'Muse Code engine over the local muse CLI, one `muse exec` per turn.',
       capabilities: [
         'agent-runtime',
         'session-lifecycle',
@@ -995,6 +1255,182 @@ export class MuseAdapter implements ProviderAdapterShape {
       refusal = refused;
     });
     this.providerRefusal = refusal;
+    if (options.serve) this.childSteerOutlivesParentTurn = true;
+    if (options.serve?.schemaCommandRunner) {
+      this.schemaVerifier = new MuseServeSchemaVerifier({
+        resolveCommand: () =>
+          managedEngineBinaryPath('muse') ?? this.findBinary('muse'),
+        run: options.serve.schemaCommandRunner,
+        ...(options.serve.schemaCheckTimeoutMs !== undefined
+          ? { timeoutMs: options.serve.schemaCheckTimeoutMs }
+          : {}),
+      });
+    }
+    if (options.serve && this.providerOverride !== 'echo') {
+      const serve = options.serve;
+      this.metadata = {
+        ...this.metadata,
+        abortSettlement: 'await',
+        // A serve session resumes after a Station restart: `session/resume`
+        // of its durable id (live 1.4.18, across two `muse serve`
+        // processes). Exec sessions, and every session under `echo`, run on
+        // `muse exec` and do not; a serve adapter's exec-fallback session
+        // reports no resume cursor.
+        continuity: {
+          ...MuseAdapter.baseMetadata.continuity,
+          resume: 'same-session',
+        },
+      };
+      this.listModelCatalog = (request) =>
+        this.readModelCatalog(serve, request);
+      this.listModels = async (request) =>
+        (await this.readModelCatalog(serve, request)).models;
+      this.readQuotaSnapshot = async ({ connectionId, credentialProfileRef }) =>
+        this.readMuseQuota(serve, connectionId, credentialProfileRef);
+      this.getCommands = async () =>
+        MUSE_SERVE_COMMANDS.map((command) => ({ ...command }));
+      this.goals = {
+        read: async (threadId) => this.readGoal(threadId),
+        control: async (threadId, command) =>
+          this.controlGoal(threadId, command),
+      };
+    }
+  }
+
+  private discoveryDeps(
+    serve: MuseServeAdapterOptions,
+    appHomeEnv?: Record<string, string>,
+  ): MuseDiscoveryDeps {
+    // The posture is irrelevant to a query; the default sandboxed host is
+    // what every session starts from.
+    const posture: MuseServeHostPosture = { disableSandbox: false };
+    return {
+      // #1942: under the profile's config, like a session's host, so the
+      // read reports that account rather than the global one.
+      spawnHost: () =>
+        serve.spawnHost
+          ? appHomeEnv
+            ? serve.spawnHost(posture, undefined, undefined, appHomeEnv)
+            : serve.spawnHost(posture)
+          : createMuseServeHost(
+              posture,
+              undefined,
+              serve.dataHome,
+              undefined,
+              appHomeEnv,
+            ),
+      terminateHost: serve.terminateHost ?? terminateMuseServeHost,
+      timeoutMs: serve.handshakeTimeoutMs ?? MUSE_SERVE_HANDSHAKE_TIMEOUT_MS,
+      ...this.schemaCheckFor(serve, appHomeEnv),
+    };
+  }
+
+  /**
+   * The schema check for hosts started under `appHomeEnv`: the export runs
+   * under the env the host itself runs under (the profile's config and data
+   * homes, and no ambient key on a profile run), plus the unattended
+   * launcher switches, so it reports the binary that host was launched from.
+   */
+  private schemaCheckFor(
+    serve: MuseServeAdapterOptions,
+    appHomeEnv: Record<string, string> | undefined,
+  ): { checkSchema?: MuseServeSchemaCheck } {
+    const verifier = this.schemaVerifier;
+    if (!verifier) return {};
+    const env: Record<string, string> = {
+      ...MUSE_UNATTENDED_LAUNCHER_ENV,
+      ...appHomeEnv,
+      ...(serve.dataHome ? { XDG_DATA_HOME: serve.dataHome } : {}),
+    };
+    const omitEnv = museProfileOmitsApiKey(appHomeEnv)
+      ? [MUSE_API_KEY_ENV]
+      : undefined;
+    return {
+      checkSchema: (initializeResult) =>
+        verifier.check(initializeResult, {
+          env,
+          ...(omitEnv ? { omitEnv } : {}),
+        }),
+    };
+  }
+
+  /**
+   * `model/list` with no session (no row is `isActive`). A successful read
+   * is reused for {@link MUSE_MODEL_CATALOG_CACHE_MS}, so inspecting
+   * connections does not start a host each time; a failure is never cached.
+   */
+  private async readModelCatalog(
+    serve: MuseServeAdapterOptions,
+    request: { signal?: AbortSignal; maxEntries?: number } | undefined,
+  ): Promise<ProviderAdapterModelCatalog> {
+    const maxEntries = Math.max(
+      1,
+      Math.min(
+        MUSE_MODEL_CATALOG_MAX_ENTRIES,
+        Math.floor(request?.maxEntries ?? MUSE_MODEL_CATALOG_MAX_ENTRIES),
+      ),
+    );
+    // The catalog is read under the connection's active profile: which
+    // models muse offers can depend on the signed-in account, and a profile
+    // connection may have no global sign-in at all. Cached per account.
+    const appHomeEnv = (await this.resolveAppHomeEnv())?.env;
+    const account = appHomeEnv ? JSON.stringify(appHomeEnv) : '';
+    const cached = this.catalogCache;
+    const now = this.now().getTime();
+    if (
+      !cached ||
+      cached.account !== account ||
+      now - cached.observedAt >= MUSE_MODEL_CATALOG_CACHE_MS
+    ) {
+      const result = await withMuseDiscoveryHost(
+        this.discoveryDeps(serve, appHomeEnv),
+        'model/list',
+        {},
+        request?.signal,
+      );
+      this.catalogCache = {
+        account,
+        observedAt: now,
+        catalog: museModelCatalog(result, MUSE_MODEL_CATALOG_MAX_ENTRIES),
+      };
+    }
+    const catalog = this.catalogCache!.catalog;
+    const truncated =
+      catalog.truncated === true || catalog.models.length > maxEntries;
+    return {
+      models: catalog.models.slice(0, maxEntries),
+      ...(truncated ? { truncated: true } : {}),
+    };
+  }
+
+  /** `usage/read`: muse's subscription allowance, when it has observed one. */
+  private async readMuseQuota(
+    serve: MuseServeAdapterOptions,
+    connectionId: string,
+    credentialProfileRef: string | undefined,
+  ): Promise<ConnectionQuotaResult> {
+    try {
+      // #1942: the profile the connection runs on, resolved with a session's
+      // rule: a named profile that cannot be prepared fails the read rather
+      // than reporting the global account's allowance.
+      const appHomeEnv = (await this.resolveAppHomeEnv(credentialProfileRef))
+        ?.env;
+      return museQuotaResult(
+        await withMuseDiscoveryHost(
+          this.discoveryDeps(serve, appHomeEnv),
+          'usage/read',
+          {},
+          undefined,
+        ),
+        connectionId,
+        appHomeEnv ? 'profile' : 'global',
+      );
+    } catch (error) {
+      this.options.logger?.warn?.('Muse quota read unavailable', {
+        error: errorMessage(error),
+      });
+      return museQuotaFailure(error);
+    }
   }
 
   /**
@@ -1100,6 +1536,19 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
   }
 
+  /**
+   * The app-home env readiness reads under. A peek that fails names no
+   * home: readiness then reports the user's own store, and the start itself
+   * refuses a profile it cannot prepare.
+   */
+  private async peekReadinessAppHomeEnv(): Promise<Record<string, string>> {
+    try {
+      return (await this.options.peekAppHomeEnv?.())?.env ?? {};
+    } catch {
+      return {};
+    }
+  }
+
   async getPrerequisites(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]> {
@@ -1126,16 +1575,118 @@ export class MuseAdapter implements ProviderAdapterShape {
       versionArgs: ['--version'],
       authArgs: ['--version'],
       findBinary: this.findBinary,
-      ...(this.options.runCommand
-        ? { runCommand: this.options.runCommand }
-        : {}),
-      installStep: 'Install the Muse Code CLI and ensure `muse` is on PATH.',
+      // The `muse` launcher must answer `--version` without downloading or
+      // prompting (MUSE_UNATTENDED_LAUNCHER_ENV).
+      runCommand: (command, args, signal) =>
+        (this.options.runCommand ?? runCliCommand)(command, args, signal, {
+          ...MUSE_UNATTENDED_LAUNCHER_ENV,
+        }),
+      installStep:
+        'Install the Muse Code CLI and ensure `muse` is on PATH. If `muse` is installed but its binary is missing, rerun the Muse installer.',
       authStep:
         'Run `muse auth set --api-key-stdin` (or set META_API_KEY) before starting Station.',
-      detectAuthState: async () =>
-        museCredentialState(this.env, this.credentialFileExists),
+      // #1942: the store a fresh session would read: the connection's active
+      // credential profile or app home when one applies (peeked, creating
+      // nothing), else the user's own.
+      detectAuthState: async () => {
+        const profileEnv = await this.peekReadinessAppHomeEnv();
+        const env = { ...this.env, ...profileEnv };
+        return museCredentialState(
+          museProfileOmitsApiKey(profileEnv)
+            ? withoutAmbientMuseApiKey(env)
+            : env,
+          this.credentialFileExists,
+        );
+      },
       signal: options?.signal,
     });
+  }
+
+  /**
+   * #1942: the session's credential-profile env, with Codex's failure rule
+   * (`CodexAdapter.resolveAppHomeEnv`): once a profile is named (here or as
+   * the connection's active one, which the resolver itself refuses on), a
+   * failure refuses the start, because running on the global account would
+   * bill an account nobody selected. A failure with no profile named
+   * degrades to the global config with a warning.
+   */
+  private async resolveAppHomeEnv(
+    credentialProfileRef?: string,
+  ): Promise<ResolvedAppHome | undefined> {
+    try {
+      return await this.options.getAppHomeEnv?.(credentialProfileRef);
+    } catch (error) {
+      if (
+        credentialProfileRef ||
+        error instanceof CredentialProfileEnvironmentError
+      ) {
+        throw new CredentialProfileEnvironmentError();
+      }
+      this.options.logger?.warn?.(
+        'Muse app-home profile lookup failed; continuing with the global Muse config.',
+        { reason: errorMessage(error) },
+      );
+      return undefined;
+    }
+  }
+
+  /**
+   * `muse exec` always runs `--approval-mode never` and relies on muse's
+   * sandbox. Once a serve host reported this machine cannot enforce one,
+   * exec would run tools uncontained AND unprompted, which only Station's
+   * `never` (no approvals, no sandbox) asks for; every other posture is
+   * refused. Nothing is known before a serve host answered, and the `echo`
+   * override runs no tools.
+   */
+  private execSandboxRefusal(
+    approvalMode: ApprovalMode | undefined,
+  ): MuseExecSandboxUnavailableError | undefined {
+    if (
+      !this.options.serve ||
+      this.providerOverride === 'echo' ||
+      !this.sandboxUnavailable ||
+      approvalMode === 'never'
+    ) {
+      return undefined;
+    }
+    return new MuseExecSandboxUnavailableError(this.sandboxUnavailable.reason);
+  }
+
+  /**
+   * Records what a serve host explicitly said about this machine's sandbox.
+   * Only an explicit `available` clears a learned `unavailable`: a host that
+   * omits the field (or sends a value Station does not know) claims nothing,
+   * and must not re-open an unsandboxed, unprompted exec fallback.
+   */
+  private learnSandbox(session: MuseServeSession): void {
+    const reported = session.reportedSandbox;
+    if (!reported) return;
+    if (reported.availability === 'available') {
+      this.sandboxUnavailable = undefined;
+      return;
+    }
+    this.sandboxUnavailable = {
+      unavailable: true,
+      ...(reported.reason ? { reason: reported.reason } : {}),
+    };
+  }
+
+  /**
+   * A definitive refusal before the start boundary: an effort muse has no
+   * tier for can never start, so nothing is recorded as maybe-started.
+   */
+  async preflightStart(input: ProviderSessionStartInput): Promise<void> {
+    readMuseReasoningEffort(input.modelOptions);
+    if (
+      this.options.serve &&
+      this.sandboxUnavailable &&
+      readApprovalMode(input.modelOptions) === 'auto'
+    ) {
+      throw new SessionStartRefusedError(
+        new MuseSandboxUnavailableError(this.sandboxUnavailable.reason).message,
+        'sandbox_unavailable',
+      );
+    }
   }
 
   async startSession(
@@ -1146,6 +1697,30 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
     const startedAt = Date.now();
     const requestedApprovalMode = readApprovalMode(input.modelOptions);
+    const reasoningEffort = readMuseReasoningEffort(input.modelOptions);
+    // A resume continues the durable muse session the cursor names, through
+    // `muse serve` only. Any failure refuses the start: never a new session
+    // (or an exec one) standing in for the conversation's.
+    const resume =
+      input.resumeCursor === undefined || input.resumeCursor === null
+        ? undefined
+        : readMuseResumeCursor(input.resumeCursor);
+    if (input.resumeCursor != null && !resume) {
+      throw new Error(
+        'This conversation carries a resume cursor Muse Code cannot read, so its session cannot be continued.',
+      );
+    }
+    if (resume && (!this.options.serve || this.providerOverride === 'echo')) {
+      throw new Error(
+        "This conversation's Muse session can only be continued through `muse serve`, which this Station does not run for Muse.",
+      );
+    }
+    // #1942: the credential profile this session runs under, resolved before
+    // anything is spawned. A selected profile that cannot be prepared refuses
+    // the start (see `resolveAppHomeEnv`).
+    const appHomeEnv = (
+      await this.resolveAppHomeEnv(input.credentialProfileRef)
+    )?.env;
     // chat-host-images: prepared once, here; the serve host and every exec
     // turn get this one folder, and none is created later in the session.
     const sessionTmpDir = engineSessionTmpDir(input.threadId);
@@ -1163,15 +1738,34 @@ export class MuseAdapter implements ProviderAdapterShape {
         input.threadId,
         input.cwd,
         sessionTmpDir,
+        appHomeEnv,
       );
       try {
         serveStarted = await candidate.start({
           ...(input.cwd ? { cwd: input.cwd } : {}),
           ...(input.modelId ? { modelId: input.modelId } : {}),
           approvalMode: requestedApprovalMode,
+          ...(resume ? { resumeSessionId: resume.museSessionId } : {}),
         });
         serve = candidate;
+        this.learnSandbox(candidate);
       } catch (error) {
+        // A host that answered before failing still said whether this
+        // machine has a sandbox; the exec fallback below depends on it.
+        this.learnSandbox(candidate);
+        if (error instanceof MuseSandboxUnavailableError) {
+          // Settled: the host was closed before any session existed, and
+          // exec would run the same posture in the same missing sandbox.
+          this.sandboxUnavailable = {
+            unavailable: true,
+            ...(error.reason ? { reason: error.reason } : {}),
+          };
+          throw new SessionStartRefusedError(
+            error.message,
+            'sandbox_unavailable',
+          );
+        }
+        if (resume) throw this.resumeFailure(input.threadId, error);
         serveUnavailable = errorMessage(error);
         this.options.logger?.warn?.(
           'Muse serve unavailable; this session falls back to muse exec.',
@@ -1182,6 +1776,15 @@ export class MuseAdapter implements ProviderAdapterShape {
     if (this.sessions.has(input.threadId)) {
       await serve?.stop();
       throw new Error(`Muse session already exists: ${input.threadId}`);
+    }
+    if (!serveStarted) {
+      const refusal = this.execSandboxRefusal(requestedApprovalMode);
+      if (refusal) {
+        throw new SessionStartRefusedError(
+          refusal.message,
+          'sandbox_unavailable',
+        );
+      }
     }
     // #4518: exec always runs `--approval-mode never`, which is `auto` in
     // Station's vocabulary (see `buildMuseExecArgs`): it has no channel to
@@ -1212,6 +1815,13 @@ export class MuseAdapter implements ProviderAdapterShape {
       status: 'ready',
       model: appliedModelId,
       ...(input.cwd ? { cwd: input.cwd } : {}),
+      ...(serveStarted
+        ? {
+            resumeCursor: {
+              museSessionId,
+            } satisfies MuseResumeCursor,
+          }
+        : {}),
       createdAt: nowIso,
       updatedAt: nowIso,
     };
@@ -1221,9 +1831,12 @@ export class MuseAdapter implements ProviderAdapterShape {
       session,
       cwd: input.cwd,
       modelId: input.modelId,
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+      ...(requestedApprovalMode ? { approvalMode: requestedApprovalMode } : {}),
       stopped: false,
       ...(serve ? { serve } : {}),
       ...(sessionTmpDir ? { tmpDir: sessionTmpDir } : {}),
+      ...(appHomeEnv ? { appHomeEnv } : {}),
     };
     this.sessions.set(input.threadId, record);
     // chat-host-images: the folder prepared at the start is recorded now that
@@ -1243,9 +1856,10 @@ export class MuseAdapter implements ProviderAdapterShape {
       ? {
           museTransport: 'serve',
           museApprovalMode: serveStarted.plan.museMode,
-          museSandbox: serveStarted.plan.disableSandbox
-            ? 'disabled'
-            : 'enabled',
+          museSandbox: museSandboxLabel(
+            serveStarted.plan,
+            serveStarted.sandbox,
+          ),
           ...(serveStarted.plan.stationMode
             ? { approvalMode: serveStarted.plan.stationMode }
             : {}),
@@ -1302,6 +1916,32 @@ export class MuseAdapter implements ProviderAdapterShape {
     if (!serve && this.options.serve) {
       this.publishExecTransportFacts(input.threadId, serveUnavailable);
     }
+    serve?.announceStartSchema();
+    if (
+      serveStarted?.sandbox.unavailable &&
+      !serveStarted.plan.disableSandbox
+    ) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: MUSE_SANDBOX_UNAVAILABLE_CODE,
+        message:
+          'Muse cannot enforce its sandbox on this machine, so the commands it runs in this session are not contained. Auto is refused here.',
+        details: {
+          ...(serveStarted.sandbox.reason
+            ? { reason: serveStarted.sandbox.reason }
+            : {}),
+        },
+      });
+    }
+
+    // Best effort and off the start's path: a slow or failed read delays and
+    // refuses nothing.
+    void this.reportEngineMcpServers(record);
 
     providerOps.add(1, {
       operation: 'adapter-session-start',
@@ -1311,6 +1951,92 @@ export class MuseAdapter implements ProviderAdapterShape {
       provider: this.provider,
     });
     return record.session;
+  }
+
+  /**
+   * The MCP servers muse's own config enables for this session's folder,
+   * read under the session's own profile env (so a credential profile's
+   * `settings.json` is the one listed) and the unattended launcher switches.
+   * Configuration only: see `muse-mcp-status.ts` for why nothing here is
+   * `ready`, and why no reconnect is declared.
+   */
+  private async reportEngineMcpServers(
+    record: MuseSessionRecord,
+  ): Promise<void> {
+    const list = this.options.listMcpServers;
+    if (!list) return;
+    try {
+      const command =
+        managedEngineBinaryPath('muse') ?? this.findBinary('muse');
+      if (!command) return;
+      const result = await list({
+        command,
+        ...(record.cwd ? { cwd: record.cwd } : {}),
+        env: { ...MUSE_UNATTENDED_LAUNCHER_ENV, ...record.appHomeEnv },
+        ...(museProfileOmitsApiKey(record.appHomeEnv)
+          ? { omitEnv: [MUSE_API_KEY_ENV] }
+          : {}),
+      });
+      if (!result || result.code !== 0) return;
+      const servers = museMcpStatusFromList(result.stdout);
+      if (!servers) return;
+      // The session may have ended, or been replaced, while muse answered.
+      if (this.sessions.get(record.externalThreadId) !== record) return;
+      if (record.stopped) return;
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        method: 'engine-mcp.status',
+        servers,
+        complete: true,
+      });
+    } catch (error) {
+      this.options.logger?.warn?.('Muse MCP server list could not be read.', {
+        reason: redactSecrets(errorMessage(error)).slice(
+          0,
+          MUSE_REFUSED_VALUE_MAX_CHARS,
+        ),
+      });
+    }
+  }
+
+  /** The durable muse session id a resume cursor names. */
+  nativeSessionIdentity(
+    resumeCursor: unknown,
+  ): ProviderNativeSessionIdentity | undefined {
+    const cursor = readMuseResumeCursor(resumeCursor);
+    return cursor ? { sessionId: cursor.museSessionId } : undefined;
+  }
+
+  /**
+   * A resume that did not happen. Muse no longer having the session (or
+   * answering with another) ends that binding: published as
+   * `engine-session-binding-dead`, which recovery does not retry. Anything
+   * else (no host, a failed handshake) leaves the cursor to retry.
+   */
+  private resumeFailure(threadId: string, error: unknown): Error {
+    if (error instanceof MuseServeResumeRefusedError) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.error',
+        ...providerFailure('session_gone'),
+        severity: 'error',
+        code: ENGINE_SESSION_BINDING_DEAD_CODE,
+        retriable: false,
+        message: error.message,
+      } satisfies ProviderRuntimeErrorEvent);
+      return new Error(error.message);
+    }
+    return new Error(
+      `Muse Code could not resume this conversation's session: ${redactSecrets(
+        errorMessage(error),
+      ).slice(0, MUSE_REFUSED_VALUE_MAX_CHARS * 2)}`,
+    );
   }
 
   /**
@@ -1350,19 +2076,44 @@ export class MuseAdapter implements ProviderAdapterShape {
     threadId: string,
     cwd: string | undefined,
     tmpDir: string | undefined,
+    appHomeEnv?: Record<string, string>,
   ): MuseServeSession {
     const serve = this.options.serve ?? {};
     const spawnHost =
       serve.spawnHost ??
-      ((posture: MuseServeHostPosture, hostCwd?: string, hostTmpDir?: string) =>
-        createMuseServeHost(posture, hostCwd, serve.dataHome, hostTmpDir));
+      ((
+        posture: MuseServeHostPosture,
+        hostCwd?: string,
+        hostTmpDir?: string,
+        envOverrides?: Record<string, string>,
+      ) =>
+        createMuseServeHost(
+          posture,
+          hostCwd,
+          serve.dataHome,
+          hostTmpDir,
+          envOverrides,
+        ));
     return new MuseServeSession({
       threadId,
       now: this.now,
       publish: (event) => this.publish(event),
       ...(this.options.logger ? { logger: this.options.logger } : {}),
-      spawnHost: (posture) => spawnHost(posture, cwd, tmpDir),
+      // A re-host (after a host exit) runs under the same profile.
+      spawnHost: (posture) =>
+        appHomeEnv
+          ? spawnHost(posture, cwd, tmpDir, appHomeEnv)
+          : spawnHost(posture, cwd, tmpDir),
+      // Muse moved the session's model itself: what this session reports
+      // (and retains for later turns) follows it.
+      onModelChanged: (modelId) => {
+        const record = this.sessions.get(threadId);
+        if (!record || record.serve === undefined) return;
+        record.modelId = modelId;
+        record.session = { ...record.session, model: modelId };
+      },
       terminateHost: serve.terminateHost ?? terminateMuseServeHost,
+      ...this.schemaCheckFor(serve, appHomeEnv),
       newCommandId: serve.newCommandId ?? (() => museUuidV7()),
       approvalTimeoutMs: resolveMuseSupervisionBound(
         serve.approvalTimeoutMs,
@@ -1399,6 +2150,23 @@ export class MuseAdapter implements ProviderAdapterShape {
       );
     }
     if (record.serve) return this.sendServeTurn(record, record.serve, input);
+    // A command this adapter lists runs as a serve request
+    // (`MUSE_SERVE_COMMANDS`); `muse exec` has none, and as prompt text it
+    // would reach the model as an ordinary message. The listing is
+    // provider-wide, so this exec-fallback session refuses it instead.
+    const listedCommand =
+      this.getCommands && !input.attachments?.length
+        ? readSlashCommandInvocation(input.input)
+        : undefined;
+    if (listedCommand && adapterActionFor(MUSE_SERVE_COMMANDS, listedCommand)) {
+      throw this.refuseSend(
+        input.threadId,
+        new SendTurnRefusedError(
+          `Muse's /${listedCommand.name} runs only on a \`muse serve\` session, and this session runs on \`muse exec\`. Nothing was sent.`,
+          'input_unsupported',
+        ),
+      );
+    }
     // The slot is held until the child EXITS, not until the turn settles: two
     // `muse exec` processes must never run concurrently against one
     // `--session-id`. #2300: the server frees a turn at its
@@ -1460,6 +2228,21 @@ export class MuseAdapter implements ProviderAdapterShape {
         ),
       );
     }
+    const sandboxRefusal = this.execSandboxRefusal(
+      readApprovalMode(input.modelOptions) ?? record.approvalMode,
+    );
+    if (sandboxRefusal) throw this.refuseSend(input.threadId, sandboxRefusal);
+    let requestedEffort: MuseReasoningEffort | undefined;
+    try {
+      requestedEffort =
+        readMuseReasoningEffort(input.modelOptions) ?? record.reasoningEffort;
+    } catch (error) {
+      throw this.refuseSend(input.threadId, error as Error);
+    }
+    // Under `echo` the flag is dropped (`buildMuseExecArgs`), so no tier is
+    // claimed either.
+    const appliedEffort =
+      this.providerOverride === 'echo' ? undefined : requestedEffort;
     this.reportProviderNoticeOnce();
     this.reportRefusedTurnBudgetOnce();
     const turnId = crypto.randomUUID();
@@ -1503,11 +2286,19 @@ export class MuseAdapter implements ProviderAdapterShape {
       // Omitted entirely when unset, which is the default: the argv is then
       // byte-identical to the one Station has always built.
       ...(this.providerOverride ? { provider: this.providerOverride } : {}),
+      ...(appliedEffort ? { reasoningEffort: appliedEffort } : {}),
     });
 
     let spawned: MuseSpawnResult;
     try {
-      spawned = this.processFactory(args, record.cwd, record.tmpDir);
+      spawned = record.appHomeEnv
+        ? this.processFactory(
+            args,
+            record.cwd,
+            record.tmpDir,
+            record.appHomeEnv,
+          )
+        : this.processFactory(args, record.cwd, record.tmpDir);
     } catch (error) {
       cleanupImages();
       throw error;
@@ -1594,6 +2385,8 @@ export class MuseAdapter implements ProviderAdapterShape {
       // whatever was requested — `auto` in Station's vocabulary — so a
       // requested posture is answered with what actually applied.
       ...(readApprovalMode(input.modelOptions) ? { approvalMode: 'auto' } : {}),
+      // The `--reasoning-effort` this process was started with.
+      ...(appliedEffort ? { museReasoningEffort: appliedEffort } : {}),
       // Each bound appears only when it was declared, because only then
       // does anything enforce it. With neither (production), the
       // declaration says exactly that: this turn has no Station-imposed
@@ -1644,12 +2437,26 @@ export class MuseAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     const decoded = decodeChatAttachments(input.attachments);
     rejectFileAttachments('Muse Code', decoded);
+    const invocation =
+      decoded.length === 0
+        ? readSlashCommandInvocation(input.input)
+        : undefined;
+    if (
+      invocation &&
+      this.getCommands &&
+      adapterActionFor(MUSE_SERVE_COMMANDS, invocation) === 'compact'
+    ) {
+      return this.compactServeSession(serve, input, invocation);
+    }
     const approvalMode: ApprovalMode | undefined = readApprovalMode(
       input.modelOptions,
     );
     let turnId: string;
     try {
+      const reasoningEffort =
+        readMuseReasoningEffort(input.modelOptions) ?? record.reasoningEffort;
       ({ turnId } = await serve.sendTurn({
+        ...(reasoningEffort ? { reasoningEffort } : {}),
         prompt: input.input,
         displayPrompt: input.displayInput ?? input.input,
         ...(input.invocationId ? { invocationId: input.invocationId } : {}),
@@ -1690,6 +2497,113 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
+   * `/compact` on a serve session: `session/compact`, shown on a turn of its
+   * own. Muse admits compaction and runs it after the ack, so the line says
+   * it started (or that muse had nothing to compact), never that it
+   * finished. A refusal (a turn running, compaction unavailable for the
+   * session's model) refuses the send before anything happened.
+   */
+  private async compactServeSession(
+    serve: MuseServeSession,
+    input: ProviderSendTurnInput,
+    invocation: SlashCommandInvocation,
+  ): Promise<ProviderTurnStartResult> {
+    if (invocation.args) {
+      throw this.refuseSend(
+        input.threadId,
+        new SendTurnRefusedError(
+          "Muse's /compact takes no instructions; send /compact on its own.",
+          'input_unsupported',
+        ),
+      );
+    }
+    let outcome: EngineCommandOutcome;
+    try {
+      outcome = await serve.compact();
+    } catch (error) {
+      if (error instanceof SendTurnRefusedError) {
+        throw this.refuseSend(input.threadId, error);
+      }
+      throw error;
+    }
+    const turnId = crypto.randomUUID();
+    const text = engineCommandOutcomeText(
+      'Muse Code',
+      invocation.name,
+      outcome,
+    );
+    const base = {
+      provider: this.provider,
+      threadId: input.threadId,
+      turnId,
+      ...(input.invocationId ? { invocationId: input.invocationId } : {}),
+    };
+    this.publish({
+      ...base,
+      eventId: crypto.randomUUID(),
+      createdAt: this.now().toISOString(),
+      method: 'turn.started',
+      prompt: input.displayInput ?? input.input,
+      metadata: { museTransport: 'serve' },
+    });
+    // Opened and closed together: the session already takes another send,
+    // so this turn must never read as open after the send returns.
+    this.publish({
+      ...base,
+      eventId: crypto.randomUUID(),
+      createdAt: this.now().toISOString(),
+      itemId: `${turnId}:command`,
+      method: 'content.text-delta',
+      delta: text,
+    });
+    this.publish({
+      ...base,
+      eventId: crypto.randomUUID(),
+      createdAt: this.now().toISOString(),
+      method: 'turn.completed',
+      finishReason: 'stop',
+      outputText: text,
+    });
+    return { threadId: input.threadId, turnId };
+  }
+
+  /**
+   * The session's goal as muse last reported it. Never starts or re-hosts
+   * anything. Unknown (`provider-unavailable`) after a resume until muse
+   * reports a change, or when muse reports a status Station cannot name.
+   */
+  private readGoal(threadId: string): SessionGoalRead {
+    const record = this.sessions.get(threadId);
+    if (!record || record.stopped)
+      return { state: 'unavailable', reason: 'session-not-live' };
+    if (!record.serve) return { state: 'unsupported' };
+    const state = record.serve.goalState;
+    if (!state?.known)
+      return { state: 'unavailable', reason: 'provider-unavailable' };
+    return {
+      state: 'available',
+      capability: { ...MUSE_GOAL_CAPABILITY },
+      goal: state.goal,
+    };
+  }
+
+  private async controlGoal(
+    threadId: string,
+    input: SessionGoalCommand,
+  ): Promise<SessionGoalControlResult> {
+    const command = parseSessionGoalCommand(input);
+    if (!command) return { state: 'refused', reason: 'invalid-command' };
+    const record = this.sessions.get(threadId);
+    if (!record || record.stopped)
+      return { state: 'refused', reason: 'session-not-live' };
+    if (!record.serve) return { state: 'unsupported' };
+    // See MUSE_GOAL_CAPABILITY: both would start a goal turn.
+    if (command.operation === 'set' || command.operation === 'resume')
+      return { state: 'unsupported' };
+    return record.serve.controlGoal(command.operation);
+  }
+
+  /**
    * #2452: stop ONE Muse workflow subagent (`subagent/stop`), leaving the
    * turn and its siblings running. Serve sessions only: `muse exec` names no
    * subagent, so an exec session has nothing to address.
@@ -1701,6 +2615,57 @@ export class MuseAdapter implements ProviderAdapterShape {
     const record = this.requireSession(threadId);
     if (!record.serve) return { outcome: 'unsupported' };
     return record.serve.stopChild(taskId);
+  }
+
+  /**
+   * Input for one running Muse subagent (`subagent/sendMessage`), leaving the
+   * turn and its siblings alone. Serve sessions only: an exec session names
+   * no subagent, so it has none to address.
+   */
+  async steerChildWork(
+    threadId: string,
+    childId: string,
+    turnId: string,
+    input: string,
+  ): Promise<ProviderChildSteerResult> {
+    const record = this.requireSession(threadId);
+    if (!record.serve) return { outcome: 'unsupported' };
+    const text = input.trim();
+    if (!text) throw new Error('Steer input is empty.');
+    return record.serve.steerChild(childId, turnId, text);
+  }
+
+  /**
+   * Only a serve session has a mid-turn input channel (`turn/steer`); one on
+   * the `muse exec` fallback runs one prompt per process.
+   */
+  canSteerTurn(threadId: string): boolean {
+    return this.sessions.get(threadId)?.serve !== undefined;
+  }
+
+  /**
+   * #1952: adds `input` to the running serve turn (`turn/steer` with that
+   * turn as `expectedTurnId`), published as `turn.started` with `inputKind:
+   * 'steer'` like every steering engine. A turn that is not running is
+   * refused with {@link ProviderTurnEndedError}; an exec session is refused
+   * before any effect.
+   */
+  async steerTurn(
+    threadId: string,
+    input: string,
+    turnId: string,
+  ): Promise<void> {
+    const record = this.requireSession(threadId);
+    if (!record.serve) {
+      throw new SendTurnRefusedError(
+        'This Muse session runs on `muse exec`, which cannot take input mid-turn. Send the message as a new turn.',
+        'input_unsupported',
+      );
+    }
+    const text = input.trim();
+    if (!text) throw new Error('Steer input is empty.');
+    if (record.stopped) throw new ProviderTurnEndedError();
+    await record.serve.steer(turnId, text);
   }
 
   async interruptTurn(threadId: string, turnId?: string) {
@@ -1739,8 +2704,10 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * Serve sessions (#2452) answer the engine's own approval: see
-   * `MuseServeSession.respond`. `muse exec` exposes no approval channel, so
+   * Serve sessions (#2452) answer the engine's own approval (see
+   * `MuseServeSession.respond`) or question (`request_user_input`, answered
+   * with the form content in `context`; see
+   * `MuseServeSession.answerUserInput`). `muse exec` exposes no channel, so
    * an exec session never publishes `request.opened` and there is nothing to
    * resolve against the engine. Publish-only there, mirroring the Ollama
    * adapter: a caller that resolves an unknown request still gets a matching
@@ -1750,9 +2717,23 @@ export class MuseAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const serve = this.sessions.get(threadId)?.serve;
     if (serve) {
+      if (serve.hasUserInput(requestId)) {
+        await serve.answerUserInput(requestId, decision, {
+          ...(context?.inputContent !== undefined
+            ? { inputContent: context.inputContent }
+            : {}),
+          ...(context?.expectedRequestEventId !== undefined
+            ? { expectedRequestEventId: context.expectedRequestEventId }
+            : {}),
+        });
+        return;
+      }
+      if (context?.inputContent !== undefined)
+        throw new Error('This request does not accept question answers.');
       await serve.respond(requestId, decision);
       return;
     }

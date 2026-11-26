@@ -4,12 +4,14 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { createIsolatedRepairRoutes } from '../../../routes/operations/repairs.js';
 import {
   MANAGED_REPAIR_RELAY_REFUSED,
   type ManagedListenerAdmission,
 } from '../../../security/managed-network-exposure.js';
 import { execGitSync } from '../../../utils/git-exec.js';
+import { ProjectService } from '../../projects/project-service.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import {
   automationEpisodeKey,
@@ -46,6 +48,11 @@ const gitHash = (type: string, value: Buffer) =>
     .update(value)
     .digest('hex');
 
+const REPAIR_PROJECT = {
+  id: '7c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f',
+  slug: 'station',
+};
+
 async function fixture(
   options: {
     failure?: 'protected' | 'authority' | 'stopped' | 'case';
@@ -54,6 +61,14 @@ async function fixture(
     listenerAdmission?: ManagedListenerAdmission;
     /** The run is expected to end indeterminate without a `failure`. */
     expectIndeterminate?: boolean;
+    /**
+     * Real Project files read by the real ProjectService (by slug only, as
+     * production's), and every rule, grant and profile naming the Project
+     * by this reference.
+     */
+    projectRef?: string;
+    /** Replace the Project with a same-slug one before the repair tick. */
+    replaceProject?: boolean;
   } = {},
 ) {
   const home = temporary('isolated-repair-caller-');
@@ -81,8 +96,24 @@ async function fixture(
   const baseTree = git('rev-parse', 'HEAD^{tree}');
   const graphHome = join(home, 'graph');
   mkdirSync(graphHome);
+  const storage = options.projectRef
+    ? new FileStorageAdapter(join(home, 'station'))
+    : undefined;
+  await storage?.createProject({
+    id: REPAIR_PROJECT.id,
+    slug: REPAIR_PROJECT.slug,
+    name: 'Station',
+    workingDirectory: repo,
+    createdAt: '2026-10-30T10:00:00.000Z',
+    updatedAt: '2026-10-30T10:00:00.000Z',
+  });
+  const real = storage ? new ProjectService(storage) : undefined;
+  const projectRef = options.projectRef ?? 'project';
+  const projects = real ?? {
+    listProjects: () => [{ id: 'project', slug: 'project' }],
+  };
   const tasks = new TaskGraphService(graphHome, {
-    projectService: {
+    projectService: real ?? {
       getProject: (slug) => ({
         id: slug,
         slug,
@@ -93,7 +124,7 @@ async function fixture(
       }),
     },
   });
-  const policy = new AutomationStore(home);
+  const policy = new AutomationStore(home, undefined, projects);
   const ledger = createAutomationLedger({
     directory: join(home, 'automation'),
   });
@@ -276,6 +307,7 @@ async function fixture(
     ledger: () => ledger,
     tasks,
     projectRoot: () => repo,
+    projects,
     isAgentCurrent: async () => true,
     logger: { warn: vi.fn() },
     worker,
@@ -296,7 +328,7 @@ async function fixture(
       expectedRevision: 0,
       profile: {
         kind: 'execution',
-        projectId: 'project',
+        projectId: projectRef,
         agentId: 'repairer',
         repository: 'kontourai/station',
         repositoryId: 19,
@@ -341,7 +373,7 @@ async function fixture(
     repository: 'kontourai/station',
     grants: [
       {
-        projectId: 'project',
+        projectId: projectRef,
         agentId: 'repairer',
         actions:
           options.publishBranch === false
@@ -363,7 +395,7 @@ async function fixture(
         rateLimit: QUALIFICATION_RULE.rateLimit,
         action: {
           kind: 'isolated-repair',
-          projectId: 'project',
+          projectId: projectRef,
           agentId: 'repairer',
           profileId: execution.id,
           instructions: 'Repair the failing fixture.',
@@ -425,6 +457,21 @@ async function fixture(
       now: Date.now(),
     });
   expect(intake().outcome).toBe('matched');
+  if (options.replaceProject) {
+    await storage!.deleteProject(REPAIR_PROJECT.slug);
+    await storage!.createProject({
+      id: 'a-replacement-project',
+      slug: REPAIR_PROJECT.slug,
+      name: 'Station',
+      workingDirectory: repo,
+      createdAt: '2026-10-30T10:00:00.000Z',
+      updatedAt: '2026-10-30T10:00:00.000Z',
+    });
+    await controller.tick();
+    await controller.tick();
+    // Only these fields are read when the Project was replaced.
+    return { controller, tasks, ledger, worker } as never;
+  }
   await controller.tick();
   await vi.waitFor(() =>
     expect(controller.list()[0]?.phase, controller.list()[0]?.reasonCode).toBe(
@@ -1063,4 +1110,142 @@ test('the repair mode check alone refuses an intent whose fingerprint matches th
     context.controller.store.list().map((run) => run.intent.ruleId),
   ).toEqual([original.id]);
   expect(context.worker).toHaveBeenCalledTimes(1);
+});
+
+/**
+ * #4575: a pending repair intent whose rule disappears (deleted) or stops
+ * being an isolated-repair rule (kind changed) is refused on the next tick,
+ * so restoring the identical rule inside the 72-hour event window, after an
+ * intervening tick, can never dispatch the stale repair.
+ */
+test.each([
+  ['deleted', 'delete'],
+  ['changed to dispatch-task', 'change-kind'],
+] as const)(
+  'a pending repair intent whose rule was %s is refused and never dispatches after the rule is restored (#4575)',
+  async (_label, change) => {
+    const context = await fixture();
+    const original = context.policy.read().rules[0]!;
+    const second = await context.policy.createRule({
+      ...original,
+      name: 'second repair',
+    });
+    await context.policy.setEnabled({
+      kind: 'rule',
+      id: second.id,
+      expectedFingerprint:
+        context.controller.automationConfiguration().fingerprint,
+      mode: 'live',
+    });
+    const source = context.policy.read().sources[0]!;
+    const normalized = normalizeGitHubWorkflowRun(
+      workflowRun({
+        id: 55555559,
+        runAttempt: 2,
+        conclusion: 'failure',
+        updatedAt: new Date(Date.now() - 1000).toISOString(),
+      }),
+      { source, receivedAt: Date.now() },
+    );
+    if (normalized.kind !== 'event') throw new Error(normalized.reason);
+    recordAutomationEvent({
+      ledger: context.ledger,
+      source,
+      rules: context.policy
+        .actionableRules(source.id)
+        .filter((rule) => rule.id === second.id),
+      event: normalized.event,
+      transportId: normalized.event.semanticKey,
+      now: Date.now(),
+    });
+    const intent = context.ledger
+      .listActionIntents()
+      .find((candidate) => candidate.ruleId === second.id);
+    expect(intent?.state).toBe('pending');
+
+    // Hand edits, as an operator restoring a backup would make them.
+    const live = JSON.parse(readFileSync(context.policy.path, 'utf8'));
+    const write = (configuration: unknown) =>
+      writeFileSync(context.policy.path, JSON.stringify(configuration), {
+        mode: 0o600,
+      });
+    if (change === 'delete') {
+      write({
+        ...live,
+        rules: live.rules.filter(
+          (rule: { id: string }) => rule.id !== second.id,
+        ),
+      });
+    } else {
+      // The source must also grant dispatch-task, or the edited file would
+      // be unreadable and the tick would refuse nothing at all.
+      write({
+        ...live,
+        sources: live.sources.map((s: { grants: { actions: string[] }[] }) => ({
+          ...s,
+          grants: s.grants.map((grant) => ({
+            ...grant,
+            actions: [...grant.actions, 'dispatch-task'],
+          })),
+        })),
+        rules: live.rules.map(
+          (rule: { id: string; action: Record<string, unknown> }) =>
+            rule.id === second.id
+              ? {
+                  ...rule,
+                  action: {
+                    kind: 'dispatch-task',
+                    projectId: rule.action.projectId,
+                    agentId: rule.action.agentId,
+                    instructions: rule.action.instructions,
+                    budget: {
+                      maxTurns: 2,
+                      maxTokens: 10_000,
+                      maxWallRuntimeMs: 60_000,
+                    },
+                  },
+                }
+              : rule,
+        ),
+      });
+      expect(context.policy.read().rules.length).toBe(live.rules.length);
+    }
+    // The intervening tick: the intent is refused, not skipped.
+    await context.controller.tick();
+    expect(context.ledger.readIntent(intent!.intentId)).toMatchObject({
+      state: 'refused',
+      reason: 'policy_changed',
+    });
+    // Restore the identical configuration within the event window: the
+    // fingerprint matches again, but the refused intent stays refused.
+    write(live);
+    await context.controller.tick();
+    await context.controller.tick();
+    expect(context.ledger.readIntent(intent!.intentId)?.state).toBe('refused');
+    expect(
+      context.controller.store.list().map((run) => run.intent.ruleId),
+    ).toEqual([original.id]);
+    expect(context.worker).toHaveBeenCalledTimes(1);
+  },
+);
+
+test('a repair rule naming its Project by slug or id creates its Task under the slug and reaches a proposal', async () => {
+  for (const projectRef of [REPAIR_PROJECT.slug, REPAIR_PROJECT.id]) {
+    const context = await fixture({ projectRef });
+    expect(context.retained.intent.action.projectId).toBe(REPAIR_PROJECT.id);
+    expect(context.tasks.readTaskView(context.retained.taskId)?.projectId).toBe(
+      REPAIR_PROJECT.slug,
+    );
+    expect(context.artifact.result).toBeTruthy();
+  }
+});
+
+test('a repair whose Project was deleted and recreated under the same slug starts nothing', async () => {
+  const context = await fixture({
+    projectRef: REPAIR_PROJECT.slug,
+    replaceProject: true,
+  });
+  expect(context.controller.list()).toEqual([]);
+  expect(context.tasks.listTasks()).toEqual([]);
+  expect(context.worker).not.toHaveBeenCalled();
 });

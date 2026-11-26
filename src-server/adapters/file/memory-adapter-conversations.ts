@@ -74,6 +74,10 @@ export interface MemoryConversationStore {
   resolveResourceId(conversationId?: string, userId?: string): Promise<string>;
   listAgentConversations(resourceId: string): Promise<Conversation[]>;
   loadAllConversations(): Promise<Conversation[]>;
+  deleteOwnedConversation(
+    conversationId: string,
+    canDelete: (current: Conversation) => boolean,
+  ): Promise<boolean>;
   deleteConversationAssets(
     resourceId: string,
     conversationId: string,
@@ -138,8 +142,9 @@ export function createMemoryConversationStore(options: {
 
   async function loadConversationFromDisk(
     conversationId: string,
+    fresh = false,
   ): Promise<Conversation | null> {
-    if (conversationCache.has(conversationId)) {
+    if (!fresh && conversationCache.has(conversationId)) {
       return conversationCache.get(conversationId)!;
     }
 
@@ -190,75 +195,14 @@ export function createMemoryConversationStore(options: {
     cacheConversation(conversation);
   }
 
-  async function persistConversation(
-    conversation: Conversation,
-  ): Promise<void> {
-    // Preserve invocation order per conversation. Atomic rename prevents torn
-    // reads, while this queue also keeps the cache aligned with the document
-    // that won the final rename under concurrent saves.
-    const predecessor = conversationPersistence.get(conversation.id);
+  async function queueConversationMutation<T>(
+    conversationId: string,
+    mutate: () => Promise<T>,
+  ): Promise<T> {
+    const predecessor = conversationPersistence.get(conversationId);
     const operation = (predecessor ?? Promise.resolve())
       .catch(() => undefined)
-      .then(() => writeConversationToDisk(conversation));
-    conversationPersistence.set(conversation.id, operation);
-    try {
-      await operation;
-    } finally {
-      if (conversationPersistence.get(conversation.id) === operation)
-        conversationPersistence.delete(conversation.id);
-    }
-  }
-
-  async function updateConversation(
-    conversationId: string,
-    updater: (current: Conversation) => Partial<Conversation> | null,
-  ): Promise<Conversation> {
-    // archive#1566 review HIGH: the read (`loadConversationFromDisk`) and the
-    // `updater` decision both run INSIDE this queued turn, chained onto the
-    // same per-conversation predecessor `persistConversation` uses — so a
-    // concurrent write queued just before this one (whether a plain
-    // `persistConversation`/object-form `updateConversation`, or another
-    // updater-form call) has already landed and updated the cache by the
-    // time `current` is read here. There is no window between "decide" and
-    // "write" for a third party to land an update this call never sees.
-    const predecessor = conversationPersistence.get(conversationId);
-    const operation: Promise<Conversation> = (predecessor ?? Promise.resolve())
-      .catch(() => undefined)
-      .then(async () => {
-        const current = await loadConversationFromDisk(conversationId);
-        if (!current) {
-          throw new Error(`Conversation ${conversationId} not found`);
-        }
-
-        // The updater gets a defensive copy, never the live cache entry: an
-        // updater that mutates its argument in place (the natural-looking
-        // pattern) must not be able to diverge the cache from disk —
-        // especially when it then returns null to skip the write. Mirrors
-        // the clone the public getConversation read path already does.
-        const patch = updater({
-          ...current,
-          ...(current.metadata &&
-          typeof current.metadata === 'object' &&
-          !Array.isArray(current.metadata)
-            ? { metadata: { ...current.metadata } }
-            : {}),
-        });
-        if (!patch) {
-          // Skip: no write. Still occupies this queue slot for its full
-          // turn, so anything queued after it correctly waits its turn too.
-          return current;
-        }
-
-        const updated: Conversation = {
-          ...current,
-          ...patch,
-          resourceId: current.resourceId,
-          createdAt: current.createdAt,
-          updatedAt: new Date().toISOString(),
-        };
-        await writeConversationToDisk(updated);
-        return updated;
-      });
+      .then(mutate);
     conversationPersistence.set(conversationId, operation);
     try {
       return await operation;
@@ -268,14 +212,88 @@ export function createMemoryConversationStore(options: {
     }
   }
 
-  async function touchConversation(conversationId: string): Promise<void> {
-    const conversation = await loadConversationFromDisk(conversationId);
-    if (!conversation) return;
+  async function persistConversation(
+    conversation: Conversation,
+  ): Promise<void> {
+    return queueConversationMutation(conversation.id, () =>
+      writeConversationToDisk(conversation),
+    );
+  }
 
-    await persistConversation({
-      ...conversation,
-      updatedAt: new Date().toISOString(),
+  /**
+   * The queued read-compute-write shared by `updateConversation` and
+   * `touchConversation`. Resolves `null` when the conversation does not
+   * exist; each caller decides what that means.
+   */
+  async function updateExistingConversation(
+    conversationId: string,
+    updater: (current: Conversation) => Partial<Conversation> | null,
+  ): Promise<Conversation | null> {
+    // archive#1566 review HIGH: the read (`loadConversationFromDisk`) and the
+    // `updater` decision both run INSIDE this queued turn, chained onto the
+    // same per-conversation predecessor `persistConversation` uses — so a
+    // concurrent write queued just before this one (whether a plain
+    // `persistConversation`/object-form `updateConversation`, or another
+    // updater-form call) has already landed and updated the cache by the
+    // time `current` is read here. There is no window between "decide" and
+    // "write" for a third party to land an update this call never sees.
+    return queueConversationMutation(conversationId, async () => {
+      const current = await loadConversationFromDisk(conversationId);
+      if (!current) {
+        return null;
+      }
+
+      // The updater gets a defensive copy, never the live cache entry: an
+      // updater that mutates its argument in place (the natural-looking
+      // pattern) must not be able to diverge the cache from disk —
+      // especially when it then returns null to skip the write. Mirrors
+      // the clone the public getConversation read path already does.
+      const patch = updater({
+        ...current,
+        ...(current.metadata &&
+        typeof current.metadata === 'object' &&
+        !Array.isArray(current.metadata)
+          ? { metadata: { ...current.metadata } }
+          : {}),
+      });
+      if (!patch) {
+        // Skip: no write. Still occupies this queue slot for its full
+        // turn, so anything queued after it correctly waits its turn too.
+        return current;
+      }
+
+      const updated: Conversation = {
+        ...current,
+        ...patch,
+        resourceId: current.resourceId,
+        createdAt: current.createdAt,
+        updatedAt: new Date().toISOString(),
+      };
+      await writeConversationToDisk(updated);
+      return updated;
     });
+  }
+
+  async function updateConversation(
+    conversationId: string,
+    updater: (current: Conversation) => Partial<Conversation> | null,
+  ): Promise<Conversation> {
+    const updated = await updateExistingConversation(conversationId, updater);
+    if (!updated) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+    return updated;
+  }
+
+  async function touchConversation(conversationId: string): Promise<void> {
+    // Runs on every message add and delete, so it overlaps title and metadata
+    // updates routinely. It used to read the cached document OUTSIDE the
+    // queue and then persist that whole snapshot, which reverted an
+    // `updateConversation` still mid-publish (the cache is refreshed only
+    // after the publish). An empty patch through the queued updater bumps
+    // `updatedAt` on whatever the latest committed document is. A missing
+    // conversation stays a no-op.
+    await updateExistingConversation(conversationId, () => ({}));
   }
 
   function extractAgentSlug(userId?: string): string | null {
@@ -348,38 +366,53 @@ export function createMemoryConversationStore(options: {
     return conversations;
   }
 
+  function conversationAssetPaths(resourceId: string, conversationId: string) {
+    const messages = paths.getMessagesPath(resourceId, conversationId);
+    return [
+      paths.getConversationPath(resourceId, conversationId),
+      messages,
+      tornRecordQuarantinePath(messages),
+      paths.getConversationWorkingMemoryPath(resourceId, conversationId),
+    ];
+  }
+
+  function forgetConversation(conversationId: string): void {
+    conversationCache.delete(conversationId);
+    conversationResourceCache.delete(conversationId);
+  }
+
   async function deleteConversationAssets(
     resourceId: string,
     conversationId: string,
   ): Promise<void> {
-    const conversationPath = paths.getConversationPath(
-      resourceId,
-      conversationId,
-    );
-    if (existsSync(conversationPath)) {
-      await unlink(conversationPath);
+    for (const path of conversationAssetPaths(resourceId, conversationId)) {
+      if (existsSync(path)) await unlink(path);
     }
+    forgetConversation(conversationId);
+  }
 
-    const messagesPath = paths.getMessagesPath(resourceId, conversationId);
-    if (existsSync(messagesPath)) {
-      await unlink(messagesPath);
-    }
+  function deleteOwnedConversation(
+    conversationId: string,
+    canDelete: (current: Conversation) => boolean,
+  ): Promise<boolean> {
+    return queueConversationMutation(conversationId, async () => {
+      const current = await loadConversationFromDisk(conversationId, true);
+      if (!current) return false;
+      const assets = conversationAssetPaths(current.resourceId, conversationId);
+      if (!existsSync(assets[0])) return false;
+      const present = assets.filter(existsSync);
+      if (!canDelete(current)) return false;
 
-    const tornRecordsPath = tornRecordQuarantinePath(messagesPath);
-    if (existsSync(tornRecordsPath)) {
-      await unlink(tornRecordsPath);
-    }
-
-    const workingMemoryPath = paths.getConversationWorkingMemoryPath(
-      resourceId,
-      conversationId,
-    );
-    if (existsSync(workingMemoryPath)) {
-      await unlink(workingMemoryPath);
-    }
-
-    conversationCache.delete(conversationId);
-    conversationResourceCache.delete(conversationId);
+      // Submit the admitted file deletion without yielding between its paths.
+      // Keep the queue occupied until every unlink settles, even on failure.
+      const results = await Promise.allSettled(
+        present.map((path) => unlink(path)),
+      );
+      forgetConversation(conversationId);
+      const failure = results.find((result) => result.status === 'rejected');
+      if (failure) throw failure.reason;
+      return true;
+    });
   }
 
   return {
@@ -391,5 +424,6 @@ export function createMemoryConversationStore(options: {
     listAgentConversations,
     loadAllConversations,
     deleteConversationAssets,
+    deleteOwnedConversation,
   };
 }

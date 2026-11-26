@@ -1,0 +1,7 @@
+{
+  "revision": "dcce48e837d9cb5997d2246ce460fc1044df2537",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Commit dcce48e837d9 only moves the offline-reading Details disclosure below the Save toggle and Clear offline copies button; no copy changed. The doc's description of Clear offline copies (~253) and the offline reader (~261) still matches.","inputs":["docs/user/getting-started.md","src-ui/src/views/settings/OfflineReadingSection.tsx"]}
+  ]
+}

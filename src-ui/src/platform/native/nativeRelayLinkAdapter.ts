@@ -107,7 +107,7 @@ function delivery(
   ]);
   if (
     surface.kind !== 'station-native' ||
-    !['dev', 'stable', 'beta', 'nightly'].includes(String(surface.channel))
+    !['dev', 'stable', 'nightly'].includes(String(surface.channel))
   )
     throw invalid();
   return {
@@ -123,7 +123,7 @@ function delivery(
       surface: {
         kind: 'station-native',
         appIdentifier: text(surface.appIdentifier),
-        channel: surface.channel as 'dev' | 'stable' | 'beta' | 'nightly',
+        channel: surface.channel as 'dev' | 'stable' | 'nightly',
         clientInstanceId: text(surface.clientInstanceId, UUID),
         keyThumbprint: text(surface.keyThumbprint, KEY),
       },

@@ -10,6 +10,7 @@ import type { BindingStatus } from '../utils/execution';
 import { findMatchingSkillCommand } from '../utils/skill-command-catalog';
 import {
   assignSkillVariableArgs,
+  expandCommandTemplate,
   parseShellWords,
   substituteSkillVariables,
 } from '../utils/skill-commands';
@@ -27,7 +28,8 @@ export type SlashCommandContext = {
   bindingStatus?: BindingStatus;
   autocomplete: {
     openModel: () => void;
-    openNewChat: () => void;
+    /** The surface's New chat action; absent where there is none. */
+    openNewChat?: () => void;
     closeCommand: () => void;
     closeAll: () => void;
   };
@@ -62,11 +64,18 @@ export async function dispatchSlashCommand(
     runSkillMutation,
     readSkillDetail,
   } = dependencies;
+  // A command that runs takes its line out of the composer. One that does
+  // not run leaves the line where it is, so the person can correct it.
   const cleanup = () => {
     updateChat(sessionId, { input: '' });
     context.autocomplete.closeAll();
   };
+  const keepLine = () => context.autocomplete.closeAll();
   const agent = agents.find((a) => a.slug === chatState.agentSlug);
+  // An Agent on a saved ACP connection takes every slash command as engine
+  // text, whichever provider runs its chat (`acp`, or `opencode` behind its
+  // Feature Preview): the connection's type stays `acp`. Without such an
+  // Agent, step 4 decides; it forwards only for Claude and Codex.
   if (agent?.engineConnectionType === 'acp') {
     cleanup();
     return command;
@@ -92,26 +101,41 @@ export async function dispatchSlashCommand(
       role: 'system',
       content: `Could not read ${command}: ${parsed.error}`,
     });
-    cleanup();
+    keepLine();
     return true;
   }
 
-  // 1. Check custom commands (send as message)
-  if (agent?.commands?.[cmd]) {
-    let expandedPrompt = agent.commands[cmd].prompt;
-    const params = agent.commands[cmd].params || [];
-
-    params.forEach((param: any, idx: number) => {
-      const value = args[idx] || param.default || '';
-      const escaped = param.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      expandedPrompt = expandedPrompt.replace(
-        new RegExp(`{{${escaped}}}`, 'g'),
-        value,
+  const authored = agent?.commands?.[cmd];
+  if (authored) {
+    const params = authored.params ?? [];
+    const refuse = (reason: string) => {
+      addEphemeralMessage(sessionId, {
+        role: 'system',
+        content: `/${cmd} didn’t run. ${reason}`,
+      });
+      keepLine();
+      return true;
+    };
+    if (args.length > params.length) {
+      return refuse(
+        params.length === 0
+          ? 'This command takes no arguments'
+          : `Use at most ${params.length} argument${params.length === 1 ? '' : 's'}. Quote a value that contains spaces`,
       );
+    }
+
+    const values = new Map<string, string>();
+    const missing: string[] = [];
+    params.forEach((param, index) => {
+      const value = args[index] || param.default || '';
+      if (param.required && !value.trim()) missing.push(param.name);
+      if (!values.has(param.name)) values.set(param.name, value);
     });
+    if (missing.length)
+      return refuse(`Enter a value for ${missing.join(', ')}`);
 
     cleanup();
-    return expandedPrompt;
+    return expandCommandTemplate(authored.prompt, values);
   }
 
   // 2. Check command skills
@@ -130,7 +154,7 @@ export async function dispatchSlashCommand(
         role: 'system',
         content: `Could not read /${cmd}: ${describeStationFailure(error).body}`,
       });
-      cleanup();
+      keepLine();
       return true;
     }
     // Variable substitution is the SAME derivation the Test modal runs
@@ -148,7 +172,7 @@ export async function dispatchSlashCommand(
         role: 'system',
         content: `/${cmd}: ${argAssignment.error} — nothing was sent`,
       });
-      cleanup();
+      keepLine();
       return true;
     }
     const substitution = substituteSkillVariables(
@@ -161,7 +185,7 @@ export async function dispatchSlashCommand(
         role: 'system',
         content: `/${cmd} needs a value for ${substitution.missing.map((name) => `{{${name}}}`).join(', ')} — nothing was sent`,
       });
-      cleanup();
+      keepLine();
       return true;
     }
     void runSkillMutation.mutateAsync(match.name).catch(() => undefined);
@@ -188,13 +212,16 @@ export async function dispatchSlashCommand(
       prompt,
       args,
     );
-    if ('refusal' in outcome)
+    if ('refusal' in outcome) {
       addEphemeralMessage(sessionId, {
         role: 'system',
         content: outcome.refusal,
       });
+      keepLine();
+      return true;
+    }
     cleanup();
-    return 'text' in outcome ? outcome : true;
+    return outcome;
   }
 
   // 3. Check registered commands
@@ -205,7 +232,17 @@ export async function dispatchSlashCommand(
       role: 'system',
       content: `Could not load Station's built-in commands, so ${command} was not sent. Try again. (${describeStationFailure(error).body})`,
     });
-    cleanup();
+    keepLine();
+    return true;
+  }
+  // /new opens an empty New chat. Text typed after it would be lost with the
+  // cleared composer, so the line stays as typed and nothing runs.
+  if (cmd === 'new' && args.length > 0) {
+    addEphemeralMessage(sessionId, {
+      role: 'system',
+      content: '/new takes no text.',
+    });
+    context.autocomplete.closeAll();
     return true;
   }
   const handler = getCommand(cmd);
@@ -230,6 +267,19 @@ export async function dispatchSlashCommand(
     return true;
   }
 
+  // /clear was a Station command that only emptied the list on screen. It is
+  // gone, and must not reach an engine either: Claude Code would clear its
+  // own context while the transcript still shows everything, and Codex would
+  // take it as an ordinary message.
+  if (cmd === 'clear') {
+    addEphemeralMessage(sessionId, {
+      role: 'system',
+      content: '/clear isn’t a Station command. Use /new for a new chat.',
+    });
+    keepLine();
+    return true;
+  }
+
   // 4. CLI runtime passthrough — forward unrecognized commands to the SDK
   if (chatState.provider === 'claude' || chatState.provider === 'codex') {
     cleanup();
@@ -242,6 +292,6 @@ export async function dispatchSlashCommand(
     role: 'system',
     content: `Unknown command: ${command}\n\nAvailable:\n${availableCommands.map((c) => `• /${c}`).join('\n')}`,
   });
-  cleanup();
+  keepLine();
   return true;
 }

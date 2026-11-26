@@ -1,7 +1,0 @@
-{
-  "revision": "e00ea08b980587836197c512d8e434276ba46f79",
-
-  "notes": [
-    {"path":"docs/guides/feature-previews.md","note":"Reviewed the API route's complete offered-catalog expectation after adding the existing Apps UI consumer. The registry already advertises apps-library with enabled false; this test-only repair adds that known entry without changing order/count matching, persistence or unknown-ID refusal assertions. Route and registry owners passed four tests. Removing the real Apps consumer registration made the corrected API assertion fail; producer restoration is byte-identical. UI-only registration, default-off behavior and authority boundaries remain as documented; no production or public-prose change is required.","inputs":["docs/guides/feature-previews.md","src-server/routes/system/__tests__/feature-previews.routes.test.ts"]}
-  ]
-}

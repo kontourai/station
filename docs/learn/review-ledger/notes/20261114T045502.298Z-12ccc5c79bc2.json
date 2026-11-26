@@ -1,0 +1,17 @@
+{
+  "revision": "39f48e8bcaf4e3d3e3b5f33937734e8725ebc1f6",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"The doc lists the MCP UI routes and the proxy listener but states no scope tier or admission rule; those routes merely inherit their `/tools` and `/integrations` family tiers, which the doc does not describe.","inputs":["docs/design/mcp-ui-host.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"These are historical test-run receipts at pinned SHAs (suite passed, no handler at that revision); they make no claim about which scope or capability the current table assigns, so a table edit cannot falsify them.","inputs":["docs/design/outside-agent-mcp-r3-evidence.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"The receipt records executed test outcomes at a pinned revision and never states a table rule; the audience refusal it exercises is owned by outside-agent-token-audience.ts, which the record already cites.","inputs":["docs/design/outside-agent-mcp-r4a-evidence.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The guide describes UI layout and pairing-card behaviour only and states no route, scope or admission rule, so nothing in it depends on the route-scope table.","inputs":["docs/guides/responsive-ui.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"The theming guide covers tokens, CSS and launch presentation only; no statement depends on pairing scopes or route admission.","inputs":["docs/guides/theming.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"The frontend pattern discusses client cache authority partitioning and package ownership, not server route scopes; no sentence depends on this table.","inputs":["docs/patterns/frontend.md","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

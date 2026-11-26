@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { TEST_IMPACT_MANIFEST } from '../test-impact-manifest.mjs';
 
@@ -8,10 +8,6 @@ const CHANNELS = [
   {
     config: 'src-desktop/tauri.conf.json',
     identifier: 'io.kontourai.station',
-  },
-  {
-    config: 'src-desktop/tauri.beta.conf.json',
-    identifier: 'io.kontourai.station.beta',
   },
   {
     config: 'src-desktop/tauri.nightly.conf.json',
@@ -201,9 +197,8 @@ describe('native recovery documentation', () => {
     for (const pattern of [
       'src-desktop/src/bundled_server_state.rs',
       'src-desktop/src/lib.rs',
-      'src-desktop/tauri.conf.json',
-      'src-desktop/tauri.beta.conf.json',
-      'src-desktop/tauri.nightly.conf.json',
+      // Every desktop channel config this test reads.
+      ...CHANNELS.map(({ config }) => config),
       'scripts/__tests__/startup-readiness-static.test.ts',
       'packages/cli/src/cli.ts',
       'packages/cli/src/help.ts',
@@ -215,6 +210,17 @@ describe('native recovery documentation', () => {
       expect(testFor(pattern), pattern).toContain(
         'scripts/__tests__/native-recovery-docs.test.ts',
       );
+    // An edge for a deleted file (the retired Beta config, #4929) selects
+    // nothing; every exact path routed here must still exist.
+    for (const edge of TEST_IMPACT_MANIFEST)
+      if (
+        'tests' in edge &&
+        edge.tests?.includes(
+          'scripts/__tests__/native-recovery-docs.test.ts',
+        ) &&
+        !/[*?[{]/.test(edge.pattern)
+      )
+        expect(existsSync(edge.pattern), edge.pattern).toBe(true);
   });
 
   it('keeps desktop build, tray, and logging references routed to the recovery guide', () => {

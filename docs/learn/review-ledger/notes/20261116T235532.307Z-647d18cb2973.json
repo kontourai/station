@@ -1,0 +1,7 @@
+{
+  "revision": "0a2b19721dd788427254cc93957fa0195d659958",
+
+  "notes": [
+    {"path":"docs/guides/home-transfer-controller.md","note":"Cites container-smoke.yml only as a source; no claim here concerns its runner, capacity lease or schedule.","inputs":["docs/guides/home-transfer-controller.md",".github/workflows/container-smoke.yml"]}
+  ]
+}

@@ -168,9 +168,22 @@ describe('orchestration lifecycle-control client', () => {
         ),
       ),
     );
-    await expect(
-      getOrchestrationSessionDetailWindow('http://station.test', 'task'),
-    ).rejects.toThrow('does not support bounded session detail');
+    const refusal = await getOrchestrationSessionDetailWindow(
+      'http://station.test',
+      'task',
+    ).catch((error: unknown) => error);
+    // Typed, so a caller (the remote history relay) branches on the class.
+    const { SessionDetailWindowUnsupportedError } = await import(
+      '../client/orchestration'
+    );
+    expect(refusal).toBeInstanceOf(SessionDetailWindowUnsupportedError);
+    expect((refusal as Error).message).toBe(
+      'Station does not support bounded session detail',
+    );
+    const agentEntry = await import('../agent/index');
+    expect(agentEntry.SessionDetailWindowUnsupportedError).toBe(
+      SessionDetailWindowUnsupportedError,
+    );
   });
 
   test('interrupts a turn without closing its session', async () => {
@@ -226,6 +239,41 @@ describe('orchestration lifecycle-control client', () => {
       expect.objectContaining({
         headers: expect.objectContaining({ 'x-station-test': 'trusted' }),
       }),
+    );
+  });
+});
+
+describe('listOrchestrationSessions limit', () => {
+  test.each([0, 1001, 1.5, Number.NaN, -3])(
+    'refuses limit %s before sending anything',
+    async (limit) => {
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+      const { listOrchestrationSessions } = await import(
+        '../client/orchestration'
+      );
+      await expect(
+        listOrchestrationSessions('http://station.test', undefined, { limit }),
+      ).rejects.toBeInstanceOf(RangeError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test('sends an in-range limit as the query', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ success: true, data: [] }), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { listOrchestrationSessions } = await import(
+      '../client/orchestration'
+    );
+    await listOrchestrationSessions('http://station.test', undefined, {
+      limit: 200,
+    });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'http://station.test/api/orchestration/sessions/read-model?limit=200',
     );
   });
 });

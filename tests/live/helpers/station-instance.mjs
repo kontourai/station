@@ -13,6 +13,10 @@ import { execFileSync, spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { arch, cpus, platform, release, totalmem } from 'node:os';
 import { join } from 'node:path';
+import {
+  pluginLifecycleUnapplied,
+  readPluginLifecycleResponse,
+} from '../../../packages/contracts/src/plugin.ts';
 
 /**
  * Marks requests a SUITE issues through api() so a console budget can tell
@@ -133,14 +137,75 @@ export async function api(page, method, path, body) {
   return result;
 }
 
-export async function apiOk(page, method, path, body) {
+/**
+ * `acceptSaved`: a plugin lifecycle route's designed `202` (saved, not
+ * applied) is returned rather than thrown. Only a caller that then takes the
+ * step that applies it (for a plugin activation, recovery) and checks the
+ * result may pass it; the contract's reader decides what counts as saved.
+ */
+export async function apiOk(
+  page,
+  method,
+  path,
+  body,
+  { acceptSaved = false } = {},
+) {
   const { status, payload } = await api(page, method, path, body);
+  if (
+    acceptSaved &&
+    readPluginLifecycleResponse(status, payload).state === 'saved'
+  )
+    return payload;
   if (status >= 400 || payload?.success === false) {
+    const verdict =
+      status === 202 && pluginLifecycleUnapplied(payload)
+        ? 'was saved but not applied'
+        : 'failed';
     throw new Error(
-      `${method} ${path} failed: HTTP ${status} ${JSON.stringify(payload)?.slice(0, 400)}`,
+      `${method} ${path} ${verdict}: HTTP ${status} ${JSON.stringify(payload)?.slice(0, 400)}`,
     );
   }
   return payload;
+}
+
+/**
+ * Station does not resume an activation that did not complete: the plugin
+ * reads Needs recovery until a person recovers it. A live suite takes that
+ * documented step once, approving exactly what the recovery review shows, and
+ * fails with the plugin's readiness named if it is still not active.
+ */
+export async function recoverPluginOnce(page, name) {
+  const path = `/api/plugins/${encodeURIComponent(name)}`;
+  const review = await apiOk(page, 'GET', `${path}/recovery-preview`);
+  await apiOk(
+    page,
+    'POST',
+    `${path}/recover`,
+    {
+      recoveryRevision: review.recoveryRevision,
+      consent: {
+        contentDigest: review.contentDigest,
+        grantRevision: review.grantRevision,
+        ...(review.registryTrustRevision
+          ? { registryTrustRevision: review.registryTrustRevision }
+          : {}),
+        permissions: review.permissions?.required ?? [],
+        dependencies: (review.dependencies ?? []).map((entry) => entry.id),
+        dependencyApprovals: (review.dependencies ?? []).map(
+          ({ id, consent }) => ({ id, ...consent }),
+        ),
+      },
+    },
+    { acceptSaved: true },
+  );
+  const listed = await apiOk(page, 'GET', '/api/plugins');
+  const row = listed?.plugins?.find((entry) => entry?.name === name);
+  const readiness =
+    row?.installationReadiness?.state ?? (row ? 'ready' : 'absent');
+  if (readiness !== 'ready')
+    throw new Error(
+      `${name} was installed but is not active (readiness ${readiness}) after one recovery`,
+    );
 }
 
 /**

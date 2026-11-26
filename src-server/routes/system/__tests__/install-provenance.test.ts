@@ -473,7 +473,7 @@ describe('resolveInstallProvenance on a prebuilt archive (#2675 D3)', () => {
     installRoot: string,
     { git = false }: { git?: boolean } = {},
   ): string {
-    const versionRoot = join(installRoot, 'versions', '0.8.0-preview.1');
+    const versionRoot = join(installRoot, 'versions', '0.8.0-nightly.1');
     mkdirSync(join(versionRoot, 'dist-server'), { recursive: true });
     if (git) {
       mkdirSync(join(versionRoot, '.git'));
@@ -491,10 +491,10 @@ describe('resolveInstallProvenance on a prebuilt archive (#2675 D3)', () => {
       JSON.stringify({
         schemaVersion: 2,
         sha: SHA,
-        ref: 'v0.8.0-preview.1',
+        ref: 'v0.8.0-nightly.1',
         createdAt: '2026-09-20T00:00:00.000Z',
-        channel: 'beta',
-        releaseChannel: 'preview',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
         prerelease: true,
       }),
     );
@@ -515,8 +515,8 @@ describe('resolveInstallProvenance on a prebuilt archive (#2675 D3)', () => {
     ).toMatchObject({
       installKind: 'archive',
       archiveRoot: versionRoot,
-      version: '0.8.0-preview.1',
-      release: { releaseChannel: 'preview', channel: 'beta' },
+      version: '0.8.0-nightly.1',
+      release: { releaseChannel: 'nightly', channel: 'nightly' },
       installRoot,
     });
   });

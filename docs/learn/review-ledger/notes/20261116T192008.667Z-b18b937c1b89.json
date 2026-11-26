@@ -1,0 +1,7 @@
+{
+  "revision": "be25d196d286cb15fb559c1e8bd1ca612a463242",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Edited for #5069/#5070: Project lifecycle (Pause, Archive, counted Delete), Project schedules and their Feature Previews; checked the edited passages against the implementing sources.","inputs":["docs/design/automations.md","packages/contracts/src/scheduler.ts","src-server/runtime/routes/runtime-route-support.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "648c125c9ee583f7c059a11723c85fbfa9659850",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Product-usage telemetry rows re-read for #4994: stable retry IDs and receipt semantics hold; the new counters are documented in the usage-telemetry reference and metrics declarations; no claim here about requeue cadence or failure classification.","inputs":["docs/guides/monitoring.md","packages/sdk/src/query-domains/telemetryDelivery.ts","src-server/services/usage-telemetry-service.ts","src-server/telemetry/metrics.ts"]}
+  ]
+}

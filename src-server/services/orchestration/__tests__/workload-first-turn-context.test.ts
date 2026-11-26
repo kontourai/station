@@ -9,7 +9,10 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
-import { ENGINE_MEMORY_EXHAUSTED_CODE } from '@kontourai/station-contracts/provider';
+import {
+  ACP_SESSION_STARTED_FRESH_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
+} from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -206,6 +209,51 @@ describe('Station first-turn workload context', () => {
     expect(limits).toHaveBeenCalledWith('thread-budget');
     const second = await send(orchestration, adapter, 'thread-budget', 'Again');
     expect(second?.input).toBe('Again');
+  });
+
+  test('an engine that started a new session (acp.session-started-fresh) is told its budget again, once', async () => {
+    // The new engine session never received the first turn's budget line.
+    const adapter = new FakeAdapter(true);
+    const orchestration = start(adapter, () => LIMITS);
+    await startSession(orchestration, 'thread-budget-fresh');
+    const first = await send(
+      orchestration,
+      adapter,
+      'thread-budget-fresh',
+      'Hello',
+    );
+    expect(first?.input).toContain('## Station workload budget');
+    adapter.publish({
+      method: 'runtime.warning',
+      threadId: 'thread-budget-fresh',
+      severity: 'warning',
+      code: ACP_SESSION_STARTED_FRESH_CODE,
+      message: 'The engine started a new session.',
+    });
+    await waitFor(() =>
+      eventStore
+        .listEvents('thread-budget-fresh')
+        .some(
+          (event) =>
+            (event.payload as { code?: string }).code ===
+            ACP_SESSION_STARTED_FRESH_CODE,
+        ),
+    );
+    const afterFresh = await send(
+      orchestration,
+      adapter,
+      'thread-budget-fresh',
+      'After',
+    );
+    expect(afterFresh?.input).toContain('## Station workload budget');
+    expect(afterFresh?.displayInput).toBe('After');
+    const next = await send(
+      orchestration,
+      adapter,
+      'thread-budget-fresh',
+      'Next',
+    );
+    expect(next?.input).toBe('Next');
   });
 
   test('a successor that resumed the native conversation is not told its budget again', async () => {

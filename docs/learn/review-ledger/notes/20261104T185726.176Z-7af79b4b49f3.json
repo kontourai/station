@@ -1,7 +1,0 @@
-{
-  "revision": "32b56f46ef91059872a62fc8ab7a7f210e1ac145",
-
-  "notes": [
-    {"path":"docs/user/contributing.md","note":"Public guide sentence now asks contributors to list agent sessions (identifiers, models, session count, token totals) and not to disclose transcripts; consistent with CONTRIBUTING and the PR template; no commands added.","inputs":["docs/user/contributing.md"]}
-  ]
-}

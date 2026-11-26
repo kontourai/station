@@ -1,0 +1,15 @@
+{
+  "revision": "e7cd59e87c49ba06d329b59daa4712660c41341b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the mounted route matrix against the shared dispatch scope. Saved-Station target discovery refuses bearer-exposed and delegated-custody callers as out of scope and still requires a bound operator. The local discovery and remote refusal route tests passed.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the mounted route matrix against the shared dispatch scope. Saved-Station target discovery refuses bearer-exposed and delegated-custody callers as out of scope and still requires a bound operator. The local discovery and remote refusal route tests passed.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked the mounted route matrix against the shared dispatch scope. Saved-Station target discovery refuses bearer-exposed and delegated-custody callers as out of scope and still requires a bound operator. The local discovery and remote refusal route tests passed.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the mounted route matrix against the shared dispatch scope. Saved-Station target discovery refuses bearer-exposed and delegated-custody callers as out of scope and still requires a bound operator. The local discovery and remote refusal route tests passed.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the mounted route matrix against the shared dispatch scope. Saved-Station target discovery refuses bearer-exposed and delegated-custody callers as out of scope and still requires a bound operator. The local discovery and remote refusal route tests passed.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "572666760da6daef16a0af319c75c969e10b25e3",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"ChatDock.tsx change is limited to composer + and dock More menu rows (grouping, Open terminal, Open in Coding placement, panel toggles); no API route, config key, concept or Board claim in this document depends on it.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

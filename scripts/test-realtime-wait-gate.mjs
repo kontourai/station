@@ -33,8 +33,8 @@
  * comparison is `<base>...HEAD`.
  */
 
-import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const TEST_PATH = /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]sx?$/;
@@ -177,10 +177,10 @@ export function findRealtimeWaits(added, lineOf) {
 }
 
 function git(root, args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd: root,
     encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
+    windowsHide: true,
   });
 }
 

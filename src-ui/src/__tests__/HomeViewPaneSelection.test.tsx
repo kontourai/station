@@ -37,10 +37,6 @@ vi.mock('../views/home/HomeWorkspacePane', () => ({
   ),
 }));
 
-vi.mock('../components/first-run/FirstRunHomeChapter', () => ({
-  FirstRunHomeChapter: () => null,
-}));
-
 vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => null }));
 
 // Route chrome from archive#3636, not part of pane selection; it unconditionally
@@ -48,6 +44,9 @@ vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => null }));
 // deliberately does not provide.
 vi.mock('../components/first-run/FirstRunHomeChapter', () => ({
   FirstRunHomeChapter: () => null,
+}));
+vi.mock('../components/UsageTelemetryDisclosure', () => ({
+  UsageTelemetryDisclosure: () => null,
 }));
 
 // The Home role seam, not pane selection: no grant here, and the

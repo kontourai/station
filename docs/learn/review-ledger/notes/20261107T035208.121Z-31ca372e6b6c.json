@@ -1,9 +1,0 @@
-{
-  "revision": "3cbb7b409e6da27c3ad89289333421d82ba0d4a7",
-
-  "notes": [
-    {"path":"docs/pages/README.md","note":"Reviewed the exact historical-evidence exclusions against corpus.json and the individual public-docs allowlist. Added only the new sidebar audit README to Corpus reachability classification and synchronized this guide's dated review list, including its already-excluded Station-connections peer. Public documents, sections, topics, rendering and deployment inputs are unchanged. Pinned Corpus check reproduced the missing classification then passed; the four existing docs-kit manifest owner tests passed.","inputs":["docs/pages/README.md","corpus.json"]},
-
-    {"path":"docs/guides/documentation.md","note":"Reviewed the Corpus/public-docs mirroring, exact admission and advisory-check guidance against the sole corpus.json delta: one exact historical sidebar-audit README exclusion. No published document, section, topic, workflow pin or gate behavior changed; the existing contributor guidance remains accurate. This is a bounded manifest-classification review, not a new whole-document or deployment qualification.","inputs":["docs/guides/documentation.md","corpus.json"]}
-  ]
-}

@@ -1,0 +1,7 @@
+{
+  "revision": "498cca03db1d74f1877484478d4859d81caa18b7",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked against chatErrorTranslation now importing the ambiguity sentence from managed-model-binding: the module list and contract claims here are unchanged; the new export is a plain string constant on an existing subpath.","inputs":["docs/reference/contracts.md","src-ui/src/utils/chatErrorTranslation.ts"]}
+  ]
+}

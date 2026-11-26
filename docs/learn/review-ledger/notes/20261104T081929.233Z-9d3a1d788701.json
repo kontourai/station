@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/design/connections-onboarding.md","note":"#4517 managed settings. Changed: config-loader-app.ts: observeAppConfigFile applies the managed overlay; station-runtime.ts: StationRuntime installs the loaded managed policy settings before config loads. firstRun pending is still written only by loadAppConfigFile on home creation; POST /config/first-run now answers 403 only for a locked firstRun.","inputs":["docs/design/connections-onboarding.md","src-server/domain/config-loader-app.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

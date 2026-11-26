@@ -490,12 +490,24 @@ describe('publication graph cannot borrow feature/advisory silence as a pass', (
     )?.with?.script;
     if (!script) throw new Error('Expected the real tracker script');
     const create = vi.fn();
+    // The surface the step really calls on a first red run before the
+    // ci:red label exists: no label (404), no tracker among the bot's issues
+    // (paginate), no jobs.
+    const getLabel = vi.fn(async () => {
+      throw Object.assign(new Error('Not Found'), { status: 404 });
+    });
     const github = {
-      rest: { issues: { listForRepo: vi.fn(), create } },
+      rest: {
+        // The run's jobs come back through paginate (empty: no failing step
+        // to name), so the advisory body is all the tracker carries.
+        actions: { listJobsForWorkflowRun: vi.fn() },
+        issues: { getLabel, listForRepo: vi.fn(), create },
+      },
       paginate: async () => [],
     };
+    const core = { info: vi.fn(), warning: vi.fn() };
     const run = vm.compileFunction(
-      `return async function (github, context, process) {\n${script}\n};`,
+      `return async function (github, context, process, core) {\n${script}\n};`,
       [],
       { importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER },
     )();
@@ -511,9 +523,13 @@ describe('publication graph cannot borrow feature/advisory silence as a pass', (
           WORKFLOW_NAME: 'Repo: Dependency advisory',
           RUN_URL: 'https://example.test/run/7',
           HEAD_SHA: 'b'.repeat(40),
+          RUN_EVENT: 'schedule',
+          RUN_CONCLUSION: 'failure',
         },
       },
+      core,
     );
+    expect(getLabel).toHaveBeenCalledOnce();
     expect(create).toHaveBeenCalledOnce();
     const issue = create.mock.calls[0][0];
     expect(issue.title).toBe('Main pipeline red: Repo: Dependency advisory');
@@ -526,6 +542,9 @@ describe('publication graph cannot borrow feature/advisory silence as a pass', (
       'separate disclosed findings from scan/registry errors',
     );
     expect(issue.body).toContain('one compatible dependency repair');
+    // Without the live label the tracker is still created, labelled only
+    // with what exists.
+    expect(issue.labels).toEqual(['bug', 'P1']);
   });
   it('separates candidate and policy checkouts and installs before running the trusted entrypoint', () => {
     const audit = workflow('release-advisory.yml').jobs.audit;

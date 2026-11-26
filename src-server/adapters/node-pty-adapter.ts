@@ -171,16 +171,32 @@ class NodePtyProcess implements IPtyProcess {
   private pauseEpoch = 0;
   private outputIncomplete = false;
   private pauseWatch?: ReturnType<typeof setTimeout>;
+  /**
+   * When each step of an ending happened (ms since the epoch), so a cleanup
+   * that misses its deadline can say which step it was still waiting on.
+   */
+  private readonly trace: {
+    taskkill?: number;
+    taskkillDone?: number;
+    taskkillResult?: string;
+    exit?: number;
+    output?: number;
+  } = {};
+
   private exitEvent?: { exitCode: number; signal?: number };
 
   constructor(
     private pty: import('node-pty').IPty,
     private startupReadPaused = false,
   ) {
+    pty.onData(() => {
+      this.trace.output = Date.now();
+    });
     const tty = '_pty' in pty ? pty._pty : undefined;
     this.controllingTty =
       typeof tty === 'string' ? tty.replace(/^\/dev\//, '') : undefined;
     pty.onExit((event) => {
+      this.trace.exit = Date.now();
       this.exitEvent = event;
       this.exited = true;
       if (this.paused || this.startupReadPaused) this.outputIncomplete = true;
@@ -234,6 +250,7 @@ class NodePtyProcess implements IPtyProcess {
           resolve();
         });
       });
+      this.trace.taskkill = Date.now();
       const failure = await new Promise<
         (Error & { code?: number | string }) | null
       >((resolve) =>
@@ -244,6 +261,10 @@ class NodePtyProcess implements IPtyProcess {
           (error) => resolve(error),
         ),
       );
+      this.trace.taskkillDone = Date.now();
+      this.trace.taskkillResult = failure
+        ? `failed (${failure.code ?? failure.message})`
+        : 'exited 0';
       // 128: the shell had already ended, which leaves nothing to report.
       if (failure && failure.code !== 128) {
         if (!this.exited) this.pty.kill();
@@ -306,6 +327,33 @@ class NodePtyProcess implements IPtyProcess {
         },
       );
     });
+  }
+
+  /**
+   * Where an ending stands now: the tree kill (Windows), the shell's exit
+   * event (on Windows it follows node-pty's flush of ConPTY output, re-armed
+   * by each chunk), the last output and whether output is paused.
+   */
+  describeTermination(): string {
+    const now = Date.now();
+    const { trace } = this;
+    const ago = (at: number | undefined) =>
+      at === undefined ? 'never' : `${now - at} ms ago`;
+    const parts: string[] = [];
+    if (trace.taskkill !== undefined)
+      parts.push(
+        trace.taskkillDone === undefined
+          ? `taskkill running for ${now - trace.taskkill} ms`
+          : `taskkill ${trace.taskkillResult} after ${trace.taskkillDone - trace.taskkill} ms`,
+      );
+    parts.push(
+      trace.exit === undefined
+        ? 'no exit event yet'
+        : `exit event ${ago(trace.exit)}`,
+      `last output ${ago(trace.output)}`,
+    );
+    if (this.paused) parts.push('output paused');
+    return parts.join('; ');
   }
 
   pause(): void {

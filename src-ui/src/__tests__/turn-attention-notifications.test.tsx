@@ -11,6 +11,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OrchestrationEvent } from '../hooks/orchestration/types';
+import { PRESENCE_FALLBACK_MS } from '../hooks/usePresenceList';
 
 vi.mock('../contexts/NavigationContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../contexts/NavigationContext')>()),
@@ -167,6 +168,7 @@ describe('end-of-turn toasts', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
     expect(navigationStore.getSnapshot().activeChat).toBe(BG);
     expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+    act(() => vi.advanceTimersByTime(PRESENCE_FALLBACK_MS));
     expect(toastCards()).toHaveLength(0);
   });
 
@@ -179,6 +181,7 @@ describe('end-of-turn toasts', () => {
       toastStore.dismissAll();
     });
 
+    act(() => vi.advanceTimersByTime(PRESENCE_FALLBACK_MS));
     // Reload: this page's memory and chat state are gone; the event log
     // replays the same turn into a fresh chat.
     resetTurnAttentionNotifications({ reload: true });

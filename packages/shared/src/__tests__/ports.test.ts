@@ -44,7 +44,8 @@ describe('Station channel port allocation', () => {
   test('resolves known channels and defaults blank input to development', () => {
     expect(DEFAULT_STATION_CHANNEL).toBe('development');
     expect(resolveStationChannel()).toBe('development');
-    expect(resolveStationChannel('  beta  ')).toBe('beta');
+    expect(resolveStationChannel('  stable  ')).toBe('stable');
+    expect(() => resolveStationChannel('beta')).toThrow(/STATION_CHANNEL/);
     expect(stationChannelPorts('nightly')).toMatchObject({
       instanceDirectory: 'nightly',
       serverPort: 38141,
@@ -64,7 +65,6 @@ describe('operatorCliCommand', () => {
   test('every channel without its own published dist-tag gets latest', () => {
     for (const channel of [
       'stable',
-      'beta',
       'development',
       'source-checkout',
       undefined,

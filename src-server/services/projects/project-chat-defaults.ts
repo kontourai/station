@@ -39,6 +39,7 @@ import {
   readJsonFile,
   readTextFileBounded,
 } from '@kontourai/station-shared/json-file-storage';
+import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger({ name: 'project-chat-defaults' });
@@ -265,7 +266,7 @@ export class ProjectChatDefaultsService {
       );
     } catch (error) {
       logger.warn('Project chat last-used record unreadable; using none', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return { version: 1, entries: [] };
     }

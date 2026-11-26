@@ -1,0 +1,7 @@
+{
+  "revision": "9508901e176a71703673bbdb16c68fc6110dab98",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Only links docs/reference/contracts.md in its routing table; the Muse schema-check sentence edit changes no routing or evidence claim here; no edit needed.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}

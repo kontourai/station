@@ -67,7 +67,7 @@ describe('SecretBindingPicker load failure', () => {
       />,
     );
     expect(screen.getByRole('alert').textContent).toContain(
-      'Binding configuration could not be loaded: Try again in a moment.',
+      'Linked secrets couldn’t be loaded: Try again in a moment.',
     );
   });
 });

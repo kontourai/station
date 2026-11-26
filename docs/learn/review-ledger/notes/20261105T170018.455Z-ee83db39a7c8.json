@@ -1,7 +1,0 @@
-{
-  "revision": "6957b4876a77a12647272912c46b193bc76d372a",
-
-  "notes": [
-    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed retained upstream deployment entries and confirmed their schema and exact generated Markdown projection. The UX change adds no deployment or release receipt; historical publishing and runtime claims are not renewed.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
-  ]
-}

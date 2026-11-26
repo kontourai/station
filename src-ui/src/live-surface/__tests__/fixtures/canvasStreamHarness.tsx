@@ -15,6 +15,7 @@ import {
   LiveSurfaceCanvas,
   type LiveSurfaceCanvasProps,
 } from '../../LiveSurfaceCanvas';
+import { inputSourceFixture } from './inputSourceFixture';
 
 export const SURFACE = 'browser:session-1';
 export const API = 'http://127.0.0.1:3999';
@@ -76,6 +77,7 @@ export function canvasHarness(
   } = {},
 ) {
   const inputs: { epoch: number; events: unknown[] }[] = [];
+  const sources = inputSourceFixture();
   let push: ((record: LiveSurfaceRecord) => Promise<void>) | null = null;
   const transport = vi.fn(
     async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
@@ -100,8 +102,14 @@ export function canvasHarness(
         };
         return new Response(stream, { status: 200 });
       }
+      if (url === INPUT_URL.replace(/\/input$/, '/lease')) {
+        const response = sources.leaseReply(JSON.parse(String(init?.body)));
+        if (response) return response;
+      }
       if (url === INPUT_URL) {
         const body = JSON.parse(String(init?.body));
+        if (!sources.accepts(body.sourceId))
+          return Response.json({ success: false }, { status: 409 });
         inputs.push(body);
         if (options.inputReply) return options.inputReply(body);
         return Response.json({

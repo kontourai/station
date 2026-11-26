@@ -1,0 +1,7 @@
+{
+  "revision": "cef1444b203b17f5fa75ae4b075a22a1fcbb2061",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the Tools control, operator handoff, bounded history and the MCP access, Authorized clients and Access history labels against the current candidate.","inputs":["docs/reference/outside-agent-oauth.md"]}
+  ]
+}

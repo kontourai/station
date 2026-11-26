@@ -283,13 +283,13 @@ describe('NewChatModal engine chips', () => {
     ).toBe('true');
     expect(
       screen
-        .getByRole('option', { name: /Shared model · Provider two/ })
-        .getAttribute('aria-selected'),
+        .getByRole('button', { name: /^Shared model · Provider two/ })
+        .getAttribute('aria-current'),
     ).toBe('true');
     expect(screen.queryByRole('group', { name: 'Thinking effort' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
     fireEvent.click(
-      screen.getByRole('option', { name: /Shared model · Provider one/ }),
+      screen.getByRole('button', { name: /^Shared model · Provider one/ }),
     );
     // Choosing a Model finishes the picker, as it does in a chat's composer.
     await waitFor(() =>
@@ -312,7 +312,7 @@ describe('NewChatModal engine chips', () => {
     expect(screen.getByRole('dialog', { name: 'Model' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Provider two' }));
     fireEvent.click(
-      screen.getByRole('option', { name: /Shared model · Provider two/ }),
+      screen.getByRole('button', { name: /^Shared model · Provider two/ }),
     );
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull(),
@@ -326,45 +326,6 @@ describe('NewChatModal engine chips', () => {
     expect(onSelect.mock.calls[0]?.[9]).toBe('provider-two');
     expect(onSelect.mock.calls[0]?.[10]).toBe('ollama');
     expect(onSelect.mock.calls[0]?.[8]).not.toHaveProperty('effort');
-  });
-
-  test("a fork's reset names the source turn and closes the picker", async () => {
-    render(
-      <NewChatModal
-        projectIconBySlug={new Map()}
-        agents={[NATIVE_OPENCODE]}
-        projects={[]}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-        mode={{
-          kind: 'fork',
-          preferredAgentSlug: NATIVE_OPENCODE.slug,
-          sourceModel: 'historical-model',
-          disclosure: 'Fork independently',
-        }}
-      />,
-    );
-    const dialog = () => screen.queryByRole('dialog', { name: 'Model' });
-    fireEvent.click(
-      screen.getByRole('button', { name: /^Model: historical-model/ }),
-    );
-    await screen.findByRole('dialog', { name: 'Model' });
-    fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
-    fireEvent.click(
-      screen.getByRole('option', { name: /Shared model · Provider one/ }),
-    );
-    await waitFor(() => expect(dialog()).toBeNull());
-
-    fireEvent.click(
-      screen.getByRole('button', { name: /^Model: Shared model/ }),
-    );
-    await screen.findByRole('dialog', { name: 'Model' });
-    // Reset restores the source turn's Model, so it says so.
-    fireEvent.click(screen.getByRole('button', { name: 'Use source turn' }));
-    await waitFor(() => expect(dialog()).toBeNull());
-    expect(
-      screen.getByRole('button', { name: /^Model: historical-model/ }),
-    ).toBeTruthy();
   });
 
   test('disambiguates the two identically-named OpenCode entries with engine chips', () => {

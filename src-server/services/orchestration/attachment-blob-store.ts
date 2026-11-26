@@ -1,14 +1,15 @@
 import { createHash, randomBytes } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
+  unlinkSync,
   utimesSync,
-  writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -17,6 +18,7 @@ import {
   attachmentBlobOperations,
 } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { publishThroughOwnedFile } from './owned-staging-file.js';
 
 interface BlobStoreLogger {
   debug: (message: string, meta?: Record<string, unknown>) => void;
@@ -56,11 +58,17 @@ export function attachmentBlobRefFor(bytes: Buffer): string {
 interface AttachmentBlobStoreOptions {
   rootDir: string;
   logger?: BlobStoreLogger;
-  retention?: Partial<AttachmentBlobRetentionPolicy>;
+  /**
+   * Age and size eviction. `false` turns it off for a store whose owner
+   * deletes only bytes it has proven unreferenced (Project rooms, #4852):
+   * eviction does not know what still names a blob.
+   */
+  retention?: Partial<AttachmentBlobRetentionPolicy> | false;
   now?: () => number;
 }
 
 interface BlobFile {
+  ref: string;
   path: string;
   size: number;
   modifiedAt: number;
@@ -111,6 +119,7 @@ export class AttachmentBlobStore {
   private readonly rootDir: string;
   private readonly logger?: BlobStoreLogger;
   private readonly retention: AttachmentBlobRetentionPolicy;
+  private readonly evicts: boolean;
   private readonly now: () => number;
   private lastRetentionDay?: number;
 
@@ -118,15 +127,17 @@ export class AttachmentBlobStore {
     this.rootDir = options.rootDir;
     this.logger = options.logger;
     this.now = options.now ?? (() => Date.now());
+    this.evicts = options.retention !== false;
+    const policy = options.retention || undefined;
     this.retention = {
       maxAgeDays:
-        options.retention?.maxAgeDays ??
+        policy?.maxAgeDays ??
         readPositiveInteger(
           process.env.STATION_ATTACHMENT_RETENTION_DAYS,
           DEFAULT_ATTACHMENT_BLOB_RETENTION.maxAgeDays,
         ),
       maxBytes:
-        options.retention?.maxBytes ??
+        policy?.maxBytes ??
         readPositiveInteger(
           process.env.STATION_ATTACHMENT_MAX_BYTES,
           DEFAULT_ATTACHMENT_BLOB_RETENTION.maxBytes,
@@ -176,10 +187,14 @@ export class AttachmentBlobStore {
       }
       mkdirSync(join(this.rootDir, digest.slice(0, 2)), { recursive: true });
       // Same-directory rename so a reader never observes a partially written
-      // blob under a name that promises a complete one.
-      const staging = `${path}.${randomBytes(8).toString('hex')}.part`;
-      writeFileSync(staging, bytes);
-      renameSync(staging, path);
+      // blob under a name that promises a complete one; a failed attempt
+      // removes its own staging file.
+      publishThroughOwnedFile(
+        `${path}.${randomBytes(8).toString('hex')}.part`,
+        bytes,
+        (staging) => renameSync(staging, path),
+        0o666,
+      );
       count(() => attachmentBlobOperations, 1, {
         operation: 'write',
         outcome: 'stored',
@@ -269,11 +284,87 @@ export class AttachmentBlobStore {
   }
 
   /**
+   * Deletes one blob and reports whether its absence is proven: `true` only
+   * when the unlink succeeded or the path does not exist (`ENOENT`). Any
+   * other failure (EACCES, EIO, a path that cannot be traversed) is `false`,
+   * so a caller that must not give up its record of the bytes until they are
+   * gone keeps it (#4852 review).
+   */
+  removeByRefConfirmed(ref: string): boolean {
+    if (!isAttachmentBlobRef(ref)) return false;
+    const path = this.pathForDigest(ref.slice('sha256-'.length));
+    try {
+      const size = lstatSync(path).size;
+      unlinkSync(path);
+      count(() => attachmentBlobBytesReclaimed, size);
+      count(() => attachmentBlobOperations, 1, {
+        operation: 'reclaim',
+        outcome: 'unreferenced',
+      });
+      return true;
+    } catch (error) {
+      return (
+        !!error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      );
+    }
+  }
+
+  /**
+   * Admit an entire batch of room uploads, reclaiming only bytes the owner
+   * can prove have no binding. The caller holds one store-wide lock across
+   * admission, blob writes and binding publication.
+   */
+  prepareReferencedWrite(
+    incoming: ReadonlyMap<string, number>,
+    readReferences: () => ReadonlySet<string> | undefined,
+  ): boolean {
+    const files = this.listBlobs({ strict: true });
+    const stored = new Set(files.map(({ ref }) => ref));
+    let additionalBytes = 0;
+    for (const [ref, size] of incoming)
+      if (!stored.has(ref)) additionalBytes += size;
+    let projectedBytes =
+      files.reduce((total, file) => total + file.size, 0) + additionalBytes;
+    const now = this.now();
+    const today = Math.floor(now / DAY_MS);
+    if (
+      this.lastRetentionDay !== today ||
+      projectedBytes > this.retention.maxBytes
+    ) {
+      const references = readReferences();
+      if (references) {
+        const cutoff =
+          this.lastRetentionDay === today
+            ? -Infinity
+            : now - this.retention.maxAgeDays * DAY_MS;
+        this.lastRetentionDay = today;
+        files.sort((a, b) => a.modifiedAt - b.modifiedAt);
+        for (const file of files) {
+          if (
+            file.modifiedAt >= cutoff &&
+            projectedBytes <= this.retention.maxBytes
+          )
+            break;
+          if (!references.has(file.ref) && !incoming.has(file.ref))
+            projectedBytes -= this.remove(file);
+        }
+      }
+    }
+    // Legacy stores can already be over budget. Existing content still costs
+    // no new bytes and can be attached again.
+    return additionalBytes === 0 || projectedBytes <= this.retention.maxBytes;
+  }
+
+  /**
    * Age pass then size pass, oldest first — the same two axes and the same
    * order `RuntimeEventLog` and `ServerLogStore` already use. Runs at most
    * once a day, and only on a write, so an idle Station never walks the tree.
    */
   applyRetention(options?: { force?: boolean }): void {
+    if (!this.evicts) return;
     const today = Math.floor(this.now() / DAY_MS);
     if (!options?.force && this.lastRetentionDay === today) return;
     this.lastRetentionDay = today;
@@ -333,19 +424,46 @@ export class AttachmentBlobStore {
     }
   }
 
-  private listBlobs(): BlobFile[] {
-    if (!existsSync(this.rootDir)) return [];
+  private listBlobs(options?: { strict: boolean }): BlobFile[] {
+    if (options?.strict) {
+      try {
+        const root = lstatSync(this.rootDir);
+        if (!root.isDirectory())
+          throw new Error('Invalid attachment blob directory.');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw error;
+      }
+    } else if (!existsSync(this.rootDir)) return [];
+    const shards = readdirSync(this.rootDir, { withFileTypes: true });
     const blobs: BlobFile[] = [];
-    for (const shard of readdirSync(this.rootDir, { withFileTypes: true })) {
-      if (!shard.isDirectory() || !/^[0-9a-f]{2}$/.test(shard.name)) continue;
+    for (const shard of shards) {
+      if (!/^[0-9a-f]{2}$/.test(shard.name)) continue;
+      if (!shard.isDirectory()) {
+        if (options?.strict) throw new Error('Invalid attachment blob shard.');
+        continue;
+      }
       const shardDir = join(this.rootDir, shard.name);
       for (const entry of readdirSync(shardDir, { withFileTypes: true })) {
-        if (!entry.isFile() || !/^[0-9a-f]{64}$/.test(entry.name)) continue;
+        if (!/^[0-9a-f]{64}$/.test(entry.name)) continue;
+        if (
+          !entry.isFile() ||
+          (options?.strict && !entry.name.startsWith(shard.name))
+        ) {
+          if (options?.strict) throw new Error('Invalid attachment blob file.');
+          continue;
+        }
         const path = join(shardDir, entry.name);
         try {
           const stats = statSync(path);
-          blobs.push({ path, size: stats.size, modifiedAt: stats.mtimeMs });
-        } catch {
+          blobs.push({
+            ref: `sha256-${entry.name}`,
+            path,
+            size: stats.size,
+            modifiedAt: stats.mtimeMs,
+          });
+        } catch (error) {
+          if (options?.strict) throw error;
           // A blob removed by a concurrent sweep is already reclaimed.
         }
       }

@@ -35,6 +35,9 @@ scripts/__tests__/
 # stage is discarded, so this costs context size and not image size.
 !docs/
 !docs/**
+# The same generation reads corpus.json for the bundle's identity and search
+# synonyms (STATION_DOCS_INPUT_PATHS).
+!corpus.json
 # That generation formats through Biome and byte-compares the committed output,
 # so it needs the repository's formatter config (and .gitignore, which
 # biome.json's vcs.useIgnoreFile requires) or the build fails "stale".

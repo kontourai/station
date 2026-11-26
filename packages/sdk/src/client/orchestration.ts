@@ -87,7 +87,10 @@ async function unwrapOrchestrationResponse<T>(response: Response): Promise<T> {
     // retried a request that could never clear (station#3378 review, HIGH).
     // An unreadable 2xx is a protocol failure: there is no failure status.
     if (!response.ok) throw envelopeError(response, undefined, fallback);
-    throw new Error(fallback);
+    // The cause keeps why the body was unreadable (a byte ceiling, say).
+    // Assigned rather than passed: this package's lib predates ES2022's
+    // `ErrorOptions`.
+    throw Object.assign(new Error(fallback), { cause: error });
   }
   if (!response.ok || !result.success) {
     // #2708: status, `code` (a station-control authority refusal, #2377),
@@ -114,8 +117,14 @@ export interface RespondToRequestInput {
   requestId: string;
   expectedRequestEventId?: string;
   decision: ApprovalDecision;
-  /** With `acceptForSession`: grant the whole Station browser server. */
-  sessionGrantScope?: 'server';
+  /**
+   * With `acceptForSession`: `server` grants the whole Station browser
+   * server; `rule` only the Bash command prefixes the engine suggested;
+   * `all` every later request in the session a grant may answer.
+   * Honoured only where the request offered that scope (an engine without
+   * the session-wide grant takes the per-tool grant for `all`).
+   */
+  sessionGrantScope?: 'server' | 'rule' | 'all';
   /**
    * #3390: accepted content for a form input request, keyed by field name;
    * validated server-side against the exact opened event.
@@ -205,6 +214,18 @@ export async function getOrchestrationSession<
   return unwrapOrchestrationResponse<T>(response);
 }
 
+/**
+ * The Station answered a bounded session-detail read with something other
+ * than a `window-v1` page: an older host that ignores `view=window-v1`. Its
+ * own class so callers tell it apart without reading the message.
+ */
+export class SessionDetailWindowUnsupportedError extends Error {
+  constructor() {
+    super('Station does not support bounded session detail');
+    this.name = 'SessionDetailWindowUnsupportedError';
+  }
+}
+
 /** Bounded session detail using the existing newest-turn cursor protocol. */
 export async function getOrchestrationSessionDetailWindow(
   apiBase: string,
@@ -230,7 +251,7 @@ export async function getOrchestrationSessionDetailWindow(
     typeof window.hasMore !== 'boolean' ||
     !Number.isSafeInteger(window.watermark)
   )
-    throw new Error('Station does not support bounded session detail');
+    throw new SessionDetailWindowUnsupportedError();
   return window;
 }
 
@@ -310,13 +331,25 @@ export async function getConversationUsageTree(
   return unwrapOrchestrationResponse<ThreadUsageTree>(response);
 }
 
-/** `GET /api/orchestration/sessions/read-model` — the session read-model list. */
+/**
+ * `GET /api/orchestration/sessions/read-model` — the session read-model list.
+ * `query.limit` asks for only the newest N sessions (1–1,000), still oldest
+ * first; a Station that predates it ignores it and answers every session.
+ */
 export async function listOrchestrationSessions<T = unknown[]>(
   apiBase: string,
   opts?: ClientRequestOptions,
+  query?: { limit?: number },
 ): Promise<T> {
+  const limit = query?.limit;
+  if (
+    limit !== undefined &&
+    (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000)
+  )
+    throw new RangeError('Session limit must be an integer from 1 to 1,000');
+  const search = limit !== undefined ? `?limit=${limit}` : '';
   const response = await getJson(
-    `${apiBase}/api/orchestration/sessions/read-model`,
+    `${apiBase}/api/orchestration/sessions/read-model${search}`,
     opts,
   );
   return unwrapOrchestrationResponse<T>(response);
@@ -415,12 +448,14 @@ export async function getChildWorkTranscript(
   apiBase: string,
   threadId: string,
   childId: string,
-  page: { offset?: number; limit?: number } = {},
+  /** `tail` reads the latest `limit` messages and names no offset. */
+  page: { offset?: number; limit?: number; tail?: boolean } = {},
   opts?: ClientRequestOptions,
 ): Promise<ChildWorkTranscriptPage> {
   const query = new URLSearchParams();
   if (page.offset !== undefined) query.set('offset', String(page.offset));
   if (page.limit !== undefined) query.set('limit', String(page.limit));
+  if (page.tail) query.set('tail', '1');
   const suffix = query.size > 0 ? `?${query}` : '';
   const response = await getJson(
     `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/child-work/${encodeURIComponent(childId)}/transcript${suffix}`,
@@ -453,7 +488,7 @@ export interface SteerChildWorkInput {
   threadId: string;
   childId: string;
   turnId: string;
-  input: string;
+  input: import('@kontourai/station-contracts/child-work').ChildSteerMessage;
   clientInputId: string;
 }
 

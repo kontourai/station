@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -19,11 +20,17 @@ import {
   type Page,
 } from '@playwright/test';
 import {
-  evaluateInteractiveWorkspacePerformance,
+  createNotVerifiedReport,
   performanceReportReceipt,
-  referenceEvaluatorExitFailure,
+  referenceFixtureSelection,
   referenceHostGate,
+  sweepReferenceFixtures,
 } from '../scripts/interactive-workspace-performance.mjs';
+import {
+  bridgeEvidence,
+  prepareRemoteApplyBrief,
+  typeRemoteApplyBrief,
+} from '../scripts/interactive-workspace-playwright-adapter.mjs';
 import { executeOwnedProcess } from '../scripts/lib/owned-process.mjs';
 import { INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS } from '../scripts/verification-lanes.mjs';
 import { WORK_BOARD_200_PIN_MIX } from '../src-ui/src/performance/work-board-performance-bridge';
@@ -118,11 +125,7 @@ interface FixtureReport {
 interface ProvisionedFixture {
   readonly live: LiveStation;
   readonly report: FixtureReport;
-}
-
-interface AggregatedReport {
-  readonly run: FixtureReport['run'];
-  readonly [key: string]: unknown;
+  readonly exitCode: number;
 }
 
 type SpatialBoardSeed = { readonly revision: number };
@@ -137,9 +140,19 @@ const DEFAULT_CONFIG_PATH =
  * no browser is launched; the gate test below emits the NOT_VERIFIED receipt
  * that skipped run stands for.
  */
-const HOST_GATE = referenceHostGate(
+const config: PerformanceConfig = referenceFixtureSelection(
   JSON.parse(readFileSync(DEFAULT_CONFIG_PATH, 'utf8')) as PerformanceConfig,
 );
+const HOST_GATE = referenceHostGate(config);
+
+function retainReport(report: unknown): void {
+  const output = process.env.STATION_PERFORMANCE_REPORT_OUTPUT;
+  if (!output) return;
+  mkdirSync(dirname(output), { recursive: true });
+  const staged = `${output}.pending`;
+  writeFileSync(staged, `${JSON.stringify(report, null, 2)}\n`);
+  renameSync(staged, output);
+}
 
 interface OwnedExecution {
   readonly completion: Promise<{
@@ -288,18 +301,6 @@ function safeFixtureName(fixtureId: string): string {
   return fixtureId.replaceAll(/[^a-z0-9-]/g, '-').slice(0, 48);
 }
 
-function exactSameProvenance(
-  left: FixtureReport['run']['provenance']['metadata'],
-  right: FixtureReport['run']['provenance']['metadata'],
-): boolean {
-  if (!left || !right) return false;
-  return (
-    left.revision === right.revision &&
-    JSON.stringify(left.build) === JSON.stringify(right.build) &&
-    left.platform === right.platform
-  );
-}
-
 /**
  * Telemetry consent may appear after bootstrap navigation. A locator handler
  * runs before each following UI action, so fixture provisioning cannot race a
@@ -412,25 +413,27 @@ async function runFixtureTarget(input: {
   const referenceLogRoot = process.env.STATION_PERFORMANCE_REPORT_OUTPUT
     ? dirname(resolve(process.env.STATION_PERFORMANCE_REPORT_OUTPUT))
     : input.fixtureRoot;
-  mkdirSync(referenceLogRoot, { recursive: true, mode: 0o700 });
   // Owned before it starts: `station start` launches a daemon that outlives a
   // failed readiness wait.
   input.owner.stations.add(live);
-  const bootstrapToken = await startStation(live, true, {
-    performanceReference: true,
-    logFile: join(referenceLogRoot, `${fixtureName}-station.log`),
-    taskRoomControlSocket: controlSocket,
-  });
-  const context = await input.browser.newContext();
-  const page = await context.newPage();
-  const removeTelemetryDialogHandler =
-    await installTelemetryDialogDismissal(page);
-  const provisioning = referenceBrowserProvisioningOwner(
-    context,
-    removeTelemetryDialogHandler,
-  );
+  let context: BrowserContext | undefined;
+  let provisioning:
+    | ReturnType<typeof referenceBrowserProvisioningOwner>
+    | undefined;
   let succeeded = false;
   try {
+    mkdirSync(referenceLogRoot, { recursive: true, mode: 0o700 });
+    const bootstrapToken = await startStation(live, true, {
+      performanceReference: true,
+      logFile: join(referenceLogRoot, `${fixtureName}-station.log`),
+      taskRoomControlSocket: controlSocket,
+    });
+    context = await input.browser.newContext();
+    const page = await context.newPage();
+    provisioning = referenceBrowserProvisioningOwner(
+      context,
+      await installTelemetryDialogDismissal(page),
+    );
     await settleFirstRunBeforeBrowsing(live, context);
     // Await the app's own bootstrap exchange before any authenticated API
     // call: `goto` resolves on load, and a request that beats the exchange's
@@ -631,24 +634,12 @@ async function runFixtureTarget(input: {
     console.info(
       `[interactive-workspace-performance] fixture=${input.fixture.id} adapterExitCode=${exitCode} receipt=${JSON.stringify(receipt)}`,
     );
-    // Persist parseable bounded evidence before enforcing the platform exit:
-    // FAIL/NOT_VERIFIED diagnostics must survive the deliberately red Windows
-    // acceptance boundary. A missing report still fails honestly at parse.
-    const exitFailure = referenceEvaluatorExitFailure(
-      process.platform,
-      exitCode,
-      input.fixture.id,
-      report,
-    );
-    if (exitFailure) throw new Error(exitFailure);
     succeeded = true;
-    return {
-      live,
-      report,
-    };
+    return { live, report, exitCode };
   } finally {
     try {
-      await provisioning.close();
+      if (provisioning) await provisioning.close();
+      else await context?.close();
     } finally {
       if (!succeeded) {
         await releaseStation(input.owner, live).catch(() => {});
@@ -657,6 +648,138 @@ async function runFixtureTarget(input: {
     }
   }
 }
+
+test.describe('Brief driver functional controls', () => {
+  test.skip(
+    process.env.STATION_PERFORMANCE_BRIEF_FUNCTIONAL !== '1',
+    'explicit functional browser window required',
+  );
+  test('Brief driver follows the mounted Plan autosave journey without a reference verdict', async ({
+    browser,
+    referenceOwnership,
+  }) => {
+    test.setTimeout(10 * 60 * 1000);
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), 'station-brief-driver-')),
+    );
+    const live = await allocateLiveStation(
+      'station-brief-home-',
+      'brief-driver',
+    );
+    referenceOwnership.stations.add(live);
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const removeTelemetry = await installTelemetryDialogDismissal(page);
+    try {
+      const token = await startStation(live, true, {
+        performanceReference: true,
+      });
+      await settleFirstRunBeforeBrowsing(live, context);
+      const exchange = page.waitForResponse(
+        (response) =>
+          response.url().endsWith('/pairing/ui-bootstrap') &&
+          response.request().method() === 'POST',
+      );
+      await page.goto(`${live.ui}/#station-ui-bootstrap=${token}`);
+      expect((await exchange).status()).toBe(200);
+      const repository = join(root, 'workspace');
+      await createRepository(repository, 'brief-driver');
+      await createProject(page, 'brief-driver', repository);
+      const taskId = await createTaskFromProject(
+        page,
+        live,
+        'brief-driver',
+        'Brief driver Task',
+        repository,
+        'brief-driver',
+      );
+      await page.exposeBinding(
+        '__stationInteractiveWorkspacePerformanceDriver',
+        (_source, command) => typeRemoteApplyBrief(page, taskId, command),
+      );
+      await page.goto(
+        `${live.ui}/tasks/${encodeURIComponent(taskId)}?station-performance-reference=interactive-workspace-v3`,
+      );
+      await prepareRemoteApplyBrief(page, taskId);
+      const editor = page.getByRole('textbox', {
+        name: 'Task brief',
+        exact: true,
+      });
+      const before = await editor.getAttribute('data-station-working-revision');
+      expect(before).toMatch(/^swsr-v[12]:[0-9a-f]{64}$/);
+      const desired = `${await editor.inputValue()}0`;
+      // The functional check observes autosave, never a synthetic Save button.
+      const batch = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname ===
+            `/api/tasks/${encodeURIComponent(taskId)}/room/batches` &&
+          response.request().method() === 'POST',
+      );
+      const contract = JSON.parse(
+        readFileSync(DEFAULT_CONFIG_PATH, 'utf8'),
+      ) as PerformanceConfig;
+      const [response, evidence] = await Promise.all([
+        batch,
+        bridgeEvidence(page, {
+          ...contract,
+          sampling: { warmups: 0, samples: 1 },
+          fixtures: contract.fixtures.filter(
+            (fixture) => fixture.id === 'remote-apply',
+          ),
+        }),
+      ]);
+      expect(evidence.observations[0]).toMatchObject({
+        counts: { failures: 0, degraded: 0 },
+        autosave: { debounceMs: 450, samples: [{ iteration: 0 }] },
+      });
+      expect(evidence.observations[0].measurements).toHaveLength(1);
+      expect(response.status()).toBe(200);
+      const accepted = (await response.json()).data;
+      expect(accepted).toMatchObject({ kind: 'committed', text: desired });
+      expect(accepted.revision).not.toBe(before);
+      await expect(editor).toHaveAttribute(
+        'data-station-working-revision',
+        accepted.revision,
+      );
+      await expect(editor).toHaveValue(desired);
+      await expect(
+        page
+          .getByRole('region', { name: 'Task room editor' })
+          .getByRole('status'),
+      ).toHaveText('Saved');
+      await expect(
+        typeRemoteApplyBrief(page, taskId, {
+          iteration: 1,
+          workingRevision: before,
+          text: `${desired}1`,
+        }),
+      ).rejects.toThrow('identity or writability');
+      await expect(
+        typeRemoteApplyBrief(page, 'other-task', {
+          iteration: 1,
+          workingRevision: accepted.revision,
+          text: `${desired}1`,
+        }),
+      ).rejects.toThrow('identity changed');
+      await page
+        .getByRole('button', { name: 'View brief', exact: true })
+        .click();
+      await expect(
+        typeRemoteApplyBrief(page, taskId, {
+          iteration: 1,
+          workingRevision: accepted.revision,
+          text: `${desired}1`,
+        }),
+      ).rejects.toThrow('identity or writability');
+    } finally {
+      removeTelemetry();
+      await context.close();
+      await releaseStation(referenceOwnership, live);
+      rmSync(live.home, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 test.describe('Interactive workspace reference host gate (#577)', () => {
   test.skip(HOST_GATE.runs, 'this host can produce reference evidence');
@@ -667,14 +790,7 @@ test.describe('Interactive workspace reference host gate (#577)', () => {
     console.info(
       `[interactive-workspace-performance] host=${process.platform} skipped=${HOST_GATE.reason} receipt=${JSON.stringify(receipt)}`,
     );
-    const retainedReport = process.env.STATION_PERFORMANCE_REPORT_OUTPUT;
-    if (retainedReport) {
-      mkdirSync(dirname(retainedReport), { recursive: true });
-      writeFileSync(
-        retainedReport,
-        `${JSON.stringify(HOST_GATE.report, null, 2)}\n`,
-      );
-    }
+    retainReport(HOST_GATE.report);
     expect(receipt).toMatchObject({
       status: 'NOT_VERIFIED',
       reasonCodes: ['REFERENCE_OS_MISMATCH'],
@@ -686,6 +802,11 @@ test.describe
   .serial('Interactive workspace production bridge (#2892)', () => {
     // Before the `browser` fixture: a skipped test never launches one.
     test.skip(!HOST_GATE.runs, HOST_GATE.runs ? '' : HOST_GATE.reason);
+    test.beforeAll(() => {
+      retainReport(
+        createNotVerifiedReport(config, 'REFERENCE_FIXTURE_NOT_RUN'),
+      );
+    });
     test.setTimeout(
       ONE_HOUR_REFERENCE_ENABLED
         ? INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS.oneHour
@@ -706,212 +827,50 @@ test.describe
           ? fixtureRoot
           : realpathSync(mkdtempSync(join(tmpdir(), 'station-perf-control-')));
       if (process.platform !== 'win32') chmodSync(controlParent, 0o700);
-      const defaultConfig = JSON.parse(
-        readFileSync(DEFAULT_CONFIG_PATH, 'utf8'),
-      ) as PerformanceConfig;
-      const requestedFixtures =
-        process.env.STATION_PERFORMANCE_E2E_FIXTURES?.split(',').filter(
-          Boolean,
-        );
-      const selectedFixtureIds = requestedFixtures?.length
-        ? requestedFixtures
-        : defaultConfig.fixtures.map((fixture) => fixture.id);
-      const requestedSamples = Number(
-        process.env.STATION_PERFORMANCE_E2E_SAMPLES ?? '100',
-      );
-      const requestedWarmups = Number(
-        process.env.STATION_PERFORMANCE_E2E_WARMUPS ??
-          (requestedSamples === 100 ? '5' : '0'),
-      );
-      const config: PerformanceConfig = {
-        ...defaultConfig,
-        sampling: {
-          warmups: requestedWarmups,
-          samples: requestedSamples,
-        },
-        fixtures: defaultConfig.fixtures.filter((fixture) =>
-          selectedFixtureIds.includes(fixture.id),
-        ),
-      };
-      const reports: FixtureReport[] = [];
       const homes: string[] = [];
+      const cleanupFailures: string[] = [];
       let active: LiveStation | undefined;
       let buildInstance: string | undefined;
       try {
-        for (const fixture of config.fixtures.filter((candidate) =>
-          isImplementedFixture(candidate.id),
-        )) {
-          const provisioned = await runFixtureTarget({
-            owner: referenceOwnership,
-            browser,
-            fixtureRoot,
-            controlParent,
-            fixture,
-            config,
-            ...(buildInstance ? { buildInstance } : {}),
-          });
-          const previous = active;
-          active = provisioned.live;
-          buildInstance ??= active.instance;
-          homes.push(active.home);
-          reports.push(provisioned.report);
-          if (previous) {
-            // `station start --force` on the shared instance replaced it.
-            referenceOwnership.stations.delete(previous);
-            rmSync(previous.home, { recursive: true, force: true });
-            homes.splice(homes.indexOf(previous.home), 1);
-          }
-        }
-        if (!reports.length)
-          throw new Error('No implemented performance fixture was selected');
-        const first = reports[0]!;
-        const metadata = first.run.provenance.metadata;
-        if (!metadata)
-          throw new Error('Reference adapter provenance is unavailable');
-        for (const report of reports.slice(1)) {
-          if (
-            report.run.adapter !== first.run.adapter ||
-            !exactSameProvenance(metadata, report.run.provenance.metadata)
-          )
-            throw new Error('Fixture targets did not share one build receipt');
-        }
-        const observations = reports.flatMap(
-          (report) => report.run.observations,
-        );
-        if (
-          selectedFixtureIds.includes(ONE_HOUR_FIXTURE) &&
-          !ONE_HOUR_REFERENCE_ENABLED
-        )
-          observations.push({
-            fixtureId: ONE_HOUR_FIXTURE,
-            status: 'NOT_VERIFIED',
-            reasonCodes: ['ONE_HOUR_REFERENCE_OBSERVATION_NOT_RUN'],
-            counts: { failures: 0, degraded: 0 },
-          });
-        for (const fixtureId of WORK_BOARD_FIXTURES) {
-          if (
-            selectedFixtureIds.includes(fixtureId) &&
-            !WORK_BOARD_REFERENCE_ENABLED
-          )
-            observations.push({
-              fixtureId,
-              status: 'NOT_VERIFIED',
-              reasonCodes: ['WORK_BOARD_REFERENCE_OBSERVATION_NOT_RUN'],
-              counts: { failures: 0, degraded: 0 },
+        const { failures } = await sweepReferenceFixtures(config, {
+          unavailableReason: (fixtureId: string) =>
+            isImplementedFixture(fixtureId)
+              ? undefined
+              : fixtureId === ONE_HOUR_FIXTURE
+                ? 'ONE_HOUR_REFERENCE_OBSERVATION_NOT_RUN'
+                : 'WORK_BOARD_REFERENCE_OBSERVATION_NOT_RUN',
+          retainReport,
+          runFixture: async (fixture: FixtureConfig) => {
+            const provisioned = await runFixtureTarget({
+              owner: referenceOwnership,
+              browser,
+              fixtureRoot,
+              controlParent,
+              fixture,
+              config,
+              ...(buildInstance ? { buildInstance } : {}),
             });
-        }
-        const order = new Map(
-          config.fixtures.map((fixture, index) => [fixture.id, index]),
-        );
-        observations.sort(
-          (left, right) =>
-            (order.get(left.fixtureId) ?? Number.MAX_SAFE_INTEGER) -
-            (order.get(right.fixtureId) ?? Number.MAX_SAFE_INTEGER),
-        );
-        const generatedAt = new Date().toISOString();
-        const run = {
-          ...first.run,
-          generatedAt,
-          observations,
-          provenance: first.run.provenance,
-        };
-        const evaluated = evaluateInteractiveWorkspacePerformance(config, run, {
-          mode: 'reference',
-          now: () => new Date(generatedAt),
-          expectedRevision: metadata.revision,
-        });
-        const report = {
-          ...evaluated,
-          measurement: 'reference',
-          run,
-        } as AggregatedReport;
-        const retainedReport = process.env.STATION_PERFORMANCE_REPORT_OUTPUT;
-        if (retainedReport) {
-          mkdirSync(dirname(retainedReport), { recursive: true });
-          writeFileSync(retainedReport, `${JSON.stringify(report, null, 2)}\n`);
-        }
-        expect(reports).toHaveLength(
-          config.fixtures.filter((candidate) =>
-            isImplementedFixture(candidate.id),
-          ).length,
-        );
-        for (const fixtureId of config.fixtures
-          .map((fixture) => fixture.id)
-          .filter(
-            (fixtureId) =>
-              selectedFixtureIds.includes(fixtureId) &&
-              isImplementedFixture(fixtureId),
-          )) {
-          const observation = report.run.observations.find(
-            (candidate) => candidate.fixtureId === fixtureId,
-          );
-          if (!observation?.measurements)
-            throw new Error(
-              `${fixtureId} was not measured: ${JSON.stringify(observation)}`,
-            );
-          expect(observation.measurements).toHaveLength(requestedSamples);
-        }
-        if (process.platform === 'win32') {
-          const fixtureReports = (
-            report as AggregatedReport & {
-              fixtures: Array<{
-                fixtureId: string;
-                status: string;
-                decision: string;
-                counts: { failures: number; degraded: number };
-                metrics: Record<string, { limits: Array<{ passed: boolean }> }>;
-              }>;
+            const previous = active;
+            active = provisioned.live;
+            buildInstance ??= active.instance;
+            homes.push(active.home);
+            if (previous) {
+              // The shared instance's force start replaced the earlier target.
+              referenceOwnership.stations.delete(previous);
+              try {
+                rmSync(previous.home, { recursive: true, force: true });
+                homes.splice(homes.indexOf(previous.home), 1);
+              } catch {
+                cleanupFailures.push(
+                  `${fixture.id}: earlier target cleanup failed`,
+                );
+              }
             }
-          ).fixtures;
-          for (const fixtureId of config.fixtures
-            .map((fixture) => fixture.id)
-            .filter(
-              (fixtureId) =>
-                selectedFixtureIds.includes(fixtureId) &&
-                isImplementedFixture(fixtureId),
-            )) {
-            const fixtureReport = fixtureReports.find(
-              (candidate) => candidate.fixtureId === fixtureId,
-            );
-            expect(fixtureReport).toMatchObject({
-              status: 'PASS',
-              decision: 'keep',
-              counts: { failures: 0, degraded: 0 },
-            });
-            expect(
-              Object.values(fixtureReport?.metrics ?? {}).flatMap(
-                (metric) => metric.limits,
-              ),
-            ).toEqual(
-              expect.arrayContaining([
-                expect.objectContaining({ passed: true }),
-              ]),
-            );
-            expect(
-              Object.values(fixtureReport?.metrics ?? {})
-                .flatMap((metric) => metric.limits)
-                .every((limit) => limit.passed),
-            ).toBe(true);
-          }
-        }
-        if (
-          selectedFixtureIds.includes(ONE_HOUR_FIXTURE) &&
-          !ONE_HOUR_REFERENCE_ENABLED
-        )
-          expect(
-            report.run.observations.find(
-              (observation) => observation.fixtureId === ONE_HOUR_FIXTURE,
-            ),
-          ).toMatchObject({
-            status: 'NOT_VERIFIED',
-            reasonCodes: ['ONE_HOUR_REFERENCE_OBSERVATION_NOT_RUN'],
-          });
-        if (active) {
-          await releaseStation(referenceOwnership, active);
-          rmSync(active.home, { recursive: true, force: true });
-          homes.splice(homes.indexOf(active.home), 1);
-          active = undefined;
-        }
+            return provisioned;
+          },
+        });
+        const issues = [...failures, ...cleanupFailures];
+        if (issues.length) throw new Error(issues.join('\n'));
       } finally {
         if (active)
           await releaseStation(referenceOwnership, active).catch(() => {});

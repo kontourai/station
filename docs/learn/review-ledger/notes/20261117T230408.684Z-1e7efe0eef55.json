@@ -1,0 +1,7 @@
+{
+  "revision": "ea360a6a321a783e96b581ae44102de55f6b1b24",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed SessionLifecycleModule owned-work explanation at ea360a6a321 against ownedSessionActivities, buildOrchestrationSessionSummary and projectSessionLifecycle. Descendant status shares the canonical lifecycle fold; pending admissions and stop obligations retain independent holds. Verified 65 focused tests; live bmedia repair used supported stopSession commands and parent subsequently read idle, without deploying this source.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

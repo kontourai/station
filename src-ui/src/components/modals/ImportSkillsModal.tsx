@@ -81,7 +81,7 @@ export function ImportSkillsModal({
   // context and event bubbling still follow the component tree.
   return createPortal(
     <Dialog
-      title="Import Skills"
+      title="Import skills"
       subtitle="Add standalone Markdown instructions. Supporting scripts and files need a plugin package."
       closeLabel="Close import skills"
       onClose={handleCancel}

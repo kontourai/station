@@ -146,19 +146,41 @@ function runBiome() {
   if (result.error) {
     throw new Error(`failed to run biome: ${result.error.message}`);
   }
-  return `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  return {
+    output: `${result.stdout ?? ''}${result.stderr ?? ''}`,
+    status: result.status,
+    signal: result.signal,
+  };
 }
+
+const UNMEASURED_TAIL_LINES = 20;
 
 /**
  * Guard against measuring nothing. Biome always prints a `Checked N files`
  * summary; its absence means the run did not happen, and a ratchet that cannot
  * measure must fail rather than report a clean tree.
  */
-export function assertMeasurable(output) {
+export function assertMeasurable(output, { status, signal } = {}) {
   if (!/Checked \d+ files?/.test(output)) {
+    // Say how the run ended and what it last wrote: a killed process, a
+    // launcher refusal (the shared Biome slot) and an out-of-memory exit are
+    // otherwise indistinguishable here.
+    const ended = signal
+      ? `killed by ${signal}`
+      : status === undefined || status === null
+        ? 'exit status unknown'
+        : `exited with status ${status}`;
+    const tail = output
+      .trimEnd()
+      .split('\n')
+      .slice(-UNMEASURED_TAIL_LINES)
+      .join('\n');
     throw new Error(
       'biome produced no "Checked N files" summary — the lint run did not ' +
-        'complete, so violation counts cannot be trusted.',
+        `complete (${ended}), so violation counts cannot be trusted.\n` +
+        (tail
+          ? `Last ${UNMEASURED_TAIL_LINES} lines of its output:\n${tail}`
+          : 'It wrote no output.'),
     );
   }
   return output;
@@ -181,7 +203,8 @@ function main() {
     return;
   }
 
-  const measured = countViolations(assertMeasurable(runBiome()));
+  const run = runBiome();
+  const measured = countViolations(assertMeasurable(run.output, run));
   const { regressions, improvements } = evaluate(measured, baseline);
   const total = Object.values(measured).reduce((sum, n) => sum + n, 0);
 

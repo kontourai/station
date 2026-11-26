@@ -11,6 +11,7 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 import { readPnpmDependencyGraph } from './lib/pnpm-dependency-graph.mjs';
 import { releaseVariants } from './lib/release-artifacts.mjs';
 import { canonicalJson } from './lib/release-sboms.mjs';
+import { parseReleaseTag } from './lib/release-tag.mjs';
 
 const RELEASE_PLATFORM = 'linux';
 const RELEASE_ARCH = 'x64';
@@ -234,10 +235,11 @@ if (invokedDirectly(import.meta.url))
       resolve(option('--output')),
       canonicalJson({
         tag,
-        version: tag.slice(1),
+        // The bytes carry the base version; the tag names where they live.
+        version: parseReleaseTag(tag).baseVersion,
         sourceSha,
         generatedAt,
-        channel: tag.includes('-preview.') ? 'preview' : 'stable',
+        channel: 'stable',
         container,
         dependencyLifecycle: releaseDependencyLifecycle({
           allowlist: dependencyLifecycle,

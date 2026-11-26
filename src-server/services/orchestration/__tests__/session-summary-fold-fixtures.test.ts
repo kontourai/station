@@ -102,9 +102,14 @@ function fold({
       return event;
     });
     if (options.silentForMs) vi.advanceTimersByTime(options.silentForMs);
+    // The summary reads the store's projection, as production does, not
+    // the raw sequence: a fact the projection drops never reaches it.
+    expect(written).toHaveLength(events.length);
     const summary = buildOrchestrationSessionSummary({
       persisted: sessionReadModel.get(THREAD),
-      events: written,
+      events: store
+        .listSessionProjectionEvents(THREAD)
+        .map((event) => event.payload),
       answerability: {
         threadAttachment: options.detached ? 'detached' : 'attached',
         providerRegistered: !options.detached,
@@ -145,6 +150,7 @@ describe('the client fixtures are what the server folds', () => {
       'runningWithChildren',
       'silentRun',
       'turnCompleted',
+      'turnCutOff',
     ]);
   });
 

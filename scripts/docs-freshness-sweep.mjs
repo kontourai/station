@@ -12,10 +12,13 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { documentationCatchUp } from './documentation-impact.mjs';
-import { checkDocumentationFreshness } from './lib/documentation-freshness.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
-import { runGh, upsertTrackingIssue } from './lib/tracking-issue.mjs';
+import {
+  assertReportRevision,
+  postableReport,
+  runGh,
+  upsertTrackingIssue,
+} from './lib/tracking-issue.mjs';
 
 export const SWEEP_ISSUE_TITLE = 'Documentation freshness sweep';
 export const SWEEP_ISSUE_LABELS = Object.freeze(['documentation', 'P2']);
@@ -80,24 +83,59 @@ export function reportStaleCount(report) {
   return Number(match[1]);
 }
 
+export function reportRevision(report) {
+  const match = new RegExp(
+    `^<!-- ${MARKER} stale=\\d+ revision=([a-f0-9]{40}) -->$`,
+    'm',
+  ).exec(report);
+  if (!match) throw new Error(`report is missing the ${MARKER} marker`);
+  return match[1];
+}
+
+const checkedOutRevision = () =>
+  execFileSync('git', ['rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim();
+
 /**
- * Create, update, reopen or close the single tracking issue.
- * @param {{ repo: string, reportPath: string, gh?: (args: string[]) => string }} input
+ * Create, update, reopen or close the single tracking issue. The report comes
+ * from another job, so it must be stamped with this job's checkout (`head`;
+ * that proves it is current, not who wrote it), and it is posted only through
+ * `postableReport` (no live mentions, size bound on the posted text).
+ * @param {{ repo: string, reportPath: string, head?: string, gh?: (args: string[]) => string }} input
  */
-export function upsertFreshnessIssue({ repo, reportPath, gh = runGh }) {
+export function upsertFreshnessIssue({
+  repo,
+  reportPath,
+  head = checkedOutRevision(),
+  gh = runGh,
+}) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo ?? ''))
     throw new Error('--repo must be owner/name');
+  const report = readFileSync(reportPath, 'utf8');
+  assertReportRevision(reportRevision(report), head);
   return upsertTrackingIssue({
     repo,
-    reportPath,
+    reportPath: postableReport(reportPath),
     title: SWEEP_ISSUE_TITLE,
     labels: SWEEP_ISSUE_LABELS,
-    outstanding: reportStaleCount(readFileSync(reportPath, 'utf8')),
+    outstanding: reportStaleCount(report),
     gh,
   });
 }
 
 export async function collectFreshnessReport({ root = process.cwd() } = {}) {
+  // Loaded here, not at the top: the report needs installed packages
+  // (`yaml`, `@kontourai/corpus`), while `--upsert` runs in the workflow job
+  // that holds `issues: write` and installs nothing (#4270). Keeping the
+  // upsert path's static import graph to Node built-ins is what lets it run
+  // there.
+  const [{ documentationCatchUp }, { checkDocumentationFreshness }] =
+    await Promise.all([
+      import('./documentation-impact.mjs'),
+      import('./lib/documentation-freshness.mjs'),
+    ]);
   const catchUp = await documentationCatchUp({ root });
   const media = await checkDocumentationFreshness({
     root,

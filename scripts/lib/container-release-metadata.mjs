@@ -1,14 +1,17 @@
 import { CHANNEL_VERSION } from '../../packages/shared/src/release-manifest.mjs';
 import { STATION_RELEASE_RINGS } from '../../packages/shared/src/release-rings.generated.mjs';
 import { invokedDirectly } from './module-entry.mjs';
+import { parseReleaseTag } from './release-tag.mjs';
 
 const SHA = /^[0-9a-f]{40}$/i;
 /**
- * Container images are published for the stable and preview rings only: a
- * Nightly image has no registry tag policy (its prerelease would take the
- * `preview` tag), so createContainerReleaseMetadata refuses every other ring.
+ * Container images are published for tagged Stable releases only (a final
+ * `vX.Y.Z` or a candidate `vX.Y.Z-rc.N`, #4929). A Nightly image has no
+ * registry tag policy, so createContainerReleaseMetadata refuses every other
+ * ring.
  */
-const CONTAINER_RINGS = new Set(['stable', 'preview']);
+const CONTAINER_RINGS = new Set(['stable']);
+const PACKAGED_RINGS = new Set(['stable', 'nightly']);
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const CONTAINER_PLATFORMS = ['linux/amd64', 'linux/arm64'];
 
@@ -17,16 +20,22 @@ function fail(message) {
 }
 
 /**
- * The release ring a `v<version>` tag belongs to, read from the generated
- * ring table (config/channel-ports.json releaseRings) through the shared
- * verifier's per-ring version grammar, so every installable ring is accepted
- * and no ring list is typed here.
+ * The release ring a `v<version>` tag belongs to. A tagged release (final or
+ * candidate) is Stable through the shared release-tag parser; any other tag
+ * may be Nightly according to the generated ring table and shared verifier.
+ * Preview remains a legacy reader contract only, never a new producer.
  */
 function releaseRingForTag(tag) {
   if (typeof tag !== 'string' || !tag.startsWith('v')) return undefined;
+  try {
+    parseReleaseTag(tag);
+    return 'stable';
+  } catch {
+    // Not a tagged Stable release; try the prerelease rings below.
+  }
   const version = tag.slice(1);
-  return Object.keys(STATION_RELEASE_RINGS).find((ring) =>
-    CHANNEL_VERSION[ring]?.test(version),
+  return Object.keys(STATION_RELEASE_RINGS).find(
+    (ring) => ring === 'nightly' && CHANNEL_VERSION[ring]?.test(version),
   );
 }
 
@@ -34,13 +43,14 @@ export function createPackagedReleaseManifest({ tag, sha, createdAt }) {
   const ring = releaseRingForTag(tag);
   if (!ring) {
     fail(
-      `tag must be one release ring's version: ${Object.entries(
-        STATION_RELEASE_RINGS,
-      )
-        .map(([name, { prerelease }]) =>
-          prerelease ? `vMAJOR.MINOR.PATCH-${name}.N` : 'vMAJOR.MINOR.PATCH',
-        )
-        .join(', ')}`,
+      `tag must be one release ring's version: ${[
+        'vMAJOR.MINOR.PATCH-rc.N',
+        ...Object.entries(STATION_RELEASE_RINGS)
+          .filter(([ring]) => PACKAGED_RINGS.has(ring))
+          .map(([name, { prerelease }]) =>
+            prerelease ? `vMAJOR.MINOR.PATCH-${name}.N` : 'vMAJOR.MINOR.PATCH',
+          ),
+      ].join(', ')}`,
     );
   }
   if (typeof sha !== 'string' || !SHA.test(sha))
@@ -55,9 +65,11 @@ export function createPackagedReleaseManifest({ tag, sha, createdAt }) {
   }
   const { runtimeChannel, prerelease } = STATION_RELEASE_RINGS[ring];
   return {
-    schemaVersion: 2,
+    schemaVersion: ring === 'nightly' ? 2 : 3,
     sha: sha.toLowerCase(),
-    ref: tag,
+    ...(ring === 'nightly'
+      ? { ref: tag }
+      : { version: parseReleaseTag(tag).baseVersion }),
     createdAt,
     channel: runtimeChannel,
     releaseChannel: ring,
@@ -74,7 +86,7 @@ export function createContainerReleaseMetadata({
   const manifest = createPackagedReleaseManifest({ tag, sha, createdAt });
   if (!CONTAINER_RINGS.has(manifest.releaseChannel))
     fail(
-      `container images are published for stable and preview tags only, not ${manifest.releaseChannel}`,
+      `container images are published for stable tags only, not ${manifest.releaseChannel}`,
     );
   if (
     typeof repository !== 'string' ||
@@ -82,7 +94,7 @@ export function createContainerReleaseMetadata({
   ) {
     fail('repository must be lowercase GHCR image path');
   }
-  const version = tag.slice(1);
+  const { baseVersion, kind } = parseReleaseTag(tag);
   const shaTag = `sha-${manifest.sha}`;
   return {
     image: `ghcr.io/${repository}`,
@@ -90,7 +102,10 @@ export function createContainerReleaseMetadata({
     sha: manifest.sha,
     createdAt,
     channel: manifest.releaseChannel,
-    tags: [tag, version, shaTag, manifest.prerelease ? 'preview' : 'latest'],
+    // Publication alias policy, not staging names. Workflows stage at
+    // staging-<producerTag>; RC publication applies no aliases, and promotion
+    // derives final aliases while retaining the candidate's immutable digest.
+    tags: kind === 'rc' ? [tag, shaTag] : [tag, baseVersion, shaTag, 'latest'],
     labels: {
       'org.opencontainers.image.created': createdAt,
       'org.opencontainers.image.revision': manifest.sha,

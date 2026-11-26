@@ -1,0 +1,13 @@
+{
+  "revision": "3db81846a88db32c4a4dc23da8039beb793f41f9",
+
+  "notes": [
+    {"path":"docs/design/connection-broker.md","note":"Re-read Evidence boundaries. The pilot suite gained two connector-less cases (canManage false for a paired Device without relay:manage; every management leaf the configured module registers stays 404). The dated 35/35 receipt at 07a7d02ff0 and its fault controls remain an accurate historical statement; nothing here claims the current count. Native manager, enrollment-decision and physical-delivery limits are unchanged.","inputs":["docs/design/connection-broker.md","src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Re-read Relay-management source integration. The pilot suite gained two connector-less cases (canManage false for a paired Device without relay:manage; every management leaf the configured module registers stays 404). The dated 35/35 receipt at 07a7d02ff0 and its fault controls remain an accurate historical statement; nothing here claims the current count. Native manager, enrollment-decision and physical-delivery limits are unchanged.","inputs":["docs/guides/native-shell-verification.md","src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Fix round: corrected the unconfigured-Station sentence to say the capability probe answers GET and HEAD (Hono serves HEAD for the GET route, and the scope table admits both), still answering configured: false with every management leaf unmounted.","inputs":["docs/guides/self-hosted-broker.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Correction to the earlier batch note on this page, which said a grep found no relay-management reference: line 295 names the relay:manage scope for Project access administration. Re-read that paragraph against this change: the capability probe now answering configured: false without a connector does not grant or remove relay:manage, and Project access administration still needs current membership plus a separately approved orchestration:operate or relay:manage Device scope. The claim stays accurate.","inputs":["docs/guides/machine-relationships.md"]}
+  ]
+}

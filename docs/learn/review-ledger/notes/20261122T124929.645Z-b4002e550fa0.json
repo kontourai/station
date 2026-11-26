@@ -1,0 +1,7 @@
+{
+  "revision": "67bc53f6e0384566a0842a955240ff3d0ace0b25",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Amended (#5398 fix round): the inbox paragraph uses Last message may not have arrived; the subagent Send to card now names sent, Not sent and May have reached the agent, and Check looks the saved instruction up without resending, as ChildWorkInstructionPanel does.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/views/home/home-view-model.ts","src-ui/src/views/home/work-facts.ts"]}
+  ]
+}

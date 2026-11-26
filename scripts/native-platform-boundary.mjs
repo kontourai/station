@@ -4,7 +4,11 @@
 // detection, commands, and events out of feature code and makes the web
 // fallback deterministic.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import {
+  assertScopeIsHonest,
+  describeScope,
+  listTrackedFilesUnder,
+} from './lib/gate-scope.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const TAURI_CAPABILITY_MANIFEST =
@@ -19,10 +23,11 @@ export const RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST =
   'src-desktop/capabilities/desktop-updater.json';
 export const NATIVE_ONLY_PERMISSION_PREFIXES = ['updater:', 'process:'];
 export const TAURI_BASE_CONFIG = 'src-desktop/tauri.conf.json';
+const TAURI_WINDOWS_CONFIG = 'src-desktop/tauri.windows.conf.json';
 export const TAURI_DESKTOP_CONFIGS = [
   'src-desktop/tauri.macos.conf.json',
   'src-desktop/tauri.nightly.conf.json',
-  'src-desktop/tauri.windows.conf.json',
+  TAURI_WINDOWS_CONFIG,
   'src-desktop/tauri.linux.conf.json',
 ];
 export const TAURI_APPIMAGE_CONFIG =
@@ -41,11 +46,13 @@ export const EXPECTED_APPIMAGE_RUNTIME_FILES = {
   'usr/share/Station/dist-server': '../dist-desktop-runtime/dist-server',
   'usr/share/Station/node_modules': '../dist-desktop-runtime/node_modules',
   'usr/share/Station/examples': '../dist-desktop-runtime/examples',
+  'usr/share/Station/schemas': '../schemas',
 };
 export const EXPECTED_APPIMAGE_REMOVED_RESOURCES = {
   '../dist-desktop-runtime/dist-server': null,
   '../dist-desktop-runtime/node_modules': null,
   '../dist-desktop-runtime/examples': null,
+  '../schemas': null,
 };
 export const EXPECTED_TAURI_PERMISSIONS = [
   // Read the configured local package name for Stable/Beta/Nightly/Dev shell
@@ -85,7 +92,7 @@ export const EXPECTED_TAURI_CSP = {
   'font-src': "'self' data:",
   'img-src': "'self' asset: http://asset.localhost data: blob: http: https:",
   'media-src': "'self' asset: http://asset.localhost data: blob: http: https:",
-  'frame-src': "'self' data: blob: http: https:",
+  'frame-src': "'self' data: blob: http: https: station-html-reply:",
   'worker-src': "'self' blob:",
   'manifest-src': "'self'",
   'object-src': "'none'",
@@ -104,6 +111,9 @@ export const TAURI_ADAPTER_FILES = new Set([
   'src-ui/src/platform/native/productName.ts',
   // Converts installed bundle paths to the narrow host-authenticated protocol.
   'src-ui/src/platform/native/pluginBundleUrl.ts',
+  // Stages a visual-reply document on the shell's station-html-reply: scheme
+  // and builds its capability URL; the viewer imports only this seam.
+  'src-ui/src/platform/native/htmlReplyStagedDocument.ts',
   // The one host-owned authenticated transport. It is intentionally the only
   // renderer module allowed to create a Tauri IPC channel for HTTP bytes.
   'src-ui/src/platform/native/authenticatedTransport.ts',
@@ -435,12 +445,14 @@ export function findTauriResourceBoundaryViolations(
   }
   const [appImageFile, appImageConfigContent] = appImageContent;
   const appImage = parse(appImageConfigContent, appImageFile);
+  if (JSON.stringify(appImage?.build?.features) !== '["appimage-runtime"]')
+    violations.push(`${appImageFile} must enable the AppImage runtime layout`);
   if (
     JSON.stringify(appImage?.bundle?.resources) !==
     JSON.stringify(EXPECTED_APPIMAGE_REMOVED_RESOURCES)
   ) {
     violations.push(
-      `${appImageFile} must delete only the inherited server, raw node_modules and examples resources`,
+      `${appImageFile} must move the inherited server, node_modules, examples and schemas resources`,
     );
   }
   if (
@@ -454,25 +466,32 @@ export function findTauriResourceBoundaryViolations(
   return violations;
 }
 
+const UI_SOURCE_ROOT = 'src-ui/src';
+const UI_SOURCE_EXTENSIONS = ['.ts', '.tsx'];
+const API_BASE_CONTEXT = 'src-ui/src/contexts/ApiBaseContext.tsx';
+const CONNECTION_LIST =
+  'packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx';
+
 function listTrackedUiSources() {
-  return (
-    execFileSyncBounded('git', ['ls-files', 'src-ui/src'], {
-      encoding: 'utf8',
-      windowsHide: true,
-    })
-      .split('\n')
-      .filter((file) => /\.(?:ts|tsx)$/.test(file))
-      // `git ls-files` includes a tracked file removed in the current working
-      // tree. Do not make a removal itself prevent the static gate from
-      // inspecting the remaining live source.
-      .filter((file) => existsSync(file))
-      .filter((file) => !file.includes('/__tests__/'))
-  );
+  const files = listTrackedFilesUnder(
+    UI_SOURCE_ROOT,
+    UI_SOURCE_EXTENSIONS,
+  ).filter((file) => existsSync(file));
+  assertScopeIsHonest({
+    gate: 'native platform boundary',
+    roots: [UI_SOURCE_ROOT],
+    extensions: UI_SOURCE_EXTENSIONS,
+    pinned: [`${UI_SOURCE_ROOT}/App.tsx`, API_BASE_CONTEXT],
+    files,
+  });
+  return files.filter((file) => !file.includes('/__tests__/'));
 }
 
-export function findRendererCredentialBoundaryViolations(readText) {
+export function findRendererCredentialBoundaryViolations(
+  readText,
+  uiSources = listTrackedUiSources(),
+) {
   const violations = [];
-  const uiSources = listTrackedUiSources();
   const forbidden =
     /credential_vault_(?:read|write)|createNativeCredentialVault|nativeCredentialStorage|platform\/native\/credentialVault/;
   for (const file of uiSources) {
@@ -484,15 +503,13 @@ export function findRendererCredentialBoundaryViolations(readText) {
       );
     }
   }
-  const apiBase = readText('src-ui/src/contexts/ApiBaseContext.tsx');
+  const apiBase = readText(API_BASE_CONTEXT);
   if (!apiBase.includes('new RejectingCredentialStorage()')) {
     violations.push(
       'src-ui/src/contexts/ApiBaseContext.tsx must install a rejecting desktop credential adapter',
     );
   }
-  const connectionList = readText(
-    'packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx',
-  );
+  const connectionList = readText(CONNECTION_LIST);
   if (!connectionList.includes('allowManualCredentials &&')) {
     violations.push(
       'ConnectionListPanel must gate manual bearer controls outside native desktop',
@@ -502,8 +519,9 @@ export function findRendererCredentialBoundaryViolations(readText) {
 }
 
 function main() {
+  const uiSources = listTrackedUiSources();
   const findings = findNativeBoundaryViolations(
-    listTrackedUiSources(),
+    uiSources,
     // Without an encoding this yields a Buffer, and the first violation found
     // then died in lineNumberAt with "slice(...).split is not a function" —
     // so this gate could only ever report a clean run.
@@ -513,16 +531,15 @@ function main() {
     readFileSync(TAURI_CAPABILITY_MANIFEST, 'utf8'),
   );
   const desktopRootFlag = process.argv.indexOf('--desktop-root');
-  const nativeOnlyGrantFindings = findNativeOnlyPermissionGrants(
-    listTauriAclSources(
-      desktopRootFlag === -1
-        ? TAURI_DESKTOP_ROOT
-        : process.argv[desktopRootFlag + 1],
-    ),
-  );
+  const desktopRoot =
+    desktopRootFlag === -1
+      ? TAURI_DESKTOP_ROOT
+      : (process.argv[desktopRootFlag + 1] ?? TAURI_DESKTOP_ROOT);
+  const aclSources = listTauriAclSources(desktopRoot);
+  const nativeOnlyGrantFindings = findNativeOnlyPermissionGrants(aclSources);
   const cspFindings = findTauriCspViolations(
     readFileSync(TAURI_BASE_CONFIG, 'utf8'),
-    readFileSync('src-desktop/tauri.windows.conf.json', 'utf8'),
+    readFileSync(TAURI_WINDOWS_CONFIG, 'utf8'),
   );
   const resourceFindings = findTauriResourceBoundaryViolations(
     readFileSync(TAURI_BASE_CONFIG, 'utf8'),
@@ -533,8 +550,9 @@ function main() {
   const nonceMarkerFindings = findTauriNonceMarkerViolations(
     readFileSync('src-ui/index.html', 'utf8'),
   );
-  const credentialFindings = findRendererCredentialBoundaryViolations((file) =>
-    readFileSync(file, 'utf8'),
+  const credentialFindings = findRendererCredentialBoundaryViolations(
+    (file) => readFileSync(file, 'utf8'),
+    uiSources,
   );
   if (
     findings.length === 0 &&
@@ -545,8 +563,20 @@ function main() {
     resourceFindings.length === 0 &&
     credentialFindings.length === 0
   ) {
+    const rendererScope = describeScope({
+      roots: [UI_SOURCE_ROOT],
+      extensions: UI_SOURCE_EXTENSIONS,
+      files: uiSources,
+      extraFiles: [CONNECTION_LIST],
+    });
     console.log(
-      'OK: native access remains behind the adapter and Tauri webview permissions are minimal.',
+      `OK: native adapter and credential checks passed for ${rendererScope} (tracked, excluding __tests__).`,
+    );
+    console.log(
+      `OK: source grant checks passed for ${aclSources.length} file(s) in ${desktopRoot}/capabilities, ${desktopRoot}/permissions and ${desktopRoot}/tauri*.conf.json. Resolved Tauri ACL coverage is tracked in #3864.`,
+    );
+    console.log(
+      `OK: checked ${TAURI_CAPABILITY_MANIFEST}, the CSP in ${TAURI_BASE_CONFIG} and ${TAURI_WINDOWS_CONFIG}, resource rules in ${TAURI_DESKTOP_CONFIGS.length + TAURI_MOBILE_CONFIGS.length + 2} named src-desktop configs, and nonce markers in src-ui/index.html.`,
     );
     return;
   }

@@ -50,6 +50,7 @@ import { fileURLToPath } from 'node:url';
 import { dump, load } from 'js-yaml';
 import { authorTelemetryWorkflowFindings } from './check-author-telemetry-workflows.mjs';
 import {
+  ACTIONLINT_ARTIFACT_JOB,
   collectRequiredBrowserSmokeFindings,
   FAST_CHECKS_AGGREGATE_RUN,
   FAST_CHECKS_LEGACY_DETECT_RUN,
@@ -59,14 +60,21 @@ import {
   FAST_CHECKS_SHARD_IF,
   FAST_CHECKS_SHARD_RUN,
   FAST_CHECKS_SLICE_RUN,
+  HEAVY_CHECKS_DEFERRED_RUN,
+  HEAVY_CHECKS_RAN_RUN,
   isOptionalChromiumCacheRestore,
   MERGE_INTEGRATION_DECISION_STEP,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
+  REQUIRED_FAST_CHECKS_STATICS_CONDITION,
 } from './ci-workflow-governance.mjs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { canonicalValue } from './lib/canonical-json.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
-import { FAST_CHECKS_PROVISIONAL_STEP } from './source-verification-policy.mjs';
+import {
+  FAST_CHECKS_PROVISIONAL_STEP,
+  HEAVY_DEFERRED_STEP,
+  HEAVY_RAN_STEP,
+} from './source-verification-policy.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -84,6 +92,7 @@ const GITHUB_HOSTED_RUNNER_IMAGES = new Set([
   'macos-15',
   'macos-15-intel',
   'macos-26',
+  'xcode-27',
 ]);
 
 /** `null` when actionlint is not on PATH. */
@@ -365,11 +374,11 @@ const FORK_SMOKE_JOB = Object.freeze({
   file: '.github/workflows/ci.yml',
   jobId: 'fork-smoke',
 });
-const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
-const FORK_SMOKE_CONDITION = `\${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}`;
+const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
+const FORK_SMOKE_CONDITION = `\${{ always() && !cancelled() && needs.${ACTIONLINT_ARTIFACT_JOB}.result == 'success' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name != github.repository }}`;
 // #2176: the whole-tree source scans run for same-repository pull requests
 // only. A fork candidate never reaches it (fork-smoke owns forks).
-const REPO_SCANS_CONDITION = `\${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}`;
+const REPO_SCANS_CONDITION = `\${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name == github.repository }}`;
 const PULL_REQUEST_TARGET = 'pull_request_target';
 const MERGE_GROUP = 'merge_group';
 const MERGE_GROUP_TYPES = ['checks_requested'];
@@ -378,9 +387,11 @@ const CI_ROUTER_PR_TARGET_TYPES = [
   'synchronize',
   'reopened',
   'edited',
+  // STATION_PR_HEAVY_CHECKS=when-armed runs the heavy checks on arming.
+  'auto_merge_enabled',
 ];
 const UI_BUNDLE_DELTA_JOB = 'ui-bundle-delta';
-const UI_BUNDLE_DELTA_CONDITION = `\${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}`;
+const UI_BUNDLE_DELTA_CONDITION = `\${{ always() && !cancelled() && needs.pr-admission.outputs.heavy != 'false' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository }}`;
 const UI_BUNDLE_DELTA_STEP = Object.freeze({
   name: 'Report UI entry bundle delta',
   run: 'node scripts/ui-bundle-delta-report.mjs',
@@ -393,6 +404,7 @@ const PRIMARY_ROUTER_JOBS = new Set([
   'pr-title',
   'source-policy',
   'pr-admission',
+  ACTIONLINT_ARTIFACT_JOB,
   'delivery-plan',
   'delivery-validation',
   'fast-checks',
@@ -421,6 +433,59 @@ const SECURITY_SARIF_OUTPUT = `\${{ runner.temp }}/codeql-sarif`;
 const SECURITY_NORMALIZED_SARIF = `\${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif`;
 const SECURITY_ANALYSIS_TIMEOUT_MINUTES = 30;
 /**
+ * CodeQL analyses each landing once, in its merge group. On pull_request_target
+ * it runs only when the base-controlled gate-change job did not positively
+ * answer analyse=false: a merge group runs its candidate's own workflow YAML,
+ * so a pull request touching .github/ must be analysed by base-defined code
+ * before it can be queued. Dropping this guard runs the analysis on every PR
+ * push again; loosening it (always(), or treating a failed classifier as
+ * "skip") lets a workflow change land with no trusted CodeQL verdict.
+ */
+const SECURITY_ANALYSIS_GATE_CHANGE_JOB = 'gate-change';
+const SECURITY_ANALYSIS_CODEQL_GUARD = `\${{ !cancelled() && (github.event_name != 'pull_request_target' || needs.gate-change.result != 'success' || needs.gate-change.outputs.analyse != 'false') }}`;
+const SECURITY_ANALYSIS_CODEQL_GUARD_MESSAGE =
+  'security-analysis CodeQL must keep its exact job guard: run in the merge group, on schedule and on dispatch, and on pull_request_target unless gate-change succeeded with analyse=false';
+const SECURITY_GATE_CHANGE_MESSAGE =
+  'security-analysis gate-change must keep its exact base-controlled, git-only, fail-closed classification';
+const SECURITY_GATE_CHANGE_RUN = `# Full commit history without trees or blobs (a few MB): enough for
+# an exact merge base, with only the .github/ trees fetched lazily.
+# A fork head is fetched by SHA from the base repository too; if that
+# ever fails, the analysis runs.
+classify() {
+  [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || return 10
+  repo="$(mktemp -d)" || return 11
+  git -C "$repo" init -q || return 11
+  git -C "$repo" remote add origin "$REPOSITORY_URL" || return 11
+  git -C "$repo" fetch -q --no-tags --filter=tree:0 origin "$BASE_SHA" "$HEAD_SHA" || return 12
+  [ "$(git -C "$repo" rev-parse --is-shallow-repository)" = false ] || return 13
+  merge_base="$(git -C "$repo" merge-base --all "$BASE_SHA" "$HEAD_SHA")" || return 14
+  [[ "$merge_base" =~ ^[0-9a-f]{40}$ ]] || return 14
+  # Exit 0: no .github/ change; 1: a change; anything else: an error.
+  git -C "$repo" diff --quiet --no-ext-diff "$merge_base" "$HEAD_SHA" -- .github/
+}
+status=0
+classify || status=$?
+analyse=true
+case "$status" in
+  0)
+    analyse=false
+    echo "No .github/ change since the merge base; CodeQL runs in the merge group."
+    ;;
+  1)
+    echo "This pull request changes .github/; running the base-defined CodeQL analysis now."
+    ;;
+  *)
+    echo "::warning::CodeQL gate-change classification failed closed (status $status); running the analysis now."
+    ;;
+esac
+echo "analyse=$analyse" >> "$GITHUB_OUTPUT"`;
+/**
+ * The daily main run that replaced the per-push run. With manual dispatch it
+ * is where a stale baseline entry fails rather than warns, and it uploads the
+ * default-branch TRAP cache that merge groups restore.
+ */
+const SECURITY_ANALYSIS_SCHEDULE_CRON = '11 9 * * *';
+/**
  * The only CodeQL configuration the scan accepts: test code out, nothing else.
  * Exported so the workflow test and the baseline test share one copy.
  */
@@ -444,9 +509,9 @@ export const CHECKOUT_ACTION =
 export const SETUP_NODE_ACTION =
   'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1';
 export const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370';
+  'github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066';
 export const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370';
+  'github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =
@@ -571,9 +636,10 @@ if [ "\${#SARIF_FILES[@]}" -ne 1 ]; then
   exit 1
 fi
 node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-normalize.mjs" --input="\${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
-# PRs read the baseline from the BASE checkout, so an entry a PR
-# removes is invisible here; warn instead of failing or the baseline
-# could never shrink through a green gate. Push-to-main enforces.
+# Pull requests and merge groups read the baseline from the BASE
+# checkout, so an entry the candidate removes is invisible here;
+# warn instead of failing or the baseline could never shrink
+# through a green gate. The daily run on main enforces.
 STALE_BASELINE_MODE=fail
 if [ "$GITHUB_EVENT_NAME" = "pull_request_target" ] || [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
   STALE_BASELINE_MODE=warn
@@ -594,8 +660,41 @@ echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check 
 tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
 echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 `;
+/**
+ * #4748: the shard, statics and fork-smoke consumers do not fetch the archive.
+ * They download the exact artifact id the trusted `actionlint-artifact` job
+ * uploaded into a fresh path and re-verify its digest BEFORE `tar` reads it.
+ * The legacy plan lane and the completion workflow keep the inline install
+ * above.
+ */
+const CONSUMER_ACTIONLINT_PROVISION_RUN = `set -euo pipefail
+archive="$RUNNER_TEMP/actionlint-artifact/$ACTIONLINT_ARCHIVE"
+if [ ! -f "$archive" ] || [ -L "$archive" ]; then
+  echo "pinned actionlint archive is missing from the downloaded artifact" >&2
+  exit 1
+fi
+echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status
+mkdir "$RUNNER_TEMP/actionlint"
+tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint"
+echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
+`;
+const DOWNLOAD_ARTIFACT_ACTION =
+  'actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333';
+const ACTIONLINT_ARTIFACT_DOWNLOAD_STEP = 'Download pinned actionlint artifact';
+const ACTIONLINT_ARTIFACT_DOWNLOAD_WITH = Object.freeze({
+  'artifact-ids': `\${{ needs.${ACTIONLINT_ARTIFACT_JOB}.outputs.artifact-id }}`,
+  path: `\${{ runner.temp }}/actionlint-artifact`,
+  'merge-multiple': true,
+});
+const ACTIONLINT_ARTIFACT_DOWNLOAD_KEYS = [
+  'if',
+  'name',
+  'timeout-minutes',
+  'uses',
+  'with',
+];
 const EXACT_TARGET_SKIP_GUARDS = Object.freeze({
-  classify: `\${{ github.event_name != 'pull_request_target' }}`,
+  classify: `\${{ github.event_name != 'pull_request_target' && github.event_name != 'merge_group' }}`,
   'full-regression': `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}`,
   'manual-completion-diagnostics': `\${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && (needs['full-regression'].result == 'success' || needs['full-regression'].result == 'failure') }}`,
 });
@@ -1695,8 +1794,42 @@ function isExactDeliveryPlanner(job) {
     createHash('sha256')
       .update(JSON.stringify(canonicalValue(job)))
       .digest('hex') ===
-      'e9763b295569cab447701851796ed15eb8740e9c6048cdf38f30e5c8bae01ee5'
+      '176ac964b2aae028f8c7e4e07f3a43479318674e7407ab11bae79a2c8887b46e'
   );
+}
+
+/**
+ * The one token-reading step in `classify`: it runs only on pushes to main,
+ * where the checkout is already-landed main rather than candidate code, and
+ * `classify` itself never runs on pull_request_target. It reads public
+ * Actions run data to skip a push lane the merge queue already verified on
+ * the same SHA (scripts/ci-merge-group-verdict.mjs). Any other shape, or the
+ * token anywhere else in the job, keeps the finding.
+ */
+const MERGE_GROUP_VERDICT_STEP = Object.freeze({
+  id: 'merge-group-verdict',
+  name: 'Reuse the merge queue verdict for this exact SHA',
+  if: "${{ github.event_name == 'push' }}",
+  'continue-on-error': true,
+  'timeout-minutes': 2,
+  env: {
+    GH_TOKEN: `\${{ github.token }}`,
+    PUSH_BEFORE: `\${{ github.event.before }}`,
+  },
+  run: 'node scripts/ci-merge-group-verdict.mjs',
+});
+
+function classifyWithoutVerdictToken(job) {
+  if (job?.if !== EXACT_TARGET_SKIP_GUARDS.classify) return job;
+  const stripped = structuredClone(job);
+  for (const step of stripped.steps ?? []) {
+    if (
+      JSON.stringify(canonicalValue(step)) ===
+      JSON.stringify(canonicalValue(MERGE_GROUP_VERDICT_STEP))
+    )
+      delete step.env.GH_TOKEN;
+  }
+  return stripped;
 }
 
 function ciCredentialFindings(file, jobs) {
@@ -1705,6 +1838,8 @@ function ciCredentialFindings(file, jobs) {
       if (jobId === 'delivery-plan' && isExactDeliveryPlanner(job))
         return false;
       if (jobId === 'pr-admission' && isExactPrAdmission(job)) return false;
+      if (jobId === 'classify')
+        return referencesCredential(classifyWithoutVerdictToken(job));
       if (jobId !== 'pr-title') return referencesCredential(job);
       const withoutReadToken = structuredClone(job);
       for (const step of withoutReadToken.steps ?? []) {
@@ -1766,7 +1901,12 @@ function forkSmokeIsolationFindings(file, job) {
     });
   if (
     stepsUseAction(job.steps, 'actions/upload-artifact@') ||
-    stepsUseAction(job.steps, 'actions/download-artifact@')
+    (job.steps ?? []).some(
+      (step) =>
+        typeof step?.uses === 'string' &&
+        step.uses.startsWith('actions/download-artifact@') &&
+        !isExactActionlintArtifactDownload(step),
+    )
   )
     findings.push({
       file,
@@ -1834,8 +1974,17 @@ function hasExactSecurityAnalysisSteps(job) {
   const [base, setupNode, isolateBasePolicy, candidate, init, analyze, policy] =
     job?.steps ?? [];
   return (
-    hasExactKeys(job, ['name', 'runs-on', 'timeout-minutes', 'steps']) &&
+    hasExactKeys(job, [
+      'name',
+      'needs',
+      'if',
+      'runs-on',
+      'timeout-minutes',
+      'steps',
+    ]) &&
     job?.name === 'CodeQL JavaScript and TypeScript' &&
+    job?.needs === SECURITY_ANALYSIS_GATE_CHANGE_JOB &&
+    job?.if === SECURITY_ANALYSIS_CODEQL_GUARD &&
     job?.['runs-on'] === 'ubuntu-22.04' &&
     job?.['timeout-minutes'] === SECURITY_ANALYSIS_TIMEOUT_MINUTES &&
     (job?.steps?.length ?? 0) === 7 &&
@@ -1986,10 +2135,48 @@ function hasExactDependencyReviewSteps(job) {
   );
 }
 
+/**
+ * The gate-change job runs only git plumbing from this base-controlled YAML:
+ * no action, no checkout of candidate files, no secrets. Its exact script is
+ * pinned because every path through it must end in analyse=true unless the
+ * merge-base diff positively shows no .github/ change.
+ */
+function hasExactSecurityGateChangeJob(job) {
+  const [classify] = job?.steps ?? [];
+  return (
+    hasExactKeys(job, [
+      'name',
+      'if',
+      'runs-on',
+      'timeout-minutes',
+      'outputs',
+      'steps',
+    ]) &&
+    job.name === 'CodeQL gate-change classification' &&
+    job.if === `\${{ github.event_name == 'pull_request_target' }}` &&
+    job['runs-on'] === 'ubuntu-22.04' &&
+    job['timeout-minutes'] === 5 &&
+    hasExactKeys(job.outputs, ['analyse']) &&
+    job.outputs.analyse === `\${{ steps.classify.outputs.analyse }}` &&
+    job.steps.length === 1 &&
+    hasExactKeys(classify, ['id', 'name', 'env', 'run']) &&
+    classify.id === 'classify' &&
+    classify.name === 'Classify workflow changes since the merge base' &&
+    hasExactKeys(classify.env, ['BASE_SHA', 'HEAD_SHA', 'REPOSITORY_URL']) &&
+    classify.env.BASE_SHA === `\${{ github.event.pull_request.base.sha }}` &&
+    classify.env.HEAD_SHA === `\${{ github.event.pull_request.head.sha }}` &&
+    classify.env.REPOSITORY_URL ===
+      `\${{ github.server_url }}/\${{ github.repository }}` &&
+    typeof classify.run === 'string' &&
+    classify.run.trim() === SECURITY_GATE_CHANGE_RUN
+  );
+}
+
 function securityAnalysisTopologyFindings(file, jobs) {
   const findings = [];
   const expectedJobs = new Set([
     SECURITY_ANALYSIS_CODEQL_JOB,
+    SECURITY_ANALYSIS_GATE_CHANGE_JOB,
     DEPENDENCY_REVIEW_JOB,
   ]);
   for (const jobId of expectedJobs) {
@@ -2008,6 +2195,15 @@ function securityAnalysisTopologyFindings(file, jobs) {
         message: 'security-analysis must not add unreviewed jobs',
       });
   }
+  if (
+    Object.hasOwn(jobs, SECURITY_ANALYSIS_CODEQL_JOB) &&
+    jobs[SECURITY_ANALYSIS_CODEQL_JOB]?.if !== SECURITY_ANALYSIS_CODEQL_GUARD
+  )
+    findings.push({
+      file,
+      jobId: SECURITY_ANALYSIS_CODEQL_JOB,
+      message: SECURITY_ANALYSIS_CODEQL_GUARD_MESSAGE,
+    });
   return findings;
 }
 
@@ -2149,6 +2345,7 @@ function unapprovedActionFindings(file, jobId, job, allowedPrefixes) {
         typeof step?.uses === 'string' &&
         !isPinnedPnpmSetup(step) &&
         !isReviewedCacheRestore(file, jobId, step) &&
+        !isReviewedActionlintArtifactDownload(file, jobId, step) &&
         !allowedPrefixes.some((prefix) => step.uses.startsWith(prefix)),
     )
     .map(() => ({
@@ -2157,6 +2354,22 @@ function unapprovedActionFindings(file, jobId, job, allowedPrefixes) {
       message:
         'pull_request_target router jobs must not add unreviewed custom actions',
     }));
+}
+
+/**
+ * The statics and fork-smoke jobs may hold exactly one reviewed download
+ * action, scoped by file and job like the reviewed cache restore. It is not a
+ * download-artifact prefix: a differently named download or one with another
+ * input (a pattern, a run id, a repository, a token) falls through to the
+ * unreviewed-action finding. hasPinnedActionlintProvision separately rejects
+ * duplicate copies of the exact reviewed step.
+ */
+function isReviewedActionlintArtifactDownload(file, jobId, step) {
+  return (
+    file === '.github/workflows/ci.yml' &&
+    (jobId === 'fast-checks-statics' || jobId === 'fork-smoke') &&
+    isExactActionlintArtifactDownload(step)
+  );
 }
 
 function unapprovedShellFindings(file, jobId, job, allowedRuns) {
@@ -2176,7 +2389,35 @@ function unapprovedShellFindings(file, jobId, job, allowedRuns) {
     }));
 }
 
-function hasPinnedActionlintProvision(job, smokeStepName) {
+/**
+ * The one reviewed download of the actionlint artifact: this action at this
+ * pin, exactly the producer's artifact id, a fresh path, and nothing else.
+ */
+function isExactActionlintArtifactDownload(step) {
+  return (
+    Boolean(step) &&
+    typeof step === 'object' &&
+    step.name === ACTIONLINT_ARTIFACT_DOWNLOAD_STEP &&
+    step.uses === DOWNLOAD_ARTIFACT_ACTION &&
+    Object.keys(step).every((key) =>
+      ACTIONLINT_ARTIFACT_DOWNLOAD_KEYS.includes(key),
+    ) &&
+    JSON.stringify(
+      Object.entries(step.with ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+    ) ===
+      JSON.stringify(
+        Object.entries(ACTIONLINT_ARTIFACT_DOWNLOAD_WITH).sort(([a], [b]) =>
+          a.localeCompare(b),
+        ),
+      )
+  );
+}
+
+function hasPinnedActionlintProvision(
+  job,
+  smokeStepName,
+  { fromArtifact = false } = {},
+) {
   const steps = job?.steps ?? [];
   const provisionIndex = steps.findIndex(
     (step) => step?.name === 'Install pinned actionlint',
@@ -2186,13 +2427,39 @@ function hasPinnedActionlintProvision(job, smokeStepName) {
     (step) => step?.run === 'npm run dependencies:ci',
   );
   const provision = steps[provisionIndex];
+  const downloads = steps.filter(
+    (step) => step?.name === ACTIONLINT_ARTIFACT_DOWNLOAD_STEP,
+  );
   return (
     provisionIndex >= 0 &&
     npmCiIndex > provisionIndex &&
     smokeIndex > provisionIndex &&
     provision?.env?.ACTIONLINT_ARCHIVE === ACTIONLINT_ARCHIVE &&
     provision?.env?.ACTIONLINT_SHA256 === ACTIONLINT_SHA256 &&
-    provision?.run === PINNED_ACTIONLINT_PROVISION_RUN
+    provision?.run ===
+      (fromArtifact
+        ? CONSUMER_ACTIONLINT_PROVISION_RUN
+        : PINNED_ACTIONLINT_PROVISION_RUN) &&
+    (fromArtifact
+      ? downloads.length === 1 &&
+        steps[provisionIndex - 1] === downloads[0] &&
+        isExactActionlintArtifactDownload(downloads[0]) &&
+        downloads[0].if === provision.if
+      : downloads.length === 0)
+  );
+}
+
+/** `needs` as a list, whether the job wrote a string or an array. */
+function jobNeeds(job) {
+  return typeof job?.needs === 'string' ? [job.needs] : job?.needs;
+}
+
+function needsExactly(job, expected) {
+  const needs = jobNeeds(job);
+  return (
+    Array.isArray(needs) &&
+    needs.length === expected.length &&
+    expected.every((id, index) => needs[index] === id)
   );
 }
 
@@ -2289,12 +2556,15 @@ function hasExactSecurityAnalysisWorkflow(document) {
     ]) &&
     document?.name === 'PR: Security analysis' &&
     hasExactKeys(document?.on, [
-      'push',
       PULL_REQUEST_TARGET,
       MERGE_GROUP,
+      'schedule',
       'workflow_dispatch',
     ]) &&
-    hasExactMainBranchTrigger(document.on.push) &&
+    Array.isArray(document.on.schedule) &&
+    document.on.schedule.length === 1 &&
+    hasExactKeys(document.on.schedule[0], ['cron']) &&
+    document.on.schedule[0].cron === SECURITY_ANALYSIS_SCHEDULE_CRON &&
     hasExactSecurityAnalysisPrTargetTrigger(document) &&
     hasExactMergeGroupTrigger(document) &&
     document.on.workflow_dispatch === null &&
@@ -2401,6 +2671,8 @@ const FAST_CHECKS_SHARD_ZSH_STEP = Object.freeze({
   // full-regression and merge-queue-regression run. It installs a distro
   // package and reads no secret or credential; the shard's selection can
   // include tests that exec zsh (ops/nightly/macos-build-only-cleanup).
+  // Bounded retry of the bootstrap for transient apt/DNS failures; the last
+  // attempt's status fails the step.
   name: 'Provision and preflight zsh for process-heavy installer fixtures',
   env: {
     BOOTSTRAP_SOURCE_REPOSITORY: `\${{ github.repository }}`,
@@ -2409,12 +2681,22 @@ const FAST_CHECKS_SHARD_ZSH_STEP = Object.freeze({
   run: `set -euo pipefail
 if [[ ! -x /bin/zsh ]]; then
   bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
-  curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \\
+  curl --fail --silent --show-error --connect-timeout 10 --max-time 20 --retry 2 --retry-max-time 40 \\
     "https://raw.githubusercontent.com/\${BOOTSTRAP_SOURCE_REPOSITORY}/\${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \\
     --output "$bootstrap"
   printf 'Ubuntu bootstrap workflow source: %s@%s\\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
   sha256sum "$bootstrap"
-  sudo bash "$bootstrap" zsh
+  attempt=1
+  until sudo bash "$bootstrap" zsh; do
+    status=$?
+    if [[ "$attempt" -ge 3 ]]; then
+      echo "::error::zsh provisioning failed after $attempt attempts (exit $status)" >&2
+      exit "$status"
+    fi
+    echo "::warning::zsh provisioning attempt $attempt failed (exit $status); retrying" >&2
+    sleep $((attempt * 10))
+    attempt=$((attempt + 1))
+  done
 fi
 command -v zsh
 test -x /bin/zsh
@@ -2492,12 +2774,13 @@ function fastChecksShardingFindings(file, jobs) {
   }
   const shard = jobs[FAST_CHECKS_SHARD_JOB];
   if (shard) {
-    const needs = typeof shard.needs === 'string' ? [shard.needs] : shard.needs;
     if (
       shard.if !== FAST_CHECKS_SHARD_IF ||
-      !Array.isArray(needs) ||
-      needs.length !== 1 ||
-      needs[0] !== FAST_CHECKS_PLAN_JOB
+      !needsExactly(shard, [
+        'pr-admission',
+        FAST_CHECKS_PLAN_JOB,
+        ACTIONLINT_ARTIFACT_JOB,
+      ])
     )
       finding(
         FAST_CHECKS_SHARD_JOB,
@@ -2516,7 +2799,7 @@ function fastChecksShardingFindings(file, jobs) {
         { name: 'Resolve fast-checks shard slice', run: FAST_CHECKS_SLICE_RUN },
         {
           name: 'Install pinned actionlint',
-          run: PINNED_ACTIONLINT_PROVISION_RUN,
+          run: CONSUMER_ACTIONLINT_PROVISION_RUN,
         },
         { name: undefined, run: 'npm run dependencies:ci' },
         FAST_CHECKS_SHARD_ZSH_STEP,
@@ -2525,7 +2808,12 @@ function fastChecksShardingFindings(file, jobs) {
       ],
     );
   }
-  if (shard && !hasPinnedActionlintProvision(shard, 'Run fast-checks shard'))
+  if (
+    shard &&
+    !hasPinnedActionlintProvision(shard, 'Run fast-checks shard', {
+      fromArtifact: true,
+    })
+  )
     finding(
       FAST_CHECKS_SHARD_JOB,
       'fast-checks-shard must provision pinned and checksummed actionlint before its tests',
@@ -2558,6 +2846,8 @@ function fastChecksShardingFindings(file, jobs) {
           name: FAST_CHECKS_PROVISIONAL_STEP,
           run: FAST_CHECKS_PROVISIONAL_RUN,
         },
+        { name: HEAVY_DEFERRED_STEP, run: HEAVY_CHECKS_DEFERRED_RUN },
+        { name: HEAVY_RAN_STEP, run: HEAVY_CHECKS_RAN_RUN },
       ],
     );
   }
@@ -2576,17 +2866,76 @@ function isExactPrAdmission(job) {
     createHash('sha256')
       .update(JSON.stringify(canonicalValue(job)))
       .digest('hex') ===
-    '9a67126c86c49e020d11e540eb8581fd277bbfac26fe3ca29d3ddf5da70e386b'
+    '94ee62ca3fabd4d8b5b9e784de24e5e9a342e37dd1d1eb70ac0244869328d323'
   );
 }
 
+/**
+ * The trusted actionlint archive producer (#4748). It checks out nothing,
+ * reads no secret or token expression, runs no candidate code, downloads only
+ * the fixed 1.7.12 Linux archive, verifies its digest, and uploads that archive
+ * under a run- and attempt-scoped name with overwrite disabled, then exposes
+ * the upload's artifact id only after requiring a positive integer (an empty
+ * id would make the pinned download action fetch every artifact of the run).
+ * Everything that could widen it (checkout, permissions, URL, digest, retry
+ * bounds, upload inputs, id validation, admission, outputs) is inside this
+ * digest, so any change needs a reviewed new digest rather than a looser rule.
+ */
+function isExactActionlintArtifactProducer(job) {
+  if (!job) return false;
+  return (
+    createHash('sha256')
+      .update(JSON.stringify(canonicalValue(job)))
+      .digest('hex') ===
+    'a196af019371800fd200274758c681aa4c6024d83ecdb7712b439b1c7a207fc3'
+  );
+}
+
+function actionlintArtifactFindings(file, jobs) {
+  const findings = [];
+  const finding = (jobId, message) => findings.push({ file, jobId, message });
+  if (
+    jobs[ACTIONLINT_ARTIFACT_JOB] &&
+    !isExactActionlintArtifactProducer(jobs[ACTIONLINT_ARTIFACT_JOB])
+  )
+    finding(
+      ACTIONLINT_ARTIFACT_JOB,
+      'actionlint-artifact must retain its exact reviewed no-checkout producer: fixed pinned archive, digest check, run- and attempt-scoped upload',
+    );
+  const consumers = [
+    [
+      FAST_CHECKS_SHARD_JOB,
+      ['pr-admission', FAST_CHECKS_PLAN_JOB, ACTIONLINT_ARTIFACT_JOB],
+    ],
+    [
+      FAST_CHECKS_STATICS_JOB,
+      ['classify', 'pr-admission', ACTIONLINT_ARTIFACT_JOB],
+    ],
+    ['fork-smoke', [ACTIONLINT_ARTIFACT_JOB]],
+  ];
+  for (const [jobId, needs] of consumers) {
+    const job = jobs[jobId];
+    if (job && !needsExactly(job, needs))
+      finding(
+        jobId,
+        `${jobId} must need exactly ${needs.join(', ')} so the pinned actionlint artifact is a declared dependency`,
+      );
+  }
+  return findings;
+}
+
+/**
+ * The reviewed `source-policy` caller: source-changing PR events and merge
+ * groups (published in-run on the queue head), `statuses: write` only for the
+ * local callee, which reads policy from the base.
+ */
 function isExactSourcePolicyCall(job) {
   if (!job) return false;
   return (
     createHash('sha256')
       .update(JSON.stringify(canonicalValue(job)))
       .digest('hex') ===
-    'bb2c01de5e28347090a7b638e4b1a46f379c07e93ab053b8d82aca79c1234378'
+    'c3924e2de65bdb7325e9111176df50ce40ad47371a70bdfcfd3a51d02a948963'
   );
 }
 
@@ -2610,7 +2959,7 @@ function primaryCiRouterFindings(file, document) {
   );
   if (
     document['run-name'] !==
-    "${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}"
+    "${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || github.event_name == 'pull_request_target' && github.event.action == 'auto_merge_enabled' && 'PR armed' || 'Source verification' }}"
   )
     findings.push({
       file,
@@ -2661,6 +3010,16 @@ function primaryCiRouterFindings(file, document) {
         hasExactKeys(job.permissions, ['contents', 'actions']) &&
         job.permissions.contents === 'read' &&
         job.permissions.actions === 'read'
+      ) &&
+      // `classify` never runs on pull_request_target, so its read-only
+      // Actions grant (for the push-only merge-group-verdict step) never
+      // reaches candidate code. Any other `if` keeps the finding.
+      !(
+        jobId === 'classify' &&
+        job.if === EXACT_TARGET_SKIP_GUARDS.classify &&
+        hasExactKeys(job.permissions, ['contents', 'actions']) &&
+        job.permissions.contents === 'read' &&
+        job.permissions.actions === 'read'
       )
     )
       findings.push({
@@ -2701,7 +3060,7 @@ function primaryCiRouterFindings(file, document) {
     createHash('sha256')
       .update(JSON.stringify(canonicalValue(deliveryJobs)))
       .digest('hex') !==
-    'ba16500b9e9c4a343fc28ab82da8901a26ae0f4a659e1592b7170a3ae0012ec4'
+    'fc7adea30a4fccfe32411c99373f4a5ab58d8e0ed2a034daf25e0688a2fadfe2'
   )
     findings.push({
       file,
@@ -2753,7 +3112,7 @@ function primaryCiRouterFindings(file, document) {
   const title = jobs['pr-title'];
   const expectedTitle = {
     name: 'PR title status publisher',
-    if: "${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}",
+    if: "${{ github.event_name == 'pull_request_target' && github.event.action != 'auto_merge_enabled' || github.event_name == 'merge_group' }}",
     permissions: {
       contents: 'read',
       'pull-requests': 'read',
@@ -2861,8 +3220,9 @@ function primaryCiRouterFindings(file, document) {
   const scans = jobs['repo-scans'];
   if (scans) findings.push(...repoScansFindings(file, scans));
   findings.push(...fastChecksShardingFindings(file, jobs));
+  findings.push(...actionlintArtifactFindings(file, jobs));
   if (fast) {
-    if (fast.if !== SAME_REPOSITORY_FAST_CHECKS_CONDITION)
+    if (fast.if !== REQUIRED_FAST_CHECKS_STATICS_CONDITION)
       findings.push({
         file,
         jobId: FAST_CHECKS_STATICS_JOB,
@@ -2885,7 +3245,11 @@ function primaryCiRouterFindings(file, document) {
         message:
           'fast-checks-statics must check out only the exact candidate source',
       });
-    if (!hasPinnedActionlintProvision(fast, 'Run fast CI lane'))
+    if (
+      !hasPinnedActionlintProvision(fast, 'Run fast CI lane', {
+        fromArtifact: true,
+      })
+    )
       findings.push({
         file,
         jobId: FAST_CHECKS_STATICS_JOB,
@@ -2955,7 +3319,11 @@ function primaryCiRouterFindings(file, document) {
         jobId: 'fork-smoke',
         message: 'fork-smoke must check out only the exact candidate source',
       });
-    if (!hasPinnedActionlintProvision(fork, 'Run isolated fork smoke'))
+    if (
+      !hasPinnedActionlintProvision(fork, 'Run isolated fork smoke', {
+        fromArtifact: true,
+      })
+    )
       findings.push({
         file,
         jobId: 'fork-smoke',
@@ -3002,14 +3370,14 @@ function primaryCiRouterFindings(file, document) {
 // (the dequeue job fetches the candidate head as Git objects for merge-tree).
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  '2d70117b7341f80d25b273127dd156a76cdfbb998509832b36f516a34f9fb9f2';
+  'fb659ff2499b70d55523ff70841f07aaa076e06b052b98a847bdea05d904b824';
 function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
   if (file === '.github/workflows/pr-ci-supersession.yml') {
     const digest = createHash('sha256')
       .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
-      '7bdd49ac2e268b43fb9f91352e42af18a431b487213987351077b45f44b67c7d'
+      '19ed3be46fd6a2be35e807415bc91a1b938c6586f777363369b7389466d8f473'
       ? []
       : [
           {
@@ -3025,7 +3393,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
       .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
-      'e6f5b25c8215c2d8f03aceb3060818f5b93de0b8f610d09b2bd2e96272b6129e'
+      '47bddcf6fb7e31956dd3f83a3c2d0aacad9696c37c66fb102191f6d18f02a9e0'
       ? []
       : [
           {
@@ -3134,18 +3502,21 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
         ? hasExactSecurityAnalysisSteps(job)
         : file === SECURITY_ANALYSIS_WORKFLOW && jobId === DEPENDENCY_REVIEW_JOB
           ? hasExactDependencyReviewSteps(job)
-          : file === SECURITY_ANALYSIS_WORKFLOW
-            ? false
-            : file === AGENT_CONTEXT_BUDGET_WORKFLOW
-              ? isExactAgentContextBudgetJob(jobId, job)
-              : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
-                exactDocsGateCall ||
-                exactDeliveryCall ||
-                hasExplicitCheckout(
-                  job,
-                  FAST_CHECKOUT_REPOSITORY,
-                  FAST_CHECKOUT_REF,
-                );
+          : file === SECURITY_ANALYSIS_WORKFLOW &&
+              jobId === SECURITY_ANALYSIS_GATE_CHANGE_JOB
+            ? hasExactSecurityGateChangeJob(job)
+            : file === SECURITY_ANALYSIS_WORKFLOW
+              ? false
+              : file === AGENT_CONTEXT_BUDGET_WORKFLOW
+                ? isExactAgentContextBudgetJob(jobId, job)
+                : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
+                  exactDocsGateCall ||
+                  exactDeliveryCall ||
+                  hasExplicitCheckout(
+                    job,
+                    FAST_CHECKOUT_REPOSITORY,
+                    FAST_CHECKOUT_REF,
+                  );
     if (!hasExactReviewedSteps)
       findings.push({
         file,
@@ -3157,9 +3528,12 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
             : file === SECURITY_ANALYSIS_WORKFLOW &&
                 jobId === DEPENDENCY_REVIEW_JOB
               ? 'dependency-review must retain the exact hosted pull_request_target action-only topology'
-              : file === AGENT_CONTEXT_BUDGET_WORKFLOW
-                ? 'agent-context-budget must keep its exact no-checkout topology: one shell step, no actions, no secrets, contents: read, hosted ubuntu-22.04'
-                : 'base-controlled PR jobs must explicitly check out the pull-request head repository and SHA',
+              : file === SECURITY_ANALYSIS_WORKFLOW &&
+                  jobId === SECURITY_ANALYSIS_GATE_CHANGE_JOB
+                ? SECURITY_GATE_CHANGE_MESSAGE
+                : file === AGENT_CONTEXT_BUDGET_WORKFLOW
+                  ? 'agent-context-budget must keep its exact no-checkout topology: one shell step, no actions, no secrets, contents: read, hosted ubuntu-22.04'
+                  : 'base-controlled PR jobs must explicitly check out the pull-request head repository and SHA',
       });
     const jobWithoutSteps = { ...job, steps: undefined };
     if (containsSecretReference(jobWithoutSteps))
@@ -3503,13 +3877,12 @@ export function readWorkflowDocuments() {
 // new schema field from a temporary lint copy. Security policy uses originals.
 const BACKGROUND_QUALIFICATION_GROUP = `\${{ inputs.capacity_class == 'background' && 'station-background-compute' || inputs.capacity_class == 'release' && 'station-release-qualification' || format('station-integration-qualification-{0}', inputs.source_sha) }}`;
 const PR_SOURCE_FIFO_GROUPS = {
-  'fast-checks-statics': `\${{ github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) && 'odd' || 'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
-  'fast-checks-shard': `\${{ github.event_name == 'pull_request_target' && (matrix.shard == 1 || matrix.shard == 3) && (endsWith(format('{0}', github.event.pull_request.number), '0') || endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '2')) && 'ci-pr-shards-third' || github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) != (matrix.shard == 1 || matrix.shard == 3)) && 'odd' || 'even') || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}', matrix.shard, github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
+  'fast-checks-statics': `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.ref == 'changeset-release/main' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'station-automation[bot]' && 'ci-pr-release-bot' || github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '8') || endsWith(format('{0}', github.event.pull_request.number), '9')) && 'third' || (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5')) && 'odd' || 'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
+  'fast-checks-shard': `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.ref == 'changeset-release/main' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'station-automation[bot]' && 'ci-pr-release-bot' || github.event_name == 'pull_request_target' && ( (endsWith(format('{0}', github.event.pull_request.number), '0') || endsWith(format('{0}', github.event.pull_request.number), '5')) && (matrix.shard == 1 && 'ci-pr-shards-even' || matrix.shard == 2 && 'ci-pr-shards-odd' || matrix.shard == 3 && 'ci-pr-shards-third' || 'ci-pr-shards-fourth') || (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '6')) && (matrix.shard == 1 && 'ci-pr-shards-odd' || matrix.shard == 2 && 'ci-pr-shards-third' || matrix.shard == 3 && 'ci-pr-shards-fourth' || 'ci-pr-shards-fifth') || (endsWith(format('{0}', github.event.pull_request.number), '2') || endsWith(format('{0}', github.event.pull_request.number), '7')) && (matrix.shard == 1 && 'ci-pr-shards-third' || matrix.shard == 2 && 'ci-pr-shards-fourth' || matrix.shard == 3 && 'ci-pr-shards-fifth' || 'ci-pr-shards-even') || (endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '8')) && (matrix.shard == 1 && 'ci-pr-shards-fourth' || matrix.shard == 2 && 'ci-pr-shards-fifth' || matrix.shard == 3 && 'ci-pr-shards-even' || 'ci-pr-shards-odd') || (endsWith(format('{0}', github.event.pull_request.number), '4') || endsWith(format('{0}', github.event.pull_request.number), '9')) && (matrix.shard == 1 && 'ci-pr-shards-fifth' || matrix.shard == 2 && 'ci-pr-shards-even' || matrix.shard == 3 && 'ci-pr-shards-odd' || 'ci-pr-shards-third') ) || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}', matrix.shard, github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
 };
 export function legacyActionlintSources(workflows) {
   const expected = {
     '.github/workflows/delivery-validation.yml': 'station-background-compute',
-    '.github/workflows/hosted-capacity-probe.yml': 'station-background-compute',
     '.github/workflows/full-regression.yml': BACKGROUND_QUALIFICATION_GROUP,
   };
   return workflows.map(({ file, document }) => {

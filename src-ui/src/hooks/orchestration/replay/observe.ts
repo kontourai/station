@@ -43,6 +43,8 @@ const UI_FOLDED_ORCHESTRATION_METHODS = [
   'workflow.state-changed',
   'conversation.forked',
   'content.host-images',
+  'engine-mcp.status',
+  'model.rerouted',
 ] as const;
 
 const PREVIEW_CHARS = 160;

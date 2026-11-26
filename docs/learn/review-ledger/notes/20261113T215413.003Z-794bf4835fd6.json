@@ -1,0 +1,11 @@
+{
+  "revision": "dd6139862d7bc9f864ef82381dcb39bb47ef7182",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"#4796 round 3: tests/screenshots.spec.ts changed only an expected menu label in the phone reactions scene ('Reply in thread', #4795's channel behavior). No gallery policy, motion rule or telemetry claim described here is affected; prose stays accurate unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"#4796 round 3: tests/screenshots.spec.ts changed only an expected menu label in the phone reactions scene ('Reply in thread', #4795's channel behavior). No gallery policy, motion rule or telemetry claim described here is affected; prose stays accurate unchanged.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"#4796 round 3: tests/screenshots.spec.ts changed only an expected menu label in the phone reactions scene ('Reply in thread', #4795's channel behavior). No gallery policy, motion rule or telemetry claim described here is affected; prose stays accurate unchanged.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

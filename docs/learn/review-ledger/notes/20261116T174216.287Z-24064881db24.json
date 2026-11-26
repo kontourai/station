@@ -1,0 +1,17 @@
+{
+  "revision": "bbd4ca4407ac2930c2f6863973e06ee8987780bf",
+
+  "notes": [
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"Child reader now loads later transcript pages itself (bounded at 20 pages, then a Show later messages action), drops Load more/Refresh, and names replies by engine. Query inputs, requestScope, running poll and revision refresh unchanged; captures still illustrate the Text output unavailable label.","inputs":["src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"Child reader now loads later transcript pages itself (bounded at 20 pages, then a Show later messages action), drops Load more/Refresh, and names replies by engine. Query inputs, requestScope, running poll and revision refresh unchanged; captures still illustrate the Text output unavailable label.","inputs":["src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"Child reader now loads later transcript pages itself (bounded at 20 pages, then a Show later messages action), drops Load more/Refresh, and names replies by engine. Query inputs, requestScope, running poll and revision refresh unchanged; captures still illustrate the Text output unavailable label.","inputs":["src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"Child reader now loads later transcript pages itself (bounded at 20 pages, then a Show later messages action), drops Load more/Refresh, and names replies by engine. Query inputs, requestScope, running poll and revision refresh unchanged; captures still illustrate the Text output unavailable label.","inputs":["src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Child reader now loads later transcript pages itself (bounded at 20 pages, then a Show later messages action), drops Load more/Refresh, and names replies by engine. Query inputs, requestScope, running poll and revision refresh unchanged; captures still illustrate the Text output unavailable label.","inputs":["src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Child reader now loads later transcript pages itself (bounded at 20 pages, then a Show later messages action), drops Load more/Refresh, and names replies by engine. Query inputs, requestScope, running poll and revision refresh unchanged; captures still illustrate the Text output unavailable label.","inputs":["src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]}
+  ]
+}

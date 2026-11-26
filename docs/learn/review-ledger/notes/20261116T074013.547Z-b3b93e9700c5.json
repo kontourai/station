@@ -1,0 +1,19 @@
+{
+  "revision": "eb0a8e4a435e2edc6c2473430b68a14a456f372f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked against project-room-store.recentRequests and the live route: the stream carries each room's newest 20 request records plus up to 50 still working (reserved or started), never Sessions; updated the sentence to say so.","inputs":["docs/architecture/module-map.md","src-server/services/projects/project-room-store.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the agents frame against the route, store query and contract parser: newest 20 plus newest 50 unsettled, at most 70, lifecycle fields only; updated the bullet.","inputs":["docs/reference/api.md","src-server/services/projects/project-room-store.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked useProjectRoom: the stream position is taken only after a reconciliation read succeeds (stale until then, so the next frame re-reads), and a history read started before a live merge keeps the merged rows in the cache and the awaited result; added both.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/projectRooms.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only says the project-room-browser subpath holds the browser views and strict wire parsers; the new working-request bound in that subpath is consistent with it.","inputs":["docs/reference/contracts.md","packages/contracts/src/project-room-browser.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Cites the API reference for the terminal socket transport only; the agents-frame change is in the rooms section and changes nothing here.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Links the API and SDK references as routes only; the room live changes change no claim in this row.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Routes SDK work to the canonical SDK reference; the added live-cursor sentences are documented there, consistent with this instruction.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

@@ -115,7 +115,13 @@ test('portable minimal example opens its Project Pane and existing dock without 
     await expect(
       page.getByRole('region', { name: 'Chat dock', exact: true }),
     ).toBeVisible();
-    await expect(page.getByText('No chat open', { exact: true })).toBeVisible();
+    // #5592: an open dock with no chat shows its New chat draft.
+    await expect(
+      page.getByRole('region', { name: 'New chat', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('No chat open', { exact: true })).toHaveCount(
+      0,
+    );
     const openedDockUrl = new URL(paneUrl);
     openedDockUrl.searchParams.set('dock', 'open');
     await expect(page).toHaveURL(openedDockUrl.href);

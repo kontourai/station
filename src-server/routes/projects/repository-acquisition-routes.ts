@@ -8,7 +8,10 @@ import {
   RepositoryAcquisitionService,
   repositoryAcquisitionRequestSchema,
 } from '../../services/projects/repository-acquisition-service.js';
-import { RepositoryProviderCatalog } from '../../services/projects/repository-provider-catalog.js';
+import {
+  RepositoryProviderCatalog,
+  RepositoryProviderUnavailable,
+} from '../../services/projects/repository-provider-catalog.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 
 /** Acquisition uses this host's Git credentials; only its operator may invoke it. */
@@ -45,15 +48,22 @@ export function createRepositoryAcquisitionRoutes(
       return guardProjectResponse(c.json({ success: true, data }), async () =>
         current(),
       );
-    } catch {
-      if (!mayDiscover(c.req.raw)) return denied(c);
+    } catch (error) {
+      if (!mayDiscover(c.req.raw) || c.req.raw.signal.aborted) return denied(c);
+      const code =
+        error instanceof RepositoryProviderUnavailable
+          ? error.code
+          : 'repository_catalog_unavailable';
       return c.json(
         {
           success: false,
+          code,
           error:
-            provider.data === 'github'
-              ? 'GitHub discovery needs an available gh CLI signed in on the Station host. Sign in there with gh auth login, then retry, or paste a Git URL.'
-              : 'GitLab discovery needs an available glab CLI signed in on the Station host. Sign in there with glab auth login, then retry, or paste a Git URL.',
+            code === 'repository_cli_missing'
+              ? 'The provider CLI is missing on this Station.'
+              : code === 'repository_sign_in_required'
+                ? 'Sign in to the provider on this Station.'
+                : 'Station could not list repositories. Retry or use a Git URL.',
         },
         503,
       );
@@ -200,6 +210,9 @@ function denied(c: Context) {
   return c.json(
     {
       success: false,
+      // Clients tell this refusal from the runtime's own 403s (origin, device
+      // scope, sign-in) by this code, not by status.
+      code: 'repository_operator_required',
       error:
         "Repository acquisition uses this Station's Git credentials and requires its operator.",
     },
@@ -218,15 +231,25 @@ function failure(c: Context, error: unknown) {
       409,
     );
   }
-  if (
-    error instanceof z.ZodError ||
-    error instanceof RepositoryAcquisitionInputError
-  ) {
+  if (error instanceof RepositoryAcquisitionInputError) {
+    // The service's input messages are written for the person who typed the
+    // source; `details` uses the validation-reasons shape clients already show.
+    return c.json(
+      {
+        success: false,
+        error: error.message,
+        details: { formErrors: [error.message], fieldErrors: {} },
+      },
+      400,
+    );
+  }
+  if (error instanceof z.ZodError) {
     return c.json(
       {
         success: false,
         error:
-          'Repository source or request ID is invalid. Use an HTTPS or SSH URL without embedded credentials, or an absolute local mirror path.',
+          'Repository source or request ID is invalid. Use an HTTPS or SSH URL without embedded credentials, or an absolute path to a local mirror.',
+        details: error.flatten(),
       },
       400,
     );

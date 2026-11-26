@@ -1,4 +1,5 @@
 import type { OrchestrationConversationStreamBinding } from '@kontourai/station-contracts/orchestration';
+import { isEngineApprovalReviewer } from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -21,6 +22,7 @@ import {
   handleChildWorkUpdatedEvent,
   observeChildWorkLifecycle,
 } from './childWorkHandlers';
+import { handleEngineMcpStatusEvent } from './engineMcpHandlers';
 import { handleExtensionNotificationEvent } from './extensionHandlers';
 import {
   handleFlowGateVerdictEvent,
@@ -43,6 +45,7 @@ import { isReplayThread } from './replay/replay-registry';
 import { recordSequencedLiveEvent } from './sequencedLiveEvents';
 import {
   handleApprovalModeSetEvent,
+  handleSessionEngineModeObservedEvent,
   handleSessionExitedEvent,
   handleSessionLifecycleEvent,
   handleSessionStateChangedEvent,
@@ -298,6 +301,18 @@ function dispatchProjectedOrchestrationEvent(
     case 'session.configured':
       handleSessionLifecycleEvent(event, station);
       return;
+    case 'session.engine-mode-observed':
+      handleSessionEngineModeObservedEvent(event, station);
+      return;
+    case 'session.approval-reviewer-observed':
+      if (
+        event.provider === 'codex' &&
+        isEngineApprovalReviewer(event.reviewer)
+      )
+        chatStore.updateChat(event.threadId, {
+          reportedApprovalReviewer: event.reviewer,
+        });
+      return;
     case 'session.state-changed':
       handleSessionStateChangedEvent(event, undefined, station ?? apiBase);
       return;
@@ -444,6 +459,14 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'content.host-images':
       handleHostImagesEvent(event, station);
+      return;
+    case 'engine-mcp.status':
+      handleEngineMcpStatusEvent(event, station);
+      return;
+    // The transcript projection renders a reroute as a marker line from the
+    // durable event (`modelReroutedMarkerText`), like `transcript.marker`
+    // tuples; a live row here would show it twice.
+    case 'model.rerouted':
       return;
     default: {
       const _exhaustive: never = event;

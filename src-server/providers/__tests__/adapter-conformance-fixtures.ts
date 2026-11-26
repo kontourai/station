@@ -2,15 +2,23 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { crc32 } from 'node:zlib';
 import type { ContentBlock } from '@agentclientprotocol/sdk/unstable';
+import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import { vi } from 'vitest';
-import type { ProviderAdapterShape } from '../adapter-shape.js';
+import type {
+  ProviderAdapterShape,
+  ProviderSessionStartInput,
+} from '../adapter-shape.js';
 import { AcpAdapter } from '../adapters/acp-adapter.js';
 import { BedrockAdapter } from '../adapters/bedrock-adapter.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import { OllamaAdapter } from '../adapters/ollama-adapter.js';
+import {
+  isOpenCodeResumeCursor,
+  OpenCodeAdapter,
+} from '../adapters/opencode-adapter.js';
 import { StationAgentAdapter } from '../adapters/station-agent-adapter.js';
 import { BedrockLLMProvider } from '../llm/bedrock-llm-provider.js';
 import type { AdapterName } from './adapter-contract-test-utils.js';
@@ -18,6 +26,7 @@ import { FakeClaudeChild } from './claude-engine-process-test-utils.js';
 import { loadClaudeProviderTurnFixture } from './claude-provider-turns-fixtures.js';
 import { FakeCodexProcess } from './codex-adapter-wire-harness.js';
 import { CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT } from './codex-collab-fixtures.js';
+import { scriptedCopilotSdkEngine } from './copilot-sdk-fakes.js';
 import { FakeAcpProcess } from './fake-acp-process.js';
 import { FakeMuseProcess } from './fake-muse-process.js';
 import {
@@ -28,6 +37,10 @@ import {
   FakeMuseServeHost,
   loadMuseServeCapture,
 } from './muse-serve-replay.js';
+import {
+  loadOpenCodeFixture,
+  OpenCodeServeReplay,
+} from './opencode-serve-replay.js';
 
 export const THREAD = 'conformance-thread';
 export const PNG = Buffer.from(
@@ -40,6 +53,13 @@ export const IMAGE: ChatAttachmentInput = {
   mimeType: 'image/png',
   size: PNG.length,
   dataUrl: `data:image/png;base64,${PNG.toString('base64')}`,
+};
+const OPENCODE_CONNECTION: ACPConnectionConfig = {
+  id: 'opencode',
+  name: 'OpenCode',
+  command: '/opt/opencode/bin/opencode',
+  args: ['acp'],
+  enabled: true,
 };
 export const FILE: ChatAttachmentInput = {
   kind: 'file',
@@ -57,9 +77,9 @@ export interface ConformanceEngine {
   inputs(): unknown[];
   text(value: string): void;
   complete(): void;
-  late(): void;
+  late(turnId?: string): void;
   /** Deliver the engine-owned terminal/response after interrupt admission. */
-  settleInterrupt(): void;
+  settleInterrupt(turnId?: string): void;
   wireMessages?(): ReadonlyArray<Record<string, unknown>>;
   readonly transport?: 'serve' | 'exec-fallback';
   receivedImage(): Buffer | undefined;
@@ -127,12 +147,13 @@ export class ConformanceClaudeChild extends FakeClaudeChild {
     this.messages.push(message);
     this.stdout.write(`${JSON.stringify(message)}\n`);
   }
-  private stream(event: unknown) {
+  private stream(event: unknown, turnId?: string) {
     this.frame({
       type: 'stream_event',
       session_id: 'native-claude',
       uuid: randomUUID(),
       parent_tool_use_id: null,
+      ...(turnId ? { user_message_uuid: turnId } : {}),
       event,
     });
   }
@@ -175,9 +196,20 @@ export class ConformanceClaudeChild extends FakeClaudeChild {
     this.stream({ type: 'message_stop' });
     this.messageOpen = false;
   }
-  interruptedResult() {
+  lateText(turnId?: string) {
+    if (!turnId) return this.text('late-after-stop');
+    this.stream(
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'late-after-stop' },
+      },
+      turnId,
+    );
+  }
+  interruptedResult(turnId?: string) {
     // The captured interrupted stream ends abruptly with its result.
-    this.messageOpen = false;
+    if (!turnId) this.messageOpen = false;
     // The recorded SDK result, not a successful end_turn (capture line 54,
     // zero-based frame 53). Identity is remapped to this fake session.
     const result = loadClaudeProviderTurnFixture(
@@ -187,7 +219,12 @@ export class ConformanceClaudeChild extends FakeClaudeChild {
         msg?.type === 'result' && msg.subtype === 'error_during_execution',
     )?.msg;
     if (!result) throw new Error('Missing recorded Claude interrupt result');
-    this.frame({ ...result, session_id: 'native-claude', uuid: randomUUID() });
+    this.frame({
+      ...result,
+      session_id: 'native-claude',
+      uuid: randomUUID(),
+      ...(turnId ? { user_message_uuid: turnId } : {}),
+    });
   }
   complete() {
     this.closeMessage();
@@ -249,12 +286,277 @@ function bedrockFrame(type: string, body: unknown): Buffer {
   return Buffer.concat([message, checksum]);
 }
 
+/**
+ * OpenCodeAdapter on its native transport (Feature Preview on, the captured
+ * 2.3.0 schema), against a scripted `opencode serve`: the `basic` capture
+ * answers the boot (schema, session create, catalogs) and opens the feed;
+ * the turn's engine events are then pushed on command in the 2.3.0 shapes
+ * that capture and `interrupt`/`attachment` recorded. The ACP fallback is
+ * wired to fail, so a start that does not go native is red.
+ */
+function createOpenCodeNativeEngine(
+  cwd: string,
+  startInput: { threadId: string; cwd: string },
+): ConformanceEngine {
+  const scenario = 'basic';
+  const created = loadOpenCodeFixture(scenario).find(
+    (record) => record.method === 'POST' && record.path === '/api/session',
+  )?.response as { data: { id: string } } | undefined;
+  if (!created) throw new Error('Missing recorded OpenCode session create');
+  const sessionID = created.data.id;
+  const prompts: Array<{
+    id: string;
+    text: string;
+    files?: Array<{ uri: string; name: string }>;
+  }> = [];
+  let interrupts = 0;
+  let unconfirmed = false;
+  let sequence = 0;
+  let assistant = '';
+  let streamed = '';
+  let textOpen = false;
+  let executing = false;
+  const frame = (type: string, data: Record<string, unknown>) => {
+    sequence++;
+    replay?.push({
+      id: `evt_conformance${String(sequence).padStart(6, '0')}`,
+      created: Date.now(),
+      type,
+      location: { directory: cwd },
+      data: { sessionID, ...data },
+    });
+  };
+  const ended = (type: string, extra: Record<string, unknown> = {}) => {
+    if (!executing) return;
+    executing = false;
+    if (textOpen) {
+      textOpen = false;
+      frame('session.text.ended', {
+        assistantMessageID: assistant,
+        ordinal: 0,
+        text: streamed,
+      });
+    }
+    frame('session.step.streamed', { assistantMessageID: assistant });
+    if (type === 'session.execution.interrupted')
+      frame('session.step.failed', {
+        assistantMessageID: assistant,
+        error: { type: 'aborted', message: 'Step interrupted' },
+      });
+    else
+      frame('session.step.ended', {
+        assistantMessageID: assistant,
+        finish: 'stop',
+        rawFinish: 'stop',
+        tokens: {
+          input: 102,
+          output: 20,
+          reasoning: 0,
+          cache: { read: 0, write: 0 },
+        },
+      });
+    frame(type, extra);
+  };
+  const settleInterrupt = () =>
+    ended('session.execution.interrupted', { reason: 'user' });
+  let replay: OpenCodeServeReplay | undefined;
+  const booting = OpenCodeServeReplay.start({
+    scenario,
+    // Keep the boot; the turn's engine events are pushed on command.
+    omit: (record) =>
+      record.kind === 'sse-close' ||
+      (record.kind === 'sse' && record.t >= 987) ||
+      (record.method === 'POST' && record.path?.endsWith('/prompt') === true),
+    respond: (request) => {
+      const path = request.path.split('?', 1)[0];
+      if (
+        request.method === 'POST' &&
+        path === `/api/session/${sessionID}/prompt`
+      ) {
+        const body = request.body as (typeof prompts)[number];
+        prompts.push(body);
+        assistant = `msg_conformanceassistant${prompts.length}`;
+        streamed = '';
+        setImmediate(() => {
+          frame('session.inbox.enqueued', {
+            inboxID: body.id,
+            item: {
+              type: 'user',
+              payload: { text: body.text },
+              delivery: 'steer',
+            },
+          });
+          frame('session.execution.started', {});
+          executing = true;
+          frame('session.inbox.delivered', { inboxID: body.id });
+          frame('session.step.started', {
+            agent: 'build',
+            model: { id: 'mock-1', providerID: 'mock' },
+            assistantMessageID: assistant,
+          });
+        });
+        return {
+          status: 200,
+          body: {
+            data: {
+              id: body.id,
+              sessionID,
+              time: { created: Date.now() },
+              type: 'user',
+              payload: {
+                text: body.text,
+                ...(body.files
+                  ? {
+                      files: body.files.map((file) => ({
+                        data: file.uri.split(',')[1],
+                        mime: file.uri.slice(5, file.uri.indexOf(';')),
+                        source: { type: 'inline' },
+                        name: file.name,
+                      })),
+                    }
+                  : {}),
+              },
+              delivery: 'steer',
+            },
+          },
+        };
+      }
+      if (
+        request.method === 'POST' &&
+        path === `/api/session/${sessionID}/interrupt`
+      ) {
+        interrupts++;
+        // The server did not confirm the interrupt: the engine runs on.
+        if (unconfirmed) return { status: 500 };
+        const running = executing;
+        // 2.3.0 ends the execution right after it answers (`interrupt` capture).
+        setImmediate(settleInterrupt);
+        return { status: 200, body: { interrupted: running } };
+      }
+      return undefined;
+    },
+  }).then((started) => {
+    replay = started;
+    return started;
+  });
+  const leaseExited = new Promise<void>(() => {});
+  const adapter = new OpenCodeAdapter({
+    getConnections: async () => [OPENCODE_CONNECTION],
+    // Built with the adapter; any session it would run is the fallback.
+    createAcpAdapter: () => {
+      const refuse = async () => {
+        throw new Error(
+          'OpenCode conformance runs the native transport; it must not fall back to ACP',
+        );
+      };
+      return {
+        provider: 'opencode',
+        metadata: {
+          displayName: 'refused ACP fallback',
+          description: '',
+          capabilities: [],
+        },
+        startSession: refuse,
+        sendTurn: refuse,
+        interruptTurn: refuse,
+        respondToRequest: refuse,
+        stopSession: async () => {},
+        listSessions: async () => [],
+        hasSession: async () => false,
+        stopAll: async () => {},
+        streamEvents: () => ({ async *[Symbol.asyncIterator]() {} }),
+      } as unknown as ProviderAdapterShape;
+    },
+    nativeEnabled: () => true,
+    pool: {
+      acquire: async () => {
+        const server = await booting;
+        return {
+          url: server.url,
+          client: server.client(),
+          cwd,
+          exited: leaseExited,
+          release: () => {},
+          discard: () => {},
+          rekey: () => true,
+        };
+      },
+      stopAll: async () => {},
+    },
+    versionProbe: {
+      probe: async () => ({ major: 2, minor: 3, patch: 0, text: '2.3.0' }),
+    },
+    findBinary: async () => OPENCODE_CONNECTION.command,
+    binaryIdentity: async () => 'conformance-binary',
+    findProjectCode: async () => [],
+    launchEnv: async () => ({}),
+  });
+  const text = (value: string) => {
+    if (!textOpen) {
+      textOpen = true;
+      frame('session.text.started', {
+        assistantMessageID: assistant,
+        ordinal: 0,
+      });
+    }
+    streamed += value;
+    frame('session.text.delta', {
+      assistantMessageID: assistant,
+      ordinal: 0,
+      delta: value,
+    });
+  };
+  return {
+    adapter,
+    transport: 'serve',
+    start: async () => {
+      const session = await adapter.startSession({
+        ...startInput,
+        modelId: 'mock/mock-1',
+        provider: 'opencode',
+        metadata: { connectionId: OPENCODE_CONNECTION.id },
+      });
+      if (!isOpenCodeResumeCursor(session.resumeCursor))
+        throw new Error('OpenCode conformance session has no resume cursor');
+      if (session.resumeCursor.transport !== 'native')
+        throw new Error(
+          `OpenCode conformance session runs over ${session.resumeCursor.transport}, not native`,
+        );
+      return session;
+    },
+    inputs: () => prompts,
+    text,
+    complete: () => ended('session.execution.succeeded'),
+    late: () => text('late-after-stop'),
+    settleInterrupt,
+    receivedImage: () => {
+      const uri = prompts.at(-1)?.files?.[0]?.uri;
+      return uri ? Buffer.from(uri.split(',')[1], 'base64') : undefined;
+    },
+    stopped: () => interrupts > 0,
+    unconfirmTermination: () => {
+      unconfirmed = true;
+    },
+    cleanup: async () => {
+      unconfirmed = false;
+      settleInterrupt();
+      await adapter.stopAll();
+      await (await booting).close();
+    },
+  };
+}
+
 export function createConformanceEngine(
   name: AdapterName,
   cwd: string,
   museTransport: 'serve' | 'exec-fallback' = 'serve',
+  launch?: (input: ProviderSessionStartInput) => Promise<unknown>,
 ): ConformanceEngine {
   const startInput = { threadId: THREAD, cwd, modelId: 'test-model' };
+  const launchSession = (
+    adapter: ProviderAdapterShape,
+    input: ProviderSessionStartInput,
+  ) => (launch ? launch(input) : adapter.startSession(input));
   if (name === 'claude') {
     const adapter = new ClaudeAdapter({ findBinary: async () => null });
     return {
@@ -264,8 +566,9 @@ export function createConformanceEngine(
       wireMessages: () => ConformanceClaudeChild.current.messages,
       text: (value) => ConformanceClaudeChild.current.text(value),
       complete: () => ConformanceClaudeChild.current.complete(),
-      late: () => ConformanceClaudeChild.current.text('late-after-stop'),
-      settleInterrupt: () => ConformanceClaudeChild.current.interruptedResult(),
+      late: (turnId) => ConformanceClaudeChild.current.lateText(turnId),
+      settleInterrupt: (turnId) =>
+        ConformanceClaudeChild.current.interruptedResult(turnId),
       receivedImage: () => {
         const content =
           ConformanceClaudeChild.current.prompts.at(-1)?.message.content;
@@ -306,12 +609,12 @@ export function createConformanceEngine(
     const adapter = new CodexAdapter({
       processFactory: () => process as never,
     });
-    const text = (delta: string) => {
+    const text = (delta: string, turnId = nativeTurn) => {
       frame({
         method: 'item/agentMessage/delta',
         params: {
           threadId: 'native-codex',
-          turnId: nativeTurn,
+          turnId,
           itemId: 'text',
           delta,
         },
@@ -319,7 +622,7 @@ export function createConformanceEngine(
     };
     return {
       adapter,
-      start: () => adapter.startSession({ ...startInput, provider: 'codex' }),
+      start: () => launchSession(adapter, { ...startInput, provider: 'codex' }),
       inputs: () => prompts,
       text,
       complete: () => {
@@ -331,8 +634,8 @@ export function createConformanceEngine(
           },
         });
       },
-      late: () => text('late-after-stop'),
-      settleInterrupt: () => {
+      late: (turnId) => text('late-after-stop', turnId),
+      settleInterrupt: (turnId = nativeTurn) => {
         // All three 0.155.1 client-interrupt captures deliver the RPC reply
         // before this interrupted notification. Retain the captured fields;
         // only remap identity to this fake session/turn.
@@ -350,7 +653,7 @@ export function createConformanceEngine(
           params: {
             ...captured.params,
             threadId: 'native-codex',
-            turn: { ...captured.params.turn, id: nativeTurn },
+            turn: { ...captured.params.turn, id: turnId },
           },
         });
       },
@@ -386,7 +689,7 @@ export function createConformanceEngine(
         {
           id: 'conformance',
           name: 'Conformance',
-          command: 'fake-acp',
+          command: launch ? globalThis.process.execPath : 'fake-acp',
           args: [],
           enabled: true,
         },
@@ -409,7 +712,7 @@ export function createConformanceEngine(
     return {
       adapter,
       start: () =>
-        adapter.startSession({
+        launchSession(adapter, {
           ...startInput,
           provider: 'acp',
           modelId: undefined,
@@ -436,6 +739,28 @@ export function createConformanceEngine(
         process?.resolvePrompt('cancelled');
         await adapter.stopAll();
       },
+    };
+  }
+  if (name === 'copilot-sdk') {
+    const engine = scriptedCopilotSdkEngine(cwd);
+    return {
+      adapter: engine.adapter,
+      start: engine.start,
+      // The engine sees a prompt as an enqueued send (steers are `immediate`).
+      inputs: () =>
+        engine.client.created.flatMap((session) =>
+          session.sends.filter((send) => send.mode === 'enqueue'),
+        ),
+      text: engine.text,
+      complete: engine.complete,
+      late: () => engine.text('late-after-stop'),
+      // The fake runtime answers `abort()` with its aborted idle.
+      settleInterrupt: () => {},
+      // Refuses every attachment before it reaches the runtime.
+      receivedImage: () => undefined,
+      stopped: () =>
+        engine.client.created.some((session) => session.aborts > 0),
+      cleanup: () => engine.adapter.stopAll(),
     };
   }
   if (name === 'muse' && museTransport === 'serve') {
@@ -560,7 +885,7 @@ export function createConformanceEngine(
     return {
       adapter,
       transport: 'serve',
-      start: () => adapter.startSession({ ...startInput, provider: 'muse' }),
+      start: () => launchSession(adapter, { ...startInput, provider: 'muse' }),
       inputs: () => prompts,
       text,
       complete: () =>
@@ -584,6 +909,7 @@ export function createConformanceEngine(
       },
     };
   }
+  if (name === 'opencode') return createOpenCodeNativeEngine(cwd, startInput);
   if (name === 'muse') {
     const processes: FakeMuseProcess[] = [];
     const prompts: string[][] = [];
@@ -625,7 +951,7 @@ export function createConformanceEngine(
     return {
       adapter,
       transport: 'exec-fallback',
-      start: () => adapter.startSession({ ...startInput, provider: 'muse' }),
+      start: () => launchSession(adapter, { ...startInput, provider: 'muse' }),
       inputs: () => prompts,
       wireMessages: () => messages,
       stopped: () => processes.at(-1)?.killed === true,

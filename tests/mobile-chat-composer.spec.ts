@@ -2,18 +2,23 @@ import { copyFileSync, mkdirSync } from 'node:fs';
 import { copyFile, mkdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
+import type { ConversationAgentSchedule } from '@kontourai/station-contracts/agent-schedule';
 import {
   STATION_ENVELOPE_HEADER,
   STATION_ENVELOPE_HEADER_VALUE,
 } from '@kontourai/station-contracts/http';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { buildLongSessionTurns } from './fixtures/long-session';
+import {
+  buildLongSessionTurns,
+  createLongSessionEventWindowHandler,
+} from './fixtures/long-session';
 import { expectNoBlockingAccessibilityViolations } from './helpers/accessibility';
 import {
-  mockChatShell,
-  seedMobileTaskSwitcher,
+  mockChatShell as mockStationChatShell,
+  seedMobileTaskSwitcher as seedStationMobileTaskSwitcher,
 } from './helpers/chat-shell-fixture';
 import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
@@ -31,6 +36,7 @@ import {
   seedActiveChats,
 } from './helpers/orchestration';
 import { chooseChatRegionRow } from './helpers/region-placement';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { setVisualViewport } from './helpers/visual-viewport';
@@ -40,6 +46,111 @@ const json = (body: unknown) => ({
   contentType: 'application/json',
   body: JSON.stringify(body),
 });
+
+// These conversations have an event window and open receipt but no scheduled
+// work, terminal commands, or indexed turn directory in this fixture.
+const mobileFixtureConversations = new Set([
+  'conv-review',
+  'conv-running',
+  'delegated-review',
+  'draft-send-conversation',
+  'paste-thread',
+  'refused-first-send',
+  'staged-attachment-thread',
+  'thread-long-transcript',
+  'thread-reference-dispatch',
+  'touch-target-conversation',
+]);
+
+async function mockMobileReadContracts(page: Page) {
+  await page.route('**/api/projects/default/chat-defaults', (route) => {
+    if (route.request().method() !== 'GET')
+      return rejectUnexpectedFixtureRequest(route);
+    return route.fulfill(
+      json({
+        success: true,
+        data: {
+          version: 'station.project-chat-defaults/v1',
+          projectSlug: 'default',
+          model: { selection: 'fixed', lastUsed: [] },
+          approvalMode: { selection: 'fixed', resolved: { source: 'none' } },
+        } satisfies ProjectChatDefaultsView,
+      }),
+    );
+  });
+
+  await page.route('**/api/terminal/runs?*', (route) => {
+    const id = new URL(route.request().url()).searchParams.get(
+      'conversationId',
+    );
+    if (
+      route.request().method() !== 'GET' ||
+      !id ||
+      !mobileFixtureConversations.has(id)
+    )
+      return rejectUnexpectedFixtureRequest(route);
+    return route.fulfill(json({ success: true, data: { runs: [] } }));
+  });
+
+  for (const id of mobileFixtureConversations) {
+    await page.route(`**/api/orchestration/agent-schedule/${id}`, (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            wakeUps: [],
+            jobProposals: [],
+            jobs: [],
+          } satisfies ConversationAgentSchedule,
+        }),
+      );
+    });
+    await page.route(
+      `**/api/orchestration/session-reads/${id}/turn-directory?*`,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          ...json({
+            success: false,
+            code: 'session_not_found',
+            error: 'Session not found',
+          }),
+          status: 404,
+        });
+      },
+    );
+  }
+  await page.route(
+    '**/api/orchestration/conversations/paste-thread/inbox',
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill(json({ success: true, data: { entries: [] } }))
+        : rejectUnexpectedFixtureRequest(route),
+  );
+  for (const id of ['paste-thread', 'staged-attachment-thread']) {
+    await page.route(
+      `**/api/orchestration/sessions/${id}/checkpoints?*`,
+      (route) =>
+        route.request().method() === 'GET'
+          ? route.fulfill(json({ success: true, data: [] }))
+          : rejectUnexpectedFixtureRequest(route),
+    );
+  }
+}
+
+async function mockChatShell(page: Page) {
+  const shell = await mockStationChatShell(page);
+  await mockMobileReadContracts(page);
+  return shell;
+}
+
+async function seedMobileTaskSwitcher(page: Page, overflow = false) {
+  await seedStationMobileTaskSwitcher(page, overflow);
+  await mockMobileReadContracts(page);
+}
 
 async function expectSettledTouchTargetHeight(locator: Locator) {
   // Visibility begins at the first painted animation frame. Geometry must be
@@ -107,6 +218,21 @@ async function openComposer(
     execution?: Record<string, unknown>;
   } = {},
 ) {
+  // The shell advertises this delegated session; declare its real event window.
+  const delegatedTurns = buildLongSessionTurns({
+    threadId: 'delegated-review',
+    provider: 'codex',
+    turnCount: 1,
+    replyText: () => 'Delegated review is ready.',
+  });
+  await page.route(
+    '**/api/orchestration/sessions/delegated-review/event-window**',
+    createLongSessionEventWindowHandler({
+      threadId: 'delegated-review',
+      provider: 'codex',
+      availableTurns: () => delegatedTurns,
+    }),
+  );
   const sessionId = `${agentSlug}:1760000000000`;
   await seedActiveChats(page, [
     {
@@ -125,11 +251,15 @@ async function openComposer(
   await expect(textarea).toBeVisible({ timeout: 15_000 });
   if (agentSlug === 'claude') {
     await expect(
-      page.getByRole('button', { name: /^Approval mode:/ }),
+      await runSetupControl(page, (panel) =>
+        panel.getByRole('button', { name: /^Approval mode:/ }),
+      ),
     ).toBeVisible();
-    await expect(page.locator('.chat-input__model-btn')).toContainText(
-      'Selected Test Model',
-    );
+    await expect(
+      await runSetupControl(page, (panel) =>
+        panel.locator('.chat-input__model-btn'),
+      ),
+    ).toContainText('Selected Test Model');
   }
   // The dock settles its height before geometry is compared; compare boxes
   // from one frame, not from a transition.
@@ -138,6 +268,7 @@ async function openComposer(
       element.getAnimations().map((animation) => animation.finished),
     );
   });
+  await closeRunSetup(page);
   return textarea;
 }
 
@@ -191,7 +322,11 @@ for (const [slug, name] of [
     await dismissSetupLauncher(page);
     const draft = page.getByRole('form', { name: 'Start work' });
     await expect(draft).toBeVisible({ timeout: 15_000 });
-    await draft.getByRole('button', { name: /^Agent:/ }).click();
+    await (
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', { name: /^Agent:/ }),
+      )
+    ).click();
     const agents = page.getByRole('dialog', { name: 'Choose agent' });
     await expect(agents).toBeVisible();
     await agents
@@ -199,15 +334,18 @@ for (const [slug, name] of [
       .click();
     await expect(agents).toHaveCount(0);
     await expect(
-      draft.getByRole('button', {
-        name: new RegExp(`^Agent: ${name}(?: · [^,]+)?$`),
-      }),
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', {
+          name: new RegExp(`^Agent: ${name}(?: · [^,]+)?$`),
+        }),
+      ),
     ).toBeVisible();
     // Choosing the Agent did not start anything.
     await expect(
       page.locator('textarea[placeholder*="Type a message"]'),
     ).toHaveCount(0);
     expect(dispatched).toHaveLength(0);
+    await closeRunSetup(page);
     await draft
       .getByRole('textbox', { name: 'What would you like done?', exact: true })
       .fill('Start from the draft.');
@@ -457,9 +595,9 @@ test('ChatDock sends scoped file and conversation references while preserving th
   await page.goto(`/?dock=open&maximize=true&chat=${threadId}`);
   await dismissSetupLauncher(page);
   await page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }).click();
-  const taskSwitcher = page.getByRole('region', { name: 'Inbox', exact: true });
+  const taskSwitcher = page.getByRole('region', { name: 'Chats', exact: true });
   await taskSwitcher
-    .getByRole('button', { name: 'Reference dispatch, default' })
+    .getByRole('button', { name: /^Reference dispatch.*default/ })
     .click();
   const answer = page.getByText(quote.excerpt, { exact: true });
   await expect(answer).toBeVisible();
@@ -487,11 +625,12 @@ test('ChatDock sends scoped file and conversation references while preserving th
   await expect(
     page.getByRole('region', { name: 'Quoted context' }),
   ).toContainText(quote.excerpt);
+  await closeRunSetup(page);
   await composer.fill('Review @alpha');
   await expect(page.getByRole('option', { name: /alpha\.ts/ })).toBeVisible();
   await page.getByRole('option', { name: /alpha\.ts/ }).click();
   await page.getByRole('button', { name: 'Composer actions' }).click();
-  await page.getByRole('menuitem', { name: 'Reference conversation…' }).click();
+  await page.getByRole('menuitem', { name: 'Reference chat…' }).click();
   const referenceOption = page.getByRole('option', { name: /Earlier work/ });
   await expect(referenceOption).toBeVisible();
   expect(
@@ -504,7 +643,7 @@ test('ChatDock sends scoped file and conversation references while preserving th
   ).toBe('static');
   await referenceOption.dragTo(composer);
   await expect(
-    page.getByRole('dialog', { name: 'Reference a conversation' }),
+    page.getByRole('dialog', { name: 'Reference a chat' }),
   ).toBeHidden();
   await expect(composer).toBeFocused();
   await expect(composer).toHaveValue('Review @alpha.ts @Earlier work ');
@@ -638,7 +777,7 @@ test('ChatDock sends scoped file and conversation references while preserving th
   expect(input).toContain('@"');
   expect(input).toContain('src/alpha.ts');
   expect(input).toContain(
-    '[Earlier work](/activity?session=earlier-conversation)',
+    '[Earlier work](/?surface=chat&session=earlier-conversation)',
   );
   expect(input).toContain('Quoted context stays separate.');
   expect(input.indexOf('[Earlier work]')).toBeLessThan(
@@ -772,7 +911,9 @@ test('virtualizes a long real transcript while preserving reader controls on mob
     () => (window as any).__mockOrchestrationSse?.count?.() === 1,
   );
   const composer = page.locator('textarea[placeholder*="Type a message"]');
+  await closeRunSetup(page);
   await composer.fill('Live question');
+  await closeRunSetup(page);
   await composer.press('Enter');
   await expect(
     transcript.getByText('Live question', { exact: true }),
@@ -1209,6 +1350,7 @@ test('keeps mobile attachment selection reviewable without moving the draft', as
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
   const textarea = await openComposer(page);
+  await closeRunSetup(page);
   await textarea.fill('Review the attached notes');
 
   const attach = page
@@ -1249,37 +1391,47 @@ test('keeps mobile attachment selection reviewable without moving the draft', as
       buffer: Buffer.from('# Accessibility'),
     },
   ]);
-  await expect(
-    page.getByRole('button', { name: 'Review 5 attachments' }),
-  ).toBeVisible();
+  const strip = page
+    .locator('#chat-dock')
+    .getByRole('list', { name: 'Attached files' });
+  await expect(strip.getByRole('listitem')).toHaveCount(5);
+  await expect(strip).toContainText('mobile-context.md');
   await expect(textarea).toHaveValue('Review the attached notes');
 
-  const reviewAttachments = page.getByRole('button', {
-    name: 'Review 5 attachments',
+  // With files attached, the paperclip still opens the picker (to add more);
+  // the strip is where they are reviewed, so there is no panel to open.
+  const chooser = page.waitForEvent('filechooser');
+  await attach.click();
+  await chooser;
+  await expect(page.locator('.attachment-menu')).toHaveCount(0);
+
+  // The image's thumbnail opens the transcript's previewer, at touch size.
+  const thumbnail = strip.getByRole('button', {
+    name: 'Preview mobile-photo.png',
   });
-  await reviewAttachments.click();
-  const menu = page.locator('.attachment-menu');
-  await expect(menu).toBeVisible();
-  await setVisualViewport(page, 360);
-  await expect(menu).toContainText('mobile-context.md');
-  await expect(menu).toContainText('mobile-photo.png');
-  const menuBox = await menu.boundingBox();
-  expect(menuBox?.x ?? -1).toBeGreaterThanOrEqual(0);
-  expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0)).toBeLessThanOrEqual(390);
-  expect((menuBox?.y ?? 0) + (menuBox?.height ?? 0)).toBeLessThanOrEqual(360);
-  const listBox = await menu.locator('.attachment-menu__list').boundingBox();
-  expect((listBox?.y ?? 0) + (listBox?.height ?? 0)).toBeLessThanOrEqual(360);
-  for (const label of ['Add more', 'Clear all']) {
-    const box = await menu.getByRole('button', { name: label }).boundingBox();
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-  }
+  const thumbBox = await thumbnail.boundingBox();
+  expect(thumbBox?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  expect(thumbBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  await thumbnail.click();
+  const preview = page.getByRole('dialog', { name: 'Preview' });
+  await expect(preview).toBeVisible();
+  await preview.getByRole('button', { name: 'Close preview' }).click();
+  await expect(preview).toBeHidden();
 
-  await setVisualViewport(page, 844);
-  await textarea.click({ position: { x: 8, y: 8 } });
-  await expect(menu).toBeHidden();
-  await expect(textarea).toHaveValue('Review the attached notes');
-  await reviewAttachments.click();
-  await menu.getByRole('button', { name: 'Clear all' }).click();
+  // Each chip removes its own file; the draft stays.
+  for (const name of [
+    'mobile-context.md',
+    'mobile-photo.png',
+    'requirements.md',
+    'review-notes.md',
+    'accessibility.md',
+  ]) {
+    const remove = strip.getByRole('button', { name: `Remove ${name}` });
+    const box = await remove.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    await remove.click();
+  }
+  await expect(strip).toHaveCount(0);
   await expect(attach).toBeVisible();
   await expect(textarea).toHaveValue('Review the attached notes');
 });
@@ -1360,6 +1512,7 @@ test('stages a current-host attachment before dispatching only its opaque refere
   });
 
   const textarea = await openComposer(page);
+  await closeRunSetup(page);
   await textarea.fill('Send the staged attachment');
   await page.locator('#chat-dock .attachment-input').setInputFiles({
     name: 'staged-notes.txt',
@@ -1383,6 +1536,484 @@ test('stages a current-host attachment before dispatching only its opaque refere
     ],
   });
   expect(JSON.stringify(dispatched[0])).not.toContain('c3RhZ2UgbWU=');
+});
+
+// #4568: a person's follow-up whose engine start is queued behind another
+// engine start. Station publishes the wait on the Session's summary and says
+// so through the session-projection update; the dock shows it while the send
+// is in flight and drops it when Station clears it.
+test('shows the engine-start capacity wait while Station holds a send, and clears it with Station', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  const renderRoot = join(
+    process.cwd(),
+    '.kontourai',
+    'engine-start-capacity-4644',
+  );
+  await mkdir(renderRoot, { recursive: true });
+  const sessionId = 'claude:1760000000000';
+  await page.route(
+    `**/api/orchestration/sessions/${encodeURIComponent(sessionId)}/inventory**`,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            status: 404,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: false,
+              error: 'Session inventory unavailable',
+            }),
+          })
+        : rejectUnexpectedFixtureRequest(route),
+  );
+  let waiting = false;
+  await page.route('**/api/orchestration/coordinator', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill(json({ success: true, data: { designation: null } }))
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            threadId: sessionId,
+            provider: 'claude',
+            model: 'model-selected',
+            status: 'ready',
+            lifecycleState: 'idle',
+            controlMode: 'station-owned',
+            answerability: { answerable: true },
+            createdAt: '2026-11-06T12:00:00.000Z',
+            updatedAt: '2026-11-06T12:00:00.000Z',
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 1,
+            ...(waiting
+              ? { engineStartWait: { since: '2026-11-06T12:00:01.000Z' } }
+              : {}),
+          },
+        ],
+      }),
+    ),
+  );
+  await page.route(
+    `**/api/orchestration/conversations/${encodeURIComponent(sessionId)}/**`,
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'This capacity fixture does not emit provider events',
+        }),
+      }),
+  );
+  await page.route(
+    `**/api/orchestration/sessions/${encodeURIComponent(sessionId)}/event-window**`,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: false,
+              error: 'This capacity fixture does not emit provider events',
+            }),
+          })
+        : rejectUnexpectedFixtureRequest(route),
+  );
+  let releaseSend!: () => void;
+  const sendHeld = new Promise<void>((resolve) => {
+    releaseSend = resolve;
+  });
+  const dispatched: unknown[] = [];
+  await page.route('**/api/orchestration/chat', async (route) => {
+    dispatched.push(route.request().postDataJSON());
+    await sendHeld;
+    await route
+      .fulfill(
+        json(
+          foregroundMessageReceiptEnvelope({
+            conversationId: sessionId,
+            agent: 'agent:claude',
+          }),
+        ),
+      )
+      .catch(() => undefined);
+  });
+
+  const textarea = await openComposer(page);
+  await textarea.fill('Continue the review.');
+  waiting = true;
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(() => expect(dispatched).toHaveLength(1)).toPass({
+    timeout: 10_000,
+  });
+  await emitMockOrchestrationEvent(
+    page,
+    'orchestration:session-projection-updated',
+    { threadId: sessionId },
+  );
+  const badge = page.getByTestId('chat-dock-engine-start-wait');
+  await expect(badge).toContainText('Waiting for another engine to start', {
+    timeout: 10_000,
+  });
+
+  for (const [width, height] of [
+    [390, 844],
+    [1440, 900],
+  ] as const) {
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.setViewportSize({ width, height });
+      await page.emulateMedia({ colorScheme });
+      await expect(badge).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `engine-start-wait-${width}-${colorScheme}.png`,
+        ),
+        animations: 'disabled',
+      });
+      await copyFile(
+        testInfo.outputPath(`engine-start-wait-${width}-${colorScheme}.png`),
+        join(renderRoot, `engine-start-wait-${width}-${colorScheme}.png`),
+      );
+    }
+  }
+
+  waiting = false;
+  await emitMockOrchestrationEvent(
+    page,
+    'orchestration:session-projection-updated',
+    { threadId: sessionId },
+  );
+  await expect(badge).toHaveCount(0, { timeout: 10_000 });
+  releaseSend();
+});
+
+// #4568: a brand-new chat's first start has no Session summary yet. Station
+// reports its queued start on the orchestration stream, for the id the chat
+// sent; Stop cancels it through the ordinary interrupt command.
+for (const [width, height] of [
+  [390, 844],
+  [1440, 900],
+] as const) {
+  test(`shows a brand-new chat's first-start wait from the stream, and Stop cancels it at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width, height });
+    await installMockOrchestrationSse(page);
+    await mockChatShell(page);
+    const renderRoot = join(
+      process.cwd(),
+      '.kontourai',
+      'engine-start-capacity-4644',
+    );
+    await mkdir(renderRoot, { recursive: true });
+    const sessionId = 'claude:1760000000000';
+    await page.route(
+      `**/api/orchestration/sessions/${encodeURIComponent(sessionId)}/inventory**`,
+      (route) =>
+        route.request().method() === 'GET'
+          ? route.fulfill({
+              status: 404,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                success: false,
+                error: 'Session inventory unavailable',
+              }),
+            })
+          : rejectUnexpectedFixtureRequest(route),
+    );
+    await page.route('**/api/orchestration/coordinator', (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill(json({ success: true, data: { designation: null } }))
+        : rejectUnexpectedFixtureRequest(route),
+    );
+    await page.route(
+      `**/api/orchestration/conversations/${encodeURIComponent(sessionId)}/**`,
+      (route) =>
+        route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: false,
+            error: 'This capacity fixture does not emit provider events',
+          }),
+        }),
+    );
+    const commands: Array<Record<string, unknown>> = [];
+    await page.route('**/api/orchestration/commands', async (route) => {
+      commands.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill(
+        json({
+          success: true,
+          data: { outcome: 'pending-turn-start', threadId: sessionId },
+        }),
+      );
+    });
+    let releaseSend!: () => void;
+    const sendHeld = new Promise<void>((resolve) => {
+      releaseSend = resolve;
+    });
+    const dispatched: Array<Record<string, unknown>> = [];
+    await page.route('**/api/orchestration/chat', async (route) => {
+      dispatched.push(
+        route.request().postDataJSON() as Record<string, unknown>,
+      );
+      await sendHeld;
+      await route
+        .fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: false,
+            code: 'resource_engine_start_cancelled',
+            error: 'The engine start was cancelled before it began.',
+          }),
+        })
+        .catch(() => undefined);
+    });
+
+    const textarea = await openComposer(page);
+    await textarea.fill('Start the review.');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(() => expect(dispatched).toHaveLength(1)).toPass({
+      timeout: 10_000,
+    });
+    // The brand-new chat names itself; Station's frame answers for that id.
+    expect(dispatched[0]).toMatchObject({ conversationId: sessionId });
+    await page.emulateMedia({ colorScheme: 'light' });
+    const before = `engine-start-wait-new-chat-${width}-before-light.png`;
+    await page.screenshot({
+      path: testInfo.outputPath(before),
+      animations: 'disabled',
+    });
+    await copyFile(testInfo.outputPath(before), join(renderRoot, before));
+    await emitMockOrchestrationEvent(page, 'orchestration:engine-start-wait', {
+      threadId: sessionId,
+      wait: { since: '2026-11-06T12:00:01.000Z' },
+      pendingStart: true,
+    });
+    const badge = page.getByTestId('chat-dock-engine-start-wait');
+    await expect(badge).toContainText('Waiting for another engine to start', {
+      timeout: 10_000,
+    });
+
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme });
+      await expect(badge).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `engine-start-wait-new-chat-${width}-${colorScheme}.png`,
+        ),
+        animations: 'disabled',
+      });
+      await copyFile(
+        testInfo.outputPath(
+          `engine-start-wait-new-chat-${width}-${colorScheme}.png`,
+        ),
+        join(
+          renderRoot,
+          `engine-start-wait-new-chat-${width}-${colorScheme}.png`,
+        ),
+      );
+    }
+
+    await page.getByRole('button', { name: 'Stop the current turn' }).click();
+    await expect(() =>
+      expect(commands).toContainEqual(
+        expect.objectContaining({ type: 'interruptTurn', threadId: sessionId }),
+      ),
+    ).toPass({ timeout: 10_000 });
+    await emitMockOrchestrationEvent(page, 'orchestration:engine-start-wait', {
+      threadId: sessionId,
+      wait: null,
+    });
+    releaseSend();
+    await expect(badge).toHaveCount(0, { timeout: 10_000 });
+  });
+}
+
+/**
+ * The staging fixture for an upload whose PUT is held until the test settles
+ * it, so Send can be pressed while the file is still uploading.
+ */
+async function routeHeldStaging(page: Page) {
+  await page.route(
+    '**/api/orchestration/conversations/staged-attachment-thread/inbox',
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      await route.fulfill(json({ success: true, data: { entries: [] } }));
+    },
+  );
+  await page.route(
+    '**/api/orchestration/conversations/staged-attachment-thread/event-window**',
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'This dispatch fixture does not emit provider events',
+        }),
+      }),
+  );
+  const stageId = 'stage_22222222-2222-4222-8222-222222222222';
+  let prepared: Record<string, unknown> | undefined;
+  let settleUpload: (ok: boolean) => void = () => undefined;
+  const uploadSettled = new Promise<boolean>((resolve) => {
+    settleUpload = resolve;
+  });
+  const dispatched: unknown[] = [];
+  await page.route(
+    /\/api\/orchestration\/attachment-staging(?:\/.*)?$/u,
+    async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (path.endsWith('/capability'))
+        return route.fulfill(
+          json({ state: 'supported', version: 1, maxConcurrentUploads: 3 }),
+        );
+      if (path.endsWith('/prepare')) {
+        prepared = request.postDataJSON() as Record<string, unknown>;
+        return route.fulfill(
+          json({
+            ...prepared,
+            stageId,
+            uploadGrant: 'b'.repeat(43),
+            expiresAt: '2030-01-01T00:00:00.000Z',
+          }),
+        );
+      }
+      if (path.endsWith(`/${stageId}`) && request.method() === 'PUT') {
+        if (!(await uploadSettled))
+          return route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'upload failed' }),
+          });
+        return route.fulfill(
+          json({
+            ...prepared,
+            stageId,
+            source: 'current-composer',
+            digest: `sha256-${'b'.repeat(64)}`,
+            expiresAt: '2030-01-01T00:00:00.000Z',
+          }),
+        );
+      }
+      return route.abort();
+    },
+  );
+  await page.route('**/api/orchestration/chat', async (route) => {
+    dispatched.push(route.request().postDataJSON());
+    return route.fulfill(
+      json(
+        foregroundMessageReceiptEnvelope({
+          conversationId: 'staged-attachment-thread',
+          agent: 'agent:claude',
+        }),
+      ),
+    );
+  });
+  return { stageId, dispatched, settleUpload };
+}
+
+for (const [width, height] of [
+  [390, 844],
+  [1440, 900],
+] as const) {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`Send during an upload waits and sends with the file (${width}px ${colorScheme})`, async ({
+      page,
+    }, testInfo) => {
+      test.setTimeout(30_000);
+      await page.setViewportSize({ width, height });
+      await page.emulateMedia({ colorScheme });
+      await mockChatShell(page);
+      const { stageId, dispatched, settleUpload } =
+        await routeHeldStaging(page);
+
+      const textarea = await openComposer(page);
+      await closeRunSetup(page);
+      await textarea.fill('Send it when the upload lands');
+      await page.locator('#chat-dock .attachment-input').setInputFiles({
+        name: 'held-notes.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('held upload'),
+      });
+
+      const strip = page.getByRole('list', { name: 'Attached files' });
+      await expect(
+        strip.getByText(/^(Uploading|Waiting to upload)/),
+      ).toBeVisible();
+      const send = page.getByRole('button', { name: 'Send', exact: true });
+      // Uploading is progress, not a block: Send works and nothing is red.
+      await expect(send).toBeEnabled();
+      await send.click();
+      const waiting = page.getByText('Sends when uploads finish');
+      await expect(waiting).toBeVisible();
+      await expect(send).toBeDisabled();
+      await expect(page.locator('.chat-input__attachment-error')).toHaveCount(
+        0,
+      );
+      await page.screenshot({
+        path: testInfo.outputPath(`upload-wait-${width}-${colorScheme}.png`),
+      });
+      expect(dispatched).toHaveLength(0);
+
+      settleUpload(true);
+      await expect(() => expect(dispatched).toHaveLength(1)).toPass({
+        timeout: 10_000,
+      });
+      expect(dispatched[0]).toMatchObject({
+        message: 'Send it when the upload lands',
+        attachmentRefs: [{ stageId, name: 'held-notes.txt' }],
+      });
+      await expect(waiting).toBeHidden();
+    });
+  }
+}
+
+test('a failed upload under a waiting send shows its error and sends nothing', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockChatShell(page);
+  const { dispatched, settleUpload } = await routeHeldStaging(page);
+
+  const textarea = await openComposer(page);
+  await closeRunSetup(page);
+  await textarea.fill('This upload will fail');
+  await page.locator('#chat-dock .attachment-input').setInputFiles({
+    name: 'failing-notes.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('failing upload'),
+  });
+  const strip = page.getByRole('list', { name: 'Attached files' });
+  await expect(strip.getByText(/^(Uploading|Waiting to upload)/)).toBeVisible();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('Sends when uploads finish')).toBeVisible();
+
+  settleUpload(false);
+  await expect(
+    strip.getByRole('button', {
+      name: /^(Retry|Upload again) failing-notes\.txt$/,
+    }),
+  ).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.chat-input__attachment-error')).toBeVisible();
+  await expect(page.getByText('Sends when uploads finish')).toBeHidden();
+  expect(dispatched).toHaveLength(0);
+  await expect(textarea).toHaveValue('This upload will fail');
 });
 
 // archive#3344. The whole paste path against the STATION engine — the one an
@@ -1424,6 +2055,7 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
   });
 
   const textarea = await openComposer(page, false, 'station');
+  await closeRunSetup(page);
   await textarea.fill('what is in this screenshot?');
 
   // A real clipboard paste, synthesized as the browser delivers one: a
@@ -1452,8 +2084,9 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
   // Visible in the composer itself, not behind the paperclip popover.
   const strip = page.getByRole('list', { name: 'Attached files' });
   await expect(strip).toBeVisible();
+  // The thumbnail is its Preview button; the image inside is decorative.
   await expect(
-    strip.getByRole('img', { name: 'pasted-screenshot.png' }),
+    strip.getByRole('button', { name: 'Preview pasted-screenshot.png' }),
   ).toBeVisible();
   const remove = strip.getByRole('button', {
     name: 'Remove pasted-screenshot.png',
@@ -1532,15 +2165,15 @@ test('a Task inventory outage does not block the mobile inbox or New chat', asyn
   // the brief pending state before the failure reaches the host.
   await expect.poll(() => taskFailures).toBeGreaterThanOrEqual(2);
   await page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }).click();
-  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
-  await expect(menu.getByText('Some chats may be out of date.')).toHaveCount(0);
+  const menu = page.getByRole('region', { name: 'Chats', exact: true });
+  await expect(menu.getByText('Some chats may be out of date.')).toBeVisible();
+  const failedReads = taskFailures;
+  await menu.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect.poll(() => taskFailures).toBeGreaterThan(failedReads);
   await expect(
-    menu.getByRole('button', { name: 'Station Chat, Default' }).first(),
+    menu.getByRole('button', { name: /^Station Chat.*Default/i }).first(),
   ).toBeVisible();
-  await page
-    .getByTestId('chat-dock-mobile-header')
-    .getByRole('button', { name: 'New chat', exact: true })
-    .click();
+  await menu.getByRole('button', { name: 'New chat', exact: true }).click();
   const newChat = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(newChat).toBeVisible();
 });
@@ -1567,20 +2200,18 @@ test('switches between mobile tasks and restores the exact active chat context',
   const triggerBox = await switcher.boundingBox();
 
   await switcher.click();
-  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
+  const menu = page.getByRole('region', { name: 'Chats', exact: true });
   await expect(menu).toBeVisible();
   await expect(page.getByText(/credential|connect an account/i)).toHaveCount(0);
-  // Shared inbox rows (archive#3312): the row button's accessible name is
-  // "{title}, {project}" and the state renders as the row's status line
-  // ("Running"/"Waiting on you"), so state discrimination filters on the
-  // status text rather than the old raw-text accessible name.
+  // Match the conversation and its Project. The same title appears in two
+  // lanes, so the visible status distinguishes the rows.
   await expect(
     menu
-      .getByRole('button', { name: 'Station Chat, Default' })
+      .getByRole('button', { name: /^Station Chat.*Default/i })
       .filter({ hasText: 'Running' }),
   ).toBeVisible();
   const reviewRow = menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Waiting on you' });
   await expect(reviewRow).toBeVisible();
   const reviewBox = await reviewRow.boundingBox();
@@ -1603,6 +2234,7 @@ test('switches between mobile tasks and restores the exact active chat context',
       expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
 
       await expect(textarea).toBeEnabled();
+      await closeRunSetup(page);
       await textarea.fill('return to this draft');
 
       // The sheet's own dismiss control. The Escape path is the same claim through
@@ -1611,26 +2243,32 @@ test('switches between mobile tasks and restores the exact active chat context',
     },
   );
   await switcher.click();
-  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Actions for Chats' }).click();
+  await page
+    .getByRole('menuitem', { name: 'Back to chat', exact: true })
+    .click();
   await expect(menu).toBeHidden();
   await expect(switcher).toBeFocused();
 
   await switcher.click();
   await menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Running' })
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-running');
 
   await switcher.click();
   await menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(textarea).toHaveValue('return to this draft');
-  await expect(page.locator('.chat-input__model-name')).toHaveText(
-    'Model Selected',
-  );
+  await expect(
+    await runSetupControl(page, (panel) =>
+      panel.locator('.chat-input__model-name'),
+    ),
+  ).toHaveText('Model Selected');
+  await closeRunSetup(page);
 
   await switcher.click();
   await page.evaluate(() => (window as any).__setChatViewport(480, 120));
@@ -1644,7 +2282,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   // unanchored title match would resolve to both. The delegated row is titled
   // by its task, "Worker task · delegated review".
   await menu
-    .getByRole('button', { name: /^Worker task · delegated review,/i })
+    .getByRole('button', { name: /^Worker task · delegated review(?:\s|$)/i })
     .click();
   await expect
     .poll(() => new URL(page.url()).searchParams.get('chat'))
@@ -1657,37 +2295,32 @@ test('switches between mobile tasks and restores the exact active chat context',
   // the chat dock. Returning to the prior chat restores its in-memory draft.
   await switcher.click();
   await menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Waiting on you' })
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
   expect(new URL(page.url()).searchParams.get('dock')).toBe('open');
   expect(new URL(page.url()).searchParams.get('maximize')).toBe('true');
   await expect(textarea).toHaveValue('return to this draft');
-  // Primary project context stays directly reachable beside conversation
-  // switching. Since #3144 it names where NEW chats start ("New chats"), and
-  // opening a chat that belongs to Default does not move that default: the
-  // chat's own project is on its inbox row ("Station Chat, Default") instead.
-  await expect(
-    page.getByRole('button', { name: /^Switch project/ }),
-  ).toContainText('New chats');
-  await expect(
-    page.getByRole('button', { name: /^Switch project/ }),
-  ).toContainText('No project');
-  // The positive half of that comment: the chat keeps its own project, which
-  // the switcher's row for it names.
+  // The Inbox row keeps the existing conversation’s Project.
   await switcher.click();
   await expect(
     menu
-      .getByRole('button', { name: 'Station Chat, Default' })
+      .getByRole('button', { name: /^Station Chat.*Default/i })
       .filter({ hasText: 'Waiting on you' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Actions for Chats' }).click();
+  await page
+    .getByRole('menuitem', { name: 'Back to chat', exact: true })
+    .click();
   await expect(menu).toBeHidden();
-  await expect(page.locator('.chat-input__model-name')).toHaveText(
-    'Model Selected',
-  );
+  await expect(
+    await runSetupControl(page, (panel) =>
+      panel.locator('.chat-input__model-name'),
+    ),
+  ).toHaveText('Model Selected');
 
+  await closeRunSetup(page);
   await page.setViewportSize({ width: 320, height: 568 });
   await page.evaluate(() => (window as any).__setChatViewport(568, 0));
   await expect(switcher).toBeVisible();
@@ -1696,31 +2329,31 @@ test('switches between mobile tasks and restores the exact active chat context',
   // viewport, not only the dialog geometry checks.
   await switcher.click();
   await page
-    .getByRole('region', { name: 'Inbox', exact: true })
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('region', { name: 'Chats', exact: true })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Running' })
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-running');
   await switcher.click();
   // The task retains its canonical identity after opening.
   await page
-    .getByRole('region', { name: 'Inbox', exact: true })
-    .getByRole('button', { name: /^Worker task · delegated review,/i })
+    .getByRole('region', { name: 'Chats', exact: true })
+    .getByRole('button', { name: /^Worker task · delegated review(?:\s|$)/i })
     .click();
   await expect
     .poll(() => new URL(page.url()).searchParams.get('chat'))
     .toBe('delegated-review');
   await switcher.click();
   await page
-    .getByRole('region', { name: 'Inbox', exact: true })
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('region', { name: 'Chats', exact: true })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(textarea).toHaveValue('return to this draft');
 
   await switcher.click();
   const compactDialog = page.getByRole('region', {
-    name: 'Inbox',
+    name: 'Chats',
     exact: true,
   });
   const compactBox = await compactDialog.boundingBox();
@@ -1728,18 +2361,15 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect((compactBox?.x ?? 0) + (compactBox?.width ?? 0)).toBeLessThanOrEqual(
     320,
   );
-  const compactClose = page.getByRole('button', {
+  const actions = page.getByRole('button', { name: 'Actions for Chats' });
+  await actions.focus();
+  await page.keyboard.press('Enter');
+  const compactClose = page.getByRole('menuitem', {
     name: 'Back to chat',
     exact: true,
   });
-  await compactDialog.getByRole('combobox', { name: 'Inbox scope' }).focus();
-  await page.keyboard.press('Shift+Tab');
-  await expect(
-    page
-      .getByTestId('chat-dock-mobile-header')
-      .getByRole('button', { name: 'New chat', exact: true }),
-  ).toBeFocused();
-  await compactClose.click();
+  await compactClose.focus();
+  await page.keyboard.press('Enter');
   await expect(compactDialog).toBeHidden();
   await expect(switcher).toBeFocused();
 
@@ -1747,6 +2377,16 @@ test('switches between mobile tasks and restores the exact active chat context',
   await expect(compactDialog).toBeVisible();
   await page.setViewportSize({ width: 800, height: 800 });
   await expect(compactDialog).toBeHidden();
+  await page.setViewportSize({ width: 390, height: 844 });
+  if (!(await compactDialog.isVisible())) await switcher.click();
+  await compactDialog
+    .getByRole('button', { name: 'New chat', exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole('region', { name: 'New chat', exact: true })
+      .getByRole('button', { name: 'Project: No project' }),
+  ).toBeVisible();
 });
 
 test('mobile messages prioritize text and reveal 44px actions on demand', async ({
@@ -1906,7 +2546,9 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   await expect(page.locator('#station-main')).toHaveAttribute('inert', '');
   const header = page.getByTestId('chat-dock-mobile-header');
   await expect(
-    header.getByRole('button', { name: /^Switch project/ }),
+    header.getByRole('button', {
+      name: /^(Restore chat size|Full screen chat)$/,
+    }),
   ).toBeVisible();
   await expect(
     header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
@@ -1926,7 +2568,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole('button', { name: 'Add input to Task', exact: true }),
+    page.getByRole('button', { name: 'Add to Task: message', exact: true }),
   ).toBeHidden();
   await expect(
     page.getByRole('button', { name: 'Good response' }),
@@ -1989,7 +2631,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   });
   await page.getByRole('button', { name: 'Your message actions' }).click();
   const inputTask = page.getByRole('button', {
-    name: 'Add input to Task',
+    name: 'Add to Task: message',
     exact: true,
   });
   await expect(inputTask).toBeVisible();
@@ -2013,10 +2655,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   const userSheetRow = await userSheet.evaluate((sheet) => {
     const rect = (node: Element) => node.getBoundingClientRect();
     const pin = rect(
-      sheet.querySelector('button[aria-label="Add input to Task"]') ??
-        [...sheet.querySelectorAll('button')].find(
-          (button) => button.textContent?.trim() === 'Add input to Task',
-        )!,
+      sheet.querySelector('button[aria-label="Add to Task: message"]')!,
     );
     const menu = rect(sheet.querySelector('.message-details__menu')!);
     const summary = rect(sheet.querySelector('.message-details__summary')!);
@@ -2099,7 +2738,8 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
   }
-  await expect(page.getByTestId('chat-dock-mobile-connection')).toBeVisible();
+  await expect(page.locator('.app-toolbar')).toBeVisible();
+  await expect(page.getByTestId('chat-dock-mobile-connection')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close actions menu' }).click();
 
   // A Station label too long to share the row: the chips keep every
@@ -2115,6 +2755,44 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
       JSON.stringify(stored.map((entry) => ({ ...entry, name }))),
     );
   }, longStationName);
+  const taskActionChunk = '**/assets/AttachAnswerToTaskButton-*.js';
+  let releaseTaskAction: () => void = () => undefined;
+  const taskActionMayLoad = new Promise<void>((resolve) => {
+    releaseTaskAction = resolve;
+  });
+  let observeTaskRequest: () => void = () => undefined;
+  const taskActionRequested = new Promise<void>((resolve) => {
+    observeTaskRequest = resolve;
+  });
+  let refuseTaskAction = false;
+  let refusedTaskChunkRequests = 0;
+  await page.context().route(taskActionChunk, async (route) => {
+    if (refuseTaskAction) {
+      refusedTaskChunkRequests += 1;
+      return route.abort('failed');
+    }
+    observeTaskRequest();
+    await taskActionMayLoad;
+    await route.continue();
+  });
+  // The service worker can answer a reload from CacheStorage. Evict only
+  // this chunk so each fault reaches the actual browser import.
+  const evictTaskActionChunk = () =>
+    page.evaluate(async () => {
+      for (const name of await caches.keys()) {
+        const cache = await caches.open(name);
+        for (const request of await cache.keys()) {
+          if (
+            new URL(request.url).pathname.startsWith(
+              '/assets/AttachAnswerToTaskButton-',
+            )
+          ) {
+            await cache.delete(request);
+          }
+        }
+      }
+    });
+  await evictTaskActionChunk();
   await page.reload();
   await dismissSetupLauncher(page);
   await page
@@ -2144,10 +2822,35 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     MAX_SHEET_TAIL_PX,
   );
 
-  // 320px with the thumbs-down reason open: the action group stays anchored
-  // at the end and wraps as a unit. The phone baseline that wraps every
-  // `__actions` row used to strand the ⋯ alone at the start.
-  await page.getByRole('button', { name: 'Close message details' }).click();
+  // Keep the optional Task action's real chunk in flight until the pointer
+  // is down. The anchored close button must stay under the same press when
+  // that row becomes available. Nothing actionable is exposed while it waits.
+  await taskActionRequested;
+  const attachAnswer = answerSheet.getByRole('button', {
+    name: 'Add to Task: answer',
+    exact: true,
+  });
+  await expect(attachAnswer).toHaveCount(0);
+  const close = answerSheet.getByRole('button', {
+    name: 'Close message details',
+  });
+  const closeBox = await close.boundingBox();
+  if (!closeBox)
+    throw new Error('Answer details close control is not rendered');
+  await page.mouse.move(
+    closeBox.x + closeBox.width / 2,
+    closeBox.y + closeBox.height / 2,
+  );
+  await page.mouse.down();
+  try {
+    releaseTaskAction();
+    await expect(attachAnswer).toBeEnabled();
+  } finally {
+    await page.mouse.up();
+  }
+  await expect(answerSheet).toBeHidden();
+
+  // At 320px the thumbs-down reason and actions wrap as one group.
   await page.setViewportSize({ width: 320, height: 700 });
   const ratings: string[] = [];
   await page.route('**/api/feedback/rate', (route) => {
@@ -2176,29 +2879,52 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   await answerSheet.getByRole('button', { name: 'Bad response' }).click();
   await expect(answerSheet.getByPlaceholder('Why? (optional)')).toBeVisible();
   await expect.poll(() => ratings.length).toBe(1);
-  // Let the reason field finish sliding open (its wrapper animates
-  // max-width) before reading the layout.
-  await expect
-    .poll(() =>
-      answerSheet
-        .locator('.message__rating-expand')
-        .evaluate((expand) => expand.getBoundingClientRect().width),
-    )
-    .toBeGreaterThan(140);
+  // Wait for the width transition to finish before measuring the field.
+  const expandedRating = answerSheet.locator('.message__rating-expand');
+  await expandedRating.evaluate(async (element) => {
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+    await Promise.allSettled(
+      element.getAnimations().map((animation) => animation.finished),
+    );
+  });
+  expect((await expandedRating.boundingBox())!.width).toBeGreaterThan(140);
   const narrow = await answerSheet.evaluate((sheet) => {
     const rect = (node: Element) => node.getBoundingClientRect();
     const rating = rect(sheet.querySelector('.message__rating')!);
     const reason = rect(sheet.querySelector('.message__rating-reason')!);
+    const reportBug = rect(sheet.querySelector('.message__rating-bug')!);
     const summary = rect(sheet.querySelector('.message-details__summary')!);
     return {
       rating: { top: rating.top, right: rating.right },
       reason: { left: reason.left, right: reason.right },
+      reportBug: { left: reportBug.left, right: reportBug.right },
       summary: { left: summary.left, right: summary.right },
     };
   });
   expect(Math.abs(narrow.rating.right - narrow.summary.right)).toBeLessThan(1);
   expect(narrow.reason.left).toBeGreaterThanOrEqual(narrow.summary.left - 1);
   expect(narrow.reason.right).toBeLessThanOrEqual(narrow.summary.right + 1);
+  expect(narrow.reportBug.left).toBeGreaterThanOrEqual(narrow.summary.left - 1);
+  expect(narrow.reportBug.right).toBeLessThanOrEqual(narrow.summary.right + 1);
+
+  // Refuse every attempt to load the optional chunk, including preloads.
+  // The error state must leave the close target available.
+  refuseTaskAction = true;
+  await evictTaskActionChunk();
+  await page.reload();
+  await dismissSetupLauncher(page);
+  await page
+    .getByRole('button', { name: 'Answer details and actions', exact: true })
+    .click();
+  const unavailable = answerSheet.locator('.turn-footer__unavailable-note');
+  await expect(unavailable).toBeVisible();
+  await expect(unavailable).toHaveText('Add to Task is unavailable.');
+  expect(refusedTaskChunkRequests).toBeGreaterThan(0);
+  await expect(attachAnswer).toHaveCount(0);
+  await close.click();
+  await expect(answerSheet).toBeHidden();
 });
 
 /** Below the sheet's last row: its 8px body padding, the panel's 1px border
@@ -2267,7 +2993,7 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
 
   const switcher = page.getByRole('button', { name: /^(Inbox|Back to chat)$/ });
   await expect(switcher).toBeVisible({ timeout: 15_000 });
-  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
+  const menu = page.getByRole('region', { name: 'Chats', exact: true });
 
   // Escape straight away: the sheet closes and the route is untouched.
   await switcher.click();
@@ -2284,7 +3010,7 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
   // must survive: Escape dismisses a sheet, it does not undo a task switch.
   await switcher.click();
   await menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(menu).toBeHidden();
@@ -2468,29 +3194,22 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
 
   await expect(page.getByText('Delegated to Codex')).toBeVisible();
   await page.getByRole('button', { name: 'Open task' }).click();
-  /**
-   * #928: `Open task` reveals the Activity surface through the region model
-   * rather than changing the route, so the URL says nothing about whether the
-   * click did anything — a `session` param nothing writes any more, and a
-   * pathname poll that is satisfied the instant it runs, both passed against
-   * a click that revealed nothing at all. Assert the surface and the session
-   * it was told to show.
-   *
-   * On a phone the only region is Chat's, so Activity opens as a pane in that
-   * region. A region that holds Chat keeps the "Dock" landmark whichever pane
-   * is selected (#2046 ownership decision D3, PR #2069; `DockShell.tsx`), so
-   * Activity is found inside "Dock", and its selected-pane "Hide Activity"
-   * control is what proves it is the pane on screen.
-   */
+  const conversation = page.getByRole('region', {
+    name: 'Conversation',
+    exact: true,
+  });
   await expect(
-    page
-      .getByRole('region', { name: 'Dock', exact: true })
-      .getByRole('button', { name: 'Hide Activity' }),
-  ).toBeVisible({ timeout: 10_000 });
-  const revealed = page.getByTestId('session-detail');
-  await expect(revealed).toBeVisible({ timeout: 10_000 });
-  await expect(revealed).toContainText('Delegated mobile task');
-  await expect(revealed).not.toContainText('Other mobile task');
+    conversation.getByRole('heading', {
+      name: 'Delegated mobile task',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    conversation.getByRole('heading', {
+      name: 'Other mobile task',
+      exact: true,
+    }),
+  ).toHaveCount(0);
 });
 
 /**
@@ -2524,7 +3243,9 @@ test('the 320px header reserves title space and exposes secondary actions in its
   await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
   const header = page.getByTestId('chat-dock-mobile-header');
   await expect(
-    header.getByRole('button', { name: /^Switch project/ }),
+    header.getByRole('button', {
+      name: /^(Restore chat size|Full screen chat)$/,
+    }),
   ).toBeVisible();
   await expect(
     header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
@@ -2546,8 +3267,55 @@ test('the 320px header reserves title space and exposes secondary actions in its
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
   }
-  await expect(page.getByTestId('chat-dock-mobile-connection')).toBeVisible();
+  await expect(page.locator('.app-toolbar')).toBeVisible();
+  await expect(page.getByTestId('chat-dock-mobile-connection')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close actions menu' }).click();
+
+  const dock = page.locator('#chat-dock');
+  const title = await identity.textContent();
+  const resize = dock.getByRole('separator', { name: /resize/i });
+  await resize.press('ArrowDown');
+  await resize.press('ArrowDown');
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await expect(identity).toHaveText(title!);
+  await header
+    .getByRole('button', { name: 'Chat actions', exact: true })
+    .click();
+  await expect(dock).not.toHaveClass(/is-collapsed/);
+  await expect(page.getByRole('menu', { name: 'Chat actions' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close actions menu' }).click();
+  await resize.press('ArrowDown');
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await header.getByRole('button', { name: /^Open chat:/ }).click();
+  await expect(
+    dock.locator('textarea[placeholder*="Type a message"]'),
+  ).toBeVisible();
+});
+
+test('desktop chat settings opens the collapsed conversation dock', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockChatShell(page);
+  await openComposer(page, true);
+  const dock = page.locator('#chat-dock');
+  await dock.getByRole('button', { name: 'Hide Chat', exact: true }).click();
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await dock.getByRole('button', { name: /^More dock actions/ }).press('Enter');
+  await expect(dock).not.toHaveClass(/is-collapsed/);
+  await expect(
+    page.getByRole('menu', { name: 'More dock actions' }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await dock.getByRole('button', { name: 'Hide Chat', exact: true }).click();
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await dock
+    .getByRole('button', { name: 'Chat settings', exact: true })
+    .click();
+  await expect(dock).not.toHaveClass(/is-collapsed/);
+  await expect(
+    page.getByRole('dialog', { name: /chat settings/i }),
+  ).toBeVisible();
 });
 
 for (const width of [361, 375, 390, 431, 481]) {
@@ -2565,10 +3333,9 @@ for (const width of [361, 375, 390, 431, 481]) {
       .getByRole('menuitem', { name: /^Full screen/ })
       .click();
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
-    // This is the configuration under test: the app toolbar is gone and this
-    // bar carries the drawer toggle.
+    // Global navigation stays above the maximized conversation.
     await expect(
-      page.getByRole('button', { name: 'Toggle menu' }),
+      page.locator('.app-toolbar').getByRole('button', { name: 'Toggle menu' }),
     ).toBeVisible();
 
     const header = page.locator('.chat-dock__mobile-header');
@@ -2584,7 +3351,9 @@ for (const width of [361, 375, 390, 431, 481]) {
     }
 
     await expect(
-      header.getByRole('button', { name: /^Switch project/ }),
+      header.getByRole('button', {
+        name: /^(Restore chat size|Full screen chat)$/,
+      }),
     ).toBeVisible();
     await expect(
       header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
@@ -2668,6 +3437,7 @@ test('the maximized phone dock header clears the status bar once, not twice', as
     const box = (selector: string) =>
       document.querySelector(selector)!.getBoundingClientRect();
     return {
+      toolbarBottom: box('.app-toolbar').bottom,
       dockTop: box('.chat-dock').top,
       headerTop: box('.chat-dock__mobile-header').top,
       headerHeight: box('.chat-dock__mobile-header').height,
@@ -2698,18 +3468,16 @@ test('the maximized phone dock header clears the status bar once, not twice', as
   const identity = (await header
     .locator('.chat-dock__mobile-identity')
     .boundingBox())!;
-  const headerBox = (await header.boundingBox())!;
   expect(identity.width).toBeGreaterThanOrEqual(180);
-  expect(
-    Math.abs(
-      identity.x + identity.width / 2 - (headerBox.x + headerBox.width / 2),
-    ),
-  ).toBeLessThanOrEqual(1);
-  const project = (await header
-    .getByRole('button', { name: /^Switch project/ })
+  const back = (await header
+    .getByRole('button', { name: 'Chats', exact: true })
     .boundingBox())!;
-  expect(project.width).toBeGreaterThanOrEqual(44);
-  expect(project.x + project.width).toBeLessThanOrEqual(identity.x + 1);
+  expect(back.width).toBeGreaterThanOrEqual(44);
+  expect(back.x + back.width).toBeLessThanOrEqual(identity.x + 1);
+  const appToolbar = (await page.locator('.app-toolbar').boundingBox())!;
+  expect(
+    Math.abs(geometry.dockTop - appToolbar.y - appToolbar.height),
+  ).toBeLessThanOrEqual(5);
 });
 
 /**
@@ -2761,6 +3529,7 @@ const chatGeometry = (page: Page) =>
     return {
       vw: innerWidth,
       vh: innerHeight,
+      toolbarBottom: box('.app-toolbar').bottom,
       dockTop: box('.chat-dock').top,
       headerTop: box('.chat-dock__mobile-header').top,
       headerHeight: box('.chat-dock__mobile-header').height,
@@ -2783,7 +3552,8 @@ test('an iPhone 15 portrait inset is honoured once by the maximized chat', async
   const g = await chatGeometry(page);
   // Top: the sheet clears the Dynamic Island (plus its 4px toolbar
   // clearance) and its header starts right there, not a second inset lower.
-  expect(g.dockTop).toBe(59 + 4);
+  expect(g.toolbarBottom).toBeGreaterThanOrEqual(59 + 44);
+  expect(Math.abs(g.dockTop - g.toolbarBottom)).toBeLessThanOrEqual(4);
   expect(g.headerTop - g.dockTop, JSON.stringify(g)).toBeLessThanOrEqual(2);
   expect(g.headerHeight).toBeLessThan(59);
   // Bottom: the composer ends exactly one home-indicator inset above the edge.
@@ -2792,6 +3562,100 @@ test('an iPhone 15 portrait inset is honoured once by the maximized chat', async
 
 test.describe('landscape iPhone (touch, so the phone chrome applies)', () => {
   test.use({ hasTouch: true, isMobile: true });
+  for (const theme of ['dark', 'light']) {
+    test(`landscape typing keeps Run setup in the send row in ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width: 852, height: 393 });
+      await mockChatShell(page);
+      const textarea = await openComposer(page, true);
+      await page.evaluate(
+        (theme) => document.documentElement.setAttribute('data-theme', theme),
+        theme,
+      );
+      await textarea.fill('Landscape draft');
+      const composer = page.locator('.chat-input');
+      const trigger = composer
+        .locator('.chat-controls-row')
+        .getByTestId('run-setup-trigger');
+      await expect(trigger).toBeVisible();
+      await expect(composer.locator('.chat-input__meta')).toBeHidden();
+      await expect(composer.locator('.chat-input__meta')).toHaveCSS(
+        'display',
+        'none',
+      );
+      await expect(textarea).toBeFocused();
+      await page.screenshot({
+        path: testInfo.outputPath(`landscape-typing-${theme}.png`),
+      });
+      await trigger.click();
+      await expect(
+        page.getByRole('dialog', {
+          name: 'Agent & model',
+          exact: true,
+        }),
+      ).toBeVisible();
+      await closeRunSetup(page);
+      await expect(textarea).toHaveValue('Landscape draft');
+    });
+  }
+  for (const theme of ['dark', 'light']) {
+    test(`landscape typing preserves the reconnecting pill in ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width: 852, height: 393 });
+      // mockChatShell aborts /events: exercise the actual outage projection.
+      await mockChatShell(page);
+      const textarea = await openComposer(page, true);
+      await page.evaluate(
+        (theme) => document.documentElement.setAttribute('data-theme', theme),
+        theme,
+      );
+      const pill = page.locator('[data-chat-status-pill="reconnecting"]');
+      await expect(pill).toBeVisible();
+      await textarea.fill('Keep connection status visible while typing');
+      await expect(textarea).toBeFocused();
+      await expect(pill).toBeVisible();
+      await expect(pill).toContainText('Reconnecting');
+      const composer = page.locator('.chat-input');
+      const trigger = composer
+        .locator('.chat-controls-row')
+        .getByTestId('run-setup-trigger');
+      await expect(trigger).toBeVisible();
+      const send = composer.getByRole('button', { name: 'Send', exact: true });
+      const triggerBox = (await trigger.boundingBox())!;
+      const sendBox = (await send.boundingBox())!;
+      expect(
+        Math.abs(
+          triggerBox.y +
+            triggerBox.height / 2 -
+            (sendBox.y + sendBox.height / 2),
+        ),
+      ).toBeLessThanOrEqual(1);
+      await page.screenshot({
+        path: testInfo.outputPath(`landscape-pill-${theme}.png`),
+      });
+      await trigger.click();
+      await expect(
+        page.getByRole('dialog', {
+          name: 'Agent & model',
+          exact: true,
+        }),
+      ).toBeVisible();
+      await closeRunSetup(page);
+      await expect(textarea).toHaveValue(
+        'Keep connection status visible while typing',
+      );
+      for (const width of [390, 412, 1440]) {
+        await page.setViewportSize({ width, height: 915 });
+        await textarea.focus();
+        await expect(pill).toBeVisible();
+        await page.screenshot({
+          path: testInfo.outputPath(`typing-pill-${width}-${theme}.png`),
+        });
+      }
+    });
+  }
   test('a landscape iPhone keeps the chat clear of its side insets', async ({
     page,
   }) => {
@@ -2902,7 +3766,7 @@ for (const viewport of [
     );
     await expect(page.locator('.chat-dock__counter')).toBeHidden();
     await expect(
-      page.locator('.chat-dock__header').getByTitle('Chat settings'),
+      page.locator('.chat-dock__header').getByTitle('Agent & model'),
     ).toBeHidden();
     // The dock's tab-action row is desktop-only now; its mobile equivalents are
     // the one-row header's own controls. Same guarantee as before: every session
@@ -2911,7 +3775,9 @@ for (const viewport of [
     await expect(moreActions).toBeVisible();
     const mobileHeader = page.locator('.chat-dock__mobile-header');
     await expect(
-      mobileHeader.getByRole('button', { name: /^Switch project/ }),
+      mobileHeader.getByRole('button', {
+        name: /^(Restore chat size|Full screen chat)$/,
+      }),
     ).toBeVisible();
     await expect(
       mobileHeader.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
@@ -2932,7 +3798,7 @@ for (const viewport of [
     // header's overflow sheet, where each is a real menuitem.
     const mobileActions = page.getByRole('menu', { name: 'Chat actions' });
     await expect(mobileActions).toBeVisible();
-    for (const name of ['New chat', 'Inbox', 'Chat settings']) {
+    for (const name of ['New chat', 'Chats', 'Agent & model']) {
       await expect(mobileActions.getByRole('menuitem', { name })).toBeVisible();
     }
     const mobileActionsBox = await mobileActions.boundingBox();
@@ -2952,21 +3818,24 @@ for (const viewport of [
     );
     await moreActions.click();
     await mobileActions
-      .getByRole('menuitem', { name: 'Chat settings' })
+      .getByRole('menuitem', { name: 'Agent & model' })
       .click();
     await expect(
-      page.getByText('Chat Settings', { exact: true }),
+      page.getByText('Agent & model', { exact: true }),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Done' }).click();
-    await expect(page.getByText('Chat Settings', { exact: true })).toBeHidden();
+    await expect(page.getByText('Agent & model', { exact: true })).toBeHidden();
     await expandMobileDock(page);
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
-    const selectedModel = page.locator('.chat-input__model-name');
-    await expect(selectedModel).toHaveText('Selected Test Model');
-    await expect(page.locator('.chat-input__model-btn')).toHaveAttribute(
-      'aria-label',
-      /agent default/,
+    const selectedModel = await runSetupControl(page, (panel) =>
+      panel.locator('.chat-input__model-name'),
     );
+    await expect(selectedModel).toHaveText('Selected Test Model');
+    await expect(
+      await runSetupControl(page, (panel) =>
+        panel.locator('.chat-input__model-btn'),
+      ),
+    ).toHaveAttribute('aria-label', /agent default/);
     const selectedModelLabel = 'Selected Test Model';
     const activeChatParam = new URL(page.url()).searchParams.get('chat');
     await expect(page.locator('.chat-dock__mobile-title-text')).toHaveText(
@@ -2985,6 +3854,7 @@ for (const viewport of [
           ),
       );
       await expect(textarea).toBeEnabled();
+      await closeRunSetup(page);
       await textarea.fill('one\ntwo\nthree\nfour\nfive\nsix\nseven\neight');
       await textarea.focus();
       const openHeight = Math.round(
@@ -3064,7 +3934,9 @@ for (const viewport of [
       await expect(page.locator('.chat-dock__mobile-title-text')).toHaveText(
         'New chat',
       );
-      await expect(selectedModel).toHaveText(selectedModelLabel ?? '');
+      await expect(
+        page.locator('#chat-dock').getByTestId('run-setup-trigger'),
+      ).toHaveAccessibleName(new RegExp(selectedModelLabel));
       // With the keyboard still up the dock can be exactly as tall as the
       // status line plus the composer (149px at 320x568): the transcript has
       // no room and steps aside, so only its presence is asserted here. Its
@@ -3108,6 +3980,21 @@ for (const viewport of [
     test.setTimeout(20_000);
     await page.setViewportSize(viewport);
     await mockChatShell(page);
+    // The Home summary also reads this delegated session; declare its transcript.
+    const delegatedTurns = buildLongSessionTurns({
+      threadId: 'delegated-review',
+      provider: 'codex',
+      turnCount: 1,
+      replyText: () => 'Delegated review is ready.',
+    });
+    await page.route(
+      '**/api/orchestration/sessions/delegated-review/event-window**',
+      createLongSessionEventWindowHandler({
+        threadId: 'delegated-review',
+        provider: 'codex',
+        availableTurns: () => delegatedTurns,
+      }),
+    );
     const textarea = await openComposer(page, true);
 
     // Nothing may widen the document past the viewport with the dock open.
@@ -3127,7 +4014,10 @@ for (const viewport of [
     expect(textareaBox).not.toBeNull();
     expect(textareaBox!.width).toBeGreaterThanOrEqual(inputBox!.width * 0.9);
 
-    const drafts = page.getByRole('button', { name: 'Drafts', exact: true });
+    const drafts = page.getByRole('button', {
+      name: 'More draft options',
+      exact: true,
+    });
     await expect(drafts).toBeVisible();
     const draftsBox = await drafts.boundingBox();
     expect(draftsBox!.y).toBeGreaterThanOrEqual(
@@ -3135,12 +4025,15 @@ for (const viewport of [
     );
     expect(draftsBox!.x + draftsBox!.width).toBeLessThanOrEqual(viewport.width);
     await drafts.click();
+    await page
+      .getByRole('menuitem', { name: 'Saved drafts', exact: true })
+      .click();
     await expect(
-      page.getByRole('dialog', { name: 'Portable drafts' }),
+      page.getByRole('dialog', { name: 'Saved drafts' }),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'Close portable drafts' }).click();
+    await page.getByRole('button', { name: 'Close saved drafts' }).click();
     await expect(
-      page.getByRole('dialog', { name: 'Portable drafts' }),
+      page.getByRole('dialog', { name: 'Saved drafts' }),
     ).toBeHidden();
 
     // Row 2: the controls strip sits below the textarea and every visible
@@ -3158,7 +4051,9 @@ for (const viewport of [
     expect(controlsBox!.x + controlsBox!.width).toBeLessThanOrEqual(
       viewport.width,
     );
-    const modelButton = page.locator('.chat-input__model-btn');
+    const modelButton = await runSetupControl(page, (panel) =>
+      panel.locator('.chat-input__model-btn'),
+    );
     await expect(modelButton).toBeVisible();
     await expect(modelButton.locator('.chat-input__model-name')).toHaveText(
       'Selected Test Model',
@@ -3193,8 +4088,16 @@ for (const viewport of [
     });
     const reconnectBox = await reconnectStatus.boundingBox();
     const composerBox = await page.locator('.chat-input').boundingBox();
+    await closeRunSetup(page);
+    await expect(
+      page.getByRole('dialog', {
+        name: 'Agent & model',
+        exact: true,
+      }),
+    ).toBeHidden();
     const railControlBox = await page
-      .locator('.chat-input__agent-btn')
+      .locator('.chat-input')
+      .getByTestId('run-setup-trigger')
       .boundingBox();
     expect(reconnectBox).not.toBeNull();
     expect(composerBox).not.toBeNull();
@@ -3242,7 +4145,9 @@ for (const viewport of [
         join(evidenceRoot, screenshotName),
       );
     }
-    const agentButton = page.locator('.chat-input__agent-btn');
+    const agentButton = await runSetupControl(page, (panel) =>
+      panel.locator('.chat-input__agent-btn'),
+    );
     await expect(agentButton).toBeVisible();
     await expect(agentButton).toHaveAccessibleName(
       'Agent: Claude. Can’t change Agent yet. Send a message first.',
@@ -3251,16 +4156,19 @@ for (const viewport of [
     await expect(agentButton.locator('.chat-input__agent-name')).toHaveText(
       'Claude',
     );
-    await expect(agentButton.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+    await expect(agentButton.locator('.choice-caret')).toHaveCount(1);
+    await expect(agentButton.locator('.composer-choice__icon svg')).toHaveCount(
+      1,
+    );
+    await closeRunSetup(page);
     const attach = page
       .locator('#chat-dock')
       .getByRole('button', { name: 'Attach files' });
     const attachBox = await attach.boundingBox();
     expect(attachBox!.x + attachBox!.width).toBeLessThanOrEqual(viewport.width);
 
-    // Delegate/Commands/Files/Task-context collapse into one grouped "+"
-    // menu (docs/design/chat-composer.md §3.2), contained within the
-    // viewport, and Task context is reachable from inside it.
+    // Delegate and the command launcher are composer actions. The dock's
+    // Chat actions menu owns the work panels.
     const actionsMenuTrigger = page.getByRole('button', {
       name: 'Composer actions',
     });
@@ -3274,24 +4182,26 @@ for (const viewport of [
     const menu = page.getByRole('menu', { name: 'Composer actions' });
     await expect(menu).toBeVisible();
 
-    // All four grouped actions (docs/design/chat-composer.md §3.2) must be
-    // visible and enabled inside the menu, not just one of them.
     const delegateItem = menu.getByRole('menuitem', { name: 'Delegate' });
     const commandsItem = menu.getByRole('menuitem', {
       name: 'Open command launcher',
-    });
-    const filesItem = menu.getByRole('menuitemcheckbox', { name: /^Files/ });
-    const taskContextItem = menu.getByRole('menuitemcheckbox', {
-      name: 'Task context',
     });
     await expect(delegateItem).toBeVisible();
     await expect(delegateItem).toBeEnabled();
     await expect(commandsItem).toBeVisible();
     await expect(commandsItem).toBeEnabled();
-    await expect(filesItem).toBeVisible();
-    await expect(filesItem).toBeEnabled();
-    await expect(taskContextItem).toBeVisible();
-    await expect(taskContextItem).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await page
+      .getByRole('button', { name: 'Chat actions', exact: true })
+      .click();
+    const chatActions = page.getByRole('menu', { name: 'Chat actions' });
+    for (const name of [/^Changed files/, /^Task context$/]) {
+      const panel = chatActions.getByRole('menuitemcheckbox', { name });
+      await expect(panel).toBeVisible();
+      await expect(panel).toBeEnabled();
+    }
+    await page.getByRole('button', { name: 'Close actions menu' }).click();
 
     // Defense-in-depth: the desktop Active Work aside must not render inside
     // the workspace at phone width.
@@ -3423,13 +4333,14 @@ test('drags the mobile dock bar between half and full without stealing taps', as
     Math.round(beforeTap?.height ?? 0),
   );
 
-  const collapseControl = page.getByRole('button', {
-    name: 'Collapse chat',
-    exact: true,
-  });
-  await expect(collapseControl).toBeVisible();
-  await expectSettledTouchTargetHeight(collapseControl);
-  await collapseControl.click();
+  // With a conversation open the header's leading slot is Chats, so the
+  // dock is put away by its gesture: a slow drag down the header, past the
+  // midpoint between the bar and Half. The header is the touch target.
+  await expectSettledTouchTargetHeight(header);
+  await page.mouse.move(headerBox.x + 4, headerBox.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(headerBox.x + 4, headerBox.y + 330, { steps: 4 });
+  await page.mouse.up();
   await expect(dock).toHaveClass(/is-collapsed/);
   await expectVisibleGeometry(false);
 
@@ -3534,12 +4445,12 @@ test('preserves desktop dock geometry', async ({ page }) => {
   expect(maximizedDock?.x).toBe(sidebar.x + sidebar.width);
   expect(maximizedDock?.width).toBe(inlineDockWidth);
   await chooseChatRegionRow(page, 'Restore size');
-  // Restore now returns to the named Half snap, whose 45% viewport contract
-  // resolves to 360px at this 800px desktop viewport (rather than reviving
-  // the older fixed 320px default).
+  // Restore returns the dock to where it was before it was maximized (owner
+  // decision, 2026-11-25): the height it was opened or dragged at, here 320px,
+  // rather than the Half snap's 45% (360px at this 800px viewport).
   await expect
     .poll(async () => (await page.locator('.chat-dock').boundingBox())?.height)
-    .toBe(360);
+    .toBe(320);
   const resizeHandle = page.getByRole('separator', {
     name: 'Resize chat dock',
   });
@@ -3552,6 +4463,19 @@ test('preserves desktop dock geometry', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(handleBox.x + handleBox.width / 2, 365, { steps: 4 });
   await page.mouse.up();
+  await expect
+    .poll(async () =>
+      Math.round((await page.locator('.chat-dock').boundingBox())?.height ?? 0),
+    )
+    .toBe(435);
+  // Maximized again from that dragged height, Restore brings the height back.
+  await chooseChatRegionRow(page, 'Maximize');
+  await expect
+    .poll(async () =>
+      Math.round((await page.locator('.chat-dock').boundingBox())?.height ?? 0),
+    )
+    .toBeGreaterThan(600);
+  await chooseChatRegionRow(page, 'Restore size');
   await expect
     .poll(async () =>
       Math.round((await page.locator('.chat-dock').boundingBox())?.height ?? 0),
@@ -3607,7 +4531,13 @@ const OPAQUE_SHEETS = [
   {
     name: 'approval-mode sheet',
     open: async (page: Page) =>
-      page.locator('.chat-input__approval-chip').first().click(),
+      (
+        await runSetupControl(page, (panel) =>
+          panel.locator('.chat-input__approval-chip'),
+        )
+      )
+        .first()
+        .click(),
     panel: '.composer-mode-sheet',
   },
   {
@@ -3623,6 +4553,36 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
 }) => {
   await page.setViewportSize({ width: 390, height: 540 });
   await mockChatShell(page);
+  const rememberedModel = {
+    favorites: [],
+    recents: ['bedrock-prod\u001fsonnet'],
+    hidden: [],
+    order: [],
+  };
+  let preferences: AccountPreferencesView = {
+    schemaVersion: 1,
+    values: {},
+    revision: 'mobile-model-before',
+  };
+  await page.route('**/api/me/preferences', (route) => {
+    const request = route.request();
+    if (request.method() === 'PATCH') {
+      if (request.headers()['if-match'] !== preferences.revision) {
+        return route.fulfill({
+          ...json({ error: { code: 'account_preferences_changed' } }),
+          status: 409,
+        });
+      }
+      preferences = {
+        schemaVersion: 1,
+        values: { modelPickerPreferences: rememberedModel },
+        revision: 'mobile-model-after',
+      };
+    } else if (request.method() !== 'GET') {
+      return rejectUnexpectedFixtureRequest(route);
+    }
+    return route.fulfill(json({ success: true, data: preferences }));
+  });
   await page.route('**/api/connections/models', (route) =>
     route.fulfill(
       json({
@@ -3678,7 +4638,9 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
   const activeComposer = textarea.locator(
     'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " chat-input ")][1]',
   );
-  const modelButton = activeComposer.locator('.chat-input__model-btn');
+  const modelButton = await runSetupControl(activeComposer, (panel) =>
+    panel.locator('.chat-input__model-btn'),
+  );
   const modelButtonBox = await modelButton.boundingBox();
   expect(modelButtonBox).not.toBeNull();
   expect(modelButtonBox!.y).toBeGreaterThanOrEqual(0);
@@ -3695,8 +4657,13 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
   await modelButton.click();
 
   const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
-  const providerRail = picker.getByRole('group', { name: 'Providers' });
-  const firstModel = picker.getByRole('option').first();
+  const providerRail = picker.getByRole('navigation', {
+    name: 'Model collections',
+  });
+  const firstModel = picker
+    .getByRole('group', { name: 'Models', exact: true })
+    .getByRole('button')
+    .first();
   await expect(providerRail).toBeVisible();
   await expect(firstModel).toBeVisible();
 
@@ -3717,6 +4684,28 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
   }));
   expect(railOverflow.scrollWidth).toBeGreaterThan(railOverflow.clientWidth);
   expect(railOverflow.overflowX).toBe('auto');
+  await providerRail
+    .getByRole('button', { name: 'Bedrock Production', exact: true })
+    .click();
+  const remembered = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/me/preferences' &&
+      response.request().method() === 'PATCH',
+  );
+  await picker
+    .locator('.session-model-picker__models')
+    .getByText('Claude Sonnet', { exact: true })
+    .click();
+  const preferenceReply = await remembered;
+  expect(preferenceReply.status()).toBe(200);
+  expect(preferenceReply.request().postDataJSON()).toEqual({
+    modelPickerPreferences: rememberedModel,
+  });
+  await expect(picker).toBeHidden();
+  await closeRunSetup(page);
+  await expect(
+    page.locator('#chat-dock').getByTestId('run-setup-trigger'),
+  ).toHaveAccessibleName(/Claude Sonnet/);
 });
 
 for (const theme of ['dark', 'light'] as const) {
@@ -3771,6 +4760,7 @@ for (const theme of ['dark', 'light'] as const) {
 
       await page.keyboard.press('Escape');
       await expect(panel, sheet.name).toBeHidden();
+      await closeRunSetup(page);
     }
   });
 }
@@ -3794,7 +4784,7 @@ for (const theme of ['dark', 'light'] as const) {
 for (const theme of ['dark', 'light'] as const) {
   test(`the mobile model picker renders an opaque panel surface (${theme}, #992)`, async ({
     page,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 390, height: 844 });
     await mockChatShell(page);
@@ -3847,7 +4837,11 @@ for (const theme of ['dark', 'light'] as const) {
       `${theme} theme is actually applied`,
     ).toBe(theme === 'light' ? '#f5f4ef' : '#0a0e13');
 
-    const trigger = page.locator('.chat-input__model-btn').first();
+    const trigger = (
+      await runSetupControl(page, (panel) =>
+        panel.locator('.chat-input__model-btn'),
+      )
+    ).first();
     await expect(trigger).toBeEnabled();
     await trigger.click();
 
@@ -3884,8 +4878,25 @@ for (const theme of ['dark', 'light'] as const) {
       'opt-out wrapper draws no ring',
     ).toBe('0px');
 
+    await panel.screenshot({
+      path: testInfo.outputPath(`station-model-picker-390-${theme}.png`),
+      animations: 'disabled',
+    });
     await page.keyboard.press('Escape');
     await expect(panel, 'model picker').toBeHidden();
+    await closeRunSetup(page);
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await (
+      await runSetupControl(page, (setup) =>
+        setup.locator('.chat-input__model-btn'),
+      )
+    ).click();
+    await expect(panel, 'desktop model picker').toBeVisible();
+    await panel.screenshot({
+      path: testInfo.outputPath(`station-model-picker-1440-${theme}.png`),
+      animations: 'disabled',
+    });
   });
 }
 
@@ -3962,7 +4973,7 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
   await expect(switcher).toBeVisible({ timeout: 15_000 });
   await switcher.click();
 
-  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
+  const menu = page.getByRole('region', { name: 'Chats', exact: true });
   await expect(menu).toBeVisible();
   // Restored bulk entries currently use the Station Chat display title.
   // Fullness is what matters: enough rows that the sheet hits max height.
@@ -3972,7 +4983,11 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
     )
     .toBeGreaterThan(15);
 
-  const close = page.getByRole('button', { name: 'Back to chat', exact: true });
+  await page.getByRole('button', { name: 'Actions for Chats' }).click();
+  const close = page.getByRole('menuitem', {
+    name: 'Back to chat',
+    exact: true,
+  });
   await expect(close).toBeVisible();
   // The real assertion: the Close control must actually receive the tap —
   // Playwright refuses the click if another element (the app toolbar)
@@ -4047,40 +5062,17 @@ test('keeps primary context controls draggable and navigation actions tap-only (
   const header = page.getByTestId('chat-dock-mobile-header');
   await expect(header).toBeVisible({ timeout: 15_000 });
   await expect(
-    header.getByRole('button', { name: 'Toggle menu' }),
+    page.locator('.app-toolbar').getByRole('button', { name: 'Toggle menu' }),
   ).toBeVisible();
 
-  // The owner's report: grabbing the header does nothing depending on where
-  // the thumb lands, because a control that is not marked passthrough aborts
-  // the drag before it starts (isInteractiveDockDragTarget). Every interactive
-  // control in the bar must opt into the drag surface — the tap/drag
-  // discrimination still delivers their clicks on a stationary press.
-  const controls = header.locator('button');
-  const total = await controls.count();
-  await expect(
-    header.getByRole('button', { name: /^Switch project/ }),
-  ).toBeVisible();
-  await expect(
-    header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
-  ).toBeVisible();
-  for (let i = 0; i < total; i++) {
-    const control = controls.nth(i);
-    const name = (await control.getAttribute('aria-label')) ?? `control ${i}`;
-    // Explicit navigation/actions stay tap-only. Context controls share the
-    // dock's existing tap/drag discriminator.
-    if ((await control.getAttribute('data-no-dock-drag')) !== null) {
-      expect(
-        name,
-        'navigation and action buttons keep a gesture-free tap path',
-      ).toMatch(
-        /^(Expand chat|Collapse chat|Toggle menu|Chat actions|New chat)$/,
-      );
-      continue;
-    }
-    await expect(
-      control,
-      `${name} must be part of the dock drag surface`,
-    ).toHaveAttribute('data-dock-drag-passthrough', '');
+  await expect(header.locator('.chat-dock__mobile-identity')).toHaveAttribute(
+    'data-dock-drag-passthrough',
+    '',
+  );
+  const navigation = header.getByRole('button');
+  expect(await navigation.count()).toBeGreaterThanOrEqual(3);
+  for (const control of await navigation.all()) {
+    await expect(control).toHaveAttribute('data-no-dock-drag', '');
   }
 });
 
@@ -4091,13 +5083,18 @@ for (const width of [320, 390, 600]) {
     await page.setViewportSize({ width, height: 844 });
     await mockChatShell(page);
     await openComposer(page);
-    const rail = page.locator('.chat-input__meta');
-    await expect(rail).toBeVisible();
-    const controls = rail.locator(
-      '.chat-input__agent-btn, .chat-input__model-btn, .chat-input__approval-chip',
+    const composer = page.locator('.chat-input');
+    const rail = composer.locator('.chat-controls-row');
+    await expect(rail.getByTestId('run-setup-trigger')).toBeVisible();
+    const controls = await runSetupControl(composer, (panel) =>
+      panel.locator(
+        '.chat-input__agent-btn, .chat-input__model-btn, .chat-input__approval-chip',
+      ),
     );
     await expect(controls).toHaveCount(3);
-    const railBox = await rail.boundingBox();
+    const railBox = await page
+      .getByRole('dialog', { name: 'Agent & model', exact: true })
+      .boundingBox();
     expect(railBox).not.toBeNull();
     for (const control of await controls.all()) {
       await expect(control).toBeVisible();
@@ -4109,6 +5106,7 @@ for (const width of [320, 390, 600]) {
         railBox!.x + railBox!.width + 1,
       );
     }
+    await closeRunSetup(page);
     expect(
       await rail.evaluate(
         (element) => element.scrollWidth <= element.clientWidth + 1,
@@ -4126,7 +5124,7 @@ test('profiles switching between authoritative conversations', async ({
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
   const switcher = page.getByRole('button', { name: /^(Inbox|Back to chat)$/ });
-  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
+  const menu = page.getByRole('region', { name: 'Chats', exact: true });
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
   await expect(switcher).toBeVisible();
   await profileJourney(
@@ -4138,12 +5136,13 @@ test('profiles switching between authoritative conversations', async ({
       for (const state of ['Waiting on you', 'Running', 'Waiting on you']) {
         await switcher.click();
         await menu
-          .getByRole('button', { name: 'Station Chat, Default' })
+          .getByRole('button', { name: /^Station Chat.*Default/i })
           .filter({ hasText: state })
           .click();
         await expect(menu).toBeHidden();
         if (state === 'Waiting on you') {
           await expect(textarea).toBeEnabled();
+          await closeRunSetup(page);
           await textarea.fill('profile draft');
         }
       }
@@ -4167,6 +5166,7 @@ for (const width of [320, 390, 1280]) {
         (theme) => document.documentElement.setAttribute('data-theme', theme),
         theme,
       );
+      await closeRunSetup(page);
       await textarea.fill('Ask a question or describe a task…');
       await expect(
         page.getByRole('button', { name: 'Send', exact: true }),
@@ -4175,9 +5175,10 @@ for (const width of [320, 390, 1280]) {
       await expect(send).toHaveCSS('opacity', '1');
       expect((await backgroundPaint(send)).alpha).toBe(1);
       await expect.poll(() => contrastRatio(send)).toBeGreaterThanOrEqual(4.5);
-      const drafts = page
-        .locator('.chat-controls-row')
-        .getByRole('button', { name: 'Drafts', exact: true });
+      const drafts = page.locator('.chat-controls-row').getByRole('button', {
+        name: width < 768 ? 'More draft options' : 'Drafts',
+        exact: true,
+      });
       const inputBox = (await textarea.boundingBox())!;
       const draftsBox = (await drafts.boundingBox())!;
       expect(draftsBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
@@ -4185,12 +5186,16 @@ for (const width of [320, 390, 1280]) {
       const activeComposer = textarea.locator(
         'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " chat-input ")][1]',
       );
-      const agent = activeComposer.getByRole('button', {
-        name: /^Agent: Claude/,
-      });
-      const model = activeComposer.getByRole('button', {
-        name: /^Model: Claude — Selected Test Model/,
-      });
+      const agent = await runSetupControl(activeComposer, (panel) =>
+        panel.getByRole('button', {
+          name: /^Agent: Claude/,
+        }),
+      );
+      const model = await runSetupControl(activeComposer, (panel) =>
+        panel.getByRole('button', {
+          name: /^Engine & model: Claude Selected Test Model/,
+        }),
+      );
       await expect(agent.locator('.chat-input__agent-name')).toHaveText(
         'Claude',
       );
@@ -4200,11 +5205,17 @@ for (const width of [320, 390, 1280]) {
       );
       await expect(model).toHaveAttribute(
         'title',
-        /^Model: Claude — Selected Test Model/,
+        /^Engine & model: Claude Selected Test Model/,
       );
-      const rail = activeComposer.locator('.chat-input__meta');
-      const bounds = (await rail.boundingBox())!;
-      const approval = page.getByRole('button', { name: /^Approval mode:/ });
+      const bounds = (await page
+        .getByRole('dialog', {
+          name: 'Agent & model',
+          exact: true,
+        })
+        .boundingBox())!;
+      const approval = await runSetupControl(page, (panel) =>
+        panel.getByRole('button', { name: /^Approval mode:/ }),
+      );
       for (const control of [agent, model, approval]) {
         const box = (await control.boundingBox())!;
         expect(box.height).toBeGreaterThanOrEqual(width < 769 ? 44 : 32);
@@ -4214,31 +5225,24 @@ for (const width of [320, 390, 1280]) {
         );
         expect(await contrastRatio(control)).toBeGreaterThanOrEqual(4.5);
       }
-      // #3127 made Clear an icon action named "Clear message"; it no longer
-      // carries a visible "Clear" word.
-      const clear = page.getByRole('button', {
+      await closeRunSetup(page);
+      if (width < 768) await drafts.click();
+      const clear = page.getByRole(width < 768 ? 'menuitem' : 'button', {
         name: 'Clear message',
         exact: true,
       });
       await expect(clear).toBeVisible();
-      await expect(clear).toHaveText('');
-      const clearBox = (await clear.boundingBox())!;
-      expect(clearBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
-      const sendBox = (await send.boundingBox())!;
-      if (width === 320) {
-        // Only at 320px do the actions wrap (Send then sits on the row below);
-        // there they must not collide.
-        expect(
-          clearBox.x + clearBox.width <= sendBox.x ||
-            sendBox.x + sendBox.width <= clearBox.x ||
-            clearBox.y + clearBox.height <= sendBox.y ||
-            sendBox.y + sendBox.height <= clearBox.y,
-          `Clear ${JSON.stringify(clearBox)} overlaps Send ${JSON.stringify(sendBox)}`,
-        ).toBe(true);
-      } else {
-        // Where the row does not wrap, Clear stays on Send's row, to its left.
+      if (width === 1280) {
+        const clearBox = (await clear.boundingBox())!;
+        const sendBox = (await send.boundingBox())!;
         expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(sendBox.x);
+        expect(
+          Math.min(clearBox.y + clearBox.height, sendBox.y + sendBox.height) -
+            Math.max(clearBox.y, sendBox.y),
+        ).toBeGreaterThan(0);
       }
+      if (width < 768) await page.keyboard.press('Escape');
+      await textarea.focus();
       await expect(textarea).toHaveCSS('outline-style', 'none');
       const capsule = page.locator('.chat-input__capsule');
       await expect(capsule).toHaveCSS('outline-style', 'solid');
@@ -4246,7 +5250,11 @@ for (const width of [320, 390, 1280]) {
       await page.locator('.chat-input').screenshot({
         path: testInfo.outputPath(`composer-${width}-${theme}.png`),
       });
-      await model.click();
+      await (
+        await runSetupControl(activeComposer, (panel) =>
+          panel.locator('.chat-input__model-btn'),
+        )
+      ).click();
       const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
       await expect(picker).toBeVisible();
       await picker.getByRole('button', { name: 'Close model picker' }).click();
@@ -4263,16 +5271,22 @@ for (const width of [320, 390, 1280]) {
         ),
       ).toBeGreaterThanOrEqual(2);
 
+      await closeRunSetup(page);
       await drafts.click();
+      if (width < 768)
+        await page
+          .getByRole('menuitem', { name: 'Saved drafts', exact: true })
+          .click();
       const draftsDialog = page.getByRole('dialog', {
-        name: 'Portable drafts',
+        name: 'Saved drafts',
       });
       await expect(draftsDialog).toBeVisible();
       await draftsDialog
-        .getByRole('button', { name: 'Close portable drafts' })
+        .getByRole('button', { name: 'Close saved drafts' })
         .click();
       await expect(draftsDialog).toBeHidden();
       await expect(textarea).toHaveValue('Ask a question or describe a task…');
+      if (width < 768) await drafts.click();
       await clear.click();
       await expect(textarea).toHaveValue('');
       await expect(clear).toBeHidden();
@@ -4280,9 +5294,7 @@ for (const width of [320, 390, 1280]) {
   }
 }
 
-test('sidebar overflow opens the real mobile chat collection', async ({
-  page,
-}) => {
+test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await seedMobileTaskSwitcher(page, true);
   await page.goto('/?chat=conv-running');
@@ -4292,36 +5304,62 @@ test('sidebar overflow opens the real mobile chat collection', async ({
     name: 'Mobile navigation',
   });
   await expect(navigation).toBeVisible();
-  await navigation.getByRole('button', { name: /^\d+ more$/ }).click();
-  const sheet = page.getByRole('region', { name: 'Inbox', exact: true });
+  await navigation.getByRole('button', { name: 'Close navigation' }).click();
+  await expect(navigation).toBeHidden();
+  const chatActions = page.getByRole('button', {
+    name: 'Chat actions',
+    exact: true,
+  });
+  const menu = page.getByRole('menu', { name: 'Chat actions' });
+  await page.getByRole('button', { name: 'Chats', exact: true }).click();
+  const sheet = page.getByRole('region', { name: 'Chats', exact: true });
   await expect(sheet).toBeVisible();
   await expect(navigation).not.toBeVisible();
   await expect(
     sheet.getByText('Overflow conversation 0', { exact: true }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Actions for Chats' }).click();
+  await page
+    .getByRole('menuitem', { name: 'Back to chat', exact: true })
+    .click();
   await expect(sheet).not.toBeVisible();
+
+  await chatActions.click();
+  await menu
+    .getByRole('menuitem', { name: 'Browse all conversations' })
+    .click();
+  const closeHistory = page
+    .locator('.conversation-history')
+    .getByRole('button', { name: 'Close history' });
+  await expect(closeHistory).toBeVisible();
+  await closeHistory.click();
+  await expect(closeHistory).toBeHidden();
 });
 
 for (const width of [320, 431]) {
-  test(`chat layout audit centers its title and keeps slash commands usable at ${width}px`, async ({
+  test(`chat layout audit reserves the space between navigation and actions for its title and keeps slash commands usable at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await mockChatShell(page);
     const input = await openComposer(page);
     const header = page.getByTestId('chat-dock-mobile-header');
-    const outer = (await header.boundingBox())!;
+    const back = (await header
+      .getByRole('button', { name: 'Chats', exact: true })
+      .boundingBox())!;
+    const actions = (await header
+      .locator('.chat-dock__mobile-actions')
+      .boundingBox())!;
     const identity = (await header
       .locator('.chat-dock__mobile-identity')
       .boundingBox())!;
-    expect(
-      Math.abs(identity.x + identity.width / 2 - (outer.x + outer.width / 2)),
-    ).toBeLessThanOrEqual(1);
+    expect(identity.x).toBeGreaterThanOrEqual(back.x + back.width);
+    expect(identity.x + identity.width).toBeLessThanOrEqual(actions.x + 1);
     const title = (await header
       .locator('.chat-dock__mobile-title-text')
       .boundingBox())!;
     expect(title.width).toBeGreaterThan(0);
+    await closeRunSetup(page);
     await input.fill('/');
     const menu = page.getByRole('listbox', { name: 'Suggestions' });
     await expect(menu).toBeVisible();
@@ -4342,6 +5380,7 @@ for (const width of [320, 431]) {
         );
       }),
     ).toBe(true);
+    await closeRunSetup(page);
     await input.fill('/stats');
     await expect(menu.getByText('Platform', { exact: true })).toBeVisible();
     await menu.getByRole('option').click();
@@ -4382,6 +5421,7 @@ test('a refused send keeps a two-line draft clear of every row in a 375x667 half
   );
 
   const textarea = await openComposer(page, false, 'station');
+  await closeRunSetup(page);
   await textarea.fill(
     'Terrible styling also after I accepted one the approval was still showing up.\nSecond line of the draft here.\nThird line should stay visible.',
   );
@@ -4804,6 +5844,7 @@ async function queueSendForRetry(
     page.getByRole('button', { name: /^Choose Station — Connected/ }),
   ).toHaveCount(0, { timeout: 30_000 });
   if (options.maximize) await expandMobileDock(page);
+  await closeRunSetup(page);
   await textarea.fill('Message that has to be retried');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   // The transcript keeps the notice whether or not a short dock shows it.
@@ -4815,9 +5856,19 @@ async function queueSendForRetry(
   // Measure the settled state: the queue has listed the message (a send with
   // no answer waits for Station to confirm it never arrived before it is
   // sent again, #3652) and the send's "Working" pill has left.
+  const pending = page.getByRole('region', { name: 'Pending messages' });
+  const toggle = pending.getByRole('button', {
+    name: '1 pending message',
+    exact: true,
+  });
+  await toggle.click();
   await expect(
-    page.locator('.queued-messages').getByText(/with no answer yet/i),
+    pending.locator('.message-delivery__label').filter({
+      hasText: /^No answer yet\. Resends only if it never arrived\.$/,
+    }),
   ).toBeVisible();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expect(page.locator('.chat-status-pill')).toHaveCount(0);
   return { textarea };
 }
@@ -4877,6 +5928,7 @@ for (const [name, viewport, maximize] of [
   }, testInfo) => {
     test.setTimeout(60_000);
     const { textarea } = await queueSendForRetry(page, viewport, { maximize });
+    if (!maximize) await setVisualViewport(page, 365);
     await expect
       .poll(async () => {
         const reports = await discardButtonReport(page);
@@ -4896,9 +5948,10 @@ for (const [name, viewport, maximize] of [
       0;
     // The half dock is the case the composer's priority exists for.
     if (!maximize)
-      expect(priority, 'a 375x667 half dock engages composer priority').toBe(
-        true,
-      );
+      expect(
+        priority,
+        'a 375x667 half dock above the keyboard engages composer priority',
+      ).toBe(true);
     if (priority) {
       // The composer carries Discard. It takes no room of its own: it sits in
       // the controls row, which stays one touch row, so the composer needs no
@@ -4908,7 +5961,8 @@ for (const [name, viewport, maximize] of [
         .boundingBox();
       expect(controlsRow!.height).toBeLessThanOrEqual(44.5);
       // Send is concealed from the accessibility tree while the draft is
-      // empty, so it is found by its group rather than by role.
+      // empty, so it is found by its group rather than by role. An empty
+      // draft collapses it entirely, leaving nothing for Discard to cover.
       const send = await page
         .locator('.chat-input__submit-controls')
         .boundingBox();
@@ -4916,10 +5970,11 @@ for (const [name, viewport, maximize] of [
         (report) => report.inComposer,
       );
       expect(carried, 'the composer carries a Discard').toBeDefined();
-      expect(
-        carried!.box[0] + carried!.box[2],
-        'Discard stays clear of Send',
-      ).toBeLessThanOrEqual(send!.x + 0.5);
+      if (send)
+        expect(
+          carried!.box[0] + carried!.box[2],
+          'Discard stays clear of Send',
+        ).toBeLessThanOrEqual(send.x + 0.5);
       // Under load the transcript can report a scroll while it is still
       // collapsing, which portals its Scroll to bottom button into the
       // composer's activity row. That state is forced here rather than
@@ -5105,7 +6160,7 @@ for (const viewport of [
   { width: 390, height: 844 },
   { width: 1280, height: 900 },
 ]) {
-  test(`outbox rows at ${viewport.width}px: text keeps its own two lines, accepted reads in sentence case, and Sending holds only while its window runs`, async ({
+  test(`outbox rows at ${viewport.width}px: text keeps its own two lines, accepted stays settled, and Sending holds only while its window runs`, async ({
     page,
   }) => {
     test.setTimeout(90_000);
@@ -5116,18 +6171,31 @@ for (const viewport of [
     if (!phone) await chooseChatRegionRow(page, 'Maximize');
     const longText = `A long follow-up kept on this device ${'that keeps on going '.repeat(30)}until the end`;
     await seedOutboxRows(page, longText);
-    const list = page.locator('.queued-messages--outbox');
+    const pendingMessages = page.getByRole('region', {
+      name: 'Pending messages',
+    });
+    await pendingMessages
+      .getByRole('button', { name: /^\d+ pending messages/ })
+      .click();
+    const list = pendingMessages.locator('.queued-messages--outbox');
     const row = (text: string) =>
       list.locator('.queued-message', { hasText: text });
 
     // Another window still running: its send is under way, with no Check.
     const running = row('Sent from a window that is still open');
-    await expect(running.getByText('Sending', { exact: true })).toBeVisible();
+    const sending = running.locator(
+      '.message-delivery__glyph[data-glyph="sending"]',
+    );
+    await expect(sending).toHaveAccessibleName(
+      'Sending. Kept on this device if the app closes.',
+    );
     await expect(running.getByRole('button', { name: 'Check' })).toHaveCount(0);
     // A closed window's claim reads as its bubble does, with Check.
     const closed = row('Sent from a window that has closed');
     await expect(
-      closed.getByText('No answer yet. Resends only if it never arrived.'),
+      closed.locator('.message-delivery__label').filter({
+        hasText: /^No answer yet\. Resends only if it never arrived\.$/,
+      }),
     ).toBeVisible();
     await expect(closed.getByRole('button', { name: 'Check' })).toBeVisible();
     // Its window is gone, so it can be withdrawn like an unanswered send;
@@ -5138,30 +6206,22 @@ for (const viewport of [
     await expect(running.getByRole('button', { name: 'Discard…' })).toHaveCount(
       0,
     );
-    await expect(list.getByText(/1 sending/)).toBeVisible();
-
-    // The accepted note: sentence case, whole, under the message's own line.
-    const accepted = row('Accepted message the agent is working on');
-    const acceptedNote = accepted.getByText(
-      'Accepted · waiting for the agent to finish',
+    await expect(list.locator('[data-delivery-state="sending"]')).toHaveCount(
+      1,
     );
-    await expect(acceptedNote).toBeVisible();
-    const acceptedLayout = await accepted.evaluate((element) => {
-      const text = element.querySelector('.queued-message__text')!;
-      const note = element.querySelector('.queued-messages__label')!;
-      return {
-        rowWidth: element.getBoundingClientRect().width,
-        textWidth: text.getBoundingClientRect().width,
-        transform: getComputedStyle(note).textTransform,
-        noteClipped: note.scrollWidth > note.clientWidth + 1,
-        noteBelowText:
-          note.getBoundingClientRect().top >=
-          text.getBoundingClientRect().bottom - 1,
-      };
-    });
-    expect(acceptedLayout.transform).toBe('none');
-    expect(acceptedLayout.noteClipped).toBe(false);
-    expect(acceptedLayout.noteBelowText).toBe(true);
+
+    // Acceptance settles this row. It cannot be checked again or discarded
+    // as unanswered, and its text keeps the available width.
+    const accepted = row('Accepted message the agent is working on');
+    await expect(accepted).toBeVisible();
+    await expect(accepted.getByRole('button')).toHaveCount(0);
+    await expect(accepted.locator('[data-delivery-state]')).toHaveCount(0);
+    const acceptedLayout = await accepted.evaluate((element) => ({
+      rowWidth: element.getBoundingClientRect().width,
+      textWidth: element
+        .querySelector('.queued-message__text')!
+        .getBoundingClientRect().width,
+    }));
     expect(acceptedLayout.textWidth).toBeGreaterThan(
       acceptedLayout.rowWidth * 0.8,
     );
@@ -5199,9 +6259,11 @@ for (const viewport of [
       ).e2eCloseRunningWindow?.(),
     );
     await expect(
-      running.getByText('No answer yet. Resends only if it never arrived.'),
+      running.locator('.message-delivery__label').filter({
+        hasText: /^No answer yet\. Resends only if it never arrived\.$/,
+      }),
     ).toBeVisible({ timeout: 15_000 });
-    await expect(running.getByText('Sending', { exact: true })).toHaveCount(0);
+    await expect(sending).toHaveCount(0);
   });
 }
 
@@ -5219,13 +6281,16 @@ test('deleting the queued message from the queue panel clears its queued-retry n
   await expect(notice).toHaveCount(1);
   // The message may already have reached Station (no answer came back), so
   // the panel withdraws it only through the explicit, risk-stated discard.
-  await page
-    .locator('.queued-messages')
-    .getByRole('button', { name: 'Discard…' })
+  const pending = page.getByRole('region', { name: 'Pending messages' });
+  await pending
+    .getByRole('button', { name: '1 pending message', exact: true })
     .click();
+  await pending.getByRole('button', { name: 'Discard…' }).click();
   await page.getByRole('button', { name: 'I checked, discard it' }).click();
   await expect(
-    page.locator('.queued-messages').getByText(/with no answer yet/i),
+    pending.locator('.message-delivery__label').filter({
+      hasText: /^No answer yet\. Resends only if it never arrived\.$/,
+    }),
   ).toHaveCount(0);
   await expect(notice).toHaveCount(0);
   await expect(noticeDiscards(page)).toHaveCount(0);

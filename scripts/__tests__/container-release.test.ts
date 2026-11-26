@@ -1,10 +1,12 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type RequestListener } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
 import { validatePackagedReleaseManifest } from '../../packages/cli/src/commands/lifecycle.js';
+import { receiverBuildProvenance } from '../../packages/telemetry-broker/artifact-manifest.mjs';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { checkContainerHealth } from '../container-healthcheck.mjs';
 import {
   createContainerReleaseDescriptor,
@@ -323,37 +325,74 @@ describe('container release metadata', () => {
     );
   });
 
-  test('derives preview rather than latest channel tags', () => {
-    expect(
-      createContainerReleaseMetadata({
+  test('tags a release candidate only with its own tag and source SHA (#4929)', () => {
+    const metadata = createContainerReleaseMetadata({
+      tag: 'v1.2.3-rc.4',
+      sha,
+      createdAt,
+      repository: 'kontourai/station',
+    });
+    expect(metadata).toMatchObject({
+      channel: 'stable',
+      tag: 'v1.2.3-rc.4',
+      tags: ['v1.2.3-rc.4', `sha-${sha}`],
+      stationManifest: {
+        schemaVersion: 3,
+        version: '1.2.3',
+        channel: 'stable',
+        releaseChannel: 'stable',
+        prerelease: false,
+      },
+    });
+    // `latest` and the bare version move only when a candidate is promoted.
+    expect(metadata.tags).not.toContain('latest');
+    expect(metadata.tags).not.toContain('1.2.3');
+    expect(metadata.tags).not.toContain('v1.2.3');
+  });
+
+  test.each(['v1.2.3-preview.4', 'v1.2.3-rc.0', 'v1.2.3-rc.99'])(
+    'refuses container metadata for %s',
+    (tag) => {
+      expect(() =>
+        createContainerReleaseMetadata({
+          tag,
+          sha,
+          createdAt,
+          repository: 'kontourai/station',
+        }),
+      ).toThrow('Invalid container release metadata');
+    },
+  );
+
+  test('candidate and final tags produce identical version-bound packaged provenance', () => {
+    const candidate = createPackagedReleaseManifest({
+      tag: 'v1.2.3-rc.4',
+      sha,
+      createdAt,
+    });
+    const final = createPackagedReleaseManifest({
+      tag: 'v1.2.3',
+      sha,
+      createdAt,
+    });
+    expect(candidate).toEqual({
+      schemaVersion: 3,
+      sha,
+      version: '1.2.3',
+      createdAt,
+      channel: 'stable',
+      releaseChannel: 'stable',
+      prerelease: false,
+    });
+    expect(final).toEqual(candidate);
+    expect(validatePackagedReleaseManifest(candidate)).toEqual(candidate);
+    expect(() =>
+      createPackagedReleaseManifest({
         tag: 'v1.2.3-preview.4',
         sha,
         createdAt,
-        repository: 'kontourai/station',
       }),
-    ).toMatchObject({
-      channel: 'preview',
-      tags: ['v1.2.3-preview.4', '1.2.3-preview.4', `sha-${sha}`, 'preview'],
-    });
-  });
-
-  test('derives the strict Station packaged-release manifest from the same parser', () => {
-    const manifest = createPackagedReleaseManifest({
-      tag: 'v1.2.3-preview.4',
-      sha,
-      createdAt,
-    });
-
-    expect(manifest).toEqual({
-      schemaVersion: 2,
-      sha,
-      ref: 'v1.2.3-preview.4',
-      createdAt,
-      channel: 'beta',
-      releaseChannel: 'preview',
-      prerelease: true,
-    });
-    expect(validatePackagedReleaseManifest(manifest)).toEqual(manifest);
+    ).toThrow('Invalid container release metadata');
   });
 
   test('derives every release ring from the generated ring table, nightly included', () => {
@@ -384,6 +423,8 @@ describe('container release metadata', () => {
       'v1.2.3-nightly.0',
       'v1.2.3-nightly.1.2',
       'v1.2.3-preview',
+      'v1.2.3-rc.0',
+      'v1.2.3-rc.99',
       '1.2.3',
     ])
       expect(
@@ -392,7 +433,7 @@ describe('container release metadata', () => {
       ).toThrow(/tag must be one release ring's version/);
   });
 
-  test('publishes container images for stable and preview tags only', () => {
+  test('publishes container images for stable tags only', () => {
     expect(() =>
       createContainerReleaseMetadata({
         tag: 'v0.1.11-nightly.245600',
@@ -400,12 +441,12 @@ describe('container release metadata', () => {
         createdAt,
         repository: 'kontourai/station',
       }),
-    ).toThrow(/stable and preview tags only, not nightly/);
+    ).toThrow(/stable tags only, not nightly/);
   });
 
   test('binds immutable digest promotion to the same release metadata', () => {
     const metadata = createContainerReleaseMetadata({
-      tag: 'v1.2.3-preview.4',
+      tag: 'v1.2.3-rc.4',
       sha,
       createdAt,
       repository: 'kontourai/station',
@@ -419,10 +460,10 @@ describe('container release metadata', () => {
       image: 'ghcr.io/kontourai/station',
       digest: `sha256:${'b'.repeat(64)}`,
       sha,
-      tag: 'v1.2.3-preview.4',
+      tag: 'v1.2.3-rc.4',
       createdAt,
       platforms: ['linux/amd64', 'linux/arm64'],
-      tags: ['v1.2.3-preview.4', '1.2.3-preview.4', `sha-${sha}`, 'preview'],
+      tags: ['v1.2.3-rc.4', `sha-${sha}`],
     });
   });
 
@@ -631,7 +672,7 @@ describe('container source contract', () => {
     expect(smoke).not.toContain('COMPOSE_PROJECT_NAME=${');
     expect(smoke).not.toContain('down --volumes');
     expect(smoke).toContain('randomBytes(12)');
-    expect(smoke).toContain("printf 'v0.0.0-preview.1'");
+    expect(smoke).toContain("printf 'v0.0.0-rc.1'");
     expect(smoke).toContain('Number.isFinite(epochSeconds)');
     expect(smoke).not.toContain('/^\\\\d+$/');
     expect(smoke).toContain('com.docker.compose.project');
@@ -1007,4 +1048,61 @@ describe('runtime COPY source parser', () => {
       expect(() => parseCopySources(stage)).toThrow();
     });
   });
+});
+
+const receiverTempDir = trackTempDirs();
+test.each([
+  ['v1.2.3-rc.1', 'v1.2.3'],
+  ['v1.2.3-nightly.12', 'v1.2.3-nightly.12'],
+])(
+  'receiver artifact provenance reads the product identity of %s',
+  async (tag, ref) => {
+    const dir = receiverTempDir('station-receiver-provenance-');
+    const release = createPackagedReleaseManifest({ tag, sha, createdAt });
+    writeFileSync(
+      resolve(dir, '.station-release.json'),
+      JSON.stringify(release),
+    );
+    await expect(receiverBuildProvenance(dir)).resolves.toEqual({
+      kind: 'declared-release',
+      head: sha,
+      ref,
+      createdAt,
+    });
+  },
+);
+
+test('receiver artifact provenance rejects retired preview instead of remapping it to Stable', async () => {
+  const dir = receiverTempDir('station-receiver-legacy-');
+  writeFileSync(
+    resolve(dir, '.station-release.json'),
+    JSON.stringify({
+      schemaVersion: 2,
+      ref: 'v1.2.3-preview.1',
+      sha,
+      createdAt,
+      channel: 'beta',
+      releaseChannel: 'preview',
+      prerelease: true,
+    }),
+  );
+  await expect(receiverBuildProvenance(dir)).rejects.toThrow(
+    'Invalid receiver source provenance',
+  );
+});
+
+test('receiver artifact provenance rejects extra origin fields in version-bound provenance', async () => {
+  const dir = receiverTempDir('station-receiver-invalid-');
+  const release = createPackagedReleaseManifest({
+    tag: 'v1.2.3-rc.1',
+    sha,
+    createdAt,
+  });
+  writeFileSync(
+    resolve(dir, '.station-release.json'),
+    JSON.stringify({ ...release, ref: 'v1.2.3-rc.1' }),
+  );
+  await expect(receiverBuildProvenance(dir)).rejects.toThrow(
+    'Invalid receiver source provenance',
+  );
 });

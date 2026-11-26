@@ -3,6 +3,7 @@ import {
   clampDockHeight,
   DOCK_MIN_HEIGHT,
   type DockSnap,
+  nearestDockSnap,
   resolveMobileDockSnap,
   TAP_MOVE_THRESHOLD,
 } from '../components/chat-dock/dockSnap';
@@ -60,9 +61,9 @@ interface UseChatDockVerticalDragOptions {
 /**
  * One pointer-capture gesture contract for both the narrow resize grip and the
  * forgiving mobile dock bar. Desktop commits the exact clamped height; mobile
- * resolves to Collapsed, Half, or Full (see `resolveMobileDockSnap`). Taps are
- * always no-ops and interactive descendants
- * are optionally excluded so their native click behavior remains intact.
+ * resolves to Collapsed, Half, Tall or Full (see `resolveMobileDockSnap`).
+ * Taps are always no-ops and interactive descendants are optionally excluded
+ * so their native click behavior remains intact.
  */
 export function useChatDockVerticalDrag({
   mode,
@@ -221,6 +222,7 @@ export function useChatDockVerticalDrag({
         viewportHeight: gestureViewportHeight,
         toolbarHeight,
         collapsedHeight,
+        phone: mode === 'mobile-snap',
       });
       const heightFor = (clientY: number) => {
         const clamped = clampDockHeight(
@@ -332,6 +334,10 @@ export function useChatDockVerticalDrag({
             pixels: height,
             deltaY,
             velocityY,
+            // Where the gesture began, read from the height under the
+            // finger at press: a phone dock rests on a level, so the nearest
+            // one is the level it started from.
+            start: nearestDockSnap(heightFor(startY), metrics()),
             metrics: metrics(),
           }),
         );

@@ -38,11 +38,13 @@ describe('region model', () => {
     });
     // `occupant` alone, naming a surface the region does not hold: the
     // pre-#2046 write, still a replacement.
-    const second = updateRegion(first, 'bottom', { occupant: 'activity' });
+    const second = updateRegion(first, 'bottom', {
+      occupant: 'workspace-agents',
+    });
 
     expect(second.bottom).toMatchObject({
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
     });
     expect(Object.keys(second.bottom)).toEqual([
       'visible',
@@ -53,17 +55,17 @@ describe('region model', () => {
     ]);
     // `panes` sets the tab order outright; `occupant` selects within it.
     const both = updateRegion(second, 'bottom', {
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
     });
     expect(both.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
     });
     // `occupant` alone, naming a held pane: a select, not a replacement.
     expect(
       updateRegion(both, 'bottom', { occupant: 'chat' }).bottom,
-    ).toMatchObject({ panes: ['chat', 'activity'], occupant: 'chat' });
+    ).toMatchObject({ panes: ['chat', 'workspace-agents'], occupant: 'chat' });
     // `null` empties.
     expect(
       updateRegion(both, 'bottom', { occupant: null }).bottom,
@@ -72,23 +74,26 @@ describe('region model', () => {
 
   test('updateRegion holds the pane invariants: no duplicate, a member selected, main one pane', () => {
     const deduped = updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'right', {
-      panes: ['chat', 'activity', 'chat'],
+      panes: ['chat', 'workspace-agents', 'chat'],
       occupant: 'fixture',
     });
     // The duplicate goes; a selection the region does not hold falls back
     // to the first pane rather than naming a pane the host cannot show.
     expect(deduped.right).toMatchObject({
-      panes: ['chat', 'activity'],
+      panes: ['chat', 'workspace-agents'],
       occupant: 'chat',
     });
     // `main` keeps displacement (#928 C2a): given several, it keeps the
     // selected one.
     expect(
       updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'main', {
-        panes: ['home', 'activity'],
-        occupant: 'activity',
+        panes: ['home', 'workspace-agents'],
+        occupant: 'workspace-agents',
       }).main,
-    ).toMatchObject({ panes: ['activity'], occupant: 'activity' });
+    ).toMatchObject({
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
+    });
     // An unchanged set keeps its identity, so a host memoising on it does
     // not rebuild its document for a visibility write.
     const shown = updateRegion(deduped, 'right', { visible: true });
@@ -170,7 +175,7 @@ describe('region model', () => {
   test('the coarse fold chooses the most recently shown occupied region and falls back to Chat', () => {
     const withActivity = placeSurface(
       DEFAULT_DEVICE_REGION_ARRANGEMENT,
-      'activity',
+      'workspace-agents',
       'right',
     );
     expect(foldedDockRegion(withActivity, 'right')).toBe('right');
@@ -184,7 +189,11 @@ describe('region model', () => {
 
   test('the coarse fold chooses lastShownRegion when two occupied regions are visible', () => {
     const bothVisible = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'right',
+      ),
       'bottom',
       { visible: true },
     );
@@ -245,7 +254,6 @@ describe('region model', () => {
     expect(Object.fromEntries(defaults)).toEqual({
       chat: 'bottom',
       'coding:terminal': 'bottom',
-      activity: 'right',
       'workspace-agents': 'right',
       device: 'right',
       'coding:diff': 'right',
@@ -254,7 +262,6 @@ describe('region model', () => {
       // Files joins the Related side. Explicit Left placements still hold.
       'coding:file-browser': 'right',
       home: 'main',
-      'activity-review:': 'right',
       'pr:': 'right',
       'file-preview:': 'right',
       // #90 D9: a Browser pane opened from the float-over-chat's "Open in
@@ -276,23 +283,25 @@ describe('region model', () => {
     const B = 'file-preview:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
     let arrangement = placeSurface(
       DEFAULT_DEVICE_REGION_ARRANGEMENT,
-      'activity',
+      'workspace-agents',
       'right',
     );
     arrangement = placeSurface(arrangement, A, 'right');
-    arrangement = selectRegionPane(arrangement, 'right', 'activity');
+    arrangement = selectRegionPane(arrangement, 'right', 'workspace-agents');
     arrangement = updateRegion(arrangement, 'right', { visible: false });
 
     const replaced = replaceRegionPane(arrangement, 'right', A, B);
     expect(replaced.right).toMatchObject({
-      panes: ['activity', B],
+      panes: ['workspace-agents', B],
       occupant: B,
       visible: true,
     });
     // Refusals return the input: the previous pane is not there, the next one
     // is already placed, or it may not occupy the region.
     expect(replaceRegionPane(replaced, 'right', A, B)).toBe(replaced);
-    expect(replaceRegionPane(replaced, 'right', B, 'activity')).toBe(replaced);
+    expect(replaceRegionPane(replaced, 'right', B, 'workspace-agents')).toBe(
+      replaced,
+    );
     expect(replaceRegionPane(replaced, 'right', B, 'home')).toBe(replaced);
   });
 
@@ -325,17 +334,21 @@ describe('region model', () => {
 
   test('revealSurface makes an occupied hidden surface visible without moving it', () => {
     const hidden = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'right',
+      ),
       'right',
       { visible: false },
     );
 
-    const shown = revealSurface(hidden, 'activity', 'left');
+    const shown = revealSurface(hidden, 'workspace-agents', 'left');
 
     expect(shown.region).toBe('right');
     expect(shown.arrangement.right).toMatchObject({
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     });
     expect(shown.arrangement.left).toEqual(hidden.left);
@@ -344,14 +357,14 @@ describe('region model', () => {
   test('revealSurface uses the preferred free region', () => {
     const shown = revealSurface(
       DEFAULT_DEVICE_REGION_ARRANGEMENT,
-      'activity',
+      'workspace-agents',
       'right',
     );
 
     expect(shown.region).toBe('right');
     expect(shown.arrangement.right).toMatchObject({
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     });
   });
@@ -363,10 +376,10 @@ describe('region model', () => {
       'chat',
     );
 
-    const shown = revealSurface(occupiedPreferred, 'activity', 'right');
+    const shown = revealSurface(occupiedPreferred, 'workspace-agents', 'right');
 
     expect(shown.region).toBe('bottom');
-    expect(shown.arrangement.bottom.occupant).toBe('activity');
+    expect(shown.arrangement.bottom.occupant).toBe('workspace-agents');
   });
 
   /**
@@ -382,22 +395,25 @@ describe('region model', () => {
       'right',
     );
 
-    const shown = revealSurface(bothTaken, 'activity', 'right');
+    const shown = revealSurface(bothTaken, 'workspace-agents', 'right');
 
     expect(shown.region).toBe('right');
-    expect(shown.arrangement.right.panes).toEqual(['fixture', 'activity']);
+    expect(shown.arrangement.right.panes).toEqual([
+      'fixture',
+      'workspace-agents',
+    ]);
     expect(shown.arrangement.left.panes).toEqual([]);
   });
 
   test('revealSurface puts Activity in bottom when Chat occupies right', () => {
     const shown = revealSurface(
       placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'chat', 'right'),
-      'activity',
+      'workspace-agents',
       'right',
     );
 
     expect(shown.region).toBe('bottom');
-    expect(shown.arrangement.bottom.occupant).toBe('activity');
+    expect(shown.arrangement.bottom.occupant).toBe('workspace-agents');
   });
 
   test('showSurfaceAlone leaves the revealed surface as the only visible dock region', () => {
@@ -407,7 +423,7 @@ describe('region model', () => {
       { visible: true },
     );
 
-    const shown = showSurfaceAlone(visible, 'activity', 'right');
+    const shown = showSurfaceAlone(visible, 'workspace-agents', 'right');
 
     expect(shown.region).toBe('right');
     expect(
@@ -425,15 +441,20 @@ describe('region model', () => {
   describe('toggleSurface', () => {
     const fine = { lastShownRegion: null, bottomOnly: false };
     const activityDefault =
-      REGION_SURFACE_REGISTRY.get('activity')!.defaultRegion;
+      REGION_SURFACE_REGISTRY.get('workspace-agents')!.defaultRegion;
 
     test('a visible dock occupant is hidden and a hidden one is revealed in place', () => {
       const visible = placeSurface(
         DEFAULT_DEVICE_REGION_ARRANGEMENT,
-        'activity',
+        'workspace-agents',
         'right',
       );
-      const hidden = toggleSurface(visible, 'activity', activityDefault, fine);
+      const hidden = toggleSurface(
+        visible,
+        'workspace-agents',
+        activityDefault,
+        fine,
+      );
       expect(hidden).toMatchObject({ kind: 'arrangement', shownRegion: null });
       if (hidden.kind !== 'arrangement') throw new Error('unreachable');
       expect(hidden.arrangement.right).toEqual({
@@ -443,7 +464,7 @@ describe('region model', () => {
 
       const shown = toggleSurface(
         hidden.arrangement,
-        'activity',
+        'workspace-agents',
         activityDefault,
         fine,
       );
@@ -459,76 +480,11 @@ describe('region model', () => {
       expect(
         toggleSurface(
           DEFAULT_DEVICE_REGION_ARRANGEMENT,
-          'activity',
+          'workspace-agents',
           activityDefault,
           fine,
         ),
       ).toEqual({ kind: 'show' });
-    });
-
-    test('a main occupant moves to its default dock region, visible, and main empties to Home', () => {
-      const activityInMain = placeSurface(
-        DEFAULT_DEVICE_REGION_ARRANGEMENT,
-        'activity',
-        'main',
-      );
-      expect(activityInMain.main.occupant).toBe('activity');
-
-      const toggled = toggleSurface(
-        activityInMain,
-        'activity',
-        activityDefault,
-        fine,
-      );
-      expect(toggled).toMatchObject({
-        kind: 'arrangement',
-        shownRegion: 'right',
-      });
-      if (toggled.kind !== 'arrangement') throw new Error('unreachable');
-      expect(toggled.arrangement.right).toMatchObject({
-        panes: ['activity'],
-        occupant: 'activity',
-        visible: true,
-      });
-      // An emptied `main` is Home on screen and stays visible.
-      expect(toggled.arrangement.main).toEqual({
-        visible: true,
-        size: 0,
-        maximized: false,
-        panes: [],
-        occupant: null,
-      });
-      // Chat's dock placement is untouched by a relocation into another region.
-      expect(toggled.arrangement.bottom).toEqual(activityInMain.bottom);
-    });
-
-    test('on a coarse device a main occupant returning to the dock is the only visible dock region', () => {
-      const activityInMain = updateRegion(
-        placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'main'),
-        'bottom',
-        { visible: true },
-      );
-      const toggled = toggleSurface(
-        activityInMain,
-        'activity',
-        activityDefault,
-        {
-          lastShownRegion: 'bottom',
-          bottomOnly: true,
-        },
-      );
-      if (toggled.kind !== 'arrangement') throw new Error('unreachable');
-      expect(toggled.arrangement.right).toMatchObject({
-        panes: ['activity'],
-        occupant: 'activity',
-        visible: true,
-      });
-      expect(toggled.arrangement.bottom).toMatchObject({
-        panes: ['chat'],
-        occupant: 'chat',
-        visible: false,
-      });
-      expect(toggled.shownRegion).toBe('right');
     });
 
     test('on a coarse device a visible surface that is not the folded region is a show, not a hide', () => {
@@ -542,7 +498,7 @@ describe('region model', () => {
         updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', {
           visible: true,
         }),
-        'activity',
+        'workspace-agents',
         'right',
         true,
       );
@@ -550,7 +506,7 @@ describe('region model', () => {
       expect(foldedDockRegion(twoVisible, 'bottom')).toBe('bottom');
 
       expect(
-        toggleSurface(twoVisible, 'activity', activityDefault, {
+        toggleSurface(twoVisible, 'workspace-agents', activityDefault, {
           lastShownRegion: 'bottom',
           bottomOnly: true,
         }),
@@ -575,12 +531,14 @@ describe('region model', () => {
         updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', {
           visible: true,
         }),
-        'activity',
+        'workspace-agents',
         'right',
         false,
       );
       const coarse = { lastShownRegion: 'bottom' as const, bottomOnly: true };
-      expect(toggleSurface(both, 'activity', activityDefault, coarse)).toEqual({
+      expect(
+        toggleSurface(both, 'workspace-agents', activityDefault, coarse),
+      ).toEqual({
         kind: 'show',
       });
       const chatHidden = toggleSurface(both, 'chat', 'bottom', coarse);
@@ -602,18 +560,6 @@ describe('region model', () => {
         shortcut: { id: 'dock.toggle', key: 'd', modifiers: ['cmd'] },
         regions: ['left', 'right', 'bottom'],
         defaultRegion: 'bottom',
-      }),
-      expect.objectContaining({
-        id: 'activity',
-        title: 'Activity',
-        icon: 'activity',
-        shortcut: {
-          id: 'activity.toggle',
-          key: 'a',
-          modifiers: ['cmd', 'shift'],
-        },
-        regions: ['main', 'left', 'right', 'bottom'],
-        defaultRegion: 'right',
       }),
       // #2050: this conversation's background work. Catalog-only and no
       // chord like the coding panes, dock regions only like Activity. Since
@@ -687,7 +633,7 @@ describe('region model', () => {
       expect(REGION_SURFACE_REGISTRY.get(id)?.shortcut, id).toBeUndefined();
     // Shell exposure is the ABSENT default, not a spelled-out `'shell'`: the
     // reader treats anything but `'catalog'` as the shell's.
-    for (const id of ['chat', 'activity', 'home'])
+    for (const id of ['chat', 'home'])
       expect(REGION_SURFACE_REGISTRY.get(id)?.exposure, id).toBeUndefined();
   });
 
@@ -707,80 +653,10 @@ describe('region model', () => {
     expect(seeded.main).toEqual(DEFAULT_DEVICE_REGION_ARRANGEMENT.main);
   });
 
-  // #928 C2a: `main` is the primary area. A surface taking it replaces what
-  // it shows; the replaced surface must not turn into a dock panel nobody
-  // asked for.
-  test('placing a surface into main unplaces the previous main occupant instead of relocating it', () => {
-    const placed = placeSurface(
-      DEFAULT_DEVICE_REGION_ARRANGEMENT,
-      'activity',
-      'main',
-    );
-
-    expect(placed.main).toEqual({
-      visible: true,
-      size: 0,
-      panes: ['activity'],
-      occupant: 'activity',
-      maximized: false,
-    });
-    expect(occupiedRegion(placed, 'home')).toBeUndefined();
-    expect(placed.left.occupant).toBeNull();
-    expect(placed.right.occupant).toBeNull();
-    expect(placed.bottom).toEqual(DEFAULT_DEVICE_REGION_ARRANGEMENT.bottom);
-  });
-
-  test('placing a surface into main from a dock region vacates that dock region and still unplaces the displaced occupant', () => {
-    const activityAtRight = placeSurface(
-      DEFAULT_DEVICE_REGION_ARRANGEMENT,
-      'activity',
-      'right',
-    );
-    const placed = placeSurface(activityAtRight, 'activity', 'main');
-
-    expect(placed.main.occupant).toBe('activity');
-    // The vacated dock region HIDES (#2153: `placeSurface` vacates with
-    // `'hide'` — a move is not a close, and a placeholder left behind would
-    // be a second dock nobody asked for).
-    expect(placed.right).toEqual({
-      visible: false,
-      size: 400,
-      panes: [],
-      occupant: null,
-      maximized: false,
-    });
-    expect(occupiedRegion(placed, 'home')).toBeUndefined();
-  });
-
-  test('a surface leaving main for an occupied dock region leaves main empty and visible and joins the dock region’s panes', () => {
-    const activityInMain = placeSurface(
-      DEFAULT_DEVICE_REGION_ARRANGEMENT,
-      'activity',
-      'main',
-    );
-    const moved = placeSurface(activityInMain, 'activity', 'bottom');
-
-    expect(moved.main).toEqual({
-      visible: true,
-      size: 0,
-      panes: [],
-      occupant: null,
-      maximized: false,
-    });
-    // Chat is not displaced (#2046 2a, decision 3): it stays in `bottom`
-    // behind Activity's tab.
-    expect(moved.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
-      visible: true,
-    });
-    expect(moved.right.panes).toEqual([]);
-  });
-
   test('placing a surface into a region it does not declare is a no-op', () => {
     expect(surfaceMayOccupy('home', 'right')).toBe(false);
     expect(surfaceMayOccupy('chat', 'main')).toBe(false);
-    expect(surfaceMayOccupy('activity', 'main')).toBe(true);
+    expect(surfaceMayOccupy('workspace-agents', 'main')).toBe(false);
 
     expect(
       placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'home', 'right'),
@@ -805,14 +681,14 @@ describe('region model', () => {
   test('placing a surface into an occupied dock region adds it as the selected pane and vacates its previous region', () => {
     const activityAtRight = placeSurface(
       DEFAULT_DEVICE_REGION_ARRANGEMENT,
-      'activity',
+      'workspace-agents',
       'right',
     );
-    const joined = placeSurface(activityAtRight, 'activity', 'bottom');
+    const joined = placeSurface(activityAtRight, 'workspace-agents', 'bottom');
 
     expect(joined.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     });
     // Vacated by a MOVE, so hidden (#2153: a close keeps, a move hides).
@@ -826,20 +702,24 @@ describe('region model', () => {
     expect(joined.main.occupant).toBe('home');
     // A surface is in at most one region.
     expect(
-      REGION_IDS.filter((id) => joined[id].panes.includes('activity')),
+      REGION_IDS.filter((id) => joined[id].panes.includes('workspace-agents')),
     ).toEqual(['bottom']);
     expect(occupiedRegion(joined, 'chat')).toBe('bottom');
-    expect(occupiedDockRegion(joined, 'activity')).toBe('bottom');
+    expect(occupiedDockRegion(joined, 'workspace-agents')).toBe('bottom');
   });
 
   test('a surface leaving a multi-pane region is removed from its panes and its neighbour is selected', () => {
     const both = placeSurface(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'bottom'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'bottom',
+      ),
       'chat',
       'bottom',
     );
     expect(both.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
+      panes: ['chat', 'workspace-agents'],
       occupant: 'chat',
     });
 
@@ -847,8 +727,8 @@ describe('region model', () => {
     // selected, and stays visible.
     const chatRight = placeSurface(both, 'chat', 'right');
     expect(chatRight.bottom).toMatchObject({
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     });
     expect(chatRight.right).toMatchObject({
@@ -858,29 +738,33 @@ describe('region model', () => {
     });
 
     // The non-selected pane leaving keeps the selection where it was.
-    const activityRight = placeSurface(both, 'activity', 'right');
+    const activityRight = placeSurface(both, 'workspace-agents', 'right');
     expect(activityRight.bottom).toMatchObject({
       panes: ['chat'],
       occupant: 'chat',
     });
-    expect(activityRight.right).toMatchObject({ panes: ['activity'] });
+    expect(activityRight.right).toMatchObject({ panes: ['workspace-agents'] });
   });
 
   test('placing a surface into the region already holding it selects it and shows the region', () => {
     const behind = placeSurface(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'bottom'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'bottom',
+      ),
       'chat',
       'bottom',
     );
     const hidden = updateRegion(
-      updateRegion(behind, 'bottom', { occupant: 'activity' }),
+      updateRegion(behind, 'bottom', { occupant: 'workspace-agents' }),
       'bottom',
       { visible: false },
     );
 
     const selected = placeSurface(hidden, 'chat', 'bottom');
     expect(selected.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
+      panes: ['chat', 'workspace-agents'],
       occupant: 'chat',
       visible: true,
     });
@@ -894,15 +778,19 @@ describe('region model', () => {
     // Chat is placed in `right`, not shown. Activity is on screen there, so
     // the region stays visible and Activity keeps the tab; Chat joins behind.
     const activityShownRight = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'right',
+      ),
       'right',
       { visible: true },
     );
     const placed = placeSurface(activityShownRight, 'chat', 'right', false);
 
     expect(placed.right).toMatchObject({
-      panes: ['activity', 'chat'],
-      occupant: 'activity',
+      panes: ['workspace-agents', 'chat'],
+      occupant: 'workspace-agents',
       visible: true,
     });
     expect(placed.bottom).toMatchObject({ panes: [], visible: false });
@@ -914,7 +802,7 @@ describe('region model', () => {
     expect(
       placeSurface(hiddenRight, 'chat', 'right', false).right,
     ).toMatchObject({
-      panes: ['activity', 'chat'],
+      panes: ['workspace-agents', 'chat'],
       occupant: 'chat',
       visible: false,
     });
@@ -922,17 +810,21 @@ describe('region model', () => {
 
   test('joining a region keeps its size; the vacated region keeps its size and hides', () => {
     const withActivity = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'right',
+      ),
       'right',
       { size: 517 },
     );
-    const joined = placeSurface(withActivity, 'activity', 'bottom');
+    const joined = placeSurface(withActivity, 'workspace-agents', 'bottom');
 
     expect(joined.bottom).toEqual({
       visible: true,
       size: 320,
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
       maximized: false,
     });
     // A MOVE hides the region it vacates (#2153: `placeSurface` calls
@@ -951,37 +843,43 @@ describe('region model', () => {
 
   test('selectRegionPane selects a held pane and ignores a surface the region does not hold', () => {
     const both = placeSurface(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'bottom'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'bottom',
+      ),
       'chat',
       'bottom',
     );
     expect(both.bottom.occupant).toBe('chat');
 
-    const selected = selectRegionPane(both, 'bottom', 'activity');
+    const selected = selectRegionPane(both, 'bottom', 'workspace-agents');
     expect(selected.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     });
     // A select places nothing: Home is not in `bottom` and does not arrive.
     expect(selectRegionPane(both, 'bottom', 'home')).toBe(both);
     expect(selectRegionPane(both, 'right', 'chat')).toBe(both);
     // Selecting the selected pane is a no-op by reference.
-    expect(selectRegionPane(selected, 'bottom', 'activity')).toBe(selected);
+    expect(selectRegionPane(selected, 'bottom', 'workspace-agents')).toBe(
+      selected,
+    );
   });
 
   test('revealSurface selects a pane behind another’s tab, and toggleSurface selects rather than hides it', () => {
     const activityShown = placeSurface(
       placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'chat', 'bottom'),
-      'activity',
+      'workspace-agents',
       'bottom',
     );
-    expect(activityShown.bottom.occupant).toBe('activity');
+    expect(activityShown.bottom.occupant).toBe('workspace-agents');
 
     const revealed = revealSurface(activityShown, 'chat', 'bottom');
     expect(revealed.region).toBe('bottom');
     expect(revealed.arrangement.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
+      panes: ['chat', 'workspace-agents'],
       occupant: 'chat',
       visible: true,
     });
@@ -1001,7 +899,12 @@ describe('region model', () => {
       visible: true,
     });
     // And the selected pane's toggle still hides.
-    const hidden = toggleSurface(activityShown, 'activity', 'right', fine);
+    const hidden = toggleSurface(
+      activityShown,
+      'workspace-agents',
+      'right',
+      fine,
+    );
     if (hidden.kind !== 'arrangement') throw new Error('unreachable');
     expect(hidden.arrangement.bottom.visible).toBe(false);
     // Coarse device: a behind pane is a show (showSurface selects it).
@@ -1013,32 +916,22 @@ describe('region model', () => {
     ).toEqual({ kind: 'show' });
   });
 
-  test('main still displaces: a surface taking main unplaces the previous one and main holds one pane', () => {
-    const activityInMain = placeSurface(
-      DEFAULT_DEVICE_REGION_ARRANGEMENT,
-      'activity',
-      'main',
-    );
-    expect(activityInMain.main).toMatchObject({
-      panes: ['activity'],
-      occupant: 'activity',
-    });
-    expect(occupiedRegion(activityInMain, 'home')).toBeUndefined();
-    const homeBack = placeSurface(activityInMain, 'home', 'main');
-    expect(homeBack.main).toMatchObject({ panes: ['home'], occupant: 'home' });
-    expect(occupiedRegion(homeBack, 'activity')).toBeUndefined();
-  });
-
   test('revealSurface targets main for Home and reveals a main occupant in place', () => {
     const shown = revealSurface(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'main'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'main',
+      ),
       'home',
       REGION_SURFACE_REGISTRY.get('home')!.defaultRegion,
     );
 
     expect(shown.region).toBe('main');
     expect(shown.arrangement.main.occupant).toBe('home');
-    expect(occupiedRegion(shown.arrangement, 'activity')).toBeUndefined();
+    expect(
+      occupiedRegion(shown.arrangement, 'workspace-agents'),
+    ).toBeUndefined();
 
     const alreadyThere = revealSurface(shown.arrangement, 'home', 'main');
     expect(alreadyThere.region).toBe('main');
@@ -1047,7 +940,11 @@ describe('region model', () => {
 
   test('showSurfaceAlone with a main target does not hide the dock regions', () => {
     const chatVisible = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'main'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'main',
+      ),
       'bottom',
       { visible: true },
     );
@@ -1107,7 +1004,11 @@ describe('region model', () => {
 
   test("a Chat move mirrors the entered region's size and the next inbound sync preserves it", () => {
     const sizedRight = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'right',
+      ),
       'right',
       { size: 600 },
     );
@@ -1115,7 +1016,7 @@ describe('region model', () => {
     // and a region holding Chat behind or in front of another pane is still
     // the one the mirror names.
     const moved = placeSurface(sizedRight, 'chat', 'right');
-    expect(moved.right).toMatchObject({ panes: ['activity', 'chat'] });
+    expect(moved.right).toMatchObject({ panes: ['workspace-agents', 'chat'] });
     const diff = dockMirrorDiff(sizedRight, moved);
 
     expect(diff).toEqual({
@@ -1154,8 +1055,8 @@ describe('region model', () => {
       DEFAULT_DEVICE_REGION_ARRANGEMENT,
       'right',
       {
-        panes: ['activity'],
-        occupant: 'activity',
+        panes: ['workspace-agents'],
+        occupant: 'workspace-agents',
         visible: true,
         size: 517,
         maximized: false,
@@ -1169,8 +1070,8 @@ describe('region model', () => {
     );
 
     expect(synced.right).toEqual({
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
       size: 517,
       maximized: false,
@@ -1183,8 +1084,8 @@ describe('region model', () => {
       DEFAULT_DEVICE_REGION_ARRANGEMENT,
       'right',
       {
-        panes: ['activity'],
-        occupant: 'activity',
+        panes: ['workspace-agents'],
+        occupant: 'workspace-agents',
         visible: true,
       },
     );
@@ -1195,7 +1096,7 @@ describe('region model', () => {
       'right',
     );
 
-    expect(synced.right.occupant).toBe('activity');
+    expect(synced.right.occupant).toBe('workspace-agents');
     expect(synced.bottom.occupant).toBe('chat');
     expect(synced.bottom.visible).toBe(true);
   });
@@ -1203,7 +1104,11 @@ describe('region model', () => {
   // #928 slice iii / #1385: maximize is a region attribute with invariants.
   describe('maximize is a region attribute', () => {
     const chatOpenActivityRight = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'right',
+      ),
       'bottom',
       { visible: true },
     );
@@ -1261,10 +1166,10 @@ describe('region model', () => {
       // a move is not a close) — and is still RESTORED, which is what this
       // test is about:
       // an empty region is never maximized (`updateRegion`).
-      const joined = placeSurface(chatMax, 'activity', 'bottom');
+      const joined = placeSurface(chatMax, 'workspace-agents', 'bottom');
       expect(joined.bottom).toMatchObject({
-        panes: ['chat', 'activity'],
-        occupant: 'activity',
+        panes: ['chat', 'workspace-agents'],
+        occupant: 'workspace-agents',
         maximized: false,
       });
       expect(joined.right).toMatchObject({
@@ -1327,8 +1232,8 @@ describe('region model', () => {
 
   test('mirror ignores size changes from a region Activity occupies', () => {
     const before = updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'right', {
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     });
     const after = updateRegion(before, 'right', { size: 517 });
@@ -1348,12 +1253,12 @@ describe('region model', () => {
   test('the size mirror follows a region holding Chat behind another pane’s tab, and a reorder is a change', () => {
     const chatBehind = placeSurface(
       DEFAULT_DEVICE_REGION_ARRANGEMENT,
-      'activity',
+      'workspace-agents',
       'bottom',
     );
     expect(chatBehind.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
     });
     const resized = updateRegion(chatBehind, 'bottom', { size: 411 });
     expect(dockMirrorDiff(chatBehind, resized)).toEqual({
@@ -1361,16 +1266,18 @@ describe('region model', () => {
     });
 
     const reordered = updateRegion(chatBehind, 'bottom', {
-      panes: ['activity', 'chat'],
+      panes: ['workspace-agents', 'chat'],
     });
     expect(reordered).not.toBe(chatBehind);
     expect(reordered.bottom).toMatchObject({
-      panes: ['activity', 'chat'],
-      occupant: 'activity',
+      panes: ['workspace-agents', 'chat'],
+      occupant: 'workspace-agents',
     });
     // The same order again: no change, by reference.
     expect(
-      updateRegion(reordered, 'bottom', { panes: ['activity', 'chat'] }),
+      updateRegion(reordered, 'bottom', {
+        panes: ['workspace-agents', 'chat'],
+      }),
     ).toBe(reordered);
   });
 
@@ -1384,11 +1291,15 @@ describe('region model', () => {
   test('an inbound dock=open selects Chat’s tab in the region it opens; a close keeps the selection', () => {
     const settings = { chatDockHeight: 320, chatDockWidth: 400 };
     const chatBehind = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'bottom'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'bottom',
+      ),
       'bottom',
       { visible: false },
     );
-    expect(chatBehind.bottom.occupant).toBe('activity');
+    expect(chatBehind.bottom.occupant).toBe('workspace-agents');
 
     // The requested region holds Chat.
     expect(
@@ -1408,7 +1319,7 @@ describe('region model', () => {
     const shown = updateRegion(chatBehind, 'bottom', { visible: true });
     expect(
       syncRegionArrangementFromDock(shown, settings, false, 'bottom').bottom,
-    ).toMatchObject({ visible: false, occupant: 'activity' });
+    ).toMatchObject({ visible: false, occupant: 'workspace-agents' });
   });
 
   /**
@@ -1444,47 +1355,53 @@ describe('region model', () => {
   // #2046 2b: the tab strip's close and the region bar's placement.
   describe('closing a tab and moving a region', () => {
     const both = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'bottom'),
+      placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'workspace-agents',
+        'bottom',
+      ),
       'bottom',
       { visible: true },
     );
 
     test('removeRegionPane unplaces the pane and selects its neighbour; the last pane empties the region and leaves it visible', () => {
       expect(both.bottom).toMatchObject({
-        panes: ['chat', 'activity'],
-        occupant: 'activity',
+        panes: ['chat', 'workspace-agents'],
+        occupant: 'workspace-agents',
       });
       // The selected pane closes: its neighbour is selected, the region
       // stays visible, and the closed surface is in NO region.
-      const closed = removeRegionPane(both, 'bottom', 'activity');
+      const closed = removeRegionPane(both, 'bottom', 'workspace-agents');
       expect(closed.bottom).toMatchObject({
         panes: ['chat'],
         occupant: 'chat',
         visible: true,
       });
-      expect(occupiedRegion(closed, 'activity')).toBeUndefined();
+      expect(occupiedRegion(closed, 'workspace-agents')).toBeUndefined();
       // Unplaced reads as "show" to its toggle, and the show places it
       // afresh — the way back from a closed tab.
       expect(
-        toggleSurface(closed, 'activity', 'right', {
+        toggleSurface(closed, 'workspace-agents', 'right', {
           lastShownRegion: null,
           bottomOnly: false,
         }),
       ).toEqual({ kind: 'show' });
-      expect(revealSurface(closed, 'activity', 'right').region).toBe('right');
+      expect(revealSurface(closed, 'workspace-agents', 'right').region).toBe(
+        'right',
+      );
 
       // A pane behind the selected one closes: the selection stays.
       const behind = removeRegionPane(both, 'bottom', 'chat');
       expect(behind.bottom).toMatchObject({
-        panes: ['activity'],
-        occupant: 'activity',
+        panes: ['workspace-agents'],
+        occupant: 'workspace-agents',
       });
 
       // The last pane: the region empties and STAYS VISIBLE (#2153, owner
       // decision). Reverting `visible: regionId === 'main' || previous.visible`
       // to `visible: regionId === 'main'` in `withoutRegionPane`
       // (region-model.ts) reds this line.
-      const emptied = removeRegionPane(behind, 'bottom', 'activity');
+      const emptied = removeRegionPane(behind, 'bottom', 'workspace-agents');
       expect(emptied.bottom).toMatchObject({
         panes: [],
         occupant: null,
@@ -1495,7 +1412,7 @@ describe('region model', () => {
       // that an emptied region is forced open.
       const hiddenBehind = updateRegion(behind, 'bottom', { visible: false });
       expect(
-        removeRegionPane(hiddenBehind, 'bottom', 'activity').bottom,
+        removeRegionPane(hiddenBehind, 'bottom', 'workspace-agents').bottom,
       ).toMatchObject({ panes: [], occupant: null, visible: false });
       // A surface the region does not hold: unchanged, by reference.
       expect(removeRegionPane(both, 'right', 'chat')).toBe(both);
@@ -1511,8 +1428,8 @@ describe('region model', () => {
       const maximized = updateRegion(both, 'bottom', { maximized: true });
       const chatClosed = removeRegionPane(maximized, 'bottom', 'chat');
       expect(chatClosed.bottom).toMatchObject({
-        panes: ['activity'],
-        occupant: 'activity',
+        panes: ['workspace-agents'],
+        occupant: 'workspace-agents',
         visible: true,
         maximized: false,
       });
@@ -1525,15 +1442,15 @@ describe('region model', () => {
       ).toEqual([]);
       // The selected pane's close restores too.
       expect(
-        removeRegionPane(maximized, 'bottom', 'activity').bottom,
+        removeRegionPane(maximized, 'bottom', 'workspace-agents').bottom,
       ).toMatchObject({ panes: ['chat'], occupant: 'chat', maximized: false });
     });
 
     test('moveRegionPanes carries the whole pane set, its order and its selection, and empties the source', () => {
       const moved = moveRegionPanes(both, 'bottom', 'right');
       expect(moved.right).toMatchObject({
-        panes: ['chat', 'activity'],
-        occupant: 'activity',
+        panes: ['chat', 'workspace-agents'],
+        occupant: 'workspace-agents',
         visible: true,
         maximized: false,
       });
@@ -1569,8 +1486,8 @@ describe('region model', () => {
       });
       const joined = moveRegionPanes(withLeft, 'bottom', 'left');
       expect(joined.left).toMatchObject({
-        panes: ['fixture', 'chat', 'activity'],
-        occupant: 'activity',
+        panes: ['fixture', 'chat', 'workspace-agents'],
+        occupant: 'workspace-agents',
         visible: true,
         maximized: false,
       });
@@ -1624,7 +1541,10 @@ describe('region model', () => {
       );
       expect(
         syncRegionArrangementFromDock(noFree, settings, true, 'bottom').bottom,
-      ).toMatchObject({ panes: ['activity', 'chat'], occupant: 'chat' });
+      ).toMatchObject({
+        panes: ['workspace-agents', 'chat'],
+        occupant: 'chat',
+      });
     });
   });
 });

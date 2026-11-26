@@ -5,6 +5,7 @@ import {
 import type { Page } from '@playwright/test';
 import {
   type AuthenticatedE2ERequest,
+  createAuthenticatedE2ERequest,
   expect,
   test,
 } from './helpers/authenticated-request';
@@ -275,7 +276,7 @@ test.describe('Notifications: attention queue and activity log', () => {
       .filter({ hasText: ACTIVITY_TITLE });
     // Secondary actions live in the row's ⋯ menu.
     await row.getByRole('button', { name: 'More actions' }).click();
-    const dismiss = page.getByRole('menuitem', { name: 'Dismiss' });
+    const dismiss = page.getByRole('menuitem', { name: 'Mark done' });
     await expect(dismiss).toBeVisible();
 
     const dismissed = page.waitForResponse(
@@ -392,7 +393,7 @@ test.describe('Notifications at 390x844', () => {
     expect(rowBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(rowBox?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     await rowMenu.click();
-    const rowAction = page.getByRole('menuitem', { name: 'Dismiss' });
+    const rowAction = page.getByRole('menuitem', { name: 'Mark done' });
     await expect(rowAction).toBeVisible();
     const itemBox = await rowAction.boundingBox();
     expect(itemBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
@@ -466,6 +467,137 @@ for (const viewport of [
         .toBe(1);
     } finally {
       await backend.close();
+    }
+  });
+}
+
+for (const [width, theme, escalated] of [
+  [390, 'light', true],
+  [390, 'dark', true],
+  [1440, 'light', true],
+  [1440, 'dark', true],
+  [390, 'light', false],
+] as const) {
+  test(`the Inbox attributes only a genuine guardian reason (${width}, ${theme}, ${escalated})`, async ({
+    page,
+  }, testInfo) => {
+    const { exactRequestBackend } = await import(
+      './helpers/exact-request-backend'
+    );
+    const reason =
+      'The only-if-asked rule requires a person for this file inspection.';
+    const backend = await exactRequestBackend(
+      page,
+      testInfo.outputPath('guardian-request.sqlite'),
+      { approval: escalated ? { guardianReason: reason } : {} },
+    );
+    try {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.emulateMedia({ colorScheme: theme });
+      await expect.poll(() => backend.current().state).toBe('found');
+      await page.goto('/notifications');
+      const approval = page.getByRole('button', {
+        name: 'Approve once',
+        exact: true,
+      });
+      await expect(approval).toBeEnabled();
+      const quotation = page.locator('q').filter({ hasText: reason });
+      if (escalated) {
+        await expect(
+          page.getByText('Approval guardian', { exact: true }),
+        ).toBeVisible();
+        await expect(quotation).toHaveCount(1);
+        await page
+          .locator('.station-startup')
+          .first()
+          .waitFor({ state: 'hidden' });
+        await testInfo.attach('guardian-approval', {
+          body: await page.screenshot(),
+          contentType: 'image/png',
+        });
+      } else {
+        await expect(
+          page.getByText('Approval guardian', { exact: true }),
+        ).toHaveCount(0);
+        await expect(quotation).toHaveCount(0);
+      }
+      await expect(
+        page.locator('q').filter({ hasText: 'Fake guardian field' }),
+      ).toHaveCount(0);
+      await approval.click();
+      await expect.poll(() => backend.effects.length).toBe(1);
+    } finally {
+      await backend.close();
+    }
+  });
+}
+
+for (const width of [390, 1440]) {
+  test(`the Project row counts the server approval until its actual request is resolved (${width}px)`, async ({
+    page,
+  }, testInfo) => {
+    const { exactRequestBackend } = await import(
+      './helpers/exact-request-backend'
+    );
+    const request = createAuthenticatedE2ERequest(page.request);
+    const slug = 'sidebar-approval-project';
+    const otherSlug = 'sidebar-idle-project';
+    const createProject = async (name: string, slug: string) => {
+      const response = await request.post(`${API}/api/projects`, {
+        data: { name, slug },
+      });
+      expect(response.status()).toBe(201);
+    };
+    await createProject('Approval project', slug);
+    await createProject('Unaffected project', otherSlug);
+    const backend = await exactRequestBackend(
+      page,
+      testInfo.outputPath('sidebar-request.sqlite'),
+      { projectSlug: slug },
+    );
+    try {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await expect.poll(() => backend.current().state).toBe('found');
+      const projection = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/api/attention' &&
+          response.ok(),
+      );
+      await page.goto('/notifications');
+      expect((await (await projection).json()).data.items).toContainEqual(
+        expect.objectContaining({ kind: 'approval', projectSlug: slug }),
+      );
+      const mobile = width === 390;
+      const drawer = page.getByRole('navigation', {
+        name: 'Mobile navigation',
+      });
+      const toggle = page.getByRole('banner').getByRole('button', {
+        name: 'Toggle menu',
+        exact: true,
+      });
+      if (mobile) await toggle.click();
+      const rail = mobile
+        ? drawer
+        : page.getByRole('navigation', { name: 'Primary navigation' });
+      const project = rail.getByRole('button', { name: /^Approval project/ });
+      const other = rail.getByRole('button', { name: /^Unaffected project/ });
+      await expect(project).toHaveAccessibleName(/Needs attention: 1/);
+      await expect(other).not.toHaveAccessibleName(/Needs attention/);
+      if (mobile)
+        await drawer.getByRole('button', { name: 'Close navigation' }).click();
+      await attentionRegion(page)
+        .getByRole('button', { name: 'Approve once', exact: true })
+        .click();
+      await expect.poll(() => backend.effects.length).toBe(1);
+      if (mobile) await toggle.click();
+      await expect(project).not.toHaveAccessibleName(/Needs attention/);
+    } finally {
+      await backend.close();
+      for (const projectSlug of [slug, otherSlug]) {
+        expect(
+          (await request.delete(`${API}/api/projects/${projectSlug}`)).ok(),
+        ).toBe(true);
+      }
     }
   });
 }

@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import * as basisPane from '@kontourai/station-basis-pane';
 import * as boardPane from '@kontourai/station-board-pane/workspace-board-pane';
 import * as contracts from '@kontourai/station-contracts';
-import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
 import { WORKSPACE_AGENTS_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
 import {
@@ -61,8 +60,6 @@ const HOST_ADMISSION_MODULE =
 const EXPECTED_BUILTIN_DESCRIPTOR_EXPORTS = [
   '@kontourai/station-basis-pane:WORKSPACE_BASIS_PANE_DESCRIPTOR',
   '@kontourai/station-board-pane/workspace-board-pane:WORKSPACE_BOARD_PANE_DESCRIPTOR',
-  '@kontourai/station-contracts:WORKSPACE_ACTIVITY_PANE_DESCRIPTOR',
-  '@kontourai/station-contracts:WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_CHAT_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR',
@@ -92,7 +89,6 @@ const EXPECTED_BUILTIN_DESCRIPTOR_EXPORTS = [
  */
 const SURFACE_DESCRIPTORS: Record<string, WorkspacePaneDescriptor> = {
   chat: WORKSPACE_CHAT_PANE_DESCRIPTOR,
-  activity: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
   home: WORKSPACE_HOME_PANE_DESCRIPTOR,
   // #2050: a dock-only pane like Activity, and like Activity it binds
   // nothing — the conversation it lists is navigation.
@@ -206,7 +202,6 @@ describe('docked is a derived capability, pinned to the shell surface registry',
     // descriptor — two prefixes for one `descriptorId` is the shape this pin
     // admits).
     expect(INSTANCE_SURFACE_PREFIXES.map((prefix) => prefix.prefix)).toEqual([
-      'activity-review:',
       'pr:',
       'file-preview:',
       // #90 D9: a Browser pane attached to one session.

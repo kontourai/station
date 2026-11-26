@@ -1,0 +1,7 @@
+{
+  "revision": "4a0ea5b300656b6063f4e5bac88cea76adcce787",
+
+  "notes": [
+    {"path":"docs/guides/home-transfer-controller.md","note":"Cites a changed source (main-health.yml, container-smoke.yml, labels.json or testing.md); no claim on this page concerns the reporter, the smoke trigger or the label, so it stays accurate.","inputs":["docs/guides/home-transfer-controller.md",".github/workflows/container-smoke.yml"]}
+  ]
+}

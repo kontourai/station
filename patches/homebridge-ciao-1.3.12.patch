@@ -123,3 +123,15 @@
                  // debug: rejected below, and the Responder logs and retries it (homebridge/ciao#72)
                  debug((0, MDNSServer_1.SendResultFormatError)(results, `[${this.service.getFQDN()}] Failed to send ${this.goodbye ? "goodbye" : "announcement"} requests`));
                  this.promiseReject(new Error(`${this.goodbye ? "Goodbye" : "Announcement"} failed as of socket errors!`));
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -3,7 +3,8 @@
+ exports.Protocol = void 0;
+ exports.getResponder = getResponder;
+ const tslib_1 = require("tslib");
+-require("source-map-support/register"); // registering node-source-map-support for typescript stack traces
++// Station patch: no source-map-support/register. It replaced the host's Error.prepareStackTrace, and the
++// first stack read then parsed and cached the whole host bundle's source map (hundreds of MB).
+ // ⚠️ MUST stay above the `debug` import: loading `debug` deletes an empty DEBUG from
+ // the environment, so the value has to be read before that happens. Pinned by the
+ // import-order test in util/captured-debug-env.spec.ts (homebridge/ciao#72).

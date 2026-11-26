@@ -15,6 +15,7 @@ import type { AcpAdapterOptions } from '../../providers/adapters/acp-adapter.js'
 import type { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import type { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
+import type { CopilotSdkAdapter } from '../../providers/adapters/copilot-sdk-adapter.js';
 import type { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import type { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import type { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
@@ -30,6 +31,7 @@ import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
+import type { ProjectSessionContextSource } from '../../services/projects/project-session-context-source.js';
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import type { Logger } from '../../utils/logger.js';
@@ -61,6 +63,8 @@ interface RuntimeInitializationContext {
   resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
   stationInstructionsEnabled?: InitializeRuntimeDeps['stationInstructionsEnabled'];
   codexBoundToolsEnabled?: InitializeRuntimeDeps['codexBoundToolsEnabled'];
+  codexToolFamiliesAdmitted?: InitializeRuntimeDeps['codexToolFamiliesAdmitted'];
+  stationControlCallerRecords?: InitializeRuntimeDeps['stationControlCallerRecords'];
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -80,6 +84,10 @@ interface RuntimeInitializationContext {
     // #3429: this Station's Environment, which a continued attached
     // conversation records as its execution binding.
     | 'readExistingRecord'
+    // #2377 slice D: the voice socket's credential resolves to its person.
+    | 'verifyOperatorCredential'
+    | 'credentialLocality'
+    | 'credentialHasOwnerStanding'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -114,6 +122,12 @@ interface RuntimeInitializationContext {
   orchestrationEventStore: EventStore;
   /** The `chat-host-images` Feature Preview selector (station-runtime binds it). */
   hostImagesPreview?: FeaturePreviewSelector;
+  coordinatorSessionPreview?: FeaturePreviewSelector;
+  /** #5062/#5065: the Project brief and memory every new Session starts from. */
+  projectSessionContext?: ProjectSessionContextSource;
+  projectCoordinatorEffort?: (projectSlug: string) => string | undefined;
+  /** The `opencode-native-engine` Feature Preview selector. */
+  openCodeNativeEnginePreview?: FeaturePreviewSelector;
   durableAgentPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -142,6 +156,8 @@ interface RuntimeInitializationContext {
   resolveAcpPreToolPolicy?: (
     input: ProviderSessionStartInput,
   ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
+  /** Whether an external session's own Agent changed after its policy was bound. */
+  preToolPolicyReplaced?: (threadId: string) => Promise<boolean>;
   /** #3994: an ACP agent's terminals as command terminal sessions. */
   acpAgentTerminals?: AcpAdapterOptions['agentTerminals'];
   toolNameReverseMapping: Map<string, string>;
@@ -150,10 +166,10 @@ interface RuntimeInitializationContext {
   claudeAdapter: ClaudeAdapter;
   codexAdapter: CodexAdapter;
   museAdapter: MuseAdapter;
+  copilotSdkAdapter: CopilotSdkAdapter;
   ollamaAdapter: OllamaAdapter;
   createVoltAgentInstance: (slug: string) => Promise<Agent>;
   configureRoutes: (app: any) => void;
-  reloadAgents: () => Promise<void>;
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
@@ -203,6 +219,8 @@ export function createRuntimeInitializationDeps(
     resolveProjectToolServers: context.resolveProjectToolServers,
     stationInstructionsEnabled: context.stationInstructionsEnabled,
     codexBoundToolsEnabled: context.codexBoundToolsEnabled,
+    codexToolFamiliesAdmitted: context.codexToolFamiliesAdmitted,
+    stationControlCallerRecords: context.stationControlCallerRecords,
     skillService: context.skillService,
     feedbackService: context.feedbackService,
     voiceService: context.voiceService,
@@ -211,6 +229,10 @@ export function createRuntimeInitializationDeps(
     onACPConnectionsReady: context.onACPConnectionsReady,
     orchestrationEventStore: context.orchestrationEventStore,
     hostImagesPreview: context.hostImagesPreview,
+    coordinatorSessionPreview: context.coordinatorSessionPreview,
+    projectSessionContext: context.projectSessionContext,
+    projectCoordinatorEffort: context.projectCoordinatorEffort,
+    openCodeNativeEnginePreview: context.openCodeNativeEnginePreview,
     durableAgentPreview: context.durableAgentPreview,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
     getReviewedTariffConfiguration: context.getReviewedTariffConfiguration,
@@ -234,16 +256,17 @@ export function createRuntimeInitializationDeps(
     resolveUnattendedGrant: context.resolveUnattendedGrant,
     integrationSecretResolver: context.integrationSecretResolver,
     resolveAcpPreToolPolicy: context.resolveAcpPreToolPolicy,
+    preToolPolicyReplaced: context.preToolPolicyReplaced,
     acpAgentTerminals: context.acpAgentTerminals,
     eventLog: context.eventLog,
     bedrockAdapter: context.bedrockAdapter,
     claudeAdapter: context.claudeAdapter,
     codexAdapter: context.codexAdapter,
     museAdapter: context.museAdapter,
+    copilotSdkAdapter: context.copilotSdkAdapter,
     ollamaAdapter: context.ollamaAdapter,
     createVoltAgentInstance: context.createVoltAgentInstance,
     configureRoutes: context.configureRoutes,
-    reloadAgents: context.reloadAgents,
     captureAgentConfigurationRevisions:
       context.captureAgentConfigurationRevisions,
     registryTrustPolicyAuthority: context.registryTrustPolicyAuthority,

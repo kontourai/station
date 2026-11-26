@@ -1,7 +1,0 @@
-{
-  "revision": "6d24a3afcdae185bf6a3c83de81d231783f95cc8",
-
-  "notes": [
-    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked the attempt-claim contract (attemptId, delegationAttemptClaims, lookup route) against the orchestration.ts change, which only adds tool:'delegate_task' to the resolveRequestDelegation call and the delegated_tool_blocked refusal code. A refused delegated child starts nothing, so no claim is created and the claim semantics are unchanged.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/routes/orchestration/orchestration.ts"]}
-  ]
-}

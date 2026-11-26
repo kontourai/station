@@ -29,6 +29,7 @@ export function queryTranscriptMessages(
     ownerUserIds?: readonly string[];
     tenantId?: string;
     projectId?: string;
+    threadIds?: readonly string[];
     limit: number;
   },
   bounded = false,
@@ -83,6 +84,8 @@ export function queryTranscriptMessages(
   const overflow = bounded
     ? `(${['s.thread_id', 's.event_id', 's.turn_id', 's.created_at', 'h.agent_slug', 'h.project_slug', 'p.provider', turnAnchor].map((name) => `coalesce(length(CAST(${name} AS BLOB)), 0) > 256`).join(' OR ')} OR length(CAST(s.role AS BLOB)) > 9 OR length(CAST(s.content AS BLOB)) > 131072)`
     : '0';
+  const threadIds =
+    options.threadIds === undefined ? [] : [JSON.stringify(options.threadIds)];
   const rows = db
     .prepare(
       `SELECT ${column('s.thread_id')} AS thread_id, ${column('s.event_id')} AS event_id,
@@ -100,6 +103,7 @@ export function queryTranscriptMessages(
             AND h.owner_user_id IN (${ownerIds.map(() => '?').join(', ')})
             AND (? IS NULL OR h.tenant_id = ?)
             AND (? IS NULL OR h.project_slug = ?)
+            ${threadIds.length ? 'AND s.thread_id IN (SELECT value FROM json_each(?))' : ''}
           ORDER BY bm25(orchestration_message_search_v3) +
                      ((julianday('now') - julianday(s.created_at)) * ?) ASC,
                    s.created_at DESC,
@@ -113,6 +117,7 @@ export function queryTranscriptMessages(
       options.tenantId ?? null,
       options.projectId ?? null,
       options.projectId ?? null,
+      ...threadIds,
       MESSAGE_SEARCH_RECENCY_SCORE_PER_DAY,
       options.limit,
     ) as Array<{
@@ -281,6 +286,20 @@ export function querySessionOwner(
   return typeof row?.user_id === 'string' ? row.user_id : undefined;
 }
 
+/** ACP completions can carry their reply only in preceding text deltas. */
+export const ACP_TRANSCRIPT_REPLY_SQL = `CASE WHEN e.provider = 'acp' THEN (
+  SELECT CASE WHEN sum(length(CAST(delta AS BLOB))) <= 131072
+              THEN group_concat(delta, '' ORDER BY sequence) END
+  FROM (
+    SELECT d.sequence, CASE WHEN json_valid(d.payload) THEN
+      CASE WHEN json_type(d.payload, '$.delta') = 'text' THEN json_extract(d.payload, '$.delta') END
+    END AS delta
+    FROM orchestration_events d INDEXED BY idx_events_thread_turn_sequence
+    WHERE d.thread_id = e.thread_id AND d.turn_id = e.turn_id AND d.sequence < e.sequence
+      AND d.method = 'content.text-delta'
+  )
+) END`;
+
 /** Canonical event content, not the search index. Bound every selected field in SQLite. */
 export function queryTranscriptMessagePage(
   db: TranscriptQueryDatabase,
@@ -328,7 +347,8 @@ export function queryTranscriptMessagePage(
     WHEN 'turn.started' THEN CASE WHEN ${spilled('$.prompt')} THEN ${spilledBody('$.prompt')}
       WHEN json_type(e.payload, '$.prompt') = 'text' THEN json_extract(e.payload, '$.prompt') END
     WHEN 'turn.completed' THEN CASE WHEN ${spilled('$.outputText')} THEN ${spilledBody('$.outputText')}
-      WHEN json_type(e.payload, '$.outputText') = 'text' THEN json_extract(e.payload, '$.outputText') END END END`;
+      WHEN json_type(e.payload, '$.outputText') = 'text' THEN json_extract(e.payload, '$.outputText')
+      ELSE ${ACP_TRANSCRIPT_REPLY_SQL} END END END`;
   const spilledRef = `CASE e.method
     WHEN 'turn.started' THEN CASE WHEN ${spilled('$.prompt')} THEN json_extract(e.payload, '$.prompt.ref') END
     WHEN 'turn.completed' THEN CASE WHEN ${spilled('$.outputText')} THEN json_extract(e.payload, '$.outputText.ref') END END`;

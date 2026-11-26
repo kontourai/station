@@ -38,17 +38,24 @@ const editMutate = vi.fn();
 const mutationState = vi.hoisted(() => ({
   addError: null as unknown,
   editError: null as unknown,
+  /** Jobs the host already has, as the jobs list answers. */
+  jobs: [] as { name: string }[],
 }));
 
 /** The host's `scheduledConversationTarget` answer; `undefined` is unanswered. */
 const hostCapability = vi.hoisted(() => ({
   conversationTarget: false as boolean | null | undefined,
+  /** `schedulerJobDisplayName`; `undefined` is unanswered. */
+  displayName: true as boolean | null | undefined,
 }));
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useScheduledConversationTargetCapability: () => ({
     data: hostCapability.conversationTarget,
+  }),
+  useSchedulerJobDisplayNameCapability: () => ({
+    data: hostCapability.displayName,
   }),
 }));
 
@@ -64,6 +71,7 @@ vi.mock('../hooks/useScheduler', () => ({
     error: mutationState.editError,
   }),
   usePreviewSchedule: () => ({ data: [], isLoading: false }),
+  useSchedulerJobs: () => ({ data: mutationState.jobs }),
 }));
 
 /**
@@ -96,6 +104,7 @@ describe('JobFormModal schedule compatibility', () => {
     editMutate.mockReset();
     mutationState.addError = null;
     mutationState.editError = null;
+    mutationState.jobs = [];
     agentCatalog.agents = [
       { slug: 'station', name: 'Station' } as EnrichedAgentProjection,
     ];
@@ -108,6 +117,7 @@ describe('JobFormModal schedule compatibility', () => {
     agentCatalog.retry = () => {};
     agentCatalog.useRealPicker = false;
     hostCapability.conversationTarget = false;
+    hostCapability.displayName = true;
   });
 
   test.each(['missing', 'external'])(
@@ -207,7 +217,7 @@ describe('JobFormModal schedule compatibility', () => {
     expect(submitted.schedule).toEqual({
       kind: 'at',
       timeMs: new Date('2030-01-02T03:04').getTime(),
-      deleteAfterRun: true,
+      deleteAfterRun: false,
     });
   });
 
@@ -259,7 +269,7 @@ describe('JobFormModal schedule compatibility', () => {
     render(<JobFormModal job={job} onClose={vi.fn()} />);
     fireEvent.click(
       screen.getByRole('checkbox', {
-        name: 'Delete the job after it runs',
+        name: 'Remove it after it runs',
       }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
@@ -309,6 +319,34 @@ describe('JobFormModal schedule compatibility', () => {
     );
   });
 
+  // The Project is required for a pull-request monitor (the form and the
+  // server refuse without it), so its hint must not say "If set".
+  test('the monitor Project hint states what the required field does', () => {
+    const job = {
+      name: 'pr-monitor',
+      provider: 'built-in',
+      cron: '0 9 * * *',
+      prompt: 'Observe',
+      agent: 'station',
+      enabled: true,
+      monitor: {
+        kind: 'github-pull-request' as const,
+        objective: 'review-ready' as const,
+        target: 'https://github.com/kontourai/station/pull/4210',
+        projectId: 'station',
+        agentId: 'station',
+        budget: { maxTurns: 2, maxTokens: 200, maxRuntimeMs: 300 },
+      },
+    };
+    render(<JobFormModal job={job} onClose={vi.fn()} />);
+    expect(
+      screen.getByText(
+        'A pull request that needs changes opens or continues one Task in this Project.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/If set/)).toBeNull();
+  });
+
   test('formats every and one-time jobs instead of leaking object coercion', () => {
     expect(
       formatSchedule(
@@ -334,8 +372,11 @@ describe('JobFormModal schedule compatibility', () => {
     expect(once).not.toContain('[object Object]');
   });
 
-  test('renders a duplicate-name conflict without closing the dialog', () => {
-    mutationState.addError = new Error("Job 'daily-report' already exists");
+  test('a taken name says so, without "try again", and keeps the dialog open', () => {
+    mutationState.addError = Object.assign(
+      new Error("Job 'daily-report' already exists"),
+      { status: 409, code: 'job_name_taken' },
+    );
 
     render(
       <JobFormModal
@@ -345,7 +386,7 @@ describe('JobFormModal schedule compatibility', () => {
     );
 
     expect(screen.getByRole('alert').textContent).toBe(
-      'Try again in a moment.',
+      'Another automation already uses this name. Choose a different name.',
     );
     expect(screen.queryByText("Job 'daily-report' already exists")).toBeNull();
     expect(screen.getByRole('dialog', { name: 'New automation' })).toBeTruthy();
@@ -454,10 +495,10 @@ describe('JobFormModal schedule compatibility', () => {
     ).toBe(true);
   });
 
-  test('refuses a name that the form reports as invalid', () => {
+  test('refuses a blank name', () => {
     render(<JobFormModal onClose={vi.fn()} />);
     fireEvent.change(screen.getByLabelText('Name'), {
-      target: { value: 'Daily briefing' },
+      target: { value: '   ' },
     });
     fireEvent.change(screen.getByLabelText('Instructions'), {
       target: { value: 'Summarize my day' },
@@ -466,6 +507,244 @@ describe('JobFormModal schedule compatibility', () => {
     expect(submit).toHaveProperty('disabled', true);
     fireEvent.click(submit);
     expect(addMutate).not.toHaveBeenCalled();
+  });
+
+  test('saves a plain-words name as the display name and leaves the slug to the host', () => {
+    mutationState.jobs = [{ name: 'daily-briefing' }];
+    render(<JobFormModal onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: ' Daily briefing ' },
+    });
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'Summarize my day' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create automation' }));
+
+    // The host sees every job, so it picks the unused slug.
+    const submitted = addMutate.mock.calls[0]?.[0];
+    expect(submitted).toMatchObject({ displayName: 'Daily briefing' });
+    expect(submitted).not.toHaveProperty('name');
+  });
+
+  test.each([
+    ['Daily briefing', 'daily-briefing-2'],
+    ['Café crème', 'cafe-creme'],
+    // ß has no compatibility decomposition, so it is a word break rather
+    // than a locale-specific spelling; the slug is hidden and only has to
+    // be valid and unused.
+    ['Straße', 'stra-e'],
+  ])(
+    'on a host without display names, "%s" is sent with the slug %s',
+    (typed, slug) => {
+      hostCapability.displayName = false;
+      mutationState.jobs = [{ name: 'daily-briefing' }];
+      render(<JobFormModal onClose={vi.fn()} />);
+      fireEvent.change(screen.getByLabelText('Name'), {
+        target: { value: typed },
+      });
+      fireEvent.change(screen.getByLabelText('Instructions'), {
+        target: { value: 'Summarize my day' },
+      });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Create automation' }),
+      );
+
+      expect(addMutate.mock.calls[0]?.[0]).toMatchObject({
+        name: slug,
+        displayName: typed,
+      });
+    },
+  );
+
+  test('"Once" defaults to tomorrow at 9:00 AM and keeps the automation', () => {
+    render(<JobFormModal onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'One time' }));
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    const runAt = screen.getByLabelText('Run once at') as HTMLInputElement;
+    expect(new Date(runAt.value).getTime()).toBe(tomorrow.getTime());
+    expect(runAt.value.endsWith('T09:00')).toBe(true);
+    const remove = screen.getByRole('checkbox', {
+      name: 'Remove it after it runs',
+    }) as HTMLInputElement;
+    expect(remove.checked).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Renew the certificate' },
+    });
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'Renew it' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create automation' }));
+    expect(addMutate.mock.calls[0]?.[0].schedule).toEqual({
+      kind: 'at',
+      timeMs: tomorrow.getTime(),
+      deleteAfterRun: false,
+    });
+  });
+
+  test('Edit has a Name field that renames the automation and keeps its slug', () => {
+    render(
+      <JobFormModal
+        job={{
+          name: 'repo-digest',
+          displayName: 'Repo digest',
+          provider: 'built-in',
+          cron: '0 9 * * *',
+          prompt: 'Summarize',
+          agent: 'station',
+          enabled: true,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole('dialog', { name: 'Edit: Repo digest' }),
+    ).toBeTruthy();
+    const name = screen.getByLabelText('Name') as HTMLInputElement;
+    expect(name.value).toBe('Repo digest');
+    expect(name.readOnly).toBe(false);
+    expect(name.getAttribute('aria-describedby')).toBeNull();
+    fireEvent.change(name, { target: { value: 'Morning repo digest' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(editMutate).toHaveBeenCalledWith(
+      { target: 'repo-digest', displayName: 'Morning repo digest' },
+      expect.any(Object),
+    );
+  });
+
+  test('Edit says why the name is read-only on a host that cannot rename', () => {
+    hostCapability.displayName = false;
+    render(
+      <JobFormModal
+        job={{
+          name: 'older-host-job',
+          provider: 'built-in',
+          cron: '0 9 * * *',
+          prompt: 'Summarize',
+          agent: 'station',
+          enabled: true,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+    const name = screen.getByLabelText('Name') as HTMLInputElement;
+    expect(name.readOnly).toBe(true);
+    expect(name.getAttribute('aria-describedby')).toBe('schedule-name-locked');
+    expect(
+      screen.getByText('Renaming needs a newer version of this Station.'),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'Summarize more' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    expect(editMutate).toHaveBeenCalledWith(
+      { target: 'older-host-job', prompt: 'Summarize more' },
+      expect.any(Object),
+    );
+  });
+
+  test('Edit keeps the name read-only without a reason when the host has not answered', () => {
+    hostCapability.displayName = null;
+    render(
+      <JobFormModal
+        job={{
+          name: 'unknown-host-job',
+          provider: 'built-in',
+          cron: '0 9 * * *',
+          prompt: 'Summarize',
+          agent: 'station',
+          enabled: true,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+    const name = screen.getByLabelText('Name') as HTMLInputElement;
+    expect(name.readOnly).toBe(true);
+    expect(name.getAttribute('aria-describedby')).toBeNull();
+    expect(
+      screen.queryByText('Renaming needs a newer version of this Station.'),
+    ).toBeNull();
+  });
+
+  test('an older host’s 409 without a code still reads as a taken name', () => {
+    hostCapability.displayName = false;
+    mutationState.addError = Object.assign(
+      new Error("Job 'daily-report' already exists"),
+      { status: 409 },
+    );
+    render(
+      <JobFormModal
+        prefill={{ name: 'daily-report', prompt: 'Duplicate' }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Another automation already uses this name. Choose a different name.',
+    );
+  });
+
+  test('Edit explains an empty name instead of only disabling Save', () => {
+    render(
+      <JobFormModal
+        job={{
+          name: 'repo-digest',
+          displayName: 'Repo digest',
+          provider: 'built-in',
+          cron: '0 9 * * *',
+          prompt: 'Summarize',
+          agent: 'station',
+          enabled: true,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+    const name = screen.getByLabelText('Name') as HTMLInputElement;
+    expect(name.getAttribute('aria-invalid')).toBeNull();
+    fireEvent.change(name, { target: { value: '   ' } });
+
+    expect(name.getAttribute('aria-invalid')).toBe('true');
+    const error = document.getElementById(
+      name.getAttribute('aria-describedby') ?? '',
+    );
+    expect(error?.textContent).toBe('Give the automation a name.');
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Save Changes',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  test('Edit shows a job with no display name by its slug and sends no rename', () => {
+    render(
+      <JobFormModal
+        job={{
+          name: 'older-job',
+          provider: 'built-in',
+          cron: '0 9 * * *',
+          prompt: 'Summarize',
+          agent: 'station',
+          enabled: true,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe(
+      'older-job',
+    );
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'Summarize more' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    expect(editMutate).toHaveBeenCalledWith(
+      { target: 'older-job', prompt: 'Summarize more' },
+      expect.any(Object),
+    );
   });
 
   test('cannot submit the previous schedule after all weekdays are deselected', () => {
@@ -505,10 +784,28 @@ describe('JobFormModal schedule compatibility', () => {
     expect(addMutate).not.toHaveBeenCalled();
     expect(
       screen.getByText(
-        'Scheduled jobs need an agent using a model connection (Station engine). AI app agents cannot run scheduled jobs.',
+        "Scheduled jobs need an agent that runs on Station's engine.",
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/No Agent named/)).toBeNull();
+  });
+
+  // A host that runs chat automations accepts any engine, so the setup
+  // guidance must not claim Station's engine is required there.
+  test('with chat automations available, setup guidance names readiness, not an engine', () => {
+    hostCapability.conversationTarget = true;
+    try {
+      agentCatalog.agents = [];
+      render(<JobFormModal onClose={vi.fn()} onSetupAgent={vi.fn()} />);
+      expect(
+        screen.getByText(
+          'Scheduled jobs need an agent that is set up and ready.',
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Station's engine/)).toBeNull();
+    } finally {
+      hostCapability.conversationTarget = false;
+    }
   });
 
   test('adopts a runnable agent as the default instead of the station literal', () => {
@@ -605,7 +902,7 @@ describe('JobFormModal schedule compatibility', () => {
       expect(screen.queryByText(/No Agent named/)).toBeNull();
       expect(screen.queryByLabelText('Loading agents')).toBeNull();
       expect(screen.queryByText('No runnable agents')).toBeNull();
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       expect(retry).toHaveBeenCalledTimes(1);
     });
 
@@ -621,9 +918,9 @@ describe('JobFormModal schedule compatibility', () => {
 
       render(<JobFormModal onClose={vi.fn()} />);
 
-      const retrying = screen.getByRole('button', { name: 'Trying…' });
+      const retrying = screen.getByRole('button', { name: 'Retrying…' });
       expect((retrying as HTMLButtonElement).disabled).toBe(true);
-      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     });
 
     test('still refuses a new job once the catalog HAS answered and the agent cannot run', () => {
@@ -925,7 +1222,7 @@ describe('Run in: external engines only where the host runs chat automations', (
     fireEvent.click(submit);
     const [body] = addMutate.mock.calls[0]!;
     expect(body).toMatchObject({
-      name: 'repo-digest',
+      displayName: 'repo-digest',
       target: { kind: 'dedicated', agent: 'claude' },
     });
     // A run in a chat never replays, so it carries no retries or monitor.

@@ -4,6 +4,20 @@ export interface SubstitutableSkillVariable {
   default?: string;
 }
 
+export function expandCommandTemplate(
+  template: string,
+  values: ReadonlyMap<string, string>,
+): string {
+  if (!values.size) return template;
+  const placeholders = Array.from(values.keys(), (name) =>
+    `{{${name}}}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+  );
+  return template.replace(
+    new RegExp(placeholders.join('|'), 'g'),
+    (placeholder) => values.get(placeholder.slice(2, -2)) ?? placeholder,
+  );
+}
+
 type SkillVariableSubstitution =
   | { ok: true; content: string }
   | { ok: false; missing: string[] };
@@ -28,7 +42,7 @@ export function substituteSkillVariables(
   provided: Readonly<Record<string, string>> = {},
 ): SkillVariableSubstitution {
   const missing: string[] = [];
-  let content = body;
+  const values = new Map<string, string>();
   for (const variable of variables) {
     const typed = provided[variable.name];
     // An explicitly empty value is no value: fall to the default (delta
@@ -41,9 +55,11 @@ export function substituteSkillVariables(
       missing.push(variable.name);
       continue;
     }
-    content = content.replaceAll(`{{${variable.name}}}`, value);
+    if (!values.has(variable.name)) values.set(variable.name, value);
   }
-  return missing.length > 0 ? { ok: false, missing } : { ok: true, content };
+  return missing.length > 0
+    ? { ok: false, missing }
+    : { ok: true, content: expandCommandTemplate(body, values) };
 }
 
 type ShellWords = { ok: true; words: string[] } | { ok: false; error: string };

@@ -4,11 +4,9 @@ import { useCommandProjectTaskRoomLiveMutation } from '@kontourai/station-sdk/pr
 import { type ReactNode, useMemo } from 'react';
 import { AgentIcon } from '../../components/icons/AgentIcon';
 import { useAgents } from '../../contexts/AgentsContext';
-import { openChatsStore } from '../../contexts/open-chats-store';
-import {
-  useShowSurface,
-  useShowSurfacePage,
-} from '../../contexts/useShowSurface';
+import { useShowSurface } from '../../contexts/useShowSurface';
+import { useActiveStationName } from '../../hooks/useActiveStationName';
+import { openSessionFromSummary } from '../../utils/openSession';
 import { relativeTime } from '../../utils/relativeTime';
 import {
   type SessionIconAgent,
@@ -21,11 +19,7 @@ import {
   ProjectTaskRoomProvider,
   useProjectTaskRoomContext,
 } from '../../workspace-panes/ProjectTaskRoomContext';
-import {
-  focusChatEventDetailForAction,
-  isPeerDelegationRecord,
-  resolveConversationOpenAction,
-} from '../home/work-item-open-policy';
+import { isPeerDelegationRecord } from '../home/work-item-open-policy';
 import {
   type SessionLane,
   type SessionLaneId,
@@ -34,10 +28,26 @@ import {
 import { projectLiveLanes } from './project-live-work-model';
 
 /**
+ * The Station the session runs on. Work delegated to an SSH environment or a
+ * paired Station names that environment; everything else runs on the Station
+ * serving this page. `undefined` when neither is known — never a guess.
+ */
+export function liveWorkStationName(
+  session: Pick<OrchestrationSessionSummary, 'delegation'>,
+  localStationName: string | undefined,
+): string | undefined {
+  const kind = session.delegation?.environmentKind;
+  if (kind === 'ssh' || kind === 'peer') {
+    return session.delegation?.environmentName?.trim() || undefined;
+  }
+  return localStationName;
+}
+
+/**
  * The row's second line: whose session it is, then the kind when it
- * distinguishes something (a delegated session), then a relative time when
- * there is a parseable stamp. Every segment is omitted rather than defaulted
- * when its fact is missing.
+ * distinguishes something (a delegated session), then the Station it runs
+ * on, then a relative time when there is a parseable stamp. Every segment is
+ * omitted rather than defaulted when its fact is missing.
  *
  * The lifecycle state is deliberately NOT here — it is the state chip, so the
  * urgency is a shape rather than a word buried in a meta line.
@@ -45,36 +55,31 @@ import { projectLiveLanes } from './project-live-work-model';
 function liveWorkMeta(
   session: OrchestrationSessionSummary,
   ownerName: string,
+  stationName: string | undefined,
   now: number,
 ): string {
   const parts: string[] = [ownerName];
   if (session.delegation) parts.push(sessionKindLabel(session));
+  if (stationName) parts.push(`on ${stationName}`);
   const recency = sessionRecency(session);
   if (recency > 0) parts.push(relativeTime(recency, now));
   return parts.join(' · ');
 }
 
 /**
- * What the row invites you to do. A "Needs you" row's whole point is that YOU
- * can discharge it, so it says so; a Running or Idle row is something to
- * look at, not something owed. Two words, both already this product's vocabulary.
- */
-const LANE_CALL_TO_ACTION: Record<string, string> = {
-  needsYou: 'Reply',
-  running: 'Open',
-  idle: 'Open',
-};
-
-/**
- * A paired Station's record is answered on that Station, never here, so its
- * Needs-you row invites opening (Activity), not replying.
+ * What the row invites you to do, when that is more than opening it. A
+ * "Needs you" row's whole point is that YOU can discharge it, so it says
+ * "Reply". Every row is itself the control that opens it, so a Running or
+ * Idle row carries no label — an "Open" beside each one only repeated that.
+ * A paired Station's record is answered on that Station, never here, so it
+ * never invites a reply.
  */
 function liveWorkCallToAction(
   session: OrchestrationSessionSummary,
   laneId: string,
-): string {
-  if (isPeerDelegationRecord(session)) return 'Open';
-  return LANE_CALL_TO_ACTION[laneId] ?? 'Open';
+): string | null {
+  if (isPeerDelegationRecord(session)) return null;
+  return laneId === 'needsYou' ? 'Reply' : null;
 }
 
 /**
@@ -94,7 +99,7 @@ function liveWorkCallToAction(
  * unlikely.
  *
  * LIVE WORK ONLY — Needs you, Running and Idle. Recently finished and Earlier are
- * the Activity list's job; "All activity" links out for them. Every lane empty
+ * available through the chat inbox. Every lane empty
  * renders NOTHING: no heading, no zero counts, no empty state. A permanent
  * block costs every reader space to tell most of them there is nothing to
  * read.
@@ -111,10 +116,7 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
   const { data: sessions = [] } = useOrchestrationSessionsQuery();
   const agents = useAgents();
   const showSurface = useShowSurface();
-  // "All activity" is Home's "View Activity" verb: go to the page. A row's
-  // session link stays the contextual reveal (`showSurface` with an intent).
-  const showSurfacePage = useShowSurfacePage();
-  // Read once per render, the same shape `SessionsView` uses: `now` only
+  // Read once per render, the shared lane model: `now` only
   // separates Recently finished from Earlier — neither of which this section
   // renders — so it is not a memo input.
   const now = Date.now();
@@ -151,19 +153,7 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
    * one rule, reused rather than re-decided here.
    */
   function open(session: OrchestrationSessionSummary) {
-    const detail = focusChatEventDetailForAction(
-      resolveConversationOpenAction({
-        threadId: session.threadId,
-        conversationId: session.conversationId,
-        agentSlug: session.assignedAgentSlug,
-        controlMode: session.controlMode,
-        projectSlug: session.projectSlug,
-        model: session.model,
-        delegationEnvironmentKind: session.delegation?.environmentKind,
-      }),
-    );
-    if (detail) openChatsStore.focus(detail);
-    else showSurface('activity', { session: session.threadId });
+    openSessionFromSummary(session, showSurface);
   }
 
   function renderLane(lane: SessionLane) {
@@ -202,20 +192,6 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
           >
             Live work
           </span>
-          {/* Everything this section deliberately does not show — finished runs
-            and history — lives on the Activity list. The project filter there
-            is component state with no route parameter today, so this lands on
-            the unfiltered list; the station#3202 report states what threading
-            it would take. */}
-          <div className="project-page__live-work-actions">
-            <button
-              type="button"
-              className="project-page__add-btn"
-              onClick={() => showSurfacePage('activity')}
-            >
-              All activity
-            </button>
-          </div>
         </div>
         {lanes.map(renderLane)}
       </section>
@@ -270,6 +246,8 @@ function LiveWorkRowContent({
   stateWord: string;
   workingOn?: string;
 }) {
+  const stationName = liveWorkStationName(session, useActiveStationName());
+  const callToAction = liveWorkCallToAction(session, laneId);
   return (
     <>
       <AgentIcon
@@ -282,7 +260,7 @@ function LiveWorkRowContent({
           {sessionTitle(session)}
         </span>
         <span className="project-page__live-work-meta">
-          {liveWorkMeta(session, owner.name, now)}
+          {liveWorkMeta(session, owner.name, stationName, now)}
         </span>
         {workingOn !== undefined && (
           <span className="project-page__live-work-working-on">
@@ -292,9 +270,11 @@ function LiveWorkRowContent({
       </span>
       <span className="project-page__live-work-trailing">
         <span className="project-page__live-work-state">{stateWord}</span>
-        <span className="project-page__live-work-cta" aria-hidden="true">
-          {liveWorkCallToAction(session, laneId)}
-        </span>
+        {callToAction && (
+          <span className="project-page__live-work-cta" aria-hidden="true">
+            {callToAction}
+          </span>
+        )}
       </span>
     </>
   );

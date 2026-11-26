@@ -1,0 +1,7 @@
+{
+  "revision": "69a17a41dd00e4915f5f031dfb1d5ccc344f7ea7",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Fix round, merge-group supersession paragraph only: checked against scripts/pr-ci-supersession.mjs liveGroupRuns (three listing attempts, 2 s pause, warn and cancel nothing on a still-inconsistent listing) and the unchanged fatal merged path; any merge_group workflow wording matches the unrestricted runWorkflow identity; post-landing check commands are read-only gh/git reads. Rest of the guide not re-reviewed.","inputs":["docs/guides/testing.md","scripts/__tests__/pr-ci-supersession.test.ts","scripts/pr-ci-supersession.mjs"]}
+  ]
+}

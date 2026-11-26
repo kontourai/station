@@ -1,0 +1,7 @@
+{
+  "revision": "f86288c415a21320529747042e11987edf241066",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"The inbox swipe journey line now names Mark done/Undo, the row action's current label (notificationRowActions and the inbox row menu); the browser test it cites still exercises reveal, Snooze, the row's done action with Undo, preview-off recovery and hover controls.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

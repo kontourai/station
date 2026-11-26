@@ -1,0 +1,7 @@
+{
+  "revision": "ae46e3faadd8dd6a65a4b95a8aef5695be345de3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Run setup label now shows the model alone when an Agent mark is present; Agent · model remains the accessible name and the no-mark fallback. Updated toolbar and picker sections to match ComposerRunControl.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx"]}
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "revision": "4cea73815dae848850f696407864ce79f41346fd",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the distribution and CLI references against the bounded change. Checkpoint and Operate use the existing authenticated selected-target path. Commands remain in the same packages and the default SDK transport behavior still applies.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Checked the changes to CLI help against this archived decision. Only the checkpoint restore help changed; the Playbook and Skills decision, flags, and historical status are outside the delta.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"The Operate shell authenticates its existing global feed and retains its one-stream snapshot, reducer and cancellation lifecycle. Reconnect and cursor policies of other SSE callers are unchanged.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Closed the two current CLI limitations against the implemented callers. Operate now uses the shared authenticated feed. Checkpoint now previews separately and sends only the reviewed preview ID and current-tree hash on confirmation.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md","packages/cli/src/commands/checkpoints.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the checkpoint architecture and regenerated MCP topic. SDK preview supports both phases; only the CLI exposes the phase choice. Server restore identity, active-turn exclusion, recovery ref, and receipt ownership remain in the same modules.","inputs":["docs/architecture/module-map.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed the documented triage target and recovery routes. CLI target resolution and credential lookup are unchanged. Checkpoint changes affect its separate inspected restore flow, and the Operate event stream now presents its selected credential. Triage budgets and probe classification are unchanged.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/station-connection.md","note":"Compared the request authority and connection boundaries. The mutation helper now forwards the explicit redirect setting; its default is unchanged. Origin scoping, native delegation, request snapshotting and response checks are untouched.","inputs":["docs/design/station-connection.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Reviewed relevant SDK request and Agent authoring examples. Only the explicitly selected redirect mode passes through the mutation RequestInit; Agent authoring and default request options are unchanged.","inputs":["docs/guides/agent-development.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Reviewed help and SDK authority references. Existing command registration, skill mounting and default SDK behavior remain intact. Checkpoint help now names the preview and confirmation arguments.","inputs":["docs/guides/authoring-skill-experiences.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the CLI and SDK links for target custody and deadlines. Keep the same selected Station and credential for preview and confirmation. No new hosted, provider, or registered application capability is asserted.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the cited SDK transport change. Explicit redirect mode now reaches the mutation request; browser layout, responsive UI controls and default transport behavior are unchanged.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the cited SDK transport delta. Explicit redirect handling affects the checkpoint requests; theme preference behavior and default request options are unchanged.","inputs":["docs/guides/theming.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the mutation HTTP delta against the request conventions. Forwarding an explicit redirect setting preserves the default and does not alter server policy, validation, error envelope shape or caller identity.","inputs":["docs/patterns/backend.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the SDK mutation delta and checkpoint consumer. Chat still previews settle and uses the existing confirmation control; explicit redirect refusal only prevents redirecting the authority-bound operation.","inputs":["docs/patterns/frontend.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the two existing checkpoint routes against the new CLI requests. Both retain their existing methods, paths, confirmation schema and refusal responses; preview and confirmation stay subject to server authorization and workspace checks.","inputs":["docs/reference/api.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed command help, selected-origin credentials, deadlines, preview output, reviewed confirmation flags, and the Operate shell stream lifecycle. Local checkpoints status, pruning and audit stay local. Protected loopback evidence is scoped to the CLI caller.","inputs":["docs/reference/cli.md","packages/cli/src/__tests__/operate-shell.test.ts","packages/cli/src/commands/checkpoints.ts","packages/cli/src/commands/operate/shell.ts","packages/cli/src/help.ts","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the SDK transport boundary. The explicit mutation redirect option is now honored, with defaults unchanged. Connection profiles, origin selection, credential reporting and device policy are unchanged.","inputs":["docs/reference/connect.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the checkpoint fetchers, error envelopes and UI caller. Existing preview calls still select settle; callers may explicitly choose baseline. Both calls reject redirects. Mutation requests keep shared credential, deadline and response guards.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/checkpoint-restore.ts","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated the shipped architecture content from the checkpoint module description. The changed topic documents separate preview and confirmation using the same authority-bound SDK endpoints. This does not change runtime access offered by Station Docs.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the CLI and chat user journeys separately. The CLI now prints affected paths, truncation, tree hashes and expiry before requesting separate reviewed confirmation. Existing workspace and turn validation continues to run on the Station.","inputs":["docs/user/workspace-checkpoints.md","packages/cli/src/commands/checkpoints.ts","packages/sdk/src/client/checkpoint-restore.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed user commands and target precedence. Operate authenticates events on the selected Station without an overall stream deadline. Checkpoint preview and confirmation use the shared bounded request path and retain the review data needed for confirmation.","inputs":["packages/cli/README.md","docs/reference/cli.md","packages/cli/src/commands/checkpoints.ts","packages/cli/src/help.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the SDK scope and cancellation instruction against the transport change. Explicit redirect handling is now forwarded for mutation requests; default behavior and already established safety boundaries remain intact.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

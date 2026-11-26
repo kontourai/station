@@ -28,16 +28,79 @@ export interface RegistryCatalogSelection {
   sourceId: string;
   itemId: string;
   revision: string;
-  kind: 'skills' | 'plugins';
+  /**
+   * The catalog this item was selected from. `agents` is additive: an agent
+   * entry from a source's Station manifest, installed through the plugin
+   * pipeline like any manifest entry.
+   */
+  kind: 'skills' | 'plugins' | 'agents';
+}
+
+/**
+ * Everything a source can be recognized as providing. `integrations` is
+ * reported by detection but has no catalog selection yet.
+ */
+export type RegistrySourceKind =
+  | RegistryCatalogSelection['kind']
+  | 'integrations';
+
+/** One kind a source's content was recognized as providing. */
+export interface RegistrySourceDetectedKind {
+  kind: RegistrySourceKind;
+  count: number;
+  /** The detector that recognized it, such as `station-manifest` or `skill-md`. */
+  via: string;
+  /** Whether Station can list and install these items from this source. */
+  installable: boolean;
+  /** Why the items are listed as recognized but not installable. */
+  note?: string;
+  /** The managed policy refuses this kind from this source. */
+  managedDenial?: string;
+}
+
+/**
+ * What Station recognized in a source's content. The kinds follow from the
+ * content's structure, never from a type the person chose.
+ */
+export interface RegistrySourceDetection {
+  /**
+   * `nothing-recognized` is a successful read that found nothing Station
+   * knows; `refused` is a read Station stopped at a bound; `unavailable` is a
+   * read that failed.
+   */
+  state: 'detected' | 'nothing-recognized' | 'refused' | 'unavailable';
+  kinds: RegistrySourceDetectedKind[];
+  /** The source's revision when it was last read: a commit, or a content digest. */
+  revision?: string;
+  checkedAt?: string;
+  /** When a read last found a different revision from the one before it. */
+  changedAt?: string;
+  /** The root index that decided the kinds it declares, when there is one. */
+  index?: string;
+  /** The sentence for `refused` and `unavailable`. */
+  reason?: string;
 }
 
 export interface RegistrySource {
+  /**
+   * The source's primary catalog kind, kept for older clients. A source can
+   * provide several kinds; `detection.kinds` lists them all.
+   */
   kind: RegistryCatalogSelection['kind'];
   id: string;
   displayName: string;
   origin: 'station' | 'configured' | 'user' | 'plugin';
   location?: string;
+  /** Branch, tag or commit of a repository source; absent means its default branch. */
+  ref?: string;
+  /**
+   * How Station reads the location. For a person's own source this is derived
+   * from the location, not chosen, and does not decide what the source
+   * provides.
+   */
   adapter: 'manifest' | 'directory' | 'github' | 'provider';
+  /** Present on a person's own sources. */
+  detection?: RegistrySourceDetection;
   enabled: boolean;
   owner?: string;
   status: 'ready' | 'stale' | 'error' | 'disabled' | 'unknown';
@@ -550,7 +613,53 @@ export type ProviderDeclaredHandshakeFact =
   | 'authMethods'
   | 'extensionMethods'
   /** The probe session's `models` list (#352). */
-  | 'models';
+  | 'models'
+  | 'declaredFeatures'
+  | 'logChannels';
+
+/**
+ * Which engine variant a reviewed handshake-identity entry matched
+ * (`acp-handshake-facts.ts`). A variant names an engine and protocol
+ * generation, never a version: `kiro-v2` is kiro-cli's own engine
+ * (`agentInfo.name` `Kiro CLI Agent`), `kiro-v3` its agent service (it
+ * declares `agentCapabilities._meta.kiro`), `grok-build` the xAI Grok CLI's
+ * `grok agent` (its `initialize` result sets `_meta.grokShell: true`).
+ */
+export type ProviderDeclaredEngineVariant =
+  | 'kiro-v2'
+  | 'kiro-v3'
+  | 'grok-build';
+
+/**
+ * Feature flags an engine declared under its vendor namespace in
+ * `agentCapabilities._meta`, read against Station's bounds. Each is the
+ * engine's own claim. Station binds behavior to a flag only through a
+ * reviewed entry; an unbound flag is recorded, not acted on.
+ */
+export interface ProviderDeclaredFeatures {
+  /** The vendor `_meta` namespace the flags were read from (`kiro`). */
+  namespace: string;
+  /** Workspace checkpoints the engine can revert to. */
+  checkpoints?: boolean;
+  /** The engine lists its own stored sessions. */
+  sessionList?: boolean;
+  /** Updates replayed by a session load are marked as replayed. */
+  replayMarking?: boolean;
+  /** The engine reports a model fallback it performed. */
+  modelFallbackReporting?: boolean;
+  /** The engine reports organization policy changes. */
+  policyNotifications?: boolean;
+  /** `session/fork` accepts a message id to fork at. */
+  forkAtMessage?: boolean;
+  /** Bounds of the engine's auto-compaction threshold, in percent of context. */
+  autoCompactionThreshold?: { min: number; max: number; default: number };
+  /** Where the engine can run a session (`local`, `cloud-sandbox`, …). */
+  executionTargets?: string[];
+  /** Where the engine's sessions can come from (`local`, `remote`). */
+  sessionSources?: string[];
+  /** Scopes the engine's session list can be asked for. */
+  sessionListScopes?: string[];
+}
 
 /**
  * ADR 0013: what one engine connection declared about itself at its protocol
@@ -568,6 +677,15 @@ export interface ProviderDeclaredHandshake {
   authMethods?: ProviderDeclaredAuthMethod[];
   /** Extension methods the engine listed in its capability `_meta`. */
   extensionMethods?: string[];
+  /** The engine variant a reviewed identity entry matched; absent when none did. */
+  engineVariant?: ProviderDeclaredEngineVariant;
+  /** Vendor feature flags; absent when the engine declared none Station reads. */
+  declaredFeatures?: ProviderDeclaredFeatures;
+  /**
+   * Names of the log channels the engine declared. Their file paths are host
+   * paths and stay on the server, where only an administrator reads a tail.
+   */
+  logChannels?: string[];
   /**
    * Facts the engine declared beyond Station's bounds. Each is absent above,
    * never shortened, so a refused list cannot read as a complete one.

@@ -1,0 +1,9 @@
+{
+  "revision": "280db9dbbb4c05d2efad6206ec579744d41ea11a",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Read the Play readback paragraph against scripts/query-google-play-release.mjs and scripts/verify-release-cohort.mjs at this revision. A read and its edit cleanup that both fail with a retryable class are retried (settleAttempt); any other cleanup failure after a failed read is final; the 65 s worst case (READBACK_WORST_CASE_MS) and the 90 s verifier limit (PLAY_ADAPTER_LIMIT_MS) are unchanged; a run that trips the verifier limit reports that the adapter did not finish and carries its stderr lines. The edit-invalidation behaviour is now attributed to Google's edits documentation and marked not verified here, with the consequence stated. Checked by reading, with the new query and verifier tests executed.","inputs":["docs/guides/native-releases.md","scripts/__tests__/verify-release-cohort.test.ts","scripts/verify-release-cohort.mjs"]},
+
+    {"path":"docs/guides/nightly.md","note":"The verifier change adds an exported limit constant and a helper that runs the Play adapter and words its timeout failure; the page's Android and provider-state claims are unchanged and still accurate.","inputs":["docs/guides/nightly.md","scripts/__tests__/verify-release-cohort.test.ts","scripts/verify-release-cohort.mjs"]}
+  ]
+}

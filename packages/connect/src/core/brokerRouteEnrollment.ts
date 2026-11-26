@@ -7,6 +7,7 @@ import type {
   SelfHostedBrokerRouteInvitationV1,
   SelfHostedBrokerScopeV1,
 } from '@kontourai/station-contracts/self-hosted-broker';
+import { encodeBase64Url } from '@kontourai/station-shared/base64url';
 import {
   copyStationConnectionTrust,
   stationConnectionSigningKeyId,
@@ -194,15 +195,6 @@ function validateInvitation(
     invitationSecret: raw.invitationSecret,
     expiresAt: raw.expiresAt as number,
   });
-}
-
-function encodeBase64Url(value: Uint8Array): string {
-  let binary = '';
-  for (const byte of value) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
 }
 
 function decodeBase64Url(value: string): Uint8Array {

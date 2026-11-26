@@ -1,0 +1,7 @@
+{
+  "revision": "bb92f90571eeebb284604a0f2dda3627b47e9419",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Spec change does not touch the telemetry scenes this page describes.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

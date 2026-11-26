@@ -1,0 +1,7 @@
+{
+  "revision": "dbdf97d48bd9286baf477bc989f8613394ddb35f",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Updated the resume step: a reopen's reapplied model or effort that the engine refuses (a JSON-RPC error answer) or will not confirm (AcpSettingUnverifiedError) is logged and keeps the engine's own model; a failing mode still refuses the start, as does an engine that exits mid-reapply (closed connection rethrown). Checked against reapplyRequestedSessionState in acp-adapter.ts and the two new acp-session-answers process tests. Grok and Kiro sections unaffected.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

@@ -141,17 +141,21 @@ describe('ChatDock project-binding wiring (archive#4525)', () => {
   // (an explicit picker pick, an explicit new-chat project choice, or
   // deletion) — it must never sync the ambient binding to the fork
   // source's project. No pure function can carry this: it is a fact about
-  // which of two DIFFERENT callback props (`onSelect` vs.
-  // `onForkAgentSelect`, chosen by `DockStartComposer` while forking) gets
-  // wired to the sync call.
+  // which of two DIFFERENT callbacks (the New chat draft's `onSelect` vs.
+  // the fork dialog's `onFork`) gets wired to the sync call.
   test('a fork confirmation never syncs the project binding (station#4525 review LOW-1)', () => {
-    const forkBody = extractBalancedBody(source, 'onForkAgentSelect: (');
+    const forkBody = extractBalancedBody(source, 'onFork: (agent, choice) =>');
     expect(forkBody).not.toMatch(/setActiveProjectSlug/);
-    // #4406: the draft's pick and Regenerate / Edit and resend share one
+    // #4406: the dialog's pick and Regenerate / Edit and resend share one
     // fork runner, which must not sync the binding either.
     expect(forkBody).toMatch(/runFork\(/);
     const runForkBody = extractBalancedBody(source, 'const runFork = async (');
     expect(runForkBody).toMatch(/forkConversation\(/);
+    // The key lifecycle and model inheritance are the tested helpers'.
+    expect(runForkBody).toMatch(/runForkAttempt\(/);
+    expect(runForkBody).toMatch(
+      /forkOpenExecution\(source, agent\.slug, choice\)/,
+    );
     expect(runForkBody).not.toMatch(/setActiveProjectSlug/);
 
     const nonForkBody = extractBalancedBody(source, /onSelect: \(\s*agent,/);

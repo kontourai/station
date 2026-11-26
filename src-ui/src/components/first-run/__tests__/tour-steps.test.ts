@@ -98,7 +98,7 @@ describe('first-run tour anchors resolve to canonical routes', () => {
     // group a step names is still in the list. So a `nav-` anchor is checked
     // against the actual nav registry, which is what decides whether that
     // element renders at all.
-    const sources = ['views/ScheduleView.tsx', 'views/SessionsView.tsx']
+    const sources = ['views/ScheduleView.tsx']
       .map((relative) =>
         readFileSync(join(__dirname, '../../..', relative), 'utf8'),
       )
@@ -140,10 +140,9 @@ describe('first-run tour anchors resolve to canonical routes', () => {
       const propLiteral = `firstRunAnchor="${step.anchor}"`;
       // A shell-owned surface step has no route, so no frame can declare its
       // anchor — only the two source-literal channels above are open to it.
-      const framedAnchor =
-        'view' in step
-          ? resolvePageFrame(step.view)?.firstRunAnchor
-          : undefined;
+      const framedAnchor = step.view
+        ? resolvePageFrame(step.view)?.firstRunAnchor
+        : undefined;
       expect(
         sources.includes(literal) ||
           sources.includes(propLiteral) ||
@@ -165,14 +164,8 @@ describe('tourStepIndexForId', () => {
     expect(tourStepIndexForId('a-step-that-was-removed')).toBe(0);
   });
 
-  // archive#3280: tourStepId is durable resume state; the sessions->activity
-  // step rename must keep previously persisted ids resolving to the renamed
-  // step, not silently restarting the tour.
-  test("resolves the persisted pre-rename 'sessions' id to the activity step", () => {
-    const activityIndex = FIRST_RUN_TOUR_STEPS.findIndex(
-      (step) => step.id === 'activity',
-    );
-    expect(activityIndex).toBeGreaterThanOrEqual(0);
-    expect(tourStepIndexForId('sessions')).toBe(activityIndex);
+  test('retired sessions and activity steps restart the tour', () => {
+    expect(tourStepIndexForId('sessions')).toBe(0);
+    expect(tourStepIndexForId('activity')).toBe(0);
   });
 });

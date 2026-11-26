@@ -393,19 +393,28 @@ export function register(app, context) {
         (entry) => entry.metadata.name === result.reviewItemName,
       );
       if (!item) continue;
+      // Survey's derive reports a decision recorded without a note as
+      // `rationale: ''`. Survey copies the rationale into event `notes` and
+      // (since 9.0) attestation `excerptOrSummary` with `??`, so '' reaches
+      // the bundle, and Surface's validateTrustBundle rejects an empty
+      // string in either field: the trust panel would list the bundle as
+      // invalid. Fall back to the item's own rationale, and omit an empty
+      // one so Survey writes its own attestation summary. Remove once Survey
+      // treats an empty rationale as absent.
+      const rationale = result.rationale || item.spec.rationale || undefined;
       builder.addClaimRecords(
         candidateReviewRecord({
           id: item.metadata.name,
           target: item.spec.target,
           observations: item.spec.candidates.map(candidateToObservation),
           selectedCandidateId: result.selectedCandidateId,
-          rationale: result.rationale ?? item.spec.rationale,
+          rationale,
           reviewOutcome: {
             candidateId: result.selectedCandidateId,
             status: result.status,
             actor: session.actorId,
             reviewedAt: session.reviewedAt,
-            rationale: result.rationale,
+            ...(result.rationale ? { rationale: result.rationale } : {}),
           },
         }),
       );

@@ -33,7 +33,7 @@ function lint(source: string) {
 }
 
 describe('reviewed GitHub FIFO schema compatibility', () => {
-  test('routes PR shards into three shared groups while retaining old group identities', () => {
+  test('routes PR shards into five shared groups while retaining the three old group identities', () => {
     const ci = readWorkflowDocuments().find(
       (workflow) => workflow.file === '.github/workflows/ci.yml',
     );
@@ -84,17 +84,22 @@ describe('reviewed GitHub FIFO schema compatibility', () => {
           sha: 'sha',
         };
         const group = evaluate(github, { shard }, endsWith, format) as string;
-        const third = [0, 1, 2].includes(number % 10) && [1, 3].includes(shard);
-        const old =
-          (number % 2 === 1) !== [1, 3].includes(shard) ? 'odd' : 'even';
-        expect(group).toBe(
-          third ? 'ci-pr-shards-third' : `ci-pr-shards-${old}`,
-        );
+        // Independent restatement of ci.yml's table, not read from it.
+        const slot = ['even', 'odd', 'third', 'fourth', 'fifth'][
+          (((number % 10) % 5) + shard - 1) % 5
+        ];
+        expect(group).toBe(`ci-pr-shards-${slot}`);
         groups.add(group);
       }
     }
     expect(groups).toEqual(
-      new Set(['ci-pr-shards-odd', 'ci-pr-shards-even', 'ci-pr-shards-third']),
+      new Set([
+        'ci-pr-shards-odd',
+        'ci-pr-shards-even',
+        'ci-pr-shards-third',
+        'ci-pr-shards-fourth',
+        'ci-pr-shards-fifth',
+      ]),
     );
     expect(job.concurrency.queue).toBe('max');
     expect(job.concurrency['cancel-in-progress']).toBe(false);
@@ -109,6 +114,50 @@ describe('reviewed GitHub FIFO schema compatibility', () => {
     expect(evaluate(github, { shard: 1 }, endsWith, format)).toBe(
       'ci-fast-shard-1-merge_group-candidate-abc-',
     );
+    const releaseBot = (login: string, repo: string) => ({
+      event_name: 'pull_request_target',
+      repository: 'kontourai/station',
+      event: {
+        pull_request: {
+          number: 4097,
+          user: { login },
+          head: {
+            sha: 'head',
+            ref: 'changeset-release/main',
+            repo: { full_name: repo },
+          },
+          base: { sha: 'base' },
+        },
+      },
+      ref: 'ref',
+      sha: 'sha',
+    });
+    for (let shard = 1; shard <= 4; shard++) {
+      expect(
+        evaluate(
+          releaseBot('station-automation[bot]', 'kontourai/station'),
+          { shard },
+          endsWith,
+          format,
+        ),
+      ).toBe('ci-pr-release-bot');
+      expect(
+        evaluate(
+          releaseBot('station-automation[bot]', 'someone/station'),
+          { shard },
+          endsWith,
+          format,
+        ),
+      ).toMatch(/^ci-pr-shards-(even|odd|third|fourth|fifth)$/);
+      expect(
+        evaluate(
+          releaseBot('octocat', 'kontourai/station'),
+          { shard },
+          endsWith,
+          format,
+        ),
+      ).toMatch(/^ci-pr-shards-(even|odd|third|fourth|fifth)$/);
+    }
   });
   test('removes only the validated new key and preserves the original security document', () => {
     const original = structuredClone(document);
@@ -202,45 +251,6 @@ describe('reviewed GitHub FIFO schema compatibility', () => {
     changed.concurrency.group = 'station-background-compute';
     expect(() =>
       legacyActionlintSources([{ file: full.file, document: changed }]),
-    ).toThrow(/Unreviewed FIFO/);
-  });
-  test('the manual admission-only probe joins the same FIFO without candidate execution or write authority', () => {
-    const probe = readWorkflowDocuments().find(
-      (workflow) =>
-        workflow.file === '.github/workflows/hosted-capacity-probe.yml',
-    );
-    if (!probe) throw new Error('Missing admission-only probe');
-    const original = structuredClone(probe.document) as {
-      on: Record<string, unknown>;
-      permissions: Record<string, string>;
-      jobs: Record<
-        string,
-        {
-          'timeout-minutes': number;
-          steps: Array<{ run?: string; uses?: string }>;
-        }
-      >;
-      concurrency: Record<string, unknown>;
-    };
-    expect(original.on).toEqual({ workflow_dispatch: null });
-    expect(original.permissions).toEqual({});
-    expect(Object.keys(original.jobs)).toEqual(['admission-only']);
-    const job = original.jobs['admission-only'];
-    expect(job['timeout-minutes']).toBe(2);
-    expect(job.steps).toHaveLength(1);
-    expect(job.steps[0].uses).toBeUndefined();
-    expect(job.steps[0].run).toContain('"kind": "ADMISSION_ONLY"');
-    expect(job.steps[0].run).toContain('time.sleep(10)');
-    expect(job.steps[0].run).not.toMatch(
-      /checkout|secrets|install|qualification/,
-    );
-    const [adapted] = legacyActionlintSources([
-      { file: probe.file, document: original },
-    ]);
-    expect(lint(adapted.source)).toBe('');
-    original.concurrency.queue = true;
-    expect(() =>
-      legacyActionlintSources([{ file: probe.file, document: original }]),
     ).toThrow(/Unreviewed FIFO/);
   });
   test.each([

@@ -12,6 +12,7 @@
 
 import type {
   MuseProviderMode,
+  MuseReasoningEffort,
   MuseToolTaskBinding,
 } from './muse-adapter-types.js';
 
@@ -510,6 +511,12 @@ export function buildMuseExecArgs(input: {
    * argv assertions read.
    */
   provider?: MuseProviderMode;
+  /**
+   * Already narrowed to `MUSE_REASONING_EFFORTS`. Dropped under `echo`
+   * like `--model`: it is muse's "Meta reasoning effort", and echo runs no
+   * model to reason.
+   */
+  reasoningEffort?: MuseReasoningEffort;
 }): string[] {
   const args = ['exec', '--json', '--session-id', input.sessionId];
   if (input.provider) {
@@ -526,6 +533,9 @@ export function buildMuseExecArgs(input: {
   // is passed through unchanged.
   if (input.modelId && input.provider !== 'echo') {
     args.push('--model', input.modelId);
+  }
+  if (input.reasoningEffort && input.provider !== 'echo') {
+    args.push('--reasoning-effort', input.reasoningEffort);
   }
   if (input.cwd) {
     args.push('--workspace', input.cwd);

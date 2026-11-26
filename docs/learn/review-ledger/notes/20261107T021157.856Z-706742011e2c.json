@@ -1,9 +1,0 @@
-{
-  "revision": "36fa90ae2719fe845666bd13d3450811c5b40fa0",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the shared acknowledgement check against the existing Task brief digest tuple and the SDK transport test, including rejection when brief text changes under an echoed digest. No hosted execution, provider or UI behavior is established.","inputs":["docs/design/task-room-agent-requests.md","packages/sdk/src/__tests__/task-room-work.test.ts","packages/sdk/src/client/task-room-work.ts"]},
-
-    {"path":"docs/reference/sdk.md","note":"Reviewed the shared acknowledgement check against the existing Task brief digest tuple and the SDK transport test, including rejection when brief text changes under an echoed digest. No hosted execution, provider or UI behavior is established.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/task-room-work.ts"]}
-  ]
-}

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { PageCreateAction } from '../components/PageCreateAction';
 import {
   PageEyebrowTrail,
@@ -19,6 +19,7 @@ import {
   type ConnectionSectionId,
 } from './connections-hub/connection-sections';
 import { IntegrationStatusSection } from './connections-hub/IntegrationStatusSection';
+import { OutsideClientsSection } from './connections-hub/OutsideClientsSection';
 
 // archive#4463: the rail now renders the shared `Tabs` primitive,
 // which self-imports `.page__tabs`/`.page__tab`'s stylesheet — the frame no
@@ -48,13 +49,15 @@ const TABS_ID = 'connections-sections';
 export function ConnectionsSectionFrame({
   sectionId,
   children,
+  creating = false,
 }: {
   sectionId: ConnectionSectionId;
   children: ReactNode;
+  creating?: boolean;
 }) {
   return (
     <SplitPaneReturnFocusProvider>
-      <ConnectionsSectionFrameInner sectionId={sectionId}>
+      <ConnectionsSectionFrameInner sectionId={sectionId} creating={creating}>
         {children}
       </ConnectionsSectionFrameInner>
     </SplitPaneReturnFocusProvider>
@@ -64,9 +67,11 @@ export function ConnectionsSectionFrame({
 function ConnectionsSectionFrameInner({
   sectionId,
   children,
+  creating = false,
 }: {
   sectionId: ConnectionSectionId;
   children: ReactNode;
+  creating?: boolean;
 }) {
   const section = CONNECTION_SECTIONS.find((entry) => entry.id === sectionId)!;
   const { navigate } = useNavigation();
@@ -75,10 +80,20 @@ function ConnectionsSectionFrameInner({
   // One derivation for both facts this rail renders, shared with the
   // `/connections` resolver.
   const { count, needsAttention } = useConnectionSectionSignals();
+  const parent = useMemo(
+    () => (
+      <PageEyebrowTrail
+        segments={[
+          { label: 'Engines', onClick: () => navigate('/connections/engines') },
+        ]}
+      />
+    ),
+    [navigate],
+  );
   usePageHeader({
-    eyebrow: CONNECTIONS_EYEBROW,
-    title: section.title,
-    subtitle: section.subtitle,
+    eyebrow: creating ? parent : CONNECTIONS_EYEBROW,
+    title: creating ? 'Add engine' : section.title,
+    subtitle: creating ? undefined : section.subtitle,
   });
   const add = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (sectionId === 'computers') return setComputerChooserOpen(true);
@@ -96,6 +111,12 @@ function ConnectionsSectionFrameInner({
     }
     navigate('/settings?view=knowledge');
   };
+  if (creating)
+    return (
+      <div className="connections-section-frame">
+        <PageHeaderScope>{children}</PageHeaderScope>
+      </div>
+    );
   return (
     <div className="pane-host connections-section-frame">
       {/* archive#4463: the same shared primary scale as every other page
@@ -129,6 +150,7 @@ function ConnectionsSectionFrameInner({
         aria-labelledby={tabElementId(TABS_ID, sectionId)}
         className="tab-panel"
       >
+        {sectionId === 'tools' && <OutsideClientsSection />}
         <PageHeaderScope>{children}</PageHeaderScope>
       </div>
       <AddMachineModal

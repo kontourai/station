@@ -1,0 +1,7 @@
+{
+  "revision": "95b26011a7a1ee3a458b18f5743ab491c6625db1",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"The conversation-open client stays on its dedicated subpath. The open controller now imports it statically, but the controller itself is a lazy chunk preloaded at idle, so the parser stays out of the initial bundle as documented.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx"]}
+  ]
+}

@@ -1,7 +1,0 @@
-{
-  "revision": "c626a5d703e458096412b62de6ebe245998a4e5b",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Reviewed actual-main Sources/Apps integration and bounded guardrail correction. Screenshot functions from both parents were retained verbatim, types/fixture policy passed, and the canonical combined 16-scene capture passed with zero standard product findings. The menu SDK fixture now models the offered Apps preview disabled; real flag selection and all menu assertions remain intact (8 passed). Qualification's ProjectSettingsView raw-fetch finding was a substring false positive on the existing SDK modelConnectionsQuery.refetch call, present already at c4108a67. Reusing the existing identifier-aware matcher preserves raw-fetch refusal; the unmodified strict positive verdict and new real Project Settings raw-fetch negative control passed all14 cases after the pre-fix positive failed. No application request, assertion tolerance, fail-closed reader, policy threshold, hosted qualification dispatch or rerun changed. Existing guide claims remain accurate; executed local and hosted/main qualification remain distinct.","inputs":["docs/guides/testing.md","scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts","scripts/proof-repo-guardrails.mjs"]}
-  ]
-}

@@ -1,0 +1,13 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Adds projectRuns/projectHold options: a Project job runs through ScheduledProjectRuns and a held Project's jobs are not claimed or manually run. Behavior for jobs without projectId is unchanged.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Adds projectRuns/projectHold options: a Project job runs through ScheduledProjectRuns and a held Project's jobs are not claimed or manually run. Behavior for jobs without projectId is unchanged.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Adds projectRuns/projectHold options: a Project job runs through ScheduledProjectRuns and a held Project's jobs are not claimed or manually run. Behavior for jobs without projectId is unchanged.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Adds projectRuns/projectHold options: a Project job runs through ScheduledProjectRuns and a held Project's jobs are not claimed or manually run. Behavior for jobs without projectId is unchanged.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]}
+  ]
+}

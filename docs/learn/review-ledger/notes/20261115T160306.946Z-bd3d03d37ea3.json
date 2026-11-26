@@ -1,0 +1,11 @@
+{
+  "revision": "52ed0aa6aabf748c9ee05e71166d5643f077e086",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the diff: non-ASCII characters inside a regular expression literal rewritten as the equivalent \\u escapes so the server bundle stays ASCII; the expression matches exactly the same characters, so no documented behavior changes.","inputs":["packages/shared/src/redaction.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Checked the diff: non-ASCII characters inside a regular expression literal rewritten as the equivalent \\u escapes so the server bundle stays ASCII; the expression matches exactly the same characters, so no documented behavior changes.","inputs":["packages/shared/src/redaction.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Checked the diff: non-ASCII characters inside a regular expression literal rewritten as the equivalent \\u escapes so the server bundle stays ASCII; the expression matches exactly the same characters, so no documented behavior changes.","inputs":["packages/shared/src/redaction.ts"]}
+  ]
+}

@@ -21,13 +21,22 @@ import { loadProductLawManifest } from '../lib/product-laws.mjs';
 import { attachCiFastDiagnostics } from '../lib/verification-ci-fast-diagnostics.mjs';
 import { runProductLawGate } from '../product-law-gate.mjs';
 import {
+  capEscalatedImporters,
   changedDeadlineFromEnv,
   changedPaths,
+  decideEscalatedImporters,
   discoverRelatedTestFiles,
+  ESCALATED_IMPORTER_ABSENT_REASON,
+  ESCALATED_IMPORTER_CAP_REASON,
+  ESCALATED_IMPORTER_DEFERRAL_REASON,
+  ESCALATED_IMPORTER_LIMITS,
+  ESCALATED_IMPORTER_TOTAL_CAP,
+  ESCALATED_IMPORTER_UNCOVERED_REASON,
   escalateUnavailableExplicitTests,
   parseRelatedTestDiscovery,
   planChangedVerificationShards,
   planChangedVitestExecutions,
+  prepareChangedSelection,
   productLawEvidenceTests,
   RELATED_DISCOVERY_FLOOR_MS,
   RELATED_DISCOVERY_RESERVE_MS,
@@ -125,6 +134,7 @@ const EXPECTED_GOVERNED_READERS = {
     'scripts/__tests__/issue-lifecycle-workflow.test.ts',
     'scripts/__tests__/nightly-build-identity.test.ts',
     'scripts/__tests__/node-runtime-contract.test.ts',
+    'scripts/__tests__/promotion-full-regression-workflow.test.ts',
     'scripts/__tests__/publish-oidc-exchange-status.test.ts',
     'scripts/__tests__/release-cargo-producer.test.ts',
     'scripts/__tests__/release-ring-workflow.test.ts',
@@ -232,9 +242,16 @@ describe('changed verification selection', () => {
     expect(without).toHaveLength(
       TEST_IMPACT_MANIFEST.length - UNMODELLED_INPUT_EDGES.length,
     );
-    // Pinned by count, independently: the loop below is satisfied by an
-    // empty list.
-    expect(UNMODELLED_INPUT_EDGES).toHaveLength(16);
+    // The loop below is satisfied by an empty list, so the list must not be
+    // empty. Not an exact count: two pull requests that each add an edge
+    // would both write the same number and fail whichever lands second.
+    expect(UNMODELLED_INPUT_EDGES.length).toBeGreaterThan(0);
+    // One edge pinned by name, so deleting it still fails here.
+    expect(
+      UNMODELLED_INPUT_EDGES.filter(
+        (edge) => edge.pattern === 'scripts/diff-whitespace-gate.mjs',
+      ).map((edge) => edge.tests),
+    ).toEqual([['scripts/__tests__/run-ci-fast.test.ts']]);
     for (const edge of UNMODELLED_INPUT_EDGES) {
       expect(edge.supplemental, edge.pattern).toBe(true);
       const path = edge.pattern.endsWith('/**')
@@ -1946,6 +1963,78 @@ setInterval(() => {}, 1000);`,
       new Set(['explicit']),
     );
   });
+  test.each([30, 31])(
+    'keeps direct UI importers only when all fit alongside %i explicit suites',
+    (explicitCount) => {
+      const root = makeTempDir('station-deferred-ui-importers-');
+      const component = 'src-ui/src/components/modals/NewChatModal.tsx';
+      const directPaths = [
+        'src-ui/src/__tests__/NewChatModalEngineChips.test.tsx',
+        'src-ui/src/__tests__/NewChatModalWorkspaceHint.test.tsx',
+      ];
+      const write = (path: string, source: string) => {
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        writeFileSync(join(root, path), source);
+      };
+      write(component, 'export const NewChatModal = () => null;');
+      write('src-ui/src/__tests__/NewChatModal.tsx', 'export {};');
+      write(
+        directPaths[0],
+        "import { NewChatModal } from '@/components/modals/NewChatModal';",
+      );
+      write(
+        directPaths[1],
+        "const modal = await import('../components/modals/NewChatModal.js');",
+      );
+      write(
+        'src-ui/src/__tests__/DifferentModal.test.tsx',
+        "import './NewChatModal'; // This name resolves to a different file.",
+      );
+      write(
+        'config/product-laws.json',
+        JSON.stringify(loadProductLawManifest()),
+      );
+      const git = (args: string[]) =>
+        execFileSyncBounded('git', args, { cwd: root, windowsHide: true });
+      git(['init', '--quiet']);
+      git(['add', '.']);
+      git([
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '--quiet',
+        '-m',
+        'local selector fixture',
+      ]);
+      appendFileSync(join(root, component), '\n');
+      write('docs-private/notes.bin', 'genuinely unrouted path');
+      const explicit = Array.from({ length: explicitCount }, (_, index) => {
+        const path = `src-ui/src/__tests__/Explicit-${index}.test.ts`;
+        write(path, 'export {};');
+        return path;
+      });
+
+      const { selection, executionSelection, localUiImporters } =
+        prepareChangedSelection('HEAD', { root });
+      expect(selection.lanes).toContainEqual(
+        expect.objectContaining({ id: 'ci-fast' }),
+      );
+      expect(executionSelection.relatedPaths).toEqual([]);
+      expect(localUiImporters?.tests.map(({ path }) => path)).toEqual(
+        directPaths,
+      );
+      const fits = explicitCount === 30;
+      expect(localUiImporters?.disposition).toBe(
+        fits ? 'selected' : 'cap-exceeded',
+      );
+      expect(executionSelection.tests.map(({ path }) => path).sort()).toEqual(
+        [...explicit, ...(fits ? directPaths : [])].sort(),
+      );
+    },
+  );
+
   test('keeps broad related-test expansion deferred', async () => {
     const run = vi.fn();
     const result = await runChangedVerification(['--base=origin/main'], {
@@ -3694,6 +3783,34 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
     expect(unbudgeted.timeouts).toEqual([60_000]);
   });
 
+  test('a timed-out discovery with unsettled ownership cannot plan retained tests', async () => {
+    const run = vi.fn(async () => ({
+      status: null,
+      signal: null,
+      stdout: '',
+      stderr: '',
+      timedOut: true,
+      error: new Error(
+        'Related Vitest discovery left an owned process tree alive',
+      ),
+      launch: { attempted: true, started: true },
+      cleanup: { status: 'failed', survivingOwnedChildren: 1 },
+    }));
+    await expect(
+      planChangedVerificationShards('HEAD', {
+        root: process.cwd(),
+        run,
+        headSha: 'c'.repeat(40),
+        changedPathsFn: () => ({
+          mergeBase: 'HEAD',
+          paths: ['src-ui/src/components/modals/NewChatModal.tsx'],
+        }),
+        assertDependencyProvenance: () => ({}),
+      }),
+    ).rejects.toThrow('left an owned process tree alive');
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   test('the fast-checks plan hands its deadline to discovery', async () => {
     const deadline = Date.now() + 300_000;
     const { run, timeouts } = timedDiscovery(90_000);
@@ -3981,5 +4098,467 @@ describe('documentation framework affected coverage', () => {
     expect(empty.lanes.map((lane: { id: string }) => lane.id)).toContain(
       'test-full',
     );
+  });
+});
+
+describe('an escalated path also runs its near importers in the hosted plan (#5010)', () => {
+  // No edge names a test for this path, so whatever the plan runs for it is
+  // the near-importer rule's doing.
+  const SHARED = 'packages/shared/src/ports.ts';
+  const NEAR = [
+    'packages/shared/src/__tests__/ports.test.ts',
+    'scripts/__tests__/channel-ports.test.ts',
+  ];
+  const names = (count: number, prefix = 's') =>
+    Array.from(
+      { length: count },
+      (_, index) => `src/${prefix}${index}.test.ts`,
+    );
+  type Report = {
+    path: string;
+    inGraph: boolean;
+    depth1Count: number;
+    depth2Count: number;
+    depth1?: string[];
+    depth2?: string[];
+  };
+  const report = (
+    path: string,
+    depth1: string[],
+    depth2: string[],
+  ): Report => ({
+    path,
+    inGraph: true,
+    depth1Count: depth1.length,
+    depth2Count: depth2.length,
+    depth1,
+    depth2,
+  });
+
+  // Answers discovery as the child would: no related files, and the given
+  // report for the seeds it was asked about.
+  function fakeDiscovery(answer: (seeds: string[]) => Report[]) {
+    return vi.fn(
+      async (
+        _root: string,
+        _paths: string[],
+        options?: {
+          escalatedSeeds?: string[];
+          onEscalatedImporters?: (entries: Report[]) => void;
+        },
+      ) => {
+        if (options?.escalatedSeeds?.length)
+          options.onEscalatedImporters?.(answer(options.escalatedSeeds));
+        return [];
+      },
+    );
+  }
+  const plan = (
+    paths: string[],
+    discoverRelatedFiles: ReturnType<typeof fakeDiscovery>,
+  ) =>
+    planChangedVerificationShards('HEAD', {
+      root: process.cwd(),
+      changedPathsFn: () => ({ mergeBase: 'HEAD', paths }),
+      discoverRelatedFiles,
+      headSha: 'c'.repeat(40),
+      assertDependencyProvenance: () => ({}),
+    });
+  const files = (planned: { groups: Array<{ files: string[] }> }) =>
+    planned.groups.flatMap((group) => group.files);
+  const ciFastReasons = (planned: {
+    deferredLanes: Array<{ id: string; reasons: string[] }>;
+  }) => planned.deferredLanes.find((lane) => lane.id === 'ci-fast')?.reasons;
+
+  test('two edges up to 100 suites, else one edge up to 100; an empty set is not selected', () => {
+    expect(ESCALATED_IMPORTER_LIMITS).toEqual({ depth1: 100, depth2: 100 });
+    const [two, one, over, empty, unreached, absent] = decideEscalatedImporters(
+      [
+        report('a.ts', names(3), names(100)),
+        report('b.ts', names(100), names(101)),
+        report('c.ts', names(101), names(101)),
+        // re-exported through a barrel: wide at two edges, nothing direct
+        report('d.ts', [], names(140)),
+        report('e.ts', [], []),
+        {
+          path: 'f.ts',
+          inGraph: false,
+          depth1Count: 0,
+          depth2Count: 0,
+          depth1: [],
+          depth2: [],
+        },
+      ],
+    );
+    expect(two).toMatchObject({ disposition: 'selected', depth: 2 });
+    expect(two?.tests).toHaveLength(100);
+    expect(one).toMatchObject({ disposition: 'selected', depth: 1 });
+    expect(one?.tests).toHaveLength(100);
+    // Over both limits: nothing selected, not the first 100.
+    expect(over).toMatchObject({
+      disposition: 'deferred',
+      depth: null,
+      tests: [],
+    });
+    expect(over?.reason).toBe(
+      `${ESCALATED_IMPORTER_DEFERRAL_REASON}: c.ts (101 import it directly, above 100)`,
+    );
+    expect(empty).toMatchObject({
+      disposition: 'no-suite-within-bound',
+      tests: [],
+    });
+    expect(empty?.reason).toBe(
+      `${ESCALATED_IMPORTER_UNCOVERED_REASON}: d.ts (140 within two imports, above 100; none directly)`,
+    );
+    expect(unreached).toMatchObject({ disposition: 'no-suite-within-bound' });
+    expect(unreached?.reason).toBe(
+      `${ESCALATED_IMPORTER_UNCOVERED_REASON}: e.ts (none within two imports)`,
+    );
+    expect(absent).toMatchObject({ disposition: 'not-in-graph', tests: [] });
+    expect(absent?.reason).toBe(`${ESCALATED_IMPORTER_ABSENT_REASON}: f.ts`);
+  });
+
+  test('the total cap counts the union not otherwise planned, and above it adds none', () => {
+    expect(ESCALATED_IMPORTER_TOTAL_CAP).toBe(250);
+    const a = names(100, 'a');
+    // b shares 25 suites with a: the union counts them once.
+    const b = [...a.slice(0, 25), ...names(75, 'b')];
+    const planned = 'src/planned.test.ts';
+    const decide = (extra: number) => {
+      const c = [planned, ...names(extra, 'c')];
+      return decideEscalatedImporters([
+        report('a.ts', [], a),
+        report('b.ts', [], b),
+        report('c.ts', [], c),
+      ]);
+    };
+    const atCap = capEscalatedImporters(decide(75), [planned]);
+    expect(atCap.added).toHaveLength(250);
+    expect(atCap.suites).toHaveLength(251);
+    expect(atCap.reason).toBeUndefined();
+    const over = capEscalatedImporters(decide(76), [planned]);
+    expect(over).toMatchObject({ suites: [], added: [] });
+    expect(over.reason).toBe(
+      `${ESCALATED_IMPORTER_CAP_REASON}: 251 not otherwise planned, above 250`,
+    );
+    expect(over.decisions.map(({ disposition }) => disposition)).toEqual([
+      'over-total-cap',
+      'over-total-cap',
+      'over-total-cap',
+    ]);
+  });
+
+  test('within the bound, the plan adds them and keeps the ci-fast deferral', async () => {
+    const discovery = fakeDiscovery((seeds) =>
+      seeds.map((path) => report(path, NEAR, NEAR)),
+    );
+    const planned = await plan([SHARED], discovery);
+    expect(discovery.mock.calls[0]?.[2]?.escalatedSeeds).toEqual([SHARED]);
+    expect(files(planned)).toEqual([...NEAR].sort());
+    expect(ciFastReasons(planned)).toEqual([`escalation: ${SHARED}`]);
+    expect(planned.escalated).toBe(true);
+    expect(planned.escalatedImporters).toEqual({
+      limits: { depth1: 100, depth2: 100 },
+      totalCap: 250,
+      suites: 2,
+      added: 2,
+      paths: [
+        {
+          path: SHARED,
+          disposition: 'selected',
+          depth: 2,
+          depth1Count: 2,
+          depth2Count: 2,
+          suites: 2,
+        },
+      ],
+    });
+  });
+
+  test('over the bound, the plan runs none of them and says why', async () => {
+    const discovery = fakeDiscovery((seeds) =>
+      seeds.map((path) => ({
+        path,
+        inGraph: true,
+        depth1Count: 101,
+        depth2Count: 400,
+      })),
+    );
+    const planned = await plan([SHARED], discovery);
+    expect(planned.fileCount).toBe(0);
+    expect(ciFastReasons(planned)).toEqual([
+      `${ESCALATED_IMPORTER_DEFERRAL_REASON}: ${SHARED} (101 import it directly, above 100)`,
+      `escalation: ${SHARED}`,
+    ]);
+    expect(planned.escalatedImporters?.paths).toEqual([
+      {
+        path: SHARED,
+        disposition: 'deferred',
+        depth: null,
+        depth1Count: 101,
+        depth2Count: 400,
+        suites: 0,
+      },
+    ]);
+  });
+
+  test('a path with no suite within the bound is named, not counted as planned', async () => {
+    const discovery = fakeDiscovery((seeds) =>
+      seeds.map((path) => ({
+        path,
+        inGraph: true,
+        depth1Count: 0,
+        depth2Count: 140,
+        depth1: [],
+      })),
+    );
+    const planned = await plan([SHARED], discovery);
+    expect(planned.fileCount).toBe(0);
+    expect(ciFastReasons(planned)).toContain(
+      `${ESCALATED_IMPORTER_UNCOVERED_REASON}: ${SHARED} (140 within two imports, above 100; none directly)`,
+    );
+    expect(planned.escalatedImporters?.paths[0]).toMatchObject({
+      disposition: 'no-suite-within-bound',
+      suites: 0,
+    });
+  });
+
+  test.each([
+    [250, 250],
+    [251, 0],
+  ])(
+    'a plan whose seeds would add %i suites adds %i',
+    async (total, expected) => {
+      const seeds = [
+        'packages/contracts/src/presence.ts',
+        'packages/shared/src/ports.ts',
+        'packages/shared/src/product-telemetry.ts',
+      ];
+      // Real suites, so the plan can validate and partition them: the test
+      // files the recorded incident diffs touched that still exist (a list,
+      // not a walk of the tree).
+      const incidents: Record<string, { paths: string[] }> = JSON.parse(
+        readFileSync(
+          join(
+            process.cwd(),
+            'scripts/__tests__/fixtures/test-impact-incidents/changed-paths.json',
+          ),
+          'utf8',
+        ),
+      );
+      const suites = [
+        ...new Set(
+          Object.values(incidents).flatMap(({ paths }) =>
+            paths.filter(
+              (path) =>
+                /\.test\.tsx?$/.test(path) &&
+                !path.startsWith('tests/') &&
+                existsSync(join(process.cwd(), path)),
+            ),
+          ),
+        ),
+      ]
+        .sort()
+        .slice(0, total);
+      expect(suites).toHaveLength(total);
+      const sizes = [100, 100, total - 200];
+      const discovery = fakeDiscovery((asked) =>
+        asked.map((path, index) => {
+          const own = suites.slice(
+            sizes.slice(0, index).reduce((sum, size) => sum + size, 0),
+            sizes.slice(0, index + 1).reduce((sum, size) => sum + size, 0),
+          );
+          return report(path, own, own);
+        }),
+      );
+      const planned = await plan(seeds, discovery);
+      expect(planned.fileCount).toBe(expected);
+      expect(planned.escalatedImporters?.added).toBe(expected);
+      const capReasons = (ciFastReasons(planned) ?? []).filter(
+        (reason: string) => reason.startsWith(ESCALATED_IMPORTER_CAP_REASON),
+      );
+      expect(capReasons).toEqual(
+        expected
+          ? []
+          : [
+              `${ESCALATED_IMPORTER_CAP_REASON}: 251 not otherwise planned, above 250`,
+            ],
+      );
+    },
+  );
+
+  test('a non-escalated path asks for no importers and adds nothing', async () => {
+    const path = 'scripts/lib/learning-markdown.mjs';
+    const discovery = fakeDiscovery(() => {
+      throw new Error('no escalated seed was expected');
+    });
+    const planned = await plan([path], discovery);
+    expect(discovery.mock.calls[0]?.[2]?.escalatedSeeds).toBeUndefined();
+    expect(planned.escalatedImporters).toBeUndefined();
+    const { executionSelection } = prepareChangedSelection('HEAD', {
+      root: process.cwd(),
+      changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [path, SHARED] }),
+      preserveMappedTargets: true,
+    });
+    expect(executionSelection.escalatedSeeds).toEqual([SHARED]);
+  });
+
+  test('escalated paths with no importer graph are counted and named', async () => {
+    const DELETED = 'packages/shared/src/no-such-module.ts';
+    const WORKFLOW = 'pnpm-workspace.yaml';
+    const discovery = fakeDiscovery((seeds) =>
+      seeds.map((path) => report(path, NEAR, NEAR)),
+    );
+    const planned = await plan([SHARED, DELETED, WORKFLOW], discovery);
+    expect(discovery.mock.calls[0]?.[2]?.escalatedSeeds).toEqual([SHARED]);
+    expect(
+      planned.escalatedImporters?.paths.map(
+        ({ path, disposition }: { path: string; disposition: string }) => [
+          path,
+          disposition,
+        ],
+      ),
+    ).toEqual([
+      [DELETED, 'absent'],
+      [SHARED, 'selected'],
+      [WORKFLOW, 'not-importable'],
+    ]);
+  });
+
+  test('a failing child fails an escalated-only plan, naming the importer query', async () => {
+    const run = vi.fn(async () => ({
+      status: 1,
+      signal: null,
+      stdout: '',
+      stderr: 'vite exploded',
+      launch: { attempted: true, started: true },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    }));
+    await expect(
+      planChangedVerificationShards('HEAD', {
+        root: process.cwd(),
+        changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [SHARED] }),
+        run,
+        headSha: 'c'.repeat(40),
+        assertDependencyProvenance: () => ({}),
+      }),
+    ).rejects.toThrow(
+      'Related Vitest discovery failed: vite exploded (with the escalated-importer query for 1 path(s))',
+    );
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  test('discovery hands the child its seeds and refuses a malformed report', async () => {
+    const seed = 'packages/shared/src/ports.ts';
+    const answer = (escalatedImporters: unknown) =>
+      vi.fn(async () => ({
+        status: 0,
+        signal: null,
+        stdout: JSON.stringify({
+          files: [],
+          globalTriggeredPaths: [],
+          escalatedImporters,
+        }),
+        stderr: '',
+        launch: { attempted: true, started: true },
+        cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      }));
+    const discover = (run: ReturnType<typeof answer>) => {
+      let reports: unknown;
+      return discoverRelatedTestFiles(process.cwd(), [], {
+        run,
+        deferGlobalTriggers: true,
+        escalatedSeeds: [seed],
+        onEscalatedImporters: (entries) => {
+          reports = entries;
+        },
+      }).then((related) => ({ related, reports }));
+    };
+    const absolute = join(process.cwd(), seed);
+    const good = answer({
+      tests: ['b.test.ts', 'a.test.ts'],
+      seeds: [
+        {
+          seed: absolute,
+          inGraph: true,
+          depth1Count: 1,
+          depth2Count: 2,
+          depth1: [1],
+          depth2: [0, 1],
+        },
+      ],
+    });
+    await expect(discover(good)).resolves.toEqual({
+      related: [],
+      reports: [
+        {
+          path: seed,
+          inGraph: true,
+          depth1Count: 1,
+          depth2Count: 2,
+          depth1: ['a.test.ts'],
+          depth2: ['a.test.ts', 'b.test.ts'],
+        },
+      ],
+    });
+    const args = good.mock.calls[0]?.[1] as string[];
+    expect(args).toContain(
+      `--escalated-importers=${JSON.stringify({ seeds: [absolute], limits: { depth1: 100, depth2: 100 } })}`,
+    );
+    for (const malformed of [
+      undefined,
+      // a count with no list
+      {
+        tests: [],
+        seeds: [
+          { seed: absolute, inGraph: true, depth1Count: 1, depth2Count: 1 },
+        ],
+      },
+      // a list over its limit
+      {
+        tests: [],
+        seeds: [
+          {
+            seed: absolute,
+            inGraph: true,
+            depth1Count: 0,
+            depth2Count: 101,
+            depth1: [],
+            depth2: [],
+          },
+        ],
+      },
+      // another seed
+      {
+        tests: [],
+        seeds: [
+          {
+            seed: `${absolute}x`,
+            inGraph: true,
+            depth1Count: 0,
+            depth2Count: 0,
+            depth1: [],
+            depth2: [],
+          },
+        ],
+      },
+      // importers of a file the graph does not hold
+      {
+        tests: ['a.test.ts'],
+        seeds: [
+          {
+            seed: absolute,
+            inGraph: false,
+            depth1Count: 1,
+            depth2Count: 1,
+            depth1: [0],
+            depth2: [0],
+          },
+        ],
+      },
+    ])
+      await expect(discover(answer(malformed))).rejects.toThrow(
+        /Invalid escalated importer discovery metadata.*escalated-importer query/,
+      );
   });
 });

@@ -128,7 +128,7 @@ import {
   type OnRequestMode,
   resolveOnRequestMode,
 } from './model-options.js';
-import { buildApprovalsRespondCommand } from './session-client.js';
+import { buildApprovalsRespondCommand, shellQuote } from './session-client.js';
 
 const VALID_DECISIONS: ApprovalDecision[] = [
   'accept',
@@ -139,19 +139,12 @@ const VALID_DECISIONS: ApprovalDecision[] = [
 
 /**
  * station#979 review r1 LOW fix: mirrors `session-client.ts`'s
- * `shellQuote`/`buildApprovalsRespondCommand` pair — dedupes the three
- * identical `station delegate respond ...` templates that used to be
- * hand-built independently in `formatStatusSummary` and
- * `checkOnRequestFail`, and shell-quotes the ids the same defensive way the
- * chat/runtime notice already does.
+ * `buildApprovalsRespondCommand` — dedupes the three identical
+ * `station delegate respond ...` templates that used to be hand-built
+ * independently in `formatStatusSummary` and `checkOnRequestFail`, and quotes
+ * the ids through the same platform-aware `shellQuote` the chat/runtime
+ * notice uses.
  */
-function shellQuote(value: string): string {
-  // POSIX single-quote escaping: close the quote, emit a backslash-escaped
-  // quote, reopen — identical to session-client.ts's buildApprovalsRespondCommand
-  // so a copy-pasted respond command stays balanced for any id.
-  return `'${value.replaceAll("'", `'\\''`)}'`;
-}
-
 function buildDelegateRespondCommand(
   taskId: string,
   requestId: string,

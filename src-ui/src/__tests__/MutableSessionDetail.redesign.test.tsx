@@ -278,7 +278,6 @@ describe('header', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     try {
       await renderDetail(baseSession());
@@ -474,7 +473,7 @@ describe('needs you: one failure card', () => {
   });
 
   test.each([undefined, '2099-01-01T00:00:00.000Z'])(
-    "the failure card's Dismiss acknowledges that exact attention item (snoozedUntil=%s)",
+    "the failure card's Mark done acknowledges that exact attention item (snoozedUntil=%s)",
     async (snoozedUntil) => {
       attention.items = [
         { ...failedItem, ...(snoozedUntil ? { snoozedUntil } : {}) },
@@ -482,17 +481,17 @@ describe('needs you: one failure card', () => {
       await renderDetail(
         baseSession({ lifecycleState: 'failed', hasActiveTurn: false }),
       );
-      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Mark done' }));
       expect(acknowledge).toHaveBeenCalledWith(failedItem.id);
     },
   );
 
-  test('with nothing to acknowledge, the failure card offers no Dismiss', async () => {
+  test('with nothing to acknowledge, the failure card offers no Mark done', async () => {
     await renderDetail(
       baseSession({ lifecycleState: 'failed', hasActiveTurn: false }),
     );
     expect(screen.getByTestId('session-failure')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mark done' })).toBeNull();
   });
 });
 
@@ -507,7 +506,6 @@ describe('fix round', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     try {
       await renderDetail(
@@ -590,7 +588,7 @@ describe('fix round', () => {
     ).toBe(true);
   });
 
-  test('an already-acknowledged failure offers no Dismiss', async () => {
+  test('an already-acknowledged failure offers no Mark done', async () => {
     attention.items = [
       {
         id: `session-failed:${THREAD}`,
@@ -607,7 +605,7 @@ describe('fix round', () => {
       baseSession({ lifecycleState: 'failed', hasActiveTurn: false }),
     );
     expect(screen.getByTestId('session-failure')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mark done' })).toBeNull();
   });
 
   test('an ending turn removes Stop without interrupting again', async () => {

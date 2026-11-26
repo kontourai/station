@@ -151,7 +151,7 @@ function TitleHarness({ compact }) {
         type="button"
         className="editor-btn editor-btn--primary agent-editor__save-btn"
       >
-        Save Changes
+        Save changes
       </button>
     </DetailHeader>
   );

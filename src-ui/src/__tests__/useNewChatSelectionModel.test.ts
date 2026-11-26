@@ -5,6 +5,7 @@ import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { describe, expect, test } from 'vitest';
 import {
   acpCatalogModelOptions,
+  firstStartableAgentSlug,
   resolveProviderManagedAgentConnectionId,
   stationEligibleModels,
 } from '../hooks/useNewChatSelectionModel';
@@ -166,5 +167,23 @@ describe('stationEligibleModels', () => {
         providerId: 'ready-provider',
       }),
     ]);
+  });
+});
+
+describe('firstStartableAgentSlug', () => {
+  const agents = [
+    { slug: 'muse', name: 'Muse Code', available: false },
+    { slug: 'claude', name: 'Claude', available: true },
+  ] as unknown as Parameters<typeof firstStartableAgentSlug>[0];
+
+  test('passes over a remembered Agent that cannot start', () => {
+    expect(firstStartableAgentSlug(agents, ['muse', undefined, 'claude'])).toBe(
+      'claude',
+    );
+  });
+
+  test('keeps the first one named when none can start, so it is reported', () => {
+    expect(firstStartableAgentSlug(agents, ['gone', 'muse'])).toBe('gone');
+    expect(firstStartableAgentSlug(agents, [undefined])).toBeUndefined();
   });
 });

@@ -1,0 +1,9 @@
+{
+  "revision": "a6b2d9cbdaed5f76cad51198fe37927f053bbc12",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The route qualification still proves the cited delivery path and now checks the recorded-work excerpt on handoff and after seed failure.","inputs":["src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The route qualification still proves the cited delivery path and now checks the recorded-work excerpt on handoff and after seed failure.","inputs":["src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"]}
+  ]
+}

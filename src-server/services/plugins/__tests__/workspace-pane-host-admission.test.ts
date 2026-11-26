@@ -1112,18 +1112,39 @@ describe('Workspace Pane host invocation admission', () => {
   test('rejects policy mutation during the final coordinated pre-invocation read', async () => {
     const entered = deferred();
     const release = deferred();
-    const read = service.readSession.bind(service);
-    let turnReads = 0;
-    vi.spyOn(service, 'readSession').mockImplementation(async (...args) => {
-      const result = await read(...args);
-      if (++turnReads === 2) {
+    const coordinator = service['sessionExecutionCoordinator'];
+    const runTurnStart = coordinator.runTurnStart.bind(coordinator);
+    const listSessions = adapter.listSessions.bind(adapter);
+    let inTurnStart = false;
+    vi.spyOn(coordinator, 'runTurnStart').mockImplementation(
+      (threadId, operation, workspaceKey, preparedIntent) =>
+        runTurnStart(
+          threadId,
+          async (claim) => {
+            inTurnStart = true;
+            try {
+              return await operation(claim);
+            } finally {
+              inTurnStart = false;
+            }
+          },
+          workspaceKey,
+          preparedIntent,
+        ),
+    );
+    vi.spyOn(adapter, 'listSessions').mockImplementation(async () => {
+      const sessions = await listSessions();
+      if (inTurnStart && start.mock.calls.length > 0) {
         entered.resolve();
         await release.promise;
       }
-      return result;
+      return sessions;
     });
     const pending = (await prepare()).run(dispatch);
     await waitForEntry(entered.promise, pending);
+    expect(inTurnStart).toBe(true);
+    expect(start).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
     const revision = storage.projectRevision(projectSlug);
     await revision.replace({ ...revision.value, agents: [] });
     release.resolve();

@@ -281,13 +281,60 @@ describe('agent-activity launch routes (#2515)', () => {
 });
 
 describe('agent-activity launch routes on iOS', () => {
-  it('never asks the iOS plugin for a launch route nor listens for one, though remote-push is enabled', async () => {
+  it('takes alert-tap routes from the iOS plugin and listens for its nudge', async () => {
+    const calls: string[] = [];
+    const registered: Array<{ plugin: string; event: string }> = [];
+    const instance = new TauriNativePlatformAdapter({
+      async invoke<T>(command: string) {
+        if (command === 'native_capability_report')
+          return completeNativeCapabilityReport('ios', {
+            'remote-push': { state: 'enabled', reason: 'from host' },
+          }) as T;
+        calls.push(command);
+        return {
+          route: {
+            stationId: 'env-a',
+            sessionId: 'thread-1',
+            notificationId: 'notification-1',
+          },
+        } as T;
+      },
+      listen: async () => () => {},
+      async addPluginListener(plugin, event) {
+        registered.push({ plugin, event });
+        return () => {};
+      },
+    });
+    await instance.getCapabilityReport();
+
+    await expect(instance.takeAgentActivityLaunchRoute()).resolves.toEqual({
+      status: 'ok',
+      value: {
+        route: {
+          stationId: 'env-a',
+          sessionId: 'thread-1',
+          notificationId: 'notification-1',
+        },
+      },
+    });
+    const subscription = instance.subscribeToAgentActivityLaunchRoutes(
+      () => {},
+    );
+    await subscription.ready;
+    subscription.dispose();
+    expect(calls).toEqual(['plugin:station-agent-activity|take_launch_route']);
+    expect(registered).toEqual([
+      { plugin: 'station-agent-activity', event: 'launchRoute' },
+    ]);
+  });
+
+  it('never asks a desktop host for a launch route nor listens for one, though remote-push is enabled', async () => {
     const calls: string[] = [];
     const registered: string[] = [];
     const instance = new TauriNativePlatformAdapter({
       async invoke<T>(command: string) {
         if (command === 'native_capability_report')
-          return completeNativeCapabilityReport('ios', {
+          return completeNativeCapabilityReport('macos', {
             'remote-push': { state: 'enabled', reason: 'from host' },
           }) as T;
         calls.push(command);

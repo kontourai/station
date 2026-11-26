@@ -158,6 +158,17 @@ function createServer() {
     },
   );
 
+  if (holdList && !legacy) {
+    server.server.setRequestHandler(
+      'events/list',
+      { params: z.object({}) },
+      async () => {
+        await toolReported;
+        return { events: [] };
+      },
+    );
+  }
+
   if (holdList) {
     // Same listing as the registered prompt; only its timing differs.
     server.server.setRequestHandler('prompts/list', async () => {

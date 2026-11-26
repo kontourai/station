@@ -12,6 +12,10 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import {
+  isOpenCodeResumeCursor,
+  type OpenCodeResumeCursor,
+} from '../../adapters/opencode-adapter.js';
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
@@ -118,6 +122,50 @@ function writeTurn(
 }
 
 describe('OpenCodeSessionSource', () => {
+  test('names the OpenCode session a Station session owns, over either transport and under ACP', () => {
+    const source = new OpenCodeSessionSource({
+      dataDir: join(fixtureRoot(), 'opencode'),
+    });
+    const acp = {
+      acpSessionId: 'ses_overacp',
+      connectionId: 'opencode',
+      connectionFingerprint: 'f00d',
+    };
+    const native = {
+      kind: 'opencode',
+      connectionId: 'opencode',
+      sessionId: 'ses_native',
+      cwd: '/workspace/project',
+      bindingKey: 'binding',
+      transport: 'native',
+    } satisfies OpenCodeResumeCursor;
+    const fallback = {
+      ...native,
+      sessionId: 'ses_overacp',
+      transport: 'acp',
+      acp,
+    } satisfies OpenCodeResumeCursor;
+    expect([native, fallback].every(isOpenCodeResumeCursor)).toBe(true);
+    expect(
+      source.ownedNativeSessionId({
+        provider: 'opencode',
+        resumeCursor: native,
+      }),
+    ).toBe('ses_native');
+    expect(
+      source.ownedNativeSessionId({
+        provider: 'opencode',
+        resumeCursor: fallback,
+      }),
+    ).toBe('ses_overacp');
+    expect(
+      source.ownedNativeSessionId({ provider: 'acp', resumeCursor: acp }),
+    ).toBe('ses_overacp');
+    expect(
+      source.ownedNativeSessionId({ provider: 'claude', resumeCursor: acp }),
+    ).toBeUndefined();
+  });
+
   test('discovers a prompted top-level session and maps one turn to canonical events', async () => {
     const dataDir = join(fixtureRoot(), 'opencode');
     const store = writer(dataDir);
@@ -270,6 +318,63 @@ describe('OpenCodeSessionSource', () => {
       'content.text-delta',
       'turn.completed',
     ]);
+  });
+
+  // Review item 1: OpenCode dates events by the settled message's
+  // `time_created`, so a step that keeps streaming into one unsettled message
+  // looked silent. The source reports the newest row write it can see.
+  test('reports the newest write of a step still streaming into an unsettled message', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    const user = store.user('ses_main', ['Long task']);
+    const running = store.assistant('ses_main', user, { completed: false });
+    const part = store.text('ses_main', running, 'partial');
+
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const before = await source.read(session);
+    expect(before.outcome).toBe('incomplete_tail');
+
+    const streamed = store.updatePart(part, {
+      type: 'text',
+      text: 'partial answer, still streaming',
+    });
+    const after = await source.read(session, before.cursor);
+    expect(after.events).toEqual([]);
+    expect(after.sourceWriteAt).toBe(new Date(streamed).toISOString());
+  });
+
+  // Review: each write input stands alone, with no part row moving.
+  test("reports a streaming message row's own write and a session row's own write", async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    const user = store.user('ses_main', ['Long task']);
+    const running = store.assistant('ses_main', user, { completed: false });
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const before = await source.read(session);
+    expect(before.outcome).toBe('incomplete_tail');
+
+    const messageWrite = store.tick();
+    store.db
+      .prepare('UPDATE message SET time_updated = ? WHERE id = ?')
+      .run(messageWrite, running);
+    const afterMessage = await source.read(session, before.cursor);
+    expect(afterMessage.events).toEqual([]);
+    expect(afterMessage.sourceWriteAt).toBe(
+      new Date(messageWrite).toISOString(),
+    );
+
+    const sessionWrite = store.tick();
+    store.db
+      .prepare('UPDATE session SET time_updated = ? WHERE id = ?')
+      .run(sessionWrite, 'ses_main');
+    const afterSession = await source.read(session, afterMessage.cursor);
+    expect(afterSession.sourceWriteAt).toBe(
+      new Date(sessionWrite).toISOString(),
+    );
   });
 
   test('a prompt queued during a reply does not settle the reply early', async () => {

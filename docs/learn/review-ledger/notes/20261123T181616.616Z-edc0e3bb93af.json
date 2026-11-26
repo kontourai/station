@@ -1,0 +1,9 @@
+{
+  "revision": "2e463bf3269f83deba517e60d396d4afaba2d2f8",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only tests changed: every NewChatIntent payload field is checked to keep kept New chat text out, and a dismissed request's own prompt is checked to become the kept text for its Project. No module ownership or Station identity claim changes.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Only tests changed: every NewChatIntent payload field is checked to keep kept New chat text out, and a dismissed request's own prompt is checked to become the kept text for its Project. No module ownership or Station identity claim changes.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]}
+  ]
+}

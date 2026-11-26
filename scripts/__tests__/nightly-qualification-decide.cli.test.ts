@@ -1,6 +1,8 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
@@ -62,7 +64,7 @@ function fixture() {
       output: readFileSync(output, 'utf8'),
     };
   };
-  return { git, commit, run };
+  return { git, commit, run, repo };
 }
 
 const row = (channel: string, sha: string, timestampUtc: string) => ({
@@ -77,6 +79,100 @@ const row = (channel: string, sha: string, timestampUtc: string) => ({
 });
 
 describe('nightly-qualification-decide CLI against a git repository', () => {
+  it.each<[string, string, number, boolean]>([
+    ['workflow_dispatch', '', 1, false],
+    ['schedule', '', 1, false],
+    ['workflow_dispatch', '7', 1, true],
+    ['workflow_dispatch', '', 7, true],
+  ])(
+    'workflow admission for %s with rebuild index "%s" at age %s hours publishes %s',
+    (event, rebuild, ageHours, publish) => {
+      const { git, commit, repo } = fixture();
+      const shipped = commit([], 'feat: shipped source');
+      const recent = new Date(Date.now() - ageHours * 60 * 60 * 1000)
+        .toISOString()
+        .replace(/\.\d{3}Z$/, 'Z');
+      commit(
+        [
+          row('nightly-android', shipped, recent),
+          row('nightly-desktop', shipped, recent),
+        ],
+        'docs(ledger): record ship',
+      );
+      writeFileSync(join(repo, 'source.txt'), 'new content');
+      git('add', 'source.txt');
+      git('commit', '--quiet', '-m', 'fix: new content');
+      const source = git('rev-parse', 'HEAD');
+      git('remote', 'add', 'origin', repo);
+      git(
+        'config',
+        `url.${pathToFileURL(repo).href}.insteadOf`,
+        'https://github.com/fixture/nightly',
+      );
+      symlinkSync(
+        resolve('scripts'),
+        join(repo, 'scripts'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      const workflow = load(
+        readFileSync('.github/workflows/nightly.yml', 'utf8'),
+      ) as {
+        jobs: Record<
+          string,
+          {
+            steps: {
+              id?: string;
+              run?: string;
+              env?: Record<string, string>;
+            }[];
+          }
+        >;
+      };
+      const step = workflow.jobs['delivery-decide'].steps.find(
+        (item) => item.id === 'decide',
+      );
+      expect(step?.run).toBeTruthy();
+      const stepEnv = Object.fromEntries(
+        Object.entries(step?.env ?? {}).map(([key, value]) => {
+          const expression =
+            value.match(/^\$\{\{\s*(.*?)\s*\}\}$/)?.[1] ?? value;
+          const values: Record<string, string> = {
+            'github.token': '',
+            'vars.STATION_NIGHTLY_INTERVAL_HOURS': '6',
+            'inputs.rebuild_index': String(rebuild),
+          };
+          if (!(expression in values))
+            throw new Error(`Unmodelled workflow environment: ${value}`);
+          return [key, values[expression]];
+        }),
+      );
+      const output = join(repo, 'output');
+      writeFileSync(output, '');
+      const bash =
+        process.platform === 'win32'
+          ? resolve(git('--exec-path'), '../../../bin/bash.exe')
+          : 'bash';
+      const result = spawnSync(bash, ['-c', step!.run!], {
+        cwd: repo,
+        encoding: 'utf8',
+        windowsHide: true,
+        env: {
+          ...process.env,
+          ...stepEnv,
+          GITHUB_EVENT_NAME: String(event),
+          GITHUB_REPOSITORY: 'fixture/nightly',
+          GITHUB_SHA: source,
+          RUNNER_TEMP: repo.replaceAll('\\', '/'),
+          GITHUB_OUTPUT: output.replaceAll('\\', '/'),
+          GITHUB_STEP_SUMMARY: '',
+        },
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(output, 'utf8')).toBe(`publish=${publish}\n`);
+      if (!publish) expect(result.stdout).toContain('published recently:');
+    },
+  );
+
   it('reads origin/main, peels the ship’s own ledger commit-backs, and publishes a newer source', () => {
     const { git, commit, run } = fixture();
     const source = commit([], 'feat: a source change');

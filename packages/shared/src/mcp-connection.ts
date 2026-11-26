@@ -6,6 +6,10 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type {
+  ToolServerEventStreamFrame,
+  ToolServerEventStreamInput,
+} from '@kontourai/station-contracts/tool';
 import {
   type AuthProvider,
   Client,
@@ -19,7 +23,11 @@ import {
   type Transport,
 } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { z } from 'zod';
 import { spawnChildWorkload } from './child-workload.js';
+import { encodeMcpEventHeader } from './mcp-event-headers.js';
+import { observeMcpEventStream } from './mcp-event-stream.js';
+import { isObjectRecord } from './object-record.js';
 import {
   type ClaudeDesktopConfig,
   normalizeMcpToolDef,
@@ -83,6 +91,13 @@ export type MCPElicitationRoute = (request: {
   signal: AbortSignal;
 }) => Promise<ElicitResult>;
 
+type EventStreamReceiver = (frame: ToolServerEventStreamFrame) => Promise<void>;
+type EventStreamScope = {
+  receive: EventStreamReceiver;
+  signal: AbortSignal;
+  send?: Promise<void>;
+};
+
 export interface MCPConnection {
   client: Client;
   serverId: string;
@@ -90,6 +105,12 @@ export interface MCPConnection {
   negotiation: MCPNegotiation;
   close: () => Promise<void>;
   disconnect: () => Promise<void>;
+  readEventStream?: (
+    input: ToolServerEventStreamInput,
+    receive: EventStreamReceiver,
+    signal: AbortSignal,
+    headers?: Record<string, string>,
+  ) => Promise<void>;
   /**
    * Run `operation` with `route` answering an elicitation the server sends
    * while one of its requests is in flight. Present on owned connections.
@@ -177,6 +198,9 @@ const NON_ELICITING_METHODS_2026: ReadonlySet<string> = new Set([
   'resources/templates/list',
   'ping',
   'completion/complete',
+  'events/list',
+  'events/poll',
+  'events/stream',
 ]);
 
 /** The JSON-RPC method each client helper sends. */
@@ -200,32 +224,32 @@ function clientRequestMethod(
   if (typeof property !== 'string') return undefined;
   if (Object.hasOwn(CLIENT_HELPER_METHODS, property))
     return CLIENT_HELPER_METHODS[property];
-  if (property === 'request' && isRecord(args[0]))
+  if (property === 'request' && isObjectRecord(args[0]))
     return typeof args[0].method === 'string' ? args[0].method : undefined;
   return undefined;
 }
 
 function hasForbiddenElicitationField(request: unknown): boolean {
   if (
-    !isRecord(request) ||
+    !isObjectRecord(request) ||
     request.method !== 'elicitation/create' ||
-    !isRecord(request.params)
+    !isObjectRecord(request.params)
   )
     return false;
   const schema = request.params.requestedSchema;
   return (
-    isRecord(schema) &&
-    isRecord(schema.properties) &&
+    isObjectRecord(schema) &&
+    isObjectRecord(schema.properties) &&
     Object.hasOwn(schema.properties, '__proto__')
   );
 }
 
 function hasForbiddenInputRequiredField(message: unknown): boolean {
   if (
-    !isRecord(message) ||
-    !isRecord(message.result) ||
+    !isObjectRecord(message) ||
+    !isObjectRecord(message.result) ||
     message.result.resultType !== 'input_required' ||
-    !isRecord(message.result.inputRequests)
+    !isObjectRecord(message.result.inputRequests)
   )
     return false;
   return Object.values(message.result.inputRequests).some(
@@ -244,6 +268,7 @@ const MCP_APPS_MIME_TYPE = 'text/html;profile=mcp-app';
 export const STATION_MCP_CLIENT_CAPABILITIES = {
   elicitation: { form: {} },
   extensions: {
+    'io.modelcontextprotocol/events': {},
     [MCP_APPS_EXTENSION_ID]: {
       mimeTypes: [MCP_APPS_MIME_TYPE],
     },
@@ -276,6 +301,7 @@ export function prepareMCPConnection(
   type ElicitationScope = { route: MCPElicitationRoute; open: boolean };
   const inFlight = new Set<{ scope: ElicitationScope | undefined }>();
   const elicitationScope = new AsyncLocalStorage<ElicitationScope>();
+  const eventScope = new AsyncLocalStorage<EventStreamScope>();
   function inFlightRequest<T>(operation: () => T): T {
     const scope = elicitationScope.getStore();
     const entry = { scope: scope?.open ? scope : undefined };
@@ -372,6 +398,7 @@ export function prepareMCPConnection(
               normalized,
               opts?.authProvider,
               opts?.authorizationFetch,
+              () => eventScope.getStore(),
             );
             const rawTransport = transport;
             const originalTransportClose =
@@ -393,7 +420,19 @@ export function prepareMCPConnection(
                   // no later start/send may resurrect that local handle.
                   assertCurrent();
                   return track(() => {
+                    const stream =
+                      property === 'send' &&
+                      isObjectRecord(args[0]) &&
+                      args[0].method === 'events/stream'
+                        ? eventScope.getStore()
+                        : undefined;
+                    stream?.signal.throwIfAborted();
                     const result = Reflect.apply(value, target, args);
+                    if (stream)
+                      stream.send = Promise.resolve(result).then(
+                        () => {},
+                        () => {},
+                      );
                     if (
                       result &&
                       typeof (result as { then?: unknown }).then === 'function'
@@ -505,16 +544,18 @@ export function prepareMCPConnection(
 
             // Discover tools
             assertCurrent();
-            const result = await rawClient.listTools();
+            const catalog = negotiation.serverCapabilities?.tools
+              ? (await rawClient.listTools()).tools
+              : [];
             assertCurrent();
-            const tools: MCPToolInfo[] = (result.tools || []).map((t) => ({
+            const tools: MCPToolInfo[] = catalog.map((t) => ({
               name: `${def.id}_${t.name}`,
               originalName: t.name,
               serverId: def.id,
               description: t.description,
               readOnly: t.annotations?.readOnlyHint,
               inputSchema: t.inputSchema,
-              _meta: isRecord((t as { _meta?: unknown })._meta)
+              _meta: isObjectRecord((t as { _meta?: unknown })._meta)
                 ? (t as { _meta: Record<string, unknown> })._meta
                 : undefined,
               ui: extractMCPToolUIMetadata(t),
@@ -554,6 +595,25 @@ export function prepareMCPConnection(
               disconnect: handle.close,
               isUsable: () => current() && phase === 'connected',
               localState: handle.inspect,
+              readEventStream: async (input, receive, signal, headers) => {
+                const controller = new AbortController();
+                const scope: EventStreamScope = {
+                  receive,
+                  signal: AbortSignal.any([signal, controller.signal]),
+                };
+                try {
+                  await eventScope.run(scope, () =>
+                    guardedClient.request(
+                      { method: 'events/stream', params: { ...input } },
+                      z.object({}),
+                      { signal: scope.signal, timeout: 65_000, headers },
+                    ),
+                  );
+                } finally {
+                  controller.abort();
+                  await scope.send;
+                }
+              },
               withElicitationRoute: async (route, operation) => {
                 const scope: ElicitationScope = { route, open: true };
                 try {
@@ -644,7 +704,7 @@ function describeNegotiation(client: Client): MCPNegotiation {
   const serverInfo = client.getServerVersion();
   const capabilities = client.getServerCapabilities();
   const discover = client.getDiscoverResult();
-  const extensions = isRecord(capabilities?.extensions)
+  const extensions = isObjectRecord(capabilities?.extensions)
     ? capabilities.extensions
     : undefined;
 
@@ -654,12 +714,12 @@ function describeNegotiation(client: Client): MCPNegotiation {
     serverInfo: serverInfo
       ? { name: serverInfo.name, version: serverInfo.version }
       : undefined,
-    serverCapabilities: isRecord(capabilities)
+    serverCapabilities: isObjectRecord(capabilities)
       ? (capabilities as Record<string, unknown>)
       : undefined,
     extensionIds: extensions ? Object.keys(extensions).sort() : [],
     fellBackToLegacy: era === 'legacy',
-    discoverResult: isRecord(discover)
+    discoverResult: isObjectRecord(discover)
       ? (discover as Record<string, unknown>)
       : undefined,
   };
@@ -668,10 +728,10 @@ function describeNegotiation(client: Client): MCPNegotiation {
 function extractMCPToolUIMetadata(
   tool: unknown,
 ): MCPToolUIMetadata | undefined {
-  if (!isRecord(tool)) return undefined;
+  if (!isObjectRecord(tool)) return undefined;
 
-  const meta = isRecord(tool._meta) ? tool._meta : undefined;
-  const ui = isRecord(meta?.ui) ? meta.ui : undefined;
+  const meta = isObjectRecord(tool._meta) ? tool._meta : undefined;
+  const ui = isObjectRecord(meta?.ui) ? meta.ui : undefined;
   const resourceUri =
     typeof ui?.resourceUri === 'string'
       ? ui.resourceUri
@@ -679,10 +739,6 @@ function extractMCPToolUIMetadata(
         ? meta['ui/resourceUri']
         : undefined;
   return resourceUri ? { resourceUri } : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**
@@ -775,10 +831,100 @@ export const REQUIRES_AUTHORIZATION_FETCH = Symbol.for(
   'kontourai.station.oauth.requiresAuthorizationFetch',
 );
 
+function boundEventResponse(response: Response): Response {
+  if (!response.body) return response;
+  let bytes = 0;
+  const body = response.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        bytes += chunk.byteLength;
+        if (bytes > 512 * 1024)
+          throw new Error('MCP Events response exceeds 512 KiB');
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  return new Response(body, {
+    headers: response.headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+// The current SDK omits Mcp-Name on named Events requests.
+function withEventsTransport(
+  fetch: FetchLike,
+  getStreamScope?: () => EventStreamScope | undefined,
+): FetchLike {
+  return async (input, init) => {
+    const headers = new Headers(init?.headers);
+    const method = headers.get('mcp-method');
+    if (method === 'events/list')
+      return boundEventResponse(await fetch(input, init));
+    if (method !== 'events/poll' && method !== 'events/stream')
+      return fetch(input, init);
+    if (typeof init?.body !== 'string')
+      throw new Error('Missing MCP Events request body');
+    const request: unknown = JSON.parse(init.body);
+    if (
+      !isObjectRecord(request) ||
+      request.method !== method ||
+      !isObjectRecord(request.params) ||
+      typeof request.params.name !== 'string' ||
+      (typeof request.id !== 'number' && typeof request.id !== 'string')
+    )
+      throw new Error('Invalid MCP Events request');
+    const {
+      id,
+      params: { name },
+    } = request;
+    if (!headers.has('mcp-name'))
+      headers.set('mcp-name', encodeMcpEventHeader(name));
+    const scope = method === 'events/stream' ? getStreamScope?.() : undefined;
+    const response = await fetch(input, {
+      ...init,
+      headers,
+      ...(scope && {
+        signal: init.signal
+          ? AbortSignal.any([init.signal, scope.signal])
+          : scope.signal,
+      }),
+    });
+    if (scope && response.ok) {
+      if (
+        !response.body ||
+        !/^text\/event-stream\b/iu.test(
+          response.headers.get('content-type') ?? '',
+        )
+      ) {
+        await response.body?.cancel();
+        throw new Error('Invalid MCP event stream response');
+      }
+      // Own the whole response so the SDK cannot resume it or dispatch another request's reply.
+      const reply = await observeMcpEventStream(
+        response.body,
+        { id, name },
+        scope.signal,
+        scope.receive,
+      );
+      const headers = new Headers(response.headers);
+      headers.set('Content-Type', 'application/json');
+      headers.delete('Content-Length');
+      headers.delete('Content-Encoding');
+      return new Response(JSON.stringify(reply), {
+        status: response.status,
+        headers,
+      });
+    }
+    return boundEventResponse(response);
+  };
+}
+
 export function createMCPTransport(
   def: ToolDef,
   authProvider?: OAuthClientProvider | AuthProvider,
   authorizationFetch?: (fetch: FetchLike) => FetchLike,
+  getEventStreamScope?: () => EventStreamScope | undefined,
 ): Transport {
   if (
     authProvider &&
@@ -819,24 +965,29 @@ export function createMCPTransport(
         ...remoteFetch(),
       });
 
-    case 'streamable-http':
+    case 'streamable-http': {
       if (!def.endpoint)
         throw new Error(
           `Tool '${def.id}': streamable-http transport requires 'endpoint'`,
         );
+      const { fetch } = remoteFetch(
+        def.headers
+          ? originBoundLiteralHeaderFetch(
+              def.endpoint,
+              def.headers,
+              remoteTransportFetch(def),
+            )
+          : undefined,
+      );
       return new StreamableHTTPClientTransport(new URL(def.endpoint), {
         authProvider,
         requestInit: { redirect: 'error' },
-        ...remoteFetch(
-          def.headers
-            ? originBoundLiteralHeaderFetch(
-                def.endpoint,
-                def.headers,
-                remoteTransportFetch(def),
-              )
-            : undefined,
+        fetch: withEventsTransport(
+          fetch ?? globalThis.fetch.bind(globalThis),
+          getEventStreamScope,
         ),
       });
+    }
 
     default:
       if (def.command) {

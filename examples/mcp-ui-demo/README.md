@@ -90,5 +90,5 @@ network-blocking policy; this resource declares no external domains.
 Set `approvalPolicy` to `require` for the host's inbox approval or `inherit`
 for the current client confirmation dialog. `read-only` refuses these calls.
 The dedicated proxy and opaque `srcdoc` fallback have different frame origins;
-the host chooses the proxy only when its configured origin is distinct from
-Station. The demo sends only lifecycle and resize messages, with no interactive calls.
+the host chooses the proxy only when Station offers a configured origin that is
+distinct from its own, which it does only for a browser on the Station host. The demo sends only lifecycle and resize messages, with no interactive calls.

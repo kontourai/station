@@ -16,6 +16,11 @@
  * payload is engine-defined and carries no display contract.
  */
 
+import {
+  ACP_SESSION_REWOUND_CODE,
+  ACP_SESSION_REWOUND_LATE_CODE,
+} from '@kontourai/station-contracts/provider';
+
 export type ExtensionTranscriptMarkerKind =
   | 'context-compacted'
   | 'conversation-rewound'
@@ -119,4 +124,107 @@ export function extensionTranscriptMarker(
   return EXTENSION_TRANSCRIPT_MARKERS.find(
     (entry) => entry.namespace === namespace && entry.type === type,
   )?.marker;
+}
+
+/** The longest model id a reroute marker shows; longer ones are cut. */
+const REROUTE_MARKER_MODEL_CHARS = 64;
+
+function markerModel(id: string): string {
+  return id.length > REROUTE_MARKER_MODEL_CHARS
+    ? `${id.slice(0, REROUTE_MARKER_MODEL_CHARS - 1)}…`
+    : id;
+}
+
+/**
+ * The transcript marker text for a `model.rerouted` event: the engine moved
+ * work onto another model than the one asked for. Built only from the
+ * event's model ids, which the adapter bounded to one model-id token, and
+ * fixed wording; nothing else from the engine reaches the line.
+ */
+export function modelReroutedMarkerText(event: {
+  fromModel: string;
+  toModel?: string;
+  trigger: 'refusal' | 'availability' | 'other';
+  scope: 'turn' | 'session';
+  childWorkId?: string;
+}): { betweenTurns: string; duringTurn: string } {
+  const from = markerModel(event.fromModel);
+  const why =
+    event.trigger === 'refusal'
+      ? ' after a refusal'
+      : event.trigger === 'availability'
+        ? ' (unavailable)'
+        : '';
+  const who = event.childWorkId ? 'A subagent’s model' : 'Model';
+  if (!event.toModel) {
+    const text = `${who} ${from} could not be used${why}; no fallback was available`;
+    return { betweenTurns: text, duringTurn: `${text} during this turn` };
+  }
+  const to = markerModel(event.toModel);
+  const base = `${who} switched from ${from} to ${to}${why}`;
+  if (event.scope === 'session' && !event.childWorkId) {
+    const text = `${base} for the rest of this session`;
+    return { betweenTurns: text, duringTurn: text };
+  }
+  return { betweenTurns: base, duringTurn: `${base} during this turn` };
+}
+
+/** Bound on the hidden turns one rewind marker names; more are not read. */
+const REWOUND_TURNS_MAX = 500;
+
+/**
+ * An in-place engine rewind (`ACP_SESSION_REWOUND_CODE` warning) as the
+ * transcript reads it: the turns it hid and how many files the engine said
+ * it restored. Undefined for any other warning, or a malformed one.
+ */
+export function sessionRewoundMarker(event: {
+  code?: string;
+  details?: Record<string, unknown>;
+}):
+  | {
+      hiddenTurnIds: string[];
+      affectedFileCount?: number;
+      text: { betweenTurns: string; duringTurn: string };
+    }
+  | undefined {
+  if (event.code !== ACP_SESSION_REWOUND_CODE) return undefined;
+  const hidden = event.details?.hiddenTurnIds;
+  if (!Array.isArray(hidden) || hidden.length > REWOUND_TURNS_MAX)
+    return undefined;
+  const hiddenTurnIds = hidden.filter(
+    (id): id is string => typeof id === 'string' && id.length > 0,
+  );
+  const count = event.details?.affectedFileCount;
+  const affectedFileCount =
+    typeof count === 'number' && Number.isInteger(count) && count >= 0
+      ? count
+      : undefined;
+  const turns =
+    hiddenTurnIds.length === 1 ? 'one turn' : `${hiddenTurnIds.length} turns`;
+  const files =
+    affectedFileCount === undefined
+      ? ''
+      : affectedFileCount === 1
+        ? '; the engine restored one file'
+        : `; the engine restored ${affectedFileCount} files`;
+  const text = `Rewound: the engine no longer sees ${turns}${files}`;
+  return {
+    hiddenTurnIds,
+    ...(affectedFileCount === undefined ? {} : { affectedFileCount }),
+    text: { betweenTurns: text, duringTurn: text },
+  };
+}
+
+/**
+ * A rewind the engine applied late, after a later turn started or once the
+ * session stopped waiting (`ACP_SESSION_REWOUND_LATE_CODE`): a marker row
+ * only. Which turns the engine now hides is not known, so none is marked.
+ */
+export function sessionRewoundLateMarker(event: {
+  code?: string;
+}): { betweenTurns: string; duringTurn: string } | undefined {
+  if (event.code !== ACP_SESSION_REWOUND_LATE_CODE) return undefined;
+  const text =
+    'Rewound late: the engine may no longer see turns from an earlier point on';
+  return { betweenTurns: text, duringTurn: text };
 }

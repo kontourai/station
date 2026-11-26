@@ -2,6 +2,10 @@ import {
   type EngineConnectionId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import {
+  appHomeActive,
+  sanitizeConnectionConfigHome,
+} from '@kontourai/station-contracts/connection';
 import type {
   CredentialProfile,
   CredentialProfileApplicationProjection,
@@ -18,6 +22,7 @@ import {
   useApplyCredentialProfileMutation,
   useClearAppHomeProfileMutation,
   useCredentialRecoveryQuery,
+  useDeleteACPConnectionMutation,
   useDeleteAgentConnectionMutation,
   useDeleteCredentialProfileMutation,
   useEngineConnectionsQuery,
@@ -40,20 +45,24 @@ import {
   useRef,
   useState,
 } from 'react';
+import { ActionOverflowMenu } from '../components/ActionOverflowMenu';
 import { ACPConnectionDetailsField } from '../components/acp-connections/ACPConnectionDetailsField';
 import { ConnectionIcon } from '../components/acp-connections/ConnectionIcon';
+import { EngineStationTools } from '../components/acp-connections/EngineStationTools';
 import { Checkbox } from '../components/Checkbox';
 import { ConnectionReadinessNotice } from '../components/connections/ConnectionReadinessNotice';
 import { DetailHeader } from '../components/DetailHeader';
+import { EngineInstallTerminal } from '../components/engine-install/EngineInstallTerminal';
 import { PublicRegistryUpdateNotice } from '../components/engine-install/PublicRegistry';
 import { EngineSignInPanel } from '../components/engine-sign-in/EngineSignInPanel';
 import { BrandIcon } from '../components/icons/BrandIcon';
 import {
   ManagedEngineNotice,
-  managedEngineSubtitle,
+  managedEngineFact,
   managedEnvironmentLocked,
 } from '../components/ManagedEngineNotice';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
+import { resourceRow } from '../components/resource-hub/resource-row';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { CONNECTIONS_ENGINES_PANE_ID } from '../components/split-pane-metrics';
 import {
@@ -64,17 +73,12 @@ import {
 } from '../components/state';
 import {
   type ACPConnectionInfo,
-  type ACPConnectionRegistryEntry,
   useACPConnectionRegistry,
   useACPConnections,
   useUnregisteredACPConnections,
 } from '../hooks/useACPConnections';
 import { useDevicePresentation } from '../hooks/useDevicePresentation';
-import {
-  managedEngineIdFor,
-  managedEngineState,
-  useManagedEngines,
-} from '../hooks/useManagedEngines';
+import { useManagedEngineStateFor } from '../hooks/useManagedEngines';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import type { AgentSummary, NavigationView } from '../types';
 import {
@@ -88,17 +92,19 @@ import {
   runtimeCatalogVisibleModels,
 } from '../utils/execution';
 import { formatBytes } from '../utils/formatBytes';
+import { modelOptionLabel } from '../utils/modelCapabilities';
 import { describeStationFailure } from '../utils/stationFailure';
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
 import { CredentialProfileAccess } from './CredentialProfileLoginProfiles';
+import {
+  deriveConnectionHealth,
+  engineHealthInput,
+} from './connections-hub/connection-health';
 import { EngineAccountOverview } from './EngineAccountOverview';
 import { EngineAddFlow, type NotConnectedEngine } from './EngineAddFlow';
 import { EngineProxySettings } from './EngineProxySettings';
 import { NotConnectedEngineDetail } from './NotConnectedEngineDetail';
-import {
-  blockingPrerequisite,
-  resolveProviderPresentation,
-} from './provider-settings/providerCatalog';
+import { blockingPrerequisite } from './provider-settings/providerCatalog';
 import './PluginManagementView.css';
 import './page-layout.css';
 import './editor-layout.css';
@@ -136,21 +142,6 @@ function isAddedEngine(connection: AgentConnectionViewData): boolean {
   return connection.setup?.state !== 'available';
 }
 
-function enginePresentation(connection: AgentConnectionViewData) {
-  return resolveProviderPresentation({
-    id: connection.id,
-    kind: 'agent',
-    type: connection.type,
-    name: connection.name,
-    enabled: connection.enabled,
-    status: connection.status,
-    prerequisites: connection.prerequisites,
-    readinessEvidence: connection.readinessEvidence,
-    setup: connection.setup,
-    href: '',
-  });
-}
-
 export function AgentConnectionView({
   selectedRuntimeId,
   addChoiceId,
@@ -185,15 +176,21 @@ export function AgentConnectionView({
     error?: unknown;
     refetch: () => unknown;
   };
-  const { data: catalog = [] } = useAgentConnectionCatalogQuery() as {
-    data?: AgentConnectionViewData[];
-  };
+  const {
+    data: catalog = [],
+    isPending: catalogPending,
+    error: catalogError,
+    refetch: refetchCatalog,
+  } = useAgentConnectionCatalogQuery();
   // The merged Add-engine catalogue's second population (#592 slice 2):
   // registry entries not yet installed as a connection. `installed` already
   // reflects a configured connection.
-  const { data: acpRegistryEntries = [] } = useACPConnectionRegistry() as {
-    data?: ACPConnectionRegistryEntry[];
-  };
+  const {
+    data: acpRegistryEntries = [],
+    isPending: registryPending,
+    error: registryError,
+    refetch: refetchRegistry,
+  } = useACPConnectionRegistry();
   const availableCommandEntries = useMemo(
     () => acpRegistryEntries.filter((entry) => !entry.installed),
     [acpRegistryEntries],
@@ -210,7 +207,9 @@ export function AgentConnectionView({
     () =>
       unregistered.map((connection) => ({
         connection,
-        custom: !acpRegistryEntries.some((entry) => entry.id === connection.id),
+        custom: !acpRegistryEntries.some(
+          (entry) => entry.id === (connection.registryId ?? connection.id),
+        ),
       })),
     [unregistered, acpRegistryEntries],
   );
@@ -304,13 +303,38 @@ export function AgentConnectionView({
     },
   });
 
+  const [removing, setRemoving] = useState<{ id: string; name: string } | null>(
+    null,
+  );
+  const removeAcp = useDeleteACPConnectionMutation({
+    onSuccess: (_data, id) => {
+      setRemoving(null);
+      if (selectedRuntimeId === id) {
+        setDirty(false);
+        onNavigate({ type: 'connections-engines' });
+      }
+    },
+  });
+  const resetRemoveAcp = removeAcp.reset;
+  const openRemove = useCallback(
+    (id: string, name: string) => {
+      guard(() => {
+        resetRemoveAcp();
+        setRemoving({ id, name });
+      });
+    },
+    [guard, resetRemoveAcp],
+  );
+  const affectedAgents = removing
+    ? (agents
+        ?.filter((agent) => agent.execution?.agentConnectionId === removing.id)
+        .map((agent) => agent.name) ?? [])
+    : [];
   const testMutation = useSmokeAgentConnectionMutation();
   const refreshMutation = useTestAgentConnectionMutation();
 
-  // The handshake retry the refusal sentence names (enriched-agents.ts). The
-  // bridge's live connection set is the same projection the reconnect route
-  // 404s against, so it is also the gate: a non-ACP engine gets no button
-  // that could only ever answer "Connection not found".
+  // Retry the saved ACP connection, including one without a live probe.
+  // Native engines retain their own connection check.
   const { data: acpBridgeConnections = [] } = useACPConnections();
   const reconnectMutation = useReconnectACPConnectionMutation({
     onSuccess: () => {
@@ -331,29 +355,7 @@ export function AgentConnectionView({
     : null;
   const selectedAcpConnectionId = selectedAcpConnection?.id ?? null;
   // #4520: what the machine's managed policy says about each engine row.
-  const managedEngines = useManagedEngines();
-  const managedStateFor = useCallback(
-    (connection: AgentConnectionViewData) => {
-      const isAcp = acpBridgeConnections.some(
-        (entry) => entry.id === connection.id,
-      );
-      return managedEngineState(
-        managedEngines,
-        managedEngineIdFor(connectionEngineId(connection), isAcp),
-        {
-          registryAgent:
-            isAcp &&
-            acpRegistryEntries.some(
-              (entry) =>
-                entry.id === connection.id &&
-                entry.installed === true &&
-                entry.source === 'registry',
-            ),
-        },
-      );
-    },
-    [managedEngines, acpBridgeConnections, acpRegistryEntries],
-  );
+  const managedStateFor = useManagedEngineStateFor();
   const selectedManagedState = form ? managedStateFor(form) : null;
 
   // #1054 stopped excluding Station here: the Station engine is a row this
@@ -394,28 +396,55 @@ export function AgentConnectionView({
             connection.type.toLowerCase().includes(query)
           );
         })
-        .map((connection) => ({
-          id: connection.id,
-          name:
-            connection.config.modelRoute &&
-            typeof connection.config.modelRoute === 'object' &&
-            'label' in connection.config.modelRoute
-              ? `${connection.name} · via ${String(connection.config.modelRoute.label)}`
-              : connection.name,
-          // The third segment used to be `connectionTypeLabel(type)`, which
-          // either repeated the row's own name ("Claude Code · Claude Code")
-          // or printed a slug for a type the map had missed ("muse").
-          // The row is already named; the subtitle says what is true of it.
-          subtitle: `${managedEngineSubtitle(managedStateFor(connection))}${enginePresentation(connection).readiness} · ${runtimeCatalogSourceSentence(connection.runtimeCatalog?.source ?? 'none')}`,
-          icon: (
-            <BrandIcon
-              name={connection.name}
-              id={connection.id}
-              engineId={connectionEngineId(connection)}
-              size={22}
-            />
-          ),
-        })),
+        .map((connection) => {
+          const managed = managedStateFor(connection);
+          const row = resourceRow({
+            id: connection.id,
+            name:
+              connection.config.modelRoute &&
+              typeof connection.config.modelRoute === 'object' &&
+              'label' in connection.config.modelRoute
+                ? `${connection.name} · via ${String(connection.config.modelRoute.label)}`
+                : connection.name,
+            // The rail and the resolver read this same verdict.
+            status: deriveConnectionHealth(engineHealthInput(connection), {
+              policyDisallowed: managed?.disallowed === true,
+            }),
+            // The row is already named; the facts say what is true of it.
+            facts: [
+              managedEngineFact(managed),
+              runtimeCatalogSourceSentence(
+                connection.runtimeCatalog?.source ?? 'none',
+              ),
+            ],
+            icon: (
+              <BrandIcon
+                name={connection.name}
+                id={connection.id}
+                engineId={connectionEngineId(connection)}
+                icon={
+                  typeof connection.config.icon === 'string'
+                    ? connection.config.icon
+                    : undefined
+                }
+                size={22}
+              />
+            ),
+          });
+          if (
+            acpBridgeConnections.some(
+              (entry) =>
+                entry.id === connection.id && entry.source !== 'plugin',
+            ) &&
+            !managed?.pin?.locked
+          ) {
+            row.swipeAction = {
+              label: 'Remove',
+              onSelect: () => openRemove(connection.id, connection.name),
+            };
+          }
+          return row;
+        }),
       // A failed first add is listed beside the engines, never as one: its
       // row says so, and its page offers only the repairs.
       ...notConnected
@@ -438,7 +467,14 @@ export function AgentConnectionView({
           ),
         })),
     ],
-    [addedEngines, notConnected, search, managedStateFor],
+    [
+      addedEngines,
+      notConnected,
+      search,
+      managedStateFor,
+      acpBridgeConnections,
+      openRemove,
+    ],
   );
   const selectedNotConnected =
     repair && repair.engine.connection.id === selectedRuntimeId
@@ -483,7 +519,14 @@ export function AgentConnectionView({
   const capabilityInventory = (form as AgentConnectionViewData | null)
     ?.capabilityInventory;
   const continuity = (form as AgentConnectionViewData | null)?.continuity;
-  const providerPresentation = form ? enginePresentation(form) : null;
+  // The row's verdict, read again for the selected engine: the Status tile,
+  // the Ready step, Retry check and the readiness notice cannot say Ready
+  // where the row (and dispatch) say otherwise.
+  const health = form
+    ? deriveConnectionHealth(engineHealthInput(form), {
+        policyDisallowed: selectedManagedState?.disallowed === true,
+      })
+    : null;
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const devicePresentation = useDevicePresentation();
   // The SAME derivation the presentation used, not a second copy of it.
@@ -492,16 +535,43 @@ export function AgentConnectionView({
    * Each step is a fact, not a decoration. "Choose" is complete because this
    * page only ever shows an engine that has been added. "Connect" is complete
    * when nothing required is still unmet -- Station can launch it. "Ready" is
-   * the resolver's own verdict, the same one the Status tile and the hub cards
-   * read.
+   * the connection verdict, the same one the Status tile and the row read.
    */
   const engineSetupSteps = [
     { label: 'Choose', complete: true },
     { label: 'Connect', complete: !blocker },
-    { label: 'Ready', complete: providerPresentation?.readiness === 'Ready' },
+    { label: 'Ready', complete: health?.verdict === 'ready' },
   ];
   const visibleModels = runtimeCatalogVisibleModels(form);
   const reportedModelCount = visibleModels.length;
+
+  if (isAddRoute)
+    return (
+      <div className="engine-setup-flow">
+        <EngineAddFlow
+          initialChoiceId={addChoiceId}
+          catalogPending={catalogPending || registryPending}
+          catalogError={catalogError ?? registryError}
+          onRetryCatalog={() => {
+            void refetchCatalog();
+            void refetchRegistry();
+          }}
+          notConnected={notConnected}
+          connections={availableEngines}
+          commandEntries={availableCommandEntries}
+          onDone={(id) =>
+            onNavigate(
+              id
+                ? { type: 'connections-engine-edit', id }
+                : { type: 'connections-engines' },
+            )
+          }
+          onOpenEngine={(id) =>
+            onNavigate({ type: 'connections-engine-edit', id })
+          }
+        />
+      </div>
+    );
 
   return (
     <SplitPaneLayout
@@ -549,26 +619,8 @@ export function AgentConnectionView({
          stop every view minting its own "No X" restatement of its noun. */
       listEmptyTitle="Add an engine to get started"
       listEmptyDescription="Detected and supported engines appear here once one is connected."
-      emptyTitle="Select an engine"
       emptyDescription="Select an engine to review its status and setup."
-      emptyContent={
-        isAddRoute ? (
-          <EngineAddFlow
-            initialChoiceId={addChoiceId}
-            notConnected={notConnected}
-            connections={availableEngines}
-            commandEntries={availableCommandEntries}
-            onDone={() =>
-              onNavigate({ type: 'connections-engines' } as NavigationView)
-            }
-            onOpenEngine={(id) =>
-              onNavigate({ type: 'connections-engine-edit', id })
-            }
-          />
-        ) : undefined
-      }
-      unselectedDetailOpen={isAddRoute}
-      searchPlaceholder="Search engines..."
+      searchPlaceholder="Search engines…"
     >
       {form && repair?.engine.connection.id !== selectedRuntimeId ? (
         <div className="editor-layout">
@@ -579,15 +631,21 @@ export function AgentConnectionView({
                 name={form.name}
                 id={form.id}
                 engineId={connectionEngineId(form)}
+                icon={
+                  typeof form.config.icon === 'string'
+                    ? form.config.icon
+                    : undefined
+                }
                 size={28}
               />
             }
           >
             {/* Retry check is the repair for a failed check. A Ready engine
                 is checked with Check connection below, so it gets one
-                check action, not two. */}
+                check action, not two; a policy refusal has no repair. */}
             {selectedAcpConnectionId &&
-              providerPresentation?.readiness !== 'Ready' && (
+              health?.verdict !== 'ready' &&
+              !selectedManagedState?.disallowed && (
                 <button
                   type="button"
                   className="editor-btn"
@@ -598,6 +656,21 @@ export function AgentConnectionView({
                 >
                   {reconnectMutation.isPending ? 'Checking…' : 'Retry check'}
                 </button>
+              )}
+            {selectedAcpConnection &&
+              selectedAcpConnection.source !== 'plugin' &&
+              !selectedManagedState?.pin?.locked && (
+                <ActionOverflowMenu
+                  label={`Manage ${form.name}`}
+                  actions={[
+                    {
+                      key: 'remove-engine',
+                      label: 'Remove engine',
+                      tone: 'danger',
+                      onSelect: () => openRemove(form.id, form.name),
+                    },
+                  ]}
+                />
               )}
           </DetailHeader>
           <div className="agent-editor__section">
@@ -642,7 +715,7 @@ export function AgentConnectionView({
             <div className="provider-detail__summary" aria-live="polite">
               <div>
                 <span className="provider-detail__summary-label">Status</span>
-                <strong>{providerPresentation?.readiness}</strong>
+                <strong>{health?.label}</strong>
               </div>
               <div>
                 <span className="provider-detail__summary-label">Models</span>
@@ -673,7 +746,9 @@ export function AgentConnectionView({
               />
             )}
             {!form.config.proxyConnectionId &&
-              (form.type === 'claude' || form.type === 'codex') && (
+              (form.type === 'claude' ||
+                form.type === 'codex' ||
+                form.type === 'muse') && (
                 <EngineAccountOverview
                   connectionId={form.id}
                   engine={form.type}
@@ -681,7 +756,9 @@ export function AgentConnectionView({
               )}
             <PublicRegistryUpdateNotice
               entry={acpRegistryEntries.find(
-                (entry) => entry.installed && entry.id === form.id,
+                (entry) =>
+                  entry.installed &&
+                  entry.id === (selectedAcpConnection?.registryId ?? form.id),
               )}
             />
             {selectedAcpConnectionId && (
@@ -692,13 +769,28 @@ export function AgentConnectionView({
                 }
               />
             )}
+            {selectedAcpConnection?.installerId ? (
+              <EngineInstallTerminal
+                id={selectedAcpConnection.installerId}
+                installNeeded={
+                  selectedAcpConnection.installerDetected !== true &&
+                  selectedAcpConnection.status !== 'available'
+                }
+                onFinished={() => {
+                  void refetchRuntimes();
+                }}
+              />
+            ) : null}
+            {selectedAcpConnectionId ? (
+              <EngineStationTools connectionId={selectedAcpConnectionId} />
+            ) : null}
             {/* #4520: a policy-disallowed engine is explained by the managed
                 notice; "turn this on" would offer a fix the policy refuses. */}
-            {providerPresentation?.readiness !== 'Ready' &&
+            {health?.verdict !== 'ready' &&
               !selectedManagedState?.disallowed && (
                 <ConnectionReadinessNotice
-                  readiness={providerPresentation?.readiness ?? ''}
-                  detail={providerPresentation?.detail ?? ''}
+                  readiness={health?.label ?? ''}
+                  detail={health?.reason ?? ''}
                   kind="agent"
                   prerequisites={form.prerequisites}
                   devicePresentation={devicePresentation}
@@ -728,7 +820,7 @@ export function AgentConnectionView({
                   )}
                 {runtimeCatalogVisibleModels(form).map((model) => (
                   <option key={model.id} value={model.id}>
-                    {model.name}
+                    {modelOptionLabel(model, true)}
                   </option>
                 ))}
               </select>
@@ -741,8 +833,15 @@ export function AgentConnectionView({
                 onClick={() => refreshMutation.mutate(form.id)}
                 disabled={dirty || refreshMutation.isPending}
               >
-                Refresh models
+                {refreshMutation.isPending ? 'Refreshing…' : 'Refresh models'}
               </button>
+              {refreshMutation.variables === form.id &&
+                refreshMutation.error && (
+                  <p className="editor-error" role="status">
+                    Couldn’t refresh models.{' '}
+                    {describeStationFailure(refreshMutation.error).body}
+                  </p>
+                )}
             </div>
 
             <details className="provider-detail__advanced">
@@ -762,7 +861,7 @@ export function AgentConnectionView({
 
                 <div className="editor-field">
                   <span className="editor-label">Type</span>
-                  <div className="editor-input editor-input--readonly">
+                  <div className="editor-readonly">
                     {engineDisplayLabel(
                       connectionEngineId(form) ?? form.type,
                     ) ?? form.type}
@@ -771,14 +870,14 @@ export function AgentConnectionView({
 
                 <div className="editor-field">
                   <span className="editor-label">Status</span>
-                  <div className="editor-input editor-input--readonly">
+                  <div className="editor-readonly">
                     {connectionStatusLabel(form.status)}
                   </div>
                 </div>
 
                 <div className="editor-field">
                   <span className="editor-label">Catalog</span>
-                  <div className="editor-input editor-input--readonly">
+                  <div className="editor-readonly">
                     {runtimeCatalogSourceLabel(
                       runtimeCatalog?.source ?? 'none',
                     )}
@@ -790,13 +889,7 @@ export function AgentConnectionView({
 
                 <div className="editor-field">
                   <span className="editor-label">Model backend</span>
-                  <div
-                    className="editor-input"
-                    style={{
-                      background: 'var(--bg-tertiary)',
-                      cursor: 'default',
-                    }}
-                  >
+                  <div className="editor-readonly">
                     {providerLabel || 'Unknown'}
                   </div>
                 </div>
@@ -805,19 +898,13 @@ export function AgentConnectionView({
                   <label className="editor-label" htmlFor="runtime-enabled">
                     Enabled
                   </label>
-                  <label className="editor-checkbox">
-                    <input
-                      id="runtime-enabled"
-                      type="checkbox"
-                      checked={form.enabled}
-                      onChange={(event) =>
-                        setField('enabled', event.target.checked)
-                      }
-                    />
-                    <span>
-                      Expose this engine in Connections and agent setup
-                    </span>
-                  </label>
+                  <Checkbox
+                    id="runtime-enabled"
+                    checked={form.enabled}
+                    onChange={(checked) => setField('enabled', checked)}
+                  >
+                    Expose this engine in Connections and agent setup
+                  </Checkbox>
                 </div>
 
                 <div className="editor-field">
@@ -840,23 +927,36 @@ export function AgentConnectionView({
 
                 <div className="editor-field">
                   <span className="editor-label">Continuity</span>
-                  <p className="editor-help">
-                    {continuity
-                      ? [
-                          continuity.resume === 'same-session'
-                            ? 'Can continue this execution session when its engine supports it.'
-                            : 'Cannot resume an existing execution session.',
-                          continuity.fork === 'native'
-                            ? 'Can create an engine-native conversation branch.'
+                  {continuity ? (
+                    // Shares the engine account overview's fact-list layout;
+                    // its stylesheet loads with this view.
+                    <dl className="engine-account-overview__facts editor-help">
+                      <div>
+                        <dt>Resume</dt>
+                        <dd>
+                          {continuity.resume === 'same-session' ? 'Yes' : 'No'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Branch</dt>
+                        <dd>
+                          {continuity.fork === 'native'
+                            ? 'Yes'
                             : continuity.fork === 'replay-seed'
-                              ? 'Can start a new conversation from Station’s transcript. It does not carry engine cursor, tool, or approval state.'
-                              : 'Cannot create an engine-native branch.',
-                          continuity.rewind === 'in-place'
-                            ? 'Can rewind this execution session in place.'
-                            : 'Cannot rewind an execution session in place.',
-                        ].join(' ')
-                      : 'No native continuity capability declared by this connection.'}
-                  </p>
+                              ? 'Copies the transcript only'
+                              : 'No'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Rewind</dt>
+                        <dd>
+                          {continuity.rewind === 'in-place' ? 'Yes' : 'No'}
+                        </dd>
+                      </div>
+                    </dl>
+                  ) : (
+                    <p className="editor-help">Not reported</p>
+                  )}
                 </div>
 
                 {form.type === 'claude' && (
@@ -872,7 +972,9 @@ export function AgentConnectionView({
                   />
                 )}
 
-                {(form.type === 'claude' || form.type === 'codex') && (
+                {(form.type === 'claude' ||
+                  form.type === 'codex' ||
+                  form.type === 'muse') && (
                   <CredentialProfileAccess
                     connectionId={form.id}
                     managementOnly
@@ -884,7 +986,7 @@ export function AgentConnectionView({
                           connectionEngineId(form) ?? form.type,
                         ) ?? form.name
                       }
-                      useAppHome={form.config.useAppHome === true}
+                      config={form.config}
                       onToggle={(value) => setConfigField('useAppHome', value)}
                     />
                   </CredentialProfileAccess>
@@ -903,7 +1005,7 @@ export function AgentConnectionView({
                     <div className="plugins__caps">
                       {visibleModels.map((model) => (
                         <span key={model.id} className="plugins__cap">
-                          {model.name}
+                          {modelOptionLabel(model, true)}
                         </span>
                       ))}
                     </div>
@@ -929,7 +1031,7 @@ export function AgentConnectionView({
                         <div className="plugins__caps">
                           {capabilityInventory.models.map((model) => (
                             <span key={model.id} className="plugins__cap">
-                              {model.name}
+                              {modelOptionLabel(model, true)}
                             </span>
                           ))}
                         </div>
@@ -937,7 +1039,7 @@ export function AgentConnectionView({
                     )}
                     {capabilityInventory.slashCommands.length > 0 && (
                       <>
-                        <div className="editor-label">Native Commands</div>
+                        <div className="editor-label">Native commands</div>
                         <div className="plugins__registry-list">
                           {capabilityInventory.slashCommands.map((command) => (
                             <div
@@ -1028,14 +1130,16 @@ export function AgentConnectionView({
                       ))}
                     </div>
                   ) : (
-                    <p className="editor-help">No prerequisites reported.</p>
+                    <p className="editor-help">None reported.</p>
                   )}
                 </div>
                 {selectedAcpConnection && (
-                  <ACPConnectionDetailsField
-                    connection={selectedAcpConnection}
-                    agents={agents}
-                  />
+                  <>
+                    <ACPConnectionDetailsField
+                      connection={selectedAcpConnection}
+                      agents={agents}
+                    />
+                  </>
                 )}
                 <div className="editor-field">
                   <button
@@ -1152,6 +1256,36 @@ export function AgentConnectionView({
           label="Select an engine to review its status and setup."
         />
       )}
+      <ConfirmModal
+        isOpen={removing !== null}
+        title="Remove engine"
+        message={
+          removing
+            ? [
+                `Remove ${removing.name} from this Station?`,
+                'Its saved setup and Station credentials will be removed. Existing chats stay readable.',
+                ...(affectedAgents.length
+                  ? [`Agents using this engine: ${affectedAgents.join(', ')}.`]
+                  : []),
+              ].join('\n\n')
+            : ''
+        }
+        confirmLabel="Remove"
+        pending={removeAcp.isPending}
+        error={
+          removeAcp.error
+            ? describeStationFailure(removeAcp.error).body
+            : undefined
+        }
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={() => {
+          if (removing && !removeAcp.isPending) removeAcp.mutate(removing.id);
+        }}
+        onCancel={() => {
+          if (!removeAcp.isPending) setRemoving(null);
+        }}
+      />
       <DiscardModal />
     </SplitPaneLayout>
   );
@@ -1231,14 +1365,16 @@ function ClaudeSkillsMaterializationField({
 function AppHomeProfileField({
   connectionId,
   engineLabel,
-  useAppHome,
+  config,
   onToggle,
 }: {
   connectionId: string;
   engineLabel: string;
-  useAppHome: boolean;
+  config: Record<string, unknown>;
   onToggle: (value: boolean) => void;
 }) {
+  const useAppHome = appHomeActive(config);
+  const hasConfiguredHome = !!sanitizeConnectionConfigHome(config.configHome);
   const [includeCredentials, setIncludeCredentials] = useState(false);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   // Read-only status peek (docs/design/agent-engine-unification.md §6.1) —
@@ -1258,14 +1394,21 @@ function AppHomeProfileField({
         <Checkbox
           id={`${connectionId}-use-app-home`}
           checked={useAppHome}
+          disabled={hasConfiguredHome}
           onChange={onToggle}
         >
           Run sessions in a Station-managed app home
         </Checkbox>
-        <p className="editor-help">
-          Leaves your global {engineLabel} settings untouched. Uses{' '}
-          <code>~/.station/app-homes/{connectionId}</code>.
-        </p>
+        {hasConfiguredHome ? (
+          <p className="editor-help">
+            A custom home is configured for this Engine connection.
+          </p>
+        ) : (
+          <p className="editor-help">
+            Leaves your global {engineLabel} settings untouched. Uses{' '}
+            <code>~/.station/app-homes/{connectionId}</code>.
+          </p>
+        )}
         {useAppHome && (
           <div style={{ marginTop: 8 }}>
             {status && (
@@ -1275,20 +1418,13 @@ function AppHomeProfileField({
                   : 'Created on the first session with this on.'}
               </p>
             )}
-            <label
-              className="editor-checkbox"
-              htmlFor={`${connectionId}-app-home-include-credentials`}
+            <Checkbox
+              id={`${connectionId}-app-home-include-credentials`}
+              checked={includeCredentials}
+              onChange={setIncludeCredentials}
             >
-              <input
-                id={`${connectionId}-app-home-include-credentials`}
-                type="checkbox"
-                checked={includeCredentials}
-                onChange={(event) =>
-                  setIncludeCredentials(event.target.checked)
-                }
-              />
-              <span>Include sign-in credentials</span>
-            </label>
+              Include sign-in credentials
+            </Checkbox>
             <div className="editor-row">
               <button
                 type="button"
@@ -1506,10 +1642,10 @@ function CredentialRecoveryLayout({
           id={`${connectionId}-credential-profiles-heading`}
           className="editor-label"
         >
-          Credential entries
+          Accounts
         </h3>
         <p className="editor-help">
-          References only; Station doesn't store or show credentials here.
+          Station keeps a reference to each account here, never its credentials.
         </p>
       </div>
 
@@ -1538,15 +1674,15 @@ function CredentialRecoveryManagement({
   state: ReturnType<typeof useCredentialRecoveryState>;
 }) {
   if (state.isLoading) {
-    return <SkeletonBlock count={2} label="Loading credential entries" />;
+    return <SkeletonBlock count={2} label="Loading accounts" />;
   }
   // archive#771: this used to fall straight through to the (empty) management
-  // UI on a settled error, reading as "no credential entries" instead of "the
+  // UI on a settled error, reading as "no accounts" instead of "the
   // read failed". A retry that never had cached data has nothing to preserve.
   if (state.isError && !state.recovery) {
     return (
       <ErrorState
-        title="Couldn't load credential entries"
+        title="Couldn't load accounts"
         description={describeReadFailure(state.error)}
         action={
           <button type="button" onClick={() => state.refetch()}>
@@ -1597,9 +1733,19 @@ function CredentialRecoveryFeedback({
           className={`credential-recovery__outcome${isFailure ? ' credential-recovery__outcome--failure' : ''}`}
           role={isFailure ? 'alert' : 'status'}
         >
+          {/* 'failed' also covers indeterminate and superseded applications
+              (connection-service), so it cannot promise the account held.
+              'rejected' and 'unsupported' are defensive: the projection does
+              not send them today. */}
           {isFailure
-            ? `Credential application ${outcome === 'rolled_back' ? 'was rolled back' : 'did not complete'}; the active credential was not changed.`
-            : `Credential application: ${outcome.replaceAll('_', ' ')}.`}
+            ? outcome === 'rolled_back'
+              ? 'Account not changed. The switch was undone.'
+              : outcome === 'failed'
+                ? "Station couldn't confirm the switch. Check which account is active before trying again."
+                : "Account not changed. The switch didn't finish."
+            : outcome === 'adopted'
+              ? 'Switched accounts.'
+              : 'Switching accounts. Station is checking the new account.'}
         </p>
       )}
       <CredentialRecoveryErrors errors={errors} />
@@ -1615,9 +1761,9 @@ function CredentialProfileApplyConfirmation({
   return (
     <ConfirmModal
       isOpen={state.profileToApply !== null}
-      title="Apply credential entry"
-      message="Verifying uses one potentially billable engine turn. If it fails, the current credential stays active."
-      confirmLabel="Apply and verify"
+      title="Switch to this account"
+      message="One engine turn checks this account first and may be billed. If the check fails, the current account stays active."
+      confirmLabel="Check and switch"
       cancelLabel="Cancel"
       variant="warning"
       onConfirm={state.confirmApply}
@@ -1694,9 +1840,7 @@ function CredentialProfileList({
         ))}
       </div>
       {profiles.length === 0 && (
-        <p className="credential-recovery__notice">
-          No credential entries added yet.
-        </p>
+        <p className="credential-recovery__notice">None added yet.</p>
       )}
     </>
   );
@@ -1726,7 +1870,7 @@ function CredentialProfileRow({
           onChange={(enabled) => state.setEnrollment(profile.ref, enabled)}
           disabled={state.profileMutating.enrollment}
         >
-          Allow automatic recovery selection
+          Use as backup
         </Checkbox>
       </div>
       <CredentialProfileActions profile={profile} state={state} />
@@ -1814,7 +1958,9 @@ function CredentialProfileActions({
         disabled={applyDisabled}
         onClick={() => state.requestApply(profile.ref)}
       >
-        {state.applyingRef === profile.ref ? 'Applying…' : 'Apply manually'}
+        {state.applyingRef === profile.ref
+          ? 'Switching…'
+          : 'Switch to this account'}
       </button>
       <button
         type="button"
@@ -1854,14 +2000,14 @@ function CredentialProfileCreateForm({
     <div className="credential-recovery__add-row">
       <input
         className="editor-input"
-        aria-label="Credential entry reference"
+        aria-label="Account reference"
         value={profileRef}
         onChange={(event) => setProfileRef(event.target.value)}
-        placeholder="Credential reference"
+        placeholder="Account reference"
       />
       <input
         className="editor-input"
-        aria-label="Credential entry label"
+        aria-label="Account label"
         value={profileLabel}
         onChange={(event) => setProfileLabel(event.target.value)}
         placeholder="Management label (optional)"
@@ -1872,7 +2018,7 @@ function CredentialProfileCreateForm({
         disabled={pending || profileRef.trim().length === 0}
         onClick={addProfile}
       >
-        {pending ? 'Adding…' : 'Add credential entry'}
+        {pending ? 'Adding…' : 'Add account'}
       </button>
     </div>
   );
@@ -1900,17 +2046,17 @@ function CredentialProfileProvisioning({
   const [includeCredentials, setIncludeCredentials] = useState(false);
   return (
     <fieldset>
-      <legend className="editor-label">Provisioning import</legend>
+      <legend className="editor-label">Import settings</legend>
       <p className="editor-help">
-        Imports the entry’s global {engineLabel} snapshot. Credentials are
-        excluded unless checked below.
+        Copies your global {engineLabel} settings into an account. Sign-in
+        credentials are copied only if you check the box below.
       </p>
       <Checkbox
         id={`${connectionId}-credential-profile-include-credentials`}
         checked={includeCredentials}
         onChange={setIncludeCredentials}
       >
-        Include selected credential entry sign-in credentials
+        Also copy sign-in credentials into the account
       </Checkbox>
       <div className="credential-recovery__profile-actions">
         {profiles.map((profile) => (
@@ -1945,15 +2091,15 @@ function CredentialProfileImportResult({
     <p
       className="credential-recovery__outcome"
       role="status"
-      aria-label="Credential entry provisioning import result"
+      aria-label="Import result"
     >
-      Provisioning import completed: {result.copied.length}{' '}
-      {result.copied.length === 1 ? 'item' : 'items'} copied;{' '}
+      Import finished: {result.copied.length}{' '}
+      {result.copied.length === 1 ? 'item' : 'items'} copied,{' '}
       {result.skipped.length} {result.skipped.length === 1 ? 'item' : 'items'}{' '}
       skipped.{' '}
       {result.provenanceUpdated
-        ? 'This credential entry is marked as imported.'
-        : 'This credential entry was not marked as imported because nothing was copied.'}
+        ? 'This account is marked as imported.'
+        : 'Nothing was copied, so this account is not marked as imported.'}
     </p>
   );
 }
@@ -1973,21 +2119,19 @@ function CredentialRecoveryPolicy({
 }) {
   return (
     <fieldset>
-      <legend className="editor-label">Automatic recovery</legend>
+      <legend className="editor-label">Automatic switching</legend>
       <Checkbox
         id={`${connectionId}-credential-recovery-automatic`}
         checked={automatic}
         onChange={onChange}
         disabled={unsupported || pending}
       >
-        Automatically try an enrolled credential entry after an account-scoped
-        capacity or rate-limit failure
+        Switch to a backup account when this one hits a usage or rate limit
       </Checkbox>
       <p className="editor-help">
-        Only enrolled entries are tried.
         {unsupported
-          ? ' This engine does not declare a safe application capability.'
-          : ''}
+          ? "This engine can't switch accounts automatically."
+          : 'Only accounts marked as backup are used.'}
       </p>
     </fieldset>
   );

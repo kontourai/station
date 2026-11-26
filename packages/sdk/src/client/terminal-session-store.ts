@@ -1,12 +1,15 @@
 import {
   decodeTerminalFrame,
+  decodeTerminalSize,
   encodeTerminalFrame,
   TERMINAL_CLOSE,
   TERMINAL_FRAME_HEADER_BYTES,
   TERMINAL_INPUT,
   TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
   TERMINAL_OUTPUT,
+  TERMINAL_RESIZE,
   TERMINAL_SOCKET_PROTOCOL,
+  TERMINAL_SOCKET_PROTOCOL_V2,
   TERMINAL_TICKET_PATH,
   TERMINAL_TICKET_PATTERN,
   TERMINAL_TICKET_PROTOCOL_PREFIX,
@@ -100,6 +103,12 @@ export interface TerminalSessionListener {
    * Unsubscribing releases whatever it has not settled.
    */
   output?(data: Uint8Array, sequence: number): unknown;
+  /**
+   * The terminal's size from this point in the output on, as recorded when
+   * it changed (#4625), in order with `output`. A host older than resize
+   * records sends none.
+   */
+  resize?(cols: number, rows: number, sequence: number): void;
   /** Earlier output is no longer retained: clear the view before more arrives. */
   reset?(): void;
   /** Any change to state, status, read-only or error. */
@@ -171,6 +180,8 @@ export interface TerminalSessionRecord {
 
 export interface TerminalSessionSocket extends EventTarget {
   readonly readyState: number;
+  /** The subprotocol the host selected; version 2 sends resize frames. */
+  readonly protocol?: string;
   binaryType: string;
   /** Frames are freshly encoded, so always backed by a plain ArrayBuffer. */
   send(value: string | Uint8Array<ArrayBuffer>): void;
@@ -193,6 +204,14 @@ export interface TerminalSessionStoreOptions {
 }
 
 const BACKOFF_MS = [250, 500, 1000, 2000, 4000, 8000, 10_000];
+/** What one retained recorded size counts against the session's buffer. */
+const RETAINED_SIZE_BYTES = 16;
+
+function retainedBytes(
+  entry: { data: Uint8Array } | { size: { cols: number; rows: number } },
+): number {
+  return 'data' in entry ? entry.data.byteLength : RETAINED_SIZE_BYTES;
+}
 const MAX_PENDING_INPUT = 64 * 1024;
 const seq = z.number().int().nonnegative().safe();
 const status = z.enum(['starting', 'running', 'exited', 'failed']);
@@ -608,6 +627,8 @@ export class TerminalSessionStore {
         ((url, protocols): TerminalSessionSocket =>
           new WebSocket(url, protocols))
       )(this.socketURL, [
+        // Version 2 adds resize frames (#4625); an older host selects 1.
+        TERMINAL_SOCKET_PROTOCOL_V2,
         TERMINAL_SOCKET_PROTOCOL,
         TERMINAL_TICKET_PROTOCOL_PREFIX + ticket,
       ]);
@@ -684,6 +705,14 @@ export class TerminalSessionStore {
       )
         throw new TerminalSessionError('protocol');
       const frame = decodeTerminalFrame(new Uint8Array(data));
+      if (
+        frame.kind === TERMINAL_RESIZE &&
+        this.socket?.protocol === TERMINAL_SOCKET_PROTOCOL_V2
+      ) {
+        const size = decodeTerminalSize(frame.data);
+        this.channels.get(frame.channel)?.resized(frame.seq, size);
+        return;
+      }
       if (frame.kind !== TERMINAL_OUTPUT)
         throw new TerminalSessionError('protocol');
       this.channels.get(frame.channel)?.output(frame.seq, frame.data);
@@ -789,8 +818,14 @@ class StoreSession implements TerminalSession {
   private size: { cols: number; rows: number } | undefined;
   private sentSize: { cols: number; rows: number } | undefined;
   private flushScheduled = false;
-  private buffer: { seq: number; data: Uint8Array }[] = [];
+  /** Retained output and recorded sizes, in order, for late subscribers. */
+  private buffer: (
+    | { seq: number; data: Uint8Array }
+    | { seq: number; size: { cols: number; rows: number } }
+  )[] = [];
   private bufferedBytes = 0;
+  /** The recorded size in effect before the oldest retained entry. */
+  private bufferBase: { cols: number; rows: number } | undefined;
   private readonly listeners = new Set<TerminalSessionListener>();
   private readyWaiters: (() => void)[] = [];
   /**
@@ -823,7 +858,16 @@ class StoreSession implements TerminalSession {
     this.listeners.add(listener);
     // Retained output was acknowledged when it arrived; replaying it to a
     // late subscriber is bounded by the retained buffer, not by credit.
-    for (const chunk of this.buffer) listener.output?.(chunk.data, chunk.seq);
+    const first = this.buffer[0];
+    if (this.bufferBase && first)
+      listener.resize?.(
+        this.bufferBase.cols,
+        this.bufferBase.rows,
+        first.seq - 1,
+      );
+    for (const chunk of this.buffer)
+      if ('data' in chunk) listener.output?.(chunk.data, chunk.seq);
+      else listener.resize?.(chunk.size.cols, chunk.size.rows, chunk.seq);
     return () => {
       this.listeners.delete(listener);
       const releases = this.holds.get(listener);
@@ -974,19 +1018,57 @@ class StoreSession implements TerminalSession {
     this.unacknowledged.push(entry);
     if (data.byteLength) {
       const copy = data.slice();
-      this.buffer.push({ seq: sequence, data: copy });
-      this.bufferedBytes += copy.byteLength;
-      while (
-        this.bufferedBytes > this.store.maxBufferedBytes &&
-        this.buffer.length > 1
-      )
-        this.bufferedBytes -= this.buffer.shift()!.data.byteLength;
+      this.retain({ seq: sequence, data: copy });
       for (const listener of this.listeners) {
         const consumed = listener.output?.(copy, sequence);
         if (isThenable(consumed)) this.hold(listener, entry, consumed);
       }
     }
     this.acknowledgeConsumed();
+  }
+
+  /**
+   * A recorded size (#4625): applied in order with output, acknowledged as
+   * output is, and retained for late subscribers.
+   */
+  resized(sequence: number, size: { cols: number; rows: number }): void {
+    if (sequence !== this.applied + 1) {
+      this.fail(new TerminalSessionError('protocol'));
+      return;
+    }
+    this.applied = sequence;
+    this.unacknowledged.push({ seq: sequence, waiting: 0 });
+    this.retain({ seq: sequence, size: { ...size } });
+    for (const listener of this.listeners) {
+      try {
+        listener.resize?.(size.cols, size.rows, sequence);
+      } catch {
+        /* A listener cannot break delivery to the others. */
+      }
+    }
+    this.acknowledgeConsumed();
+  }
+
+  /**
+   * Keeps an entry for late subscribers within the buffer bound. A size
+   * counts as {@link RETAINED_SIZE_BYTES}, so a stream of resizes stays
+   * bounded too; a dropped size is kept as the base the rest replays from.
+   */
+  private retain(
+    entry:
+      | { seq: number; data: Uint8Array }
+      | { seq: number; size: { cols: number; rows: number } },
+  ): void {
+    this.buffer.push(entry);
+    this.bufferedBytes += retainedBytes(entry);
+    while (
+      this.bufferedBytes > this.store.maxBufferedBytes &&
+      this.buffer.length > 1
+    ) {
+      const dropped = this.buffer.shift()!;
+      this.bufferedBytes -= retainedBytes(dropped);
+      if ('size' in dropped) this.bufferBase = dropped.size;
+    }
   }
 
   /** Withholds credit for `entry` until `listener` has consumed it. */
@@ -1052,6 +1134,7 @@ class StoreSession implements TerminalSession {
     this.forgetUnacknowledged();
     this.buffer = [];
     this.bufferedBytes = 0;
+    this.bufferBase = undefined;
     this.applied = message.fromSeq;
     this.replayThrough = message.replayThrough;
     this.state = 'replaying';

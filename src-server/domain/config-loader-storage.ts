@@ -1238,17 +1238,23 @@ export function skillRecordClaimsName(
   return record.name === name;
 }
 
+export class SkillNotFoundError extends Error {
+  constructor(name: string) {
+    super(`Skill '${name}' not found`);
+    this.name = 'SkillNotFoundError';
+  }
+}
+
 export async function loadSkillConfig(
   projectHomeDir: string,
   name: string,
 ): Promise<SkillConfigRecord> {
   const path = join(resolveSkillDirectory(projectHomeDir, name), 'skill.json');
-  if (!existsSync(path)) throw new Error(`Skill '${name}' not found`);
+  if (!existsSync(path)) throw new SkillNotFoundError(name);
   const record = JSON.parse(await readFile(path, 'utf-8')) as SkillConfigRecord;
   // A record that names another skill is not this skill's record; a name with
   // no record of its own is the same answer either way.
-  if (!skillRecordClaimsName(record, name))
-    throw new Error(`Skill '${name}' not found`);
+  if (!skillRecordClaimsName(record, name)) throw new SkillNotFoundError(name);
   return record;
 }
 

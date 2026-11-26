@@ -18,6 +18,10 @@ import {
   readBoundedJson,
 } from '../registries/catalog-http.js';
 import { AiSdkLLMProvider } from './ai-sdk-llm-provider.js';
+import {
+  assertEmbeddingVectors,
+  postEmbeddingRequest,
+} from './embedding-http.js';
 import type {
   IEmbeddingProvider,
   LLMModel,
@@ -25,6 +29,15 @@ import type {
 } from './model-provider-types.js';
 
 const logger = createLogger({ name: 'openai-compat-provider' });
+
+/**
+ * What a check says about a connection saved with no address (only possible
+ * for records written before saves required one). Without it the catalog
+ * request ran against `undefined/models` and the runtime's URL parse error
+ * became the connection's readiness text.
+ */
+const OPENAI_COMPAT_NO_ADDRESS_REASON =
+  'This connection has no server URL. Add one, turn the connection off, or delete it.';
 
 export class OpenAICompatLLMProvider extends AiSdkLLMProvider {
   readonly id = 'openai-compat';
@@ -82,6 +95,7 @@ export class OpenAICompatLLMProvider extends AiSdkLLMProvider {
   }
 
   async listModels(options?: ModelCatalogRequest): Promise<LLMModel[]> {
+    if (!this.baseUrl) throw new Error(OPENAI_COMPAT_NO_ADDRESS_REASON);
     const res = await fetch(`${this.baseUrl}/models`, {
       headers: this.listHeaders(),
       signal: options?.signal,
@@ -166,13 +180,20 @@ export class OpenAICompatEmbeddingProvider implements IEmbeddingProvider {
   }
 
   async embed(texts: string[]): Promise<number[][]> {
-    const res = await fetch(`${this.baseUrl}/embeddings`, {
-      method: 'POST',
+    const data = await postEmbeddingRequest({
+      providerName: this.displayName,
+      url: `${this.baseUrl}/embeddings`,
       headers: this.headers,
-      body: JSON.stringify({ model: this.model, input: texts }),
+      body: { model: this.model, input: texts },
     });
-    const data = (await res.json()) as { data: Array<{ embedding: number[] }> };
-    return data.data.map((d) => d.embedding);
+    const rows = (data as { data?: unknown } | null)?.data;
+    return assertEmbeddingVectors(
+      this.displayName,
+      Array.isArray(rows)
+        ? rows.map((row) => (row as { embedding?: unknown } | null)?.embedding)
+        : undefined,
+      texts.length,
+    );
   }
 
   dimensions(): number {

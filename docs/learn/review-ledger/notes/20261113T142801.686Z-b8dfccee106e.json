@@ -1,0 +1,7 @@
+{
+  "revision": "f5d844cda39fbbbf1ab34810a1f2adc3e5f5ae3e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed index.css toolbar group exclusions: only the setup group now shrinks independently of fixed tool hit areas. All 20 final reply geometry cases passed; all 44 requested PNGs visually reviewed. Four injected geometry/title faults failed at intended assertions and production source restored.","inputs":["docs/design/chat-composer.md","src-ui/src/index.css"]}
+  ]
+}

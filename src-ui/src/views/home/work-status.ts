@@ -2,6 +2,7 @@ import {
   OWNED_WORK_STATUS_WORDS,
   SESSION_STATUS_WORDS,
 } from '@kontourai/station-contracts/session-attention';
+import { parseEpochMs } from '../../utils/parseEpochMs';
 import { formatDuration } from '../../utils/relativeTime';
 import { type HomeWorkItem, TASK_AWAITS_ANSWER_LABEL } from './home-view-model';
 import type { WorkAttentionKind, WorkFacts } from './work-facts';
@@ -15,17 +16,19 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  * Pure and `now`-injected. Two inputs, with different jobs:
  *
  * - THE ITEM decides the rung's family and therefore the lane. That is a
- *   switch on `lifecycleLabel` (plus `controlMode`), and nothing else: the
+ *   switch on `lifecycleLabel` and `controlMode`, plus the item's armed
+ *   `nextWakeUpAt` when a settled turn is waiting to resume: the
  *   label is already the product's one answer to "what state is this in".
  *   In particular "an owed decision outranks running" is decided where the
  *   label is: the shared attention fold (`sessionAttentionDisposition`)
  *   files an awaiting session ahead of an active one even while its turn is
  *   still open, and a chat's pending approval is read before its running
  *   state. This function does not re-decide it.
- * - THE FACTS (`WorkFacts`, derived beside the item) only choose the words
- *   inside that family: which thing is owed, which tool is running. They
- *   are optional, and the lane is the same with or without them, which is
- *   why the partition can call this with the item alone.
+ * - THE FACTS (`WorkFacts`, derived beside the item) refine the status:
+ *   which thing is owed, which tool is running, and which cleanup is in flight. They
+ *   also identify a resumable delegation whose completed result has been read.
+ *   Its Done status stays intact when it returns to open work. Unknown
+ *   cleanup stays visible in the idle lane when nothing is in flight.
  *
  * Rungs, in the order a reader should expect them down an inbox:
  *
@@ -33,10 +36,10 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *  blocked, interrupted                          (Needs you)
  *  failed, stopped                               (finished)
  *  elsewhere                                     (Idle)
- *  N sub-agents, owned cleanup, no progress, running (Running)
+ *  N sub-agents, owned cleanup, no progress, running, scheduled (Running)
  *  draft                                         (Drafts)
- *  done                                          (finished)
- *  idle                                          (Idle)
+ *  done                       (finished, or idle after a resumable result is read)
+ *  idle, unknown cleanup alone                  (Idle)
  *
  * THE ONLY SOURCE OF STATUS WORDS. Every list, card, sheet, pane, banner and
  * strip that names a conversation's state renders `word` (or `line`) from
@@ -66,10 +69,12 @@ export type WorkStatusRung =
   | 'stopped'
   | 'unanswerable'
   | 'childWork'
+  | 'scheduled'
   | 'quiet'
   | 'running'
   | 'draft'
   | 'done'
+  | 'cutOff'
   | 'idle';
 
 /**
@@ -107,12 +112,6 @@ export interface WorkStatus {
   since?: number;
   /** The whole line as text at `now`. */
   line: string;
-}
-
-function epochMs(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? ms : undefined;
 }
 
 type Rung = Omit<WorkStatus, 'line'>;
@@ -160,6 +159,17 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
       reason: `${item.agentLabel} · Replies unavailable here`,
     };
   }
+  if (
+    item.nextWakeUpAt &&
+    parseEpochMs(item.nextWakeUpAt) !== undefined &&
+    (item.lifecycleLabel === 'Completed' || item.lifecycleLabel === 'Recent')
+  )
+    return {
+      rung: 'scheduled',
+      lane: 'running',
+      tone: 'neutral',
+      word: SESSION_STATUS_WORDS.scheduled,
+    };
   switch (item.lifecycleLabel) {
     case 'Needs attention': {
       // With no recorded kind (no facts, an older server)
@@ -170,6 +180,9 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         lane: 'needsYou',
         tone: 'attention',
         word: SESSION_STATUS_WORDS[kind],
+        ...(facts?.attentionStartedAt !== undefined
+          ? { since: facts.attentionStartedAt }
+          : {}),
       };
     }
     case 'Failed':
@@ -203,7 +216,12 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
       if (ownedState && ownedState !== 'running')
         return {
           rung: 'childWork',
-          lane: 'running',
+          lane:
+            ownedState === 'unknown' &&
+            !facts?.ownedWorkInFlight &&
+            !facts?.activity
+              ? 'idle'
+              : 'running',
           tone: ownedState === 'unknown' ? 'caution' : 'active',
           word: OWNED_WORK_STATUS_WORDS[ownedState],
           detail:
@@ -212,7 +230,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
               : undefined,
         };
       const activity = facts?.activity;
-      const since = epochMs(activity?.turnStartedAt);
+      const since = parseEpochMs(activity?.turnStartedAt);
       const children = activity?.childWorkCount ?? 0;
       if (children > 0) {
         return {
@@ -233,7 +251,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
       // computed. The turn is still open and nothing is owed to the user,
       // so the lane stays Running; the tool still running is kept as the
       // detail because it is usually why.
-      const silentSince = epochMs(
+      const silentSince = parseEpochMs(
         item.turnProgress?.progressSilence?.silentSinceEventAt,
       );
       //
@@ -269,11 +287,26 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         word: SESSION_STATUS_WORDS.draft,
       };
     case 'Completed':
+      // A turn that completed at the engine's output limit is over, but its
+      // reply is incomplete: worth a look, never "Done".
+      // Either way a read result of a resumable delegation returns to open
+      // work, as Done does.
       return {
-        rung: 'done',
-        lane: 'finished',
-        tone: 'neutral',
-        word: SESSION_STATUS_WORDS.done,
+        ...(facts?.cutOff
+          ? {
+              rung: 'cutOff' as const,
+              tone: 'caution' as const,
+              word: SESSION_STATUS_WORDS.cutOff,
+            }
+          : {
+              rung: 'done' as const,
+              tone: 'neutral' as const,
+              word: SESSION_STATUS_WORDS.done,
+            }),
+        lane:
+          facts?.resumableDelegationResult && item.unread === false
+            ? 'idle'
+            : 'finished',
       };
     default:
       return {
@@ -285,9 +318,21 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
   }
 }
 
+export function hasUnseenDelegationResult(
+  item: HomeWorkItem,
+  facts?: WorkFacts,
+): boolean {
+  return (
+    facts?.resumableDelegationResult === true &&
+    item.unread === true &&
+    item.lifecycleLabel === 'Completed' &&
+    rungFor(item, facts).lane === 'finished'
+  );
+}
+
 /**
  * `facts` are the item's `WorkFacts`, derived beside it; without them the
- * line says only what the lifecycle label says, and the lane is the same.
+ * line and lane follow the recorded lifecycle.
  */
 export function workStatus(
   item: HomeWorkItem,

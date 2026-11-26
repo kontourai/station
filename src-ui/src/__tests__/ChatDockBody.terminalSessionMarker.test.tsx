@@ -191,7 +191,6 @@ function buildSession(overrides: Partial<ChatSession>): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'error',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -945,7 +944,7 @@ describe('ChatDockBody memory-exhaustion marker', () => {
     );
     expect(
       await screen.findByText(
-        /restarted — continuing/i,
+        /restarted\. Continuing/i,
         {},
         { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
       ),
@@ -1126,11 +1125,11 @@ describe('ChatDockBody marker actions follow callerAccess', () => {
   ] as const)(
     'an unsafe workspace offers %s caller %j, never Send again',
     async (caller, expected) => {
-      expect(await actionsFor(WORKSPACE, caller, /Can't resume/)).toEqual(
-        expected,
-      );
+      expect(
+        await actionsFor(WORKSPACE, caller, /This chat can’t continue/),
+      ).toEqual(expected);
       // Its hint is "New chat.": shown only to a caller allowed one.
-      expect(Boolean(screen.queryByText('New chat.'))).toBe(
+      expect(Boolean(screen.queryByText('Start a new chat.'))).toBe(
         expected.length > 0,
       );
     },
@@ -1195,4 +1194,210 @@ describe('ChatDockBody marker actions follow callerAccess', () => {
       expect(Boolean(screen.queryByText(/Retrying may help/))).toBe(namesRetry);
     },
   );
+});
+
+// A reopened chat (a reload, another device) holds no in-memory marker and no
+// stored copy of one: only the stored events. The newest failed turn's card
+// is rebuilt from its stored `runtime.error`, with the actions the live card
+// had.
+describe('a failed turn read back from stored events', () => {
+  const at = (second: number) =>
+    `2026-11-21T10:00:${String(second).padStart(2, '0')}.000Z`;
+  const window = (fields: Record<string, unknown>[]) => ({
+    protocolVersion: 1,
+    watermark: 10,
+    hasMore: false,
+    events: fields.map((event, index) => ({
+      sequence: index + 1,
+      event: {
+        eventId: `e${index + 1}`,
+        provider: 'claude',
+        threadId: 'thread-failed',
+        createdAt: at(index + 1),
+        ...event,
+      },
+    })),
+  });
+  const failedTurn = (turnId: string, prompt: string) => [
+    { method: 'turn.started', turnId, prompt },
+    {
+      method: 'content.text-delta',
+      turnId,
+      delta: 'Starting a reply that will fail',
+    },
+    {
+      method: 'runtime.error',
+      turnId,
+      severity: 'error',
+      message: 'Scripted mid-stream failure',
+    },
+  ];
+  const reopened = () =>
+    buildSession({
+      id: 'thread-failed',
+      conversationId: 'conversation-failed',
+      status: 'idle',
+      orchestrationSessionStarted: true,
+      messages: [],
+    } as Partial<ChatSession>);
+
+  test('keeps Send again and Troubleshoot this, and both act on that turn', async () => {
+    sdk.fetchWindow.mockResolvedValue(
+      window(failedTurn('turn-1', 'Trigger the scripted failure.')),
+    );
+    const chatInput = buildChatInput();
+    const capture = captureTroubleshootSeeds();
+    try {
+      renderDock(reopened(), vi.fn(), chatInput);
+      fireEvent.click(
+        await screen.findByRole(
+          'button',
+          { name: 'Send again' },
+          { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+        ),
+      );
+      await waitFor(() =>
+        expect(chatInput.handleSend).toHaveBeenCalledWith(
+          'Trigger the scripted failure.',
+          [],
+        ),
+      );
+      // One card: the projected failure text is not shown a second time.
+      expect(
+        screen.getAllByText(/Scripted mid-stream failure/, { exact: false }),
+      ).toHaveLength(1);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Troubleshoot this' }),
+      );
+      expect(capture.seeds).toHaveLength(1);
+      expect(capture.seeds[0]).toMatchObject({
+        conversationId: 'conversation-failed',
+        turnId: 'turn-1',
+      });
+      expect(capture.seeds[0]!.errorSummary).toMatch(
+        /Scripted mid-stream failure/,
+      );
+    } finally {
+      capture.stop();
+    }
+  });
+
+  // The engine opened the failed turn itself: it has no prompt of its own,
+  // so Send again must not resend the person's earlier, unrelated message.
+  test('a failed turn the engine opened offers no Send again of an earlier message', async () => {
+    sdk.fetchWindow.mockResolvedValue(
+      window([
+        { method: 'turn.started', turnId: 'turn-1', prompt: 'Run the build.' },
+        { method: 'turn.completed', turnId: 'turn-1', finishReason: 'stop' },
+        {
+          method: 'turn.started',
+          turnId: 'turn-2',
+          prompt: '',
+          metadata: { trigger: 'provider' },
+        },
+        {
+          method: 'runtime.error',
+          turnId: 'turn-2',
+          severity: 'error',
+          message: 'Scripted mid-stream failure',
+        },
+      ]),
+    );
+    const chatInput = buildChatInput();
+    renderDock(reopened(), vi.fn(), chatInput);
+    expect(
+      await screen.findByRole(
+        'button',
+        { name: 'Troubleshoot this' },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    expect(chatInput.handleSend).not.toHaveBeenCalled();
+  });
+
+  test('a failure the person has moved past is not offered for resending', async () => {
+    sdk.fetchWindow.mockResolvedValue(
+      window([
+        ...failedTurn('turn-1', 'Trigger the scripted failure.'),
+        { method: 'turn.started', turnId: 'turn-2', prompt: 'Something else.' },
+        { method: 'turn.completed', turnId: 'turn-2', finishReason: 'stop' },
+      ]),
+    );
+    renderDock(reopened(), vi.fn());
+    expect(
+      await screen.findByText(
+        /Scripted mid-stream failure/,
+        { exact: false },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+  });
+});
+
+// A turn the engine ended at its output limit completed, but the reply stops
+// mid-way. The transcript says so under the reply.
+describe('a reply cut off at the output limit', () => {
+  const stored = (finishReason: string) => ({
+    protocolVersion: 1,
+    watermark: 10,
+    hasMore: false,
+    events: [
+      { method: 'turn.started', turnId: 'turn-1', prompt: 'Write a lot.' },
+      {
+        method: 'content.text-delta',
+        turnId: 'turn-1',
+        delta: 'This reply runs out of room before it can',
+      },
+      { method: 'turn.completed', turnId: 'turn-1', finishReason },
+    ].map((fields, index) => ({
+      sequence: index + 1,
+      event: {
+        eventId: `e${index + 1}`,
+        provider: 'claude',
+        threadId: 'thread-cut-off',
+        createdAt: `2026-11-21T10:00:0${index + 1}.000Z`,
+        ...fields,
+      },
+    })),
+  });
+  const reopened = () =>
+    buildSession({
+      id: 'thread-cut-off',
+      conversationId: 'conversation-cut-off',
+      status: 'idle',
+      orchestrationSessionStarted: true,
+      messages: [],
+    } as Partial<ChatSession>);
+
+  test('a max-tokens finish shows the cut-off notice under the reply', async () => {
+    sdk.fetchWindow.mockResolvedValue(stored('max-tokens'));
+    renderDock(reopened(), vi.fn());
+    const notice = await screen.findByRole(
+      'note',
+      {},
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    expect(notice.textContent).toBe(
+      'This reply was cut off at the model’s output limit.',
+    );
+    // The note belongs to the reply it qualifies.
+    expect(notice.closest('.message')?.textContent ?? '').toContain(
+      'This reply runs out of room before it can',
+    );
+  });
+
+  test('an ordinary finish shows no notice', async () => {
+    sdk.fetchWindow.mockResolvedValue(stored('stop'));
+    renderDock(reopened(), vi.fn());
+    expect(
+      await screen.findByText(
+        /runs out of room before it can/,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/cut off at the model/)).toBeNull();
+  });
 });

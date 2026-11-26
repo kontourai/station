@@ -84,7 +84,12 @@ export async function runOutsideClientsCommand(
       'Only read-only outside-client access is available before F1.',
     );
   const ttl = flags['expires-in'] ?? '30d';
-  if (typeof ttl !== 'string' || !/^\d+(m|h|d)$/.test(ttl))
+  if (
+    typeof ttl !== 'string' ||
+    !/^\d+(m|h|d)$/.test(ttl) ||
+    // A zero duration would grant access that has already expired.
+    Number(ttl.slice(0, -1)) < 1
+  )
     throw new Error('--expires-in must be a duration such as 30d.');
   const expiresAt =
     (deps.now ?? Date.now)() +

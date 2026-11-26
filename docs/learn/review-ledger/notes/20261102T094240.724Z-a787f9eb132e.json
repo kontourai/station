@@ -1,9 +1,0 @@
-{
-  "revision": "c9a1aa1842e45443f59b3c1a44ce98c162c5fe35",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Depends on docs/reference/api.md, whose only change is the built-in Agent display-name sentence under Default Agent; this document says nothing about that Agent or its name. No prose change.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
-
-    {"path":"docs/guides/integrating-station.md","note":"Depends on docs/reference/api.md, whose only change is the Station Assistant display-name sentence; integration guidance uses the station id and /api/agents identities, which are unchanged. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
-  ]
-}

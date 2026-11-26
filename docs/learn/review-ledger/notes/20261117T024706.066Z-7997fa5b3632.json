@@ -1,0 +1,7 @@
+{
+  "revision": "de39b1a6b5445b0b9a0d2f590c37bef131219632",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rewrote the external-session generation text: launch inputs fingerprinted, retry while settling or unreadable, in-place restart for a resumable engine and successor plus retirement otherwise. Checked against pre-tool-policy-generation.ts, station-runtime.ts, orchestration-service.ts and conversation-lineage.ts.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

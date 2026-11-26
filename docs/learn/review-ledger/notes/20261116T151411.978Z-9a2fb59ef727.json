@@ -1,0 +1,13 @@
+{
+  "revision": "6a6b39ee1af7b7faf299de3e195e4b3f3b15ed04",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the diff: listRuntimeConnections and listRuntimeConnectionInventory accept optional includeModelCatalog/includeCommands and pass them to the inspector; with no options (every route, picker and chat caller) the read is unchanged. No API, smoke-evidence or coverage claim on the citing pages changed.","inputs":["src-server/services/connections/connection-service.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the diff: listRuntimeConnections and listRuntimeConnectionInventory accept optional includeModelCatalog/includeCommands and pass them to the inspector; with no options (every route, picker and chat caller) the read is unchanged. No API, smoke-evidence or coverage claim on the citing pages changed.","inputs":["src-server/services/connections/connection-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the diff: listRuntimeConnections and listRuntimeConnectionInventory accept optional includeModelCatalog/includeCommands and pass them to the inspector; with no options (every route, picker and chat caller) the read is unchanged. No API, smoke-evidence or coverage claim on the citing pages changed.","inputs":["src-server/services/connections/connection-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the diff: listRuntimeConnections and listRuntimeConnectionInventory accept optional includeModelCatalog/includeCommands and pass them to the inspector; with no options (every route, picker and chat caller) the read is unchanged. No API, smoke-evidence or coverage claim on the citing pages changed.","inputs":["src-server/services/connections/connection-service.ts"]}
+  ]
+}

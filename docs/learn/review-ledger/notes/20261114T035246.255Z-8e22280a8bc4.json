@@ -1,0 +1,7 @@
+{
+  "revision": "43233686898378145680cc6504e365a24aab3d84",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-read the lane table rows that name the test-impact manifest (ci-fast, test-changed) and the paragraph on giving a changed package manifest explicit readers, against scripts/test-impact-manifest.mjs at this change: the only edit adds scripts/__tests__/classify-ci-change.test.ts to REPO_SCAN_SUITES. No selection rule, lane or explicit-reader entry changed. No prose change needed.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}

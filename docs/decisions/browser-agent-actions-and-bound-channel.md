@@ -9,6 +9,8 @@ evidence:
     ref: https://github.com/kontourai/station/pull/3779
   - kind: issue
     ref: https://github.com/kontourai/station/issues/3530
+  - kind: issue
+    ref: https://github.com/kontourai/station/issues/2376
   - kind: doc
     ref: docs/guides/browser-workspace.md
 ---
@@ -22,7 +24,9 @@ This record holds two things with different status:
   (#3779).
 - **Preview:** Codex dynamic tools use its Session's Station-owned app-server
   stream. The `codex-bound-browser-device-tools` Feature Preview is off by
-  default. ACP passthrough remains `caller-not-bound`.
+  default. With it on, the stream also carries Station Control
+  ([below](#station-control-on-the-codex-bound-channel)). ACP passthrough
+  remains `caller-not-bound`.
 
 It builds on frozen
 [ADR 0019](../adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md),
@@ -34,7 +38,8 @@ adoption creates a separate session in the opener's profile and continues the
 original request; selecting a tab does not retarget an Agent's tools. Title and
 navigation observations confer no authority. The twelve-session profile bound
 includes live and opening sessions. Tab/popup fixture coverage does not establish
-a real-browser or external-provider journey.
+a real-browser or external-provider journey; the real-host suite's
+popup-admission case covers only the host's adoption of a popup.
 
 ## Threat model and decision
 
@@ -69,6 +74,66 @@ or fails; this is an audit of the request, not proof of its outcome. Emulation
 is target-local and survives navigation. The live-surface binder sends a reset
 to system on every human control claim and logs reset failures. A human does
 not intentionally inherit an Agent's override.
+
+### Agent evaluation on a blank tab
+
+Chrome for Testing 158 aborts the whole browser, and so every tab in the
+pane, when script on an `about:blank` page with no site adds a
+`sandbox="allow-scripts"` `srcdoc` frame while sandboxed frames get their own
+process (`site_instance_impl.cc` CHECK `has_site_`). Chrome 157 does not. A
+new tab and a tab sent to `about:blank` through the address bar or
+`browser_navigate` are such pages. They run no page script, so only an Agent's
+`browser_evaluate` can trigger the abort there. An `about:blank` that a page
+opened (`window.open('')`) or navigated to itself inherits that page's site;
+on 158 the same frame loads there without an abort.
+
+`browser_evaluate` first asks the page whether its address is an `about:`
+page (`location.protocol`, which covers `about:blank#x` and `about:blank?x`,
+both site-less and both aborting 158 when a browser-initiated navigation
+reaches them), then decides the origin half from the origin the browser itself
+reports for that script context in `Runtime.executionContextCreated`, which a
+page cannot alter, where the page's own `self.origin` it can. On 158 that
+event reports `://` for a new tab, for `about:blank#x`, and for a `data:`
+page, and the real origin (`http://127.0.0.1:<port>`) for an http page, for a
+page that navigated itself to `about:blank`, and for `window.open('about:blank')`
+from an http page. It refuses with `browser-refused` unless the address is not
+`about:` or the reported origin has a scheme and host; an unanswered check, a
+missing report and an unrecognised origin refuse. The check also refuses
+opaque-origin blank pages that did not
+abort on 158, such as the blank page Station leaves after refusing a page's
+own `blob:` navigation. It applies on every Chrome version, 157 included:
+a version gate would be one more thing to get wrong, and the pinned browser
+is 158. The cost is real for one use: with `data:` and `blob:` already
+blocked, writing throwaway HTML into a blank tab was the only way to show
+generated HTML in the pane, and it is now refused. The refusal tells the
+Agent to open a real page first, or to show generated HTML with
+`html_preview` or `html_render`.
+
+The check and the Agent's script are two CDP calls, and a person's
+navigation does not wait for an Agent's call: the address bar, Back, Forward
+and Reload act at once. On 158, an address-bar navigation to `about:blank`
+sent 0 to 11 ms after the Agent's call aborted the browser in 6 of 6 runs,
+and a Forward onto a browser-made `about:blank` entry aborted it too. Both
+calls are therefore bound to one page-world script context, named by the
+`uniqueContextId` the host records from `Runtime.executionContextCreated`.
+A navigation that replaces the document destroys that context, so a script
+sent after it fails ("uniqueContextId not found") and the tool answers that
+the page navigated before the script ran, instead of running it in the new
+document. The check runs in that page world rather than Station's isolated
+world, because only the page world can be bound this way. The
+refusal cannot be talked away from inside the page: the address is the
+document's own `location`, the origin is the browser's report for the same
+context the script is bound to, and a site-less blank page has run no page
+script and is reachable from no other document. On 158,
+300 rounds each of an Agent's trigger racing an address-bar navigation to
+`about:blank` (either order), a Back and a Forward onto such an entry ended
+with no abort; with the binding removed, the Forward race aborted again
+(Back did not abort in 150 unbound rounds). Reload was not raced: it reloads
+the same address, so it cannot turn a page with a site into a site-less one.
+
+Station does not turn off `IsolateSandboxedIframes`, which would remove the
+process boundary around sandboxed content, and does not change the blank
+start page a person sees.
 
 ## Why passthrough tokens cannot simply become bound
 
@@ -113,7 +178,8 @@ later re-enable requires a fresh Session. An
 effect already dispatched cannot be undone by cancellation.
 
 Codex 0.164.0 exposes dynamic registration on `thread/start`, but its
-`thread/resume` schema has no registration update. On resume Station rebuilds
+`thread/resume` schema has no registration update. Codex 0.167.0's schema is the
+same, and `thread/fork` takes none either. On resume Station rebuilds
 the current catalog as an allowlist and refuses persisted names outside it.
 Tools added since the thread started become available on a new thread. A
 persisted name is never authority by itself. Earlier Windows probes of Codex
@@ -124,6 +190,78 @@ The same-user copied-header test protects this narrow invocation boundary; it
 does not claim isolation from arbitrary code that can compromise the Station
 process or its operator. ACP remains unavailable until both the provider-facing
 connection and the Station-owned child identity can be independently proved.
+
+### Station Control on the Codex bound channel
+
+Owner decision (#2376, 2026-11-16): with the preview on, a new Codex thread
+receives the whole Station Control catalog as `dynamicTools`, listed at `bound`.
+Station mints no header token for that Session and gives Codex no
+`station-control` MCP entry. Codex has no other route where the credential never
+leaves Station; an environment-variable bearer or a stdio shim would hold no
+better custody than the header. The cost is the full catalog on every thread,
+113,759 bytes of `dynamicTools` with the browser tools, and no progressive
+disclosure on this channel.
+
+- **Listing.** The same registrations and filters as Claude's in-process
+  server: listed at `bound`, narrowed to the Agent's
+  `(allowedTools ?? toolNames ?? []) − disabledTools` selection, and to the
+  network-restricted allowlist when Station restricts the Session's network.
+  The adapter holds every call to that selection again.
+- **Credentials.** Browser and device calls keep the request-proof
+  credential above. Every other call runs as Claude's in-process server does,
+  with the Session's `sdk-in-process` Station Control token, which travels only
+  in loopback requests Station sends to itself. The authority guard sees a
+  `bound` caller either way.
+- **Approval.** Every call goes through Station's external pre-tool policy, as a
+  Claude in-process call does, instead of Codex's own MCP approval prompt. The
+  argument limit is set per tool: the HTTP route's 1 MiB for catalog tools (an
+  `html_render` page can be 256 KiB), and 40,000 bytes for browser and device
+  tools in every Session, since their whole input is recorded in the approval
+  event. An MCP-app result's structured content is returned to the model as
+  JSON text beside its summary.
+- **Resume.** Codex 0.167.0 persists a thread's `dynamicTools` from
+  `thread/start` and restores them on `thread/resume` and `thread/fork`.
+  Station records `boundCatalog` on the resume cursor of a thread that started
+  with the catalog, and only while the resumed native thread is the same one.
+  Only such a thread resumes without the header token; its calls are still
+  held to the current catalog. Any other resume (a thread started with the
+  preview off, or before this change) and a coordinator-derived Station
+  Control entry keep the header-token server at `delegated-custody`, with
+  browser and device tools on the bound channel as before.
+- **Continuations that still hold the catalog.** A marked thread resumed with
+  the preview off, or after its Station Control became coordinator-derived,
+  gets the header-token server; Codex still shows the model its persisted
+  catalog copies, and Station refuses each with a message naming the
+  station-control MCP tool of the same name. Station does not keep serving
+  them: turning the preview off withdraws the bound channel's authority, and
+  coordinator-derived authority never rides it. The thread keeps its marker,
+  so a later resume with the preview on uses the catalog again. A resumed
+  adopted lineage (a fork of a thread Station holds no cursor for) gets the
+  header-token server and, with the preview on, the bound catalog too, so
+  persisted copies from a catalog source thread keep working. The model may
+  then see both copies of a tool; both run as this Session's caller, the bound
+  ones at `bound`. Their credentials use separate keys (`station-control`
+  for the header, `codex-control` for the bound catalog), so minting or
+  closing one channel does not revoke the other; Session shutdown revokes
+  both. Station cannot tell whether such a source carried the
+  catalog: Codex's fork and resume responses do not list a thread's
+  `dynamicTools`. An adoption's first start carries no Agent tool servers,
+  so during that first Session any catalog copies inherited from the source
+  are refused; only its later resumes serve them. Saved browser and device
+  copies have no MCP twin, so they are refused without the pointer.
+- **Station Knowledge** stays on its header-token server.
+- **Instructions.** The orchestration text for such a Session is composed at
+  `bound`, so it names the tools the Session is offered (for example
+  `list_delegation_targets`).
+
+Evidence: on 2026-11-16, Codex CLI 0.167.0 on macOS ran `codex app-server`
+against a local mock Responses endpoint (no network model, no account). A
+thread started with the 162-tool catalog offered all 162 to the model. After the
+app-server process exited, a new one resumed the thread with no `dynamicTools`
+and offered all 162 again; a fork offered all 162. A model `function_call` on
+the resumed and forked threads reached the client as `item/tool/call`. Adapter
+and runtime tests cover the request builder, the resume fallback and a `bound`
+caller at the authority guard. No real-model Session has used the catalog yet.
 
 ## Remaining slices and acceptance
 

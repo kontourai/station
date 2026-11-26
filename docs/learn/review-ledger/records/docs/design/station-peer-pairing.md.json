@@ -22,7 +22,9 @@
 
     "src-server/security/client-protocol-admission.ts",
 
-    "src-server/runtime/__tests__/client-protocol-admission.test.ts"
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts",
+
+    "src-server/services/peers/peer-readiness-service.ts"
   ],
 
   "checks": [

@@ -5,11 +5,13 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { PeerCredentialStore } from '../../peers/peer-credential-store.js';
+import { PeerReadinessService } from '../../peers/peer-readiness-service.js';
 import {
   createRemoteStationForwarder,
   fetchRemoteStation,
   fetchRemoteStationBytes,
   isRemoteStationTarget,
+  PeerStationNotReadyError,
   REMOTE_STATION_REQUEST_TIMEOUT_MS,
   RemoteStationTimeoutError,
   remoteStationRequestTimeoutMs,
@@ -321,6 +323,93 @@ describe('RemoteStationForwarder (#2377 C2b)', () => {
       }),
     ).toBe(false);
     expect(isRemoteStationTarget(null)).toBe(false);
+  });
+});
+
+describe('RemoteStationForwarder refuses a peer that is not ready', () => {
+  /** The peer's handshake answer, served through the real readiness service. */
+  function readinessAnswering(answers: Array<() => Response | Promise<never>>) {
+    const calls: Array<{ url: string; headers: Headers }> = [];
+    const service = new PeerReadinessService({
+      fetch: async (input, init) => {
+        calls.push({ url: String(input), headers: new Headers(init?.headers) });
+        const next = answers[Math.min(calls.length, answers.length) - 1]!;
+        return next();
+      },
+    });
+    return { service, calls };
+  }
+  const online = () =>
+    new Response(JSON.stringify({ schemaVersion: 1, environmentId: ENV }), {
+      status: 200,
+    });
+  const recovering = () =>
+    new Response(JSON.stringify({ ready: false, status: 'unavailable' }), {
+      status: 503,
+    });
+  const refused = () => Promise.reject(new TypeError('fetch failed'));
+
+  test.each([
+    ['recovering', recovering, 'Recovering · server down or restarting'],
+    ['unreachable', refused, 'Unreachable'],
+    [
+      'answering as another Station',
+      () =>
+        new Response(
+          JSON.stringify({ schemaVersion: 1, environmentId: 'env-other' }),
+          { status: 200 },
+        ),
+      'Identity mismatch',
+    ],
+  ] as const)(
+    'a peer that is %s is refused with that reason before any target is minted',
+    async (_name, answer, reason) => {
+      const { service, calls } = readinessAnswering([answer]);
+      const forwarder = createRemoteStationForwarder({
+        ssh: { list: () => [], connect: vi.fn() },
+        peers: await realPeerStore(true),
+        readiness: service,
+      });
+      const refusal = await forwarder.resolve(ENV).catch((error) => error);
+      expect(refusal).toBeInstanceOf(PeerStationNotReadyError);
+      expect(refusal.message).toContain("Paired Station 'Peer B' is not ready");
+      expect(refusal.message).toContain(reason);
+      // Probed at the peer's own handshake, never with its bearer.
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.url).toBe(
+        'https://peer-b.example.test/.well-known/station/v1',
+      );
+      expect(calls[0]!.headers.get('authorization')).toBeNull();
+    },
+  );
+
+  test('an online peer resolves; a cached refusal is never reused, the next resolve probes afresh', async () => {
+    const { service, calls } = readinessAnswering([recovering, online]);
+    const forwarder = createRemoteStationForwarder({
+      ssh: { list: () => [], connect: vi.fn() },
+      peers: await realPeerStore(true),
+      readiness: service,
+    });
+    await expect(forwarder.resolve(ENV)).rejects.toBeInstanceOf(
+      PeerStationNotReadyError,
+    );
+    const target = await forwarder.resolve(ENV);
+    expect(target).toMatchObject({ kind: 'peer', environmentId: ENV });
+    expect(calls).toHaveLength(2);
+    // Online is reused briefly: no third probe.
+    await forwarder.resolve(ENV);
+    expect(calls).toHaveLength(2);
+  });
+
+  test('an SSH profile is never probed as a peer', async () => {
+    const { service, calls } = readinessAnswering([refused]);
+    const forwarder = createRemoteStationForwarder({
+      ssh: { list: () => [sshView()], connect: async () => sshView() },
+      peers: await realPeerStore(true),
+      readiness: service,
+    });
+    expect((await forwarder.resolve(ENV)).kind).toBe('ssh');
+    expect(calls).toHaveLength(0);
   });
 });
 

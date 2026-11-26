@@ -123,7 +123,12 @@ describe('#2310 Drafts through the rendered dock inbox', () => {
     const open = screen.getByRole('region', { name: 'Open' });
     expect(within(open).getByText('Draft')).toBeTruthy();
     expect(open.textContent).toContain('grok-build');
-    expect(open.textContent).toContain('claude-code');
+    // An engine-marked row names its agent in the marks' tooltip.
+    expect(
+      [...open.querySelectorAll('[data-testid="identity-marks"]')].some(
+        (marks) => marks.getAttribute('title')?.includes('claude-code'),
+      ),
+    ).toBe(true);
     expect(screen.queryByRole('region', { name: 'Drafts' })).toBeNull();
   });
 

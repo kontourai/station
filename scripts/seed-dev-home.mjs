@@ -59,6 +59,7 @@ export const ROOT_DECISIONS = Object.freeze({
   agents: 'keep',
   analytics: 'keep',
   'conversation-acknowledgements.json': 'keep',
+  'conversation-inbox-hidden.json': 'keep',
   'conversation-intent-summaries': 'keep',
   'conversation-pull-request-links.json': 'keep',
   'conversation-work-state.json': 'keep',
@@ -86,6 +87,7 @@ export const ROOT_DECISIONS = Object.freeze({
   security: 'credentials',
   'app-homes': 'credentials',
   'confined-homes': 'credentials',
+  'engine-profiles': 'credentials',
   'runtime-auth-health.json': 'credentials',
   'project-s3-sources.json': 'credentials',
   browser: 'credentials',
@@ -93,12 +95,15 @@ export const ROOT_DECISIONS = Object.freeze({
   automation: 'pending-work',
   scheduler: 'pending-work',
   'task-follow-ups': 'pending-work',
+  'pull-request-feedback': 'pending-work',
   'action-operations.json': 'pending-work',
   'attention-snoozes.json': 'pending-work',
   'checkpoint-restores.json': 'pending-work',
   'create-request-claims.json': 'pending-work',
   'delegation-attempt-claims.json': 'pending-work',
   'notifications.json': 'pending-work',
+  'notification-tombstones.json': 'pending-work',
+  'finished-alert-episodes.json': 'pending-work',
   'principal-notifications.json': 'pending-work',
   'operator-setup': 'pending-work',
   'project-creation-requests': 'pending-work',
@@ -112,6 +117,7 @@ export const ROOT_DECISIONS = Object.freeze({
   devices: 'other-machines',
   environments: 'other-machines',
   integrations: 'other-machines',
+  'remote-task-engines': 'other-machines',
   'repository-acquisitions': 'other-machines',
 
   'agent-plugin-data': 'execution',
@@ -143,6 +149,9 @@ export const ROOT_DECISIONS = Object.freeze({
   'connection-smoke.json': 'bulk-or-derived',
   feedback: 'bulk-or-derived',
   'knowledge-index': 'bulk-or-derived',
+  // Pinned, sha256-verified engine installs: re-acquirable from the pin like
+  // media-tools, so the dev instance installs its own rather than copying them.
+  engines: 'bulk-or-derived',
   'media-tools': 'bulk-or-derived',
   'pull-request-guides': 'bulk-or-derived',
   scratch: 'bulk-or-derived',
@@ -253,6 +262,23 @@ function isInside(child, parent) {
     path === '' ||
     !(path === '..' || path.startsWith(`..${sep}`) || resolve(path) === path)
   );
+}
+
+/**
+ * `path` with its symlinks resolved as far as it exists. A target is usually
+ * not there yet, so `realpathSync` alone cannot answer; resolving the part
+ * that does exist is what lets it be compared with the real source path.
+ */
+function realpathThroughExisting(path) {
+  let existing = resolve(path);
+  const missing = [];
+  while (!existsSync(existing)) {
+    const parent = dirname(existing);
+    if (parent === existing) return resolve(path);
+    missing.unshift(relative(parent, existing));
+    existing = parent;
+  }
+  return join(realpathSync.native(existing), ...missing);
 }
 
 function quoteIdentifier(name) {
@@ -384,8 +410,13 @@ export function seedDevHome({
   force = false,
   now = new Date(),
 }) {
-  const sourceHome = realpathSync(resolve(source));
-  const targetHome = resolve(target);
+  // The native form also gives the name as the disk spells it, so on a
+  // case-insensitive volume a differently cased path to the source still
+  // compares as the source.
+  const sourceHome = realpathSync.native(resolve(source));
+  // Resolved like the source, or a target reached through a symlinked
+  // directory would look like it lies outside a source it is inside.
+  const targetHome = realpathThroughExisting(target);
   if (!existsSync(join(sourceHome, '.station-home-schema.json'))) {
     throw new Error(`${sourceHome} is not a Station home`);
   }

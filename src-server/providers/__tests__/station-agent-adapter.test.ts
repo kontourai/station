@@ -954,6 +954,51 @@ describe('StationAgentAdapter', () => {
     expect(configured.metadata).not.toHaveProperty('capabilityDelivery');
   });
 
+  // The agent's stream reports the model SDK's finish reason; a reply cut
+  // at the output limit (`length`) must reach the turn as max-tokens, or the
+  // chat reads Done for an incomplete reply.
+  test.each([
+    ['length', 'max-tokens'],
+    ['stop', 'stop'],
+    ['content-filter', 'other'],
+  ])(
+    'a %s finish completes the turn with finishReason %s',
+    async (wire, expected) => {
+      const adapter = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:3141',
+        hasAgent: (agentId) => agentId === 'reviewer',
+        ...approvalDeps(),
+        fetch: vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(
+            sseResponse([
+              { type: 'text-delta', id: 'text-1', text: 'Cut short' },
+              { type: 'finish', finishReason: wire },
+              '[DONE]',
+            ]),
+          ),
+        now: () => new Date('2026-07-19T00:00:00.000Z'),
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        threadId: 'task-1',
+        provider: 'station-agent',
+        cwd: '/work/station',
+        modelId: 'sonnet',
+        metadata: { agentId: 'reviewer', userId: 'user-1' },
+      });
+      await adapter.sendTurn({
+        threadId: 'task-1',
+        input: 'Write a lot',
+        modelId: 'sonnet',
+      });
+      const events = await nextEvents(iterator, 7);
+      expect(
+        events.find((event) => event.method === 'turn.completed'),
+      ).toMatchObject({ finishReason: expected });
+    },
+  );
+
   test.each([undefined, 'station-origin'])(
     'runs a configured Station agent through the canonical resumable task stream (origin %s)',
     async (invocationId) => {

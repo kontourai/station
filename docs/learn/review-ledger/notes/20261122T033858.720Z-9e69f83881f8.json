@@ -1,0 +1,9 @@
+{
+  "revision": "13483c4f23ed6cc521785732b1b65a8da58be452",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Checked pages citing api.md (terminal design, integrating guide): the edit only adds fork read-bound and refusal-envelope wording; none of their cited claims concern forks.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked pages citing api.md (terminal design, integrating guide): the edit only adds fork read-bound and refusal-envelope wording; none of their cited claims concern forks.","inputs":["docs/reference/api.md"]}
+  ]
+}

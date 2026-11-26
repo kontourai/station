@@ -1,7 +1,0 @@
-{
-  "revision": "5c3fa7ab070e457bafbc55d16b398d91525cbf45",
-
-  "notes": [
-    {"path":"docs/guides/keyboard-shortcuts.md","note":"Command palette section: verified the header Search or jump to… entry (CommandPaletteEntry, Header.tsx), phone glyph, focus return via the event trigger, empty-query Suggestions/Recent(≤5, newest first)/Places then remaining groups (emptyQueryGroups), drawn-order keyboard navigation and the footer key legend hidden on touch, against CommandPalette.tsx and CommandPaletteEntry.test.tsx/command-palette.spec.ts. Removed the stale no-on-screen-button limitation.","inputs":["docs/guides/keyboard-shortcuts.md"]}
-  ]
-}

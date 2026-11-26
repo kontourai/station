@@ -2,14 +2,21 @@
  * @vitest-environment jsdom
  */
 
+import {
+  AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE,
+  AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE,
+} from '@kontourai/station-contracts/managed-model-binding';
 import type {
   ApprovalAttentionItem,
+  GateBlockedAttentionItem,
+  GateExceptionAttentionItem,
   GateReviewAttentionItem,
+  GateRouteBackAttentionItem,
   ProposedChangeAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
-import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const acknowledge = vi.fn();
 const acknowledgeAsync = vi.fn(() => Promise.resolve());
@@ -40,6 +47,7 @@ import {
   chooseRowAction,
   openRowAction,
 } from '../../../__tests__/helpers/row-menu';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { inboxContextParts } from '../../notifications/inboxContext';
 import { AttentionHistoryItem } from '../AttentionHistoryItem';
 
@@ -54,7 +62,7 @@ function baseApproval(
     createdAt: now,
     updatedAt: now,
     source: { notificationId: 'notif-1', notificationSource: 'approval-inbox' },
-    actions: [{ id: 'accept', label: 'Allow Once', variant: 'primary' }],
+    actions: [{ id: 'accept', label: 'Allow once', variant: 'primary' }],
     ...overrides,
   };
 }
@@ -132,7 +140,7 @@ describe('AttentionHistoryItem — session-failed kind', () => {
   // archive#1914: the popover's own Dismiss for a derived kind, wired
   // independently of the notification-delete `onDismiss` prop — there is no
   // notification id for a session-failed item to route through it.
-  test('Dismiss acknowledges the item by its own id, not via onDismiss', () => {
+  test('Mark done acknowledges the item by its own id, not via onDismiss', () => {
     const onDismiss = vi.fn();
     render(
       <AttentionHistoryItem
@@ -145,7 +153,7 @@ describe('AttentionHistoryItem — session-failed kind', () => {
       />,
     );
 
-    chooseRowAction('Dismiss');
+    chooseRowAction('Mark done');
 
     expect(acknowledge).toHaveBeenCalledWith('session-failed:thread-boom');
     expect(onDismiss).not.toHaveBeenCalled();
@@ -181,9 +189,9 @@ describe('AttentionHistoryItem — session-failed kind', () => {
     // The tray's one-line context keeps the engine; the agent is on the page.
     const context = screen.getByTestId('inbox-context');
     expect(context.textContent).toContain('Engine: Claude Code');
-    // `formatNotificationTime` renders a fresh stamp as "Just now" — the
+    // `formatNotificationTime` renders a fresh stamp as "now" — the
     // point is that a <time> exists at all, which it did not before.
-    expect(screen.getByText('Just now')).toBeTruthy();
+    expect(screen.getByText('now')).toBeTruthy();
   });
 
   test('an unrecorded cause says so rather than rendering nothing', () => {
@@ -220,20 +228,17 @@ describe('AttentionHistoryItem — session-failed kind', () => {
   });
 
   // archive#3203 defect 2: the count stayed at 4 after acting on a row.
-  test('opening the row acknowledges it before navigating', async () => {
+  test('opening the row navigates in the app and acknowledges it', () => {
     const onClose = vi.fn();
     renderRow(baseFailure(), { onClose });
 
     screen.getByRole('link', { name: 'Open session' }).click();
 
     expect(onClose).toHaveBeenCalled();
-    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
-    expect(navigate).not.toHaveBeenCalled();
-    await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith(
-        '/?surface=activity&session=thread-boom',
-      ),
+    expect(navigate).toHaveBeenCalledWith(
+      '/?surface=activity&session=thread-boom',
     );
+    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
   });
 
   test('opening an approval row acknowledges nothing', () => {
@@ -265,8 +270,8 @@ describe('AttentionHistoryItem — dismiss affordance', () => {
       />,
     );
 
-    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
-    chooseRowAction('Dismiss');
+    expect(screen.queryByRole('button', { name: 'Mark done' })).toBeNull();
+    chooseRowAction('Mark done');
     expect(onDismiss).toHaveBeenCalledWith('notif-1');
   });
 
@@ -282,7 +287,7 @@ describe('AttentionHistoryItem — dismiss affordance', () => {
       />,
     );
 
-    expect(openRowAction('Dismiss').disabled).toBe(true);
+    expect(openRowAction('Mark done').disabled).toBe(true);
   });
 });
 
@@ -367,3 +372,144 @@ describe('AttentionHistoryItem — decision kinds', () => {
     expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
   });
 });
+
+describe('AttentionHistoryItem Flow gate rows', () => {
+  const FLOW_HREF = '/projects/station/flow-console?run=run-1';
+  const base = {
+    createdAt: '2026-06-28T00:00:02.000Z',
+    updatedAt: '2026-06-28T00:00:02.000Z',
+    openHref: FLOW_HREF,
+    source: {
+      threadId: 'thread-1',
+      runId: 'run-1',
+      gateId: 'verify',
+      projectSlug: 'station',
+    },
+  };
+  const rows = [
+    {
+      ...base,
+      id: 'gate-route-back:run-1:verify',
+      kind: 'gate-route-back',
+      title: 'Route back: verify',
+    } as GateRouteBackAttentionItem,
+    {
+      ...base,
+      id: 'gate-blocked:run-1:verify',
+      kind: 'gate-blocked',
+      title: 'Blocked: verify',
+    } as GateBlockedAttentionItem,
+    {
+      ...base,
+      id: 'gate-exception:run-1:verify',
+      kind: 'gate-exception',
+      title: 'Exception needed: verify',
+      limitExceeded: true,
+    } as GateExceptionAttentionItem,
+  ].map((item) => ({ item }));
+
+  const renderRow = (item: (typeof rows)[number]['item']) =>
+    render(
+      <AttentionHistoryItem
+        item={item}
+        isPending={false}
+        isDismissPending={false}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+  afterEach(() =>
+    deviceSettingsStore.resetMany([
+      'developerToolsEnabled',
+      'experimentalFlowEnabled',
+    ]),
+  );
+
+  test.each(rows)(
+    '$item.kind: with the Flow preview off, the row offers no flow console link',
+    ({ item }) => {
+      // Developer tools on but the Flow switch off: still off on this device.
+      deviceSettingsStore.set('developerToolsEnabled', true);
+      deviceSettingsStore.set('experimentalFlowEnabled', false);
+      renderRow(item);
+
+      expect(screen.getByText(item.title)).toBeTruthy();
+      expect(screen.queryByRole('link')).toBeNull();
+    },
+  );
+
+  test.each(rows)(
+    '$item.kind: with the Flow preview on, the row links to the run console',
+    ({ item }) => {
+      deviceSettingsStore.set('developerToolsEnabled', true);
+      deviceSettingsStore.set('experimentalFlowEnabled', true);
+      renderRow(item);
+
+      expect(
+        screen
+          .getByRole('link', { name: 'Open flow console' })
+          .getAttribute('href'),
+      ).toBe(FLOW_HREF);
+    },
+  );
+
+  test('a non-Flow row keeps its link with the Flow preview off', () => {
+    deviceSettingsStore.set('developerToolsEnabled', false);
+    deviceSettingsStore.set('experimentalFlowEnabled', false);
+    render(
+      <AttentionHistoryItem
+        item={baseApproval({ openHref: '/?surface=activity&session=thread-1' })}
+        isPending={false}
+        isDismissPending={false}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('link', { name: 'Open session' }).getAttribute('href'),
+    ).toBe('/?surface=activity&session=thread-1');
+  });
+});
+
+// One fixture per server sentence: the provider service's ("application
+// default") and an unbound agent's ("explicit default"), each as the
+// station-agent relay records it.
+const AMBIGUITY_CASES = [
+  ['the provider service', AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE],
+  ['an unbound agent', AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE],
+] as const;
+
+describe.each(AMBIGUITY_CASES)(
+  'AttentionHistoryItem: a failed turn refused by %s (slice 0.17)',
+  (_source, message) => {
+    const RAW = `Station agent did not accept the task turn: ${message}`;
+
+    test('the bell row says it in plain words, raw text only under Details, with one fixing step', () => {
+      renderRow(baseFailure({ body: RAW }));
+
+      expect(screen.getByTestId('attention-cause').textContent).toBe(
+        'Couldn’t start: more than one model connection is turned on and Station can’t tell which one to use.',
+      );
+      const details = screen.getByTestId('attention-raw');
+      // Closed until asked for.
+      expect((details as HTMLDetailsElement).open).toBe(false);
+      expect(details.textContent).toContain(RAW);
+      const outside = document.body.cloneNode(true) as HTMLElement;
+      outside.querySelector('[data-testid="attention-raw"]')?.remove();
+      expect(outside.textContent).not.toContain(message);
+
+      fireEvent.click(
+        screen.getByRole('link', { name: 'Open model connections' }),
+      );
+      expect(navigate).toHaveBeenCalledWith('/connections/models');
+      // Opening the fix's target acknowledges the row, as "Open session" does.
+      expect(acknowledgeAsync).toHaveBeenCalledWith(
+        'session-failed:thread-boom',
+      );
+    });
+  },
+);

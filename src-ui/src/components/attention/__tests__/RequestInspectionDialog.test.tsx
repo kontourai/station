@@ -211,7 +211,9 @@ test('read failures offer retry and unanswerable requests never offer decisions'
   fireEvent.click(
     await screen.findByRole('button', { name: 'Retry inspection' }),
   );
-  expect(await screen.findByText(/cannot currently answer/)).toBeTruthy();
+  expect(
+    await screen.findByText(/can’t answer the request right now/),
+  ).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Approve once' })).toBeNull();
 });
 
@@ -244,9 +246,7 @@ test('uncertain decision stays latched after failed and successful refresh and r
     fetch.mock.calls.filter((call) => call[1]?.method === 'POST'),
   ).toHaveLength(1);
   await act(async () => finish(response(open)));
-  expect(
-    await screen.findByText(/A decision was already attempted/),
-  ).toBeTruthy();
+  expect(await screen.findByText(/A decision was already tried/)).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Approve once' })).toBeNull();
   view.unmount();
   const retained = view.client.getMutationCache().findAll({
@@ -262,9 +262,7 @@ test('uncertain decision stays latched after failed and successful refresh and r
 
   fetch.mockImplementation(async () => response(open));
   mount(view.client);
-  expect(
-    await screen.findByText(/A decision was already attempted/),
-  ).toBeTruthy();
+  expect(await screen.findByText(/A decision was already tried/)).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Approve once' })).toBeNull();
   expect(
     fetch.mock.calls.filter((call) => call[1]?.method === 'POST'),
@@ -330,7 +328,7 @@ test('uncertainty capacity refuses rather than evicts and excludes another autho
   ).toBeTruthy();
   await act(async () => seed(authority.authorityKey, 64));
   expect(
-    await screen.findByText(/too many unconfirmed decisions/),
+    await screen.findByText(/Too many decisions are still unconfirmed/),
   ).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Approve once' })).toBeNull();
   expect(
@@ -376,9 +374,7 @@ test('a harness question opens its session instead of offering an empty approval
   );
   mount();
   expect(
-    await screen.findByText(
-      'Open the session to answer the agent’s questions.',
-    ),
+    await screen.findByText('Answer the agent’s questions in the chat.'),
   ).toBeTruthy();
   expect(screen.queryByRole('button', { name: /Allow|Approve/ })).toBeNull();
 });

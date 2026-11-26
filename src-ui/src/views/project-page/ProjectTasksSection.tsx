@@ -1,11 +1,15 @@
 import type { StartTaskStarterLaunchResult } from '@kontourai/station-contracts/starter-work';
-import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
+import type {
+  TaskLaneDerivation,
+  TaskNextAction,
+} from '@kontourai/station-contracts/task-lane';
 import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
 import { resolveWorkflowTaskMatch } from '@kontourai/station-contracts/workflow';
 import {
   type GitStatusResult,
   type ProviderWorkItem,
   type RelationGraphLink,
+  type TaskListRecord,
   type TaskRecord,
   taskQueries,
   useCreateTaskMutation,
@@ -16,6 +20,7 @@ import {
   useTaskClaimQuery,
   useTaskGraphQuery,
   useTasksQuery,
+  useUpdateTaskStatusMutation,
   useWorkflowTasksQuery,
   useWorkItemClaimQuery,
   useWorkItemsQuery,
@@ -25,14 +30,46 @@ import type { FormEvent } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { WorkflowStatusLine } from '../../components/flow/WorkflowStatusLine';
+import { PageSection } from '../../components/PageSection';
 import { ProjectTaskBoard } from '../../components/ProjectTaskBoard';
-import { describeReadFailure, Empty, ErrorState } from '../../components/state';
+import {
+  ListRefreshActions,
+  ListRefreshPull,
+  ListRefreshStatus,
+  refreshListQueries,
+  useListRefresh,
+} from '../../components/refresh/ListRefresh';
+import {
+  describeReadFailure,
+  Empty,
+  ErrorState,
+  SkeletonBlock,
+  SkeletonList,
+} from '../../components/state';
+import { TaskPlanProgressForTask } from '../../components/TaskPlanProgress';
+import { useAgents } from '../../contexts/AgentsContext';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
+import { useOpenPullRequestInRegion } from '../../contexts/useOpenInRegion';
+import { useShowSurface } from '../../contexts/useShowSurface';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
+import { isStationReadAccessRefusal } from '../../lib/queryDefaults';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
 import { requestTaskShaping } from '../../lib/task-shaping';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
+import { openSessionFromSummary } from '../../utils/openSession';
+import { absoluteTime } from '../../utils/relativeTime';
 import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
+import {
+  ProjectPullRequestRollup,
+  TaskPullRequestRollup,
+} from './TaskPullRequestRollup';
+import {
+  TASK_TONE,
+  type TaskStatusPresentation,
+} from './taskStatusPresentation';
+import { useTaskBoardModel } from './useTaskBoardModel';
 import '../ProjectPage.css';
 import './ProjectTasksSection.css';
 
@@ -55,9 +92,21 @@ function relationLabel(link: RelationGraphLink): string {
   return `${link.relationType.replaceAll('_', ' ')} · ${link.targetType}:${target}`;
 }
 
-function sortTasks(tasks: TaskRecord[]): TaskRecord[] {
+function sortTasks(tasks: TaskListRecord[]): TaskListRecord[] {
   return [...tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
+
+const KEPT_REASON_TEXT: Record<
+  NonNullable<NonNullable<TaskRecord['taskWorktree']>['kept']>['reason'],
+  string
+> = {
+  policy: 'the Project keeps Task worktrees',
+  uncommitted: 'it has uncommitted changes',
+  unpushed: 'it has unpushed commits',
+  'session-running': 'a run in it was still working',
+  'unsafe-config': 'its repository config names a program git would run',
+  failed: 'cleaning it up failed',
+};
 
 const starterWorkOperations = browserStarterWorkOperationStore();
 
@@ -113,20 +162,28 @@ function externalProviderItems(
 
 export function ProjectTasksSection({
   slug,
+  active = true,
   projectId,
   projectWorkingDirectory,
   gitStatus,
   agents,
   presentation = 'list',
+  onPresentationChange,
 }: {
   slug: string;
+  active?: boolean;
   projectId?: string;
   projectWorkingDirectory?: string;
   gitStatus?: GitStatusResult | null;
   agents?: string[];
   presentation?: 'list' | 'board';
+  /** Offers the list/board toggle; the Project page owns the choice. */
+  onPresentationChange?: (presentation: 'list' | 'board') => void;
 }) {
   const { navigate } = useNavigation();
+  const showSurface = useShowSurface();
+  const openPullRequest = useOpenPullRequestInRegion();
+  const agentSummaries = useAgents();
   const dispatchReasonId = useId();
   const starterId =
     typeof window !== 'undefined'
@@ -149,11 +206,34 @@ export function ProjectTasksSection({
   // tasks, so both panes below claimed "No tasks yet." / "Select a task." over
   // a read that never answered.
   const {
-    data: tasks = [],
+    data: tasksData,
     error: tasksError,
     refetch: refetchTasks,
+    isLoading: tasksLoading,
+    isFetching: tasksFetching,
   } = useTasksQuery(slug);
-  const sortedTasks = sortTasks(tasks as TaskRecord[]);
+  const tasksAccessRefused = isStationReadAccessRefusal(tasksError);
+  const tasks = tasksAccessRefused ? [] : (tasksData ?? []);
+  const taskReadFailed = Boolean(
+    tasksError &&
+      (!tasksData?.length || presentation === 'board' || tasksAccessRefused),
+  );
+  const sortedTasks = sortTasks(tasks);
+  const showPullRequestRollup = useSurfaceVisibilityFlags().has(
+    'pull-request-agent-feedback',
+  );
+  const board = useTaskBoardModel({
+    projectSlug: slug,
+    tasks,
+    tasksSettled: tasksData !== undefined && !taskReadFailed,
+    agents: agentSummaries,
+    // Only the board reads the forge; the list claims nothing about PRs.
+    readPullRequests: presentation === 'board',
+  });
+  const tasksById = new Map(sortedTasks.map((task) => [task.id, task]));
+  const [pendingTaskIds, setPendingTaskIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [collection, setCollection] = useState<'now' | 'backlog' | 'history'>(
     'now',
   );
@@ -177,6 +257,7 @@ export function ProjectTasksSection({
   const [selectedProviderItemId, setSelectedProviderItemId] = useState('');
   const createTaskMutation = useCreateTaskMutation();
   const dispatchTaskMutation = useDispatchTaskMutation();
+  const updateTaskStatusMutation = useUpdateTaskStatusMutation();
   const launchStarterMutation = useLaunchStartTaskStarterMutation();
   const startFromWorkItemMutation = useStartTaskFromWorkItemMutation();
   const [startFromWorkItemError, setStartFromWorkItemError] = useState('');
@@ -205,11 +286,29 @@ export function ProjectTasksSection({
   // (unchanged); provider-backed items from other backends (e.g. the
   // flow-agents-contract GitHub backend) render as additional, visually
   // distinguished rows below them.
-  const { data: workItemsData } = useWorkItemsQuery(slug, {
-    enabled: hasLocalWorkspace,
+  const {
+    data: workItemsData,
+    error: workItemsError,
+    isLoading: workItemsLoading,
+    isFetching: workItemsFetching,
+    refetch: refetchWorkItems,
+  } = useWorkItemsQuery(slug, { enabled: active && hasLocalWorkspace });
+  const { namespace } = useAuthorityPersistence();
+  const tasksListRef = useRef<HTMLDivElement>(null);
+  const taskListRefresh = useListRefresh({
+    scope: JSON.stringify([namespace, projectId, slug]),
+    enabled: active && presentation === 'list',
+    refresh: () =>
+      refreshListQueries(
+        refetchTasks,
+        board.sessions.refetch,
+        ...(hasLocalWorkspace ? [refetchWorkItems] : []),
+      ),
   });
   const providerItems = externalProviderItems(
-    workItemsData?.providers ?? [],
+    isStationReadAccessRefusal(workItemsError)
+      ? []
+      : (workItemsData?.providers ?? []),
     sortedTasks,
   );
   const selectedProviderItem = providerItems.find(
@@ -373,21 +472,91 @@ export function ProjectTasksSection({
     navigate(`/tasks/${encodeURIComponent(task.id)}`);
   }
 
-  async function dispatchSelectedTask() {
-    if (!selectedTask?.agentId?.trim()) return;
-    const result = await dispatchTaskMutation.mutateAsync({
-      taskId: selectedTask.id,
+  function dispatchInput(task: TaskRecord & { agentId: string }) {
+    return {
+      taskId: task.id,
       dispatch: {
-        agentId: selectedTask.agentId,
-        skillName: selectedTask.skillName,
+        agentId: task.agentId,
+        skillName: task.skillName,
         runtimeConfig: projectWorkingDirectory
           ? { cwd: projectWorkingDirectory }
           : undefined,
-        sourceSurface: 'project-page',
+        sourceSurface: 'project-page' as const,
       },
-    });
+    };
+  }
+
+  async function dispatchSelectedTask() {
+    if (!selectedTask?.agentId?.trim()) return;
+    const result = await dispatchTaskMutation.mutateAsync(
+      dispatchInput({ ...selectedTask, agentId: selectedTask.agentId }),
+    );
     selectLocalTask(result.task.id);
     await invalidateTasks(result.task.id);
+  }
+
+  function openTask(taskId: string) {
+    navigate(`/tasks/${encodeURIComponent(taskId)}`);
+  }
+
+  /** A card's one next action (derived Task lanes). */
+  async function runTaskAction(taskId: string, action: TaskNextAction) {
+    const task = tasksById.get(taskId);
+    if (!task) return;
+    switch (action.kind) {
+      case 'open-task':
+        openTask(taskId);
+        return;
+      case 'open-session': {
+        const session = board.sessionsById.get(action.sessionId);
+        if (session) openSessionFromSummary(session, showSurface);
+        else openTask(taskId);
+        return;
+      }
+      case 'open-pull-request': {
+        const { pullRequest, url } = action;
+        const opened = openPullRequest?.(
+          {
+            host: pullRequest.host,
+            owner: pullRequest.repository.owner,
+            repository: pullRequest.repository.name,
+            ref: pullRequest.ref,
+          },
+          projectId ?? null,
+        );
+        if (opened?.ok) return;
+        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+        else toastStore.show('This pull request can’t be opened here.');
+        return;
+      }
+      case 'mark-done':
+      case 'dispatch': {
+        setPendingTaskIds((ids) => new Set(ids).add(taskId));
+        try {
+          if (action.kind === 'mark-done')
+            await updateTaskStatusMutation.mutateAsync({
+              taskId,
+              status: 'done',
+            });
+          else if (task.agentId?.trim())
+            await dispatchTaskMutation.mutateAsync(
+              dispatchInput({ ...task, agentId: task.agentId }),
+            );
+          await invalidateTasks(taskId);
+        } catch (error) {
+          toastStore.show(
+            `${action.kind === 'mark-done' ? 'Couldn’t mark the Task done.' : 'Couldn’t start the Task.'} ${describeReadFailure(error)}`,
+          );
+        } finally {
+          setPendingTaskIds((ids) => {
+            const next = new Set(ids);
+            next.delete(taskId);
+            return next;
+          });
+        }
+        return;
+      }
+    }
   }
 
   /**
@@ -453,13 +622,60 @@ export function ProjectTasksSection({
   const binding = selectedTask?.workspaceBinding;
 
   return (
-    <section className="project-page__tasks project-tasks-section">
-      <div className="project-page__section-header">
-        <span className="project-page__section-label">Tasks</span>
-        <Button size="sm" onClick={() => void refetchTasks()}>
-          Refresh Tasks
-        </Button>
-      </div>
+    <PageSection
+      className={
+        presentation === 'list'
+          ? 'project-tasks-section project-tasks-section--list'
+          : 'project-tasks-section'
+      }
+      title="Tasks"
+      description="Goals you and your agents are working through in this Project."
+      actions={
+        <>
+          {onPresentationChange ? (
+            <fieldset
+              className="project-tasks-section__view-toggle"
+              aria-label="Show Tasks as"
+            >
+              {(['board', 'list'] as const).map((view) => (
+                <Button
+                  key={view}
+                  size="sm"
+                  active={presentation === view}
+                  aria-pressed={presentation === view}
+                  onClick={() => onPresentationChange(view)}
+                >
+                  {view === 'board' ? 'Board' : 'List'}
+                </Button>
+              ))}
+            </fieldset>
+          ) : null}
+          {presentation === 'list' ? (
+            <ListRefreshActions
+              label="Task list actions"
+              refreshLabel="Refresh tasks"
+              refresh={taskListRefresh}
+            />
+          ) : (
+            <Button onClick={() => void refetchTasks()}>Refresh Tasks</Button>
+          )}
+          {/* The starter form replaces New Task, except when its own record is
+              unreadable: then New Task is the way forward the message names. */}
+          {(starterId !== 'start-task' ||
+            starterLaunchProblem === 'retry-state-corrupt') && (
+            <Button
+              variant="primary"
+              onClick={() => requestTaskShaping({ projectSlug: slug })}
+            >
+              New Task
+            </Button>
+          )}
+        </>
+      }
+    >
+      {presentation === 'board' && showPullRequestRollup && (
+        <ProjectPullRequestRollup entries={board.pullRequests.entries} />
+      )}
       {presentation === 'list' && (
         <nav
           className="project-tasks-section__collections"
@@ -482,24 +698,13 @@ export function ProjectTasksSection({
         </nav>
       )}
 
-      {starterId !== 'start-task' ? (
-        <Button
-          variant="primary"
-          onClick={() => requestTaskShaping({ projectSlug: slug })}
-        >
-          New Task
-        </Button>
-      ) : (
+      {starterId === 'start-task' && (
         <form className="project-page__task-form" onSubmit={createTask}>
-          <p role="status">
-            Create a focused starter task. Station will link the exact task
-            after it is created.
-          </p>
           <input
             className="project-page__task-input"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="Create a task"
+            placeholder="What should the agent work on?"
             aria-label="Task title"
           />
           <button
@@ -527,9 +732,8 @@ export function ProjectTasksSection({
 */}
       {starterLaunchProblem === 'correlation' && (
         <p role="status">
-          Your task was created and opened. We couldn’t confirm it is linked to
-          your first-task step, so that step may still look unfinished — you can
-          link it from the task itself.
+          Your task was created and opened. Your first-task step may still look
+          unfinished; you can link it from the task.
         </p>
       )}
       {starterLaunchProblem === 'indeterminate' && (
@@ -540,20 +744,20 @@ export function ProjectTasksSection({
       )}
       {starterLaunchProblem === 'retry-state-corrupt' && (
         <p role="status">
-          Nothing was started. This device’s saved record of your first-task
-          setup can’t be read, and Station won’t start work it can’t track.
+          This device’s record of your first-task setup can’t be read, so
+          Station won’t start it here. Create the task with New Task instead.
         </p>
       )}
       {starterLaunchProblem === 'retry-state-unavailable' && (
         <p role="status">
-          Nothing was started. This device can’t reach its saved record of your
-          first-task setup, and Station won’t start work it can’t track.
+          Nothing was started. This device can’t reach its record of your
+          first-task setup; try again later.
         </p>
       )}
       {starterLaunchProblem === 'deferred' && (
         <p role="status">
           Waiting for the agent to be ready. {starterLaunchReason} Try again
-          once it is — this picks up the same task rather than making another.
+          then; it reuses the same task.
         </p>
       )}
       {starterLaunchProblem &&
@@ -572,92 +776,225 @@ export function ProjectTasksSection({
       <div
         className={`project-page__task-grid${presentation === 'board' ? ' project-page__task-grid--board' : ' project-tasks-section__list-layout'}`}
       >
-        <div className="project-page__task-list">
-          {tasksError ? (
-            <ErrorState
-              variant="compact"
-              title="Unable to load tasks"
-              description={describeReadFailure(tasksError)}
-              action={
-                <Button size="sm" onClick={() => void refetchTasks()}>
-                  Retry
-                </Button>
-              }
-            />
-          ) : sortedTasks.length === 0 && providerItems.length === 0 ? (
-            /* empty-state action: task creation form is adjacent */
-            <Empty
-              variant="compact"
-              label="Start a Task"
-              description="Describe a goal and work through it here."
-            />
-          ) : (
-            <>
-              {presentation === 'board' ? (
-                <ProjectTaskBoard
-                  tasks={sortedTasks}
-                  selectedTaskId={selectedTaskId}
-                  onSelect={selectLocalTask}
+        <div
+          ref={tasksListRef}
+          className={
+            taskReadFailed ||
+            (sortedTasks.length === 0 && providerItems.length === 0)
+              ? 'project-page__task-list project-page__task-list--state'
+              : presentation === 'board'
+                ? 'project-page__task-list project-page__task-list--board'
+                : 'project-page__task-list'
+          }
+        >
+          <ListRefreshPull
+            surfaceRef={tasksListRef}
+            refresh={presentation === 'list' ? taskListRefresh : undefined}
+          >
+            {presentation === 'list' && tasksError && !taskReadFailed && (
+              <ErrorState
+                variant="compact"
+                title="Showing last known results"
+                action={
+                  <Button
+                    size="sm"
+                    onClick={() => void taskListRefresh.run(true)}
+                  >
+                    Retry
+                  </Button>
+                }
+              />
+            )}
+            {presentation === 'list' && workItemsError && (
+              <ErrorState
+                variant="compact"
+                title="Couldn’t refresh linked work"
+                action={
+                  <Button size="sm" onClick={() => taskListRefresh.run()}>
+                    Retry
+                  </Button>
+                }
+              />
+            )}
+            {taskReadFailed ? (
+              <ErrorState
+                variant="compact"
+                title="Unable to load tasks"
+                description={describeReadFailure(tasksError)}
+                action={
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void (presentation === 'list'
+                        ? taskListRefresh.run(true)
+                        : refetchTasks())
+                    }
+                  >
+                    Retry
+                  </Button>
+                }
+              />
+            ) : (tasksLoading || workItemsLoading) &&
+              sortedTasks.length === 0 &&
+              providerItems.length === 0 ? (
+              <SkeletonList count={3} label="Loading tasks" />
+            ) : sortedTasks.length === 0 && providerItems.length === 0 ? (
+              /* empty-state action: New Task sits in the section header */
+              presentation === 'list' && workItemsError ? null : (
+                <Empty
+                  variant="compact"
+                  label="Start a Task"
+                  description="Describe a goal and work through it here."
                 />
-              ) : (
-                visibleTasks.map((task) => (
-                  <div className="project-tasks-section__outcome" key={task.id}>
-                    <a
-                      className="project-tasks-section__open"
-                      href={`/tasks/${encodeURIComponent(task.id)}`}
-                      onClick={(event) => {
-                        if (!isPlainLeftClick(event)) return;
-                        event.preventDefault();
-                        navigate(`/tasks/${encodeURIComponent(task.id)}`);
-                      }}
-                    >
-                      <span className="project-tasks-section__title">
-                        {task.title}
-                      </span>
-                      <span className="project-page__task-row-meta">
-                        <StatusBadge
-                          tone="neutral"
-                          status={taskStatusLabel(task.status)}
+              )
+            ) : (
+              <>
+                {presentation === 'board' ? (
+                  board.status === 'loading' ? (
+                    <SkeletonBlock count={3} label="Loading the Task board" />
+                  ) : (
+                    <>
+                      {board.sessions.failed ? (
+                        <ErrorState
+                          variant="compact"
+                          title="Couldn’t read agent runs."
+                          description="Lanes may be out of date."
+                          action={
+                            <Button
+                              size="sm"
+                              onClick={() => void board.sessions.refetch()}
+                            >
+                              Retry
+                            </Button>
+                          }
                         />
-                        {task.agentId?.trim() && (
-                          <span>Agent: {task.agentId}</span>
-                        )}
-                        {task.priority !== 'normal' && (
-                          <span>{task.priority}</span>
-                        )}
-                      </span>
-                      <span className="project-tasks-section__next">
-                        Open Task
-                      </span>
-                    </a>
-                    <Button
-                      size="sm"
-                      aria-label={`Details for ${task.title}`}
-                      aria-expanded={
-                        showRecordDetails && selectedTaskId === task.id
-                      }
-                      onClick={() => {
-                        selectLocalTask(task.id);
-                        setShowRecordDetails(true);
-                      }}
+                      ) : null}
+                      {board.pullRequests.failed ? (
+                        <ErrorState
+                          variant="compact"
+                          title="Couldn’t refresh pull requests"
+                          description={
+                            board.pullRequests.asOf
+                              ? `Showing pull requests as of ${absoluteTime(Date.parse(board.pullRequests.asOf))}.`
+                              : 'Pull request states are not shown.'
+                          }
+                          action={
+                            <Button
+                              size="sm"
+                              onClick={board.pullRequests.refetch}
+                            >
+                              Retry
+                            </Button>
+                          }
+                        />
+                      ) : null}
+                      <ProjectTaskBoard
+                        partition={board.partition}
+                        derivations={board.derivations}
+                        presentations={board.presentations}
+                        tasks={tasksById}
+                        settled={board.pullRequests.settled}
+                        projectBranch={
+                          gitStatus?.isRepo ? gitStatus.branch : undefined
+                        }
+                        pendingTaskIds={pendingTaskIds}
+                        notice={
+                          board.pullRequests.checking ? (
+                            <SkeletonBlock
+                              count={1}
+                              label="Checking pull requests"
+                              className="project-task-board__checking"
+                            />
+                          ) : undefined
+                        }
+                        onOpenTask={openTask}
+                        onAction={(taskId, action) =>
+                          void runTaskAction(taskId, action)
+                        }
+                      />
+                    </>
+                  )
+                ) : (
+                  visibleTasks.map((task) => (
+                    <div
+                      className="project-tasks-section__outcome"
+                      key={task.id}
                     >
-                      Details
-                    </Button>
-                  </div>
-                ))
-              )}
-              {presentation === 'list' && visibleTasks.length === 0 && (
-                <p className="project-tasks-section__collection-empty">
-                  {
+                      <a
+                        className="project-tasks-section__open"
+                        href={`/tasks/${encodeURIComponent(task.id)}`}
+                        onClick={(event) => {
+                          if (!isPlainLeftClick(event)) return;
+                          event.preventDefault();
+                          navigate(`/tasks/${encodeURIComponent(task.id)}`);
+                        }}
+                      >
+                        <span className="project-tasks-section__title">
+                          {task.title}
+                        </span>
+                        <span className="project-page__task-row-meta">
+                          <TaskDerivedBadge
+                            presentation={
+                              board.status === 'ready'
+                                ? board.presentations.get(task.id)
+                                : undefined
+                            }
+                          />
+                          {task.agentId?.trim() && (
+                            <span>Agent: {task.agentId}</span>
+                          )}
+                          {task.priority !== 'normal' && (
+                            <span>{task.priority}</span>
+                          )}
+                        </span>
+                        <TaskPlanProgressForTask
+                          sessionId={
+                            board.derivations.get(task.id)?.evidence.sessionId
+                          }
+                          running={isRunning(board.derivations.get(task.id))}
+                        />
+                        <span className="project-tasks-section__next">
+                          Open Task
+                        </span>
+                      </a>
+                      {board.pullRequests.entries?.[task.id]
+                        ?.linkedPullRequests !== undefined && (
+                        <TaskPullRequestRollup
+                          entry={board.pullRequests.entries[task.id]}
+                          projectId={projectId}
+                        />
+                      )}
+                      <Button
+                        size="sm"
+                        aria-label={`Details for ${task.title}`}
+                        aria-expanded={
+                          showRecordDetails && selectedTaskId === task.id
+                        }
+                        onClick={() => {
+                          selectLocalTask(task.id);
+                          setShowRecordDetails(true);
+                        }}
+                      >
+                        Details
+                      </Button>
+                    </div>
+                  ))
+                )}
+                {presentation === 'list' && visibleTasks.length === 0 && (
+                  <p className="project-tasks-section__collection-empty">
                     {
-                      now: 'Nothing active right now.',
-                      backlog: 'The backlog is clear.',
-                      history: 'Completed and canceled Tasks appear here.',
-                    }[collection]
-                  }
-                </p>
-              )}
-              {providerItems.map((item) => (
+                      {
+                        now: 'Nothing active right now.',
+                        backlog: 'The backlog is clear.',
+                        history: 'Completed and canceled Tasks appear here.',
+                      }[collection]
+                    }
+                  </p>
+                )}
+              </>
+            )}
+            {(presentation === 'list' || !taskReadFailed) &&
+              providerItems.map((item) => (
                 <button
                   className={`project-page__task-row ${
                     item.id === selectedProviderItemId
@@ -682,16 +1019,25 @@ export function ProjectTasksSection({
                   </span>
                 </button>
               ))}
-            </>
+          </ListRefreshPull>
+          {presentation === 'list' && (
+            <ListRefreshStatus
+              activity="Refreshing tasks…"
+              phase={taskListRefresh.phase}
+              updating={
+                !tasksLoading &&
+                (tasksFetching || board.sessions.fetching || workItemsFetching)
+              }
+            />
           )}
         </div>
 
         <div
           className="project-page__task-detail"
           hidden={
-            presentation === 'list' &&
-            !showRecordDetails &&
-            !selectedProviderItem
+            presentation === 'board'
+              ? !selectedProviderItem
+              : !showRecordDetails && !selectedProviderItem
           }
         >
           {presentation === 'list' &&
@@ -883,12 +1229,35 @@ export function ProjectTasksSection({
                   </div>
                   <div>
                     <dt>Worktree</dt>
-                    <dd>{binding?.worktreePath ?? 'Unavailable'}</dd>
+                    <dd>
+                      {selectedTask.taskWorktreeUnknown
+                        ? 'Unknown (worktree record unreadable)'
+                        : (selectedTask.taskWorktree?.path ??
+                          binding?.worktreePath ??
+                          'Unavailable')}
+                    </dd>
                   </div>
                   <div>
                     <dt>Branch</dt>
-                    <dd>{binding?.branch ?? 'Unavailable'}</dd>
+                    <dd>
+                      {selectedTask.taskWorktreeUnknown
+                        ? 'Unknown (worktree record unreadable)'
+                        : (selectedTask.taskWorktree?.branch ??
+                          binding?.branch ??
+                          'Unavailable')}
+                    </dd>
                   </div>
+                  {selectedTask.taskWorktree?.kept ? (
+                    <div>
+                      <dt>Kept</dt>
+                      <dd>
+                        {selectedTask.taskWorktree.kept.detail ??
+                          KEPT_REASON_TEXT[
+                            selectedTask.taskWorktree.kept.reason
+                          ]}
+                      </dd>
+                    </div>
+                  ) : null}
                   <div>
                     <dt>Agent</dt>
                     <dd>{selectedTask.agentId ?? 'Unavailable'}</dd>
@@ -923,10 +1292,36 @@ export function ProjectTasksSection({
             </>
           ) : (
             /* empty-state action: task selection list is adjacent */
-            <Empty variant="compact" label="Select a task." />
+            <Empty variant="compact" label="Nothing selected" />
           )}
         </div>
       </div>
-    </section>
+    </PageSection>
+  );
+}
+
+function isRunning(derivation: TaskLaneDerivation | undefined) {
+  return (
+    derivation?.placement.kind === 'lane' &&
+    derivation.placement.lane === 'running'
+  );
+}
+
+/** A list row's one status: the same presentation the board card prints. */
+function TaskDerivedBadge({
+  presentation,
+}: {
+  presentation: TaskStatusPresentation | undefined;
+}) {
+  if (!presentation) return null;
+  return (
+    <StatusBadge
+      tone={TASK_TONE[presentation.tone].badge}
+      status={
+        presentation.detail
+          ? `${presentation.word} · ${presentation.detail}`
+          : presentation.word
+      }
+    />
   );
 }

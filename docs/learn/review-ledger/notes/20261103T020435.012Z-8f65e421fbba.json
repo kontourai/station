@@ -1,7 +1,0 @@
-{
-  "revision": "0001d509c6d7ee90be018d3f281b9a6df15de4a9",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Checked after regenerating station-docs-content.ts for the digest-free generator (#4456): the page's claim that station-docs returns a version and documentation digest identifying shipped content still holds, because station-docs-mcp-server.ts now computes documentationDigest over the compiled topics at runtime instead of reading a committed constant.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

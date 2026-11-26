@@ -1,0 +1,7 @@
+{
+  "revision": "15ddeee027da55e6b3eee283083a7267f507a46e",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-read the supersession paragraph against scripts/pr-ci-supersession.mjs after a refused force-cancel (HTTP 409) stopped being fatal: a run that does not settle is still a warning, other API failures and an unknown run state are still fatal, and the merge path still never force-cancels.","inputs":["docs/guides/testing.md","scripts/__tests__/pr-ci-supersession.test.ts","scripts/pr-ci-supersession.mjs"]}
+  ]
+}

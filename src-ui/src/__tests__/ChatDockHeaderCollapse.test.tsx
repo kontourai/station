@@ -120,15 +120,12 @@ describe('collapsed dock New chat action (#800)', () => {
     isDockOpen = false;
     renderHeader();
 
-    // #1536 F: the unlabelled gear left the bar. The command did not — and with
-    // no pane open Chat settings is the ONLY folded command, so it renders as
-    // its own labelled button rather than behind a ⋯ that would open a list of
-    // one (D2).
+    // The bar's named gear (it was #1536 F's lone folded row): one press,
+    // and no ⋯ opening a list with nothing else in it.
     expect(
       screen.queryByRole('button', { name: /^More dock actions/ }),
     ).toBeNull();
     const settings = screen.getByRole('button', { name: 'Chat settings' });
-    expect(settings.textContent).toBe('Chat settings');
     fireEvent.click(settings);
     expect(setShowChatSettings).toHaveBeenCalledTimes(1);
   });

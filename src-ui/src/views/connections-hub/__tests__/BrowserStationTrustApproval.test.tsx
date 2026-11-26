@@ -214,7 +214,7 @@ describe('browser Station signing-key approval', () => {
     enterReport(report());
     expect(
       await screen.findByText(
-        /cannot be restored at the same or an older generation/,
+        "This key was revoked and can't be approved again. Ask the Station operator for a new key.",
       ),
     ).toBeTruthy();
     expect(
@@ -273,7 +273,9 @@ describe('browser Station signing-key approval', () => {
     render(<BrowserStationTrustApproval />);
     enterReport(report());
 
-    expect(await screen.findByText('Station enrollment mismatch')).toBeTruthy();
+    expect(
+      await screen.findByText('A different setup is stored for this Station'),
+    ).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Approve Station key' }),
     ).toBeNull();

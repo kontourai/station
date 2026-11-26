@@ -1,5 +1,6 @@
 import type { OrchestrationDelegationContext } from '@kontourai/station-contracts/orchestration';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
+import { remoteSessionReaderStore } from '../../contexts/remote-session-reader-store';
 import type { HomeWorkItem } from './home-view-model';
 
 /**
@@ -42,6 +43,14 @@ type WorkItemOpenAction =
       threadId: string;
     }
   | { kind: 'navigate'; threadId: string }
+  /** A session on a connected SSH environment's Station: read-only history. */
+  | {
+      kind: 'remote';
+      environmentId: string;
+      environmentLabel: string;
+      threadId: string;
+      title: string;
+    }
   | { kind: 'none' };
 
 /**
@@ -57,6 +66,16 @@ export function resolveWorkItemOpenAction(
 ): WorkItemOpenAction {
   if (item.chatSessionId) {
     return { kind: 'focus', chatSessionId: item.chatSessionId };
+  }
+  const remoteThreadId = remoteWorkItemThreadId(item);
+  if (remoteThreadId && item.environmentId) {
+    return {
+      kind: 'remote',
+      environmentId: item.environmentId,
+      environmentLabel: item.environmentLabel ?? 'another computer',
+      threadId: remoteThreadId,
+      title: item.title,
+    };
   }
   if (!item.orchestrationThreadId) {
     return { kind: 'none' };
@@ -208,6 +227,8 @@ export function focusChatEventDetailForAction(
       };
     case 'navigate':
       return { threadId: action.threadId };
+    // A remote session has no local chat to focus; its reader opens instead.
+    case 'remote':
     case 'none':
       return null;
   }
@@ -312,6 +333,9 @@ export async function openWorkItem(
     case 'navigate':
       handlers.onOpenSession(action.threadId);
       return 'opened';
+    case 'remote':
+      openRemoteSessionReader(action);
+      return 'opened';
     case 'none':
       return 'none';
   }
@@ -339,4 +363,50 @@ export function workItemOpenFailureMessage(
     return `This session lives ${where}. Open it there to continue.`;
   }
   return 'This item has nothing to open from the inbox.';
+}
+
+/** Open the read-only reader for a remote action (`RemoteSessionReaderHost`). */
+export function openRemoteSessionReader(
+  action: Extract<WorkItemOpenAction, { kind: 'remote' }>,
+): void {
+  remoteSessionReaderStore.open({
+    environmentId: action.environmentId,
+    environmentLabel: action.environmentLabel,
+    threadId: action.threadId,
+    title: action.title,
+  });
+}
+
+/**
+ * archive#1097: every remote item's `id` is namespaced
+ * (`remote:<environmentId>:<threadId>`) — distinct from every local id
+ * shape (`task:*` durable Tasks aside, a local chat/session id is a bare
+ * conversationId/threadId, never `remote:`-prefixed) — so a remote item can
+ * never alias a local item's stable identity in
+ * `home-lane-model.ts`'s `withStableIds`, and therefore can never inherit
+ * or disturb a local row's position in the active lane ( ordering
+ * invariant, extended to this new source).
+ */
+export function remoteWorkItemId(
+  environmentId: string,
+  threadId: string,
+): string {
+  return `remote:${environmentId}:${threadId}`;
+}
+
+/**
+ * The remote Station's thread id inside a remote item's id, parsed against
+ * the item's own `environmentId` (thread ids contain colons, so the prefix
+ * is matched exactly rather than split). Kept out of `HomeWorkItem` as its
+ * own field: a new field widens the Home role projection
+ * (`home-role-projection.ts`) and so every existing grant.
+ */
+export function remoteWorkItemThreadId(
+  item: Pick<HomeWorkItem, 'id' | 'kind' | 'environmentId'>,
+): string | undefined {
+  if (item.kind !== 'remote-session' || !item.environmentId) return undefined;
+  const prefix = `remote:${item.environmentId}:`;
+  if (!item.id.startsWith(prefix)) return undefined;
+  const threadId = item.id.slice(prefix.length);
+  return threadId.length > 0 ? threadId : undefined;
 }

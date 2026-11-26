@@ -1,7 +1,0 @@
-{
-  "revision": "6d24a3afcdae185bf6a3c83de81d231783f95cc8",
-
-  "notes": [
-    {"path":"docs/guides/agent-efficiency.md","note":"Checked first-turn composition receipt and Task brief claims against orchestration-service.ts: the Task brief ordering is unchanged and the new Station guidance part is inserted before it. The page's only dependency on a changed doc is the settings.md Feature Preview table, whose new row does not alter its claims.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]}
-  ]
-}

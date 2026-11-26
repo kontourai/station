@@ -6,6 +6,7 @@ import {
   type EngineConnectionId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { AcpApprovalControl } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   ExecutionResolutionReceipt,
   ExecutionTarget,
@@ -22,6 +23,7 @@ import {
 } from '@kontourai/station-contracts/execution-target';
 import {
   type EngineId,
+  isAcpFamilyEngine,
   type ModelLaunchCapabilities,
   type ModelLaunchPlan,
   resolveModelLaunchPlan,
@@ -37,12 +39,25 @@ import {
   type WorkspaceIsolationMode,
 } from '@kontourai/station-contracts/workspace-isolation';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
-import { managedEngineRefusalWithReason } from '../../security/managed-engine-limits.js';
+import {
+  managedEngineRefusalFor,
+  managedEngineRefusalWithReason,
+} from '../../security/managed-engine-limits.js';
 import {
   canonicalPath,
   isCanonicalPathWithin,
 } from '../../utils/path-containment.js';
 import { expandTilde } from '../../utils/paths.js';
+import { approvalKnobSupported } from '../orchestration/approval-posture.js';
+
+export const CATALOG_REFRESHING_REASON =
+  'Agent catalog is refreshing after a configuration change; retrying automatically.';
+
+export class AgentCatalogRefreshingError extends Error {
+  constructor() {
+    super(CATALOG_REFRESHING_REASON);
+  }
+}
 
 /**
  * Private capability for reaching one Environment. It may contain transport
@@ -150,6 +165,12 @@ export interface ExecutionTargetResolverDependencies {
    * belongs to the adapter declaration; it is not a provider-name policy.
    */
   getProviderAdapter: (provider: EngineId) => ProviderAdapterShape | undefined;
+  /**
+   * #3290: who answers an ACP connection's approvals on this Station
+   * (`acpApprovalControl`). Where Station does (`station` or `requests`), an
+   * ACP Agent takes `approvalMode`; absent, the provider table decides.
+   */
+  acpApprovalControl?: (connectionId: string) => AcpApprovalControl | undefined;
   now?: () => Date;
 }
 
@@ -194,6 +215,15 @@ export function assertConnectionReady(connection: ConnectionConfig): void {
   // ConnectionConfig.status `station connections list` shows, read now.
   if (connection.status !== 'ready') {
     const blockers = describeConnectionBlockers(connection);
+    if (
+      !blockers &&
+      connection.type === 'acp' &&
+      connection.config.acpProbeStatus === 'probing'
+    ) {
+      throw new Error(
+        `Engine connection '${connection.id}' is still checking access (status: ${connection.status}). Wait for the engine check to finish, then retry.`,
+      );
+    }
     throw new Error(
       `Engine connection '${connection.id}' is not ready for execution (status: ${connection.status})${
         blockers
@@ -213,7 +243,15 @@ export function assertConnectionReady(connection: ConnectionConfig): void {
 
 function connectionProvider(connection: ConnectionConfig): EngineId {
   if (connection.type === 'acp' || connection.capabilities.includes('acp')) {
-    return 'acp';
+    // A saved ACP connection runs on ACP, or on the ACP-backed engine the
+    // connection projection names (OpenCode, behind its Feature Preview:
+    // `connection-inspector.ts`). Descriptor data, never a provider literal
+    // here; a chat that already has a provider keeps it
+    // (`keepConversationProvider`).
+    const provider = connection.config.provider;
+    return typeof provider === 'string' && isAcpFamilyEngine(provider)
+      ? provider
+      : 'acp';
   }
   const provider = connection.config.provider;
   if (typeof provider !== 'string' || !provider.trim()) {
@@ -224,22 +262,45 @@ function connectionProvider(connection: ConnectionConfig): EngineId {
   return provider;
 }
 
+/** The start's per-invocation engine settings cannot be applied to this Agent. */
+export class UnsupportedModelOptionsError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnsupportedModelOptionsError';
+  }
+}
+
+/**
+ * Why an Agent on `provider` cannot take these per-invocation engine
+ * settings, or undefined when it can. An ACP connection whose approvals
+ * Station answers (`acpControl`) also takes `approvalMode`, as an ACP
+ * thread does at the orchestration seam (`approvalKnobSupported`).
+ */
+export function modelOptionsRefusal(
+  provider: EngineId,
+  options: Readonly<Record<string, unknown>> | undefined,
+  agent: string,
+  acpControl?: AcpApprovalControl,
+): string | undefined {
+  if (provider === 'station-agent' && options && Object.keys(options).length)
+    return `Station Agent '${agent}' does not support per-invocation engine settings`;
+  const unsupported = unsupportedModelOptionKeys(provider, options).filter(
+    (key) =>
+      key !== 'approvalMode' || !approvalKnobSupported(provider, acpControl),
+  );
+  return unsupported.length
+    ? unsupportedModelOptionError(provider, unsupported[0]!, agent)
+    : undefined;
+}
+
 function assertModelOptionsSupported(
   provider: EngineId,
   options: Readonly<Record<string, unknown>> | undefined,
   agent: AgentId,
+  acpControl?: AcpApprovalControl,
 ): void {
-  if (provider === 'station-agent' && options && Object.keys(options).length) {
-    throw new Error(
-      `Station Agent '${agent}' does not support per-invocation engine settings`,
-    );
-  }
-  const unsupported = unsupportedModelOptionKeys(provider, options);
-  if (unsupported.length) {
-    throw new Error(
-      unsupportedModelOptionError(provider, unsupported[0], agent),
-    );
-  }
+  const refusal = modelOptionsRefusal(provider, options, agent, acpControl);
+  if (refusal) throw new UnsupportedModelOptionsError(refusal);
 }
 
 const REMOTE_HOME_UNVERIFIED_REASON =
@@ -594,6 +655,7 @@ export function agentExecutionBindingMetadata(
 export async function resolveExecutionTarget(
   target: ExecutionTarget,
   deps: ExecutionTargetResolverDependencies,
+  options?: { stagedAgentChange: true },
 ): Promise<ResolvedExecutionTarget> {
   const resolvedAgentId = agentId(executionProfileAgentId(target.agent));
   const access = await deps.resolveEnvironmentAccess(target);
@@ -615,6 +677,11 @@ export async function resolveExecutionTarget(
         agent.unavailableReason ||
           `Agent '${resolvedAgentId}' is unavailable under this machine's managed policy`,
       );
+    if (
+      access.kind === 'current' &&
+      agent.unavailableReason === CATALOG_REFRESHING_REASON
+    )
+      throw new AgentCatalogRefreshingError();
     throw new Error(
       agent.unavailableReason || `Agent '${resolvedAgentId}' is unavailable`,
     );
@@ -637,6 +704,16 @@ export async function resolveExecutionTarget(
     typeof target.agent === 'string'
       ? undefined
       : agentId(executionBindingAgentId(target.agent));
+  if (
+    options?.stagedAgentChange &&
+    executionAgentId &&
+    agent.executionDefault === true &&
+    agent.execution?.agentConnectionId
+  ) {
+    throw new Error(
+      'Choose a different Agent to switch engines for this engine-bound Agent.',
+    );
+  }
   const executionAgent = executionAgentId
     ? await deps.getAgent(access, executionAgentId)
     : agent;
@@ -702,6 +779,10 @@ export async function resolveExecutionTarget(
       access,
       resolvedEngineConnectionId,
     );
+    if (access.kind === 'current' && connection.kind === 'agent') {
+      const refusal = managedEngineRefusalFor(connectionProvider(connection));
+      if (refusal) throw refusal;
+    }
     assertConnectionReady(connection);
     provider = connectionProvider(connection);
   } else {
@@ -718,7 +799,16 @@ export async function resolveExecutionTarget(
   )?.modelId?.trim();
   const effectiveModelId = overrideModelId || agentModelId || undefined;
 
-  assertModelOptionsSupported(provider, target.model?.options, resolvedAgentId);
+  assertModelOptionsSupported(
+    provider,
+    target.model?.options,
+    resolvedAgentId,
+    provider === 'acp' &&
+      engine.kind === 'connection' &&
+      access.kind === 'current'
+      ? deps.acpApprovalControl?.(engine.connectionId)
+      : undefined,
+  );
   // Session binding is deliberately read after target resolution. This early
   // gate therefore only answers whether this registered adapter can accept an
   // override at any lifecycle; the orchestration seam applies the precise

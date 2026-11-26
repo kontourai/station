@@ -144,7 +144,7 @@ const OWNER = /^[0-9a-f]{24}$/;
 const VERSION = /^[0-9]+\.[0-9]+\.[0-9]+$/;
 const DIGEST = /^[0-9a-f]{64}$/;
 // The Device Tools argument vectors this program may run (#2442), built into
-// its source by Station — never read from p.
+// its source by Station - never read from p.
 const TOOL_SHAPES = ${SSH_DEVICE_TOOL_ALLOWLIST_JSON};
 const root = path.join(os.homedir(), '.station-device-host');
 const versionDir = (version) => path.join(root, 'tools', 'expo-device-hub', version);
@@ -186,7 +186,7 @@ const forgetRecordedIfOurs = (owner, pid) => {
   if (hub && hub.pid === pid) { try { fs.rmSync(file, { force: true }); } catch {} }
 };
 // N5: a session killed outright (SIGKILL) never removes its TMPDIR. Remove
-// every tmp-<pid> whose pid is gone — never our own.
+// every tmp-<pid> whose pid is gone - never our own.
 const sweepStaleTmp = (owner) => {
   let names = [];
   try { names = fs.readdirSync(runDir(owner)); } catch {}
@@ -402,8 +402,8 @@ if (p.mode === 'install') {
         published = publish();
       } catch (error) {
         // N4: something non-empty and NOT complete (no valid sentinel) holds
-        // the name, so no hub can be running from it. Move it aside — never
-        // delete in place — and publish once more. A complete tree is never
+        // the name, so no hub can be running from it. Move it aside - never
+        // delete in place - and publish once more. A complete tree is never
         // touched: complete() was false just above.
         if (!fs.existsSync(target) || complete(p.version, p.digest)) throw error;
         fs.renameSync(target, target + '.stale-' + process.pid + '-' + Date.now());

@@ -55,7 +55,7 @@ export interface BackgroundTasksSheetProps {
   station?: StationConnection;
   anchorRef: RefObject<HTMLElement | null>;
   returnFocusTarget?: HTMLElement | null;
-  onOpenTranscript: (threadId: string) => void;
+  onOpenTranscript: (threadId: string, title?: string) => void;
   onClose: () => void;
 }
 
@@ -167,8 +167,7 @@ export function BackgroundTasksSheet({
         )}
       </div>
       <footer className="background-tasks-sheet__footer">
-        Recent activity only; closed-chat history may be missing. Find remote
-        delegations in Activity.
+        Recent tasks only.
       </footer>
     </ResponsiveDialogSurface>
   );

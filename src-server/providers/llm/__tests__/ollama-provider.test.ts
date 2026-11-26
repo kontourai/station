@@ -1,7 +1,10 @@
 import { ReadableStream } from 'node:stream/web';
 import { describe, expect, test, vi } from 'vitest';
 import { MODEL_CATALOG_TIMEOUT_MS } from '../model-catalog.js';
-import { OllamaLLMProvider } from '../ollama-provider.js';
+import {
+  OllamaEmbeddingProvider,
+  OllamaLLMProvider,
+} from '../ollama-provider.js';
 
 function sseStream(lines: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -466,5 +469,88 @@ describe('OllamaLLMProvider', () => {
     await expect(
       provider.getPrerequisites({ signal: controller.signal }),
     ).rejects.toThrow('catalog cancelled');
+  });
+});
+
+describe('OllamaEmbeddingProvider', () => {
+  async function embedAgainst(
+    response: Partial<Response>,
+    texts: string[],
+  ): Promise<{ result: PromiseSettledResult<number[][]>; init?: RequestInit }> {
+    const fetchMock = vi.fn(
+      async (_input: unknown, _init?: RequestInit) =>
+        response as unknown as Response,
+    );
+    const originalFetch = global.fetch;
+    global.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      const provider = new OllamaEmbeddingProvider({
+        baseUrl: 'http://ollama.test',
+        model: 'nomic-embed-text',
+      });
+      const [result] = await Promise.allSettled([provider.embed(texts)]);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+        'http://ollama.test/api/embed',
+      );
+      return { result, init: fetchMock.mock.calls[0]?.[1] };
+    } finally {
+      global.fetch = originalFetch;
+    }
+  }
+
+  test('returns one vector per input and bounds the request with a signal', async () => {
+    const { result, init } = await embedAgainst(
+      {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          embeddings: [
+            [0.1, 0.2],
+            [0.3, 0.4],
+          ],
+        }),
+      },
+      ['first', 'second'],
+    );
+
+    expect(result).toEqual({
+      status: 'fulfilled',
+      value: [
+        [0.1, 0.2],
+        [0.3, 0.4],
+      ],
+    });
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test('rejects with the status and the provider message when the model is not pulled', async () => {
+    const { result } = await embedAgainst(
+      {
+        ok: false,
+        status: 404,
+        text: async () => `{"error":"model 'nomic-embed-text' not found"}`,
+        json: async () => ({ error: "model 'nomic-embed-text' not found" }),
+      },
+      ['first'],
+    );
+
+    expect(result.status).toBe('rejected');
+    const message = String((result as PromiseRejectedResult).reason?.message);
+    expect(message).toContain('HTTP 404');
+    expect(message).toContain('not found');
+  });
+
+  test('rejects a successful response that does not carry one vector per input', async () => {
+    for (const body of [
+      { error: 'unexpected' },
+      { embeddings: [[0.1, 0.2]] },
+      { embeddings: [[0.1, 0.2], []] },
+    ]) {
+      const { result } = await embedAgainst(
+        { ok: true, status: 200, json: async () => body },
+        ['first', 'second'],
+      );
+      expect(result.status).toBe('rejected');
+    }
   });
 });

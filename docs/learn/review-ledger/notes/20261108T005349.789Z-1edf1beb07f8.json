@@ -1,7 +1,0 @@
-{
-  "revision": "6d24a3afcdae185bf6a3c83de81d231783f95cc8",
-
-  "notes": [
-    {"path":"docs/guides/integrating-station.md","note":"Reviewed 'Integrating Station into your company or project' against the branch's changes to runtime/bootstrap/station-runtime.ts (orchestration instructions, first-turn delivery, Claude append, delegated_tool_blocked refusal, preview binding). Searched the document for delegation depth and child tool denials, delegate_task/send_message from a child, first-turn and system-prompt delivery, the Feature Preview list, and the capability-delivery receipt fields; no claim describes the changed behavior, and the changed code paths (route tool tag, resolver receipt, preview binding, prompt composition) do not alter what this document states.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

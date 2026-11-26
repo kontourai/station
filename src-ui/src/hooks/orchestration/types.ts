@@ -37,6 +37,8 @@ export type OrchestrationSnapshotPayload = {
     hasActiveTurn?: boolean;
     /** #4433: `OrchestrationSessionSummary.appliedApprovalMode`. */
     appliedApprovalMode?: unknown;
+    currentModeId?: string;
+    reportedApprovalReviewer?: unknown;
     model?: string;
     effectiveModel?: string;
     /** Model identity independently reported by the runtime, when available. */
@@ -72,6 +74,7 @@ export type OrchestrationSnapshotPayload = {
     /** Current unresolved request ids; present even when empty. */
     openRequestIds?: string[];
     blockingOpenRequestIds?: string[];
+    openRequestKinds?: Record<string, 'input' | 'approval'>;
     /**
      * #2303: the durable conversation this execution thread belongs to — the
      * root for the root row AND for every `<root>:session:<uuid>`

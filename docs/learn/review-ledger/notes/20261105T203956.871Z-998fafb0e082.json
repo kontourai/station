@@ -1,7 +1,0 @@
-{
-  "revision": "7d593e0b6ea57c67db71c16d4f3595a25c3a02ee",
-
-  "notes": [
-    {"path":"docs/user/settings.md","note":"device-settings.ts adds two direct-manipulation fold-view settings (deviceFoldBentView, deviceFoldTurnToFit) and classifies showReleaseNotesAfterUpdate; searched this document for those and for the classification lists: no claim covers them, and it does not enumerate direct-manipulation settings.","inputs":["docs/user/settings.md","packages/contracts/src/device-settings.ts"]}
-  ]
-}

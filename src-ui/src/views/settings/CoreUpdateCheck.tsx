@@ -80,6 +80,7 @@ export function CoreUpdateCheck({
   headingId,
   alerts,
   details,
+  downloadPolicy,
   showReleaseNotes = false,
 }: {
   active?: boolean;
@@ -107,6 +108,7 @@ export function CoreUpdateCheck({
   alerts?: ReactNode;
   /** Identity and install facts, folded into Details with the card's own. */
   details?: ReactNode;
+  downloadPolicy?: ReactNode;
   showReleaseNotes?: boolean;
 }) {
   const scopeKey = coreUpdateScopeFromContext(context);
@@ -580,12 +582,13 @@ export function CoreUpdateCheck({
     !!context &&
     context.reachability !== 'connected' &&
     context.reachability !== 'checking';
-  // The download/restart controls, for the server this view correlated.
-  const showStageApply =
+  const hasStagedUpdateCapability =
     stagedFlow &&
     !!serverUpdateState?.supported &&
     identityMatches &&
-    !comparisonSuperseded &&
+    !comparisonSuperseded;
+  const showStageApply =
+    hasStagedUpdateCapability &&
     !trackedServiceUpdate &&
     !awaitingOutcomeRecheck;
   const badge = serverUpdateBadge({
@@ -670,7 +673,11 @@ export function CoreUpdateCheck({
               ? 'Pulls from the git remote, then restarts the server.'
               : 'Checks the connected server. Desktop app updates use the app’s signed update channel.';
 
-  const checkButton = (
+  const manifestUnavailable =
+    !comparisonSuperseded &&
+    view?.kind === 'release' &&
+    status?.releaseCheck === 'not-recorded';
+  const checkButton = manifestUnavailable ? null : (
     <Button
       onClick={() => {
         // A re-check is also the recovery path out of a failed background
@@ -871,6 +878,18 @@ export function CoreUpdateCheck({
             }}
           />
         )}
+      {hasStagedUpdateCapability && downloadPolicy}
+      {showReleaseNotes &&
+        status?.currentVersion &&
+        identityMatches &&
+        !comparisonSuperseded && (
+          <ReleaseNotes
+            title={`Installed server ${status.currentVersion}`}
+            key={`installed-${status.currentVersion}`}
+            version={status.currentVersion}
+            active={active}
+          />
+        )}
       {showReleaseNotes && targetVersion && (
         <ReleaseNotes
           key={targetVersion}
@@ -895,7 +914,9 @@ export function CoreUpdateCheck({
         {progressHistory && serviceProgressLine && (
           <p className="settings__field-hint">{serviceProgressLine.text}</p>
         )}
-        <p className="settings__field-hint">{methodHint}</p>
+        {!manifestUnavailable && (
+          <p className="settings__field-hint">{methodHint}</p>
+        )}
       </details>
     </div>
   );

@@ -59,6 +59,20 @@ describe('attention SDK domain', () => {
     );
   });
 
+  it('keeps the HTTP status when a failure body is not JSON', async () => {
+    vi.mocked(fetch).mockImplementation(
+      async () => new Response('<html>Bad Gateway</html>', { status: 502 }),
+    );
+
+    await expect(fetchAttention()).rejects.toMatchObject({
+      name: 'StationHttpError',
+      status: 502,
+    });
+    await expect(
+      acknowledgeAttentionItem('session-failed:thread-1'),
+    ).rejects.toMatchObject({ name: 'StationHttpError', status: 502 });
+  });
+
   /**
    * #890 review. These two pin the discrimination `acknowledgeAttentionItem`
    * makes between the two ways an acknowledgement can come back non-2xx. Both

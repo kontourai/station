@@ -1,12 +1,11 @@
 # Interactive workspace performance contract
 
-> **Current qualification limit after #3704:** the v3 diagnostic bridge and
-> Playwright adapter still name explicit Join/Announce/Save controls. The Task
-> page now joins implicitly and autosaves in Brief. Those reference-driver
-> interactions need migration before a current-head reference run can qualify
-> this layout. Retained earlier receipts remain bound to their recorded revision;
-> no timing or Windows/native performance claim is made for the chat-first page.
-
+> **Current qualification limit:** remote-apply now drives the current Brief
+> autosave journey. Local-input, collaboration/cursor, file and reconnect driver
+> migrations are separate work; this repair does not qualify them. Retained
+> receipts remain bound to their recorded revision. A Mac functional check is
+> NOT_VERIFIED for the designated Windows physical reference, native shells,
+> ADEMark typing and whole-product performance.
 
 [`scripts/interactive-workspace-performance.mjs`](../../scripts/interactive-workspace-performance.mjs)
 owns the performance contract and report. Its synthetic adapter is smoke-only and executes
@@ -117,11 +116,27 @@ route returns a content-free typed receipt with server ingress and acceptance
 epochs. The local-input fixture consumes marks emitted at the actual Task input
 handler and its revision/text-bound React layout commit, then waits for the real
 parsed worktree-diff surface layout commit. Remote-apply uses the same product
-input/commit marks, the real Save action and opaque server plan/batch, and the
-server receipt; browser fetch invocation or RTT is never labeled server
+input/commit marks, visible Plan → Edit brief → keyboard input, the real
+autosave and opaque server plan/batch, and the server receipt; browser fetch invocation or RTT is never labeled server
 ingress. Missing or cross-epoch receipts make only that fixture
 `NOT_VERIFIED`. The bridge returns raw marks only; the adapter passes the
 checked-in v3 fixture/action definitions and the checker derives all metrics.
+Remote-apply verifies a visible, writable editor bound to the exact Task and
+working revision (the kernel supports `swsr-v1` and `swsr-v2`). It arms its observation before keyboard input, matches the
+planned text/intent/digest to the submitted batch and accepted revision/text,
+and then requires that revision's authoritative apply and layout marks. It
+waits for the editor-bound `Saved` status and exact adopted text/revision before
+the next sample. Missing or mismatched receipts, refused autosave, hidden or
+read-only editors and unsettled adoption refuse verified evidence.
+
+The shipped autosave debounce is **450 ms**. Raw remote-apply observations keep
+`autosave.debounceMs` and per-sample `inputToBatchRequestMs` and
+`inputToSavedMs` separately. The remote-ingress interval retains the delay from
+input through batch dispatch; transport starts at actual batch dispatch. The
+server-ingress-to-render p95 budget remains <=16 ms, with five warmups and 100
+samples. Debounce and full save adoption are not folded into that budget or
+hidden as a faster end-to-end result.
+
 For remote apply, the components distinguish authoritative-document apply from
 apply-to-layout commit; they are not mislabeled as one generic state-apply
 delay. Authenticated document notifications keep exact order in a priority lane
@@ -139,6 +154,25 @@ provisioning browser closes before measurement, and the adapter closes each
 fixture's authenticated contexts before proceeding. The collaboration fixture drives shipped
 leave/join/announce and cursor controls from the peer while the owner records
 server-identity-bound participant and cursor layout commits.
+
+The reference sweep starts with a report entry for each selected fixture and
+updates that report after each attempt. A budget miss or unavailable fixture
+does not stop later eligible fixtures. A missing prerequisite or attempt that
+could not produce measurement evidence is listed as `NOT_VERIFIED`. Only
+observations with matching production build receipts enter the combined
+evaluation. Unfinished fixtures remain visible if the worker exits early. The
+test reports collected failures after retaining the combined result, and the
+workflow prints its bounded receipt even when the job fails.
+
+The same browser spec also has an opt-in, untimed functional control:
+`STATION_PERFORMANCE_BRIEF_FUNCTIONAL=1 node scripts/heavy-check-slot.mjs brief-functional scripts/run-e2e-suite.mjs --suite=smoke-live --spec=tests/interactive-workspace-performance-bridge.spec.ts --grep='Brief driver follows'`.
+It owns a temporary Station and repository, exercises the mounted production
+Plan/Brief autosave, and rejects a stale revision, wrong Task and hidden preview.
+It emits no reference performance verdict. Run it in a coordinated browser
+window; long/timed reference measurements still require the measurement owner.
+The mounted-editor primary bridge suite covers missing/cross-Task/cross-revision
+receipts, changed text/intent, refused save, hidden/read-only editors and
+unsettled adoption. Its simulated input is a functional control, not typing proof.
 
 The fixture runs its workload only on the reference platform (`win32`). On any
 other host it decides that before provisioning anything: the workload test is

@@ -95,6 +95,8 @@ describe('registry', () => {
       [
         'delegate_task',
         'list_delegation_targets',
+        'list_engine_setup',
+        'open_engine_setup',
         'list_agents',
         'continue_task',
         'get_task',
@@ -131,7 +133,7 @@ describe('registry', () => {
     // Pins the real registry facts the fallback text depends on.
     expect(CATALOG).toContain('list_delegation_targets');
     expect(stationControlToolPolicy('list_delegation_targets')?.assurance).toBe(
-      'bound',
+      'any',
     );
     expect(stationControlToolPolicy('device_open')?.assurance).toBe('bound');
     expect(CATALOG).toContain('list_agents');
@@ -168,7 +170,7 @@ describe('effectiveStationControlTools', () => {
     );
     expect(bound.has('device_open')).toBe(true);
     expect(custody.has('device_open')).toBe(false);
-    expect(custody.has('list_delegation_targets')).toBe(false);
+    expect(custody.has('list_delegation_targets')).toBe(true);
     expect(custody.has('delegate_task')).toBe(true);
     expect(custody.size).toBeLessThan(bound.size);
   });
@@ -257,6 +259,7 @@ describe('composition', () => {
     const r = compose(caps());
     expect(r.sections.map((s) => s.id)).toEqual([
       'orchestration',
+      'engine-setup',
       'sessions',
       'replies',
       'browser',
@@ -335,6 +338,31 @@ describe('composition', () => {
     ).toEqual(['replies']);
   });
 
+  test('visual replies route through html_preview then html_render by default, with the Artifact refusal fallback', () => {
+    const text = compose(caps()).text;
+    // The default route for a chart or visual, before any Artifact skill.
+    expect(text).toContain(
+      'reach for `html_preview` then `html_render` by default',
+    );
+    // A refused Artifact tool must not strand the visual as a local file.
+    expect(text).toContain(
+      'On Artifact auth-token refusal, use `html_render` for the same page; no local-file-only result or server',
+    );
+    // Neither line exists when the visual tools are not offered.
+    const without = compose(
+      caps({
+        controlTools: new Set(['notify_user']),
+        browser: false,
+        devices: false,
+        progressiveFamilies: false,
+        toolSearch: false,
+      }),
+    ).text;
+    expect(without).not.toContain('html_preview');
+    expect(without).not.toContain('html_render');
+    expect(without).not.toContain('Artifact');
+  });
+
   test('orchestration discovery follows what is offered', () => {
     const base = ['delegate_task', 'wait_session'];
     const withTargets = compose(
@@ -380,9 +408,7 @@ describe('assurance filtering', () => {
       for (const n of boundOnly)
         expect(named, `${assurance}: ${n}`).not.toContain(n);
       expect(r.sections.map((s) => s.id)).not.toContain('devices');
-      // the fallback is named instead
-      expect(named).toContain('list_agents');
-      expect(named).not.toContain('list_delegation_targets');
+      expect(named).toContain('list_delegation_targets');
     }
   });
 
@@ -420,7 +446,13 @@ describe('delegated child', () => {
     // the child section states the prohibition rather than offering
     const child =
       r.sections.find((s) => s.id === 'delegated-child')?.text ?? '';
-    expect(child).toContain('may not use `delegate_task` or `send_message`');
+    expect(child).toContain('tell your parent');
+
+    const canDelegate = compose(
+      caps({ delegated: true, canDelegateFromChild: true }),
+    );
+    expect(namedTools(canDelegate.text)).toContain('delegate_task');
+    expect(namedTools(canDelegate.text)).not.toContain('send_message');
   });
 
   test('the devices section does not advise delegating device work to a delegated child', () => {

@@ -28,6 +28,10 @@ async function mockScheduleRunsApi(
     enabled: true,
     lastRun: '2026-04-25T15:00:00.000Z',
     nextRun: '2026-04-26T15:00:00.000Z',
+    recentOutcomes: {
+      outcomes: [runOverrides.status === 'failed' ? 'failed' : 'worked'],
+      more: false,
+    },
   };
 
   const run = {
@@ -65,6 +69,16 @@ async function mockScheduleRunsApi(
     route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({ success: true, data: [job] }),
+    }),
+  );
+  // The Next 7 days strip's week forecasts: nothing due in these weeks.
+  await page.route('**/scheduler/jobs?*', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        data: [{ ...job, weekOccurrences: { times: [], truncated: false } }],
+      }),
     }),
   );
   await page.route('**/scheduler/stats', (route) =>
@@ -138,50 +152,57 @@ test.describe('Schedule run history', () => {
       await page.goto('/automations');
 
       await expect(
-        page.getByRole('heading', { name: 'Automations' }),
+        page.getByRole('heading', {
+          name: 'Automations',
+          exact: true,
+          level: 1,
+        }),
       ).toBeVisible({
         timeout: 15_000,
       });
-      await expect(page.getByText('daily-report')).toBeVisible();
+      const row = page.getByTestId('job-row-daily-report');
+      // The list's own facts: the rule as a sentence, the next run, the run
+      // strip and the state word.
+      await expect(row).toContainText(/Every day at 9:00 AM/);
+      await expect(row).toContainText(/Next: /);
       await expect(
-        page.getByLabel('Scheduler statistics').getByText('100%'),
+        row.getByRole('img', { name: 'One run: 1 worked' }),
       ).toBeVisible();
+      await expect(row.locator('.automations-row__status')).toHaveText(
+        'Active',
+      );
 
-      const disclosure = page.getByRole('button', {
+      const name = row.getByRole('button', {
         name: 'daily-report',
         exact: true,
       });
-      await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+      await expect(name).toHaveAttribute('aria-expanded', 'false');
       for (
         let step = 0;
         step < 40 &&
-        !(await disclosure.evaluate(
+        !(await name.evaluate(
           (button) => button === button.ownerDocument.activeElement,
         ));
         step += 1
       ) {
         await page.keyboard.press('Tab');
       }
-      await expect(disclosure).toBeFocused();
-      const controls = await disclosure.getAttribute('aria-controls');
+      await expect(name).toBeFocused();
+      const controls = await name.getAttribute('aria-controls');
       expect(controls).toBeTruthy();
       const history = page.locator(`[id="${controls}"]`);
       await expect(history).toHaveCount(0);
       await page.keyboard.press('Enter');
-      await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+      await expect(name).toHaveAttribute('aria-expanded', 'true');
       await expect(history).toBeVisible();
-      await expect(
-        history.getByText('daily-report — Run History'),
-      ).toBeVisible();
       await page.keyboard.press('Space');
-      await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+      await expect(name).toHaveAttribute('aria-expanded', 'false');
       await expect(history).toHaveCount(0);
-      await expect(disclosure).toBeFocused();
+      await expect(name).toBeFocused();
       await page.keyboard.press('Enter');
-      await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+      await expect(name).toHaveAttribute('aria-expanded', 'true');
       await expect(history).toBeVisible();
-
-      await disclosure.evaluate(async (button) => {
+      await name.evaluate(async (button) => {
         await Promise.all(
           button
             .getAnimations({ subtree: true })
@@ -197,13 +218,13 @@ test.describe('Schedule run history', () => {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
         });
       });
-      const box = await disclosure.boundingBox();
+      const box = await name.boundingBox();
       expect(box).not.toBeNull();
       if (!box) throw new Error('Automation history disclosure has no box');
       expect(box.height).toBeGreaterThanOrEqual(44);
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(
-        await disclosure.evaluate((button) => {
+        await name.evaluate((button) => {
           const bounds = button.getBoundingClientRect();
           const hit = button.ownerDocument.elementFromPoint(
             bounds.x + bounds.width / 2,
@@ -213,21 +234,17 @@ test.describe('Schedule run history', () => {
         }),
       ).toBe(true);
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-      await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+      await expect(name).toHaveAttribute('aria-expanded', 'false');
       await expect(history).toHaveCount(0);
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-      await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+      await expect(name).toHaveAttribute('aria-expanded', 'true');
       await expect(history).toBeVisible();
+      const runs = page.getByRole('region', { name: 'Runs of daily-report' });
+      await expect(runs).toBeVisible();
+      await runs.getByRole('button', { name: 'Output' }).click();
       await expect(
-        page.locator('.schedule__detail-header').getByText('daily-report'),
+        page.getByRole('dialog', { name: 'daily-report — Run Output' }),
       ).toBeVisible();
-      await expect(
-        page.locator('.schedule__detail-header').getByText('Run History'),
-      ).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Output' })).toBeVisible();
-
-      await page.getByRole('button', { name: 'Output' }).click();
-      await expect(page.getByText(/daily-report.*Run Output/)).toBeVisible();
       await expect(
         page.getByText('Daily report output from opaque run ref'),
       ).toBeVisible();
@@ -238,13 +255,15 @@ test.describe('Schedule run history', () => {
     await mockScheduleRunsApi(page);
     await page.goto(`/schedule?run=${encodeURIComponent(runId)}`);
 
+    // The link opens that automation's row and its run history.
     await expect(
-      page.locator('.schedule__detail-header').getByText('daily-report'),
-    ).toBeVisible();
-    await expect(
-      page.locator('.schedule__detail-header').getByText('Run History'),
-    ).toBeVisible();
-    const focusedRun = page.locator(`[data-run-id="${runId}"]`);
+      page
+        .getByTestId('job-row-daily-report')
+        .getByRole('button', { name: 'daily-report', exact: true }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    const runs = page.getByRole('region', { name: 'Runs of daily-report' });
+    await expect(runs).toBeVisible();
+    const focusedRun = runs.locator(`[data-run-id="${runId}"]`);
     await expect(focusedRun).toBeFocused();
     await focusedRun.getByRole('button', { name: 'Output' }).click();
     await expect(
@@ -262,14 +281,17 @@ test.describe('Schedule run history', () => {
     });
     await page.goto('/automations');
 
-    await page.getByTestId('job-row-daily-report').click();
+    const row = page.getByTestId('job-row-daily-report');
+    await expect(
+      row.getByRole('img', { name: 'One run: 1 failed' }),
+    ).toBeVisible();
+    await row
+      .getByRole('button', { name: 'daily-report', exact: true })
+      .click();
+    const runs = page.getByRole('region', { name: 'Runs of daily-report' });
     // The cell is named by its own contents: an aria-label of just "Failed"
     // would override them and hide the reason from assistive technology.
-    //
-    // Named EXACTLY: the expanded detail row is itself a `<td colspan="7">` in
-    // the outer jobs table, so its accessible name contains this cell's, and a
-    // substring regex matched both.
-    const statusCell = page.getByRole('cell', {
+    const statusCell = runs.getByRole('cell', {
       name: 'Failed Agent connection was refused',
       exact: true,
     });
@@ -277,12 +299,11 @@ test.describe('Schedule run history', () => {
     await expect(
       statusCell.getByText('Agent connection was refused'),
     ).toBeVisible();
-    const output = page.getByRole('button', { name: 'Output' });
+    const output = runs.getByRole('button', { name: 'Output' });
     await expect(output).toBeEnabled();
     await output.click();
-    // The reason now exists in the table AND in the run-output dialog; this
-    // line is about the dialog (`JobDetail.tsx:286-289` names it
-    // `<job> — Run Output`).
+    // The reason is in the run history AND in the run-output dialog; this
+    // line is about the dialog (`JobDetail` names it `<name> — Run Output`).
     await expect(
       page
         .getByRole('dialog', { name: 'daily-report — Run Output' })

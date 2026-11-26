@@ -1,0 +1,7 @@
+{
+  "revision": "26c578e7ceddf5db56c4d27bdeefd256ea35a1c9",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Delta-review round: the armed-send paragraph now states the per-chat, cross-pane in-flight rule (nothing sent or undone while in flight from any pane) and that another chat's picker stays closed until an in-flight armed send finishes; checked against armedHandoffStore, useConversationBoundaryDialogs and their tests.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/__tests__/ConversationHandoffDialog.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

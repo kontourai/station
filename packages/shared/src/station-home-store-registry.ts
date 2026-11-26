@@ -13,8 +13,8 @@
  *   the home bumps it, and an old version refuses a newer schema, so a
  *   rollback that kept the trial's marker would leave the old version unable
  *   to boot.
- * - `live`: owned by the service and process lifecycle, not by a Station
- *   version. Never backed up and never touched by a rollback: the service
+ * - `live`: owned by a service, process, or external engine lifecycle.
+ *   Never backed up and never touched by a rollback: the service
  *   manifests and the liveness entry the update window re-points to the
  *   launcher (instances.json) must stay exactly as they are, and logs are the
  *   record of what the failed trial did.
@@ -73,6 +73,7 @@ export const STATION_HOME_ROOTS: Readonly<
   cache: 'state',
   'connection-smoke.json': 'state',
   'conversation-acknowledgements.json': 'state',
+  'conversation-inbox-hidden.json': 'state',
   'conversation-intent-summaries': 'state',
   'conversation-pull-request-links.json': 'state',
   'conversation-work-state.json': 'state',
@@ -81,8 +82,14 @@ export const STATION_HOME_ROOTS: Readonly<
   'delegation-attempt-claims.json': 'state',
   'create-request-claims.json': 'state',
   devices: 'state',
+  // Pinned, sha256-verified engine installs (managed-install.ts): read-only
+  // and re-acquirable from the pin, like media-tools.
+  engines: 'external',
   environments: 'state',
   feedback: 'state',
+  // Finished alerts held, being written or recently released; a restart
+  // replays them so none is lost or sent twice.
+  'finished-alert-episodes.json': 'state',
   imports: 'state',
   integrations: 'state',
   kits: 'state',
@@ -96,6 +103,9 @@ export const STATION_HOME_ROOTS: Readonly<
   // Versioned, pinned downloads are re-acquirable; trials retain older pins.
   'media-tools': 'external',
   'notifications.json': 'state',
+  // #5052: dedupe memory of notifications retention removed; it travels
+  // with notifications.json so a pruned dismissal is not delivered again.
+  'notification-tombstones.json': 'state',
   'principal-notifications.json': 'state',
   // Reviewed commands and started-effect receipts must survive maintenance.
   'operator-setup': 'state',
@@ -114,8 +124,14 @@ export const STATION_HOME_ROOTS: Readonly<
   projects: 'state',
   prompts: 'state',
   'proposed-changes.json': 'state',
+  // Pull request agent feedback: claims, observations and deliveries.
+  'pull-request-feedback': 'state',
   'pull-request-guides': 'state',
   // Durable receipts are state; nested working copies are external below.
+  // Remote task engine connections and the stored messages of their tasks
+  // (docs/decisions/remote-task-engines.md); the vendor token is in
+  // `security/`, not here.
+  'remote-task-engines': 'state',
   'repository-acquisitions': 'state',
   runtime: 'state',
   'runtime-auth-health.json': 'state',
@@ -151,6 +167,8 @@ export const STATION_HOME_ROOTS: Readonly<
   // Default project directories: users' repositories (project-service.ts).
   workspaces: 'external',
 
+  // Provider-owned profiles can contain sign-in data and native transcripts.
+  'engine-profiles': 'live',
   'instances.json': 'live',
   logs: 'live',
   monitoring: 'live',
@@ -290,6 +308,8 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
     // #4508: Task tracker follow-ups. Created at the first poll with the
     // preview on.
     ['task-follow-ups', 'task-follow-ups.sqlite'],
+    // Pull request agent feedback. Created at the first switch turned on.
+    ['pull-request-feedback', 'pull-request-feedback.sqlite'],
     ['authentication', 'application-sessions.sqlite'],
     ['authentication', 'local-accounts.sqlite'],
     ['authentication', 'local-account-authority.sqlite'],
@@ -300,6 +320,7 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
     ['authentication', 'outside-agent-oauth.sqlite'],
     ['security', 'project-membership.sqlite'],
     ['security', 'project-room-agent.sqlite'],
+    ['security', 'project-room-coordinator.sqlite'],
     ['security', 'project-rooms.sqlite'],
     ['security', 'native-surfaces.sqlite'],
     ['security', 'native-device-proof-replay.sqlite'],

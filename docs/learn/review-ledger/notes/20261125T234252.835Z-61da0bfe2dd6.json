@@ -1,0 +1,7 @@
+{
+  "revision": "6f79b4bde6496a5dc171a5acd3f765548842c9d9",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed against the runtime-event-projection change, which only adds stationOrigin metadata to user rows from internal, sender-less delegation or automation turns. The document's tool-policy delivery claims do not read that projection branch; no prose change. Checked with the runtime-event-projection focused tests.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/runtime-event-projection.ts"]}
+  ]
+}

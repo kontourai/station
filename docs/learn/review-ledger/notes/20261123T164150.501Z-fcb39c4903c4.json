@@ -1,0 +1,35 @@
+{
+  "revision": "e7c789afd7c5aae0dddc42bfb16f937e15db2595",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Traced the Project Overview browser action through registration, captured Station scope, stop and unmount. Local Chrome 157 exercised opt-in, exact summary reads, immediate stale-scope refusal and removal on stop or Project switch at 390 and 1440 pixels in light and dark. The focused Project suites passed. Full Station browser, native shell and hosted assistant journeys were outside this component proof.","inputs":["docs/guides/connections.md","src-ui/src/views/project-page/ProjectWebMcp.tsx","src-ui/src/views/project-page/__tests__/ProjectWebMcp.test.tsx"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the new narrow browser-assistant documentation against the machine-relationship guide. The WebMCP share is attached to the current browser page and authority. It adds no Station connection, Device credential, native link or access grant.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the effect of mounting the Browser assistant row only in the operator Project Overview. Existing Project navigation, Project member rendering, Starter Work, SDK hook scope and composer calls keep their owners. Component captures use an isolated browser with a synthetic Project.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the effect of mounting the Browser assistant row only in the operator Project Overview. Existing Project navigation, Project member rendering, Starter Work, SDK hook scope and composer calls keep their owners. Component captures use an isolated browser with a synthetic Project.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Reviewed the effect of mounting the Browser assistant row only in the operator Project Overview. Existing Project navigation, Project member rendering, Starter Work, SDK hook scope and composer calls keep their owners. Component captures use an isolated browser with a synthetic Project.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Reviewed the effect of mounting the Browser assistant row only in the operator Project Overview. Existing Project navigation, Project member rendering, Starter Work, SDK hook scope and composer calls keep their owners. Component captures use an isolated browser with a synthetic Project.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Reviewed the effect of mounting the Browser assistant row only in the operator Project Overview. Existing Project navigation, Project member rendering, Starter Work, SDK hook scope and composer calls keep their owners. Component captures use an isolated browser with a synthetic Project.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the effect of mounting the Browser assistant row only in the operator Project Overview. Existing Project navigation, Project member rendering, Starter Work, SDK hook scope and composer calls keep their owners. Component captures use an isolated browser with a synthetic Project.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the effect of mounting the Browser assistant row only in the operator Project Overview. Existing Project navigation, Project member rendering, Starter Work, SDK hook scope and composer calls keep their owners. Component captures use an isolated browser with a synthetic Project.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the effect of mounting the Browser assistant row only in the operator Project Overview. Existing Project navigation, Project member rendering, Starter Work, SDK hook scope and composer calls keep their owners. Component captures use an isolated browser with a synthetic Project.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed shared Project presentation against the cited Project layouts. The header and body use one inset, and the operator header puts Invite people below the identity at narrow widths. The 390 and 1440 pixel Chrome component captures verify light and dark without replaying the recorded walkthroughs.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Reviewed shared Project presentation against the cited Project layouts. The header and body use one inset, and the operator header puts Invite people below the identity at narrow widths. The 390 and 1440 pixel Chrome component captures verify light and dark without replaying the recorded walkthroughs.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed shared Project presentation against the cited Project layouts. The header and body use one inset, and the operator header puts Invite people below the identity at narrow widths. The 390 and 1440 pixel Chrome component captures verify light and dark without replaying the recorded walkthroughs.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed shared Project presentation against the cited Project layouts. The header and body use one inset, and the operator header puts Invite people below the identity at narrow widths. The 390 and 1440 pixel Chrome component captures verify light and dark without replaying the recorded walkthroughs.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the Project header calls and Project scope. Settings and Invite people retain the same canonical destinations. Shared controls supply button styles and focus, with Settings kept at the top on small screens.","inputs":["src-ui/src/views/project-page/ProjectPageHeader.tsx"]}
+  ]
+}

@@ -250,6 +250,8 @@ it('reads published task content through the real member SDK without starting op
         { success: false, error: 'Room unavailable' },
         { status: 404 },
       );
+    // A channel-aware host lists no channels before the room opens (#4792).
+    else if (path === '/api/projects/shared/channels') data = { channels: [] };
     else if (path === '/api/projects/shared/shared-work') data = [sharedTask];
     else if (path === '/api/projects/shared/shared-work/task-a/publication')
       data = { kind: 'shared', publication: sharedTask };
@@ -298,6 +300,9 @@ it('reads published task content through the real member SDK without starting op
   );
   await screen.findByText('Published document text');
   await screen.findByText('Published discussion');
+  // The room is unavailable here, so it never asks the public handshake
+  // (`/.well-known/station/v1`) whether its host takes message actions: that
+  // read waits for an open room (#4796).
   expect(paths().sort()).toEqual(
     [
       '/api/auth/authority',
@@ -305,6 +310,7 @@ it('reads published task content through the real member SDK without starting op
       '/api/projects',
       '/api/projects/shared',
       '/api/projects/shared/room',
+      '/api/projects/shared/channels',
       '/api/projects/shared/shared-work',
       '/api/projects/shared/shared-work/task-a/publication',
       '/api/projects/shared/shared-work/task-a/document',

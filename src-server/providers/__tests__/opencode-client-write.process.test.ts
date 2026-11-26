@@ -9,7 +9,8 @@
  * drives the real `AcpAdapter` against the real `opencode` binary with a
  * local OpenAI-compatible model that answers with one scripted `apply_patch`
  * call, with fresh HOME/XDG directories and Station's working directory
- * moved to an empty one, under Auto. Hosts without `opencode` skip loudly.
+ * moved to an empty one, under Auto. Hosts without an OpenCode 1.x
+ * `opencode` skip loudly.
  */
 import { execFileSync } from 'node:child_process';
 import {
@@ -27,14 +28,14 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
 import { AcpAdapter } from '../adapters/acp-adapter.js';
-import { findCliBinaryAsync } from '../auth/cli-auth.js';
+import { realOpenCode1, warnSkipped } from './opencode-real-binary.js';
 
-const opencodeBinary = await findCliBinaryAsync('opencode');
-
-if (!opencodeBinary)
-  console.warn(
-    'ENFORCEMENT UNVERIFIED (#3957): no `opencode` binary on this host; the client-write probe did not run.',
-  );
+// OpenCode 1.x only: 2.x has neither the ACP launch overlay nor `debug
+// agent` this probe relies on (its native transport has its own process
+// test), so a 2.x on PATH skips it, loudly, as a missing binary does.
+const real = await realOpenCode1();
+warnSkipped('#3957', real);
+const opencodeBinary = real.binary;
 
 const PATCH = '*** Begin Patch\n*** Add File: hello.txt\n+hi\n*** End Patch';
 
@@ -90,7 +91,7 @@ function mockModel(): Promise<Server> {
 }
 
 describe.skipIf(!opencodeBinary)(
-  `OpenCode's client write under the real engine${opencodeBinary ? '' : ' (SKIPPED: no opencode binary)'}`,
+  `OpenCode's client write under the real engine${real.skip ? ` (SKIPPED: ${real.skip})` : ''}`,
   () => {
     const makeTempDir = trackTempDirs({ lifetime: 'file' });
     const saved = { ...process.env };

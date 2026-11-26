@@ -1,0 +1,7 @@
+{
+  "revision": "6f79b4bde6496a5dc171a5acd3f765548842c9d9",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the delegation-result and send_to_session attribution passages against the change: delegation results and agent messages keep their sender and attribution. Only sender-less internal briefs and Automation runs gain a stationOrigin label in the transcript, and no access or delivery changes. No prose change. Checked with the runtime-event-projection and agent-message transcript tests.","inputs":["docs/guides/self-configuring-agent.md","packages/shared/src/conversation-message.ts"]}
+  ]
+}

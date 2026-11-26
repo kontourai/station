@@ -162,7 +162,7 @@ export function UsageBreakdownSection({
       <div className="usage-breakdown-section">
         <h4>
           <TargetGlyph />
-          <span>Top Agents</span>
+          <span>Top agents</span>
         </h4>
         <div className="usage-breakdown-list">
           {getTopUsageEntries(byAgent).map(([agent, stats]) => (

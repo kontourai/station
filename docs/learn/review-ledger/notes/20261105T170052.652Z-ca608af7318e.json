@@ -1,7 +1,0 @@
-{
-  "revision": "44e40f3889b9b15e1fde67b578841424956bd038",
-
-  "notes": [
-    {"path":"docs/guides/feature-previews.md","note":"Reviewed the copied-registry fixture update for apps-library. The new UI-only consumer is included in the expected catalog; the 12 focused documentation CLI checks pass. Default-off and ordinary route authority guidance remains accurate.","inputs":["docs/guides/feature-previews.md","scripts/__tests__/feature-preview-docs-check.test.ts"]}
-  ]
-}

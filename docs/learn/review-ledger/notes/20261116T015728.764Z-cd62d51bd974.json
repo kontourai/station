@@ -1,0 +1,7 @@
+{
+  "revision": "fa31fa97e6e39924b12528f0d82e109c56b7dd7d",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Corrected the overlay-not-applied list: a Codex conversation found in a profile's own home continues with that profile's overlay (codex-adapter resolveSourceHomeEnv, credentialProfileEnvForHome).","inputs":["docs/guides/connections.md"]}
+  ]
+}

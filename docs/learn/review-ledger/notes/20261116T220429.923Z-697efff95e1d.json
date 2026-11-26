@@ -1,0 +1,7 @@
+{
+  "revision": "121ec1f38178e491639cb9a96e7824ff36598e96",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"The test file gained SDK stubs for the Project lifecycle and schedules hooks and its Delete confirmation assertion now reads the counted Removes/Keeps lines; the knowledge-section behavior knowledge.md cites from this file is unchanged.","inputs":["src-ui/src/__tests__/ProjectSettingsView.test.tsx"]}
+  ]
+}

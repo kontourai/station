@@ -1,0 +1,243 @@
+{
+  "revision": "f67bb3d28de0fc12a437a05122cec2be536c3d55",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the new PR chip, picker and focus-return presentation against the real row and region model tests. No conversation-settlement rule was added.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts","src-server/routes/orchestration/tasks.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxPanel.css","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the linked PR entry point, observed-state picker, and Task rollups against the UI owners. Actual browser screenshot qualification is still pending.","inputs":["docs/user/getting-started.md","src-server/routes/chat/conversations.ts","src-server/routes/orchestration/tasks.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/InboxScopeFilter.tsx","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/views/home/useHomeViewModel.ts","src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Checked the Task and conversation inventory additions against the cited mount points and their existing reader checks. The added callbacks are personal preview data. Browser and device routes, SSE, pane and tool mounts, consent, passkeys, channel homes, telemetry and the retained operator captures are outside those hunks.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed the inventory item's two optional observation fields. Existing answerability, starter ownership, lifecycle and placement fields retain their existing definitions.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the inventory item's two optional observation fields. Existing answerability, starter ownership, lifecycle and placement fields retain their existing definitions.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the inventory item's two optional observation fields. Existing answerability, starter ownership, lifecycle and placement fields retain their existing definitions.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the inventory item's two optional observation fields. Existing answerability, starter ownership, lifecycle and placement fields retain their existing definitions.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the inventory item's two optional observation fields. Existing answerability, starter ownership, lifecycle and placement fields retain their existing definitions.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the preview-gated Task header rollup next to the room header. The historical Task Plan capture and document editing, collaboration, capabilities and workspace controls shown there remain accurate for its preview and data.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Reviewed the preview-gated Task header rollup next to the room header. The historical Task Plan capture and document editing, collaboration, capabilities and workspace controls shown there remain accurate for its preview and data.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the preview-gated Task header rollup next to the room header. The historical Task Plan capture and document editing, collaboration, capabilities and workspace controls shown there remain accurate for its preview and data.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the preview-gated Task header rollup next to the room header. The historical Task Plan capture and document editing, collaboration, capabilities and workspace controls shown there remain accurate for its preview and data.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Reviewed the preview-gated Task header rollup next to the room header. The historical Task Plan capture and document editing, collaboration, capabilities and workspace controls shown there remain accurate for its preview and data.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the preview-gated Task header rollup next to the room header. The historical Task Plan capture and document editing, collaboration, capabilities and workspace controls shown there remain accurate for its preview and data.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed the preview-gated Task header rollup next to the room header. The historical Task Plan capture and document editing, collaboration, capabilities and workspace controls shown there remain accurate for its preview and data.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the preview-gated Task header rollup next to the room header. The historical Task Plan capture and document editing, collaboration, capabilities and workspace controls shown there remain accurate for its preview and data.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the preview-gated Task header rollup next to the room header. The historical Task Plan capture and document editing, collaboration, capabilities and workspace controls shown there remain accurate for its preview and data.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the inbox facts source alongside the existing connection and WorkFacts reads. Pane placement, activity, recent-work owners and connection routing use the original paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Checked the inbox facts source alongside the existing connection and WorkFacts reads. Pane placement, activity, recent-work owners and connection routing use the original paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the inbox facts source alongside the existing connection and WorkFacts reads. Pane placement, activity, recent-work owners and connection routing use the original paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the inbox facts source alongside the existing connection and WorkFacts reads. Pane placement, activity, recent-work owners and connection routing use the original paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the inbox facts source alongside the existing connection and WorkFacts reads. Pane placement, activity, recent-work owners and connection routing use the original paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the inbox facts source alongside the existing connection and WorkFacts reads. Pane placement, activity, recent-work owners and connection routing use the original paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the inbox facts source alongside the existing connection and WorkFacts reads. Pane placement, activity, recent-work owners and connection routing use the original paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the inbox facts source alongside the existing connection and WorkFacts reads. Pane placement, activity, recent-work owners and connection routing use the original paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Checked the inbox facts source alongside the existing connection and WorkFacts reads. Pane placement, activity, recent-work owners and connection routing use the original paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the sibling PR and diff chips against the one-line row budget, retained row activation and touch/hover presentation. Browser geometry remains pending.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the sibling PR and diff chips against the one-line row budget, retained row activation and touch/hover presentation. Browser geometry remains pending.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the sibling PR and diff chips against the one-line row budget, retained row activation and touch/hover presentation. Browser geometry remains pending.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked that local PR and Git evidence stays alongside work items, with the existing Station gate. Task grouping, status and Home-role projection fields are unaffected.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked that local PR and Git evidence stays alongside work items, with the existing Station gate. Task grouping, status and Home-role projection fields are unaffected.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked that local PR and Git evidence stays alongside work items, with the existing Station gate. Task grouping, status and Home-role projection fields are unaffected.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked that local PR and Git evidence stays alongside work items, with the existing Station gate. Task grouping, status and Home-role projection fields are unaffected.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked that local PR and Git evidence stays alongside work items, with the existing Station gate. Task grouping, status and Home-role projection fields are unaffected.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked that local PR and Git evidence stays alongside work items, with the existing Station gate. Task grouping, status and Home-role projection fields are unaffected.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked that Task facts retain existing authorization, kept and feedback fields and add optional linked observations from readable Task chats. Existing Task workspace, graph and basis leaves use their original guards.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked that Task facts retain existing authorization, kept and feedback fields and add optional linked observations from readable Task chats. Existing Task workspace, graph and basis leaves use their original guards.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked that Task facts retain existing authorization, kept and feedback fields and add optional linked observations from readable Task chats. Existing Task workspace, graph and basis leaves use their original guards.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked that Task facts retain existing authorization, kept and feedback fields and add optional linked observations from readable Task chats. Existing Task workspace, graph and basis leaves use their original guards.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Checked that Task facts retain existing authorization, kept and feedback fields and add optional linked observations from readable Task chats. Existing Task workspace, graph and basis leaves use their original guards.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked that Task facts retain existing authorization, kept and feedback fields and add optional linked observations from readable Task chats. Existing Task workspace, graph and basis leaves use their original guards.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Checked that Task facts retain existing authorization, kept and feedback fields and add optional linked observations from readable Task chats. Existing Task workspace, graph and basis leaves use their original guards.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked PR filter/sort and selection invalidation against the existing Inbox owner, captured authority and selection lease.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked PR filter/sort and selection invalidation against the existing Inbox owner, captured authority and selection lease.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked PR filter/sort and selection invalidation against the existing Inbox owner, captured authority and selection lease.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked PR filter/sort and selection invalidation against the existing Inbox owner, captured authority and selection lease.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked PR filter/sort and selection invalidation against the existing Inbox owner, captured authority and selection lease.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked PR and diff chip positioning against the existing fixed-height row and touch rules. Browser dimensions remain pending.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxPanel.css"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Compared the new read-only branch and diff observation with the existing isolated-run provisioning, metadata, lifecycle and cleanup contracts.","inputs":["packages/contracts/src/workspace-isolation.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Compared the new read-only branch and diff observation with the existing isolated-run provisioning, metadata, lifecycle and cleanup contracts.","inputs":["packages/contracts/src/workspace-isolation.ts"]},
+
+    {"path":"docs/glossary.md","note":"Compared compatibility and observation wording with the optional time, check, landing and workspace fields, including omitted facts.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Compared compatibility and observation wording with the optional time, check, landing and workspace fields, including omitted facts.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Compared compatibility and observation wording with the optional time, check, landing and workspace fields, including omitted facts.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the updated user description against the same default-off Pull request agent feedback preview and its new presentation and delivery consumers.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the updated user description against the same default-off Pull request agent feedback preview and its new presentation and delivery consumers.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the added fields and inventory reuse against the existing tooltip, responsive Details and Git/Basis sections.","inputs":["src-ui/src/components/chat-dock/ChatInboxHoverCard.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the new preview fixture dependency against the existing Starter Work behavior tests.","inputs":["src-ui/src/__tests__/ProjectTasksSection.test.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the PR rollups and preview-related reads against the existing Tasks list, board, and Starter Work context and dispatch controls.","inputs":["src-ui/src/views/project-page/ProjectTasksSection.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Compared the new batch dispatch-session lookup to the existing dispatch records and individual lookup. Task relationships, SDK routes and Starter Work writes remain in their existing owners.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Compared the new batch dispatch-session lookup to the existing dispatch records and individual lookup. Task relationships, SDK routes and Starter Work writes remain in their existing owners.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Compared the new batch dispatch-session lookup to the existing dispatch records and individual lookup. Task relationships, SDK routes and Starter Work writes remain in their existing owners.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Compared the new batch dispatch-session lookup to the existing dispatch records and individual lookup. Task relationships, SDK routes and Starter Work writes remain in their existing owners.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Compared the new batch dispatch-session lookup to the existing dispatch records and individual lookup. Task relationships, SDK routes and Starter Work writes remain in their existing owners.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Compared the new batch dispatch-session lookup to the existing dispatch records and individual lookup. Task relationships, SDK routes and Starter Work writes remain in their existing owners.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Compared the new batch dispatch-session lookup to the existing dispatch records and individual lookup. Task relationships, SDK routes and Starter Work writes remain in their existing owners.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked optional cached PR and workspace enrichment of the existing authority-scoped inventory with read markers and history pagination preserved.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked optional cached PR and workspace enrichment of the existing authority-scoped inventory with read markers and history pagination preserved.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked optional cached observations and unchanged exact link/unlink authority. The client can still read older and unavailable observations.","inputs":["src-server/routes/pull-requests/conversation-pull-request-links.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked optional cached observations and unchanged exact link/unlink authority. The client can still read older and unavailable observations.","inputs":["src-server/routes/pull-requests/conversation-pull-request-links.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated the Corpus bundle with the approved documentation generator and checked that its topic shape is unchanged.","inputs":["src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the inventory inputs to WorkFacts. Mission Control and Home role projection continue to use their existing work items and navigation.","inputs":["src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the inventory inputs to WorkFacts. Mission Control and Home role projection continue to use their existing work items and navigation.","inputs":["src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the preview-backed PR picker against existing scope, attention and mobile filter ownership.","inputs":["src-ui/src/components/chat-dock/InboxScopeFilter.tsx"]}
+  ]
+}

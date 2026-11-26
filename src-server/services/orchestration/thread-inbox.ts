@@ -18,6 +18,12 @@ import {
   type SqliteKernelTables,
 } from '@kontourai/monument/sqlite';
 import {
+  CHAT_FILE_MIME_TYPES,
+  CHAT_IMAGE_MIME_TYPES,
+  QUEUED_ATTACHMENT_UNAVAILABLE_CODE,
+  type QueuedChatAttachmentDescriptor,
+} from '@kontourai/station-contracts/chat-attachment';
+import {
   type ClientOrigin,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
@@ -36,6 +42,7 @@ import {
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import {
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
   CLIENT_TURN_INPUT_CONFLICT_CODE,
   errorCodeOf,
@@ -53,6 +60,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   type PostToolSteerInput,
   registerPostToolInbox,
@@ -117,10 +125,45 @@ export interface ThreadInboxActor {
   readonly ownerAttribution?: StartOwnerAttribution;
 }
 
+/**
+ * A file held with a queued follow-up: its descriptor and the content address
+ * of its bytes in the attachment blob store. `blobRef` is written only by the
+ * server from bytes the sender supplied, never copied from a request.
+ */
+export interface ThreadInboxAttachment extends QueuedChatAttachmentDescriptor {
+  readonly blobRef: string;
+}
+
+interface InboxSteerTarget {
+  readonly threadId: string;
+  readonly turnId: string;
+  readonly openingSequence: number;
+}
+
+function isInboxSteerTarget(value: unknown): value is InboxSteerTarget {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'threadId' in value &&
+    typeof value.threadId === 'string' &&
+    'turnId' in value &&
+    typeof value.turnId === 'string' &&
+    'openingSequence' in value &&
+    typeof value.openingSequence === 'number' &&
+    Number.isSafeInteger(value.openingSequence)
+  );
+}
+
 /** What a queued follow-up sends: the continuation's input, and its sender. */
 export interface ThreadInboxPayload {
   readonly message: string;
+  /** Files sent with the message, read back from the blob store at placement. */
+  readonly attachments?: readonly ThreadInboxAttachment[];
   readonly expectedHead?: string;
+  /** The Session whose implicitly selected managed folder admitted this follow-up. */
+  readonly expectedInboxSessionId?: string;
+  /** Server-captured turn for an admitted steer. Older rows lack this field. */
+  readonly steerTarget?: InboxSteerTarget;
   /** Server-created Automation intent, revalidated against its private ledger at placement. */
   readonly serverAutomationIntentId?: string;
   /** Original server-captured identity; older queued entries have unknown proof. */
@@ -137,6 +180,13 @@ export interface ThreadInboxPayload {
   readonly model?: ExecutionModelRequest;
   readonly actor: ThreadInboxActor;
   readonly clientOrigin?: ClientOrigin;
+  /**
+   * #4827: a person typed `message` into one of Station's clients, as the
+   * composer route that queued it proved (`personTypedRequest`). Written
+   * only by those routes, never copied from a request; placement forwards
+   * it so the turn is stamped `authoredBy: 'person'`.
+   */
+  readonly authoredBy?: 'person';
 }
 
 /**
@@ -227,6 +277,19 @@ function threadInboxDigest(
       canonicalJson([
         payload.actor.userId,
         payload.message,
+        // The same text with different files is a different submission.
+        ...(payload.attachments?.length
+          ? [
+              {
+                attachments: payload.attachments.map((file) => [
+                  file.kind,
+                  file.name,
+                  file.mimeType,
+                  file.blobRef,
+                ]),
+              },
+            ]
+          : []),
         payload.ambientContext ?? null,
         payload.model ?? null,
         ...(payload.serverAutomationIntentId
@@ -238,7 +301,51 @@ function threadInboxDigest(
     .digest('hex');
 }
 
-function decodePayload(raw: string): ThreadInboxPayload | undefined {
+const QUEUED_ATTACHMENT_MIME_TYPES: ReadonlySet<string> = new Set([
+  ...CHAT_IMAGE_MIME_TYPES,
+  ...CHAT_FILE_MIME_TYPES,
+]);
+const BLOB_REF = /^sha256-[0-9a-f]{64}$/;
+
+/**
+ * The files a stored payload names, or `null` when the field is present but
+ * not exactly well-formed: an entry whose files cannot be read must not be
+ * sent as if it had none.
+ */
+function decodeAttachments(
+  value: unknown,
+): readonly ThreadInboxAttachment[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const files: ThreadInboxAttachment[] = [];
+  for (const item of value) {
+    const file = item as Record<string, unknown> | null;
+    if (
+      !file ||
+      (file.kind !== 'image' && file.kind !== 'file') ||
+      typeof file.name !== 'string' ||
+      typeof file.mimeType !== 'string' ||
+      !QUEUED_ATTACHMENT_MIME_TYPES.has(file.mimeType) ||
+      typeof file.size !== 'number' ||
+      !Number.isSafeInteger(file.size) ||
+      file.size <= 0 ||
+      typeof file.blobRef !== 'string' ||
+      !BLOB_REF.test(file.blobRef)
+    )
+      return null;
+    files.push({
+      kind: file.kind,
+      name: file.name,
+      mimeType: file.mimeType as ThreadInboxAttachment['mimeType'],
+      size: file.size,
+      blobRef: file.blobRef,
+    });
+  }
+  return files;
+}
+
+/** Exported for tests that pin what a stored entry keeps (#4827). */
+export function decodePayload(raw: string): ThreadInboxPayload | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -255,15 +362,29 @@ function decodePayload(raw: string): ThreadInboxPayload | undefined {
       !/^[0-9a-f]{64}$/.test(value.serverAutomationIntentId))
   )
     return undefined;
+  const expectedInboxSessionId = value.expectedInboxSessionId;
+  if (
+    expectedInboxSessionId !== undefined &&
+    (typeof expectedInboxSessionId !== 'string' || !expectedInboxSessionId)
+  )
+    return undefined;
+  const attachments = decodeAttachments(value.attachments);
+  if (attachments === null) return undefined;
+  const steerTarget = value.steerTarget;
+  if (steerTarget !== undefined && !isInboxSteerTarget(steerTarget))
+    return undefined;
   const attribution = actor.ownerAttribution;
   return {
     message: value.message,
+    ...(attachments ? { attachments } : {}),
+    ...(expectedInboxSessionId ? { expectedInboxSessionId } : {}),
     ...(value.automaticBackground === true
       ? { automaticBackground: true }
       : {}),
     ...(typeof value.expectedHead === 'string'
       ? { expectedHead: value.expectedHead }
       : {}),
+    ...(steerTarget ? { steerTarget } : {}),
     ...(typeof value.serverAutomationIntentId === 'string'
       ? { serverAutomationIntentId: value.serverAutomationIntentId }
       : {}),
@@ -296,6 +417,7 @@ function decodePayload(raw: string): ThreadInboxPayload | undefined {
     ...(isClientOrigin(value.clientOrigin)
       ? { clientOrigin: value.clientOrigin }
       : {}),
+    ...(value.authoredBy === 'person' ? { authoredBy: 'person' as const } : {}),
   };
 }
 
@@ -397,6 +519,19 @@ function projectThreadInboxEntry(
     state: PUBLIC_STATE[entry.state],
     ...(position !== undefined ? { position } : {}),
     message: payload?.message ?? '',
+    // Descriptors only: the blob reference stays on the Station.
+    ...(payload?.attachments?.length
+      ? {
+          attachments: payload.attachments.map(
+            ({ kind, name, mimeType, size }) => ({
+              kind,
+              name,
+              mimeType,
+              size,
+            }),
+          ),
+        }
+      : {}),
     createdAt: new Date(entry.createdAt).toISOString(),
     updatedAt: new Date(entry.updatedAt).toISOString(),
     ...(outcome.turnId ? { turnId: outcome.turnId } : {}),
@@ -621,6 +756,15 @@ export function createSqliteThreadInboxStore(
     list(conversationId: string): readonly InboxEntryRecord[] {
       return run({ type: 'inbox.list', inboxId: conversationId }).entries;
     },
+    hasWaitingFollowUp(
+      conversationId: string,
+      withinHostTransaction = false,
+    ): boolean {
+      return run(
+        { type: 'inbox.list', inboxId: conversationId },
+        withinHostTransaction,
+      ).entries.some((entry) => MAY_STILL_SEND.has(entry.state));
+    },
     listOpen(): readonly InboxEntryRecord[] {
       return run({ type: 'inbox.listOpen' }).entries;
     },
@@ -703,8 +847,8 @@ export interface ThreadInboxDeliveryPorts {
    * A sender's own placement policy, checked when an entry is about to be
    * placed, after the live send rule. A refusal settles the entry `refused`
    * with that code; nothing is sent. #3628: a coordinator wake whose
-   * conversation is no longer the coordinator, that waited too long, or that
-   * names a Session its person can no longer read.
+   * conversation is no longer the coordinator, that waited too long, that
+   * names a Session its person can no longer read, or whose preview is off.
    */
   placementRefusal?(input: {
     readonly conversationId: string;
@@ -732,10 +876,11 @@ export interface ThreadInboxDeliveryPorts {
     threadId: string,
   ):
     | 'native'
+    | 'interrupting'
     | 'emulated'
     | 'none'
     | 'pending'
-    | Promise<'native' | 'emulated' | 'none' | 'pending'>;
+    | Promise<'native' | 'interrupting' | 'emulated' | 'none' | 'pending'>;
   /** Read the durable receipt before deciding whether a steer may be handed off. */
   inspectSteer?(input: {
     readonly threadId: string;
@@ -752,6 +897,7 @@ export interface ThreadInboxDeliveryPorts {
     readonly clientInputId: string;
     readonly payload: ThreadInboxPayload;
     readonly turnId: string;
+    readonly targetIsCurrent?: () => boolean;
   }): Promise<{ readonly outcome: string; readonly turnId?: string }>;
   /**
    * Continue the conversation with the entry's input, as its recorded actor.
@@ -820,8 +966,13 @@ const STEER_CONFLICT_OUTCOME: PlacementOutcome = {
     'That steer key names different input. Review the conversation before resending.',
 };
 
+const STEER_TURN_ENDED: PlacementOutcome = {
+  reasonCode: 'steer_turn_ended',
+  reason: 'The turn ended before Station could steer it.',
+};
+
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return errorMessage(error);
 }
 
 /**
@@ -833,10 +984,13 @@ function errorText(error: unknown): string {
  * `start_deadline`, `unreadable_entry` and `placement_policy_failed`; a
  * sender's `placementRefusal` policy sets its own (#3628:
  * `coordinator_retired`, `coordinator_wake_expired`,
- * `coordinator_source_unreadable`).
+ * `coordinator_source_unreadable`, `coordinator_preview_disabled`).
  */
 const START_REFUSAL_CODES: ReadonlySet<string> = new Set([
   SESSION_ENDED_REJECTION_CODE,
+  QUEUED_ATTACHMENT_UNAVAILABLE_CODE,
+  // A queued message's files the engine it reaches cannot take.
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   EXECUTION_ENGINE_CHANGED_CODE,
   PROVIDER_SESSION_START_FAILED_CODE,
   MODEL_NOT_ADVERTISED_CODE,
@@ -850,6 +1004,12 @@ const START_REFUSAL_CODES: ReadonlySet<string> = new Set([
  */
 function refusalOf(error: unknown): PlacementOutcome {
   const code = errorCodeOf(error);
+  if (code === QUEUED_ATTACHMENT_UNAVAILABLE_CODE)
+    return {
+      reasonCode: code,
+      reason:
+        'A file in this message is no longer stored on Station. Nothing was sent.',
+    };
   return {
     reasonCode: code && START_REFUSAL_CODES.has(code) ? code : 'start_refused',
     reason: 'Station could not send this message. Nothing was sent.',
@@ -926,6 +1086,21 @@ export class ThreadInboxDelivery {
     });
   }
 
+  /**
+   * A Session became free without a turn event: an in-place rewind ended
+   * (applied, refused or past its deadline), and sends refused busy meanwhile
+   * may go now rather than at their next timed re-check.
+   */
+  nudge(threadId: string): void {
+    try {
+      this.drive(this.ports.conversationOf(threadId), false);
+    } catch (error) {
+      this.ports.logger.warn('thread inbox delivery failed', {
+        error: errorText(error),
+      });
+    }
+  }
+
   stop(): void {
     this.stopped = true;
     this.unregisterPostTool?.();
@@ -946,6 +1121,39 @@ export class ThreadInboxDelivery {
     );
   }
 
+  private observeSteerTurn(threadId: string): InboxSteerTarget | undefined {
+    const events = this.ports.foldEvents(threadId);
+    const lifecycle = events.map(({ event }) => event);
+    const turnId = activeTurnIdForEvents(lifecycle);
+    if (!turnId) return undefined;
+    const anchor = turnIdentityAnchorForEvents(lifecycle);
+    const invocationId =
+      typeof anchor === 'object' ? anchor.invocationId : undefined;
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const { event, sequence } = events[index];
+      if (
+        event.method === 'turn.started' &&
+        event.turnId === turnId &&
+        event.invocationId === invocationId &&
+        event.inputKind !== 'steer'
+      )
+        return { threadId, turnId, openingSequence: sequence };
+    }
+  }
+
+  private ownsSteerTurn(
+    conversationId: string,
+    target: InboxSteerTarget,
+  ): boolean {
+    if (this.ports.currentSessionId(conversationId) !== target.threadId)
+      return false;
+    const live = this.observeSteerTurn(target.threadId);
+    return (
+      live?.turnId === target.turnId &&
+      live.openingSequence === target.openingSequence
+    );
+  }
+
   private deliverPostTool(
     threadId: string,
     turnId: string,
@@ -955,6 +1163,14 @@ export class ThreadInboxDelivery {
     for (;;) {
       const head = inboxHead(this.ports.store.list(conversationId));
       if (this.stopped || head?.kind !== 'steer' || head.state !== 'queued')
+        return;
+      const target = decodePayload(head.payload)?.steerTarget;
+      if (
+        target &&
+        (target.threadId !== threadId ||
+          target.turnId !== turnId ||
+          !this.ownsSteerTurn(conversationId, target))
+      )
         return;
       const recordPostToolSteer = this.ports.recordPostToolSteer;
       if (
@@ -968,6 +1184,10 @@ export class ThreadInboxDelivery {
         this.now(),
       );
       if (claimed.kind !== 'claimed') return;
+      if (claimed.entry.key !== head.key || claimed.entry.kind !== 'steer') {
+        this.ports.store.release(claimed.entry, false, this.now());
+        return;
+      }
       const payload = decodePayload(claimed.entry.payload);
       const refusal = payload
         ? this.refusalFor(conversationId, payload, claimed.entry.createdAt)
@@ -1034,20 +1254,34 @@ export class ThreadInboxDelivery {
         const stillClaimed = () =>
           !this.stopped &&
           this.ports.store.read(conversationId, head.key)?.state === 'placing';
+        const targetIsCurrent = () =>
+          target
+            ? this.ownsSteerTurn(conversationId, target)
+            : this.ownsPostToolTurn(threadId, turnId);
         inject({
           key: head.key,
           onUnconfirmed,
           text: payload.message,
+          canDispatch: () => stillClaimed() && targetIsCurrent(),
+          onNotDispatched: () => {
+            if (stillClaimed())
+              this.ports.store.settle(
+                claimed.entry,
+                'refused',
+                STEER_TURN_ENDED,
+                this.now(),
+              );
+          },
           onDispatched: async (persistMemory) => {
             if (!stillClaimed()) return;
             try {
-              if (!this.ownsPostToolTurn(threadId, turnId)) {
+              if (!targetIsCurrent()) {
                 onUnconfirmed();
                 return;
               }
               await persistMemory();
               if (!stillClaimed()) return;
-              if (!this.ownsPostToolTurn(threadId, turnId)) {
+              if (!targetIsCurrent()) {
                 onUnconfirmed();
                 return;
               }
@@ -1122,14 +1356,17 @@ export class ThreadInboxDelivery {
   mustQueue(conversationId: string): boolean {
     const inbox = this.inboxOf(conversationId);
     if (this.isBusy(this.ports.currentSessionId(inbox))) return true;
-    return this.ports.store
-      .list(inbox)
-      .some(
-        (entry) =>
-          entry.state === 'queued' ||
-          entry.state === 'placing' ||
-          entry.state === 'unconfirmed',
-      );
+    return this.hasWaitingFollowUp(inbox);
+  }
+
+  /**
+   * Whether follow-ups are waiting in this conversation's inbox (queued,
+   * being placed, or placed without confirmation), whether or not its
+   * Session is busy. Takes a conversation or Session id. The "finished"
+   * alert holds on it: the waiting follow-up becomes the next turn.
+   */
+  hasWaitingFollowUp(conversationId: string): boolean {
+    return this.ports.store.hasWaitingFollowUp(this.inboxOf(conversationId));
   }
 
   /** The same sender authority applied when a continuation is submitted. */
@@ -1212,26 +1449,41 @@ export class ThreadInboxDelivery {
       return { outcome: 'not-permitted' };
     this.inspectDelivery(inbox, input.clientTurnId, input.payload);
     const prior = this.ports.store.read(inbox, input.clientTurnId);
+    const priorPayload = prior ? decodePayload(prior.payload) : undefined;
+    let steerTarget = priorPayload?.steerTarget;
     if (
       kind === 'steer' &&
       (!prior ||
         prior.state === 'refused' ||
         (prior.state === 'cancelled' && prior.placement === null))
     ) {
+      if (prior && !priorPayload) return { outcome: 'conflict' };
       const threadId = this.ports.currentSessionId(inbox);
+      const observed = this.observeSteerTurn(threadId);
+      if (!prior) {
+        if (!observed)
+          return {
+            outcome: 'stale-head',
+            currentHead: this.currentHead(inbox),
+          };
+        steerTarget = observed;
+      }
       this.assertSteerKeyUnclaimed({
-        threadId,
+        threadId: steerTarget?.threadId ?? threadId,
         clientInputId: input.clientTurnId,
         input: input.payload.message,
-        turnId: activeTurnIdForEvents(
-          this.ports.foldEvents(threadId).map(({ event }) => event),
-        ),
+        turnId: steerTarget?.turnId ?? observed?.turnId,
       });
     }
 
-    const priorDigest = prior
-      ? decodePayload(prior.payload)?.inputDigest
-      : undefined;
+    if (
+      priorPayload?.expectedInboxSessionId !== undefined &&
+      priorPayload.expectedInboxSessionId !==
+        input.payload.expectedInboxSessionId
+    )
+      return { outcome: 'conflict' };
+
+    const priorDigest = priorPayload?.inputDigest;
     if (
       priorDigest !== undefined &&
       input.payload.inputDigest !== undefined &&
@@ -1240,6 +1492,7 @@ export class ThreadInboxDelivery {
       throw new ClientTurnInputConflictError();
     const result = this.ports.store.submit({
       ...input,
+      ...(steerTarget ? { payload: { ...input.payload, steerTarget } } : {}),
       conversationId: inbox,
       kind,
       now,
@@ -1326,6 +1579,23 @@ export class ThreadInboxDelivery {
       this.startsInProgress
         .get(this.inboxOf(conversationId))
         ?.has(clientTurnId) === true
+    );
+  }
+
+  /** Whether retrying a retained key would target a replacement Session. */
+  keyBindingChanged(
+    conversationId: string,
+    clientTurnId: string,
+    userId: string,
+  ): boolean {
+    const inbox = this.inboxOf(conversationId);
+    const record = this.ports.store.read(inbox, clientTurnId);
+    if (!record || record.state === 'placed') return false;
+    const payload = decodePayload(record.payload);
+    return (
+      payload?.actor.userId === userId &&
+      payload.expectedInboxSessionId !== undefined &&
+      payload.expectedInboxSessionId !== this.ports.currentSessionId(inbox)
     );
   }
 
@@ -1710,6 +1980,14 @@ export class ThreadInboxDelivery {
       );
       return;
     }
+    const target = payload.steerTarget;
+    const targetIsCurrent = target
+      ? () => this.ownsSteerTurn(conversationId, target)
+      : undefined;
+    if (targetIsCurrent?.() === false) {
+      store.settle(entry, 'refused', STEER_TURN_ENDED, this.now());
+      return;
+    }
     let refusal = this.refusalFor(conversationId, payload, entry.createdAt);
     if (!refusal && this.ports.placementRefusal) {
       try {
@@ -1741,6 +2019,7 @@ export class ThreadInboxDelivery {
             turnId,
             clientInputId: entry.key,
             payload,
+            targetIsCurrent,
           });
           outcome = sent.outcome;
           return sent.outcome === 'steered' && sent.turnId
@@ -1837,17 +2116,22 @@ export class ThreadInboxDelivery {
       if (head.kind === 'steer') {
         if (head.state === 'placing' && head.placement?.startsWith('{')) {
           const pinned = decodeSteerPlacement(head.placement);
-          if (
-            pinned?.boundary === 'post-tool' &&
-            !this.ownsPostToolTurn(pinned.threadId, pinned.turnId)
-          ) {
-            store.settle(
-              head,
-              'unconfirmed',
-              { reasonCode: 'may_have_been_sent' },
-              this.now(),
-            );
-            continue;
+          if (pinned?.boundary === 'post-tool') {
+            const payload = decodePayload(head.payload);
+            if (
+              !payload ||
+              !(payload.steerTarget
+                ? this.ownsSteerTurn(conversationId, payload.steerTarget)
+                : this.ownsPostToolTurn(pinned.threadId, pinned.turnId))
+            ) {
+              store.settle(
+                head,
+                'unconfirmed',
+                { reasonCode: 'may_have_been_sent' },
+                this.now(),
+              );
+              continue;
+            }
           }
           if (!redrive) return;
           if (!pinned) {
@@ -1869,9 +2153,19 @@ export class ThreadInboxDelivery {
           );
           continue;
         }
-        if (head.state === 'queued' && this.isBusy(current)) {
-          const fidelity = await this.ports.steerFidelity?.(current);
-          if (fidelity === 'none') {
+        const target =
+          head.state === 'queued'
+            ? decodePayload(head.payload)?.steerTarget
+            : undefined;
+        if (head.state === 'queued' && (target || this.isBusy(current))) {
+          const stillCurrent = () =>
+            !target || this.ownsSteerTurn(conversationId, target);
+          const matchedBefore = stillCurrent();
+          const fidelity = matchedBefore
+            ? await this.ports.steerFidelity?.(current)
+            : undefined;
+          const ended = !matchedBefore || !stillCurrent();
+          if (ended || fidelity === 'none') {
             const claimed = store.claimNext(
               conversationId,
               current,
@@ -1888,26 +2182,30 @@ export class ThreadInboxDelivery {
             settle(
               claimed.entry,
               'refused',
-              {
-                reasonCode: 'unsupported-engine',
-                reason:
-                  'The engine has no declared steering support. Nothing was sent.',
-              },
+              ended
+                ? STEER_TURN_ENDED
+                : {
+                    reasonCode: 'unsupported-engine',
+                    reason:
+                      'The engine has no declared steering support. Nothing was sent.',
+                  },
               this.now(),
             );
             continue;
           }
           if (
-            fidelity !== 'native' ||
+            (fidelity !== 'native' && fidelity !== 'interrupting') ||
             !this.ports.steer ||
             !this.ports.inspectSteer
           ) {
             this.scheduleRetry(conversationId);
             return;
           }
-          const turnId = activeTurnIdForEvents(
-            this.ports.foldEvents(current).map(({ event }) => event),
-          );
+          const turnId =
+            target?.turnId ??
+            activeTurnIdForEvents(
+              this.ports.foldEvents(current).map(({ event }) => event),
+            );
           if (!turnId) {
             this.scheduleRetry(conversationId);
             return;
@@ -1983,6 +2281,18 @@ export class ThreadInboxDelivery {
                 payload,
                 entry.createdAt,
               );
+              if (
+                !refusal &&
+                payload.expectedInboxSessionId !== undefined &&
+                this.ports.currentSessionId(conversationId) !==
+                  payload.expectedInboxSessionId
+              ) {
+                refusal = {
+                  reasonCode: 'conversation_binding_changed',
+                  reason:
+                    'The conversation changed while this message was waiting.',
+                };
+              }
               if (!refusal && this.ports.placementRefusal) {
                 try {
                   refusal = this.ports.placementRefusal({

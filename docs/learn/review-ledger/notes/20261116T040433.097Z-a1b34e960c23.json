@@ -1,0 +1,7 @@
+{
+  "revision": "7fc73e60294b7bc5a764ddce0fa75d59f2082d6c",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Fix-round spec changes (attempt orchestration moved to a helper, control-box record, timeout derivation) leave reduced-motion emulation and motion screens unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
+  ]
+}

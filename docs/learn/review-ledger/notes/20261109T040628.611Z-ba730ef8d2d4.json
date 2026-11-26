@@ -1,7 +1,0 @@
-{
-  "revision": "5ec2c5be3a9f46cd95a37cc6889d5d76633ff5b9",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Agent context budget section now says PR: Agent context budget compares the head's agent-context-budget.json with its merge base's (not main's) and passes a branch that predates the file. Checked against .github/workflows/agent-context-budget.yml in this commit: it resolves the merge base via the compare API, exits 0 when the file is absent there, and reports growth over the merge base; the label override and the test that keeps the JSON equal to measured values are unchanged.","inputs":["docs/guides/testing.md"]}
-  ]
-}

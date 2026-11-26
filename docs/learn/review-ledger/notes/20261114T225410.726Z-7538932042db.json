@@ -1,0 +1,19 @@
+{
+  "revision": "0e194140177e3212e02d9f560c33b7e42a053581",
+
+  "notes": [
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Rewrote the release-versioning contract paragraph for the tightened rules and checked each bullet against scripts/lib/release-versioning-review.mjs: exact consumed set (all pending notes except those naming a skipped private or ignored package, per @changesets/apply-release-plan), nothing else under .changeset/, owner files unchanged, notes parse and name workspace packages, pre mode/ignore/globs refused, expected versions from @changesets/assemble-release-plan over the starting tree read from Git, byte-level manifest rule for planned packages and the root, one exact changelog section, all-or-nothing, no actor check, history recognised only when the landing commit is that operation on its parent, provenance not accuracy.","inputs":["docs/guides/documentation-review-ledger.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":".veritas/README.md","note":"Only the redundant dirty-input guard was removed from the release-output filter; dirty inputs are still re-added by the existing loop below it, so behaviour is unchanged. Citing pages' descriptions of scoped/advisory/strict behaviour remain accurate.","inputs":["scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Only the redundant dirty-input guard was removed from the release-output filter; dirty inputs are still re-added by the existing loop below it, so behaviour is unchanged. Citing pages' descriptions of scoped/advisory/strict behaviour remain accurate.","inputs":["scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Only the redundant dirty-input guard was removed from the release-output filter; dirty inputs are still re-added by the existing loop below it, so behaviour is unchanged. Citing pages' descriptions of scoped/advisory/strict behaviour remain accurate.","inputs":["scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Only the redundant dirty-input guard was removed from the release-output filter; dirty inputs are still re-added by the existing loop below it, so behaviour is unchanged. Citing pages' descriptions of scoped/advisory/strict behaviour remain accurate.","inputs":["scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"Only the redundant dirty-input guard was removed from the release-output filter; dirty inputs are still re-added by the existing loop below it, so behaviour is unchanged. Citing pages' descriptions of scoped/advisory/strict behaviour remain accurate.","inputs":["scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"The generated-release section was rewritten in place; documentation.md's link to that anchor and its summary remain valid.","inputs":["docs/guides/documentation-review-ledger.md"]}
+  ]
+}

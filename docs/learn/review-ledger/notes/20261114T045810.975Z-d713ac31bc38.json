@@ -1,0 +1,7 @@
+{
+  "revision": "8192a2510ef36a285712ce101ab38df52fcb0897",
+
+  "notes": [
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Searched the context for test selection, typecheck lanes and Vitest resource classes: it names its evidence-owner tests and the public-Monument import boundary (kept via the boundary gate) but makes no claim about which tests the impact manifest selects, how the typecheck aggregate groups packages, or how the resource manifest classifies tests, so those three script citations support nothing here.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/test-impact-manifest.mjs","scripts/typecheck-aggregate.mjs","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

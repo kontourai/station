@@ -1,0 +1,7 @@
+{
+  "revision": "c725ba5aeaa9cbe358038c96b23e86035a3f7d9f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the StarterWorkRegistry section after Home offer removal; retained existing endpoint compatibility and dropped its deleted card citation.","inputs":["docs/architecture/module-map.md","src-server/domain/file-storage-adapter.ts","src-server/routes/projects/projects.ts","src-server/services/starter-work/starter-registry.ts","src-ui/src/__tests__/HomeView.test.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/StarterWorkCard.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/views/HomeView.tsx"]}
+  ]
+}

@@ -1,9 +1,0 @@
-{
-  "revision": "ea0549f8609b04626091cc4a5e537d89aec9387a",
-
-  "notes": [
-    {"path":"docs/design/mcp-ui-host.md","note":"Delta review of station-control-mcp-server.ts: StationControlToolRegistry now lists every input schema without the $schema dialect URL (tool, toolWithSchema, appTool and the discovery tools); appTool still passes the same _meta (ui resourceUri) and annotations to registerAppTool, and calls are validated by the wrapped schema. This document's claims about App tool _meta.ui.resourceUri, ui:// resource reads and the catalog are unaffected; it makes no claim about the listed JSON Schema dialect.","inputs":["docs/design/mcp-ui-host.md","src-server/tools/station-control-mcp-server.ts"]},
-
-    {"path":"docs/guides/agent-configuration.md","note":"Delta review of station-control-mcp-server.ts: the registry change only drops the $schema dialect URL from listed input schemas; tool names, selection, autoApprove patterns and the orchestration-instructions row this guide documents are unchanged.","inputs":["docs/guides/agent-configuration.md","src-server/tools/station-control-mcp-server.ts"]}
-  ]
-}

@@ -102,16 +102,25 @@ clipboard screenshots and picker selections. Image previews and removal controls
 appear before sending; image-only messages are allowed. Intake reuses the chat
 limits: five attachments, 5 MiB per file and 15 MiB combined, with the same image
 conversion and resizing rules. Clipboard paste depends on the browser exposing
-files; native keyboard image insertion is not qualified by these tests.
+files; native keyboard image insertion is not qualified by these tests. On a
+phone the Task composer also shows **Paste image** beside Attach, which reads
+the clipboard's images into the same intake (see
+[chat composer attachments](chat-composer.md#32-attachments)).
 
 The [Task asset store](../../src-server/services/projects/task-room-attachments.ts)
 saves bytes separately from room history. Upload and reference resolution require
-current message-write authority; byte reads require current history-read authority.
+current message-write authority. Upload rechecks that authority and the Task's
+binding while holding the store-wide lock through publication. Byte reads
+require current history-read authority.
 Bindings include the canonical Project, Task ID and Task creation time. Knowing an
-attachment ID grants no access. Room history and durable agent requests store only
-`TaskRoomAttachment` descriptors. Bytes use the existing content-addressed store's
-retention settings (90 days and 512 MiB by default); a retained history entry may
-therefore outlive its bytes and show an unavailable attachment.
+attachment ID grants no access. An image's bytes must start with its declared image
+type's signature (a prefix check, not a full decode). Room history and durable
+agent requests store only `TaskRoomAttachment` descriptors. Each binding protects
+its content-addressed bytes from age and size reclamation. Upload can reclaim
+bytes only when a complete binding scan proves they are unbound. If the batch's
+new unique bytes would exceed the store's size budget, upload returns 409.
+Earlier eviction can still leave a history descriptor with unavailable bytes.
+See [attachment storage settings](../reference/config.md#chat-attachments).
 
 The [room routes](../../src-server/routes/orchestration/project-task-rooms.ts)
 expose upload and authenticated byte reads under `/api/tasks/:taskId/room/attachments`.
@@ -468,7 +477,15 @@ the active tab.
 ## Room polish behavior
 
 The room and thread share Enter-to-send behavior with Shift+Enter for newlines
-and IME composition preserved. Only the message scroller follows new messages;
+and IME composition preserved.
+
+After a confirmed or duplicate human-message send, the composer restores typing
+focus only if the original textarea, connection authority and Task incarnation
+remain current and the input has unlocked. Focus deliberately moved to another
+connected control takes precedence. Refused or uncertain sends retain their
+existing draft and retry behavior.
+
+Only the message scroller follows new messages;
 readers above the newest message can jump back. Hidden presence facts do not
 suppress the empty state. Failed run facts retain the original request and
 same-Session retry, with the server's normal admission checks. Joining and

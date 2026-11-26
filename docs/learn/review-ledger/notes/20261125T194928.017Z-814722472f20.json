@@ -1,0 +1,7 @@
+{
+  "revision": "4056494f0b056255ed455df564a225be6b0530ce",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"task-first-home's phone journey expects Half at 45% of the viewport and never under 380px on a phone, where it expected a plain 45% before. The row names specs and scope only; no edit.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a1e2b4885fa1774598ed7ea2f4dbff4ca3f7ee11",
+
+  "notes": [
+    {"path":"docs/user/personal-boards.md","note":"Re-reviewed after the boundary fix (Terminal opened via useShowSurface bottom region; fieldset groups; data-tone): no Board claim depends on it.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

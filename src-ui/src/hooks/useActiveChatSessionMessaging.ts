@@ -1,7 +1,10 @@
 import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/execution-target';
-import type {
-  InterruptTurnResult,
-  OrchestrationSessionSummary,
+import {
+  CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE,
+  type InterruptTurnResult,
+  TURN_START_BUSY_CODE,
+  TURN_START_HELD_CODE,
+  TURN_START_HELD_UNTIL_RESTART_CODE,
 } from '@kontourai/station-contracts/orchestration';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
@@ -10,13 +13,11 @@ import {
   isSteerConflictCode,
   MODEL_NOT_ADVERTISED_CODE,
 } from '@kontourai/station-contracts/provider';
-import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import {
   type ChatHttpError,
   conversationQueries,
   interruptOrchestrationTurn,
   isProvablyNotSent,
-  orchestrationQueries,
   projectChatDefaultsQueryKey,
   useInvalidateQuery,
   useQueryClient,
@@ -110,8 +111,9 @@ interface SendTransaction {
   /** Byte-free selected-stage snapshot, restored only after a definitive rejection. */
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   /**
-   * A message Station composed, not the composer's (`preserveComposer`): it
-   * took nothing from the composer, so a rejection gives nothing back to it.
+   * A message Station composed, not the composer's (`preserveComposer`), or
+   * an outbox replay of one the composer let go long ago: it took nothing
+   * from the composer, so a rejection gives nothing back to it.
    */
   composed?: true;
 }
@@ -233,32 +235,6 @@ async function removeRefusedAttachments(
     stageIds.map((stageId) =>
       cancelAttachmentStage(apiBase, stageId, { requestScope }),
     ),
-  );
-}
-
-/**
- * #2310 review H1/F4: whether the cached session list still describes one of
- * these identities as having never taken a send — a Draft, or a Failed row
- * whose only failure is that its sends did not take (`send_refused` /
- * `send_failed`). Either answer is stale the moment a send is accepted, so
- * the send path must re-read the list. Read-only; `undefined` ids skipped.
- */
-function cachedSummaryAwaitsFirstTurn(
-  queryClient: ReturnType<typeof useQueryClient>,
-  ids: ReadonlyArray<string | undefined>,
-  scope?: ApiRequestScope,
-): boolean {
-  const wanted = new Set(ids.filter((id): id is string => Boolean(id)));
-  const cached =
-    queryClient.getQueryData<OrchestrationSessionSummary[]>(
-      orchestrationQueries.sessions(scope).queryKey,
-    ) ?? [];
-  return cached.some(
-    (session) =>
-      (wanted.has(session.threadId) ||
-        (session.conversationId !== undefined &&
-          wanted.has(session.conversationId))) &&
-      (session.draft === true || isFirstSendFailure(session)),
   );
 }
 
@@ -428,6 +404,11 @@ export function useSendMessage(
          */
         queueOnBusy?: boolean;
         /**
+         * With `queueOnBusy`: the host holds a follow-up's files with it
+         * (`followUpAttachments`), so a busy send with files is queued.
+         */
+        queueFilesOnBusy?: boolean;
+        /**
          * A message Station composed, not the composer's: the composer's
          * text, attachments and visual skill are neither sent nor cleared,
          * and a refusal puts nothing back in it.
@@ -445,7 +426,11 @@ export function useSendMessage(
         /** Retire recovery actions whose originating submission was superseded. */
         claimRetry?: () => boolean;
         skipPersonalApprovalDefault?: boolean;
-        /** State-bound capability supplied only by OutboundDispatchModule. */
+        /**
+         * State-bound capability supplied only by OutboundDispatchModule. A
+         * replay under it leaves the composer alone, as `preserveComposer`
+         * does: its outbox row holds the message.
+         */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
           projectSlug?: string;
@@ -569,9 +554,14 @@ export function useSendMessage(
       const preserveComposer =
         options?.preserveComposer === true ||
         turnInterruptedContinueBoundaryId(turnId) !== undefined;
+      // An outbox replay is not the composer's message either: its row holds
+      // the text, and the composer holds whatever the person has typed and
+      // staged since. It sends and clears none of that, and its failure puts
+      // nothing back (the row keeps the message).
+      const leaveComposer = preserveComposer || options?.dispatch !== undefined;
       // What a refusal restores to an empty composer: nothing, for a message
-      // the composer never held.
-      const submittedDraft = preserveComposer ? '' : content;
+      // the composer does not hold.
+      const submittedDraft = leaveComposer ? '' : content;
       const experienceDraft =
         options?.dispatch || preserveComposer
           ? undefined
@@ -654,7 +644,10 @@ export function useSendMessage(
           });
           return false;
         }
-        if (attachments?.length) {
+        if (
+          attachments?.length &&
+          !(options?.queueOnBusy && options.queueFilesOnBusy)
+        ) {
           addEphemeralMessage(sessionId, {
             role: 'system',
             content:
@@ -967,7 +960,7 @@ export function useSendMessage(
         modelInput: content,
         attachments,
         clientTurnId: resolvedTurnId,
-        composed: preserveComposer,
+        composed: leaveComposer,
       });
       // The conversation this send names; the delivery lookup asks by it.
       // A replay sends (and is looked up) under the conversation its row
@@ -979,8 +972,11 @@ export function useSendMessage(
         sessionId;
 
       const abortController = new AbortController();
+      // Set once the request is about to go out. A failure before that
+      // reached nothing, whatever it was.
+      let requestMade = false;
 
-      if (!preserveComposer) clearInput(sessionId);
+      if (!leaveComposer) clearInput(sessionId);
       updateChat(sessionId, {
         status: 'sending',
         // #2309: the optimistic window the server has not acknowledged yet.
@@ -990,7 +986,7 @@ export function useSendMessage(
         // The window a Stop has to be held through, named (
         // review): from here until this dispatch's own `turn.started`.
         pendingClientTurnId: resolvedTurnId,
-        ...(preserveComposer ? {} : { attachments: [], attachmentStages: [] }),
+        ...(leaveComposer ? {} : { attachments: [], attachmentStages: [] }),
         // A new attempt for this key: a lookup answer about an earlier one
         // (a `received` whose refusal was lost in transit, before the
         // lookup-driven resend) describes nothing in flight now.
@@ -1159,10 +1155,12 @@ export function useSendMessage(
 
       try {
         const {
+          cachedSummaryAwaitsFirstTurn,
           dispatchForeground,
           dispatchPossiblyQueuedForeground,
           dispatchQueuedForeground,
-        } = await import('../lib/foregroundMessageDispatch');
+          publishConversationInboxReceipt,
+        } = await import('../lib/composerForegroundDispatch');
         // #2436: the server applies the conversation's recorded posture to
         // this turn. The only posture this send carries is a pick the server
         // has not received yet (no session yet, or picked offline); it is
@@ -1259,13 +1257,17 @@ export function useSendMessage(
           ...(mcpPromptOrigin ? { mcpPromptOrigin } : {}),
           conversationId: sentConversationId,
           attachments,
-          // A composed message carries none of the composer's staged files.
-          attachmentStages: preserveComposer
+          // A composed message, or a replay, carries none of the composer's
+          // staged files.
+          attachmentStages: leaveComposer
             ? undefined
             : currentState?.attachmentStages,
           ambientContext,
           clientTurnId: resolvedTurnId,
           automaticBackground: Boolean(options?.dispatch),
+          onRequest: () => {
+            requestMade = true;
+          },
           signal: abortController.signal,
           skillExperience: sourceStart,
           skillExperienceAttachmentRoles: experienceDraft?.definition.inputs
@@ -1301,13 +1303,23 @@ export function useSendMessage(
             : undefined;
         if (queuedResult?.outcome === 'queued') {
           stopDeliveryWatch?.();
+          publishConversationInboxReceipt(
+            queryClient,
+            requestScope,
+            apiBase,
+            queuedResult,
+          );
           await live?.accepted();
           if (requestScope && !requestScope.isCurrent()) return true;
           const latest = activeChatsStore.getSnapshot()[sessionId];
-          const { input: _input, ...rollback } = rejectedSendRollback(
-            transaction,
-            latest,
-          );
+          // Queued, not refused: the held entry owns the text and any files,
+          // so neither returns to the composer; only the optimistic bubble goes.
+          const {
+            input: _input,
+            attachments: _attachments,
+            attachmentStages: _attachmentStages,
+            ...rollback
+          } = rejectedSendRollback(transaction, latest);
           updateChat(sessionId, {
             ...rollback,
             ...(latest?.pendingClientTurnId === resolvedTurnId
@@ -1319,7 +1331,6 @@ export function useSendMessage(
                 }
               : {}),
           });
-          invalidate(['conversation-inbox']);
           options?.onAdmission?.('accepted');
           return options?.dispatch
             ? ({ kind: 'queued' } satisfies OutboundDispatchTransportResult)
@@ -1480,17 +1491,21 @@ export function useSendMessage(
         };
         // A witnessed start outranks a later failure of this HTTP response.
         if (deliveryWasObserved()) return settleObservedDelivery();
-        // The outbox row follows what the answer proves. Any response is
-        // Station's own answer: a refusal started nothing (the composer gets
-        // the text back below), and a may-have-started answer keeps the row
-        // as unconfirmed evidence, never resent, and says so in the chat.
-        // No response: kept for replay with the same key (the queue notice
-        // below). No response and not a transport failure: kept as
-        // evidence, never resent.
+        // The outbox row follows what the answer proves. Station's own
+        // answer: a refusal started nothing (the composer gets the text back
+        // below), and a may-have-started answer keeps the row as unconfirmed
+        // evidence, never resent, and says so in the chat. A send this
+        // device refused before making the request started nothing either:
+        // the row goes and the composer gets the text back. Anything else is
+        // no answer: the row is released for Station's delivery lookup (the
+        // queue notice below) and the composer is not handed a second copy.
+        // The message is only ever in one of the two.
+        let liveAwaitsLookup = false;
         if (live) {
-          const foreground = await import('../lib/outboundQueue')
-            .then((queue) => queue.readForeground(error))
-            .catch(() => undefined);
+          const queue = await import('../lib/outboundQueue').catch(
+            () => undefined,
+          );
+          const foreground = queue?.readForeground(error);
           const userStopped =
             (abortController as UserCancelableAbortController)._userInitiated &&
             abortController.signal.aborted;
@@ -1510,12 +1525,24 @@ export function useSendMessage(
             // Station refused it (nothing started): the composer gets the
             // text back below.
             await live.refused();
+          } else if (remote) {
+            // No answer through a paired Station: kept as unconfirmed.
+            await live.indeterminate('Check delivery before retrying.');
+          } else if (
+            !requestMade &&
+            queue?.classifyUndeliverableSend(error) === null
+          ) {
+            // Failed here before any request was made (a send this device
+            // would not build), so nothing reached Station: the composer gets
+            // the text back below, and no row is left to be sent again beside
+            // it. A transport failure this early (the send code itself could
+            // not be loaded) still waits in the outbox for the connection.
+            await live.refused();
           } else {
             // No answer from Station: only its delivery lookup can say what
             // happened, so the row is released for that, never resent blind.
-            if (remote)
-              await live.indeterminate('Check delivery before retrying.');
-            else await live.unanswered();
+            await live.unanswered();
+            liveAwaitsLookup = true;
           }
         }
         if (sourceStart) {
@@ -1706,7 +1733,10 @@ export function useSendMessage(
           options?.onAdmission?.('indeterminate');
           return false;
         }
-        if (undeliverableCause && !options?.dispatch) {
+        // A live row released for the lookup above waits there whatever the
+        // failure was (an answer that could not be read, say): the same
+        // notice, and no rollback into the composer.
+        if ((undeliverableCause || liveAwaitsLookup) && !options?.dispatch) {
           try {
             const { outboundDispatch } = await import('../lib/outboundQueue');
             // A live send already has its outbox row, settled by the outcome
@@ -1830,11 +1860,23 @@ export function useSendMessage(
                   const { discardMessage } = await import(
                     '../lib/messageDeliveryActions'
                   );
-                  // Every unanswered send awaits lookup and needs explicit withdrawal.
+                  const { outboundDispatch } = await import(
+                    '../lib/outboundQueue'
+                  );
+                  // An unanswered send awaits lookup and needs the explicit
+                  // withdrawal. Once Station has answered that it never
+                  // received it, the row is an ordinary unsent message (not
+                  // gone yet, or Not sent) and is discarded as one. A status
+                  // that cannot be read is treated as still unconfirmed.
+                  const rowStatus = await outboundDispatch
+                    .rowStatus(resolvedTurnId, station, sentConversationId)
+                    .catch(() => undefined);
                   await discardMessage(
                     sessionId,
                     resolvedTurnId,
-                    'unconfirmed',
+                    rowStatus === 'pending' || rowStatus === 'failed'
+                      ? 'not-sent'
+                      : 'unconfirmed',
                     station,
                     sentConversationId,
                   );
@@ -1880,6 +1922,16 @@ export function useSendMessage(
         const terminalSession = foregroundIndeterminate
           ? false
           : (translated as ChatErrorTranslation).terminalSession;
+        // Refused because an earlier start on this Session blocks it: nothing
+        // was sent and nothing failed (that turn may still be running). The
+        // chat is not marked failed, and there is no blind Retry; the notice
+        // says what clears it, and the text is back in the composer.
+        const turnStartBlocked =
+          !foregroundIndeterminate &&
+          (err.code === TURN_START_HELD_CODE ||
+            err.code === TURN_START_HELD_UNTIL_RESTART_CODE ||
+            err.code === TURN_START_BUSY_CODE ||
+            err.code === CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE);
         const dispatchClaim = options?.dispatch;
         if (dispatchClaim) {
           // Once the foreground call has begun, neither an abort, a network
@@ -1909,7 +1961,10 @@ export function useSendMessage(
           // non-error and let the persisted server lifecycle name it. The
           // refusal itself is carried by the ephemeral notice below, which
           // already suppresses Retry for exactly this case.
-          status: foregroundIndeterminate || terminalSession ? 'idle' : 'error',
+          status:
+            foregroundIndeterminate || terminalSession || turnStartBlocked
+              ? 'idle'
+              : 'error',
           error: userFacingErrorMessage(err),
           abortController: undefined,
           ...(foregroundIndeterminate
@@ -1971,10 +2026,16 @@ export function useSendMessage(
           }${
             // Said only when the rollback put the draft back: a user who
             // typed during the send keeps what they typed instead.
-            err.code === SESSION_START_INDETERMINATE_CODE &&
-            'input' in rollbackComposer
+            (
+              err.code === SESSION_START_INDETERMINATE_CODE || turnStartBlocked
+            ) && 'input' in rollbackComposer
               ? ' Your message is back in the composer.'
-              : ''
+              : // An outbox send: its row was kept above (`indeterminate`)
+                // and the composer was not touched, so the message waits in
+                // the pending list.
+                turnStartBlocked && dispatchClaim
+                ? ' Your message is kept in the pending list.'
+                : ''
           }`,
           ...(terminalSession ? { terminalSession: true } : {}),
           // A workspace refusal is permanent for this conversation. Other
@@ -1995,6 +2056,7 @@ export function useSendMessage(
                 }
               : terminalSession ||
                   foregroundIndeterminate ||
+                  turnStartBlocked ||
                   dispatchClaim ||
                   err.code === SESSION_START_INDETERMINATE_CODE ||
                   // #3290: refused again until the configuration or mode

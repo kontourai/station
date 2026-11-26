@@ -3205,6 +3205,71 @@ setInterval(() => {
     }
   });
 
+  test.each([
+    [98, 'host_pressure_timeout'],
+    [null, 'host_pressure_unavailable'],
+  ])(
+    'reports failed phase admission after a passing phase (%s)',
+    async (busyPercent, reason) => {
+      const temp = fixture();
+      const worktree = join(temp.root, 'phase-admission');
+      mkdirSync(worktree);
+      let clock = 10_000;
+      const completed: string[] = [];
+      const firstHeavy = ORDINARY_FULL_PHASE_IDS[0];
+      try {
+        const result = await coordinateVerification({
+          laneId: 'full-regression',
+          root: temp.root,
+          cwd: worktree,
+          capacity: 100,
+          heartbeatMs: 1,
+          hostPressureWaitMs: 5,
+          now: () => clock,
+          wait: async (ms: number) => {
+            clock += ms;
+          },
+          collectProvenance: () =>
+            worktreeProvenance(worktree, 'admission-diagnostic'),
+          hostCpuSampler: async () =>
+            buildHostPressureSample({
+              busyPercent: completed.length ? busyPercent : 40,
+              cpuCount: 4,
+              sampleMs: 1,
+              sampledAt: clock,
+              threshold: 85,
+              source: 'override',
+            }),
+          phaseRunner: async ({ phase }: { phase: { id: string } }) => {
+            completed.push(phase.id);
+            return {
+              status: 0,
+              output: {
+                stdout: {
+                  text: '> fixture@1.0.0 passing-script\n19 tests passed',
+                },
+              },
+              cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+            };
+          },
+        });
+        expect(completed).toEqual(phasesThrough(firstHeavy).slice(0, -1));
+        expect(result.receipt.terminal).toMatchObject({
+          status: 'infrastructure_error',
+          passed: false,
+          infrastructureCause: expect.stringContaining(reason),
+        });
+        expect(result.summary.phaseAdmission).toContain(firstHeavy);
+        expect(result.summary.phaseAdmission).toContain(reason);
+        expect(result.summary).not.toHaveProperty('failingStep');
+        expect(result.summary).not.toHaveProperty('inFlightStep');
+        expect(result.receipt.cleanup.status).toBe('passed');
+      } finally {
+        temp.remove();
+      }
+    },
+  );
+
   test('reports a full-regression phase capacity deadline as timed_out', async () => {
     const temp = fixture();
     const ciWorktree = join(temp.root, 'ci');
@@ -3218,7 +3283,9 @@ setInterval(() => {
     let clock = 10_000;
     const now = () => clock;
     const wait = async (ms: number) => {
-      clock += ms;
+      // Exhaust the injected request clock while the runner is queued, even
+      // when earlier phase setup consumed real time on a loaded host.
+      clock += 25 * ms;
       await new Promise((resolve) => setTimeout(resolve, 0));
     };
     const sample = () =>
@@ -3255,7 +3322,7 @@ setInterval(() => {
         cwd: ciWorktree,
         capacity: 100,
         heartbeatMs: 1,
-        timeoutMs: 60,
+        timeoutMs: 1_000,
         now,
         wait,
         collectProvenance: () =>
@@ -3265,9 +3332,14 @@ setInterval(() => {
       });
       expect(timedOut.receipt.terminal.status).toBe('timed_out');
       expect(timedOut.receipt.terminal.passed).toBe(false);
+      expect(timedOut.summary.phaseAdmission).toContain(
+        'request_deadline while waiting for capacity',
+      );
+      expect(timedOut.summary).not.toHaveProperty('inFlightStep');
       release();
       await blocking;
     } finally {
+      release();
       temp.remove();
     }
   });

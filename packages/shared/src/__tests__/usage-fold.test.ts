@@ -818,3 +818,200 @@ describe('foldUsageEvents: durable rows written before the birth-site guards', (
     expect(dropped).toEqual([]);
   });
 });
+
+describe('foldUsageEvents: engine-reported cost and context reading', () => {
+  const cost = (
+    amount: number,
+    scope: 'turn' | 'session',
+    extra: Record<string, unknown> = {},
+    unit = 'credit',
+  ) =>
+    ev({
+      method: 'token-usage.updated',
+      provider: 'acp',
+      reportedCost: { amount, unit, scope },
+      ...extra,
+    } as never);
+
+  it('turn scope assigns per turn, so a repeated report does not double-count', () => {
+    const usage = foldUsageEvents([
+      cost(0.25, 'turn', { turnId: 'a' }),
+      cost(0.25, 'turn', { turnId: 'a' }),
+      cost(0.4, 'turn', { turnId: 'b' }),
+      cost(0.5, 'turn', { turnId: 'b' }),
+    ]);
+    expect(usage.reportedCosts).toEqual([{ unit: 'credit', amount: 0.75 }]);
+    // Never folded into the USD figure.
+    expect(usage.reportedCostUsd).toBeUndefined();
+  });
+
+  it('a session total is the authority for its unit, so turn and session never add up', () => {
+    const usage = foldUsageEvents([
+      cost(0.2, 'turn', { turnId: 'a' }),
+      cost(0.2, 'session'),
+      cost(0.3, 'turn', { turnId: 'b' }),
+      // The session total can hold more than the turns (a subagent's work).
+      cost(0.65, 'session'),
+    ]);
+    // Neither the turn sum (0.5) nor turn + session (1.15).
+    expect(usage.reportedCosts).toEqual([{ unit: 'credit', amount: 0.65 }]);
+  });
+
+  it('a new engine process banks the previous session total; units stay apart', () => {
+    const usage = foldUsageEvents([
+      cost(1, 'session'),
+      ev({ method: 'session.started', provider: 'acp' } as never),
+      cost(0.5, 'session'),
+      cost(2, 'session', {}, 'EUR'),
+    ]);
+    expect(usage.reportedCosts).toEqual([
+      { unit: 'credit', amount: 1.5 },
+      { unit: 'EUR', amount: 2 },
+    ]);
+  });
+
+  it('refuses a unit past the wire cap and a unit the wire cannot carry', () => {
+    const usage = foldUsageEvents([
+      ...Array.from({ length: 17 }, (_, i) =>
+        cost(1, 'turn', { turnId: `t${i}` }, `U${i}`),
+      ),
+      cost(5, 'turn', { turnId: 'x' }, 'credit points'),
+      // A unit already folded keeps folding.
+      cost(2, 'turn', { turnId: 'y' }, 'U0'),
+    ]);
+    expect(usage.reportedCosts).toHaveLength(16);
+    expect(usage.reportedCosts?.[0]).toEqual({ unit: 'U0', amount: 3 });
+    expect(usage.reportedCosts?.map((c) => c.unit)).not.toContain('U16');
+    expect(usage.reportedCosts?.map((c) => c.unit)).not.toContain(
+      'credit points',
+    );
+  });
+
+  it('drops unusable figures and keeps the latest context reading', () => {
+    const usage = foldUsageEvents([
+      cost(-1, 'turn', { turnId: 'a' }),
+      ev({
+        method: 'token-usage.updated',
+        provider: 'acp',
+        reportedCost: { amount: 1, unit: 'credit', scope: 'forever' },
+      } as never),
+      ev({
+        method: 'token-usage.updated',
+        provider: 'acp',
+        contextPercent: 12,
+      } as never),
+      ev({
+        method: 'token-usage.updated',
+        provider: 'acp',
+        contextPercent: 340,
+      } as never),
+      ev({
+        method: 'token-usage.updated',
+        provider: 'acp',
+        contextPercent: 30.5,
+      } as never),
+    ]);
+    expect(usage.reportedCosts).toBeUndefined();
+    expect(usage.contextPercent).toBe(30.5);
+  });
+});
+
+describe('foldUsageEvents — engine MCP status', () => {
+  const mcp = (
+    servers: unknown[],
+    complete: boolean,
+    reconnect?: true,
+  ): CanonicalRuntimeEvent => ({
+    eventId: `e${n++}`,
+    ...base,
+    provider: 'acp',
+    method: 'engine-mcp.status',
+    servers: servers as never,
+    complete,
+    ...(reconnect ? { reconnect } : {}),
+  });
+
+  it('folds complete and partial reports as the live chat does, keeping the latest reconnect bit', () => {
+    const usage = foldUsageEvents([
+      mcp(
+        [
+          { name: 'docs', state: 'starting', scope: 'engine-config' },
+          { name: 'old', state: 'ready', scope: 'session' },
+        ],
+        true,
+        true,
+      ),
+      // A later complete report drops `old`.
+      mcp(
+        [
+          { name: 'docs', state: 'starting', scope: 'engine-config' },
+          { name: 'tracker', state: 'starting', scope: 'session' },
+        ],
+        true,
+        true,
+      ),
+      // A partial report updates one server in place.
+      mcp(
+        [
+          {
+            name: 'docs',
+            state: 'needs-auth',
+            scope: 'engine-config',
+            authUrl: 'https://example.test/auth',
+          },
+        ],
+        false,
+        true,
+      ),
+    ]);
+    expect(usage.engineMcp).toEqual({
+      servers: [
+        { name: 'docs', state: 'needs-auth', scope: 'engine-config' },
+        { name: 'tracker', state: 'starting', scope: 'session' },
+      ],
+      reconnect: true,
+    });
+  });
+
+  it('the next Session in a lineage drops its predecessor engine’s servers, as a handoff does', () => {
+    const next = (event: CanonicalRuntimeEvent): CanonicalRuntimeEvent => ({
+      ...event,
+      threadId: 't2',
+    });
+    expect(
+      foldUsageEvents([
+        mcp([{ name: 'old', state: 'ready', scope: 'session' }], true, true),
+        next(ev({ method: 'turn.completed', provider: 'acp' })),
+      ]),
+    ).not.toHaveProperty('engineMcp');
+    expect(
+      foldUsageEvents([
+        mcp([{ name: 'old', state: 'ready', scope: 'session' }], true, true),
+        next(
+          mcp([{ name: 'new', state: 'starting', scope: 'session' }], false),
+        ),
+      ]).engineMcp,
+    ).toEqual({
+      servers: [{ name: 'new', state: 'starting', scope: 'session' }],
+    });
+    // The same Session's later events keep it.
+    expect(
+      foldUsageEvents([
+        mcp([{ name: 'kept', state: 'ready', scope: 'session' }], true),
+        ev({ method: 'turn.completed', provider: 'acp' }),
+      ]).engineMcp?.servers.map(({ name }) => name),
+    ).toEqual(['kept']);
+  });
+
+  it('a report without reconnect clears the bit, and no report leaves the field absent', () => {
+    expect(
+      foldUsageEvents([
+        mcp([{ name: 'a', state: 'ready', scope: 'session' }], true, true),
+        mcp([{ name: 'a', state: 'failed', scope: 'session' }], false),
+      ]).engineMcp,
+    ).toEqual({ servers: [{ name: 'a', state: 'failed', scope: 'session' }] });
+    expect(
+      foldUsageEvents([ev({ method: 'turn.completed', provider: 'acp' })]),
+    ).not.toHaveProperty('engineMcp');
+  });
+});

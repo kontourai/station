@@ -6,6 +6,22 @@ import { PROVIDER_FAILURE_KINDS } from '../../packages/contracts/src/provider-fa
 
 const root = resolve(import.meta.dirname, '../..');
 const exclusions = {
+  'packages/contracts/src/provider.ts:ACP_SESSION_REWOUND_CODE': [
+    'acp.session-rewound',
+    'Runtime warning marking a completed in-place rewind in the transcript; the rewind succeeded, so no turn, start or engine failure.',
+  ],
+  'packages/contracts/src/provider.ts:ACP_SESSION_REWOUND_LATE_CODE': [
+    'acp.session-rewound-late',
+    'Runtime warning that a timed-out rewind was applied by the engine after a later turn; the session runs on, so no turn, start or engine failure.',
+  ],
+  'packages/contracts/src/provider.ts:ACP_AGENT_PROJECTION_UNAPPLIED_CODE': [
+    'acp.agent-projection-unapplied',
+    'Runtime warning that the engine runs its own default agent; the session started and runs, so no turn, start or engine failure.',
+  ],
+  'packages/contracts/src/provider.ts:ACP_SESSION_STARTED_FRESH_CODE': [
+    'acp.session-started-fresh',
+    'Runtime warning that the engine could not reload the conversation and Station started a new engine session in its place; the session started and runs, so no turn, start or engine failure.',
+  ],
   'packages/contracts/src/peer-chat.ts:PEER_CHAT_REFUSAL_CODE': [
     'peer_chat_target_refused',
     'Target-authored relay custody/pre-dispatch receipt, not an engine failure kind: 401/403 name target credentials, while 409 retains its specific refusalCode. The SDK parses this envelope before retiring source credentials or settling delivery.',
@@ -178,6 +194,10 @@ const exclusions = {
     'delegation_depth_exceeded',
     'Delegation lineage policy/admission, not provider turn execution.',
   ],
+  'src-server/runtime/agents/delegation.ts:DelegationPolicyLimitError.code': [
+    'delegation_lineage_unavailable',
+    'Station rejects oversized inherited allowlist ancestry before dispatch.',
+  ],
   'src-server/runtime/agents/request-delegation.ts:DelegationLineageUnavailableError.code':
     [
       'delegation_lineage_unavailable',
@@ -226,6 +246,11 @@ const exclusions = {
     [
       'delegation_attempt_conflict',
       'Delegation attempt idempotency claim state, not an engine failure.',
+    ],
+  'src-server/services/orchestration/delegation-tool-policy.ts:DelegationToolPolicyUnavailableError.code':
+    [
+      'delegation_lineage_unavailable',
+      'Station refuses inherited tool policy before engine execution.',
     ],
   'src-server/services/orchestration/event-store.ts:TurnDigestLineageTooLongError.code':
     [
@@ -305,6 +330,11 @@ const exclusions = {
     [
       'input_binding_unsupported',
       'Delegation input-request binding validation before provider dispatch.',
+    ],
+  'src-server/routes/schemas/schema-definitions/runtime.ts:CONNECTION_ADDRESS_REQUIRED_CODE':
+    [
+      'connection_address_required',
+      'Connection save validation, refused before any provider runs.',
     ],
   'src-server/tools/station-control-shared.ts:StationControlCallerRequiredError.code':
     ['station_control_caller_required', 'Station Control caller authority.'],

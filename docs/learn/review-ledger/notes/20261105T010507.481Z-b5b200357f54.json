@@ -1,7 +1,0 @@
-{
-  "revision": "32c3c3d05121483c5334d98e2d873228f62eeac1",
-
-  "notes": [
-    {"path":"docs/guides/desktop-build.md","note":"Reviewed the final update-control delta: the unknown-length test now captures its narrowed downloading phase before the event callback, without changing its behavior assertion; the progress icon uses the published 32px spacing token and 44px changelog controls. Existing download, signature, restart confirmation and server-separation claims remain accurate. Source review and controlled UI evidence do not establish a packaged native update.","inputs":["docs/guides/desktop-build.md","src-ui/src/components/updates/__tests__/UpdatesControl.test.tsx","src-ui/src/components/updates/UpdateDownloadIcon.tsx","src-ui/src/components/updates/Updates.css"]}
-  ]
-}

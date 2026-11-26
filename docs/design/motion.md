@@ -18,7 +18,7 @@ hard-coded durations/easings and `transition: all` are rejected by
 | Category | Contract | Typical tokens |
 | --- | --- | --- |
 | Feedback/state | Immediate acknowledgement without moving layout. Animate color, opacity, transform, or shadow. | `--motion-fast`, `--ease-standard` |
-| Entrance/exit | Preserve where a surface came from. Animate opacity and transform; remove non-essential movement under reduced motion. | `--motion-base` or `--motion-slow`, directional easing |
+| Entrance/exit | Preserve where a surface came from. Animate opacity and transform; remove non-essential movement under reduced motion. Enter and exit both use `--ease-out`. The exit uses the next faster duration token. | `--motion-base` or `--motion-slow` in; the next faster token out. The status pill enters on `--motion-slow` and already left on `--motion-fast`; that leave stays. |
 | Direct manipulation | Pointer/finger movement is 1:1. Do not transition the property being dragged or resized. Snap/release feedback may animate after release. | `--motion-instant` while manipulating |
 | Perpetual status | Motion may indicate live work but cannot be the only status signal. Stop after one iteration under reduced motion. | `--motion-status-spin`, `--motion-status-pulse`, or `--motion-status-breathe`; `--ease-linear` for rotation |
 | Status arrival | A status that appears or changes state lands with a small overshoot (the chat status pill, a lifecycle chip). One shot; transform and opacity only. | `--motion-base` or `--motion-slow`, `--ease-spring` |
@@ -29,6 +29,29 @@ rows, including an inbox dismissal restored with Undo, have a short opacity and
 position entrance; revealed action icons have one bounded arrival. These effects
 communicate placement, not command success. No stagger delays or repeated motion
 are added, and reduced motion keeps the final row and action states visible.
+
+## When motion stays off
+
+Something a person triggers constantly does not animate. The command palette,
+a keyboard shortcut, and moving through a list stay instant. A sheet, toast,
+dialog, or first-run moment may move. If the only reason to animate is that
+it looks alive, and the person will see it often, leave it still.
+
+## Easing
+
+`--ease-out` is the kit curve `--k-ease`. Enter and exit both use it.
+`ease-in` delays the frames someone is watching, so the ratchet rejects that
+timing keyword and `var(--ease-in)`, in any ASCII case and with CSS escapes
+decoded, with no ceiling. A longer identifier, including `ease-in-out`, is
+not that keyword. A quoted string is not that keyword, and a comma
+inside it does not hide a later one. A fallback argument is still a
+use. A custom property in another case is not that token.
+Declaring an `--ease-in` token does not make a use of it legal.
+
+A hover rule that translates or scales is wrapped in
+`@media (hover: hover) and (pointer: fine)`, so a tap cannot leave the
+control moved. The scroll-to-bottom button is gated that way. Color and
+background hovers are not movement and may stay.
 
 ## Property contract
 
@@ -49,6 +72,14 @@ does NOT zero `animation-delay`. Anything animating with a delay (a staggered
 list entrance, for example) must also zero its own delays under reduced
 motion explicitly, or a still-mounted element sits invisible for its
 un-zeroed delay before its (now-instant) animation ever starts.
+
+A person can also choose **Reduced** under Appearance → Display → Motion
+(#4692). It sets `data-motion="reduce"` on the root, which applies the same
+global rule from [tokens.css](../../src-ui/src/tokens.css), and
+`prefersReducedMotion()` returns true for script-driven motion. A component's
+own `@media (prefers-reduced-motion: reduce)` block still follows only the
+device; its durations are collapsed by the global rule either way. See
+[theming](../guides/theming.md#density-and-motion).
 
 ## Migration and ratchet
 

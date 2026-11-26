@@ -251,6 +251,18 @@
   position: relative;
 }
 
+.browser-pane[data-closed] .browser-pane__toolbar {
+  opacity: 0.5;
+}
+.browser-pane[data-closed] .browser-pane__stage {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.browser-pane[data-closed] .browser-pane__stage .action-row {
+  justify-content: center;
+}
+
 .browser-pane__zoom-indicator {
   background: var(--k-panel-raised);
   border-radius: var(--k-radius-sm);
@@ -512,7 +524,9 @@
   width: 8px;
 }
 
-/* An agent is driving: hovering the page says how to take over. */
+/* An agent is driving: hovering the page says how to take over. The hint
+   floats over live page pixels, so it keeps its own dark backing, white text
+   and blur to stay readable over any page in either theme. */
 .browser-pane__takeover-hint {
   backdrop-filter: blur(6px);
   background: rgb(10 14 20 / 0.78);
@@ -705,6 +719,14 @@
 .browser-tabs__item:has([aria-selected="true"]) {
   background: var(--k-panel-raised);
   box-shadow: inset 0 -2px var(--k-action);
+}
+
+/* A closed session's tab: still there to reopen, no longer a live page. */
+.browser-tabs__item[data-closed] {
+  opacity: 0.5;
+}
+.browser-tabs__item[data-closed]:has([aria-selected="true"]) {
+  box-shadow: none;
 }
 
 .browser-tabs__tab {

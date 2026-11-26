@@ -5,10 +5,9 @@ const sha = 'a'.repeat(40);
 describe('iOS TestFlight authority ref', () => {
   test.each([
     'refs/tags/v1.2.3',
-    'refs/tags/v1.2.3-preview.4',
+    'refs/tags/v1.2.3-rc.4',
     'refs/tags/nightly-version-code/243201',
     'refs/tags/ios-testflight/stable/v0.1.10/11100',
-    'refs/tags/ios-testflight/beta/v0.1.10/11100',
     'refs/tags/ios-testflight/nightly/v0.1.10/243201',
   ])('accepts exact authority %s', (sourceRef) =>
     expect(
@@ -18,6 +17,20 @@ describe('iOS TestFlight authority ref', () => {
         resolveRef: () => sha,
       }),
     ).toEqual({ sourceRef, sourceSha: sha }),
+  );
+  // Beta is retired (#4929): a preview tag is no longer a release authority.
+  test.each([
+    'refs/tags/v1.2.3-preview.4',
+    'refs/tags/v1.2.3-rc.0',
+    'refs/tags/ios-testflight/beta/v0.1.10/11100',
+  ])('rejects retired or malformed release authority %s', (sourceRef) =>
+    expect(() =>
+      verifyIosTestFlightAuthority({
+        sourceRef,
+        sourceSha: sha,
+        resolveRef: () => sha,
+      }),
+    ).toThrow(/not an internal iOS TestFlight authority tag/),
   );
   test('rejects a colliding internal release slot', () =>
     expect(() =>

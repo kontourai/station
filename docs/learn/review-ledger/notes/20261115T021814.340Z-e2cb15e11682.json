@@ -1,0 +1,7 @@
+{
+  "revision": "b9fd2b89153b463e4ea198b06e96785aded4db86",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Delta review only: scripts/run-e2e-suite.mjs now reads STATION_QUALIFICATION_MANIFEST_DIR once at entry, removes it from its own environment before main() spawns the Station server or Playwright, and passes the captured directory to writeE2EManifest. Suite selection, buckets, specs, ports and Playwright arguments did not change, so this page's claims about the suite runner are unaffected and the prose is unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/run-e2e-suite.mjs"]}
+  ]
+}

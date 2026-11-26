@@ -1,0 +1,7 @@
+{
+  "revision": "97e027776566d80e25a8ede2a5b5af56a59078fd",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed operator-only repositoryDisplay and derivedIcon fields and icon clear persistence against ProjectService, project routes, storage schema and caller tests. Member projections continue to omit these fields.","inputs":["docs/reference/api.md","src-server/domain/file-storage-adapter.ts","src-server/domain/file-storage-schemas.ts"]}
+  ]
+}

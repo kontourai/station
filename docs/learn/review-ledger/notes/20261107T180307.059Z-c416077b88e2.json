@@ -1,7 +1,0 @@
-{
-  "revision": "dfa150cef8cacaefcb7b573af12c2a95f1e4edb8",
-
-  "notes": [
-    {"path":"docs/README.md","note":"Checked the Pages source-boundary list against scripts/build-github-pages.mjs: the builder now also copies PAGES_GALLERY_SCREENS from tests/screenshots.baseline/ to dist-pages/media/; the added bullet states that and links the Pages README. Other routes unchanged.","inputs":["docs/README.md","scripts/build-github-pages.mjs"]}
-  ]
-}

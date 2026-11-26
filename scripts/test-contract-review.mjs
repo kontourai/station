@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 /** Review signals only: moved assertions and deliberate contract changes are not defects. */
@@ -59,7 +59,7 @@ if (invokedDirectly(import.meta.url)) {
   const outputPath = '.kontourai/veritas/external/test-contract-review.json';
   let report;
   try {
-    const base = execFileSync(
+    const base = execFileSyncBounded(
       'git',
       [
         'rev-parse',
@@ -69,11 +69,13 @@ if (invokedDirectly(import.meta.url)) {
       ],
       { encoding: 'utf8', windowsHide: true },
     ).trim();
-    const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+    const head = execFileSyncBounded('git', ['rev-parse', 'HEAD'], {
       encoding: 'utf8',
       windowsHide: true,
     }).trim();
-    const diff = execFileSync(
+    // The 4 MiB bound is this advisory's own: a larger diff is reported as
+    // NOT_VERIFIED below rather than reviewed.
+    const diff = execFileSyncBounded(
       'git',
       ['diff', '--no-ext-diff', '--unified=3', base, '--'],
       { encoding: 'utf8', windowsHide: true, maxBuffer: 4 * 1024 * 1024 },

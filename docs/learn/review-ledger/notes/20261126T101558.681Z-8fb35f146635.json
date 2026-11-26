@@ -1,0 +1,7 @@
+{
+  "revision": "ac1b247da8beb5796809578a9285d7172b874d01",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Scoped the #5592 no-empty-pane behaviour after independent review: desktop dock only; phone and full-screen keep their no-chat state; requested drafts dismiss as before; the card names the no-Agent case. Checked against ChatDock paneHasNoChat/dismissNewChatDraft and the dock draft tests.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockContentArea.tsx"]}
+  ]
+}

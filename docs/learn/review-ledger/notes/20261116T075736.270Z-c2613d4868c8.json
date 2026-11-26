@@ -1,0 +1,13 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Added the pull-request-feedback home root (state) and its SQLite file to STATION_HOME_SQLITE_STORES so backups checkpoint it. Citing pages describe the registry mechanism, not its full list.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Added the pull-request-feedback home root (state) and its SQLite file to STATION_HOME_SQLITE_STORES so backups checkpoint it. Citing pages describe the registry mechanism, not its full list.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Added the pull-request-feedback home root (state) and its SQLite file to STATION_HOME_SQLITE_STORES so backups checkpoint it. Citing pages describe the registry mechanism, not its full list.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Added the pull-request-feedback home root (state) and its SQLite file to STATION_HOME_SQLITE_STORES so backups checkpoint it. Citing pages describe the registry mechanism, not its full list.","inputs":["packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

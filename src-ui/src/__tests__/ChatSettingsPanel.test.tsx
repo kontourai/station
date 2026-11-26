@@ -126,7 +126,7 @@ describe('ChatSettingsPanel accessibility', () => {
     trigger.focus();
     const panelProps = props();
     const rendered = render(<ChatSettingsPanel {...panelProps} />);
-    const dialog = screen.getByRole('dialog', { name: 'Chat Settings' });
+    const dialog = screen.getByRole('dialog', { name: 'Chat settings' });
     expect(document.activeElement).toBe(dialog);
 
     const first = screen.getByRole('combobox', { name: 'Return in chat' });
@@ -155,7 +155,7 @@ describe('ChatSettingsPanel accessibility', () => {
       />,
     );
     expect(
-      screen.queryByRole('button', { name: 'Step through this conversation' }),
+      screen.queryByRole('button', { name: 'Step through this chat' }),
     ).toBeNull();
     hidden.unmount();
 
@@ -167,7 +167,7 @@ describe('ChatSettingsPanel accessibility', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Step through this conversation' }),
+      screen.getByRole('button', { name: 'Step through this chat' }),
     );
     expect(onReplayConversation).toHaveBeenCalledOnce();
     shown.unmount();
@@ -283,13 +283,13 @@ describe('ChatSettingsPanel accessibility', () => {
     );
     expect(
       screen.getByText(
-        'Chat display preferences sync with your account when signed in. Device-specific options stay on this device.',
+        'Synced to your account when signed in. Some options apply to this device only.',
       ),
     ).toBeTruthy();
     const group = screen
       .getByRole('button', { name: 'Summarize chat' })
       .closest('fieldset') as HTMLElement;
-    expect(group.textContent).toContain('Runs on the server');
+    expect(group.textContent).toContain('Adds a summary above the chat.');
     expect(openOverflow('More summary actions')).toBeTruthy();
   });
 
@@ -298,18 +298,19 @@ describe('ChatSettingsPanel accessibility', () => {
     expect(screen.queryByRole('button', { name: 'Summarize chat' })).toBeNull();
   });
 
-  test('keeps each full visible toggle label clickable and described', () => {
+  test('keeps each full visible toggle label clickable, described only when it adds detail', () => {
     const panelProps = props();
     render(<ChatSettingsPanel {...panelProps} />);
+    // A label that says it all carries no hint restating it.
     const cases = [
       {
         name: 'Show reasoning',
-        hint: 'chat-settings-reasoning-hint',
+        hint: null,
         setter: panelProps.setShowReasoning,
       },
       {
         name: 'Show tool details',
-        hint: 'chat-settings-tools-hint',
+        hint: null,
         setter: panelProps.setShowToolDetails,
       },
       {

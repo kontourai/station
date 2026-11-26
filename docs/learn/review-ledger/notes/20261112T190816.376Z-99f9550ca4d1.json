@@ -1,0 +1,45 @@
+{
+  "revision": "0f6b1a6ebf32eae76446884096cc0ae524107842",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Only the glossary changed (new user-facing label rows and a link to the UI copy guide). This map links the glossary for vocabulary and restates none of the added rows; its context boundaries are unaffected.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"Only the glossary changed (new user-facing label rows). This page defers vocabulary to the glossary and restates none of the added rows; boundaries unchanged.","inputs":["CONTEXT.md","docs/glossary.md"]},
+
+    {"path":"docs/README.md","note":"Added docs/guides/ui-copy.md to the Contributors row. Checked the link resolves (docs:links:check, docs:index:check pass) and the row's audience and visibility (repository only) fit a contributor writing guide.","inputs":["docs/README.md"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"package.json scripts gained ui-copy-style:ratchet and ui-css-slop:ratchet and gate:ui-contracts runs them. This design names no UI ratchet or gate:ui-contracts composition; installation claims unaffected.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/glossary.md","note":"Added user-facing label rows (chat, agent, engine in UI copy, when to say Session, Task/Project casing, Station operator, computer, device helper, account, usage-sharing names). Checked them against the existing rows (Task, Session, engine chips, Station with an article, Project roles), the Station-device-client section, and SHARING_LABELS in src-ui/src/components/UsageSharingChoices.tsx, whose three strings are quoted verbatim. Station operator matches existing operator usage. Contributor shorthand 'agent app' in the Station-device-client section is left as is; the new row scopes the ban to UI copy.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"component-style-hygiene LEGACY_TOKEN now also matches --error-*, --warning-*, --success-* and --shadow-*. Updated the lint:component-style paragraph to name the families it counts (space, text, radius, font, bg, border, accent, color, status, shadow), checked against the regex. The baseline gained only new keys for the added families; no existing count changed, so the inherited-debt claims still hold.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts","scripts/component-style-hygiene-baseline.json","scripts/component-style-hygiene.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"The pre-push static gates list gained ui-copy-style and ui-css-slop (each about 1s). The table row describes check-prepush-static-gates.mjs as refusing a UI-contract ratchet violation, which still holds; its stated ~7s cost is historical and named as such. No claim changed.","inputs":["docs/guides/code-quality.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"package.json changes are two new ratchet scripts and their place in gate:ui-contracts; no dependency, install or audit command this guide describes changed.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"package.json changes are two new ratchet scripts and their place in gate:ui-contracts. This guide names no UI ratchet list; verification lane and landing claims unaffected.","inputs":["docs/guides/development.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"package.json changes are two new UI ratchet scripts; the knowledge-graph commands this guide names are unchanged.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/testing.md","note":"vitest-resource-manifest classifies the two new process tests (ui-copy-style, ui-css-slop) beside ui-copy-length's, and guardrail-execution-coverage maps both gates to them. The guide's manifest-partition and guardrail-coverage claims hold; focused runs of guardrail-execution-coverage and prepush-static-gates tests pass.","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/__tests__/guardrail-execution-coverage.test.ts","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/guides/theming.md","note":"src-ui/AGENTS.md's Product copy section was rewritten (copy rules plus ratchets). This guide links DESIGN.md for product copy and makes no claim about the AGENTS section; token claims unaffected.","inputs":["docs/guides/theming.md","src-ui/AGENTS.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"src-ui/AGENTS.md changed only in its Product copy section. This page links the UI instructions generally and for owner tests; neither reference depended on the replaced bullets.","inputs":["docs/patterns/frontend.md","src-ui/AGENTS.md"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"check-prepush-static-gates.mjs gained two UI ratchet names in PREPUSH_STATIC_GATES. agent-plugin-validators-gate and the schemas/agent-plugins/ input prefix are unchanged, so this reference's pre-push claim holds.","inputs":["docs/reference/agent-plugins.md","scripts/check-prepush-static-gates.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"package.json changes are two new ratchet scripts in gate:ui-contracts; no verification receipt command, lane or schema changed.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"vitest-resource-manifest gained two scripts/__tests__ process tests; this package's classified tests and their claims are unchanged.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"The two new child-process tests are classified in vitest-resource-manifest as this file requires, and both gates have catch tests and false-positive controls. No claim here changed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Rewrote Product copy: kept the existing facts (state once, badge for status, 100-character aim, Details disclosure, --update only for shrinkage or reviewed exceptions) and added the writing rules and ratchet commands, linking docs/guides/ui-copy.md and the glossary anchor. Checked ui-copy-length.mjs still links src-ui/AGENTS.md#product-copy (heading kept) and the npm scripts named exist.","inputs":["src-ui/AGENTS.md","scripts/ui-copy-length.mjs","scripts/ui-copy-style.mjs","scripts/ui-css-slop.mjs","docs/guides/ui-copy.md"]},
+
+    {"path":"src-ui/CLAUDE.md","note":"Still imports its paired AGENTS.md via @AGENTS.md; nothing else in the file.","inputs":["src-ui/CLAUDE.md","src-ui/AGENTS.md"]},
+
+    {"path":"docs/guides/ui-copy.md","note":"New guide. Checked each gate row against its script: ui-copy-length caps (140 chars, 2 sentences), ui-copy-style kinds and the extra aria-label/alt reading, ui-css-slop kinds and excluded sheets, component-style-hygiene legacy-token, and the noun gate's RETIRED_USER_TERMS with pending flags. npm script names checked in package.json. Rule examples come from current UI strings or the audit; 'Good' rewrites are illustrations, not shipped copy.","inputs":["docs/guides/ui-copy.md","package.json#/scripts","scripts/component-style-hygiene.mjs","scripts/noun-consistency-gate.mjs","scripts/ui-copy-length.mjs","scripts/ui-copy-style.mjs","scripts/ui-css-slop.mjs"]}
+  ]
+}

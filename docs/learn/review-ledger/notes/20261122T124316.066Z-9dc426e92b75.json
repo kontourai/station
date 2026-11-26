@@ -1,0 +1,7 @@
+{
+  "revision": "00552ef071b1030a5bb498d32789001d4eda94cd",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Shipped docs bundle regenerated after the module-map paragraph was shortened; the page's description of the bundle and its generator is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

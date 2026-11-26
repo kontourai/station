@@ -1,0 +1,49 @@
+{
+  "revision": "e365e919adcb9fce403ff33440d5762c79a19946",
+
+  "notes": [
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"The additive engine mode observation records the adapter’s own engine response. It does not admit a new trusted producer or change producer pin validation.","inputs":["docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"The Session summary restores a separately retained engine mode. The existing read-time answerability inputs, derivation and lifecycle remain the authority for request actions.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Engine mode confirmation reflects the existing advertised mode after ACP applies it. The mode event leaves extension authority and permission delivery unchanged.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Engine mode confirmation reflects the existing advertised mode after ACP applies it. The mode event leaves extension authority and permission delivery unchanged.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed ACP mode application at next send. The adapter publishes the confirmation separately from model and directory configuration. Engine selection, advertised mode validation and session setup routes retain their behavior.","inputs":["docs/design/acp-chat-architecture.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the pending mode and matching confirmation through the composer fold. The Session’s current mode restores from the bounded snapshot without replacing unrelated pending options.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/hooks/orchestration/snapshotHandlers.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"The new provider mode observation carries only a mode identifier. It does not alter MCP UI resources or the render bridge.","inputs":["docs/design/mcp-ui-host.md","packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the additive Session mode field and event. A mode-only event preserves configured model, cwd and route, and the bounded projection provides the reported mode to existing readers.","inputs":["docs/design/placement.md","packages/contracts/src/orchestration.ts","src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"The event handler folds the confirmed mode independently of lifecycle and pending model options. The recorded mode is separate from replay transport and transcript content.","inputs":["docs/design/session-tape-replay.md","src-ui/src/hooks/orchestration/eventHandlers.ts","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed ACP mode application at next send. The adapter publishes the confirmation separately from model and directory configuration. Engine selection, advertised mode validation and session setup routes retain their behavior.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed ACP mode application at next send. The adapter publishes the confirmation separately from model and directory configuration. Engine selection, advertised mode validation and session setup routes retain their behavior.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed ACP mode application at next send. The adapter publishes the confirmation separately from model and directory configuration. Engine selection, advertised mode validation and session setup routes retain their behavior.","inputs":["docs/guides/connections.md","src-server/providers/adapters/acp-adapter.ts","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/development.md","note":"The ACP adapter fixture observes confirmed mode and the SQLite control exercises single and batched projection after reload. This evidence is limited to the exercised Station boundaries.","inputs":["docs/guides/development.md","src-server/providers/__tests__/acp-adapter.test.ts","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed ACP mode application at next send. The adapter publishes the confirmation separately from model and directory configuration. Engine selection, advertised mode validation and session setup routes retain their behavior.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/orchestration.ts","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The ACP adapter fixture observes confirmed mode and the SQLite control exercises single and batched projection after reload. This evidence is limited to the exercised Station boundaries.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the additive Session mode field and event. A mode-only event preserves configured model, cwd and route, and the bounded projection provides the reported mode to existing readers.","inputs":["docs/reference/api.md","packages/contracts/src/runtime-events.ts","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed ACP mode application at next send. The adapter publishes the confirmation separately from model and directory configuration. Engine selection, advertised mode validation and session setup routes retain their behavior.","inputs":["docs/reference/cli.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the additive Session mode field and event. A mode-only event preserves configured model, cwd and route, and the bounded projection provides the reported mode to existing readers.","inputs":["docs/reference/contracts.md","packages/contracts/src/orchestration.ts","packages/contracts/src/runtime-events.ts","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/hooks/orchestration/snapshotHandlers.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the additive Session mode field and event. A mode-only event preserves configured model, cwd and route, and the bounded projection provides the reported mode to existing readers.","inputs":["docs/reference/sdk.md","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/hooks/orchestration/snapshotHandlers.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the additive Session mode field and event. A mode-only event preserves configured model, cwd and route, and the bounded projection provides the reported mode to existing readers.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/hooks/orchestration/snapshotHandlers.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed ACP mode application at next send. The adapter publishes the confirmation separately from model and directory configuration. Engine selection, advertised mode validation and session setup routes retain their behavior.","inputs":["docs/reference/station-docs.md","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed ACP mode application at next send. The adapter publishes the confirmation separately from model and directory configuration. Engine selection, advertised mode validation and session setup routes retain their behavior.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

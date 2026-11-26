@@ -1,0 +1,47 @@
+{
+  "revision": "48a8eebaaaa9916d403bb8e86c8bed048ee73d19",
+
+  "notes": [
+    {"path":"docs/design/developer-surface.md","note":"Reviewed Settings, Project and developer section navigation against the shared actions slot. The optional wrapper leaves the rail links, active item and phone picker intact. Existing navigation tests cover selection.","inputs":["src-ui/src/components/SectionNavigation.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed Settings, Project and developer section navigation against the shared actions slot. The optional wrapper leaves the rail links, active item and phone picker intact. Existing navigation tests cover selection.","inputs":["src-ui/src/components/SectionNavigation.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed Settings, Project and developer section navigation against the shared actions slot. The optional wrapper leaves the rail links, active item and phone picker intact. Existing navigation tests cover selection.","inputs":["src-ui/src/components/SectionNavigation.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Reviewed the shared desktop rail and phone picker against Project, Settings and Connections layout references. The desktop slot supplies spacing before the list. Gallery verified the touched Project views and Settings.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the repository setup and Settings guidance. Manage sources uses the existing Project navigation callback beside the Add repository action. The picker and repair workflow retain their destinations.","inputs":["src-ui/src/views/project-settings/ProjectSourcesSection.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the repository setup and Settings guidance. Manage sources uses the existing Project navigation callback beside the Add repository action. The picker and repair workflow retain their destinations.","inputs":["src-ui/src/views/project-settings/ProjectSourcesSection.tsx"]}
+  ]
+}

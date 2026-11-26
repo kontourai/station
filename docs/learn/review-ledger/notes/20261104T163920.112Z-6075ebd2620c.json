@@ -1,7 +1,0 @@
-{
-  "revision": "ba82174fa26917a6a5358fbc5bd672ebbf17fcf6",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed RuntimeResourcePostureController against resource-posture.ts and its updated tests: CPU remains diagnostic; interactive waiters are FIFO, limited to 32 and 60 seconds, with signal-dependent abort and no current composer status. The added within-cap test checks that all 32 waiters remain queued before the 33rd is refused. Source and synthetic test evidence only; no live provider or UI run.","inputs":["docs/architecture/module-map.md","src-server/services/infra/__tests__/resource-posture.test.ts"]}
-  ]
-}

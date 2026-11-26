@@ -41,7 +41,7 @@ interface UIBlockRendererProps {
  * `<span title>` — a plain, standard HTML tooltip, not a new component API.
  */
 const UNATTESTED_TOOLTIP =
-  'Unattested: the host has not receipted a source declaration for this data — it is not verified against anything.';
+  "No source was declared for this data, so it isn't verified.";
 
 function UnattestedBadge({ block }: { block: UIBlock }) {
   if (block.attestationState !== 'unattested') return null;

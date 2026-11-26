@@ -1,0 +1,7 @@
+{
+  "revision": "6e9ca58a096abda02d4e9891800428a01bc4992d",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Re-read the unknown-fingerprint paragraph against muse-serve-schema.ts verify(): both --version runs must name serverInfo.version and print the identical full line (build included); updated the sentence to say so. Other claims (15 s bound, unattended env, manifest scope, warning) unchanged and still match.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/muse-serve-schema.ts"]}
+  ]
+}

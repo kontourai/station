@@ -16,6 +16,7 @@ import {
   recordSkillOutcome,
   type SkillImportFile,
   trackSkillRun,
+  uninstallRegistrySkill,
   updateLocalSkill,
 } from '../client/skills';
 import { type QueryConfig, useApiQuery } from '../query-core';
@@ -66,17 +67,7 @@ export function useUninstallSkillMutation() {
   return useMutation({
     mutationFn: async (id: string) => {
       const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(
-        `${apiBase}/api/registry/skills/${id}`,
-        {
-          method: 'DELETE',
-        },
-      );
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(apiErrorMessage(result, 'Uninstall failed'));
-      }
-      return result;
+      return uninstallRegistrySkill(apiBase, id);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   });

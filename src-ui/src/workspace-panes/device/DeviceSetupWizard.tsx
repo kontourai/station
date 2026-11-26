@@ -7,6 +7,7 @@ import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { type ReactNode, useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
+import { ArrowLeftGlyph } from '../../components/icons/Glyph';
 import { SkeletonBlock } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
 import { DeviceShares } from './DeviceShares';
@@ -18,6 +19,7 @@ import {
   useDeviceToolchainStatus,
 } from './deviceToolchainApi';
 import './DeviceSetupWizard.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 /**
  * Three-step device setup (#1970, D11): the device hub, simulator/emulator
@@ -26,7 +28,7 @@ import './DeviceSetupWizard.css';
  * status line is the server's derived state, polled while it moves.
  */
 
-const STEPS = ['Device hub', 'Simulators', 'Agent access'] as const;
+const STEPS = ['Device helper', 'Simulators', 'Agent access'] as const;
 
 const PHASE_LABEL = {
   preparing: 'preparing',
@@ -102,10 +104,10 @@ function hubStatusLine(status: DeviceToolchainStatus): Line | undefined {
   if (status.hubSource === 'configured')
     return {
       tone: 'ready',
-      text: 'Using the device hub configured in Settings (Device helper URL).',
+      text: 'Using the device helper set in Settings (Device helper URL).',
     };
   if (!status.hubEnabled && status.hub.state !== 'installing') return undefined;
-  const install = installLine(status.hub, 'the device hub', {
+  const install = installLine(status.hub, 'the device helper', {
     kind: 'hub',
     enabled: true,
     consent: true,
@@ -114,11 +116,11 @@ function hubStatusLine(status: DeviceToolchainStatus): Line | undefined {
   if (status.hub.state !== 'installed') return undefined;
   switch (status.hubProcess.state) {
     case 'starting':
-      return { tone: 'progress', text: 'Starting the device hub…' };
+      return { tone: 'progress', text: 'Starting the device helper…' };
     case 'restarting':
       return {
         tone: 'progress',
-        text: 'The device hub stopped; Station is restarting it…',
+        text: 'The device helper stopped; Station is restarting it…',
       };
     case 'blocked':
       return {
@@ -129,15 +131,15 @@ function hubStatusLine(status: DeviceToolchainStatus): Line | undefined {
     case 'crashed':
       return {
         tone: 'problem',
-        text: `The device hub stopped after repeated failures. ${status.hubProcess.detail}`,
+        text: `The device helper stopped after repeated failures. ${status.hubProcess.detail}`,
         action: { label: 'Start again', run: { kind: 'start-hub' } },
       };
     case 'running':
-      return { tone: 'ready', text: 'The device hub is ready.' };
+      return { tone: 'ready', text: 'The device helper is ready.' };
     case 'stopped':
       return {
         tone: 'ready',
-        text: 'The device hub is installed and starts when a device view needs it.',
+        text: 'The device helper is installed and starts when a device view needs it.',
       };
   }
 }
@@ -228,6 +230,7 @@ export default function DeviceSetupWizard({
   requestScope: ApiRequestScope;
   onClose: () => void;
 }) {
+  useDecisionSurface('device-agent-control');
   const [step, setStep] = useState(0);
   const status = useDeviceToolchainStatus(requestScope);
   const action = useDeviceToolchainAction(requestScope);
@@ -263,8 +266,8 @@ export default function DeviceSetupWizard({
     if (step === 0) {
       body = (
         <Choice
-          title="Enable the device hub"
-          label="Enable device hub"
+          title="Turn on the device helper"
+          label="Turn on device helper"
           checked={data.hubEnabled || data.hubSource === 'configured'}
           disabled={busy || data.hubSource === 'configured'}
           description={
@@ -274,9 +277,9 @@ export default function DeviceSetupWizard({
                 {data.hub.state === 'installed'
                   ? data.hub.version
                   : data.hub.requiredVersion}{' '}
-                from npm into its own home. Station runs the device hub locally
-                and only answers requests from Station itself. It lets you open
-                simulators and emulators here.
+                from npm into its own home. Station runs the device helper
+                locally and only answers requests from Station itself. It lets
+                you open simulators and emulators here.
               </p>
               <p>Turning this on is your consent to that download.</p>
             </>
@@ -400,9 +403,13 @@ export default function DeviceSetupWizard({
       footer={
         <>
           {step === 0 ? (
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onClose} variant="ghost">
+              Cancel
+            </Button>
           ) : (
-            <Button onClick={() => setStep(step - 1)}>Back</Button>
+            <Button onClick={() => setStep(step - 1)} variant="ghost">
+              <ArrowLeftGlyph /> Back
+            </Button>
           )}
           {step < STEPS.length - 1 ? (
             <Button

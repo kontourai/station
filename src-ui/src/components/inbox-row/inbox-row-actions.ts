@@ -1,20 +1,16 @@
-import {
-  SNOOZE_OPTIONS,
-  snoozeWakeAt,
-} from '../chat-dock/mobile-activity-groups';
+import { snoozeChoices } from './snooze-presets';
 
 type SelectAction = (trigger: HTMLButtonElement) => void;
 
 interface ActionLabel {
   label: string;
-  shortLabel: string;
   accessibleLabel: string;
 }
 
 export interface InboxRowCommand extends ActionLabel {
   kind: 'command';
-  id: 'resolution' | 'close' | 'restore' | 'discard-unsent';
-  icon: 'settle' | 'reopen' | 'close' | 'restore' | 'discard';
+  id: 'open' | 'done' | 'discard-unsent';
+  icon: 'open' | 'done' | 'reopen' | 'discard';
   pending?: boolean;
   danger?: boolean;
   select: SelectAction;
@@ -24,7 +20,7 @@ export interface InboxRowSnoozeAction extends ActionLabel {
   kind: 'snooze';
   id: 'snooze';
   isSnoozed: boolean;
-  choices: { label: string; wakeAt: number }[];
+  choices: { label: string; hint: string; wakeAt: number }[];
   choose: (wakeAt: number | null, trigger: HTMLButtonElement) => void;
 }
 
@@ -40,93 +36,79 @@ export type InboxRowAction =
   | InboxRowSnoozeAction
   | InboxRowDiscardAction;
 
+/**
+ * The row menu, in its one order: Open chat, Mark done (Reopen once done),
+ * Snooze (Wake now once snoozed), then Discard draft. Mark done is one verb
+ * whatever the host does underneath (settle, hide on the host, or dismiss on
+ * this device); the host decides which, so the words never do.
+ */
 export function inboxRowActions({
   title,
   now,
+  open,
+  task = false,
+  done,
   snooze,
-  close,
-  restore,
-  resolution,
   discardUnsent,
   discard,
 }: {
   title: string;
   now: number;
+  open?: SelectAction;
+  /** A Task row opens a task, not a chat. */
+  task?: boolean;
+  done?: { done: boolean; pending?: boolean; select: SelectAction };
   snooze?: {
     isSnoozed: boolean;
     choose: InboxRowSnoozeAction['choose'];
   };
-  close?: { dismiss: boolean; select: SelectAction };
-  restore?: SelectAction;
-  resolution?: {
-    settled: boolean;
-    pending: boolean;
-    select: SelectAction;
-  };
+  /** This device's unsent composer text for the row's chat. */
   discardUnsent?: SelectAction;
+  /** A Draft conversation, discarded on the server. */
   discard?: { threadId: string; onDiscarded: SelectAction };
 }): InboxRowAction[] {
   const actions: InboxRowAction[] = [];
-  if (resolution) {
-    const verb = resolution.settled ? 'Reopen' : 'Settle';
+  if (open) {
+    const label = task ? 'Open task' : 'Open chat';
     actions.push({
       kind: 'command',
-      id: 'resolution',
-      label: `${verb} conversation`,
-      shortLabel: verb,
-      accessibleLabel: `${verb} ${title}`,
-      icon: resolution.settled ? 'reopen' : 'settle',
-      pending: resolution.pending,
-      select: resolution.select,
+      id: 'open',
+      label,
+      accessibleLabel: `${label} ${title}`,
+      icon: 'open',
+      select: open,
+    });
+  }
+  if (done) {
+    actions.push({
+      kind: 'command',
+      id: 'done',
+      label: done.done ? 'Reopen' : 'Mark done',
+      accessibleLabel: done.done ? `Reopen ${title}` : `Mark ${title} done`,
+      icon: done.done ? 'reopen' : 'done',
+      pending: done.pending,
+      select: done.select,
     });
   }
   if (snooze) {
-    const label = snooze.isSnoozed ? 'Unsnooze' : 'Snooze';
     actions.push({
       kind: 'snooze',
       id: 'snooze',
-      label,
-      shortLabel: label,
-      accessibleLabel: `${label} ${title}`,
+      label: snooze.isSnoozed ? 'Wake now' : 'Snooze',
+      accessibleLabel: snooze.isSnoozed
+        ? `Wake ${title} now`
+        : `Snooze ${title}`,
       isSnoozed: snooze.isSnoozed,
-      choices: SNOOZE_OPTIONS.map((option) => ({
-        label: option.label,
-        wakeAt: snoozeWakeAt(option, now),
-      })),
+      choices: snoozeChoices(now),
       choose: snooze.choose,
-    });
-  }
-  if (restore) {
-    actions.push({
-      kind: 'command',
-      id: 'restore',
-      label: 'Restore to inbox',
-      shortLabel: 'Restore',
-      accessibleLabel: `Restore ${title} to inbox`,
-      icon: 'restore',
-      select: restore,
-    });
-  }
-  if (close) {
-    actions.push({
-      kind: 'command',
-      id: 'close',
-      label: close.dismiss ? 'Dismiss from inbox' : 'Close chat',
-      shortLabel: close.dismiss ? 'Dismiss' : 'Close',
-      accessibleLabel: close.dismiss
-        ? `Dismiss ${title} from inbox`
-        : `Close ${title}`,
-      icon: 'close',
-      select: close.select,
     });
   }
   if (discardUnsent) {
     actions.push({
       kind: 'command',
       id: 'discard-unsent',
-      label: 'Discard unsent draft',
-      shortLabel: 'Discard draft',
-      accessibleLabel: `Discard unsent draft for ${title}`,
+      label: 'Discard draft',
+      accessibleLabel: `Discard draft for ${title}`,
       icon: 'discard',
       danger: true,
       select: discardUnsent,
@@ -137,7 +119,6 @@ export function inboxRowActions({
       kind: 'discard',
       id: 'discard',
       label: 'Discard draft',
-      shortLabel: 'Discard draft',
       accessibleLabel: `Discard draft ${title}`,
       ...discard,
     });

@@ -1,7 +1,0 @@
-{
-  "revision": "b24a2554f280b5e9bc83e1d71f33d15b498e82c9",
-
-  "notes": [
-    {"path":"src-desktop/icons/README.md","note":"Checked the #4401 index.css delta: it adds only dock-bar rules (compact side bar, collapsed side strip). The icon generator and favicon claims here do not depend on them; unchanged.","inputs":["src-desktop/icons/README.md","src-ui/src/index.css"]}
-  ]
-}

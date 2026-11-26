@@ -49,5 +49,5 @@ test('keeps Download, and offers a retry, when the PDF viewer cannot load', asyn
       .getByRole('link', { name: 'Download offline.pdf' })
       .getAttribute('href'),
   ).toBe('blob:offline-pdf');
-  expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
 });

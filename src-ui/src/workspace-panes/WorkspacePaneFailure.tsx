@@ -153,7 +153,7 @@ export function WorkspacePaneFailure({
         </p>
         <div className="workspace-pane-failure__actions">
           <Button variant="primary" onClick={onRetry}>
-            Try again
+            Retry
           </Button>
           {context?.back ? (
             <Button onClick={context.back.onBack}>{context.back.label}</Button>

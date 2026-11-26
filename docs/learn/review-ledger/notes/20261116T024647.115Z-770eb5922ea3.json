@@ -1,0 +1,9 @@
+{
+  "revision": "a21eb8e52d4abd581d05c312e75d6028252d092c",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"The caution now moves focus, is a status region and says Not now; pane-relationships and starter-work claims about the reader are unchanged.","inputs":["src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The caution now moves focus, is a status region and says Not now; pane-relationships and starter-work claims about the reader are unchanged.","inputs":["src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]}
+  ]
+}

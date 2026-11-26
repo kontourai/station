@@ -1,7 +1,0 @@
-{
-  "revision": "61fadf09cb9683b908d90e5ebc3bb5f7707f9576",
-
-  "notes": [
-    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"useLiveSurface fix: every hook refused fold=1 or H.264 now reconnects without it, not only the first to record the page-wide decline. Claims that a refused host is asked again without the key, and that declines are remembered per target, now hold for concurrent viewers; no other claim changes.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/live-surface/useLiveSurface.ts"]}
-  ]
-}

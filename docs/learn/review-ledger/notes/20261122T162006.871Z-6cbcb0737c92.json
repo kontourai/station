@@ -1,0 +1,7 @@
+{
+  "revision": "4f101ab0f8de657ae1782cf97535fc02e19c1715",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"The guardrails section points at voltagent-adapter.ts for where token and sampling values are passed; unchanged by the onEnd change. agent-hooks.ts link is a context pointer only.","inputs":["docs/reference/config.md","src-server/runtime/agents/agent-hooks.ts","src-server/runtime/frameworks/voltagent-adapter.ts"]}
+  ]
+}

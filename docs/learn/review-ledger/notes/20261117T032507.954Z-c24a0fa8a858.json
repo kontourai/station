@@ -1,0 +1,9 @@
+{
+  "revision": "83e95a400e219db6d569aab52ca91f6800689998",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"api.md edit is the scheduler owner paragraph only; terminal design and integrating-station cite unrelated sections.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md edit is the scheduler owner paragraph only; terminal design and integrating-station cite unrelated sections.","inputs":["docs/reference/api.md"]}
+  ]
+}

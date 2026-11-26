@@ -1,0 +1,9 @@
+{
+  "revision": "7f786e6e7a4e0fb54c6385197c1cda4f7dc56747",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Bounded delta review: the test file's built-in station-control assertion now also pins the home's NODE_COMPILE_CACHE beside the internal token; the third-party server still has no env. Citing pages (tool-policy delivery cascade and explicit mcpServers selection; smoke confidence fixtures) make no claim about the built-in env contents. Executed the connected-agents suite and a fault injection removing the forward. No prose change.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Bounded delta review: the test file's built-in station-control assertion now also pins the home's NODE_COMPILE_CACHE beside the internal token; the third-party server still has no env. Citing pages (tool-policy delivery cascade and explicit mcpServers selection; smoke confidence fixtures) make no claim about the built-in env contents. Executed the connected-agents suite and a fault injection removing the forward. No prose change.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]}
+  ]
+}

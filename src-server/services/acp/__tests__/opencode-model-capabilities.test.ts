@@ -46,15 +46,17 @@ describe('parseOpenCodeModelListing', () => {
   test('reads capabilities.input.image from the real listing shape', () => {
     const models = parseOpenCodeModelListing(FIXTURE);
     // output.image is false for every fixture model; only input counts.
-    expect(models.get('opencode/big-pickle')).toBe(false);
-    expect(models.get('opencode/fledge-alpha-free')).toBe(true);
-    expect(models.get('openrouter/aion-labs/aion-2.0')).toBe(false);
+    expect(models.get('opencode/big-pickle')?.imageInput).toBe(false);
+    expect(models.get('opencode/fledge-alpha-free')?.imageInput).toBe(true);
+    expect(models.get('openrouter/aion-labs/aion-2.0')?.imageInput).toBe(false);
   });
 
   test('a model with variants also answers for its variant option values', () => {
     const models = parseOpenCodeModelListing(FIXTURE);
-    expect(models.get('opencode/fledge-alpha-free/high')).toBe(true);
-    expect(models.get('opencode/fledge-alpha-free/low')).toBe(true);
+    expect(models.get('opencode/fledge-alpha-free/high')?.imageInput).toBe(
+      true,
+    );
+    expect(models.get('opencode/fledge-alpha-free/low')?.imageInput).toBe(true);
     expect(models.has('opencode/fledge-alpha-free/nonexistent')).toBe(false);
   });
 
@@ -83,12 +85,12 @@ describe('parseOpenCodeModelListing', () => {
       '}',
     ].join('\n');
     const models = parseOpenCodeModelListing(broken);
-    expect([...models.entries()]).toEqual([['p/good', true]]);
+    expect([...models.entries()]).toEqual([['p/good', { imageInput: true }]]);
   });
 
   test('tolerates CRLF line endings', () => {
     const models = parseOpenCodeModelListing(FIXTURE.replace(/\n/g, '\r\n'));
-    expect(models.get('opencode/fledge-alpha-free')).toBe(true);
+    expect(models.get('opencode/fledge-alpha-free')?.imageInput).toBe(true);
   });
 });
 
@@ -424,6 +426,11 @@ describe('catalog fill', () => {
       run: async () => ({ ok: true, stdout: FIXTURE }),
     });
     const models = acpRuntimeCatalogStatus(liveStatus('opencode')).models;
+    expect(
+      models.find((m) => m.id === 'openrouter/aion-labs/aion-2.0'),
+    ).toMatchObject({
+      catalogRoute: { providerId: 'openrouter', modelId: 'aion-labs/aion-2.0' },
+    });
     expect(
       Object.fromEntries(
         models.map((model) => [model.id, model.capabilities?.imageInput]),

@@ -1,7 +1,0 @@
-{
-  "revision": "8b7bc32cb6f5a04d51c0e27c46d0a8a9ae2d5ad7",
-
-  "notes": [
-    {"path":"packages/sdk/AGENTS.md","note":"Re-read against the SDK reference's new Managed policy section: it still routes SDK changes to that reference and asks for consumer tests; the new query hook's consumers (ManagedPolicyProvider, picker and chip tests) are covered.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
-  ]
-}

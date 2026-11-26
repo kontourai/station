@@ -14,13 +14,13 @@
   "dependencies": {
     "@kontourai/station-contracts": "workspace:*",
     "@kontourai/station-shared": "workspace:*",
-    "@hono/node-server": "2.1.6",
-    "hono": "4.13.16",
+    "@hono/node-server": "2.1.7",
+    "hono": "4.13.17",
     "pg": "8.23.1"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
-    "@electric-sql/pglite": "0.5.14"
+    "@electric-sql/pglite": "0.5.16"
   },
   "license": "Apache-2.0"
 }

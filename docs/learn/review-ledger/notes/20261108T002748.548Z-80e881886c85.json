@@ -1,7 +1,0 @@
-{
-  "revision": "6d24a3afcdae185bf6a3c83de81d231783f95cc8",
-
-  "notes": [
-    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the added child fan-out paragraph against request-delegation.ts deriveCallerChildDelegation (decision uses the caller's own recorded context plus DEFAULT_CHILD_BLOCKED_TOOLS, before the depth limit) and the DELEGATION_REFUSAL_CODES entry in orchestration.ts. The Codex and ACP partial-coverage claims are unchanged; the paragraph says it is not coverage of a shell CLI under an operator credential.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/orchestration/session-agent-resolution.ts"]}
-  ]
-}

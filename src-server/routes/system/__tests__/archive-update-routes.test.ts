@@ -41,9 +41,9 @@ const { resolveInstallProvenance } = await import('../install-provenance.js');
 
 const makeTempDir = trackTempDirs();
 
-const RUNNING = '0.8.0-preview.1';
-const NEWER = '0.8.0-preview.2';
-const MANIFEST_URL = 'https://releases.example.test/station/preview.json';
+const RUNNING = '0.8.1';
+const NEWER = '0.8.2';
+const MANIFEST_URL = 'https://releases.example.test/station/stable.json';
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 
 /** Written independently of the verifier under test. */
@@ -75,7 +75,7 @@ function releasePayload(
   });
   return {
     schemaVersion: 2,
-    channel: 'preview',
+    channel: 'stable',
     version,
     releaseTag: `v${version}`,
     sourceSha: SHA,
@@ -94,7 +94,7 @@ function releasePayload(
 }
 
 const keys = generateKeyPairSync('ed25519');
-const KEY_ID = 'station-test-preview';
+const KEY_ID = 'station-test-release';
 const TEST_KEYS = {
   keys: [
     {
@@ -103,7 +103,7 @@ const TEST_KEYS = {
       publicKeySpkiPem: keys.publicKey
         .export({ type: 'spki', format: 'pem' })
         .toString(),
-      channels: ['preview', 'nightly'],
+      channels: ['stable', 'nightly'],
     },
   ],
 };
@@ -140,15 +140,23 @@ function makeInstall({
   installerOwned = true,
   manifestUrl = MANIFEST_URL as string | null,
   stateSchema = 4,
-  ring = 'preview' as 'preview' | 'nightly',
+  ring = 'stable' as 'stable' | 'nightly' | 'preview',
 }: {
   installerOwned?: boolean;
   manifestUrl?: string | null;
   stateSchema?: 3 | 4;
-  ring?: 'preview' | 'nightly';
+  /** `preview`: an install of the ring #4929 retired, as it was written. */
+  ring?: 'stable' | 'nightly' | 'preview';
 } = {}): Install {
-  const channel = ring === 'nightly' ? 'nightly' : 'beta';
-  const version = ring === 'nightly' ? '0.8.0-nightly.1' : RUNNING;
+  // The runtime channel each ring's archive carries; the retired Preview
+  // ring's was Beta.
+  const channel = ring === 'preview' ? 'beta' : ring;
+  const version =
+    ring === 'nightly'
+      ? '0.8.0-nightly.1'
+      : ring === 'preview'
+        ? '0.8.0-preview.1'
+        : RUNNING;
   const installRoot = makeTempDir('station-archive-install-');
   if (installerOwned) {
     writeFileSync(
@@ -161,7 +169,7 @@ function makeInstall({
     releaseChannel: ring,
     installRoot,
     stationRoot: join(installRoot, 'root'),
-    stationHome: join(installRoot, 'root', 'instances', 'beta'),
+    stationHome: join(installRoot, 'root', 'instances', channel),
     serverPort: 29141,
     uiPort: 29000,
   };
@@ -182,15 +190,31 @@ function makeInstall({
   );
   writeFileSync(
     join(versionRoot, '.station-release.json'),
-    `${JSON.stringify({
-      schemaVersion: 2,
-      sha: SHA,
-      ref: `v${version}`,
-      createdAt: '2026-09-20T00:00:00.000Z',
-      channel,
-      releaseChannel: ring,
-      prerelease: true,
-    })}\n`,
+    // createPackagedReleaseManifest (scripts/lib/container-release-metadata.mjs,
+    // which the portable archive builder calls) writes Stable as schema 3,
+    // bound to the product version, and Nightly as schema 2, bound to its
+    // tag; a Preview archive was schema 2 before #4929.
+    `${JSON.stringify(
+      ring === 'stable'
+        ? {
+            schemaVersion: 3,
+            sha: SHA,
+            version,
+            createdAt: '2026-09-20T00:00:00.000Z',
+            channel,
+            releaseChannel: ring,
+            prerelease: false,
+          }
+        : {
+            schemaVersion: 2,
+            sha: SHA,
+            ref: `v${version}`,
+            createdAt: '2026-09-20T00:00:00.000Z',
+            channel,
+            releaseChannel: ring,
+            prerelease: true,
+          },
+    )}\n`,
   );
   return { installRoot, versionRoot, moduleDir };
 }
@@ -258,7 +282,7 @@ describe('GET /core-update on a launcher-run archive', () => {
     expect(body).toMatchObject({
       installKind: 'archive-service',
       applyMethod: 'service-update',
-      channel: 'preview',
+      channel: 'stable',
       currentVersion: RUNNING,
       latestVersion: NEWER,
       releaseCheck: 'verified',
@@ -279,11 +303,11 @@ describe('GET /core-update on a launcher-run archive', () => {
     expect(
       await json(await createApp(install).request('/core-update')),
     ).toMatchObject({ latestVersion: RUNNING, updateAvailable: false });
-    serveManifest(signedManifest(releasePayload('0.7.9-preview.4')));
+    serveManifest(signedManifest(releasePayload('0.7.9')));
     expect(
       await json(await createApp(install).request('/core-update')),
     ).toMatchObject({
-      latestVersion: '0.7.9-preview.4',
+      latestVersion: '0.7.9',
       updateAvailable: false,
     });
   });
@@ -300,7 +324,7 @@ describe('GET /core-update on a launcher-run archive', () => {
       updateAvailable: false,
     });
     expect(body.latestVersion).toBeUndefined();
-    expect(body.technicalDetail).toMatch(/station-test-preview is not pinned/);
+    expect(body.technicalDetail).toMatch(/station-test-release is not pinned/);
   });
 
   test('refuses a manifest with a bad signature or another channel', async () => {
@@ -320,7 +344,7 @@ describe('GET /core-update on a launcher-run archive', () => {
     body = await json(await createApp(install).request('/core-update'));
     expect(body).toMatchObject({ releaseCheck: 'unverified' });
     expect(body.technicalDetail).toMatch(
-      /channel nightly does not match the expected channel preview/,
+      /channel nightly does not match the expected channel stable/,
     );
   });
 
@@ -398,14 +422,14 @@ describe('a manifest older than a release this install already accepted (#187)',
     );
   }
   const mark = (version: string) =>
-    `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'preview', version })}\n`;
+    `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'stable', version })}\n`;
 
   test('is not offered, and an apply is refused, even though it is newer than the running release', async () => {
-    // The service rolled back from preview.5 to preview.1; a replayed,
-    // validly signed preview.3 manifest is newer than what runs.
+    // The service rolled back from 0.8.5 to 0.8.1; a replayed, validly
+    // signed 0.8.3 manifest is newer than what runs.
     const install = makeInstall();
-    acceptRelease(install, mark('0.8.0-preview.5'));
-    serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+    acceptRelease(install, mark('0.8.5'));
+    serveManifest(signedManifest(releasePayload('0.8.3')));
     const body = await json(await createApp(install).request('/core-update'));
     expect(body).toMatchObject({
       releaseCheck: 'unverified',
@@ -414,7 +438,7 @@ describe('a manifest older than a release this install already accepted (#187)',
     expect(body.latestVersion).toBeUndefined();
     const record = join(install.installRoot, '.station-release-accepted.json');
     expect(body.message).toBe(
-      'The preview release manifest offers 0.8.0-preview.3, older than 0.8.0-preview.5 which this install already accepted, so it is not offered.',
+      'The stable release manifest offers 0.8.3, older than 0.8.5 which this install already accepted, so it is not offered.',
     );
     expect(body.technicalDetail).toBe(
       `the manifest is stale or replayed (accepted release recorded in ${record})`,
@@ -431,7 +455,7 @@ describe('a manifest older than a release this install already accepted (#187)',
   test('the accepted release itself, or a newer one, is still offered', async () => {
     const install = makeInstall();
     acceptRelease(install, mark(NEWER));
-    for (const version of [NEWER, '0.8.0-preview.9']) {
+    for (const version of [NEWER, '0.8.9']) {
       serveManifest(signedManifest(releasePayload(version)));
       expect(
         await json(await createApp(install).request('/core-update')),
@@ -451,7 +475,7 @@ describe('a manifest older than a release this install already accepted (#187)',
         `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'nightly', version: '0.8.0-nightly.1' })}\n`,
         0o600,
       ],
-      [mark('0.8.0-preview.1'), 0o644],
+      [mark('0.8.1'), 0o644],
     ] as const) {
       const install = makeInstall();
       acceptRelease(install, text);
@@ -469,9 +493,38 @@ describe('a manifest older than a release this install already accepted (#187)',
         "This install's record of the newest release it accepted is unreadable, so no update is offered. On the host, fix its owner and permissions or remove it, then check again.",
       );
       expect(body.technicalDetail).toBe(
-        `${join(install.installRoot, '.station-release-accepted.json')} is not a private file of this user holding a preview release record`,
+        `${join(install.installRoot, '.station-release-accepted.json')} is not a private file of this user holding a stable release record`,
       );
     }
+  });
+});
+
+describe('an install of a retired ring (#4929)', () => {
+  test('a Preview install is not an archive of any ring: nothing is checked, offered or applied, and it is not treated as Stable', async () => {
+    const install = makeInstall({ ring: 'preview' });
+    const app = createApp(install);
+    const body = await json(await app.request('/core-update'));
+    expect(body).toMatchObject({
+      installKind: 'unknown',
+      provenanceIssue: 'missing',
+      updateAvailable: false,
+    });
+    expect(body).not.toHaveProperty('channel');
+    expect(body).not.toHaveProperty('latestVersion');
+    expect(body).not.toHaveProperty('applyMethod');
+    expect(fetchFn).not.toHaveBeenCalled();
+
+    const post = await app.request('/core-update', { method: 'POST' });
+    expect(post.status).toBe(409);
+    expect(await json(post)).toEqual({
+      success: false,
+      error:
+        'This install carries no update provenance, so it cannot update itself.',
+    });
+    expect(existsSync(serviceUpdatePaths(install.installRoot).request)).toBe(
+      false,
+    );
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 });
 
@@ -862,7 +915,7 @@ describe('GET /core-update/service-update', () => {
     const paths = serviceUpdatePaths(install.installRoot);
     writeState(install, {
       id: UPDATE_ID,
-      fromVersion: '0.8.0-preview.0',
+      fromVersion: '0.8.0',
       targetVersion: RUNNING,
       status: 'committed',
       attempts: 1,
@@ -1033,11 +1086,11 @@ describe('stage and apply as separate requests (#3851)', () => {
     stageOnDisk(install, NEWER, STAGE_REQUEST);
     const otherVersion = await post({
       action: 'apply',
-      version: '0.8.0-preview.3',
+      version: '0.8.3',
     });
     expect(otherVersion.status).toBe(409);
     expect((await json(otherVersion)).error).toMatch(
-      /downloaded update is 0\.8\.0-preview\.2/,
+      /downloaded update is 0\.8\.2/,
     );
     expect(existsSync(paths.request)).toBe(false);
 
@@ -1139,6 +1192,7 @@ function coordinatorFor(
   install: Install,
   options: {
     policy?: string;
+    env?: NodeJS.ProcessEnv;
     running?: () =>
       | Array<{ sessionId: string }>
       | Promise<Array<{ sessionId: string }>>;
@@ -1165,7 +1219,7 @@ function coordinatorFor(
       return resolveInstallProvenance(install.moduleDir);
     },
     options: {
-      env: launcherEnv(install),
+      env: options.env ?? launcherEnv(install),
       fetchFn: fetchFn as unknown as typeof fetch,
       pinnedKeys: TEST_KEYS,
       platform: 'linux',
@@ -1233,6 +1287,72 @@ function coordinatorFor(
 }
 
 describe('the server update coordinator (#3851)', () => {
+  test.each([
+    {
+      scenario: 'absent',
+      context: () => ({}),
+      discoveries: 0,
+      supported: false,
+    },
+    {
+      scenario: 'malformed',
+      context: () => ({ STATION_SERVICE_LAUNCHER: '{"protocol":2}' }),
+      discoveries: 0,
+      supported: false,
+    },
+    {
+      scenario: 'foreign root',
+      context: (install: Install) =>
+        launcherEnv(install, { installRoot: makeInstall().installRoot }),
+      discoveries: 1,
+      supported: false,
+    },
+    {
+      scenario: 'different version',
+      context: (install: Install) => launcherEnv(install, { version: NEWER }),
+      discoveries: 1,
+      supported: false,
+    },
+    {
+      scenario: 'active',
+      context: (install: Install) => launcherEnv(install),
+      discoveries: 1,
+      supported: true,
+    },
+    {
+      scenario: 'trial',
+      context: (install: Install) => launcherEnv(install, { role: 'trial' }),
+      discoveries: 1,
+      supported: true,
+    },
+  ])(
+    'resolves launcher context at first use and caches support ($scenario)',
+    async ({ context, discoveries, supported }) => {
+      const install = makeInstall();
+      const env: NodeJS.ProcessEnv = {};
+      const { coordinator, provenanceCalls, request } = coordinatorFor(
+        install,
+        { env },
+      );
+      Object.assign(env, context(install));
+
+      expect((await coordinator.state()).supported).toBe(supported);
+      if (supported) {
+        delete env.STATION_SERVICE_LAUNCHER;
+      } else {
+        expect(await coordinator.stage()).toMatchObject({
+          ok: false,
+          status: 409,
+        });
+        expect(request()).toBeNull();
+        expect(fetchFn).not.toHaveBeenCalled();
+        Object.assign(env, launcherEnv(install));
+      }
+      expect((await coordinator.state()).supported).toBe(supported);
+      expect(provenanceCalls()).toBe(discoveries);
+    },
+  );
+
   test('checks once after the boot delay, not before, and a repeated trigger within the TTL does not refetch', async () => {
     const install = makeInstall();
     const { coordinator, clock, timers, published } = coordinatorFor(install, {
@@ -1272,7 +1392,7 @@ describe('the server update coordinator (#3851)', () => {
     coordinator.noteClientBuild(null);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchFn).not.toHaveBeenCalled();
-    coordinator.noteClientBuild('0.8.1+abcdef0');
+    coordinator.noteClientBuild('0.9.0+abcdef0');
     await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(1));
   });
 
@@ -1427,9 +1547,10 @@ describe('the server update coordinator (#3851)', () => {
       status: 409,
     });
     stageOnDisk(install, NEWER, STAGE_REQUEST);
-    expect(await coordinator.setApplyWhenIdle('0.8.0-preview.3')).toMatchObject(
-      { ok: false, status: 409 },
-    );
+    expect(await coordinator.setApplyWhenIdle('0.8.3')).toMatchObject({
+      ok: false,
+      status: 409,
+    });
   });
 
   test('pushes each change of a stage’s progress while it is queued or staging, then stops reading', async () => {
@@ -1716,11 +1837,11 @@ describe('the coordinator after review (#3851 F2-F8, F12)', () => {
     expect(await coordinator.stage()).toMatchObject({ ok: true });
     settleRequest(install, { status: 'failed', reason: 'again' });
     // A newer release is downloaded by the policy again.
-    serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+    serveManifest(signedManifest(releasePayload('0.8.3')));
     await coordinator.check('newer-client', { force: true });
     expect(request()).toMatchObject({
       mode: 'stage',
-      targetVersion: '0.8.0-preview.3',
+      targetVersion: '0.8.3',
     });
   });
 
@@ -1824,7 +1945,7 @@ describe('the coordinator after review (#3851 F2-F8, F12)', () => {
     coordinator.start();
     coordinator.markReady();
     await coordinator.setApplyWhenIdle(NEWER);
-    serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+    serveManifest(signedManifest(releasePayload('0.8.3')));
     await coordinator.check('newer-client', { force: true });
     expect(request()).toBeNull();
     expect((await coordinator.state()).applyWhenIdle).toMatchObject({
@@ -1887,7 +2008,7 @@ describe('stage and apply on an install that has updated before (#3851 review F1
           activeVersion: RUNNING,
           update: {
             id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
-            fromVersion: '0.8.0-preview.0',
+            fromVersion: '0.8.0',
             targetVersion: RUNNING,
             requestId: '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
             status: 'committed',
@@ -2070,7 +2191,7 @@ describe('the coordinator, review round 2 (#3851)', () => {
     coordinator.start();
     coordinator.markReady();
     await coordinator.setApplyWhenIdle(NEWER);
-    serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+    serveManifest(signedManifest(releasePayload('0.8.3')));
     const app = createApp(install, {
       extraDeps: { serverUpdate: coordinator },
     });
@@ -2350,7 +2471,7 @@ describe('the coordinator, review round 5 (#3851)', () => {
     coordinator.markReady();
     await coordinator.setApplyWhenIdle(NEWER);
     await new Promise((resolve) => setTimeout(resolve, 20));
-    serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+    serveManifest(signedManifest(releasePayload('0.8.3')));
     chmodSync(intentFile(install), 0o000);
     try {
       // A person's download is refused, not let through.
@@ -2397,7 +2518,7 @@ describe('the coordinator, review round 5 (#3851)', () => {
       }
       // A newer release seen by a client's check, then the policy saved
       // twice: it arms its own 24 h deadline for that release.
-      serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+      serveManifest(signedManifest(releasePayload('0.8.3')));
       const app = createApp(install, {
         extraDeps: { serverUpdate: coordinator },
       });
@@ -2486,7 +2607,7 @@ describe('the coordinator hears settings saves on its own subscription (#3851)',
 
 describe('the managed policy’s update limit (#4522)', () => {
   const MIRROR = 'https://mirror.example.test/station/t0ken';
-  const MIRRORED_MANIFEST = `${MIRROR}/portable-preview/station-portable-preview-manifest.json`;
+  const MIRRORED_MANIFEST = `${MIRROR}/portable-stable/station-portable-stable-manifest.json`;
   const OFF = { mode: 'off' };
 
   test('off: the check contacts nothing and every install request is refused', async () => {
@@ -2569,7 +2690,7 @@ describe('the managed policy’s update limit (#4522)', () => {
   test('a mirror: the check and the coordinator read the mirror’s manifest, never the recorded default', async () => {
     const install = makeInstall({
       manifestUrl:
-        'https://github.com/kontourai/station/releases/download/portable-preview/station-portable-preview-manifest.json',
+        'https://github.com/kontourai/station/releases/download/portable-stable/station-portable-stable-manifest.json',
     });
     const managedUpdates = { feedUrl: MIRROR };
     const app = createApp(install, { extraDeps: { managedUpdates } });
@@ -2624,7 +2745,7 @@ describe('the managed policy’s update limit (#4522)', () => {
     ]);
 
     for (const offMirror of [
-      'https://github.com/kontourai/station/releases/download/portable-preview/station-portable-preview-manifest.json',
+      'https://github.com/kontourai/station/releases/download/portable-stable/station-portable-stable-manifest.json',
       'https://mirror.example.test:8443/station/t0ken/manifest.json',
       'https://cdn.mirror.example.test/manifest.json',
     ]) {
@@ -2660,8 +2781,8 @@ describe('the managed policy’s update limit (#4522)', () => {
     expect(post.status).toBe(403);
     expect(fetchFn).not.toHaveBeenCalled();
 
-    const preview = createApp(makeInstall(), { extraDeps: { managedUpdates } });
-    expect(await json(await preview.request('/core-update'))).toMatchObject({
+    const stable = createApp(makeInstall(), { extraDeps: { managedUpdates } });
+    expect(await json(await stable.request('/core-update'))).toMatchObject({
       releaseCheck: 'verified',
       updateAvailable: true,
     });

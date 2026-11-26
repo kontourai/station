@@ -17,8 +17,13 @@ import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from '@playwright/test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { createRef } from 'react';
+import {
+  cleanup,
+  fireEvent,
+  render as renderUI,
+  screen,
+} from '@testing-library/react';
+import { createRef, type ReactElement } from 'react';
 import {
   afterAll,
   afterEach,
@@ -46,7 +51,19 @@ import {
 import { SubagentTranscriptCard } from '../../chat/SubagentTranscriptCard';
 import { ChatDockInboxPanel } from '../../chat-dock/ChatDockInboxPanel';
 import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
+import { ChatDockMobileHeader } from '../../chat-dock/ChatDockMobileHeader';
 import { MobileInboxPanel } from '../../chat-dock/MobileInboxPanel';
+import { snoozeChoices } from '../snooze-presets';
+
+// Scope for Chats now reads Projects through the shared query boundary.
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderUI(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../../../');
 const css = [
@@ -57,6 +74,8 @@ const css = [
   '../../header/HeaderMenu.css',
   '../WorkGroupLabel.css',
   '../../chat-dock/ChatDockInboxPanel.css',
+  '../../chat-dock/ChatDockHeader.css',
+  '../../NewChatAction.css',
   '../../chat-dock/MobileInboxPanel.css',
   '../../chat-dock/ChatInboxHoverCard.css',
   '../../icons/BrandIcon.css',
@@ -103,7 +122,11 @@ const ITEMS: HomeWorkItem[] = [
     environmentLabel: 'a-remote-machine-name-long-enough-to-truncate-in-a-rail',
   }),
   item({ id: 'running', lifecycleLabel: 'Running' }),
-  item({ id: 'idle', environmentLabel: 'home-media' }),
+  item({
+    id: 'idle',
+    environmentLabel: 'home-media',
+    receivedAgentMessage: true,
+  }),
   item({
     id: 'failed',
     lifecycleLabel: 'Failed',
@@ -162,7 +185,7 @@ function panelMarkup(
   );
   // Expand the two collapsed sections the way a user does, so the slim
   // rows are in the measured markup.
-  for (const name of [/^Snoozed/, /^Settled/]) {
+  for (const name of [/^Snoozed/, /^(Settled|Earlier)/]) {
     const toggle = screen.queryByRole('button', { name });
     if (toggle?.getAttribute('aria-expanded') === 'false')
       fireEvent.click(toggle);
@@ -176,6 +199,7 @@ function sheetMarkup(
   accents?: ReadonlyMap<string, string>,
   icons?: ReadonlyMap<string, string>,
   work = { items: ITEMS, facts: FACTS },
+  searchVisible = false,
 ): string {
   seed();
   const { unmount } = render(
@@ -195,11 +219,13 @@ function sheetMarkup(
       workFacts={work.facts}
     />,
   );
-  for (const name of [/^Snoozed/, /^Settled/]) {
+  for (const name of [/^Snoozed/, /^(Settled|Earlier)/]) {
     const toggle = screen.queryByRole('button', { name });
     if (toggle?.getAttribute('aria-expanded') === 'false')
       fireEvent.click(toggle);
   }
+  if (searchVisible)
+    fireEvent.click(screen.getByRole('button', { name: 'Search chats' }));
   const markup = document.body.innerHTML;
   unmount();
   return markup;
@@ -237,6 +263,171 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     await browser?.close();
   });
   afterEach(() => cleanup());
+
+  test('the shared search control and hover actions align without custom input chrome', async () => {
+    const artifacts = resolve(REPO_ROOT, '.surface/inbox-chat-polish');
+    await mkdir(artifacts, { recursive: true });
+    for (const width of [390, 1440])
+      for (const theme of ['dark', 'light']) {
+        const pg = await browser.newPage({ viewport: { width, height: 900 } });
+        try {
+          await pg.setContent(
+            page(
+              width === 390
+                ? sheetMarkup(undefined, undefined, undefined, true)
+                : panelMarkup(),
+            ).replace('data-theme="dark"', `data-theme="${theme}"`),
+          );
+          await settle(pg);
+          const search = pg.getByRole('searchbox', {
+            name: width === 390 ? 'Search chats and tasks' : 'Search chats',
+          });
+          const searchBox = (await search.boundingBox())!;
+          expect(searchBox.height).toBeGreaterThanOrEqual(
+            width === 390 ? 44 : 40,
+          );
+          expect(searchBox.height).toBeLessThanOrEqual(48);
+          if (width === 1440) {
+            const toolbar = (await pg
+              .locator('.filter-toolbar')
+              .boundingBox())!;
+            expect(searchBox.x + searchBox.width).toBeLessThanOrEqual(
+              toolbar.x + toolbar.width,
+            );
+            const row = pg.locator('.inbox-row--card').first();
+            const clock = (await row
+              .locator('.inbox-row__status-column')
+              .boundingBox())!;
+            const title = (await row
+              .locator('.inbox-row__title')
+              .boundingBox())!;
+            expect(title.x + title.width).toBeLessThanOrEqual(clock.x);
+            await row.hover();
+            for (const action of await row
+              .locator('.inbox-row__actions button')
+              .all()) {
+              const box = (await action.boundingBox())!;
+              const hittable = await action.evaluate((el) => {
+                const r = el.getBoundingClientRect();
+                return el.contains(
+                  document.elementFromPoint(
+                    r.x + r.width / 2,
+                    r.y + r.height / 2,
+                  ),
+                );
+              });
+              expect(hittable).toBe(true);
+              expect(box.y + box.height).toBeGreaterThan(clock.y);
+            }
+          }
+          await pg.mouse.move(width - 1, 1);
+          await pg.screenshot({
+            path: resolve(artifacts, `inbox-${width}-${theme}.png`),
+            animations: 'disabled',
+          });
+        } finally {
+          await pg.close();
+        }
+      }
+  });
+
+  test('renders lane D Station identity and mobile header controls at desktop and phone widths', async () => {
+    seed();
+    const row = item({
+      id: 'lane-d-peer',
+      title: 'Review the latest repository changes',
+      projectLabel: 'Station',
+      projectSlug: 'station',
+      environmentLabel: 'Build Station',
+    });
+    const { container, unmount } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatDockMobileHeader
+          showDrawerToggle={false}
+          showConnection
+          sessionTitle="Repository review"
+          agentIdentity={null}
+          activeCount={1}
+          unreadCount={0}
+          inboxTriggerRef={createRef<HTMLButtonElement>()}
+          onToggleInbox={vi.fn()}
+          onToggleSidebar={vi.fn()}
+          onDragPointerDown={vi.fn()}
+          onDragClickCapture={vi.fn()}
+          dockToggle={null}
+          extentToggle={{ maximized: false, onToggle: vi.fn() }}
+          onNewChat={vi.fn()}
+          overflow={{
+            onCollapseDock: vi.fn(),
+            onExpandDock: vi.fn(),
+            onRestoreDock: vi.fn(),
+            isDockMaximized: false,
+            onOpenConversation: vi.fn(),
+            onOpenChatSettings: vi.fn(),
+            onOpenProject: null,
+            openProjectName: null,
+            onOpenProfile: vi.fn(),
+            onOpenAppSettings: vi.fn(),
+          }}
+        />
+        <InboxRow
+          item={row}
+          isCurrent={false}
+          isSnoozed={false}
+          now={NOW}
+          onActivate={vi.fn()}
+          hoverCard={false}
+          projectIcon="🚉"
+        />
+      </QueryClientProvider>,
+    );
+    const markup = container.innerHTML;
+    unmount();
+    const artifacts = resolve(REPO_ROOT, '.surface/ux-lane-D');
+    await mkdir(artifacts, { recursive: true });
+    for (const width of [390, 412, 1440])
+      for (const theme of ['dark', 'light']) {
+        const pg = await browser.newPage({ viewport: { width, height: 915 } });
+        try {
+          await pg.setContent(
+            page(markup).replace('data-theme="dark"', `data-theme="${theme}"`),
+          );
+          await settle(pg);
+          await expect(
+            pg.getByText('Station: Build Station').count(),
+          ).resolves.toBe(1);
+          const order = await pg.evaluate(() => {
+            const actions = document
+              .querySelector('[aria-label="Chat actions"]')!
+              .getBoundingClientRect();
+            const extent = document
+              .querySelector('[aria-label="Full screen chat"]')!
+              .getBoundingClientRect();
+            return {
+              actions: actions.x,
+              extent: extent.x,
+              sameLine:
+                Math.abs(
+                  actions.y + actions.height / 2 - extent.y - extent.height / 2,
+                ) < 1,
+              overflow: document.body.scrollWidth > innerWidth,
+            };
+          });
+          expect(order.extent).toBeLessThan(order.actions);
+          expect(order.sameLine).toBe(true);
+          expect(order.overflow).toBe(false);
+          const stationBorder = await pg
+            .locator('.inbox-row__chip--remote')
+            .evaluate((mark) => getComputedStyle(mark).borderTopWidth);
+          expect(stationBorder).toBe('1px');
+          await pg.screenshot({
+            path: resolve(artifacts, `identity-header-${width}-${theme}.png`),
+          });
+        } finally {
+          await pg.close();
+        }
+      }
+  });
 
   test('a Task family keeps its work-chat disclosure readable without horizontal overflow', async () => {
     const tasks = [
@@ -337,9 +528,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     );
     const artifacts = resolve(REPO_ROOT, '.surface/mobile-inbox-review');
     await mkdir(artifacts, { recursive: true });
-    for (const width of [390, 1440]) {
+    for (const width of [390, 412, 1440]) {
       for (const theme of ['dark', 'light']) {
-        const pg = await browser.newPage({ viewport: { width, height: 500 } });
+        const pg = await browser.newPage({ viewport: { width, height: 915 } });
         try {
           await pg.setContent(
             `<html data-theme="${theme}"><style>${css}\n${resolveCssImports(resolve(import.meta.dirname, '../../chat/SubagentTranscriptCard.css'))}</style><body><div style="max-width:560px;padding:16px">${container.innerHTML}</div></body></html>`,
@@ -362,7 +553,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           ).toContain('75 documents');
           expect(
             await card.locator('.subagent-card__elapsed').textContent(),
-          ).toBe('6:37');
+          ).toBe('6m 37s');
           expect(
             await pg.evaluate(
               () => document.documentElement.scrollWidth > innerWidth,
@@ -391,6 +582,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
       await settle(pg);
       const rows = pg.locator('[data-testid="inbox-row"]');
       expect(await rows.count()).toBe(ITEMS.length);
+      const running = pg.locator('[data-row-key="running"]');
+      expect(await running.locator('.inbox-row__elapsed').count()).toBe(1);
+      expect(await running.locator('.inbox-row__time').count()).toBe(0);
       const measure = (index: number) =>
         rows.nth(index).evaluate((row) => {
           const box = (selector: string) => {
@@ -402,7 +596,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             height: row.getBoundingClientRect().height,
             top: row.getBoundingClientRect().top,
             title: box('.inbox-row__title'),
-            meta: box('.inbox-row__meta-text'),
+            meta: box('.inbox-row__project-line'),
             status: box('[data-testid="inbox-row-status"]'),
             actionsOpacity: actions ? getComputedStyle(actions).opacity : null,
           };
@@ -431,8 +625,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     }
   });
 
-  test("a project accent changes no row's height, in the panel or the phone sheet", async () => {
-    const accents = new Map([['station', 'var(--event-tool-call)']]);
+  test('both Inbox hosts paint the project accent without changing row height', async () => {
+    const accent = 'rgb(20, 100, 180)';
+    const accents = new Map([['station', accent]]);
     const cases = [
       {
         label: 'panel',
@@ -449,10 +644,8 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     ];
     for (const { label, plain, painted, viewport } of cases) {
       // The fixture must contain what it claims to compare.
-      expect(plain, label).not.toContain('inbox-row__project-accent');
-      if (label === 'panel')
-        expect(painted).toContain('inbox-row__project-accent');
-      else expect(painted).not.toContain('inbox-row__project-accent');
+      expect(plain).toContain('project-icon--initials');
+      expect(painted).toContain('inbox-row__project-accent');
       const pg = await browser.newPage({ viewport });
       try {
         const measure = async (markup: string) => {
@@ -466,27 +659,28 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         };
         const plainHeights = await measure(plain);
         const paintedHeights = await measure(painted);
-        if (label === 'panel') {
-          const swatch = await pg
-            .locator('.inbox-row__project-accent')
-            .first()
-            .boundingBox();
-          expect(swatch?.width, 'panel swatch drawn').toBeGreaterThan(0);
-        } else {
-          const line = pg.locator('.inbox-row__project-context').first();
-          expect(await line.locator('svg').count()).toBe(1);
-          const mark = await line.locator('svg').boundingBox();
-          const name = await line.locator('.inbox-row__project').boundingBox();
-          expect(mark!.width).toBeGreaterThan(0);
-          expect(mark!.x + mark!.width).toBeLessThanOrEqual(name!.x);
-          expect(
-            Math.abs(
-              mark!.y -
-                (await pg.locator('.inbox-row__title').first().boundingBox())!
-                  .y,
-            ),
-          ).toBeLessThanOrEqual(2);
-        }
+        const line = pg.locator(
+          '[data-row-key="running"] .inbox-row__project-line',
+        );
+        const initials = line.locator(
+          '.inbox-row__project-accent.project-icon--initials',
+        );
+        const shadow = await initials.evaluate(
+          (element) => getComputedStyle(element).boxShadow,
+        );
+        expect(shadow).toContain(accent);
+        expect(shadow).toContain('inset');
+        const mark = await initials.boundingBox();
+        const name = await line.locator('.inbox-row__project').boundingBox();
+        const agent = await line.locator('.inbox-row__agent').boundingBox();
+        expect(name!.width).toBeGreaterThan(0);
+        expect(agent!.width).toBeGreaterThan(0);
+        expect(name!.x + name!.width).toBeLessThanOrEqual(agent!.x);
+        expect(mark!.width).toBe(16);
+        expect(mark!.x + mark!.width).toBeLessThanOrEqual(name!.x);
+        expect(
+          Math.abs(mark!.y + mark!.height / 2 - name!.y - name!.height / 2),
+        ).toBeLessThan(2);
         expect(plainHeights.length, label).toBe(ITEMS.length);
         expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
       } finally {
@@ -539,24 +733,16 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           .locator('.inbox-row__project-accent.project-icon--icon')
           .first()
           .boundingBox();
-        expect(icon?.width, `${label} icon width`).toBe(
-          label === 'sheet' ? 24 : 12,
-        );
-        expect(icon?.height, `${label} icon height`).toBe(
-          label === 'sheet' ? 24 : 12,
-        );
+        expect(icon?.width, `${label} icon width`).toBe(16);
+        expect(icon?.height, `${label} icon height`).toBe(16);
         if (label === 'sheet') {
-          const line = pg.locator('.inbox-row__project-context').first();
-          expect(await line.locator('svg').count()).toBe(0);
+          const line = pg.locator('.inbox-row__project-line').first();
+          expect(await line.locator('.project-icon--icon').count()).toBe(1);
           const name = await line.locator('.inbox-row__project').boundingBox();
           expect(icon!.x + icon!.width).toBeLessThanOrEqual(name!.x);
           expect(
-            Math.abs(
-              icon!.y -
-                (await pg.locator('.inbox-row__title').first().boundingBox())!
-                  .y,
-            ),
-          ).toBeLessThanOrEqual(2);
+            Math.abs(icon!.y + icon!.height / 2 - name!.y - name!.height / 2),
+          ).toBeLessThan(2);
         }
         expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
       } finally {
@@ -639,7 +825,8 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             ),
           };
         });
-        expect(measured.targets.length).toBeGreaterThanOrEqual(2);
+        // The row's one ⋯ menu, and a Draft's in-place Discard beside it.
+        expect(measured.targets.length).toBeGreaterThanOrEqual(1);
         for (const [position, target] of measured.targets.entries()) {
           // Inside the row's own box: never the row above or below.
           expect(target.top, `${target.label} top`).toBeGreaterThanOrEqual(
@@ -820,138 +1007,39 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     [390, 200],
     [320, 160],
   ])(
-    'phone cards at %ipx: one unobscured 44px Details target and a two-line title of at least %ipx',
+    'phone rows at %ipx keep a full-width touch target and at least %ipx for the title',
     async (width, minimumTitleWidth) => {
-      const markup = sheetMarkup();
       const pg = await browser.newPage({
         viewport: { width, height: 844 },
         hasTouch: true,
         isMobile: true,
       });
       try {
-        await pg.setContent(page(markup));
+        await pg.setContent(page(sheetMarkup()));
         await settle(pg);
         const rows = pg.locator('.mobile-inbox__list .inbox-row--touch');
         expect(await rows.count()).toBe(ITEMS.length);
-        for (let index = 0; index < ITEMS.length; index += 1) {
-          const row = rows.nth(index);
+        for (const row of await rows.all()) {
           await row.scrollIntoViewIfNeeded();
-          const measured = await row.evaluate((element) => {
-            const box = element.getBoundingClientRect();
-            const title = element.querySelector('.inbox-row__title');
-            if (!title) throw new Error('missing title');
-            const titleBox = title.getBoundingClientRect();
-            const titleStyle = getComputedStyle(title);
-            const actions = [...element.querySelectorAll('.inbox-row__action')];
-            const textBoxes = [
-              '.inbox-row__meta',
-              '.inbox-row__title',
-              '.inbox-row__status',
-              '.inbox-row__slim-status',
-              '.inbox-row__slim-word',
-              '.inbox-row__project-context',
-              '.inbox-row__chips',
-            ].flatMap((selector) => {
-              const text = element.querySelector(selector);
-              if (!text) return [];
-              const rect = text.getBoundingClientRect();
-              const style = getComputedStyle(text);
-              return [
-                {
-                  selector,
-                  left: rect.left + Number.parseFloat(style.paddingLeft),
-                  right: rect.right - Number.parseFloat(style.paddingRight),
-                  top: rect.top,
-                  bottom: rect.bottom,
-                },
-              ];
-            });
-            return {
-              key: element.getAttribute('data-row-key'),
-              row: {
-                left: box.left,
-                right: box.right,
-                top: box.top,
-                bottom: box.bottom,
-              },
-              title: {
-                width:
-                  titleBox.width -
-                  Number.parseFloat(titleStyle.paddingLeft) -
-                  Number.parseFloat(titleStyle.paddingRight),
-                height: titleBox.height,
-                fontSize: Number.parseFloat(titleStyle.fontSize),
-                lineHeight: Number.parseFloat(titleStyle.lineHeight),
-              },
-              targets: actions.map((action) => {
-                const rect = action.getBoundingClientRect();
-                const hits = [
-                  [rect.left + rect.width / 2, rect.top + 1],
-                  [rect.left + rect.width / 2, rect.bottom - 1],
-                  [rect.left + 1, rect.top + rect.height / 2],
-                  [rect.right - 1, rect.top + rect.height / 2],
-                  [rect.left + rect.width / 2, rect.top + rect.height / 2],
-                ].map(
-                  ([x, y]) =>
-                    document
-                      .elementFromPoint(x, y)
-                      ?.closest('.inbox-row__action') === action,
-                );
-                return {
-                  label: action.getAttribute('aria-label'),
-                  width: rect.width,
-                  height: rect.height,
-                  left: rect.left,
-                  right: rect.right,
-                  top: rect.top,
-                  bottom: rect.bottom,
-                  hits,
-                  overlaps: textBoxes
-                    .filter(
-                      (text) =>
-                        text.left < rect.right - 0.5 &&
-                        text.right > rect.left + 0.5 &&
-                        text.top < rect.bottom - 0.5 &&
-                        text.bottom > rect.top + 0.5,
-                    )
-                    .map((text) => text.selector),
-                };
-              }),
-            };
-          });
+          const open = row.locator('.inbox-row__open');
+          const rect = (await open.boundingBox())!;
+          const title = (await row.locator('.inbox-row__title').boundingBox())!;
+          const clock = (await row
+            .locator('.inbox-row__status-column')
+            .boundingBox())!;
+          expect(rect.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+          expect(rect.x + rect.width).toBeLessThanOrEqual(width);
+          expect(title.width).toBeGreaterThanOrEqual(minimumTitleWidth);
+          expect(title.x + title.width).toBeLessThanOrEqual(clock.x);
           expect(
-            measured.targets,
-            `${measured.key} has one Details action`,
-          ).toHaveLength(1);
-          expect(
-            measured.row.right,
-            `${measured.key} right edge`,
-          ).toBeLessThanOrEqual(width);
-          expect(
-            measured.title.width,
-            `${measured.key} readable title width`,
-          ).toBeGreaterThanOrEqual(minimumTitleWidth);
-          expect(measured.title.fontSize).toBe(14);
-          expect(measured.title.height).toBeLessThanOrEqual(
-            measured.title.lineHeight * 2 + 1,
-          );
-          for (const target of measured.targets) {
-            expect(target.label).toMatch(/^Details for /);
-            expect(target.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-            expect(target.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-            expect(target.left).toBeGreaterThanOrEqual(measured.row.left);
-            expect(target.right).toBeLessThanOrEqual(measured.row.right);
-            expect(target.top).toBeGreaterThanOrEqual(measured.row.top);
-            expect(target.bottom).toBeLessThanOrEqual(measured.row.bottom);
-            expect(
-              target.hits,
-              `${measured.key} Details target hit testing`,
-            ).toEqual([true, true, true, true, true]);
-            expect(
-              target.overlaps,
-              `${measured.key} Details target covers text`,
-            ).toEqual([]);
-          }
+            await open.evaluate((el) => {
+              const r = el.getBoundingClientRect();
+              return [r.left + 4, r.right - 4].every((x) =>
+                el.contains(document.elementFromPoint(x, r.top + r.height / 2)),
+              );
+            }),
+          ).toBe(true);
+          expect(await row.locator('.inbox-row__action').count()).toBe(0);
         }
       } finally {
         await pg.close();
@@ -961,7 +1049,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
 
   // #4266: on a phone the second line read [mark] … "No project" from the
   // middle of the row, and the engine's name was a 1px clipped label.
-  test('a phone row names its engine in words and keeps the project beside it', async () => {
+  test('a phone row keeps its project context directly before the engine mark and name', async () => {
     seed();
     const { unmount } = render(
       <MobileInboxPanel
@@ -1007,17 +1095,16 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           return {
             row: box('.inbox-row__open'),
             marks: box('.identity-marks'),
-            engine: box('.inbox-row__meta-text'),
-            engineText: row.querySelector('.inbox-row__meta-text')!.textContent,
+            engine: box('.inbox-row__agent'),
+            engineText: row.querySelector('.inbox-row__agent')!.textContent,
             project: box('.inbox-row__project'),
           };
         });
       expect(line.engineText).toBe('Codex');
       expect(line.engine.width).toBeGreaterThan(20);
       expect(line.engine.left).toBeGreaterThanOrEqual(line.marks.right);
-      expect(line.project.left).toBeGreaterThanOrEqual(line.engine.right);
-      // Beside the engine, not from the row's midpoint.
-      expect(line.project.left - line.engine.right).toBeLessThan(40);
+      expect(line.marks.left).toBeGreaterThanOrEqual(line.project.right);
+      expect(line.marks.left - line.project.right).toBeLessThan(40);
       expect(line.project.left).toBeLessThan(
         line.row.left + line.row.width / 2,
       );
@@ -1034,12 +1121,11 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           item={ITEMS[1]}
           isCurrent={false}
           isSnoozed={false}
-          isOpenChat
           now={NOW}
           chrome="touch"
           onActivate={vi.fn()}
           onSnoozeWake={vi.fn()}
-          onCloseChat={vi.fn()}
+          done={{ done: false, onSelect: vi.fn() }}
         />
       </QueryClientProvider>,
     );
@@ -1067,11 +1153,11 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         );
       }
       expect(labels).toEqual([
-        '1 hour',
-        '3 hours',
-        'Tomorrow 9am',
-        'Next Monday 9am',
-        'Close chat',
+        'Open chat',
+        'Mark done',
+        ...snoozeChoices(NOW).map(
+          (choice) => `${choice.label}, ${choice.hint}`,
+        ),
       ]);
     } finally {
       await pg.close();
@@ -1182,6 +1268,129 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         } finally {
           await pg.close();
         }
+      }
+    }
+  });
+});
+
+/**
+ * #3075: idle conversations whose titles grow one character at a time across
+ * the phone inbox's one-to-two-line boundary. A bold title is about two
+ * characters wider, so some title in this run fits one line in the regular
+ * weight and needs two in bold: exactly where a naive weight change would
+ * grow its row.
+ */
+const READ_STATE_TITLE_LENGTHS = Array.from({ length: 46 }, (_, i) => 15 + i);
+function readStateWork(unread: boolean) {
+  const sentence =
+    'Review the unread marker design for project channels and task rooms before the release';
+  return {
+    items: READ_STATE_TITLE_LENGTHS.map((length, index) =>
+      item({
+        id: `conversation-${index}`,
+        title: sentence.slice(0, length).trim(),
+        unread,
+        readVersion: 1,
+      }),
+    ),
+    facts: new Map() as WorkFactsById,
+  };
+}
+
+describe.skipIf(!chromiumAvailable)('unread row geometry (#3075)', () => {
+  let browser: Awaited<ReturnType<typeof chromium.launch>>;
+
+  beforeAll(async () => {
+    browser = await chromium.launch();
+  });
+  afterAll(async () => {
+    await browser?.close();
+  });
+  afterEach(() => cleanup());
+
+  test('unread draws a bold title and a dot, and moves no row, title or line in the panel or the phone inbox', async () => {
+    const cases = [
+      {
+        label: 'panel',
+        markup: (work: ReturnType<typeof readStateWork>) =>
+          panelMarkup(undefined, undefined, work),
+        viewport: { width: 1440, height: 4000 },
+        dot: '6px',
+      },
+      {
+        label: 'phone',
+        markup: (work: ReturnType<typeof readStateWork>) =>
+          sheetMarkup(undefined, undefined, work),
+        viewport: { width: 390, height: 6000 },
+        dot: '8px',
+      },
+    ];
+    for (const { label, markup, viewport, dot } of cases) {
+      const read = markup(readStateWork(false));
+      const unread = markup(readStateWork(true));
+      // The fixture must contain what it claims to compare.
+      expect(read, label).not.toContain('data-unread');
+      expect(unread, label).toContain('data-unread');
+      const pg = await browser.newPage({ viewport });
+      try {
+        const measure = async (html: string) => {
+          await pg.setContent(page(html));
+          await settle(pg);
+          return pg.locator('[data-testid="inbox-row"]').evaluateAll((rows) =>
+            rows.map((row) => {
+              const box = (element: Element | null) => {
+                const rect = element?.getBoundingClientRect();
+                return rect
+                  ? [rect.left, rect.top, rect.width, rect.height]
+                  : null;
+              };
+              const title = row.querySelector('.inbox-row__title');
+              const before = title ? getComputedStyle(title, '::before') : null;
+              return {
+                geometry: {
+                  row: box(row),
+                  title: box(title),
+                  text: box(row.querySelector('.inbox-row__title-text')),
+                  meta: box(row.querySelector('.inbox-row__meta')),
+                  status: box(
+                    row.querySelector('[data-testid="inbox-row-status"]'),
+                  ),
+                },
+                weight: title ? getComputedStyle(title).fontWeight : null,
+                dot:
+                  before && before.content !== 'none'
+                    ? {
+                        width: before.width,
+                        background: before.backgroundColor,
+                      }
+                    : null,
+              };
+            }),
+          );
+        };
+        const before = await measure(read);
+        const after = await measure(unread);
+        expect(before.length, label).toBe(READ_STATE_TITLE_LENGTHS.length);
+        expect(
+          after.map((row) => row.geometry),
+          `${label}: geometry`,
+        ).toEqual(before.map((row) => row.geometry));
+        // The two-line boundary is actually exercised on the phone.
+        if (label === 'phone') {
+          const heights = new Set(before.map((row) => row.geometry.row?.[3]));
+          expect(heights.size, 'phone has one- and two-line titles').toBe(2);
+        }
+        for (const row of before) {
+          expect(row.weight, `${label} read weight`).toBe('500');
+          expect(row.dot, `${label} read dot`).toBeNull();
+        }
+        for (const row of after) {
+          expect(row.weight, `${label} unread weight`).toBe('700');
+          expect(row.dot?.width, `${label} unread dot`).toBe(dot);
+          expect(row.dot?.background).not.toBe('rgba(0, 0, 0, 0)');
+        }
+      } finally {
+        await pg.close();
       }
     }
   });

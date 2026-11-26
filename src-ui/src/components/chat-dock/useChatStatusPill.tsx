@@ -1,3 +1,4 @@
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import {
   type ReactNode,
   useCallback,
@@ -6,11 +7,19 @@ import {
   useRef,
   useState,
 } from 'react';
+import {
+  isSettledRequest,
+  useHeldDuringCatchUp,
+} from '../../hooks/orchestration/heldDuringCatchUp';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { useStationOutlivesApp } from '../../hooks/useStationOutlivesApp';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import type { ChatSession } from '../../types';
 import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
+import {
+  namedBackgroundWork,
+  useChatBackgroundWork,
+} from '../chat/BackgroundTaskActivity';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   claimApprovalThreads,
@@ -49,6 +58,8 @@ function ReportUnavailable({ onUnavailable }: { onUnavailable: () => void }) {
  */
 export function useChatStatusPill({
   activeSession,
+  sessionSummary,
+  stopControl,
   streamStatus,
   turnLive,
   enabled,
@@ -57,19 +68,29 @@ export function useChatStatusPill({
   resyncPending = false,
   onResync,
   onRecoveryFocus,
+  catchingUp = false,
+  apiBase,
 }: {
   activeSession: ChatSession;
+  sessionSummary?: OrchestrationSessionSummary | null;
+  stopControl?: ReactNode;
+  /** The Station whose live tool record counts this chat's running tools. */
+  apiBase?: string;
+  /** The stream is replaying missed events (`useStreamCatchingUp`). */
+  catchingUp?: boolean;
   streamStatus: ChatStreamStatus | undefined;
   turnLive: boolean;
   enabled: boolean;
-  windowRequests?: readonly RevealApprovalDetail[];
+  windowRequests?: readonly (RevealApprovalDetail & {
+    requestKind?: 'input' | 'approval';
+  })[];
   observationUnavailable?: boolean;
   resyncPending?: boolean;
   /** Re-reads this conversation when its status could not be observed. */
   onResync?: () => void;
   /** Focus the recovered composer without changing its write permission. */
   onRecoveryFocus?: () => boolean;
-}): { pill: ReactNode; statusInPill: boolean } {
+}): { pill: ReactNode; statusInPill: boolean; stopInPill: boolean } {
   const [view, setView] = useState<'loading' | 'mounted' | 'unavailable'>(
     'loading',
   );
@@ -77,7 +98,21 @@ export function useChatStatusPill({
   const onUnavailable = useCallback(() => setView('unavailable'), []);
   // Requests still waiting on the user: open on the server and not yet
   // answered here (an answered one stays open until `request.resolved`).
-  const pendingApprovals = useMemo(
+  const pendingRequestKinds = useMemo(() => {
+    const kinds = new Map(
+      Object.entries(activeSession.pendingRequestKinds ?? {}),
+    );
+    // Known input outranks a conservative approval hint from a partial read.
+    for (const request of windowRequests ?? []) {
+      if (
+        request.requestKind &&
+        (request.requestKind === 'input' || !kinds.has(request.requestId))
+      )
+        kinds.set(request.requestId, request.requestKind);
+    }
+    return Object.fromEntries(kinds);
+  }, [windowRequests, activeSession.pendingRequestKinds]);
+  const livePendingApprovals = useMemo(
     () =>
       requestsWaitingOnUser({
         pendingApprovals: [
@@ -85,21 +120,44 @@ export function useChatStatusPill({
             ...(activeSession.pendingApprovals ?? []),
             ...(windowRequests ?? []).map((request) => request.requestId),
           ]),
-        ],
+          // Station already said these are settled; a stale window or
+          // record must not keep the chat at "Needs approval".
+        ].filter((requestId) => !isSettledRequest(requestId)),
         answeredApprovals: activeSession.answeredApprovals,
-      }),
+      }).sort(
+        (left, right) =>
+          Number(pendingRequestKinds[left] === 'input') -
+          Number(pendingRequestKinds[right] === 'input'),
+      ),
     [
       activeSession.pendingApprovals,
+      pendingRequestKinds,
       activeSession.answeredApprovals,
       windowRequests,
     ],
   );
-  const approvalCount = pendingApprovals.length;
+  // A reconnect's replay must not run the count up and back down.
+  const pendingApprovals = useHeldDuringCatchUp(
+    livePendingApprovals,
+    catchingUp,
+  );
+  const inputCount = pendingApprovals.filter(
+    (id) => pendingRequestKinds[id] === 'input',
+  ).length;
+  const approvalCount = pendingApprovals.length - inputCount;
   const stationOutlivesApp = useStationOutlivesApp();
+  const backgroundWork = namedBackgroundWork(
+    useChatBackgroundWork(
+      activeSession.id,
+      apiBase,
+      activeSession.backgroundTasks,
+    ),
+  );
   const input: ChatStatusInput = {
     observationUnavailable,
     resyncPending,
     approvalCount,
+    inputCount,
     stream: streamStatus,
     turnLive,
     // Not while a request is merely answered and unresolved: that waits on
@@ -113,6 +171,8 @@ export function useChatStatusPill({
     sendAwaitingTurnStart: activeSession.sendAwaitingTurnStart,
     stationHasSend: activeSession.pendingSendStationHasIt,
     stationOutlivesApp,
+    // The same work the chat's background strip counts.
+    ...(backgroundWork ? { backgroundWork } : {}),
   };
   useEffect(() => {
     if (enabled) void loadChatStatusPillView().catch(() => undefined);
@@ -136,7 +196,7 @@ export function useChatStatusPill({
   const presentingApproval =
     enabled &&
     view === 'mounted' &&
-    approvalCount > 0 &&
+    pendingApprovals.length > 0 &&
     !observationUnavailable &&
     streamStatus?.kind !== 'blocked' &&
     streamStatus?.kind !== 'reconnecting' &&
@@ -178,9 +238,10 @@ export function useChatStatusPill({
     next.current = 0;
   }, [requestKey]);
 
-  if (!enabled) return { pill: null, statusInPill: false };
+  if (!enabled) return { pill: null, statusInPill: false, stopInPill: false };
   return {
     statusInPill: view !== 'unavailable',
+    stopInPill: !!stopControl && view === 'mounted',
     pill: (
       <LazyBoundary
         key={activeSession.id}
@@ -190,6 +251,8 @@ export function useChatStatusPill({
         unavailable={() => <ReportUnavailable onUnavailable={onUnavailable} />}
         componentProps={{
           input,
+          sessionSummary,
+          stopControl,
           onRevealApproval,
           onRepair: () => openConnectionsModal({ mode: 'request-access' }),
           onResync,

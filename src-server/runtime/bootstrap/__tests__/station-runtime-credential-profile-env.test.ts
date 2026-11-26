@@ -6,7 +6,7 @@
  * captures the options the real adapters were built with, and calls the
  * captured closures against a real `config/app.json`.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { describe, expect, it, vi } from 'vitest';
@@ -26,6 +26,19 @@ const hoisted = vi.hoisted(() => ({
     | {
         getAppHomeEnv?: (ref?: string) => Promise<unknown>;
         resolveMcpOAuth?: EngineMcpOAuthResolver;
+        resolveSourceHome?: (affinity: {
+          kind: string;
+          ref: string;
+        }) => string | null | Promise<string | null>;
+        resolveSourceHomeEnv?: (
+          home: string,
+        ) => Promise<Record<string, string> | undefined>;
+      },
+  muse: undefined as
+    | undefined
+    | {
+        getAppHomeEnv?: (ref?: string) => Promise<unknown>;
+        peekAppHomeEnv?: () => Promise<unknown>;
       },
 }));
 
@@ -91,6 +104,27 @@ vi.mock(
   },
 );
 
+vi.mock(
+  '../../../providers/adapters/muse-adapter.js',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../providers/adapters/muse-adapter.js')
+      >();
+    return {
+      ...actual,
+      MuseAdapter: class extends actual.MuseAdapter {
+        constructor(
+          options: ConstructorParameters<typeof actual.MuseAdapter>[0],
+        ) {
+          super(options);
+          hoisted.muse = options;
+        }
+      },
+    };
+  },
+);
+
 vi.mock('../../../services/discord/discord-gateway-service.js', () => ({
   DiscordGatewayService: class {
     constructor() {
@@ -130,6 +164,14 @@ describe('StationRuntime wires the credential profile env resolver per engine (#
               OPENAI_BASE_URL: 'http://127.0.0.1:9000',
             }),
           },
+          // #1942: Muse reads its own connection's profiles.
+          muse: {
+            credentialRecovery: {
+              profiles: [{ ref: 'work' }],
+              group: { profileRefs: ['work'], enrolledProfileRefs: [] },
+              activeProfileRef: 'work',
+            },
+          },
         },
       }),
     );
@@ -156,6 +198,19 @@ describe('StationRuntime wires the credential profile env resolver per engine (#
         ),
       },
     });
+    // #1942: the peek names the active Muse profile without creating it;
+    // the resolver a session uses names the same home.
+    const museHome = credentialProfileAppHomeDir('muse', 'work');
+    await expect(hoisted.muse?.peekAppHomeEnv?.()).resolves.toEqual({
+      profileRef: 'work',
+      env: { XDG_CONFIG_HOME: museHome },
+    });
+    expect(existsSync(museHome)).toBe(false);
+    await expect(hoisted.muse?.getAppHomeEnv?.()).resolves.toEqual({
+      profileRef: 'work',
+      env: { XDG_CONFIG_HOME: museHome },
+    });
+    expect(existsSync(museHome)).toBe(true);
     await expect(hoisted.codex?.getAppHomeEnv?.('proxy')).resolves.toEqual({
       profileRef: 'proxy',
       env: {
@@ -163,6 +218,33 @@ describe('StationRuntime wires the credential profile env resolver per engine (#
         CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy'),
       },
     });
+    // A session discovered in that profile's home continues there, with the
+    // profile's overlay: the runtime lists the profile home for discovery
+    // (configuredEngineHomes) and maps the home back to its overlay.
+    const profileHome = credentialProfileAppHomeDir('codex', 'proxy');
+    const sessions = join(profileHome, 'sessions', '2026', '11', '15');
+    mkdirSync(sessions, { recursive: true });
+    writeFileSync(
+      join(sessions, 'rollout-profile.jsonl'),
+      `${JSON.stringify({
+        timestamp: '2026-11-15T12:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'profile-session', cwd: '/workspace' },
+      })}\n`,
+    );
+    const { deriveConfigHomeAffinity } = await import(
+      '../../../providers/sessions/transcript-file-io.js'
+    );
+    const profileIdentity = deriveConfigHomeAffinity(
+      'codex-config-home',
+      profileHome,
+    )!;
+    await expect(
+      hoisted.codex?.resolveSourceHome?.(profileIdentity.affinity),
+    ).resolves.toBe(profileIdentity.canonicalRoot);
+    await expect(
+      hoisted.codex?.resolveSourceHomeEnv?.(profileIdentity.canonicalRoot),
+    ).resolves.toEqual({ OPENAI_BASE_URL: 'http://127.0.0.1:9000' });
     const input = {
       threadId: 'oauth-session',
       agent: {

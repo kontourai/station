@@ -228,7 +228,10 @@ async function advancePressureGate({
     state.consecutiveHealthy < 2 &&
     now() >= pressureDeadline
   )
-    return { hostPressureOutcome: 'timeout' };
+    return {
+      hostPressureOutcome:
+        sample?.status === 'unavailable' ? 'unavailable' : 'timeout',
+    };
   if (now() >= deadline) return { deadlineExpired: true };
   await wait(
     Math.min(
@@ -299,6 +302,7 @@ function admissionOutcome({
   outputOwned = false,
   admitted = false,
   hostPressureOutcome = null,
+  waitReason,
 }) {
   return {
     canceled,
@@ -306,6 +310,7 @@ function admissionOutcome({
     outputOwned,
     admitted,
     hostPressureOutcome,
+    ...(waitReason ? { waitReason } : {}),
   };
 }
 
@@ -364,16 +369,20 @@ async function waitForAdmissionRetry({
 async function runAdmissionLoop(options) {
   const { pressure, outputOwned: initialOutputOwned, ...context } = options;
   let outputOwned = initialOutputOwned;
+  let waitReason;
   while (true) {
     if (context.signal?.aborted)
-      return admissionOutcome({ canceled: true, outputOwned });
+      return admissionOutcome({ canceled: true, outputOwned, waitReason });
     const pressureStep = await advancePressureGate({
       ...context,
       state: pressure,
     });
     const pressureOutcome = pressureAdmissionOutcome(pressureStep, outputOwned);
-    if (pressureOutcome) return pressureOutcome;
-    if (!pressureStep.ready) continue;
+    if (pressureOutcome) return { ...pressureOutcome, waitReason };
+    if (!pressureStep.ready) {
+      waitReason = 'host_pressure';
+      continue;
+    }
     const step = attemptAdmissionIteration({
       ...context,
       outputOwned,
@@ -381,6 +390,10 @@ async function runAdmissionLoop(options) {
     });
     outputOwned = step.outputOwned;
     if (step.admitted) return admissionOutcome({ admitted: true, outputOwned });
+    waitReason =
+      outputOwned || context.deferOutputOwnership
+        ? 'capacity'
+        : 'output_ownership';
     const deadlineExpired = await waitForAdmissionRetry({
       ...context,
       pressure,
@@ -390,6 +403,7 @@ async function runAdmissionLoop(options) {
         canceled: true,
         deadlineExpired: true,
         outputOwned,
+        waitReason,
       });
   }
 }

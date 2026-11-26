@@ -1,0 +1,7 @@
+{
+  "revision": "7d561c4a94012d1dd057f65eda0865f9e4b7bd91",
+
+  "notes": [
+    {"path":"docs/reference/metrics.md","note":"#4995: regenerated with docs:metrics:generate; three new declarations (setup probe outcomes, json store write bytes, orphan lock temporaries).","inputs":["docs/reference/metrics.md","src-server/telemetry/metrics.ts"]}
+  ]
+}

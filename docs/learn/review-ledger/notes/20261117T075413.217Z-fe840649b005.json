@@ -1,0 +1,7 @@
+{
+  "revision": "915d957bdc059e4954e266d14bf66cb383152ddc",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Names the Project goal in the Project header. Searched every document citing this input for claims about first-turn composition, ambient context, Project rules, ProjectConfig fields, usage grouping and filters, Station Control tools and pairing scopes; updated api.md, config.md, contracts.md, architecture.md, module-map.md, chat-composer.md and settings-architecture.md where a claim changed. Other citations describe unrelated behavior and still hold.","inputs":["docs/design/chat-composer.md","src-ui/src/views/project-page/ProjectPageHeader.tsx","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

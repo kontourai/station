@@ -1,0 +1,7 @@
+{
+  "revision": "07323a9c82896bb5f1fbb9f867b2f5bfa40bad92",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Rewrote the scan paragraph against knowledge-service.ts scanDirectories, knowledge-filesystem.ts and chat-request-preparation.ts: code registers before the first write and not when there is nothing to write; registered files join project chat RAG (topK 4, threshold 0.25) and unscoped and cross-project search; retrieval needs an embedding provider; a rescan reports alreadyIndexed and does not re-read.","inputs":["docs/guides/knowledge.md","src-server/services/knowledge/knowledge-service.ts","src-ui/src/views/project-settings/KnowledgeSection.tsx"]}
+  ]
+}

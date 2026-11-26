@@ -241,7 +241,7 @@ test('local restart recovery keeps the current notice and keyboard retry across 
           .getByTestId('toast-card')
           .filter({ hasText: "Couldn't restart the local Station" });
         const retry = card.getByRole('button', {
-          name: 'Try again',
+          name: 'Retry',
           exact: true,
         });
         await stage('retry-visible', () => retry.waitFor({ timeout: 1500 }));

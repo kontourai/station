@@ -40,6 +40,10 @@ can cover named outstanding inputs; restoring old bytes alone cannot erase an
 unreviewed change. `docs:review:record -- --show-delta` shows the input diff
 since the coverage baseline, including working edits. This is an inspection
 lead, not an assertion that every intermediate change is visible in the net diff.
+If global history is covered but the current branch still lacks its own
+review, the command shows the outstanding branch inputs from the same scoped
+policy as the freshness gate. It does not treat a note already on the base
+branch as approval of this change.
 
 `--base=<ref>` overrides the catch-up search for new or unmapped paths, but does
 not change the freshness baseline. The one-time path-only migration sets the
@@ -48,8 +52,11 @@ not establish a new semantic review. Do not advance it just to hide gaps.
 The scoped PR check reads only the change's own range and never replays the
 coverage baseline. Main-history reader state uses one first-parent
 `git log --name-status` stream and one batched read of relevant notes, record
-changes and JSON values. Git process count is constant as commits increase;
-bytes read and replay work grow with the range. Replay uses HEAD's source lists
+changes and JSON values. Catch-up reads the historical dependency projections
+once per invocation and uses them for both removed citations and impact leads.
+Generated release output also batches its Git object
+reads and resolves each Changeset note's adding commit with Git's rename-aware
+history search, up to three searches at a time. Replay uses HEAD's source lists
 for old commits: removed citations stop tracking older changes, and newly
 added citations can expose older changes that now need review.
 
@@ -128,8 +135,11 @@ serves `docs:truth:gate`, Veritas readiness, `docs:learn:check`, captures and
 
 - **Scoped** (local runs, pre-push, `pull_request` and `pull_request_target`):
   every document whose file or listed sources the PR's diff against its merge
-  base touches needs a new note covering those inputs. Human record edits also
-  need a note. Dependencies at the merge base and in the working tree are both
+  base touches needs a new note covering those inputs (one command can write
+  that note for every document citing a changed source; see
+  [below](#one-note-for-a-widely-cited-input)). Human record edits also
+  need a note. The version PR's mechanical output is the one exception; see
+  [generated release records](#generated-release-records-and-removed-notes). Dependencies at the merge base and in the working tree are both
   considered, so dropping a citation cannot hide a changed input. A removed
   record whose document remains cannot hide source changes either. Committed
   notes must name a revision inside `merge base..HEAD`; an
@@ -158,11 +168,13 @@ After inspecting the changed claims and their callers:
 npm run docs:review:record -- --show-delta docs/guides/example.md
 npm run docs:review:record -- docs/guides/example.md --note "Checked the new retry limit against its caller."
 npm run docs:review:record -- docs/guides/example.md --note "..." --drop-source src-server/removed.ts --add-source src-server/new-owner.ts
+npm run docs:review:record -- --input src-server/shared-owner.ts --note "No cited claim depends on the changed retry default."
 npm run docs:review:record -- --batch reviews.json
 npm run docs:freshness:check
 ```
 
-Batch input is `[{ "path", "note", "removedSources"?, "addedSources"? }]`.
+Batch input is `[{ "path", "note", "removedSources"?, "addedSources"? }]`;
+an `--input` entry is `{ "input", "note" }`.
 Commit the reviewed document and source changes first, then record and commit
 the note. The note records the context HEAD and the inputs inspected; the
 context revision does not have to survive a squash merge. While the PR is open,
@@ -172,7 +184,8 @@ The root `AGENTS.md` rule to integrate upstream with merge, not rebase, keeps
 those note revisions valid. Recording writes
 only a new uniquely named notes file, plus a record edit if the dependency list
 really changes. It refuses empty notes, unknown paths, invalid or duplicate
-sources, uncommitted reviewed inputs, and captures whose image identity changed.
+sources, uncommitted reviewed inputs, captures whose image identity changed, and
+an `--input` that no record or capture cites.
 It validates the entire batch before writing. New records still need their
 kind, state, summary and limits decided by a reviewer. A deliberate review of
 unchanged inputs is allowed (`--rereview` remains accepted for compatibility).
@@ -191,6 +204,43 @@ reviewed. No value digest is stored in a path-only record. Other formats use
 whole file paths. Narrow a citation only after reviewing the claim it supports;
 retain version fields when the claim actually depends on that version.
 Notes document review decisions, not automated semantic approval.
+
+### One note for a widely cited input
+
+A source that many records cite would otherwise need the same note typed once
+per citing document whenever it changes. After checking the changed source
+against every page that cites it, write the note once:
+
+```sh
+npm run docs:review:record -- --input src-server/shared-owner.ts --note "Checked the new default against every citing page; no stated claim changed."
+```
+
+This is a convenience over per-document notes, with identical gate semantics.
+The command finds every record and capture whose sources cite exactly that
+binding, after any source edits in the same batch, and writes one ordinary
+note per document into a single notes file: `{ "path", "note", "inputs": [<binding>] }`.
+Every reader, including scripts on a branch cut before the option existed,
+treats those entries like any other note. Each covers only that input for its
+document, so it does not cover:
+
+- an edit to the document's own file, or a change to a capture itself;
+- a record or capture decision edit, including a source added or dropped;
+- any other input, including another value cited from the same file
+  (`package.json` does not stand for `package.json#/scripts/docs`);
+- a document that starts citing the input after the note was recorded, or one
+  whose citation the same change drops by hand.
+
+A command names one input; use one `--batch` for several. The command refuses
+an input that nothing cites, naming other cited bindings in that file. After a
+rename, records keep citing the old path until they are edited: the old name
+is refused because it is no longer tracked, and the new name until a record
+cites it.
+
+The trade is that one sentence now reaches many documents. The note claims
+that its author checked each listed page against the change; the gate proves
+only that such a note exists for each document and input, not that each page
+was read. When a page's claims do change, edit the page and give it its own
+note.
 
 ### Ledger layout and merges
 
@@ -339,5 +389,58 @@ Any existing check claim needs an explicit reviewed reclassification first.
 The review records absence, not release consumption or publication.
 The README, current guides, malformed records and missing behavioral dependencies
 are still errors. Catch-up reporting keeps these lifecycle states separate from
-claims that need source review. New generated owners need their own reviewed
-contract and refusal tests; `kind: generated` alone never exempts a file.
+claims that need source review.
+
+The version PR's own output has a second contract,
+[`release-versioning-review.mjs`](../../scripts/lib/release-versioning-review.mjs),
+which the scoped check and the history replay apply to each change unit (a
+PR's merge base..HEAD, or one landed commit), to committed bytes only. The
+unit must be exactly `changeset version` on its starting tree:
+
+- It deletes exactly the pending notes changesets deletes (every
+  `.changeset/*.md` it reads, except the ones naming a private or ignored
+  package, which stay untouched), adds or edits nothing else under
+  `.changeset/`, and does not edit the contract's owners
+  (`release-versioning-review.mjs`, `changeset-note-commits.mjs`,
+  `scripts/changeset-changelog.mjs`, `.changeset/config.json`). Every note must parse and name only workspace
+  packages. Only the dependency-update rules of
+  `updateInternalDependencies: "patch"` with
+  `onlyUpdatePeerDependentsWhenOutOfRange` and
+  `bumpVersionsWithWorkspaceProtocolOnly` off are reproduced; any other value,
+  pre mode, a non-empty `ignore` list and workspace globs recognise nothing.
+- The expected versions come from changesets' own planner
+  (`@changesets/assemble-release-plan`) fed the starting tree's workspace
+  manifests, config and notes, read from Git.
+- Every package the plan versions must carry its exact planned manifest and
+  changelog output; if any one does not, nothing in the unit is recognised.
+
+Within such a unit, a whole-file `package.json` citation needs no note for a
+planned package's manifest, or the root manifest, when only its `"version"`
+line (old to planned version) and dependency lines of versioned packages
+(same `^`, `~` or exact operator, planned version) change, byte for byte. Any
+other byte, including reformatting, reordered keys or a duplicate key, is
+refused. A `historical` record's own `CHANGELOG.md` needs no note when the
+change adds, above the unchanged older entries, exactly the section the CLI
+writes for that release, rebuilt from the plan and the notes: `## <planned
+version>`, then `### Major`, `Minor` and `Patch Changes` blocks holding each
+planned note naming the package, in the CLI's sorted file order, as
+`- <first 7 characters of the commit that added the note>: <summary>` (no
+prefix when no commit added it; a shallow checkout that cannot resolve the
+commit recognises nothing) with its later lines indented two spaces; and,
+last in the patch block, one `- Updated dependencies [<commit>]` line per note
+of the dependencies the CLI updates, followed by `  - <name>@<planned version>`
+for exactly those dependencies (only the list, its first item unindented, when
+they have no notes). `No changes in this release.` stands alone when none of
+this applies. The only tolerance is trailing whitespace on each line, kept
+while version PRs generated before `scripts/changeset-changelog.mjs` remain
+open. A value citation such as `package.json#/version`
+or a dependency range, an uncommitted edit, and every other document still
+need a note. There is no actor check: a human PR that produces the same
+output is treated the same way. A landed release is recognised in history
+only when its landing commit is exactly that operation on its parent. A
+release that landed after newer notes reached `main`, or that consumed notes
+changesets would have kept (such as notes naming a then-private package), is
+reported as needing review. The contract proves where the changelog text came from, not that the
+notes are accurate or that anything was published.
+New generated owners need their own reviewed contract and refusal tests;
+`kind: generated` alone never exempts a file.

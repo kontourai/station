@@ -36,8 +36,6 @@
 
     "src-desktop/tauri.conf.json",
 
-    "src-desktop/tauri.beta.conf.json",
-
     "src-desktop/tauri.nightly.conf.json",
 
     "packages/connect/src/core/pairingDeepLink.ts",
@@ -56,7 +54,9 @@
 
     "src-server/security/client-protocol-admission.ts",
 
-    "src-server/runtime/__tests__/client-protocol-admission.test.ts"
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts",
+
+    "docs/decisions/rc-promotion-provenance.md"
   ],
 
   "checks": [

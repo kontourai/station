@@ -8,18 +8,13 @@
  * See docs/guides/browser-workspace.md for lifecycle and authority boundaries.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import {
   BROWSER_PANE_TAB_LIMIT,
   type BrowserNavigationView,
 } from '@kontourai/station-contracts/workspace-browser-pane';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import {
   type BrowserColorScheme,
   browserColorSchemeParams,
@@ -2045,11 +2040,7 @@ export class BrowserSessionRegistry {
         recursive: true,
         mode: 0o700,
       });
-      const temp = `${this.storePath}.${process.pid}.tmp`;
-      writeFileSync(temp, `${JSON.stringify(store, null, 2)}\n`, {
-        mode: 0o600,
-      });
-      renameSync(temp, this.storePath);
+      writeJsonDurably(this.storePath, store);
     } catch {
       // Persistence is advisory for restart display; the in-memory registry
       // stays authoritative for this process.

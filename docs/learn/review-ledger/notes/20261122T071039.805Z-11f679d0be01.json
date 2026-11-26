@@ -1,0 +1,9 @@
+{
+  "revision": "b03fdb625dcb2d1db25822a1ebdc7c991d312fab",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Delta: the Automations retry refusal list adds task-live. Checked the citing pages: nothing they cite from the API reference changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Delta: the Automations retry refusal list adds task-live. Checked the citing pages: nothing they cite from the API reference changed.","inputs":["docs/reference/api.md"]}
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "revision": "4def418fa8e3ead48f9e45fa3c34a6db42682466",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Traced Check events, Read events, retry, next page and refresh through the current Station scope to the saved integration. Chromium exercised catalog, data, retry, cursor reuse, empty results and focus return at 390px and 1440px in both themes.","inputs":["docs/guides/connections.md","src-ui/src/views/integrations/IntegrationEventsSection.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the event-page SDK hook and its bounded response, current operator scope, cursor continuation and supported result against the managed endpoint.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/integrations.ts","packages/sdk/src/index.ts","packages/sdk/src/query-domains/catalog.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the new managed event page journey and the existing Connections and machine-relationship guidance. The save, shared-account sign-in and tool selection flows keep their previous entry points.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the added event-page operation through the SDK entry points. Existing app, plugin and integration SDK recipes use the same published package surfaces.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the added event-page operation through the SDK entry points. Existing app, plugin and integration SDK recipes use the same published package surfaces.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/architecture.md","note":"Checked the additive scoped Events read export against the published SDK entry point and the citing recipes for agents, panes, styling and plugin callers.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Checked the additive scoped Events read export against the published SDK entry point and the citing recipes for agents, panes, styling and plugin callers.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Checked the additive scoped Events read export against the published SDK entry point and the citing recipes for agents, panes, styling and plugin callers.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the additive scoped Events read export against the published SDK entry point and the citing recipes for agents, panes, styling and plugin callers.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the additive scoped Events read export against the published SDK entry point and the citing recipes for agents, panes, styling and plugin callers.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the additive scoped Events read export against the published SDK entry point and the citing recipes for agents, panes, styling and plugin callers.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the additive scoped Events read export against the published SDK entry point and the citing recipes for agents, panes, styling and plugin callers.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the additive scoped Events read export against the published SDK entry point and the citing recipes for agents, panes, styling and plugin callers.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Checked the additive scoped Events read export against the published SDK entry point and the citing recipes for agents, panes, styling and plugin callers.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Checked the additive scoped Events read export against the published SDK entry point and the citing recipes for agents, panes, styling and plugin callers.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the event-page query-barrel export and the existing query and presentation patterns. It is a scoped operator-triggered read.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the event-page query-barrel export and the existing query and presentation patterns. It is a scoped operator-triggered read.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the event-page query-barrel export and the existing query and presentation patterns. It is a scoped operator-triggered read.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the event-page query-barrel export and the existing query and presentation patterns. It is a scoped operator-triggered read.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the event-page query-barrel export and the existing query and presentation patterns. It is a scoped operator-triggered read.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The event-page hook uses the existing Station scope and integration transport. Agent configuration and account flows use their existing methods.","inputs":["packages/sdk/src/query-domains/catalog.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The event-page hook uses the existing Station scope and integration transport. Agent configuration and account flows use their existing methods.","inputs":["packages/sdk/src/query-domains/catalog.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The added read sends a named event and a cursor through the scoped integration endpoint, with a bounded response. Existing settings and installed tools use their current paths.","inputs":["packages/sdk/src/client/integrations.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"The managed catalog presents Pages in its existing dialog and restores focus when going back or closing. The documented MCP App sandbox uses its existing render and host-request owners.","inputs":["src-ui/src/views/integrations/IntegrationEventsSection.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"The managed catalog presents Pages in its existing dialog and restores focus when going back or closing. The documented MCP App sandbox uses its existing render and host-request owners.","inputs":["src-ui/src/views/integrations/IntegrationEventsSection.tsx"]}
+  ]
+}

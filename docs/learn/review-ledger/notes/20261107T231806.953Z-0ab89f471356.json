@@ -1,7 +1,0 @@
-{
-  "revision": "a0557a28c2dda62edfdcd591817f01d034db9ece",
-
-  "notes": [
-    {"path":"packages/telemetry-broker/README.md","note":"Reviewed the updated dashboard explanation and public page: unchanged published noise/thresholds and no sums; one low-signal state now replaces empty charts and states the closed-week window. Worker session auth and exact-report labels are documented by its owning deployment README. 34 focused Worker/page/auth/lifecycle tests and scoped TypeScript pass; original cookie-omission mutation failed 3 integration cases and restored page tests passed. Live deployment still pending.","inputs":["packages/telemetry-broker/README.md","packages/telemetry-broker/src/public-dashboard.ts"]}
-  ]
-}

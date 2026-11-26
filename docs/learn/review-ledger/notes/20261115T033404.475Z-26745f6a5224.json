@@ -1,0 +1,21 @@
+{
+  "revision": "ff1661f37fffeb3468c255c72dbafc75a37ba585",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-read for the fix round: the cohort record step's per-row fallback, the bounded npm view, and nightly-cli narrowed to contents: read. No claim on this page concerns which job writes a ledger row, the record step's failure handling, or nightly-cli's token scope; the cohort, marker, channel and delivery statements are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Re-read for the fix round: the cohort record step's per-row fallback, the bounded npm view, and nightly-cli narrowed to contents: read. No claim on this page concerns which job writes a ledger row, the record step's failure handling, or nightly-cli's token scope; the cohort, marker, channel and delivery statements are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Re-read for the fix round: the cohort record step's per-row fallback, the bounded npm view, and nightly-cli narrowed to contents: read. No claim on this page concerns which job writes a ledger row, the record step's failure handling, or nightly-cli's token scope; the cohort, marker, channel and delivery statements are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/nightly.md","note":"Re-read for the fix round: the cohort record step's per-row fallback, the bounded npm view, and nightly-cli narrowed to contents: read. No claim on this page concerns which job writes a ledger row, the record step's failure handling, or nightly-cli's token scope; the cohort, marker, channel and delivery statements are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Re-read for the fix round: the cohort record step's per-row fallback, the bounded npm view, and nightly-cli narrowed to contents: read. No claim on this page concerns which job writes a ledger row, the record step's failure handling, or nightly-cli's token scope; the cohort, marker, channel and delivery statements are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Re-read for the fix round: the cohort record step's per-row fallback, the bounded npm view, and nightly-cli narrowed to contents: read. No claim on this page concerns which job writes a ledger row, the record step's failure handling, or nightly-cli's token scope; the cohort, marker, channel and delivery statements are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Re-read for the fix round: the cohort record step's per-row fallback, the bounded npm view, and nightly-cli narrowed to contents: read. No claim on this page concerns which job writes a ledger row, the record step's failure handling, or nightly-cli's token scope; the cohort, marker, channel and delivery statements are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Re-read for the fix round: the cohort record step's per-row fallback, the bounded npm view, and nightly-cli narrowed to contents: read. No claim on this page concerns which job writes a ledger row, the record step's failure handling, or nightly-cli's token scope; the cohort, marker, channel and delivery statements are unaffected.","inputs":[".github/workflows/nightly.yml"]}
+  ]
+}

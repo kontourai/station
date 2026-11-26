@@ -1,0 +1,15 @@
+{
+  "revision": "de2d4b1774a7a2b4338fef71d6544e8cb2bef175",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Checked the package subpath inventory, architecture and Task-room references against the export-map delta. The new Ensemble parser and brief renderer are pure source exports. Existing subpaths and runtime, transport and authorization ownership are unchanged.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the package subpath inventory, architecture and Task-room references against the export-map delta. The new Ensemble parser and brief renderer are pure source exports. Existing subpaths and runtime, transport and authorization ownership are unchanged.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the package subpath inventory, architecture and Task-room references against the export-map delta. The new Ensemble parser and brief renderer are pure source exports. Existing subpaths and runtime, transport and authorization ownership are unchanged.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Checked the package subpath inventory, architecture and Task-room references against the export-map delta. The new Ensemble parser and brief renderer are pure source exports. Existing subpaths and runtime, transport and authorization ownership are unchanged.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"Checked the package subpath inventory, architecture and Task-room references against the export-map delta. The new Ensemble parser and brief renderer are pure source exports. Existing subpaths and runtime, transport and authorization ownership are unchanged.","inputs":["packages/contracts/package.json#/exports"]}
+  ]
+}

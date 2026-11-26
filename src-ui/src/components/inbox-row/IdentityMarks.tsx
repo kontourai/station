@@ -10,15 +10,21 @@ import { AgentIcon } from '../icons/AgentIcon';
 export function IdentityMarks({
   identity,
   size,
+  fallbackTitle,
 }: {
   identity: Marks;
   size: number;
+  /**
+   * The agent, where the marks stand in for its name (a hover row): the
+   * tooltip names it, before the engines when they are drawn.
+   */
+  fallbackTitle?: string;
 }) {
   if (identity.marks.length === 0) return null;
   const title =
     identity.engineNames.length > 0
-      ? `Ran on ${identity.engineNames.join(', ')}`
-      : undefined;
+      ? `${fallbackTitle ? `${fallbackTitle} — ` : ''}Ran on ${identity.engineNames.join(', ')}`
+      : fallbackTitle;
   return (
     <span
       className="identity-marks"

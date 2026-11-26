@@ -1,7 +1,0 @@
-{
-  "revision": "cb31a0e6feb8395fa44e79d2f01f3faa088eaf03",
-
-  "notes": [
-    {"path":"docs/guides/desktop-build.md","note":"Rechecked the packaged runtime worker probe after its inline-parent argument fix. File workers now receive file-mode execArgv rather than inheriting --input-type=module. The actual compiled checkpoint worker executed from an unrelated cwd, truncated a real 6 MiB WAL and retained its row; all 26 server portability tests pass. Build entry/shared options and guide claims are unchanged. This remains local Node artifact evidence, not signed-native delivery.","inputs":["docs/guides/desktop-build.md","scripts/__tests__/server-build-portability.test.ts"]}
-  ]
-}

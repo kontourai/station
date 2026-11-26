@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { parsePairingScope } from '@kontourai/station-contracts/environment-security';
+import {
+  DEFAULT_GRANT_PAIRING_SCOPE,
+  parsePairingScope,
+} from '@kontourai/station-contracts/environment-security';
 import * as fileLocks from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -14,6 +17,7 @@ import { fetchPairedDevices } from '../../../../packages/sdk/src/query-domains/d
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { SoftwareAuthenticator } from '../../../__test-utils__/software-authenticator.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import * as outsideGuard from '../../../security/outside-agent-release-guard.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   isBoundRuntimeLocalOperator,
@@ -56,6 +60,7 @@ async function build(
     origin?: string | null;
     hosted?: boolean;
     accountBound?: boolean;
+    firstScope?: string;
   } = {},
 ) {
   const home = makeTemp('station-operator-session-');
@@ -122,7 +127,7 @@ async function build(
   }
   const first = pair(
     'Operator browser',
-    'orchestration:read',
+    options.firstScope ?? 'orchestration:read',
     'device',
     options.accountBound,
   );
@@ -441,12 +446,16 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
       false,
       true,
     );
-    for (const [cookie, status] of [
-      [`__Host-station-device=${h.operator.credential}`, 404],
-      [`__Host-station-device=${desktop.credential}`, 401],
-      [`__Host-station-device=${h.first.credential}`, 403],
-      [signed.cookie, 404],
-      ['', 401],
+    for (const [cookie, status, code] of [
+      [`__Host-station-device=${h.operator.credential}`, 404, undefined],
+      [
+        `__Host-station-device=${desktop.credential}`,
+        403,
+        'operator_session_required',
+      ],
+      [`__Host-station-device=${h.first.credential}`, 403, undefined],
+      [signed.cookie, 404, undefined],
+      ['', 401, undefined],
     ] as const) {
       const unknown = await h.read(
         cookie,
@@ -457,6 +466,8 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
         `/api/pairing/device-access-transactions/${id}`,
       );
       expect(unknown.status).toBe(status);
+      if (code)
+        expect(await unknown.clone().json()).toMatchObject({ error: { code } });
       expect(guarded.status).toBe(unknown.status);
       expect(Buffer.from(await guarded.arrayBuffer())).toEqual(
         Buffer.from(await unknown.arrayBuffer()),
@@ -528,6 +539,50 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
     expect(own.status).toBe(200);
     expect(await own.json()).toMatchObject({
       passkeys: [{ id: signed.passkey.id }],
+    });
+  });
+
+  test('outside review leaves prefer a current browser operator session over ordinary Device scope', async () => {
+    const clients = '/api/outside-agent/clients';
+    const revoke = '/api/outside-agent/grants/isolated-grant/revoke';
+    const guard = outsideGuard.outsideAgentReleaseGuard;
+    vi.spyOn(outsideGuard, 'outsideAgentReleaseGuard').mockImplementation(
+      async (c, next) => {
+        if (
+          (c.req.method === 'GET' && c.req.path === clients) ||
+          (c.req.method === 'POST' && c.req.path === revoke)
+        ) {
+          await next();
+          return;
+        }
+        return guard(c, next);
+      },
+    );
+    const h = await build({ firstScope: DEFAULT_GRANT_PAIRING_SCOPE });
+    const authority = (request: Request) => ({
+      authority: getRuntimeAuthenticatedRequestPrincipal(request)?.authority,
+    });
+    h.api.get(clients, (c) => c.json(authority(c.req.raw)));
+    h.api.post(revoke, (c) => c.json(authority(c.req.raw)));
+    const session = await h.signIn();
+    const deviceCookie = session.cookie.split(';')[0];
+    expect(await (await h.read(deviceCookie, clients)).json()).toEqual({
+      authority: 'device-credential',
+    });
+    expect(await (await h.read(session.cookie, clients)).json()).toEqual({
+      authority: 'operator-session',
+    });
+    expect(
+      await (
+        await h.api.request(revoke, {
+          method: 'POST',
+          headers: { cookie: session.cookie, origin: APP },
+        })
+      ).json(),
+    ).toEqual({ authority: 'operator-session' });
+    h.clock.now += OPERATOR_SESSION_IDLE_MS;
+    expect(await (await h.read(session.cookie, clients)).json()).toEqual({
+      authority: 'device-credential',
     });
   });
 
@@ -1666,8 +1721,10 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
         headers,
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      expect(result.status).toBe(401);
-      expect(await result.json()).toEqual({ error: 'authentication_required' });
+      expect(result.status).toBe(403);
+      expect(await result.json()).toMatchObject({
+        error: { code: 'operator_credential_required' },
+      });
     }
   });
 
@@ -2704,23 +2761,43 @@ describe('S4 authority matrix for the independent host and Device paths', () => 
         environment,
       );
       expect(list.status).toBe(authority === 'internal' ? 401 : 200);
-      for (const [method, path] of [
-        ['GET', '/api/pairing/device-access-transactions/unknown'],
-        ['PUT', '/api/pairing/people/human:test:casey/group'],
-        ['POST', '/api/pairing/people/human:test:casey/tokens'],
-        ['DELETE', '/api/pairing/people/human:test:casey/tokens/unknown'],
-        ['DELETE', '/api/pairing/operator-passkeys/unknown'],
-      ]) {
+      for (const [method, path, localGrantRefusal] of [
+        [
+          'GET',
+          '/api/pairing/device-access-transactions/unknown',
+          'operator_session_required',
+        ],
+        [
+          'PUT',
+          '/api/pairing/people/human:test:casey/group',
+          'operator_credential_required',
+        ],
+        [
+          'POST',
+          '/api/pairing/people/human:test:casey/tokens',
+          'operator_credential_required',
+        ],
+        [
+          'DELETE',
+          '/api/pairing/people/human:test:casey/tokens/unknown',
+          'operator_credential_required',
+        ],
+        ['DELETE', '/api/pairing/operator-passkeys/unknown', undefined],
+      ] as const) {
         const response = await h.api.request(
           path,
           { method, headers },
           environment,
         );
-        expect(response.status).toBe(authority === 'ui-bootstrap' ? 403 : 401);
-        expect(await response.json()).toEqual(
+        const code =
           authority === 'ui-bootstrap'
-            ? { error: { code: 'insufficient_scope' } }
-            : { error: 'authentication_required' },
+            ? 'insufficient_scope'
+            : authority === 'local-grant'
+              ? localGrantRefusal
+              : undefined;
+        expect(response.status, path).toBe(code ? 403 : 401);
+        expect(await response.json(), path).toMatchObject(
+          code ? { error: { code } } : { error: 'authentication_required' },
         );
       }
       const scope = await h.api.request(

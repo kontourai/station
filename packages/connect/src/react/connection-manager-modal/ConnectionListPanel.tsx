@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { hasCameraApi } from '../../core/cameraSupport';
 import { connectionFailureCopy } from '../../core/environmentProfiles';
 import type { SavedConnection } from '../../core/types';
 import { ConnectionStatusDot } from '../ConnectionStatusDot';
@@ -85,6 +86,7 @@ interface ConnectionListPanelProps {
   hasLocalStation?: boolean;
   onViewDevices: () => void;
   onDiscover: () => void;
+  discoverTriggerRef?: Ref<HTMLButtonElement>;
   /**
    * station#1794 (part A): the "Other Stations" entry point is hidden
    * entirely while no discovery provider is registered
@@ -659,6 +661,7 @@ export function ConnectionListPanel({
   hasLocalStation = true,
   onViewDevices,
   onDiscover,
+  discoverTriggerRef,
   discoveryAvailable,
   listFooterContent,
   renderConnectionDetails,
@@ -888,7 +891,9 @@ export function ConnectionListPanel({
         >
           <h3>Connect to another computer</h3>
           <p>
-            Use its Station address, or a QR code or pairing code created there.
+            {hasCameraApi()
+              ? 'Use its Station address, or a QR code or pairing code created there.'
+              : 'Use its Station address, or a pairing code created there.'}
           </p>
           <button
             type="button"
@@ -897,13 +902,15 @@ export function ConnectionListPanel({
           >
             {addStationLabel}
           </button>
-          <button
-            type="button"
-            onClick={onScanQr}
-            className="station-connect-btn station-connect-btn--secondary"
-          >
-            Scan a QR code
-          </button>
+          {hasCameraApi() && (
+            <button
+              type="button"
+              onClick={onScanQr}
+              className="station-connect-btn station-connect-btn--secondary"
+            >
+              Scan a QR code
+            </button>
+          )}
           <button
             ref={enterPairingCodeRef}
             type="button"
@@ -914,6 +921,7 @@ export function ConnectionListPanel({
           </button>
           {discoveryAvailable && (
             <button
+              ref={discoverTriggerRef}
               type="button"
               onClick={onDiscover}
               className="station-connect-btn station-connect-btn--secondary"

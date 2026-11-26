@@ -1,7 +1,0 @@
-{
-  "revision": "395462fd4b684fd7cae9e4cc6a288222c563bd75",
-
-  "notes": [
-    {"path":"README.md","note":"Reviewed Get Station desktop and archive installation claims against target-aware koffi staging. Installation commands, distribution prerequisites and qualification limits are unchanged; detailed pruning remains owned by desktop-build.md.","inputs":["README.md"]}
-  ]
-}

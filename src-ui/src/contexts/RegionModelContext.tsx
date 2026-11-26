@@ -62,6 +62,7 @@ import {
   withSuspendedSurfaces,
 } from '../regions/region-model';
 import { normalizeDockMode } from '../types';
+import { purgeRetiredActivityStorage } from '../utils/retired-activity-storage';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -78,6 +79,9 @@ export interface SurfaceIntent {
   session?: string;
   focus?: 'evidence';
   messageAnchor?: SessionMessageAnchor;
+  childId?: string;
+  childSessionId?: string;
+  childTitle?: string;
 }
 
 export interface SurfaceIntentRecord extends SurfaceIntent {
@@ -226,7 +230,7 @@ export interface RegionModelValue {
    *
    * `options.region` names the region instead of the surface's rule. Its one
    * caller is `useShowSurfacePage`, which asks for `main`: a place row (the
-   * sidebar's Activity, the palette's Activity, Home's "View Activity") goes
+   * palette's Home entry) goes
    * to the surface's page rather than revealing it where it last was. The
    * outbox is handled the same either way, so a page open with no intent
    * clears an undelivered record exactly as a plain reveal does.
@@ -575,7 +579,10 @@ const REGION_ARRANGEMENT_PERSIST_DELAY_MS = 150;
  * is a Chat deep-link fact and maximizes Chat's region whichever path placed
  * it — with Chat's tab selected there when the maximize is the URL's doing,
  * since a maximized region showing another pane is not what the link named;
- * otherwise the record's own `maximized` (and selection) stands; the legacy
+ * otherwise nothing is maximized at mount. The record carries no maximize: a
+ * maximize belongs to the page where it was made, and a fresh load is another
+ * page, so the writer stores none and the parser reads none, including the
+ * `true` an earlier build stored (`toRegionArrangementRecord`); the legacy
  * seed carries none of its own (navigation's flag IS the URL param).
  *
  * A mount is not a write: nothing here reaches navigation or device settings.
@@ -588,15 +595,17 @@ function initialRegionArrangement(
   isDockOpen: boolean,
   isDockMaximized: boolean,
 ): RegionArrangement {
+  // Neither the record nor the legacy seed carries a maximize (the record's
+  // parser never reads one), so every region starts at its normal size and
+  // only this page's own `maximize=true` maximizes.
   const arrangement = initialRegionPlacement(settings, dockMode, isDockOpen);
   if (!isDockMaximized) return arrangement;
   const chatAt = chatRegion(arrangement);
   if (!chatAt) return arrangement;
   // `updateRegion` holds the invariants: a hidden Chat stays restored even
-  // if a hand-typed URL says `maximize=true` without `dock=open`. A
-  // maximize the record already holds is the URL remembering, and the
-  // record's selection stands; one the URL adds is Chat's link, and Chat's
-  // tab is what it maximizes (see `initialRegionPlacement`).
+  // if a hand-typed URL says `maximize=true` without `dock=open`. The
+  // maximize is Chat's link, so Chat's tab is what it maximizes (see
+  // `initialRegionPlacement`).
   const maximized = updateRegion(arrangement, chatAt, { maximized: true });
   return maximized === arrangement
     ? arrangement
@@ -655,6 +664,7 @@ function recordOf(value: unknown): RegionArrangementRecord | null {
 
 export function RegionModelProvider({ children }: { children: ReactNode }) {
   const settings = useDeviceSettings();
+  useEffect(purgeRetiredActivityStorage, []);
   const {
     isDockOpen,
     isDockMaximized,
@@ -675,14 +685,22 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // Chat params are the layer's, so the load starts from the pre-layer ones
   // and the mount effect below writes them back to navigation.
   const [reloadedOverLayer] = useState(takePhoneLayerPreState);
-  const [regions, setRegions] = useState<RegionArrangement>(() =>
-    initialRegionArrangement(
+  const [regions, setRegions] = useState<RegionArrangement>(() => {
+    const arrangement = initialRegionArrangement(
       settings,
       dockMode,
       reloadedOverLayer ? reloadedOverLayer.visible : isDockOpen,
       reloadedOverLayer ? reloadedOverLayer.maximized : isDockMaximized,
-    ),
-  );
+    );
+    // Keep the Devices tab available without starting its tool on a plain
+    // Home launch. An explicit navigation intent still opens its surface.
+    return pathname === '/' &&
+      !isDockOpen &&
+      !surfaceIntent &&
+      arrangement.right.occupant === 'device'
+      ? updateRegion(arrangement, 'right', { visible: false })
+      : arrangement;
+  });
   const [lastShownRegion, setLastShownRegion] = useState<RegionId | null>(
     () => chatRegion(regions) ?? null,
   );
@@ -1660,8 +1678,19 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       regionArrangementRecordsEqual(incoming, persistedRecordRef.current)
     )
       return;
-    const adopted = parseRegionArrangementRecord(settings.regionArrangement);
-    if (!adopted) return;
+    const parsed = parseRegionArrangementRecord(settings.regionArrangement);
+    if (!parsed) return;
+    // The record carries no maximize, so this tab keeps its own: another
+    // tab's maximize or restore is that page's, never this one's. It is kept
+    // only while its region still shows something (`updateRegion` drops it
+    // for a region the other tab hid or emptied).
+    const adopted = DOCK_REGION_IDS.reduce(
+      (next, id) =>
+        regionsRef.current[id].maximized
+          ? updateRegion(next, id, { maximized: true })
+          : next,
+      parsed,
+    );
     persistedRecordRef.current = incoming;
     regionsRef.current = adopted;
     // The other tab may have hidden or emptied the region this tab last
@@ -1831,6 +1860,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         surfaceIntent.surfaceId,
         surfaceIntent.sessionId,
         surfaceIntent.focus,
+        surfaceIntent.childId,
+        surfaceIntent.childSessionId,
+        surfaceIntent.childTitle,
         surfaceIntent.messageAnchor?.direction,
         surfaceIntent.messageAnchor?.requestKey,
       ])
@@ -1857,6 +1889,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
               session: surfaceIntent.sessionId,
               focus: surfaceIntent.focus,
               messageAnchor: surfaceIntent.messageAnchor,
+              childId: surfaceIntent.childId,
+              childSessionId: surfaceIntent.childSessionId,
+              childTitle: surfaceIntent.childTitle,
             }
           : undefined,
       );

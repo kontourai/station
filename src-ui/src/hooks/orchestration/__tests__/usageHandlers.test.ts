@@ -258,4 +258,40 @@ describe('handleTokenUsageUpdatedEvent', () => {
       activeChatsStore.getSnapshot()['thread-does-not-exist'],
     ).toBeUndefined();
   });
+
+  test('keeps an engine context reading and its reported cost, unit and scope intact', () => {
+    handleTokenUsageUpdatedEvent({
+      eventId: 'evt-kiro-1',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-11-13T00:00:00.000Z',
+      method: 'token-usage.updated',
+      contextPercent: 1.2,
+    });
+    handleTokenUsageUpdatedEvent({
+      eventId: 'evt-kiro-2',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-11-13T00:00:01.000Z',
+      method: 'token-usage.updated',
+      reportedCost: { amount: 0.0745, unit: 'credit', scope: 'turn' },
+    });
+    expect(activeChatsStore.getSnapshot()[threadId]?.liveUsage).toEqual({
+      contextPercent: 1.2,
+      reportedCost: { amount: 0.0745, unit: 'credit', scope: 'turn' },
+    });
+  });
+
+  test('ignores an out-of-range reading and a malformed cost', () => {
+    handleTokenUsageUpdatedEvent({
+      eventId: 'evt-bad',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-11-13T00:00:00.000Z',
+      method: 'token-usage.updated',
+      contextPercent: 400,
+      reportedCost: { amount: -2, unit: 'credit', scope: 'turn' },
+    });
+    expect(activeChatsStore.getSnapshot()[threadId]?.liveUsage).toBeUndefined();
+  });
 });

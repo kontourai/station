@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { OrchestrationCommandDispatchError } from '../../orchestration/orchestration-service.js';
 import { OrchestrationReviewExecutor } from '../orchestration-review-executor.js';
 import type { ReviewExecutionInput } from '../review-evidence-module.js';
 
@@ -84,6 +85,171 @@ function runtime(options?: { stopFails?: boolean }) {
 }
 
 describe('OrchestrationReviewExecutor', () => {
+  it.each([
+    {
+      label: 'definitive refusal',
+      status: 'rejected',
+      persistence: 'persisted',
+      release: 'safe',
+    },
+    {
+      label: 'unpersisted refusal',
+      status: 'rejected',
+      persistence: 'unavailable',
+      release: 'retain',
+    },
+    {
+      label: 'failed start with refusal metadata',
+      status: 'failed',
+      persistence: 'persisted',
+      release: 'retain',
+    },
+  ] as const)(
+    'settles workspace ownership for $label',
+    async ({ status, persistence, release }) => {
+      const orchestration = runtime();
+      orchestration.dispatchWithReceipt.mockImplementationOnce(
+        async (command) => {
+          throw new OrchestrationCommandDispatchError(
+            'Start refused',
+            {
+              commandType: 'startSession',
+              commandId: 'review-start',
+              threadId: command.input.threadId,
+              status,
+              createdAt: '2026-01-01T00:00:00.000Z',
+            },
+            undefined,
+            persistence,
+            false,
+            'model_not_advertised',
+            {
+              kind: 'model_unavailable',
+              retryable: false,
+              failurePhase: 'refused',
+            },
+          );
+        },
+      );
+      const executor = new OrchestrationReviewExecutor({
+        orchestration: orchestration as never,
+        supportsReadOnlyReview: () => true,
+      });
+      await expect(executor.execute(input())).resolves.toMatchObject({
+        kind: 'failed',
+        workspaceRelease: release,
+      });
+      expect(orchestration.dispatch).not.toHaveBeenCalled();
+      expect(orchestration.dispatchWithReceipt).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each([
+    {
+      label: 'confirmed stop',
+      session: 'exact',
+      stop: 'confirmed',
+      release: 'safe',
+    },
+    {
+      label: 'failed stop',
+      session: 'exact',
+      stop: 'failed',
+      release: 'retain',
+    },
+    { label: 'late stop', session: 'exact', stop: 'late', release: 'retain' },
+    {
+      label: 'unrelated session',
+      session: 'other',
+      stop: 'confirmed',
+      release: 'retain',
+    },
+    {
+      label: 'unknown session',
+      session: 'absent',
+      stop: 'confirmed',
+      release: 'retain',
+    },
+  ] as const)(
+    'reconciles a lost start receipt with $label',
+    async ({ session, stop, release }) => {
+      const orchestration = runtime({ stopFails: stop === 'failed' });
+      let threadId: string;
+      let finishStop: (() => void) | undefined;
+      if (stop === 'late') {
+        orchestration.dispatch.mockImplementation(
+          () =>
+            new Promise<void>((resolve) => {
+              finishStop = resolve;
+            }),
+        );
+      }
+      orchestration.dispatchWithReceipt.mockImplementationOnce(
+        async (command) => {
+          threadId = command.input.threadId;
+          throw new OrchestrationCommandDispatchError(
+            'Accepted start receipt unavailable',
+            {
+              commandType: 'startSession',
+              commandId: 'review-start',
+              threadId,
+              status: 'accepted',
+              createdAt: '2026-01-01T00:00:00.000Z',
+            },
+            session === 'absent'
+              ? undefined
+              : {
+                  threadId: session === 'exact' ? threadId : 'other-session',
+                  provider: 'codex',
+                  status: 'ready',
+                  createdAt: '2026-01-01T00:00:00.000Z',
+                  updatedAt: '2026-01-01T00:00:00.000Z',
+                },
+            'unavailable',
+            false,
+            'foreground_message_indeterminate',
+          );
+        },
+      );
+      const executor = new OrchestrationReviewExecutor({
+        orchestration: orchestration as never,
+        supportsReadOnlyReview: () => true,
+        stopTimeoutMs: 5,
+      });
+      const outcome = await executor.execute(input());
+      expect(outcome).toMatchObject({
+        kind: 'failed',
+        workspaceRelease: release,
+      });
+      if (session === 'exact') {
+        expect(orchestration.dispatch).toHaveBeenCalledExactlyOnceWith(
+          { type: 'stopSession', threadId: threadId! },
+          { userId: 'operator', ownerAttribution: 'unattributed-agent' },
+        );
+      } else {
+        expect(orchestration.dispatch).not.toHaveBeenCalled();
+      }
+      finishStop?.();
+      expect(outcome.workspaceRelease).toBe(release);
+      expect(orchestration.dispatchWithReceipt).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('retains the snapshot when Session start may have happened before its reply was lost', async () => {
+    const orchestration = runtime();
+    orchestration.dispatchWithReceipt.mockRejectedValueOnce(
+      new Error('start response lost'),
+    );
+    const executor = new OrchestrationReviewExecutor({
+      orchestration: orchestration as never,
+      supportsReadOnlyReview: () => true,
+    });
+    await expect(executor.execute(input())).resolves.toMatchObject({
+      kind: 'failed',
+      workspaceRelease: 'retain',
+    });
+    expect(orchestration.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
   it('enforces native read-only isolation on both provider boundaries', async () => {
     const orchestration = runtime();
     const executor = new OrchestrationReviewExecutor({

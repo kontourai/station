@@ -54,7 +54,7 @@ export function AgentAddModal({
         <input
           type="text"
           className="editor-input editor-add-modal__search"
-          placeholder={`Search ${noun.toLowerCase()}...`}
+          placeholder={`Search ${noun.toLowerCase()}…`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />

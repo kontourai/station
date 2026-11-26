@@ -1,0 +1,7 @@
+{
+  "revision": "1e60e3e22157f5ccdbadec86c7242067ea232db6",
+
+  "notes": [
+    {"path":".changeset/README.md","note":"Checked the ci:fast ordering claim: check-changesets.mjs keeps its place in FAST_STATIC_COMMANDS; the six new statics are appended after the existing list. Re-read against the main-qualification efficiency change (six full-qualification-only static checks on the PR fast lane, three process-heavy slices, the scheduled failed-source skip, deploy-ledger-only pushes starting no run, and explicit conformance-test impact edges). This document makes no claim about those behaviors; no prose change needed.","inputs":[".changeset/README.md","scripts/run-ci-fast.mjs"]}
+  ]
+}

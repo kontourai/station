@@ -11,7 +11,9 @@ import {
 } from '@kontourai/station-shared/display-reveal';
 import { approvalDecisionBody } from '@kontourai/station-shared/input-request';
 import {
+  SESSION_ALL_GRANT_LABEL,
   STATION_BROWSER_SERVER_GRANT_LABEL,
+  type ToolRequestRuleGrant,
   type ToolRequestServerGrant,
   type ToolRequestSessionGrant,
   toolRequestGrantLabel,
@@ -33,6 +35,7 @@ import {
 } from '../../hooks/orchestration/answerRequest';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
+import { formatBytes } from '../../utils/formatBytes';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { attentionWord } from '../../views/home/work-status';
 import { Button } from '../Button';
@@ -46,14 +49,18 @@ import {
   SearchGlyph,
   TerminalGlyph,
 } from '../icons/Glyph';
+import { StationMarkGlyph } from '../icons/StationMarkGlyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { ErrorState, SkeletonBlock } from '../state';
 import { useApprovalSheet } from './ApprovalSheetContext';
 import { OutgoingSessionMessage } from './agent-message/OutgoingSessionMessage';
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
 import {
+  appearanceProposalResult,
+  isAppearanceProposalCall,
+} from './appearance-proposal-result';
+import {
   boundedToolResultText,
-  formatWithheldBytes,
   fullToolResultText,
 } from './bounded-tool-result';
 import { ClaudeArtifactCard } from './ClaudeArtifactCard';
@@ -66,6 +73,7 @@ import {
   RequestSheetTrigger,
   useRequestSheet,
 } from './RequestSheet';
+import { useStationSessionTitle } from './station-session-titles';
 import { ToolCallElapsed } from './ToolCallElapsed';
 import { TranscriptAppTools } from './TranscriptAppTools';
 import {
@@ -76,15 +84,22 @@ import {
   type ToolCallKind,
   toolCallPhase,
 } from './tool-call-labels';
+import type { ToolCallLike } from './tool-call-runs';
 import { toolDisplayView } from './tool-display-view';
 import {
   type ApprovalContentGate,
   useApprovalContent,
 } from './useApprovalContent';
+import { useCallWithObservedRunning } from './useObservedRunningToolCalls';
 
 const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
+const loadAppearanceProposalCard = () =>
+  import('./AppearanceProposalCard').then((module) => ({
+    default: module.AppearanceProposalCard,
+  }));
 
 import './ToolCallDetails.css';
+import './StationToolGlyph.css';
 
 /**
  * Flat `tool-invocation` shape — the single chat tool-part vocabulary shared by
@@ -113,6 +128,7 @@ export interface ToolCallData {
   stationControlRefusal?: StationControlRefusalView;
   /** A Claude Code Artifact publish's page; see `claude-artifact-link.ts`. */
   claudeArtifact?: unknown;
+  appearanceProposal?: unknown;
   state?: string;
   progressMessage?: string;
   /** When the call started (ISO), for a running row's elapsed time. */
@@ -132,6 +148,8 @@ export interface ToolCallData {
   /** #2915/#2916: what a session answer grants; see `MessagePart`. */
   approvalSessionGrant?: ToolRequestSessionGrant;
   approvalServerGrant?: ToolRequestServerGrant;
+  approvalRuleGrant?: ToolRequestRuleGrant;
+  approvalAllGrant?: true;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -149,7 +167,13 @@ export interface ToolCallData {
 export type ToolApprovalOutcome = 'answered' | 'already-settled';
 
 type ToolApprovalHandler = (
-  action: 'once' | 'trust' | 'trust-server' | 'deny',
+  action:
+    | 'once'
+    | 'trust'
+    | 'trust-server'
+    | 'trust-rule'
+    | 'trust-all'
+    | 'deny',
 ) => undefined | Promise<ToolApprovalOutcome | undefined>;
 
 interface ToolCallDisplayProps {
@@ -161,9 +185,10 @@ interface ToolCallDisplayProps {
    */
   onApprove?: ToolApprovalHandler;
   showDetails?: boolean;
+  sessionId?: string;
 }
 
-export const KIND_GLYPH: Record<
+const KIND_GLYPH: Record<
   ToolCallKind,
   React.ComponentType<{ className?: string }>
 > = {
@@ -172,8 +197,34 @@ export const KIND_GLYPH: Record<
   delete: DiscardGlyph,
   exec: TerminalGlyph,
   search: SearchGlyph,
+  station: StationMarkGlyph,
   other: PlugGlyph,
 };
+
+/** The row's kind glyph: decorative, except Station's mark, named "Station". */
+export function ToolCallGlyph({
+  kind,
+  className,
+}: {
+  kind: ToolCallKind;
+  className?: string;
+}) {
+  const Glyph = KIND_GLYPH[kind];
+  return kind === 'station' ? (
+    <span
+      className={`${className} tool-call__glyph--station`}
+      role="img"
+      aria-label="Station"
+      title="Station"
+    >
+      <Glyph />
+    </span>
+  ) : (
+    <span className={className} aria-hidden="true">
+      <Glyph />
+    </span>
+  );
+}
 
 /**
  * One work activity as a quiet, single-line row (archive#2652 redesign):
@@ -282,7 +333,9 @@ function ToolCallRow({
     toolName,
     toolKind: toolCall.toolKind,
     args,
+    server,
   });
+  const sessionTitle = useStationSessionTitle();
   const denied =
     approvalStatus === 'user-denied' || approvalStatus === 'policy-denied';
   const phase = toolCallPhase(toolCall);
@@ -296,8 +349,8 @@ function ToolCallRow({
   const unresolvedWithoutOutcome =
     phase === 'unresolved' && !failed && !cancelled && !denied && !unresolved;
   const label = useMemo(
-    () => callLabel(kind, toolName, args, phase),
-    [kind, toolName, args, phase],
+    () => callLabel(kind, toolName, args, phase, { server, sessionTitle }),
+    [kind, toolName, args, phase, server, sessionTitle],
   );
 
   const hasArgs =
@@ -323,12 +376,9 @@ function ToolCallRow({
     if (toggleKey) rememberToggle(toggleKey, !isExpanded);
   };
 
-  const Glyph = KIND_GLYPH[kind];
   const lineContent = (
     <>
-      <span className="tool-call__glyph" aria-hidden="true">
-        <Glyph />
-      </span>
+      <ToolCallGlyph kind={kind} className="tool-call__glyph" />
       {/* Right-to-left words isolated, as in the details, so the label and
           the details show the same word order. */}
       <span
@@ -509,13 +559,26 @@ function ToolCallRow({
             serverGrant={
               contentGate.serverGrant ?? toolCall.approvalServerGrant ?? 'none'
             }
+            ruleGrant={
+              contentGate.ruleGrant === undefined
+                ? toolCall.approvalRuleGrant
+                : (contentGate.ruleGrant ?? undefined)
+            }
+            allGrant={
+              contentGate.allGrant ?? toolCall.approvalAllGrant === true
+            }
             sessionGrant={
               // Grants derive from the resolved request once it is loaded.
-              // A part without the projected grant (a registry-route
-              // request) is judged by its tool name alone.
+              // A registry-route part (no request binding) is judged by its
+              // tool name alone. An orchestration request without the
+              // projected grant offers none: the adapter judges it from
+              // fields the name does not carry, so the name could offer a
+              // grant the adapter refuses.
               contentGate.sessionGrant ??
               toolCall.approvalSessionGrant ??
-              toolRequestSessionGrant({ toolName: grantToolName })
+              (toolCall.approvalThreadId
+                ? 'none'
+                : toolRequestSessionGrant({ toolName: grantToolName }))
             }
             summary={label}
             details={
@@ -566,10 +629,14 @@ function gatedDecisionBody(
   gate: ApprovalContentGate | undefined,
   grantLabel: string | undefined,
   serverGrant: ToolRequestServerGrant,
+  ruleGrant: ToolRequestRuleGrant | undefined,
+  allGrant: boolean,
 ) {
   const body = approvalDecisionBody(
     grantLabel,
     serverGrant === 'server' ? STATION_BROWSER_SERVER_GRANT_LABEL : undefined,
+    ruleGrant?.label,
+    allGrant ? SESSION_ALL_GRANT_LABEL : undefined,
   );
   return !gate || gate.allowable
     ? body
@@ -599,7 +666,7 @@ function ApprovalContentStatus({ gate }: { gate?: ApprovalContentGate }) {
       variant="compact"
       title="The full request could not be loaded"
       description="It cannot be allowed until it has loaded. You can still deny it."
-      action={<Button onClick={gate.retry}>Try again</Button>}
+      action={<Button onClick={gate.retry}>Retry</Button>}
     />
   );
 }
@@ -655,7 +722,7 @@ function useApprovalDecision(
     detail?: string;
   } | null>(null);
   const [localChosen, setChosen] = useState<
-    'once' | 'trust' | 'trust-server' | 'deny'
+    'once' | 'trust' | 'trust-server' | 'trust-rule' | 'trust-all' | 'deny'
   >();
   const chosen = shared
     ? shared.decision === 'decline'
@@ -663,7 +730,11 @@ function useApprovalDecision(
       : shared.decision === 'acceptForSession'
         ? shared.sessionGrantScope === 'server'
           ? 'trust-server'
-          : 'trust'
+          : shared.sessionGrantScope === 'rule'
+            ? 'trust-rule'
+            : shared.sessionGrantScope === 'all'
+              ? 'trust-all'
+              : 'trust'
         : 'once'
     : localChosen;
   const failure =
@@ -674,7 +745,15 @@ function useApprovalDecision(
             'Station has not confirmed this decision. Check its status before trying again.',
         }
       : null);
-  const decide = (action: 'once' | 'trust' | 'trust-server' | 'deny') => {
+  const decide = (
+    action:
+      | 'once'
+      | 'trust'
+      | 'trust-server'
+      | 'trust-rule'
+      | 'trust-all'
+      | 'deny',
+  ) => {
     if (denied || phase !== 'idle' || admission.current) return;
     admission.current = true;
     setChosen(action);
@@ -753,23 +832,21 @@ function ApprovalDecisionStatus({
   check?: () => Promise<void>;
   checking?: boolean;
 }) {
+  // The chosen button already reads "Allowing…" / "Denying…" while a
+  // decision is in flight, so no sentence repeats it. A sent decision whose
+  // settlement has not arrived keeps only the way to check on it.
   return (
     <>
-      {(phase === 'sending' || phase === 'sent') && (
-        <p className="tool-call__approve-status" role="status">
-          {phase === 'sending'
-            ? 'Sending your decision…'
-            : 'Decision sent. Waiting for the tool to continue.'}
-          {phase === 'sent' && check && (
-            <Button pending={checking} onClick={() => void check()}>
-              Check status
-            </Button>
-          )}
+      {phase === 'sent' && check && (
+        <p className="tool-call__approve-status">
+          <Button pending={checking} onClick={() => void check()}>
+            Check status
+          </Button>
         </p>
       )}
       {phase === 'already-settled' && (
         <p className="tool-call__approve-status" role="status">
-          This request is no longer open.
+          Already answered.
         </p>
       )}
       {failure && (
@@ -804,6 +881,10 @@ interface ToolApprovalControlProps {
   /** Allow is offered only once `contentGate.allowable` (see useApprovalContent). */
   contentGate?: ApprovalContentGate;
   serverGrant: ToolRequestServerGrant;
+  /** The command-prefix choice, where the request offers one. */
+  ruleGrant?: ToolRequestRuleGrant;
+  /** Whether the request offers the session-wide grant. */
+  allGrant?: boolean;
   reference?: ApprovalAnswerReference;
   onCheck?: () => Promise<'pending' | 'already-settled'>;
   /** The request's reported tool name — never the row's display name. */
@@ -870,6 +951,8 @@ function ToolApprovalControls({
 
 function ToolApprovalSheet({
   serverGrant,
+  ruleGrant,
+  allGrant = false,
   contentGate,
   reference,
   onApprove,
@@ -903,7 +986,13 @@ function ToolApprovalSheet({
   );
   const actions = (
     <DecisionActionRow
-      body={gatedDecisionBody(contentGate, grantLabel, serverGrant)}
+      body={gatedDecisionBody(
+        contentGate,
+        grantLabel,
+        serverGrant,
+        ruleGrant,
+        allGrant,
+      )}
       busy={busy}
       inFlight={inFlight}
       chosen={chosen}
@@ -952,13 +1041,12 @@ function ToolApprovalButtons({
   contentGate,
   grantToolName,
   serverGrant,
+  ruleGrant,
+  allGrant = false,
   sessionGrant,
 }: ToolApprovalControlProps) {
-  const { phase, failure, decide, check, checking, busy } = useApprovalDecision(
-    onApprove,
-    onCheck,
-    reference,
-  );
+  const { phase, failure, decide, chosen, check, checking, busy } =
+    useApprovalDecision(onApprove, onCheck, reference);
   // #2915/#2916: undefined where no session grant is offered.
   const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
   // #3390: the options come from the approval's decision body. #2316: the
@@ -969,8 +1057,16 @@ function ToolApprovalButtons({
     <>
       <ApprovalContentStatus gate={contentGate} />
       <DecisionButtons
-        body={gatedDecisionBody(contentGate, grantLabel, serverGrant)}
+        body={gatedDecisionBody(
+          contentGate,
+          grantLabel,
+          serverGrant,
+          ruleGrant,
+          allGrant,
+        )}
         busy={busy}
+        inFlight={phase === 'sending' || phase === 'sent'}
+        chosen={chosen}
         onChoose={decide}
       />
       <ApprovalDecisionStatus
@@ -1126,7 +1222,7 @@ function ToolCallDetails({
                       "Output truncated" badge, which says the engine withheld
                       data before it ever arrived. This one says only that the
                       preview is showing part of what DID arrive. */}
-                  {'\n'}… {formatWithheldBytes(boundedResult.withheldBytes)}
+                  {'\n'}… {formatBytes(boundedResult.withheldBytes)}
                   {' not shown in this preview — '}
                   <button
                     type="button"
@@ -1265,6 +1361,40 @@ function ToolCallDisplayComponent(
   // A Claude Code Artifact publish reads as the page it published. Any other
   // Artifact action, a failure, or a link that does not check out keeps the
   // ordinary row with its raw result.
+  if (isAppearanceProposalCall(props.toolCall)) {
+    return (
+      <LoadFullContent
+        threadId={props.toolCall.contentThreadId}
+        value={{ output: props.toolCall.output ?? props.toolCall.result }}
+      >
+        {(full) => {
+          const proposal = appearanceProposalResult(
+            full
+              ? { ...props.toolCall, result: undefined, output: full.output }
+              : props.toolCall,
+          );
+          return (
+            <>
+              <ToolCallRow {...props} />
+              {proposal && (
+                <LazyBoundary
+                  key={proposal.id}
+                  load={loadAppearanceProposalCard}
+                  pending={
+                    <SkeletonBlock
+                      label="Loading appearance proposal"
+                      count={1}
+                    />
+                  }
+                  componentProps={{ proposal, sessionId: props.sessionId }}
+                />
+              )}
+            </>
+          );
+        }}
+      </LoadFullContent>
+    );
+  }
   const artifact = claudeArtifactLinkOf(props.toolCall);
   if (artifact) return <ClaudeArtifactCard link={artifact} />;
   return hasStationControlCallRow(props.toolCall) &&
@@ -1349,10 +1479,20 @@ function rememberToggle(key: string, expanded: boolean): void {
 export const ToolCallDisplay = memo(function ToolCallDisplay(
   props: ToolCallDisplayProps,
 ) {
+  // A call still running in the background reads as running, as its tool
+  // batch and the Agents pane read it, not as "No result recorded".
+  // ToolCallData is the narrower view of the same transcript part.
+  const toolCall = useCallWithObservedRunning(
+    props.toolCall as ToolCallLike,
+  ) as ToolCallData;
   return (
-    <TranscriptAppTools calls={[props.toolCall]}>
+    <TranscriptAppTools calls={[toolCall]}>
       {(appTools) => (
-        <ToolCallDisplayComponent {...props} appTools={appTools} />
+        <ToolCallDisplayComponent
+          {...props}
+          toolCall={toolCall}
+          appTools={appTools}
+        />
       )}
     </TranscriptAppTools>
   );

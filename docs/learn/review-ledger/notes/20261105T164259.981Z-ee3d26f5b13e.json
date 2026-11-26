@@ -1,7 +1,0 @@
-{
-  "revision": "d784fb8b77975f4b284ea0183d4a0cfe5746d789",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"Rechecked repository-source presentation after the private component refactor. Identity cards, Station-qualified paths, primary versus execution-root labels and failed-refresh path withdrawal retain the same observable behavior; source and mapping details remain on existing SDK contracts. No backend authority or lifecycle operation changed.","inputs":["docs/guides/connections.md","src-ui/src/components/modals/NewProjectRepositorySource.tsx","src-ui/src/components/modals/NewProjectModalContent.tsx","src-ui/src/views/project-settings/ProjectRepositorySources.tsx","src-ui/src/views/project-settings/ProjectSourcesSection.tsx","src-ui/src/views/project-settings/ProjectRepositoryAttachment.tsx","src-ui/src/views/project-settings/ProjectWorkspaceSelection.tsx","src-ui/src/views/project-settings/__tests__/ProjectRepositorySources.test.tsx"]}
-  ]
-}

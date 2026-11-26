@@ -1,0 +1,7 @@
+{
+  "revision": "d7c487980bba14870f7760207985425c5d562642",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Turn-completion replay: a missing record may also be one removed by retention after it settled; checked against findByDedupeTag and replayWriting.","inputs":["docs/design/notification-delivery.md"]}
+  ]
+}

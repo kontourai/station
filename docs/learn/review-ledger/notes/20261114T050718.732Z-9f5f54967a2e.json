@@ -1,0 +1,7 @@
+{
+  "revision": "85b591619c305c483d89880143a6f4a5f27ed93a",
+
+  "notes": [
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Re-recorded inside this change's range (the first note named the merge base). Rechecked the current-state claims: explicit-only /index/rebuild and /migrate are knowledge-index-routes.ts, sqlite-vec as the sole built-in index is index-adapter-registry.ts, and the read-only conversation root is conversation-root-bootstrap.ts; the ADR names no path or mount owned by the runtime route hub.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md"]}
+  ]
+}

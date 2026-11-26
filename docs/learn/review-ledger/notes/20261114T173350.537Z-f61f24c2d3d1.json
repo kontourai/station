@@ -1,0 +1,7 @@
+{
+  "revision": "0571dca1e98734827169fd97e89cb287e23d75f5",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Gallery baseline process unchanged; this change only re-captures nine screens both composer and home-polish PRs changed, via screenshot:baseline --allow-partial.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

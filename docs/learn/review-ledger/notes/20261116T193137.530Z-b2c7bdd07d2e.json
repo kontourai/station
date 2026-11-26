@@ -1,0 +1,7 @@
+{
+  "revision": "46298fd55011327d709c9575c39006737b9e0a80",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Re-reviewed for #5056 after a formatting-only Biome pass on the generator (quotes, wrapping). Same claims: the catalog lists every declared instrument and does not prove recording.","inputs":["docs/guides/monitoring.md","scripts/generate-metric-reference.mjs"]}
+  ]
+}

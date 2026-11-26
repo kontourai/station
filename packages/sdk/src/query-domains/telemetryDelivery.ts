@@ -290,6 +290,8 @@ const failure = z.object({
     'restart_required',
   ]),
   httpStatus: z.number().int().min(100).max(599).optional(),
+  // #4994: a receiver's sanitized refusal reason; absent on older hosts.
+  detail: z.string().min(1).max(200).optional(),
 });
 const probe = z
   .object({

@@ -100,6 +100,19 @@ export const HARNESS_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    // Claude Code's hosted-page tool, which agents reached for before
+    // Station's visual replies. It refuses when ANTHROPIC_AUTH_TOKEN
+    // overrides a claude.ai login.
+    name: 'Artifact',
+    description:
+      'Publish an HTML file as a hosted web page and return its link. Use when a page would be clearer than terminal text.',
+    input_schema: {
+      type: 'object',
+      properties: { file_path: { type: 'string' } },
+      required: ['file_path'],
+    },
+  },
+  {
     name: 'Task',
     description:
       'Start a subagent on your own engine in this checkout for a self-contained piece of work; it returns its result.',

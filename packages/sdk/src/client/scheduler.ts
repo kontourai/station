@@ -2,6 +2,7 @@
 
 import type {
   AddJobOpts,
+  SchedulerCreateResponse,
   SchedulerJob,
   SchedulerLogEntry,
   SchedulerManualRunReceipt,
@@ -273,8 +274,14 @@ async function unwrapSchedulerResponse<T>(response: Response): Promise<T> {
 export async function listJobs(
   apiBase: string,
   opts?: ClientRequestOptions,
+  weekStart?: string,
+  displayZone?: string,
 ): Promise<SchedulerJob[]> {
-  const response = await getJson(`${apiBase}/scheduler/jobs`, opts);
+  const suffix =
+    weekStart === undefined
+      ? ''
+      : `?${new URLSearchParams({ weekStart, ...(displayZone ? { displayZone } : {}) })}`;
+  const response = await getJson(`${apiBase}/scheduler/jobs${suffix}`, opts);
   return unwrapSchedulerResponse<SchedulerJob[]>(response);
 }
 
@@ -357,19 +364,22 @@ export async function getJobLogs(
   );
 }
 
-/** `POST /scheduler/jobs` — create a scheduled job. */
+/**
+ * `POST /scheduler/jobs` — create a scheduled job. The answer's `name` is the
+ * slug it was stored under (absent from an older host).
+ */
 export async function createJob(
   apiBase: string,
   body: AddJobOpts,
   opts?: ClientRequestOptions,
-): Promise<SchedulerMutationResponse> {
+): Promise<SchedulerCreateResponse> {
   const response = await mutateJson(
     `${apiBase}/scheduler/jobs`,
     'POST',
     opts,
     body,
   );
-  return unwrapSchedulerResponse<SchedulerMutationResponse>(response);
+  return unwrapSchedulerResponse<SchedulerCreateResponse>(response);
 }
 
 /** `PUT /scheduler/jobs/:target` — update a scheduled job. */

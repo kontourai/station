@@ -17,6 +17,7 @@ import type {
   CredentialProfileApplicationCapability,
   CredentialProfileApplicationProjection,
   CredentialRecoveryGroupProjection,
+  UsageLimitContinueOnProfile,
 } from '@kontourai/station-contracts/connection-recovery';
 import { resolveCredentialProfileApplicationCapability } from '@kontourai/station-contracts/connection-recovery';
 import type { FleetContributionManifest } from '@kontourai/station-contracts/fleet-contribution';
@@ -29,7 +30,10 @@ import type {
   LaunchableModelInventory,
 } from '@kontourai/station-contracts/model-inventory';
 import { isLlmModelConnection } from '@kontourai/station-contracts/model-inventory';
-import type { EngineId } from '@kontourai/station-contracts/provider';
+import {
+  type EngineId,
+  isAcpFamilyEngine,
+} from '@kontourai/station-contracts/provider';
 import {
   type AgentConnectionView,
   CONNECTION_UNREACHABLE_GRACE_MS,
@@ -47,8 +51,10 @@ import {
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import { type AgentRegistry } from '../../domain/agent-registry.js';
 import {
+  acpConnectionRuntimeAdapter,
   connectionIdForAdapter,
   engineIdForAdapter,
+  isAcpConnectionBacked,
   nativeRuntimeConnectionIds,
 } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
@@ -66,6 +72,7 @@ import {
 import { assertEngineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import { builtInAcpEntries, builtInAcpEntryFor } from '../acp/engine-setup.js';
 import {
   type EngineProxyRoute,
   resolveEngineProxy,
@@ -216,6 +223,13 @@ class InventorySiblingAbort extends Error {
   }
 }
 
+/** What a runtime inventory read may start; both default to included. */
+interface RuntimeConnectionInspectionOptions {
+  signal?: AbortSignal;
+  includeModelCatalog?: boolean;
+  includeCommands?: boolean;
+}
+
 interface ModelCatalogCacheEntry {
   fingerprint: string;
   observedAt: string;
@@ -330,7 +344,10 @@ function externalEngineRegistryBinding(
 ): { id: EngineConnectionId; settingsId: string } | null {
   if (connection.kind !== 'agent') return null;
   if (connection.config?.engineId === 'station') return null;
-  if (connection.config?.engineId === 'acp') {
+  if (
+    connection.type === 'acp' &&
+    isAcpFamilyEngine(connection.config?.engineId as string | undefined)
+  ) {
     return {
       id: engineConnectionId(connection.id),
       settingsId: connection.id,
@@ -474,8 +491,8 @@ function applyRuntimeAuthenticationFailure<
       : runtime.name;
   const readinessReason =
     typeof runtime.config.proxyConnectionId === 'string'
-      ? 'The last request could not sign in through this proxy. Check the address and key in Models, then choose Check connection.'
-      : `${providerLabel} rejected a real runtime request. Sign in again; Station will automatically recheck this client shortly.`;
+      ? 'The last request could not sign in through this proxy. Check the address and key in Models, then run Check connection on this engine to prove recovery.'
+      : `${providerLabel} rejected a real runtime request. Sign in again, then run Check connection on this engine to prove recovery.`;
   return {
     ...runtime,
     status: 'missing_prerequisites',
@@ -628,7 +645,18 @@ export class ConnectionService {
     resolveConnectionId: (provider: string) => string | undefined,
   ): CredentialProfileRecoveryAdapter {
     return {
-      stage: async ({ provider, failure, recoveryFingerprint }) => {
+      listContinueOnProfiles: async (provider) => {
+        const connectionId = resolveConnectionId(provider);
+        return connectionId
+          ? this.listUsageLimitContinueOnProfiles(connectionId)
+          : [];
+      },
+      stage: async ({
+        provider,
+        failure,
+        recoveryFingerprint,
+        consentedProfileRef,
+      }) => {
         const connectionId = resolveConnectionId(provider);
         if (!connectionId) return { kind: 'unavailable' };
         try {
@@ -637,6 +665,7 @@ export class ConnectionService {
               connectionId,
               failure,
               recoveryFingerprint as ReturnType<typeof randomUUID>,
+              consentedProfileRef,
             );
           const attempt = rawAttempt
             ? Object.freeze({
@@ -1056,14 +1085,55 @@ export class ConnectionService {
     }
   }
 
-  async listConnections(): Promise<ConnectionConfig[]> {
-    const discoveryPromise = this.discoverModelConnections();
+  private readonly ordinaryObservations = new WeakMap<
+    ProviderAdapterShape,
+    Map<string, Set<{ signal: AbortSignal }>>
+  >();
+
+  private async observeOrdinaryAdapter<T>(
+    adapter: ProviderAdapterShape,
+    key: string,
+    signal: AbortSignal,
+    observe: () => Promise<T>,
+  ): Promise<T> {
+    throwIfAborted(signal);
+    let observations = this.ordinaryObservations.get(adapter);
+    if (!observations) {
+      observations = new Map();
+      this.ordinaryObservations.set(adapter, observations);
+    }
+    const inFlight =
+      observations.get(key) ?? new Set<{ signal: AbortSignal }>();
+    // An abandoned observation remains owned until the adapter settles.
+    if ([...inFlight].some((owner) => owner.signal.aborted)) {
+      throw new Error('A previous engine observation is still settling.');
+    }
+    const owner = { signal };
+    inFlight.add(owner);
+    observations.set(key, inFlight);
+    try {
+      return await observe();
+    } finally {
+      inFlight.delete(owner);
+      if (inFlight.size === 0) observations.delete(key);
+    }
+  }
+
+  async listConnections(
+    options: RuntimeConnectionInspectionOptions = {},
+  ): Promise<ConnectionConfig[]> {
+    const discoveryPromise = this.discoverModelConnections({
+      signal: options.signal,
+    });
     const modelsPromise = discoveryPromise.then((discovery) =>
       discovery.sources.map((item) => item.connection),
     );
     const [models, runtimes] = await Promise.all([
       modelsPromise,
-      this.listRuntimeConnectionsForModels(modelsPromise),
+      this.listRuntimeConnectionsForModels(modelsPromise, {
+        ...options,
+        boundAdapterObservations: Boolean(options.signal),
+      }),
     ]);
     return [...models, ...runtimes];
   }
@@ -1082,11 +1152,11 @@ export class ConnectionService {
    * archive#3748: `failures` travels with the rows so a caller can never mistake
    * "could not read this" for "you have none of these".
    */
-  async listModelConnectionInventory(): Promise<{
+  async listModelConnectionInventory(signal?: AbortSignal): Promise<{
     connections: ConnectionConfig[];
     failures: ConnectionInventoryFailure[];
   }> {
-    const discovery = await this.discoverModelConnections();
+    const discovery = await this.discoverModelConnections({ signal });
     return {
       connections: discovery.sources
         .map((item) => item.connection)
@@ -1095,8 +1165,10 @@ export class ConnectionService {
     };
   }
 
-  async listModelConnections(): Promise<ConnectionConfig[]> {
-    return (await this.listModelConnectionInventory()).connections;
+  async listModelConnections(
+    signal?: AbortSignal,
+  ): Promise<ConnectionConfig[]> {
+    return (await this.listModelConnectionInventory(signal)).connections;
   }
 
   /**
@@ -1250,19 +1322,29 @@ export class ConnectionService {
    * route too, so the reason travels with it rather than being lost one seam
    * away from where it is rendered.
    */
-  async listRuntimeConnectionInventory(): Promise<{
+  async listRuntimeConnectionInventory(
+    options: RuntimeConnectionInspectionOptions = {},
+  ): Promise<{
     connections: AgentConnectionView[];
     failures: ConnectionInventoryFailure[];
   }> {
-    const inventoryPromise = this.listModelConnectionInventory();
+    const inventoryPromise = this.listModelConnectionInventory(options.signal);
     const connections = await this.listRuntimeConnectionsForModels(
       inventoryPromise.then((inventory) => inventory.connections),
+      { ...options, boundAdapterObservations: Boolean(options.signal) },
     );
     return { connections, failures: (await inventoryPromise).failures };
   }
 
-  async listRuntimeConnections(): Promise<AgentConnectionView[]> {
-    return (await this.listRuntimeConnectionInventory()).connections;
+  /**
+   * Every caller gets live model discovery and commands unless it opts out;
+   * the built-in agent binding opts out of both because it reads only
+   * status, capabilities and identity, and either can start an engine.
+   */
+  async listRuntimeConnections(
+    options: RuntimeConnectionInspectionOptions = {},
+  ): Promise<AgentConnectionView[]> {
+    return (await this.listRuntimeConnectionInventory(options)).connections;
   }
 
   /**
@@ -1283,6 +1365,7 @@ export class ConnectionService {
       id: EngineConnectionId;
       engineId: EngineId;
       type: string;
+      icon?: string;
     }>
   > {
     const acpConnections = await this.getACPConnections();
@@ -1294,12 +1377,14 @@ export class ConnectionService {
       id: EngineConnectionId;
       engineId: EngineId;
       type: string;
+      icon?: string;
     }> = [];
     for (const adapter of adapters) {
       // Per Adapter, never total: an Adapter whose identity cannot be read
       // loses only its own connection's attribution.
       try {
-        if (adapter.provider === 'acp') continue;
+        if (adapter.provider === 'acp' || isAcpConnectionBacked(adapter))
+          continue;
         const adapterEngineId = engineIdForAdapter(adapter);
         const identity = publicEngineConnection(
           adapters,
@@ -1323,6 +1408,7 @@ export class ConnectionService {
       }
     }
     const nativeIds = nativeRuntimeConnectionIds(adapters);
+    const builtIns = builtInAcpEntries();
     for (const config of acpConnections) {
       // Parsed, never assumed: a config id that is not a clean identity has
       // no public connection, and must not abort its siblings' attribution.
@@ -1343,10 +1429,17 @@ export class ConnectionService {
         configEngineId,
       );
       if (!identity) continue;
+      // The inspector's projection: an ACP-backed adapter claiming the
+      // connection names the engine, otherwise ACP.
+      const runtimeAdapter = acpConnectionRuntimeAdapter(adapters, config);
+      const icon = builtInAcpEntryFor(config, builtIns)?.icon;
       identities.push({
         id: identity.id,
-        engineId: engineId('acp'),
+        engineId: runtimeAdapter
+          ? engineIdForAdapter(runtimeAdapter)
+          : engineId('acp'),
         type: 'acp',
+        ...(icon && icon !== '🔌' ? { icon } : {}),
       });
     }
     return identities;
@@ -1367,14 +1460,18 @@ export class ConnectionService {
    * Canonical engine identity and navigable connection identity used by
    * readiness and other control-plane callers.
    */
-  async listEngineConnectionStates(): Promise<
+  async listEngineConnectionStates(signal?: AbortSignal): Promise<
     Array<{
       engineId: EngineId;
       engineConnectionId: EngineConnectionId;
       enabled: boolean;
     }>
   > {
-    const connections = await this.listRuntimeConnections();
+    const connections = await this.listRuntimeConnections({
+      signal,
+      includeModelCatalog: false,
+      includeCommands: false,
+    });
     return connections.map((connection) => {
       const rawEngineId = connection.config.engineId;
       if (typeof rawEngineId !== 'string') {
@@ -1395,10 +1492,17 @@ export class ConnectionService {
    * unregistered adapters, but still projects their clean public
    * EngineConnectionId paired with each Adapter's canonical EngineId.
    */
-  async listRuntimeConnectionCatalog(): Promise<AgentConnectionView[]> {
-    return this.listRuntimeConnectionsForModels(this.listModelConnections(), {
-      registryAuthoritative: false,
-    });
+  async listRuntimeConnectionCatalog(
+    options: RuntimeConnectionInspectionOptions = {},
+  ): Promise<AgentConnectionView[]> {
+    return this.listRuntimeConnectionsForModels(
+      this.listModelConnections(options.signal),
+      {
+        ...options,
+        registryAuthoritative: false,
+        boundAdapterObservations: Boolean(options.signal),
+      },
+    );
   }
 
   private async listRuntimeConnectionsForModels(
@@ -1410,22 +1514,27 @@ export class ConnectionService {
       signal?: AbortSignal;
       concurrency?: number;
       includeCommands?: boolean;
+      includeModelCatalog?: boolean;
       includePrerequisites?: boolean;
       disableHostDiscovery?: boolean;
       allowBuiltInOnDiscoveryFailure?: boolean;
       abortOnFailure?: (error: unknown) => void;
       registryAuthoritative?: boolean;
+      boundAdapterObservations?: boolean;
     } = {},
   ): Promise<AgentConnectionView[]> {
-    const [appConfig, acpConnections, models] = await Promise.all([
-      options.appConfig ?? this.getAppConfig(),
-      options.acpConnections ?? this.getACPConnections(),
-      modelsInput,
-    ]);
+    const [appConfig, acpConnections, models] = await raceWithSignal(
+      Promise.all([
+        options.appConfig ?? this.getAppConfig(),
+        options.acpConnections ?? this.getACPConnections(),
+        modelsInput,
+      ]),
+      options.signal,
+    );
     const adapters = options.adapters ?? this.getProviderAdapters();
     const registry =
       this.agentRegistry && options.registryAuthoritative !== false
-        ? await this.agentRegistry.load()
+        ? await raceWithSignal(this.agentRegistry.load(), options.signal)
         : undefined;
     const inspector = createConnectionInspector({
       adapters: () => adapters,
@@ -1435,6 +1544,12 @@ export class ConnectionService {
       publicConnection: (engineIdentity) =>
         publicEngineConnection(adapters, registry, engineIdentity),
       onInspectionFailure: options.abortOnFailure,
+      ...(options.boundAdapterObservations
+        ? {
+            observeAdapter: (adapter, key, signal, observe) =>
+              this.observeOrdinaryAdapter(adapter, key, signal, observe),
+          }
+        : {}),
       now: () => Date.now(),
     });
     const inspection = await inspector.inspect({
@@ -1442,6 +1557,7 @@ export class ConnectionService {
       signal: options.signal,
       concurrency: options.concurrency,
       includeCommands: options.includeCommands,
+      includeModelCatalog: options.includeModelCatalog,
       includePrerequisites: options.includePrerequisites,
       disableHostDiscovery:
         options.disableHostDiscovery ??
@@ -2604,6 +2720,8 @@ export class ConnectionService {
     connectionId: string,
     failure: ClassifiedConnectionFailure,
     attemptId: ReturnType<typeof randomUUID> = randomUUID(),
+    /** A person's "Continue on <label>": stage exactly this profile. */
+    consentedProfileRef?: string,
   ): Promise<CredentialProfileApplicationAttempt | undefined> {
     return this.withCredentialApplicationLock(connectionId, async () => {
       const capability = this.credentialRecoveryCapability(connectionId);
@@ -2622,6 +2740,7 @@ export class ConnectionService {
         failure,
         capability,
         attemptId,
+        consentedProfileRef,
       );
       if (result.attempt) return result.attempt;
       credentialProfileApplication.add(1, {
@@ -2640,8 +2759,18 @@ export class ConnectionService {
     failure: ClassifiedConnectionFailure,
     capability: CredentialProfileApplicationCapability,
     attemptId: ReturnType<typeof randomUUID>,
+    consentedProfileRef?: string,
   ): Promise<AutomaticCredentialProfileStageResult> {
     const state = await this.readCredentialRecoveryState(connectionId);
+    if (consentedProfileRef !== undefined)
+      return this.stageConsentedCredentialProfileTransition(
+        connectionId,
+        failure,
+        capability,
+        attemptId,
+        state,
+        consentedProfileRef,
+      );
     const candidates = (state.group?.enrolledProfileRefs ?? []).filter(
       (ref) => ref !== state.activeProfileRef,
     );
@@ -2670,26 +2799,19 @@ export class ConnectionService {
     }> = [];
     const readQuota = adapter?.readQuotaSnapshot?.bind(adapter);
     if (state.policy.allowancePreference && readQuota) {
-      const pending = [...eligible];
       const byProfile = new Map<string, ConnectionQuotaSnapshot>();
-      await Promise.all(
-        Array.from({ length: Math.min(4, pending.length) }, async () => {
-          for (;;) {
-            const profileRef = pending.shift();
-            if (profileRef === undefined) return;
-            try {
-              const result = await readQuota({
-                connectionId,
-                credentialProfileRef: profileRef,
-              });
-              if (result.kind === 'snapshot')
-                byProfile.set(profileRef, result.snapshot);
-            } catch {
-              /* Unavailable evidence preserves enrollment order. */
-            }
-          }
-        }),
-      );
+      await mapWithConcurrency(eligible, 4, async (profileRef) => {
+        try {
+          const result = await readQuota({
+            connectionId,
+            credentialProfileRef: profileRef,
+          });
+          if (result.kind === 'snapshot')
+            byProfile.set(profileRef, result.snapshot);
+        } catch {
+          /* Unavailable evidence preserves enrollment order. */
+        }
+      });
       observations.push(
         ...eligible.map((profileRef) => ({
           profileRef,
@@ -2767,6 +2889,90 @@ export class ConnectionService {
       application.pendingProfileRef === attempt.candidateProfileRef
       ? { attempt }
       : { refusalReason: 'conflict' };
+  }
+
+  /**
+   * A person's "Continue on <label>" on a usage-limit stop: the one profile
+   * they chose, through the same selector as automatic recovery with only the
+   * `automatic` opt-in replaced by their consent. No allowance ranking: the
+   * person picked the account.
+   */
+  private async stageConsentedCredentialProfileTransition(
+    connectionId: string,
+    failure: ClassifiedConnectionFailure,
+    capability: CredentialProfileApplicationCapability,
+    attemptId: ReturnType<typeof randomUUID>,
+    state: LegacyCredentialProfileRegistryState,
+    candidateProfileRef: string,
+  ): Promise<AutomaticCredentialProfileStageResult> {
+    const selection = selectCredentialRecoveryCandidate({
+      capability:
+        this.credentialRecoveryAdapter(connectionId)?.metadata.recovery,
+      failure,
+      policy: state.policy,
+      group: state.group,
+      activeProfileRef: state.activeProfileRef,
+      candidateProfileRef,
+      profiles: state.profiles,
+      consented: true,
+    });
+    if (selection.outcome !== 'selected')
+      return { refusalReason: selection.reason };
+    const attempt: CredentialProfileApplicationAttempt = {
+      connectionId,
+      attemptId,
+      candidateProfileRef: selection.candidateProfileRef,
+      capability,
+    };
+    const application = await this.stageCredentialProfileApplicationUnlocked(
+      connectionId,
+      attempt,
+    );
+    return application.outcome === 'staged' &&
+      application.pendingProfileRef === attempt.candidateProfileRef
+      ? { attempt }
+      : { refusalReason: 'conflict' };
+  }
+
+  /**
+   * The profiles a usage-limit stop on this connection may be continued on:
+   * enrolled, not active, and selectable with the person's consent for an
+   * account-scoped limit. Empty when the connection cannot switch profiles.
+   */
+  async listUsageLimitContinueOnProfiles(
+    connectionId: string,
+  ): Promise<UsageLimitContinueOnProfile[]> {
+    const capability = this.credentialRecoveryCapability(connectionId);
+    // Staging only applies `restart_resume` (see the automatic path).
+    if (capability !== 'restart_resume') return [];
+    const state = await this.readCredentialRecoveryState(connectionId);
+    const adapter = this.credentialRecoveryAdapter(connectionId);
+    const failure: ClassifiedConnectionFailure = {
+      kind: 'rate-limit',
+      scope: 'account',
+      timing: {},
+      usageLimit: true,
+    };
+    return (state.group?.enrolledProfileRefs ?? [])
+      .filter(
+        (ref) =>
+          selectCredentialRecoveryCandidate({
+            capability: adapter?.metadata.recovery,
+            failure,
+            policy: state.policy,
+            group: state.group,
+            activeProfileRef: state.activeProfileRef,
+            candidateProfileRef: ref,
+            profiles: state.profiles,
+            consented: true,
+          }).outcome === 'selected',
+      )
+      .map((ref) => {
+        const label = state.profiles.find(
+          (profile) => profile.ref === ref,
+        )?.label;
+        return label ? { ref, label } : { ref };
+      });
   }
 
   async commitCredentialProfileApplication(
@@ -3630,7 +3836,19 @@ export class ConnectionService {
       (candidate) => candidate.id === connection.id,
     );
     if (acpConnection) {
-      return valueFingerprint({ type: 'acp', connection: acpConnection });
+      // Which adapter runs it changes what the connection projects. The key
+      // is added only while an ACP-backed adapter claims the connection
+      // (OpenCode, preview on), so every other connection keeps the
+      // fingerprint its saved smoke results were recorded under.
+      const runtime = acpConnectionRuntimeAdapter(
+        adapters,
+        acpConnection,
+      )?.provider;
+      return valueFingerprint({
+        type: 'acp',
+        connection: acpConnection,
+        ...(runtime ? { runtime } : {}),
+      });
     }
     const rawEngineIdentity = connection.config?.engineId;
     const engineIdentity =

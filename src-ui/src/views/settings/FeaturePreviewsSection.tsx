@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-sdk';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
+import { COORDINATOR_PRODUCT_NAME } from '../../lib/productNames';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { SettingsPageRow as PageRow } from './SettingsPageRow';
 import { SettingsSection } from './SettingsSection';
@@ -70,7 +71,12 @@ export function FeaturePreviewsSection() {
             {(previews.data ?? []).map((preview) => (
               <PageRow
                 key={preview.id}
-                title={preview.label}
+                title={
+                  // Server strings cannot carry the product name; Home uses it.
+                  preview.id === 'coordinator-session'
+                    ? `${preview.label} (${COORDINATOR_PRODUCT_NAME})`
+                    : preview.label
+                }
                 description={preview.description}
                 control={
                   <Toggle

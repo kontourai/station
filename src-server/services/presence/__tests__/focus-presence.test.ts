@@ -258,4 +258,58 @@ describe('FocusPresence', () => {
     });
     expect(presence.snapshot().get('device:phone')?.state).toBe('focused');
   });
+
+  test('a focused surface carries the union of what its focused documents show', () => {
+    const presence = new FocusPresence({ now: clock().now });
+    lastSeq += 1;
+    presence.report(phone, TAB_A, 'focused', lastSeq, ['session-1']);
+    lastSeq += 1;
+    presence.report(phone, TAB_B, 'focused', lastSeq, ['session-2']);
+    expect(presence.snapshot().get('device:phone')?.viewingSessionIds).toEqual([
+      'session-1',
+      'session-2',
+    ]);
+    // A hidden document's chat is not on screen.
+    lastSeq += 1;
+    presence.report(phone, TAB_B, 'hidden', lastSeq, ['session-2']);
+    expect(presence.snapshot().get('device:phone')?.viewingSessionIds).toEqual([
+      'session-1',
+    ]);
+    // A focused document that does not say (an older client) unscopes it.
+    send(presence, phone, TAB_B, 'focused');
+    expect(
+      presence.snapshot().get('device:phone')?.viewingSessionIds,
+    ).toBeUndefined();
+  });
+
+  test('a focused surface carries the Projects its focused documents show (#5072)', () => {
+    const presence = new FocusPresence({ now: clock().now });
+    lastSeq += 1;
+    presence.report(phone, TAB_A, 'focused', lastSeq, [], 'project-a');
+    lastSeq += 1;
+    presence.report(phone, TAB_B, 'focused', lastSeq, [], 'project-b');
+    expect(presence.snapshot().get('device:phone')?.viewingProjectIds).toEqual([
+      'project-a',
+      'project-b',
+    ]);
+    lastSeq += 1;
+    presence.report(phone, TAB_B, 'hidden', lastSeq, [], 'project-b');
+    expect(presence.snapshot().get('device:phone')?.viewingProjectIds).toEqual([
+      'project-a',
+    ]);
+    lastSeq += 1;
+    presence.report(phone, TAB_A, 'focused', lastSeq, []);
+    expect(
+      presence.snapshot().get('device:phone')?.viewingProjectIds,
+    ).toBeUndefined();
+  });
+
+  test('a surface that is not focused carries no viewing scope', () => {
+    const presence = new FocusPresence({ now: clock().now });
+    lastSeq += 1;
+    presence.report(phone, TAB_A, 'visible', lastSeq, ['session-1']);
+    expect(
+      presence.snapshot().get('device:phone')?.viewingSessionIds,
+    ).toBeUndefined();
+  });
 });

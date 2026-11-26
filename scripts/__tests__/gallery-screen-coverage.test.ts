@@ -121,6 +121,61 @@ describe('gallery screen sources', () => {
     );
   });
 
+  it('keeps every room conversation scene, each loading the shared room list and composer', () => {
+    // Pinned independently of the map (#4791): 21 scenes at 390 and
+    // 1440 in both themes; `room-channels` is the channel switcher (#4792);
+    // reactions, edits, deletes and channel files follow (#4796, #4797,
+    // #4812), then the live stream's mention, Agent working and Agent
+    // outcome scenes (#4798, #4799, #4800). Dropping one, or pointing it at a
+    // surface that no longer loads the shared room components, fails here.
+    const scenes = [
+      'room-empty',
+      'room-short',
+      'room-long',
+      'room-new-messages',
+      'room-failed-send',
+      'room-mention',
+      'room-agent-pending',
+      'room-agent-abandon',
+      'room-keyboard',
+      'room-channels',
+      'room-reactions',
+      'room-reaction-picker',
+      'room-edited',
+      'room-deleted',
+      'room-attachment',
+      'room-live-mention',
+      'room-agent-working',
+      'room-agent-outcome',
+      'room-task-thread',
+      'room-task-working',
+      'room-coordinator',
+    ];
+    const names = scenes.flatMap((scene) =>
+      ['dark', 'light'].flatMap((theme) =>
+        ['desktop', 'mobile'].map((width) => `${scene}-${theme}-${width}`),
+      ),
+    );
+    expect(names).toHaveLength(84);
+    const declared = Object.keys(GALLERY_SCREEN_ENTRIES).filter((name) =>
+      name.startsWith('room-'),
+    );
+    expect(declared.sort()).toEqual([...names].sort());
+    const graph = createUiModuleGraph(process.cwd());
+    for (const name of names) {
+      const closure = graph.closure(GALLERY_SCREEN_ENTRIES[name] ?? [], {
+        followDynamic: true,
+      });
+      expect(
+        [
+          'src-ui/src/components/room/RoomConversation.tsx',
+          'src-ui/src/components/room/RoomComposer.tsx',
+        ].filter((path) => !closure.has(path)),
+        name,
+      ).toEqual([]);
+    }
+  });
+
   it('routes UI source by import closure', () => {
     expect(isGalleryUiPath('src-ui/src/views/ScheduleView.css')).toBe(true);
     expect(

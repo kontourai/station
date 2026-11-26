@@ -1,13 +1,14 @@
-import {
-  type NotificationEnvelopeV1,
-  type NotificationUrgency,
+import type {
+  Notification,
+  NotificationEnvelopeV1,
+  NotificationUrgency,
 } from '@kontourai/station-contracts/notification';
 import {
   defaultNotificationPreferences,
   type NotificationPreferencesV1,
 } from '@kontourai/station-contracts/notification-preferences';
 import { describe, expect, test } from 'vitest';
-import type { SurfaceId } from '../channel.js';
+import { deliveryEnvelopeFor, type SurfaceId } from '../channel.js';
 import {
   deliveryKey,
   FOCUS_LEASE_MS,
@@ -462,6 +463,221 @@ describe('plan() — rule 5, per-surface minUrgency', () => {
     );
     expect(decision(steps, PHONE)).toBe(expected);
     // Only the surface that set it.
+    expect(decision(steps, LAPTOP)).toBe('send:nothing-focused');
+  });
+});
+
+describe('plan() — focus is per session for a finished session (viewingSessionIds)', () => {
+  const finished = agentEnvelope('done', {
+    target: { kind: 'session', sessionId: 'session-1' },
+  });
+  const watching = (viewingSessionIds: readonly string[]): FocusEntry => ({
+    ...focused(),
+    viewingSessionIds,
+  });
+
+  test('the laptop showing that session quiets the phone and itself', () => {
+    const steps = plan(
+      input({
+        env: finished,
+        focus: new Map([[LAPTOP, watching(['session-1'])]]),
+      }),
+    );
+    expect(decision(steps, LAPTOP)).toBe('skip:focused-surface');
+    expect(decision(steps, PHONE)).toBe('skip:another-surface-focused');
+  });
+
+  test.each([
+    ['another chat', ['session-2']],
+    ['no chat at all', []],
+  ])('the laptop showing %s quiets nothing', (_label, viewing) => {
+    const steps = plan(
+      input({ env: finished, focus: new Map([[LAPTOP, watching(viewing)]]) }),
+    );
+    expect(decision(steps, LAPTOP)).toBe('send:nothing-focused');
+    expect(decision(steps, PHONE)).toBe('send:nothing-focused');
+  });
+
+  test('a client that does not report what it shows keeps the device-wide rule', () => {
+    const steps = plan(
+      input({ env: finished, focus: new Map([[LAPTOP, focused()]]) }),
+    );
+    expect(decision(steps, PHONE)).toBe('skip:another-surface-focused');
+  });
+
+  test('attention and failed keep surface-wide focus: deferred, not sent now', () => {
+    for (const urgency of ['attention', 'failed'] as const) {
+      const steps = plan(
+        input({
+          env: agentEnvelope(urgency, {
+            target: { kind: 'session', sessionId: 'session-1' },
+          }),
+          focus: new Map([[LAPTOP, watching(['session-2'])]]),
+        }),
+      );
+      expect(decision(steps, PHONE), urgency).toBe('defer:escalate-if-unread');
+    }
+  });
+});
+
+describe('plan() — per-Project notification settings (#5072)', () => {
+  const turn = (
+    urgency: NotificationUrgency,
+    /** `null`: a record that names no Project. */
+    projectId: string | null = 'project-a',
+  ): NotificationEnvelopeV1 => ({
+    v: 1,
+    source: {
+      kind: 'system',
+      subsystem: 'turn-completion',
+      ...(projectId ? { projectId } : {}),
+    },
+    audience: { kind: 'session-readers', sessionId: 'session-1' },
+    urgency,
+    target: { kind: 'session', sessionId: 'session-1' },
+    interrupt: 'default',
+  });
+  // The approval inbox writes no envelope; its legacy reading names the
+  // Project from the record's metadata, exactly as the router reads it.
+  const { envelope: approval } = deliveryEnvelopeFor({
+    id: 'n-1',
+    source: 'approval-inbox',
+    category: 'approval-request',
+    title: 'Provider approval needed',
+    body: 'Run tests?',
+    priority: 'high',
+    createdAt: '2026-09-24T12:00:00.000Z',
+    metadata: { sessionId: 'session-1', projectId: 'project-a' },
+  } as unknown as Notification);
+
+  test('a legacy approval record reads its Project from metadata', () => {
+    expect(approval.source).toEqual({
+      kind: 'system',
+      subsystem: 'approval-inbox',
+      projectId: 'project-a',
+    });
+    expect(approval.urgency).toBe('attention');
+  });
+  const blocked = prefs({ perProject: { 'project-a': 'attention-only' } });
+  /** The `project-overview` Feature Preview on. */
+  const on = (overrides: Partial<PlanInput>) =>
+    input({ projectSettings: true, ...overrides });
+  const sends = (steps: PlanStep[]) =>
+    steps.filter((step) => step.channel !== 'in-app' && step.action === 'send')
+      .length;
+
+  test('"Only when blocked": a finished Task interrupts nothing, a request for input interrupts once per surface', () => {
+    const finished = plan(on({ env: turn('done'), prefs: blocked }));
+    expect(decision(finished, PHONE)).toBe('skip:muted');
+    expect(decision(finished, LAPTOP)).toBe('skip:muted');
+    expect(sends(finished)).toBe(0);
+    // The inbox still gets it.
+    expect(finished.filter((step) => step.channel === 'in-app').length).toBe(2);
+
+    const asking = plan(
+      on({
+        env: approval,
+        prefs: blocked,
+        surfaces: [{ id: PHONE, principalId: ALICE, channels: ['web-push'] }],
+      }),
+    );
+    expect(decision(asking, PHONE)).toBe('send:nothing-focused');
+    expect(sends(asking)).toBe(1);
+  });
+
+  test('"Only when blocked" still sends a failure; "Off" sends nothing; "Everything" sends a finish', () => {
+    expect(
+      decision(plan(on({ env: turn('failed'), prefs: blocked })), PHONE),
+    ).toBe('send:nothing-focused');
+    const off = prefs({ perProject: { 'project-a': 'off' } });
+    expect(decision(plan(on({ env: approval, prefs: off })), PHONE)).toBe(
+      'skip:muted',
+    );
+    const all = prefs({ perProject: { 'project-a': 'all' } });
+    expect(decision(plan(on({ env: turn('done'), prefs: all })), PHONE)).toBe(
+      'send:nothing-focused',
+    );
+  });
+
+  test('another Project, a record with no Project, and the global level leave system records alone', () => {
+    expect(
+      decision(
+        plan(on({ env: turn('done', 'project-b'), prefs: blocked })),
+        PHONE,
+      ),
+    ).toBe('send:nothing-focused');
+    expect(
+      decision(plan(on({ env: turn('done', null), prefs: blocked })), PHONE),
+    ).toBe('send:nothing-focused');
+    expect(
+      decision(
+        plan(
+          on({
+            env: turn('done'),
+            prefs: prefs({ agentNotifications: 'off' }),
+          }),
+        ),
+        PHONE,
+      ),
+    ).toBe('send:nothing-focused');
+  });
+
+  test('a subsystem that is not a Project’s own work is never muted by its level', () => {
+    const pairing: NotificationEnvelopeV1 = {
+      ...approval,
+      source: {
+        kind: 'system',
+        subsystem: 'device-pairing',
+        projectId: 'project-a',
+      },
+    };
+    const off = prefs({ perProject: { 'project-a': 'off' } });
+    expect(decision(plan(on({ env: pairing, prefs: off })), PHONE)).toBe(
+      'send:nothing-focused',
+    );
+  });
+
+  test('a device showing the Project quiets that Project’s finished turns', () => {
+    const viewingProject = (projectId: string): FocusEntry => ({
+      ...focused(),
+      viewingSessionIds: [],
+      viewingProjectIds: [projectId],
+    });
+    const quiet = plan(
+      on({
+        env: turn('done'),
+        focus: new Map([[LAPTOP, viewingProject('project-a')]]),
+      }),
+    );
+    expect(decision(quiet, LAPTOP)).toBe('skip:focused-surface');
+    const other = plan(
+      on({
+        env: turn('done'),
+        focus: new Map([[LAPTOP, viewingProject('project-b')]]),
+      }),
+    );
+    expect(decision(other, LAPTOP)).toBe('send:nothing-focused');
+  });
+
+  test('with the preview off, a Project’s level and its foreground leave system records alone', () => {
+    expect(
+      decision(plan(input({ env: turn('done'), prefs: blocked })), PHONE),
+    ).toBe('send:nothing-focused');
+    const steps = plan(
+      input({
+        env: turn('done'),
+        focus: new Map([
+          [
+            LAPTOP,
+            {
+              ...focused(),
+              viewingSessionIds: [],
+              viewingProjectIds: ['project-a'],
+            },
+          ],
+        ]),
+      }),
+    );
     expect(decision(steps, LAPTOP)).toBe('send:nothing-focused');
   });
 });

@@ -282,6 +282,12 @@ function regionMoveTargets(
 }
 
 /** The maximize control's name, one wording for the button and the row. */
+function regionMaximizeTip(isDockMaximized: boolean, region: string): string {
+  return isDockMaximized
+    ? `Restore the ${region} region's size`
+    : `Expand the ${region} region to the workspace`;
+}
+
 function maximizeLabel(isDockMaximized: boolean): string {
   return isDockMaximized
     ? 'Restore dock region size'
@@ -316,7 +322,7 @@ function useRegionMenuActions({
     selectedTab && onMoveTab && !chrome.isMobile
       ? regionMoveTargets(chrome, selectedTab.surfaceId)
       : [];
-  const { applyDockSnap, isDockMaximized } = chrome;
+  const { toggleDockMaximize, isDockMaximized } = chrome;
   const rows: OverflowAction[] = [
     ...targets.map((region) => ({
       key: `region-move-${region}`,
@@ -341,7 +347,7 @@ function useRegionMenuActions({
             key: 'region-maximize',
             label: isDockMaximized ? 'Restore size' : 'Maximize',
             ...(maximizeShortcut ? { shortcut: maximizeShortcut } : {}),
-            onSelect: () => applyDockSnap(isDockMaximized ? 'half' : 'full'),
+            onSelect: () => toggleDockMaximize(),
           },
         ]
       : []),
@@ -465,6 +471,36 @@ function RegionTabStrip({
   onOpenMove: (tab: RegionChromeTab, anchor: RegionMoveState['anchor']) => void;
 }) {
   const [dragging, setDragging] = useState<string | null>(null);
+  // The strip scrolls when the bar is too narrow for every tab; it keeps the
+  // selected tab in view, so the name of the pane on screen is never the one
+  // cut off behind the bar's buttons ("Agen").
+  const stripRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    if (!strip || selectedSurfaceId === undefined || tabs.length === 0) return;
+    const reveal = () => {
+      const item = Array.from(
+        strip.querySelectorAll<HTMLElement>('[data-region-tab]'),
+      )
+        .find((tab) => tab.dataset.regionTab === selectedSurfaceId)
+        ?.closest('.region-tabs__item');
+      if (!item) return;
+      const bounds = strip.getBoundingClientRect();
+      const box = item.getBoundingClientRect();
+      // A tab wider than the strip (its name plus its close button, with
+      // wide font metrics) shows from its start, so its name is the part in
+      // view; otherwise the whole tab comes into view.
+      if (box.width > bounds.width || box.left < bounds.left)
+        strip.scrollLeft -= bounds.left - box.left;
+      else if (box.right > bounds.right)
+        strip.scrollLeft += box.right - bounds.right;
+    };
+    reveal();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(reveal);
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, [selectedSurfaceId, tabs]);
   const tabAt = (x: number, y: number): number => {
     const element = document.elementFromPoint(x, y);
     const target =
@@ -509,6 +545,7 @@ function RegionTabStrip({
   const endDrag = () => setDragging(null);
   return (
     <div
+      ref={stripRef}
       role="tablist"
       aria-label="Region panes"
       className="region-tabs"
@@ -719,6 +756,7 @@ export function RegionChromeBar({
       ? null
       : chrome.effectiveDockSlotPlacement;
   const applyDockSnap = chrome.applyDockSnap;
+  const toggleDockMaximize = chrome.toggleDockMaximize;
   const mobileChat = chrome.isMobile && selectedSurfaceId === 'chat';
   const addLabel = `Add pane to ${regionLabel(chrome.effectiveDockSlotPlacement)}`;
   const moveTargets = (surfaceId: string): RegionId[] =>
@@ -766,6 +804,16 @@ export function RegionChromeBar({
   useEffect(() => {
     const bar = barRef.current;
     if (!bar || mobileChat) return;
+    // Pane menus stop bubbling at their portal trigger. Reveal the chat in
+    // capture so mouse and keyboard activation still reach that control.
+    const revealForChatAction = (event: MouseEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest('.chat-dock__pane-toolbar button')
+      ) {
+        applyDockSnap('half');
+      }
+    };
     const onClick = (event: MouseEvent) => {
       if (
         event.target instanceof Element &&
@@ -774,9 +822,14 @@ export function RegionChromeBar({
         return;
       applyDockSnap(isDockOpen ? 'collapsed' : 'half');
     };
+    if (!isDockOpen && selectedSurfaceId === 'chat')
+      bar.addEventListener('click', revealForChatAction, true);
     bar.addEventListener('click', onClick);
-    return () => bar.removeEventListener('click', onClick);
-  }, [applyDockSnap, isDockOpen, mobileChat]);
+    return () => {
+      bar.removeEventListener('click', revealForChatAction, true);
+      bar.removeEventListener('click', onClick);
+    };
+  }, [applyDockSnap, isDockOpen, mobileChat, selectedSurfaceId]);
 
   if (mobileChat) return null;
 
@@ -893,9 +946,14 @@ export function RegionChromeBar({
           <button
             type="button"
             className="chat-dock__maximize-btn"
-            onClick={() => applyDockSnap(isDockMaximized ? 'half' : 'full')}
+            onClick={() => toggleDockMaximize()}
+            // The side and bottom bars both carry this button; the tip
+            // names which region it sizes.
             title={withShortcutHint(
-              maximizeLabel(isDockMaximized),
+              regionMaximizeTip(
+                isDockMaximized,
+                regionLabel(chrome.effectiveDockSlotPlacement),
+              ),
               'dock.maximize',
               () => maximizeShortcut,
             )}

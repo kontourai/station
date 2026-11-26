@@ -9,6 +9,7 @@ import {
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 
 const PROJECT = {
   id: 'p-default',
@@ -427,17 +428,21 @@ async function openRuntimeSession(
   await page.goto('/?dock=open');
   await expect(
     page
-      .locator('.chat-dock__tab-actions')
+      .locator('#chat-dock')
       .getByRole('button', { name: 'New chat', exact: true }),
   ).toBeVisible({ timeout: 15_000 });
   await dismissSetupLauncher(page);
   await page
-    .locator('.chat-dock__tab-actions')
+    .locator('#chat-dock')
     .getByRole('button', { name: 'New chat', exact: true })
     .click();
   const dialog = page.getByRole('region', { name: 'New chat', exact: true });
   const composer = dialog.getByRole('form', { name: 'Start work' });
-  await composer.getByRole('button', { name: /^Agent:/ }).click({
+  await (
+    await runSetupControl(composer, (panel) =>
+      panel.getByRole('button', { name: /^Agent:/ }),
+    )
+  ).click({
     timeout: 10_000,
   });
   const agents = page.getByRole('dialog', { name: 'Choose agent' });
@@ -447,10 +452,13 @@ async function openRuntimeSession(
   await expect(agents).toHaveCount(0);
   // The chip names the runtime that Start will use.
   await expect(
-    composer.getByRole('button', {
-      name: new RegExp(`^Agent: ${runtimeName}(?: · [^,]+)?$`),
-    }),
+    await runSetupControl(composer, (panel) =>
+      panel.getByRole('button', {
+        name: new RegExp(`^Agent: ${runtimeName}(?: · [^,]+)?$`),
+      }),
+    ),
   ).toBeVisible();
+  await closeRunSetup(page);
   await composer
     .getByRole('textbox', { name: 'What would you like done?' })
     .fill(firstMessage);
@@ -458,10 +466,21 @@ async function openRuntimeSession(
   await expect(dialog).toHaveCount(0);
   await page.getByRole('button', { name: 'Earlier' }).click();
   const selectedChat = page
-    .getByRole('complementary', { name: 'Inbox chats' })
+    .getByRole('complementary', { name: 'Chats' })
     .locator('button[aria-current="true"]');
   await expect(selectedChat).toBeVisible();
-  await expect(selectedChat).toContainText(runtimeName);
+  // A hover row draws the runtime as its mark, named in the mark's tooltip;
+  // a row with no mark names it in words.
+  await expect
+    .poll(async () => {
+      const marks = selectedChat.locator('[data-testid="identity-marks"]');
+      const title =
+        (await marks.count()) > 0
+          ? await marks.first().getAttribute('title')
+          : null;
+      return `${title ?? ''} ${(await selectedChat.textContent()) ?? ''}`;
+    })
+    .toContain(runtimeName);
 }
 
 async function waitForExecutionThread(
@@ -504,7 +523,7 @@ test.describe('Built-in runtime chat workflows', () => {
 
     await expect(
       page
-        .getByRole('complementary', { name: 'Inbox chats' })
+        .getByRole('complementary', { name: 'Chats' })
         .locator('button[aria-current="true"]'),
     ).toContainText('Claude Runtime');
     await expect(page.locator('body')).toContainText('Claude says hi');
@@ -535,7 +554,7 @@ test.describe('Built-in runtime chat workflows', () => {
 
     await expect(
       page
-        .getByRole('complementary', { name: 'Inbox chats' })
+        .getByRole('complementary', { name: 'Chats' })
         .locator('button[aria-current="true"]'),
     ).toContainText('Codex Runtime');
     await expect(page.locator('body')).toContainText('Codex says hi');
@@ -920,7 +939,7 @@ test.describe('Built-in runtime chat workflows', () => {
     });
     await expect(approvalQueue).toBeVisible({ timeout: 10_000 });
     const approvalPanel = page.getByTestId('approval-queue-panel');
-    const allowOnce = approvalPanel.getByRole('button', { name: 'Allow Once' });
+    const allowOnce = approvalPanel.getByRole('button', { name: 'Allow once' });
     await expect(allowOnce).toBeHidden();
     await approvalQueue.click();
     await expect(allowOnce).toBeVisible();
@@ -957,7 +976,7 @@ test.describe('Built-in runtime chat workflows', () => {
         status: 'approved',
       },
     });
-    await expect(page.getByRole('button', { name: 'Allow Once' })).toHaveCount(
+    await expect(page.getByRole('button', { name: 'Allow once' })).toHaveCount(
       0,
     );
   });

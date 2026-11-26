@@ -1,7 +1,0 @@
-{
-  "revision": "980cb10a37d831fd2801ddf6316b9c105537ad9c",
-
-  "notes": [
-    {"path":"docs/reference/play-data-safety.md","note":"Rechecked after usage-telemetry-service.ts shutdown now joins a cancelled flush's ledger write and fire-and-forget flush() runs before returning. The network budget (1s, then abort) is unchanged; only local ledger settlement is joined. This document's claims (including any bounded-flush wording) remain accurate.","inputs":["docs/reference/play-data-safety.md","src-server/services/usage-telemetry-service.ts"]}
-  ]
-}

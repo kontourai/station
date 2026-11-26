@@ -1,0 +1,7 @@
+{
+  "revision": "1d0abda341fd30eacb6b6328bc5b454465fd79ba",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Delta: the --approval-mode paragraph now says Claude and Codex accept it, an ACP Agent accepts it when Station answers its approvals, and other Agents refuse it. Checked against packages/cli/src/help.ts and approvalKnobSupported in the execution-target resolver; flags and exit codes are unchanged.","inputs":["docs/reference/cli.md","packages/cli/src/help.ts","src-server/routes/operations/automations.ts","src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]}
+  ]
+}

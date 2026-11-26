@@ -67,7 +67,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
   }),
   useOrchestrationSessionsQuery: () => ({ data: [], isSuccess: true }),
-  useDismissNotificationMutation: () => ({ isPending: false, mutate: dismiss }),
+  useDismissNotificationMutation: () => ({
+    isPending: false,
+    mutateAsync: async (id: string) => dismiss(id),
+  }),
   useNotificationActionMutation: () => ({ isPending: false, mutate: vi.fn() }),
 }));
 
@@ -162,7 +165,7 @@ describe('HeaderActions + NotificationHistory — undo survives closing', () => 
     try {
       const { onClose, rerenderWith } = await openPanel();
 
-      chooseRowAction('Dismiss', {
+      chooseRowAction('Mark done', {
         within:
           document.querySelector<HTMLElement>('.notification-history') ??
           undefined,
@@ -196,7 +199,7 @@ describe('HeaderActions + NotificationHistory — undo survives closing', () => 
     try {
       const { rerenderWith } = await openPanel();
 
-      chooseRowAction('Dismiss', {
+      chooseRowAction('Mark done', {
         within:
           document.querySelector<HTMLElement>('.notification-history') ??
           undefined,

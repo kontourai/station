@@ -318,6 +318,46 @@ describe('claude-adapter-events', () => {
     });
   });
 
+  // A Claude reply that stopped at the output limit is incomplete: its turn
+  // completes as max-tokens, so the chat can say it was cut off.
+  test.each([
+    ['max_tokens', 'max-tokens'],
+    ['end_turn', 'stop'],
+    ['tool_use', 'tool-calls'],
+  ])('a %s result completes the turn as %s', (stopReason, finishReason) => {
+    const publish = vi.fn();
+    const record = {
+      session: {
+        provider: 'claude' as const,
+        threadId: 'thread-limit',
+        status: 'running' as const,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      lastSessionState: 'running' as const,
+    } as ClaudeMessageState;
+    withClaudeTurns(record, { dispatched: ['turn-1'] });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'result',
+        is_error: false,
+        result: 'This reply runs out of room',
+        stop_reason: stopReason,
+        usage: { input_tokens: 10, output_tokens: 5 },
+        uuid: 'msg-limit',
+        session_id: 'thread-limit',
+      } as any,
+    });
+    expect(
+      publish.mock.calls
+        .map(([event]) => event)
+        .find((event) => event.method === 'turn.completed'),
+    ).toMatchObject({ finishReason });
+  });
+
   test('drops a resume-style result with no local turn while retaining usage and a tripwire', () => {
     const publish = vi.fn();
     const logInfo = vi.fn();
@@ -783,6 +823,7 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
           parent: { toolCallId: 'toolu-1', turnId: 'turn-1' },
           title: 'Explore the codebase',
           kindLabel: 'Explore',
+          workKind: 'agent',
           startedAt: expect.any(String),
           controls: { stop: 'provider-task-stop' },
         },
@@ -1048,6 +1089,63 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
       'tool.completed',
     ]);
     expect(childWorkDeltas(events)).toEqual([]);
+  });
+
+  test('each child says what it is: a local_bash is a command, a Monitor-launched one a monitor, any other task an agent', () => {
+    const record = makeRecord();
+    const events = feed(record, [
+      {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-mon', name: 'Monitor', input: {} },
+            { type: 'tool_use', id: 'toolu-sh', name: 'Bash', input: {} },
+          ],
+        },
+        uuid: 'u-launch',
+        session_id: 's-1',
+      } as unknown as SDKMessage,
+      task('task_started', {
+        task_id: 'bash-1',
+        tool_use_id: 'toolu-sh',
+        description: 'Push empty commit',
+        is_backgrounded: true,
+        task_type: 'local_bash',
+      }),
+      task('task_started', {
+        task_id: 'mon-1',
+        tool_use_id: 'toolu-mon',
+        description: 'Watch CI',
+        is_backgrounded: true,
+        task_type: 'local_bash',
+      }),
+      task('task_started', {
+        task_id: 'agent-1',
+        tool_use_id: 'toolu-agent',
+        description: 'Audit',
+        task_type: 'local_agent',
+        subagent_type: 'Explore',
+      }),
+      task('task_notification', {
+        task_id: 'bash-1',
+        tool_use_id: 'toolu-sh',
+        status: 'completed',
+        summary: 'Push empty commit',
+      }),
+    ]);
+    const kinds = Object.fromEntries(
+      fold(events).map((item) => [item.childId, item.workKind]),
+    );
+    expect(kinds).toEqual({
+      'bash-1': 'command',
+      'mon-1': 'monitor',
+      'agent-1': 'agent',
+    });
+    // The settle restates it, so a client that missed the start still knows.
+    expect(
+      childWorkDeltas(events).find((delta) => delta.kind === 'settle'),
+    ).toMatchObject({ identity: { workKind: 'command' } });
   });
 
   test('task_notification settles a tracked task: tool.completed plus a failed settle, no tuples', () => {

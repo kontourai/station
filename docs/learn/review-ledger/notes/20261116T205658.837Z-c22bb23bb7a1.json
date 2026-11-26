@@ -1,0 +1,9 @@
+{
+  "revision": "337ffbe5034ff34a015435c1895239dedbdd23a8",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Only the deleted src-ui/public/favicon-beta.png entry was removed from the desktop Rust input list (#4929 deleted the file); no classification lane, scope or receipt behavior these pages describe changed.","inputs":["scripts/classify-ci-change.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Only the deleted src-ui/public/favicon-beta.png entry was removed from the desktop Rust input list (#4929 deleted the file); no classification lane, scope or receipt behavior these pages describe changed.","inputs":["scripts/classify-ci-change.mjs"]}
+  ]
+}

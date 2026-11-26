@@ -185,7 +185,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
       },
     });
     const { onCloseChat } = renderPanel(rows, [FRESH.threadId]);
-    const search = screen.getByRole('searchbox', { name: 'Search inbox' });
+    const search = screen.getByRole('searchbox', { name: 'Search chats' });
     const discard = screen.getByRole('button', {
       name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
     });
@@ -204,10 +204,13 @@ describe('#2312 discarding Drafts from the inbox', () => {
     const { onCloseChat } = renderPanel(rows);
 
     const drafts = screen.getByRole('region', { name: 'Open' });
-    await discardAfterUndoWindow(
-      within(drafts).getByRole('button', {
-        name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
-      }),
+    const discard = within(drafts).getByRole('button', {
+      name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
+    });
+    discard.focus();
+    await discardAfterUndoWindow(discard);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: /^Draft claude:worked[, ]/ }),
     );
 
     await waitFor(() =>
@@ -376,7 +379,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
     ).toBeTruthy();
   });
 
-  it('the mobile inbox keeps older drafts Open and offers server discard', async () => {
+  it('moves phone Details focus on discard and preserves newer focus after a late reply', async () => {
     dispatch.mockResolvedValue(accepted(STALE.threadId));
     const rows = items([FRESH, STALE]);
     render(
@@ -395,16 +398,27 @@ describe('#2312 discarding Drafts from the inbox', () => {
     );
     const staleTitle = titleOf(rows, STALE.threadId);
     expect(screen.getByText(staleTitle)).toBeTruthy();
-    // The picker keeps one ⋯ per row (#3144); Discard is in its sheet.
-    fireEvent.click(
-      screen.getByRole('button', { name: `Details for ${staleTitle}` }),
+    const details = screen
+      .getByText(staleTitle, { exact: true })
+      .closest('button')!;
+    details.focus();
+    fireEvent.contextMenu(details);
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    const sheet = await screen.findByRole('dialog', {
+      name: `Details for ${staleTitle}`,
+    });
+    const discard = within(sheet).getByRole('button', {
+      name: `Discard draft ${staleTitle}`,
+    });
+    discard.focus();
+    await discardAfterUndoWindow(discard);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: `Details for ${staleTitle}` }),
+      ).toBeNull(),
     );
-    await discardAfterUndoWindow(
-      await screen.findByRole(
-        'button',
-        { name: `Discard draft ${staleTitle}` },
-        { timeout: 8000 },
-      ),
+    expect(document.activeElement).toBe(
+      screen.getByText(titleOf(rows, FRESH.threadId)).closest('button'),
     );
 
     await waitFor(() =>
@@ -413,6 +427,50 @@ describe('#2312 discarding Drafts from the inbox', () => {
         threadId: STALE.threadId,
       }),
     );
+
+    const freshTitle = titleOf(rows, FRESH.threadId);
+    let accept!: (result: ReturnType<typeof accepted>) => void;
+    const response = new Promise<ReturnType<typeof accepted>>((resolve) => {
+      accept = resolve;
+    });
+    dispatch.mockImplementationOnce(() => response);
+    const freshDetails = screen
+      .getByText(freshTitle, { exact: true })
+      .closest('button')!;
+    freshDetails.focus();
+    fireEvent.contextMenu(freshDetails);
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    const freshSheet = await screen.findByRole('dialog', {
+      name: `Details for ${freshTitle}`,
+    });
+    const freshDiscard = within(freshSheet).getByRole('button', {
+      name: `Discard draft ${freshTitle}`,
+    });
+    freshDiscard.focus();
+    await discardAfterUndoWindow(freshDiscard);
+    expect(dispatch.mock.calls[1]?.[0]).toEqual({
+      type: 'discardDraft',
+      threadId: FRESH.threadId,
+    });
+    fireEvent.click(
+      within(freshSheet).getByRole('button', { name: 'Close details' }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: `Details for ${freshTitle}` }),
+      ).toBeNull(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Search chats' }));
+    const search = screen.getByRole('searchbox', {
+      name: 'Search chats and tasks',
+    });
+    expect(document.activeElement).toBe(search);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    await act(async () => accept(accepted(FRESH.threadId)));
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['orchestration-sessions'],
+    });
+    expect(document.activeElement).toBe(search);
   });
 
   it('the mobile inbox names a completed parent with reported background work as active', () => {

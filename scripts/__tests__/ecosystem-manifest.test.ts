@@ -22,6 +22,7 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { createPackagedReleaseManifest } from '../lib/container-release-metadata.mjs';
 import { rollingManifestUrl } from '../lib/public-release-locations.mjs';
 import {
   buildPrebuiltArchive,
@@ -582,7 +583,7 @@ describe('pinned manifest signing keys', () => {
       ]),
     ).toEqual([
       [NIGHTLY_KEY_ID, ['nightly']],
-      [RELEASE_KEY_ID, ['stable', 'preview']],
+      [RELEASE_KEY_ID, ['stable']],
     ]);
     for (const entry of config.keys)
       expect(createPublicKey(entry.publicKeySpkiPem).asymmetricKeyType).toBe(
@@ -607,7 +608,7 @@ describe('pinned manifest signing keys', () => {
             keyId: 'station-fixture-release',
             algorithm: 'ed25519',
             publicKeySpkiPem: readFileSync(fixture.testKeyPath, 'utf8'),
-            channels: ['stable', 'preview'],
+            channels: ['stable'],
           },
         ],
       }),
@@ -986,53 +987,31 @@ describe('install.sh public manifest verification', () => {
     ).toHaveLength(1);
   });
 
-  it('treats an unset STATION_CHANNEL as stable when the manifest says preview', {
+  it('refuses retired preview manifests and Beta aliases without installing', {
     timeout: 120_000,
   }, () => {
-    const fixture = makeInstallFixture('station-pinned-default-channel-');
+    const fixture = makeInstallFixture('station-pinned-retired-channel-');
     const manifestPath = signManifest(
       fixture,
       '1.3.0-preview.1',
       buildArchive(fixture, '1.3.0-preview.1'),
     );
     const refused = runInstaller(fixture, manifestPath);
-    expect(refused.stderr).toContain(
-      'requested channel does not match public ecosystem manifest',
-    );
     expect(refused.status).toBe(1);
-    expect(
-      existsSync(join(fixture.dir, 'home', '.local', 'bin', 'station-beta')),
-    ).toBe(false);
-    // Control: asking for beta installs the same manifest.
-    const beta = runInstaller(fixture, manifestPath, {
-      STATION_CHANNEL: 'beta',
-    });
-    expect(beta.status, beta.stderr).toBe(0);
-    expect(installedTag(fixture, 'beta')).toBe('v1.3.0-preview.1');
-  });
-
-  it('orders preview builds numerically, not as strings', {
-    timeout: 180_000,
-  }, () => {
-    const fixture = makeInstallFixture('station-pinned-preview-order-');
-    const beta = { STATION_CHANNEL: 'beta' };
-    const preview = (build: number) =>
-      signManifest(
-        fixture,
-        `1.3.0-preview.${build}`,
-        buildArchive(fixture, `1.3.0-preview.${build}`),
-      );
-    const tenth = runInstaller(fixture, preview(10), beta);
-    expect(tenth.status, tenth.stderr).toBe(0);
-    // preview.9 < preview.10 numerically; as strings "9" > "10".
-    const ninth = runInstaller(fixture, preview(9), beta);
-    expect(ninth.stderr).toContain(
-      'refusing to downgrade Station from v1.3.0-preview.10 to v1.3.0-preview.9',
+    expect(refused.stderr).toContain(
+      'signing key is not authorized for the manifest channel',
     );
-    expect(ninth.status).toBe(1);
-    const eleventh = runInstaller(fixture, preview(11), beta);
-    expect(eleventh.status, eleventh.stderr).toBe(0);
-    expect(installedTag(fixture, 'beta')).toBe('v1.3.0-preview.11');
+    for (const channel of ['beta', 'preview']) {
+      const result = runInstaller(fixture, manifestPath, {
+        STATION_CHANNEL: channel,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('Beta/preview is retired');
+    }
+    expect(existsSync(join(fixture.dir, 'home', '.station', 'installs'))).toBe(
+      false,
+    );
+    expect(cliCalls(fixture)).toEqual([]);
   });
 
   it('refuses a signed artifact URL that is not its own canonical form', {
@@ -1288,7 +1267,9 @@ describe('install.sh nightly channel (#2675)', () => {
         noStart,
       );
       expect(result.stderr).toContain(
-        'requested channel does not match public ecosystem manifest',
+        version.includes('-preview.')
+          ? 'signing key is not authorized for the manifest channel'
+          : 'requested channel does not match public ecosystem manifest',
       );
       expect(result.status).toBe(1);
       expect(existsSync(nightlyPaths(fixture).installRoot)).toBe(false);
@@ -1401,7 +1382,7 @@ exec '${realCurl}' "$@"
       STATION_VERSION: 'v1.3.0-preview.1',
     });
     expect(result.stderr).toContain(
-      'STATION_VERSION v1.3.0-preview.1 is a preview release; it cannot be installed as STATION_CHANNEL=nightly',
+      'invalid STATION_VERSION: v1.3.0-preview.1',
     );
     expect(result.status).toBe(1);
   });
@@ -1516,5 +1497,133 @@ exec '${realCurl}' "$@"
     expect(launchedFrom(fixture, currentRelease(fixture, 'nightly'))).toBe(
       true,
     );
+  });
+});
+
+describe('version-bound archive descriptor assembly', () => {
+  function candidateDescriptor() {
+    const dir = makeTempDir('station-version-descriptor-');
+    const name = 'station-server-linux-x64.tar.gz';
+    const archive = join(dir, name);
+    writeFileSync(archive, 'immutable candidate archive fixture');
+    const sourceSha = 'a'.repeat(40);
+    const createdAt = '2026-11-15T12:00:00.000Z';
+    const release = createPackagedReleaseManifest({
+      tag: 'v1.2.3-rc.4',
+      sha: sourceSha,
+      createdAt,
+    });
+    if (!('version' in release))
+      throw new Error('Expected version-bound candidate provenance');
+    const descriptor = {
+      schemaVersion: 1,
+      name,
+      target: 'linux-x64',
+      format: 'tar.gz',
+      sha256: digest(archive),
+      size: Buffer.byteLength('immutable candidate archive fixture'),
+      node: {
+        version: JSON.parse(
+          readFileSync(
+            join(root, 'config/portable-server-node-runtime.json'),
+            'utf8',
+          ),
+        ).version,
+      },
+      release,
+    };
+    const path = join(dir, `${name}.json`);
+    const assemble = (tag: string) =>
+      run([
+        'assemble',
+        '--descriptors',
+        dir,
+        '--version',
+        '1.2.3',
+        '--channel',
+        'stable',
+        '--source-sha',
+        sourceSha,
+        '--base-url',
+        `https://github.com/kontourai/station/releases/download/${tag}/`,
+        '--location-tag',
+        tag,
+        '--launcher-protocol-min',
+        '1',
+        '--launcher-protocol-max',
+        '1',
+        '--targets',
+        'linux-x64',
+        '--published-at',
+        createdAt,
+        '--output',
+        join(dir, 'payload.json'),
+      ]);
+    writeFileSync(path, JSON.stringify(descriptor));
+    return { dir, path, descriptor, assemble, archive };
+  }
+
+  it('assembles the same candidate provenance and archive bytes at RC and final locations', () => {
+    const { dir, archive, descriptor, assemble } = candidateDescriptor();
+    const original = readFileSync(archive);
+    for (const tag of ['v1.2.3-rc.4', 'v1.2.3']) {
+      const result = assemble(tag);
+      expect(result.status, result.stderr).toBe(0);
+      const payload = JSON.parse(
+        readFileSync(join(dir, 'payload.json'), 'utf8'),
+      );
+      expect(payload).toMatchObject({
+        version: '1.2.3',
+        releaseTag: 'v1.2.3',
+        sourceSha: 'a'.repeat(40),
+      });
+      expect(payload.artifacts).toEqual([
+        {
+          os: 'linux',
+          arch: 'x64',
+          name: 'station-server-linux-x64.tar.gz',
+          format: 'tar.gz',
+          url: `https://github.com/kontourai/station/releases/download/${tag}/station-server-linux-x64.tar.gz`,
+          sha256: descriptor.sha256,
+          size: original.length,
+        },
+      ]);
+      expect(readFileSync(archive)).toEqual(original);
+    }
+  });
+
+  it.each([
+    ['source SHA', { sha: 'b'.repeat(40) }],
+    ['product version', { version: '1.2.4' }],
+    ['runtime channel', { channel: 'nightly' }],
+    ['release ring', { releaseChannel: 'nightly' }],
+    ['prerelease claim', { prerelease: true }],
+    ['additional origin tag', { ref: 'v1.2.3-rc.4' }],
+    ['timestamp', { createdAt: 'not-a-time' }],
+  ])('rejects a descriptor with mismatched %s', (_label, overrides) => {
+    const { path, descriptor, assemble } = candidateDescriptor();
+    writeFileSync(
+      path,
+      JSON.stringify({
+        ...descriptor,
+        release: { ...descriptor.release, ...overrides },
+      }),
+    );
+    const refused = assemble('v1.2.3');
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('not v1.2.3 (stable)');
+  });
+
+  it('does not reinterpret a legacy tag-bound descriptor as version-bound provenance', () => {
+    const { path, descriptor, assemble } = candidateDescriptor();
+    const { version: _version, ...identity } = descriptor.release;
+    writeFileSync(
+      path,
+      JSON.stringify({
+        ...descriptor,
+        release: { ...identity, schemaVersion: 2, ref: 'v1.2.3-rc.4' },
+      }),
+    );
+    expect(assemble('v1.2.3').status).toBe(1);
   });
 });

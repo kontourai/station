@@ -1,0 +1,7 @@
+{
+  "revision": "e9ad2190ae428f2715ef1ab18f060f7771960353",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Formatting-only change to muse-serve-adapter.test.ts (line wrapping in the fix-round tests); this guide documents no Muse steer, quota or sandbox behavior. No change.","inputs":["docs/guides/monitoring.md","src-server/providers/__tests__/muse-serve-adapter.test.ts"]}
+  ]
+}

@@ -603,7 +603,7 @@ describe('the nightly workflow keeps its promises', () => {
       callerWorkflow.indexOf(
         'name: Bind the published CLI receipt to npm registry provenance',
       ),
-      callerWorkflow.indexOf('id: ledger_token'),
+      callerWorkflow.indexOf('name: Retain the Nightly CLI provider receipt'),
     );
     expect(receipt).toContain(
       'until npm view --prefer-online "@kontourai/station-cli@$CLI_VERSION" gitHead --json',

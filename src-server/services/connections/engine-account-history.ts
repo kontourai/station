@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import type {
+  EngineAccountEngine,
   EngineAccountUsage,
   EngineAccountUsageHistory,
 } from '@kontourai/station-contracts/engine-accounts';
@@ -45,7 +46,7 @@ const digest = (value: unknown) =>
 /** Retain hourly observations without persisting identity, credentials or raw responses. */
 export async function recordEngineAccountUsage(
   target: {
-    engine: 'claude' | 'codex';
+    engine: EngineAccountEngine;
     connectionId: string;
     ref: string | null;
     dir: string;

@@ -1,7 +1,0 @@
-{
-  "revision": "3de23cd1ed4607411cecb311135664de0fed9fc4",
-
-  "notes": [
-    {"path":"docs/design/connections-onboarding.md","note":"#4515 fix round 1: ACPProcess.start() refuses a disallowed ACP engine before spawning (every ACP launch: sessions, probes, sign-in). Checked the onboarding flow's connection save, discovery and check claims and the #4520 locked-environment sentence; nothing here contradicts the refusal.","inputs":["docs/design/connections-onboarding.md","src-server/services/acp/acp-process.ts"]}
-  ]
-}

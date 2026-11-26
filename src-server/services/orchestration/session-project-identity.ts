@@ -1,5 +1,6 @@
 import { realpathSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { resolve } from 'node:path';
+import { isCanonicalPathWithin } from '../../utils/path-containment.js';
 import { expandTilde } from '../../utils/paths.js';
 
 /**
@@ -35,11 +36,6 @@ export const SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY =
  * directory, never from one inside it.
  */
 export const SESSION_CONFINEMENT_ROOT_METADATA_KEY = 'confinementRoot';
-
-function isWithin(root: string, path: string): boolean {
-  const rel = relative(root, path);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-}
 
 /**
  * #3800: the `SESSION_CONFINEMENT_ROOT_METADATA_KEY` value for a start in
@@ -80,7 +76,7 @@ export function sessionConfinementRoot(
     }))
     .filter(
       (entry): entry is { slug: string; root: string } =>
-        entry.root !== undefined && isWithin(entry.root, target),
+        entry.root !== undefined && isCanonicalPathWithin(entry.root, target),
     );
   const named = roots.find((entry) => entry.slug === options.projectSlug);
   if (named) return named.root;

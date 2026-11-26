@@ -1,0 +1,7 @@
+{
+  "revision": "118885a904428b83efc585ce693754dfca2bd104",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Delivery outcome renamed to stopped; the CLI prints the API projection.","inputs":["docs/reference/cli.md"]}
+  ]
+}

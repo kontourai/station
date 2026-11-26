@@ -1,8 +1,12 @@
 import {
   decodeTerminalFrame,
   encodeTerminalFrame,
+  encodeTerminalSize,
   TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
   TERMINAL_OUTPUT,
+  TERMINAL_RESIZE,
+  TERMINAL_SOCKET_PROTOCOL,
+  TERMINAL_SOCKET_PROTOCOL_V2,
 } from '@kontourai/station-contracts/terminal-transport';
 import { afterEach, expect, test, vi } from 'vitest';
 import { setClientRawEgressPolicyResolver } from '../client/http';
@@ -16,6 +20,8 @@ const target = { projectId: 'alpha', bindingKey: 'project' };
 
 class Socket extends EventTarget {
   readyState = 0;
+  /** The subprotocol the host selected. */
+  protocol = TERMINAL_SOCKET_PROTOCOL;
   binaryType = 'arraybuffer';
   sent: (Record<string, unknown> | Uint8Array)[] = [];
   constructor(readonly protocols: string[]) {
@@ -262,6 +268,84 @@ test('a refused ticket stops every session without retrying; a broker route neve
   expect(brokered.error?.code).toBe('raw-egress-unavailable');
   expect(requestTicket).not.toHaveBeenCalled();
   expect(broker.sockets).toHaveLength(0);
+});
+
+function resized(
+  socket: Socket,
+  channel: number,
+  seq: number,
+  cols: number,
+  rows: number,
+) {
+  socket.message(
+    encodeTerminalFrame(
+      TERMINAL_RESIZE,
+      channel,
+      seq,
+      encodeTerminalSize(cols, rows),
+    ).buffer as ArrayBuffer,
+  );
+}
+
+test('recorded sizes reach listeners in order with output, are acknowledged, and replay to a late subscriber (#4625)', async () => {
+  vi.useFakeTimers();
+  const f = fixture(ticket);
+  const session = f.store.attach(target, id);
+  await flush();
+  const socket = f.sockets[0]!;
+  // Version 2 is offered first; this host selected it.
+  expect(socket.protocols.slice(0, 2)).toEqual([
+    TERMINAL_SOCKET_PROTOCOL_V2,
+    TERMINAL_SOCKET_PROTOCOL,
+  ]);
+  socket.protocol = TERMINAL_SOCKET_PROTOCOL_V2;
+  socket.open();
+  const channel = attachedReady(socket);
+  const seen: string[] = [];
+  session.subscribe({
+    output: (data) => seen.push(`out:${new TextDecoder().decode(data)}`),
+    resize: (cols, rows, seq) => seen.push(`size:${cols}x${rows}@${seq}`),
+  });
+  output(socket, channel, 1, 'ab');
+  resized(socket, channel, 2, 100, 30);
+  output(socket, channel, 3, 'cd');
+  expect(seen).toEqual(['out:ab', 'size:100x30@2', 'out:cd']);
+  expect(
+    socket
+      .controls()
+      .filter((item) => item.type === 'ack')
+      .map((item) => item.seq),
+  ).toEqual([0, 1, 2, 3]);
+  // maxBufferedBytes is 8: the size was trimmed from the buffer, so a late
+  // subscriber starts from it before the output it still holds.
+  const late: string[] = [];
+  session.subscribe({
+    output: (data) => late.push(`out:${new TextDecoder().decode(data)}`),
+    resize: (cols, rows) => late.push(`size:${cols}x${rows}`),
+  });
+  expect(late).toEqual(['size:100x30', 'out:cd']);
+  // Many sizes stay within the bound, as output does.
+  for (let seq = 4; seq < 200; seq++)
+    resized(socket, channel, seq, 80 + (seq % 2), 24);
+  const bounded: string[] = [];
+  session.subscribe({ resize: (cols) => bounded.push(String(cols)) });
+  expect(bounded.length).toBeLessThanOrEqual(2);
+  expect(bounded[bounded.length - 1]).toBe('81');
+});
+
+test('a resize frame on a version 1 socket is a protocol failure', async () => {
+  vi.useFakeTimers();
+  const f = fixture(ticket);
+  const session = f.store.attach(target, id);
+  await flush();
+  const socket = f.sockets[0]!;
+  socket.open();
+  const channel = attachedReady(socket);
+  const sizes = vi.fn();
+  session.subscribe({ resize: sizes });
+  resized(socket, channel, 1, 100, 30);
+  expect(sizes).not.toHaveBeenCalled();
+  expect(socket.readyState).toBe(3);
 });
 
 test('the ticket rides a subprotocol and the socket keeps the API prefix', async () => {

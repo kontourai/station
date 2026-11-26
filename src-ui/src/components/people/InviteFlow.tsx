@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { isLoopbackOrigin } from '../../lib/accountSharingOrigin';
 import { copyToClipboard } from '../../lib/clipboard';
+import { formatDateTime } from '../../utils/relativeTime';
 import { Button } from '../Button';
 import { Checkbox } from '../Checkbox';
 import { InfoGlyph } from '../icons/Glyph';
@@ -18,20 +19,29 @@ export interface InviteRequest {
 }
 
 /** The link a recipient opens to accept `token`; the token rides in the hash. */
-export function invitationLink(invitationOrigin: string, token: string) {
+export function invitationLink(
+  invitationOrigin: string,
+  token: string,
+  shareId?: string,
+) {
   const invite = new URL('/account/join', invitationOrigin);
-  invite.hash = new URLSearchParams({ invitation: token }).toString();
+  invite.hash = new URLSearchParams({
+    invitation: token,
+    ...(shareId ? { share: shareId } : {}),
+  }).toString();
   return invite.href;
 }
 
 export function InviteFlow({
   invitationOrigin,
+  fromTask = false,
   busy,
   writeDisabledReason,
   canGrant,
   create,
 }: {
   invitationOrigin?: string;
+  fromTask?: boolean;
   busy: boolean;
   /** Disables every control and is each control's title. */
   writeDisabledReason?: string;
@@ -41,11 +51,54 @@ export function InviteFlow({
 }) {
   const [email, setEmail] = useState('');
   const [restrictEmail, setRestrictEmail] = useState(false);
-  const [role, setRole] = useState<GrantableProjectRole>('viewer');
+  const [role, setRole] = useState<GrantableProjectRole>(
+    fromTask && canGrant('commenter') ? 'commenter' : 'viewer',
+  );
   const { DiscardModal } = useUnsavedGuard(email.trim().length > 0);
   const readOnly = writeDisabledReason !== undefined;
   const unavailable = busy || readOnly || !invitationOrigin;
 
+  const linkSettings = (
+    <>
+      <div className="invite-flow__address">
+        {invitationOrigin ? (
+          <>
+            <span>Recipients sign in at</span>
+            <code>{invitationOrigin}</code>
+            <p>
+              {isLoopbackOrigin(invitationOrigin)
+                ? 'This address only works on this computer. Choose a reachable sign-in address before inviting someone elsewhere.'
+                : 'Recipients must be able to reach this address. Creating a link does not make this Station public.'}
+            </p>
+          </>
+        ) : (
+          <p>
+            Configure account sign-in on this Station before creating a link.
+          </p>
+        )}
+      </div>
+      <Checkbox
+        checked={restrictEmail}
+        disabled={unavailable}
+        onChange={setRestrictEmail}
+      >
+        Require a verified email address
+      </Checkbox>
+      {restrictEmail && (
+        <label>
+          Email address
+          <input
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            disabled={unavailable}
+            required
+          />
+        </label>
+      )}
+    </>
+  );
   return (
     <>
       <form
@@ -61,64 +114,29 @@ export function InviteFlow({
             });
         }}
       >
-        <div className="invite-flow__heading">
-          <h3>Invite a person</h3>
-          <Popover
-            ariaLabel="About Project invitations"
-            placement="bottom-end"
-            trigger={
-              <Button
-                variant="ghost"
-                className="invite-flow__help"
-                aria-label="About Project invitations"
-              >
-                <InfoGlyph />
-              </Button>
-            }
-          >
-            <p>
-              This invitation can be accepted once. It expires after seven days
-              and can be cancelled here. On mobile, the recipient can paste the
-              link into Station.
-            </p>
-          </Popover>
-        </div>
-        <div className="invite-flow__address">
-          {invitationOrigin ? (
-            <>
-              <span>Recipients sign in at</span>
-              <code>{invitationOrigin}</code>
+        {!fromTask && (
+          <div className="invite-flow__heading">
+            <h3>Invite a person</h3>
+            <Popover
+              ariaLabel="About Project invitations"
+              placement="bottom-end"
+              trigger={
+                <Button
+                  variant="ghost"
+                  className="invite-flow__help"
+                  aria-label="About Project invitations"
+                >
+                  <InfoGlyph />
+                </Button>
+              }
+            >
               <p>
-                {isLoopbackOrigin(invitationOrigin)
-                  ? 'This address only works on this computer. Choose a reachable sign-in address before inviting someone elsewhere.'
-                  : 'Recipients must be able to reach this address. Creating a link does not make this Station public.'}
+                This invitation can be accepted once. It expires after seven
+                days and can be cancelled here. On mobile, the recipient can
+                paste the link into Station.
               </p>
-            </>
-          ) : (
-            <p>
-              Configure account sign-in on this Station before creating a link.
-            </p>
-          )}
-        </div>
-        <Checkbox
-          checked={restrictEmail}
-          disabled={unavailable}
-          onChange={setRestrictEmail}
-        >
-          Require a verified email address
-        </Checkbox>
-        {restrictEmail && (
-          <label>
-            Email address
-            <input
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              disabled={unavailable}
-              required
-            />
-          </label>
+            </Popover>
+          </div>
         )}
         <ProjectRolePicker
           label="Project role"
@@ -128,6 +146,32 @@ export function InviteFlow({
           disabled={unavailable}
           title={readOnly ? writeDisabledReason : undefined}
         />
+        <p>
+          {
+            {
+              viewer: 'Can read shared Project work.',
+              commenter: 'Can read and reply to shared work.',
+              contributor:
+                'Can discuss, edit, and request work on approved compute.',
+              admin:
+                'Can manage Project members, approve work, and contribute.',
+            }[role]
+          }
+        </p>
+        {fromTask ? (
+          <details
+            open={
+              !invitationOrigin ||
+              isLoopbackOrigin(invitationOrigin) ||
+              undefined
+            }
+          >
+            <summary>Link settings</summary>
+            {linkSettings}
+          </details>
+        ) : (
+          linkSettings
+        )}
         <Button
           type="submit"
           pending={busy}
@@ -155,9 +199,7 @@ export function InvitationLinkReveal({
   return (
     <section className="invitation-link" aria-label="Share this invitation">
       <h3>Share this invitation</h3>
-      {expiresAt && (
-        <p>Single-use · Expires {new Date(expiresAt).toLocaleString()}</p>
-      )}
+      {expiresAt && <p>Single-use · Expires {formatDateTime(expiresAt)}</p>}
       <Button
         variant="primary"
         onClick={() => void copyToClipboard(link).then(onCopied)}

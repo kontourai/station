@@ -1,0 +1,7 @@
+{
+  "revision": "7395400a056be9a932e846141349e46df19875a6",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed against vitest-resource-manifest.mjs: the only change classifies opencode-adapter.replay.test.ts as process-heavy (short-lived git init/config children), beside the #4828 persistence tests. The resource groups, their worker counts and the classification rule this document states are unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

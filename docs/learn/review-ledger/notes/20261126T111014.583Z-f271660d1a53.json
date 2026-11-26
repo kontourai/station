@@ -1,0 +1,9 @@
+{
+  "revision": "c661a8709109469848c778dfd0c0cece4261d098",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#5592 hosted pr-smoke follow-up: conversation history opened from the Chats list now replaces the dock's own draft (it renders in the same pane), with a test. No route, API, config, placement or connection claim changed.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"#5592 hosted pr-smoke follow-up: conversation history opened from the Chats list now replaces the dock's own draft (it renders in the same pane), with a test. No route, API, config, placement or connection claim changed.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]}
+  ]
+}

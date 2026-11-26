@@ -1,4 +1,5 @@
 import {
+  type ConnectionFailureReason,
   type ConnectionIndicatorState,
   ConnectionStatusDot,
   type SavedConnection,
@@ -19,13 +20,15 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useManagedRemoteClientsLimit } from '../../hooks/useManagedRemoteClientsRefusal';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import {
+  describeStationRow,
   forgetStationProbe,
   isProbeable,
   matchesStationFilter,
+  needsAccess,
   orderStations,
   probeStation,
   readRecentStations,
-  type StationReachability,
+  type StationProbe,
 } from '../../lib/stationSwitcher';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { ManagedRemoteClientsNote } from '../managed/ManagedRemoteClientsNote';
@@ -36,6 +39,12 @@ import './HeaderMenu.css';
 
 /** Below this many Stations a filter field is more clutter than help. */
 const FILTER_THRESHOLD = 5;
+/**
+ * How often the open menu re-reads "checked … ago" against the clock and
+ * checks the other Stations again, so a row does not keep saying a Station is
+ * ready after it stopped answering.
+ */
+const AGE_TICK_MS = 15_000;
 
 function errorText(error: unknown): string {
   return describeStationFailure(error).body;
@@ -50,6 +59,14 @@ function isUnavailable(connection: SavedConnection): boolean {
   );
 }
 
+/** A Station whose last check says choosing it now would fail. */
+function probedNotReady(probe: StationProbe | undefined): boolean {
+  return (
+    probe?.reachability === 'recovering' ||
+    probe?.reachability === 'unreachable'
+  );
+}
+
 function showError(text: string) {
   toastStore.show(text, undefined, 5000, undefined, undefined, 'error');
 }
@@ -60,6 +77,8 @@ export function StationSwitcherMenu({
   activeConnectionId,
   activeStatus,
   activeStatusLabel,
+  activeReason = null,
+  activeCheckedAt = null,
   onSelect,
   onForget,
   canForget: canForgetStation,
@@ -73,6 +92,10 @@ export function StationSwitcherMenu({
   activeConnectionId?: string;
   activeStatus: ConnectionIndicatorState;
   activeStatusLabel: string;
+  /** Why the active Station's last health check failed, if it did. */
+  activeReason?: ConnectionFailureReason | null;
+  /** When the active Station's health was last checked (epoch ms). */
+  activeCheckedAt?: number | null;
   onSelect: (connection: SavedConnection) => Promise<void>;
   onForget: (connection: SavedConnection) => Promise<void>;
   /** Whether this device can forget the Station here at all. */
@@ -99,9 +122,12 @@ export function StationSwitcherMenu({
   const [armedId, setArmedId] = useState<string | null>(null);
   const [bulkArmed, setBulkArmed] = useState(false);
   const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set());
-  const [reachability, setReachability] = useState<
-    Record<string, StationReachability>
-  >({});
+  const [probes, setProbes] = useState<Record<string, StationProbe>>({});
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), AGE_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, []);
   // Read once per opening: the order must not shuffle under the pointer.
   const [recent] = useState(readRecentStations);
   const promptId = useId();
@@ -160,31 +186,38 @@ export function StationSwitcherMenu({
       return;
     }
     const previous = menuRef.current?.querySelector<HTMLElement>(
-      '[data-station-row]:not([aria-checked="true"]):not(:disabled)',
+      '[data-station-row]:not([aria-checked="true"]):not(:disabled):not([aria-disabled="true"])',
     );
     if (previous) previous.focus();
     else if (coarse) menuRef.current?.focus();
   }, [menuRef]);
   useEffect(() => {
     let live = true;
-    for (const connection of connections) {
-      if (connection.id === activeConnectionId || !isProbeable(connection))
-        continue;
-      void probeStation(connection.url).then((result) => {
-        if (live)
-          setReachability((current) => ({
-            ...current,
-            [connection.id]: result,
-          }));
-      });
-    }
+    const probeAll = () => {
+      for (const connection of connections) {
+        if (connection.id === activeConnectionId || !isProbeable(connection))
+          continue;
+        void probeStation(connection.url).then((result) => {
+          if (!live) return;
+          setProbes((current) => ({ ...current, [connection.id]: result }));
+          setNow(Date.now());
+        });
+      }
+    };
+    probeAll();
+    const timer = window.setInterval(probeAll, AGE_TICK_MS);
     return () => {
       live = false;
+      window.clearInterval(timer);
     };
   }, [connections, activeConnectionId]);
 
+  const notReady = (connection: SavedConnection) =>
+    connection.id !== activeConnectionId &&
+    (isUnavailable(connection) || probedNotReady(probes[connection.id]));
+
   const select = (connection: SavedConnection) => {
-    if (switchingRef.current || isUnavailable(connection)) return;
+    if (switchingRef.current || notReady(connection)) return;
     if (connection.id === activeConnectionId) {
       onClose();
       return;
@@ -213,9 +246,32 @@ export function StationSwitcherMenu({
   const forget = async (targets: SavedConnection[]) => {
     setArmedId(null);
     setBulkArmed(false);
-    // Keep focus inside the menu: a focused row that unmounts would leave it
-    // on <body>, and the menu dismisses itself when focus leaves.
-    (filterRef.current ?? menuRef.current)?.focus();
+    // Keep focus inside the menu: a focused element that unmounts would leave
+    // it on <body>, and the menu dismisses itself when focus leaves. The
+    // filter is no refuge: it unmounts once fewer than five Stations remain.
+    // Land on the row after the forgotten one, else the one before, else the
+    // footer's first action, so a screen reader is on a live item.
+    const forgotten = new Set(targets.map((target) => target.id));
+    const rows = [
+      ...(menuRef.current?.querySelectorAll<HTMLElement>(
+        '[data-station-row]',
+      ) ?? []),
+    ];
+    const survivors = rows.filter(
+      (row, index) =>
+        !forgotten.has(visible[index]?.id ?? '') &&
+        !(row as HTMLButtonElement).disabled,
+    );
+    const firstGone = visible.findIndex((c) => forgotten.has(c.id));
+    const after = survivors.find((row) => rows.indexOf(row) > firstGone);
+    (
+      after ??
+      survivors.at(-1) ??
+      menuRef.current?.querySelector<HTMLElement>(
+        '.station-switcher__footer button:not(:disabled)',
+      ) ??
+      menuRef.current
+    )?.focus();
     setRemoving((current) => {
       const next = new Set(current);
       for (const target of targets) next.add(target.id);
@@ -240,7 +296,8 @@ export function StationSwitcherMenu({
 
   const unreachable = ordered.filter(
     (connection) =>
-      canForget(connection) && reachability[connection.id] === 'unreachable',
+      canForget(connection) &&
+      probes[connection.id]?.reachability === 'unreachable',
   );
 
   const onRowKeyDown = (
@@ -278,27 +335,29 @@ export function StationSwitcherMenu({
       const target =
         visible.find(
           (connection) =>
-            connection.id !== activeConnectionId && !isUnavailable(connection),
+            connection.id !== activeConnectionId && !notReady(connection),
         ) ?? visible[0];
       if (target) select(target);
     }
   };
 
-  const statusLabel = (connection: SavedConnection) => {
-    if (switchingId === connection.id) return 'Switching…';
-    if (connection.id === activeConnectionId) return activeStatusLabel;
-    if (isUnavailable(connection)) return 'Not running';
-    if (
-      connection.credentialState === 'required' ||
-      connection.lastError?.reason === 'authentication-failed'
-    )
-      return 'Needs access';
-    const probed = reachability[connection.id];
-    if (probed === 'online') return 'Online';
-    if (probed === 'unreachable') return 'Unreachable';
-    if (isProbeable(connection) && !probed) return '';
-    return connection.lastError ? "Can't connect" : '';
-  };
+  const rowStatus = (connection: SavedConnection) =>
+    describeStationRow({
+      connection,
+      now,
+      switching: switchingId === connection.id,
+      active:
+        connection.id === activeConnectionId
+          ? {
+              label: activeStatusLabel,
+              reason: activeReason,
+              healthy: activeStatus === 'connected',
+              checkedAt: activeCheckedAt,
+            }
+          : undefined,
+      probeable: isProbeable(connection),
+      probe: probes[connection.id],
+    });
 
   return createPortal(
     <>
@@ -355,15 +414,27 @@ export function StationSwitcherMenu({
           <div role="none" className="station-switcher__profiles">
             {visible.map((connection, index) => {
               const current = connection.id === activeConnectionId;
-              const unavailable = isUnavailable(connection);
-              const probed = reachability[connection.id];
+              // Greyed out while its last check says choosing it would fail;
+              // the open menu checks again, so it comes back once it answers.
+              const unavailable = notReady(connection);
+              const probed = probes[connection.id]?.reachability;
+              const { label, detail } = rowStatus(connection);
+              // A fresh probe outranks a saved network failure it may have
+              // outlived, but not a refusal: an anonymous handshake answering
+              // says nothing about whether this device is still accepted.
               const status: ConnectionIndicatorState = current
                 ? activeStatus
-                : probed === 'unreachable' || connection.lastError
-                  ? 'error'
+                : needsAccess(connection)
+                  ? 'needs-credential'
                   : probed === 'online'
                     ? 'connected'
-                    : 'idle';
+                    : probed === 'unconfirmed'
+                      ? 'connecting'
+                      : probed === 'unreachable' ||
+                          probed === 'recovering' ||
+                          connection.lastError
+                        ? 'error'
+                        : 'idle';
               // One display name: the active row says what the chip that
               // opened this menu says (#4402 reads the seeded "Default" as the
               // machine's name). Only the active Station's host is known
@@ -372,15 +443,8 @@ export function StationSwitcherMenu({
                 (current ? activeDisplayName : undefined) ||
                 connection.name ||
                 connection.url;
-              const label = statusLabel(connection);
               const armed = armedId === connection.id;
-              // A healthy peer says so with its dot alone; text is for the
-              // active Station and for anything that needs attention.
-              const shown = armed
-                ? 'Forget on this device?'
-                : label === 'Online'
-                  ? ''
-                  : label;
+              const summary = detail ? `${label} · ${detail}` : label;
               return (
                 <div
                   key={connection.id}
@@ -392,14 +456,32 @@ export function StationSwitcherMenu({
                     role="menuitemradio"
                     data-station-row=""
                     aria-checked={current}
-                    aria-label={label ? `${name} — ${label}` : name}
+                    aria-label={`${name} — ${summary}`}
                     aria-describedby={
                       armed ? `${promptId}-${index}` : undefined
                     }
                     aria-keyshortcuts={
                       canForget(connection) ? 'Delete' : undefined
                     }
-                    disabled={switchingId !== null || unavailable}
+                    // A row that can be forgotten is `aria-disabled`, not
+                    // `disabled`: a disabled button cannot take focus, and
+                    // Delete on the focused row is how the keyboard forgets a
+                    // Station that stopped answering. `select` refuses a row
+                    // that is not ready. A row with nothing to offer stays
+                    // disabled, so arrow keys pass over it.
+                    // Keep the selected row focusable while a pending
+                    // navigation guard owns the choice. Native disabling
+                    // moves focus out and can dismiss the menu prematurely.
+                    aria-disabled={
+                      switchingId !== null ||
+                      (unavailable && canForget(connection)) ||
+                      undefined
+                    }
+                    disabled={
+                      switchingId !== connection.id &&
+                      unavailable &&
+                      !canForget(connection)
+                    }
                     className="menu-row station-switcher__row"
                     onClick={() => select(connection)}
                     onKeyDown={(event) => onRowKeyDown(event, connection)}
@@ -411,14 +493,24 @@ export function StationSwitcherMenu({
                       <span className="station-switcher__name" title={name}>
                         {name}
                       </span>
-                      {shown && (
-                        <span
-                          id={`${promptId}-${index}`}
-                          className="station-switcher__status"
-                        >
-                          {shown}
-                        </span>
-                      )}
+                      <span
+                        id={`${promptId}-${index}`}
+                        className="station-switcher__status"
+                      >
+                        {armed ? (
+                          'Forget on this device?'
+                        ) : (
+                          <>
+                            {label}
+                            {detail && (
+                              <span className="station-switcher__detail">
+                                {' · '}
+                                {detail}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </span>
                     </span>
                     {current && <span aria-hidden="true">✓</span>}
                   </button>

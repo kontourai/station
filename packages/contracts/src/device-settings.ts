@@ -12,6 +12,7 @@
  * files.
  */
 
+import { isObjectRecord } from './record-guard.js';
 import type { SettingValueDescriptor } from './settings-registry.js';
 
 export interface FeatureSettings {
@@ -311,6 +312,28 @@ export const COLOR_THEME_ID_PATTERN = '^[a-z][a-z0-9-]{0,47}$';
  */
 export type ThemePreference = 'light' | 'dark' | 'system';
 
+/**
+ * Interface density (#4692). `comfortable`, the default, reads at a 13px base;
+ * `compact` keeps the 12px sizes Station used before. Applied as
+ * `data-density` on the document root (src-ui/src/lib/display-preferences.ts).
+ */
+export type DensityPreference = 'comfortable' | 'compact';
+export const DENSITY_PREFERENCES = [
+  'comfortable',
+  'compact',
+] as const satisfies readonly DensityPreference[];
+
+/**
+ * Interface motion (#4692). `system`, the default, follows the device's
+ * `prefers-reduced-motion`; `reduce` reduces motion on this interface even
+ * when the device does not ask for it.
+ */
+export type MotionPreference = 'system' | 'reduce';
+export const MOTION_PREFERENCES = [
+  'system',
+  'reduce',
+] as const satisfies readonly MotionPreference[];
+
 export interface DeviceSettings {
   theme: ThemePreference;
   accentColor: string | null;
@@ -332,6 +355,10 @@ export interface DeviceSettings {
    * A custom `accentColor` still wins over it on Station's accent.
    */
   colorThemeAccent: string | null;
+  /** Text size and spacing density; see {@link DensityPreference}. */
+  density: DensityPreference;
+  /** Whether motion follows the device or is reduced; see {@link MotionPreference}. */
+  motion: MotionPreference;
   featureSettings: FeatureSettings;
   sttProvider: string;
   ttsProvider: string;
@@ -602,10 +629,6 @@ const DEFAULT_MODEL_PICKER_PREFERENCES: ModelPickerPreferences = {
 /** The shared prior settings root #1359 shipped for `shortcutOverrides`/`modelPickerPreferences`. */
 const SHARED_PRIOR_DEVICE_SETTINGS_KEY = 'station.device-settings';
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
 const SHORTCUT_MODIFIERS: readonly ShortcutModifier[] = [
   'cmd',
   'ctrl',
@@ -627,7 +650,7 @@ export function normalizePriorShortcutBinding(
   value: unknown,
 ): ShortcutBinding | null | undefined {
   if (value === null) return null;
-  if (!isPlainObject(value)) return undefined;
+  if (!isObjectRecord(value)) return undefined;
   const key = value.key;
   const modifiers = value.modifiers;
   if (typeof key !== 'string' || !key.trim()) return undefined;
@@ -662,10 +685,10 @@ export function normalizePriorShortcutBinding(
 function priorReadShortcutOverrides(
   root: Record<string, unknown>,
 ): ShortcutOverrides | undefined {
-  const shortcuts = isPlainObject(root.shortcuts) ? root.shortcuts : undefined;
-  const source = isPlainObject(shortcuts?.bindings)
+  const shortcuts = isObjectRecord(root.shortcuts) ? root.shortcuts : undefined;
+  const source = isObjectRecord(shortcuts?.bindings)
     ? shortcuts!.bindings
-    : isPlainObject(root.shortcutBindings)
+    : isObjectRecord(root.shortcutBindings)
       ? root.shortcutBindings
       : undefined;
   if (!source) return undefined;
@@ -708,7 +731,7 @@ export function priorStringList(value: unknown): string[] {
 function priorReadModelPickerPreferences(
   root: Record<string, unknown>,
 ): ModelPickerPreferences | undefined {
-  if (!isPlainObject(root.modelPicker)) return undefined;
+  if (!isObjectRecord(root.modelPicker)) return undefined;
   const picker = root.modelPicker;
   return {
     favorites: priorStringList(picker.favorites),
@@ -776,6 +799,25 @@ export const DEVICE_SETTINGS_REGISTRY = [
     description:
       'Named accent from the color theme’s palette. Unset uses the theme’s default accent.',
     defaultValue: null,
+  }),
+  // No prior storage keys: density and motion are new (#4692).
+  defineDeviceSetting({
+    key: 'density',
+    scope: 'account',
+    descriptor: { kind: 'enum', values: DENSITY_PREFERENCES },
+    label: 'Density',
+    help: 'Comfortable reads at a 13px base; Compact keeps the smaller 12px text.',
+    description: 'Interface text size and density: Comfortable or Compact.',
+    defaultValue: 'comfortable',
+  }),
+  defineDeviceSetting({
+    key: 'motion',
+    scope: 'account',
+    descriptor: { kind: 'enum', values: MOTION_PREFERENCES },
+    label: 'Motion',
+    help: 'System follows this device’s reduced-motion setting; Reduced keeps animations to a minimum.',
+    description: 'Interface motion: follow the device, or always reduce.',
+    defaultValue: 'system',
   }),
   defineDeviceSetting({
     key: 'featureSettings',
@@ -872,21 +914,19 @@ export const DEVICE_SETTINGS_REGISTRY = [
     key: 'inboxScope',
     scope: 'device',
     descriptor: { kind: 'string' },
-    label: 'Inbox scope',
-    help: 'Limit the inbox to one project or Station on this device.',
-    description: 'Selected project or Station filter for the inbox.',
-    // Unchosen, the inbox shows all work, so the conversation you open is
-    // always in it. `INBOX_SCOPE_CURRENT_PROJECT` (#4405 A36) is a choice that
-    // follows the project page you are on.
-    defaultValue: 'all',
+    label: 'Scope for Chats',
+    help: 'Limit Chats to one Project or Station on this device.',
+    description: 'Selected Project or Station filter for Chats.',
+    // Unchosen follows the route; persisted explicit choices still win.
+    defaultValue: INBOX_SCOPE_CURRENT_PROJECT,
   }),
   defineDeviceSetting({
     key: 'inboxOpen',
     scope: 'device',
     descriptor: { kind: 'boolean' },
-    label: 'Chat dock inbox open',
-    help: 'The chat dock reopens with its inbox panel showing on this device.',
-    description: 'Whether the chat dock inbox panel is open.',
+    label: 'Show chats',
+    help: 'The dock reopens with Chats visible on this device.',
+    description: 'Whether Chats is visible in the dock.',
     priorStorageKey: 'station.inbox.open',
     // Confirmed against ChatDock.tsx's readInboxOpen: `stored === null ?
     // true : stored === 'true'` — absent means open, not closed.
@@ -896,9 +936,9 @@ export const DEVICE_SETTINGS_REGISTRY = [
     key: 'inboxSections',
     scope: 'device',
     descriptor: { kind: 'composite' },
-    label: 'Chat dock inbox sections',
-    help: 'Inbox groups keep their order and fold state on this device.',
-    description: 'Order and collapsed/expanded state of the inbox groups.',
+    label: 'Chats sections',
+    help: 'Chats sections keep their order and expanded state on this device.',
+    description: 'Order and expanded state of the sections in Chats.',
     priorStorageKey: 'station.inbox.sections',
     // Confirmed against ChatDockInboxPanel.tsx's DEFAULT_SECTION_STATE.
     defaultValue: DEFAULT_INBOX_SECTIONS,
@@ -1189,9 +1229,9 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Sheet gestures preview',
-    help: 'Opt in to phone sheet handles and swipe-to-reveal Snooze and Dismiss in the inbox.',
+    help: 'Opt in to phone sheet handles and swipe-to-reveal Snooze and Mark done in Chats.',
     description:
-      'Drag phone sheets to resize or close them; swipe inbox rows left for actions.',
+      'Drag phone sheets to resize or close them; swipe rows in Chats left for actions.',
     defaultValue: false,
   }),
   defineDeviceSetting({
@@ -1213,7 +1253,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Region arrangement',
     help: 'Each region of this device’s window reopens with the surface, size, and visibility you left it with.',
     description:
-      "Which surfaces occupy the main, left, right, and bottom regions on this device, with each region's size, visibility, and whether it is maximized.",
+      "Which surfaces occupy the main, left, right, and bottom regions on this device, with each region's size and visibility.",
     // #928 slice D: new device setting; the arrangement was previously seeded
     // from the chat dock's own keys on every load and nothing else survived.
     defaultValue: DEFAULT_REGION_ARRANGEMENT_RECORD,
@@ -1225,7 +1265,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Panels within a layout',
     help: 'Each layout and conversation reopens with its side and lower panels and their sizes as you left them.',
     description:
-      'Per layout and session: the side pane and its width, the lower panel’s open state and height, and the inbox fold.',
+      'Per layout and session: the side pane and its width, the lower panel’s open state and height, and whether Chats is visible.',
     // #2993: obsolete pre-release panel preferences reset to generic defaults.
     defaultValue: DEFAULT_LAYOUT_PANELS_RECORD,
   }),
@@ -1243,7 +1283,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
 export function extractPriorDeviceSettingsRoot(
   root: unknown,
 ): Partial<DeviceSettings> {
-  if (!isPlainObject(root)) return {};
+  if (!isObjectRecord(root)) return {};
   const values: Partial<DeviceSettings> = {};
   for (const definition of DEVICE_SETTINGS_REGISTRY) {
     if (!definition.priorRead) continue;
@@ -1324,6 +1364,8 @@ export const PREFERENCE_DEVICE_KEYS = [
   'colorTheme',
   'colorThemeFlavor',
   'colorThemeAccent',
+  'density',
+  'motion',
   'featureSettings',
   'sttProvider',
   'ttsProvider',

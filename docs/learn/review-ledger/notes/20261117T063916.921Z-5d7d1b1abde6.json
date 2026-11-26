@@ -1,0 +1,7 @@
+{
+  "revision": "bd64ca0e2fded3fb6194228695bb2788291e9ee1",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Read the added Play readback paragraph against scripts/query-google-play-release.mjs (MAX_ATTEMPTS 3, REQUEST_TIMEOUT_MS 15000, TOTAL_BUDGET_MS 70000, retryable classes 408/429/5xx/timeout/network, cleanup and parser failures final) and its caller verify-release-cohort.mjs (90 s adapter bound). Surrounding claim text unchanged.","inputs":["docs/guides/native-releases.md"]}
+  ]
+}

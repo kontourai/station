@@ -1,0 +1,17 @@
+{
+  "revision": "a909819273e2fcd4def6f4bc9c2cf0ede694c21f",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"#4995 adds a warn-only repeat limiter inside the seam; createLogger API, levels, redaction and sink tee unchanged. Citing pattern/guide claims (use createLogger, message-first API) remain accurate; config.md Logging documents the limiter.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"#4995 adds a warn-only repeat limiter inside the seam; createLogger API, levels, redaction and sink tee unchanged. Citing pattern/guide claims (use createLogger, message-first API) remain accurate; config.md Logging documents the limiter.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"#4995 adds a warn-only repeat limiter inside the seam; createLogger API, levels, redaction and sink tee unchanged. Citing pattern/guide claims (use createLogger, message-first API) remain accurate; config.md Logging documents the limiter.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#4995 adds a warn-only repeat limiter inside the seam; createLogger API, levels, redaction and sink tee unchanged. Citing pattern/guide claims (use createLogger, message-first API) remain accurate; config.md Logging documents the limiter.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#4995 adds a warn-only repeat limiter inside the seam; createLogger API, levels, redaction and sink tee unchanged. Citing pattern/guide claims (use createLogger, message-first API) remain accurate; config.md Logging documents the limiter.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"#4995 adds a warn-only repeat limiter inside the seam; createLogger API, levels, redaction and sink tee unchanged. Citing pattern/guide claims (use createLogger, message-first API) remain accurate; config.md Logging documents the limiter.","inputs":["src-server/utils/logger.ts"]}
+  ]
+}

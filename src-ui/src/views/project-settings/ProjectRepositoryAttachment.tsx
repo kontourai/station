@@ -65,11 +65,6 @@ export function ProjectRepositoryAttachment({
       className="project-sources__form"
       aria-label="Add repository source"
     >
-      <h3>Add a repository</h3>
-      <p>
-        Choose a repository to add to this Project. You can download a working
-        copy or reuse one on this Station. Existing files stay in place.
-      </p>
       {identity.isError ? (
         <p role="alert">
           Could not read current Project identity. {errorText(identity.error)}{' '}
@@ -79,6 +74,7 @@ export function ProjectRepositoryAttachment({
         <SkeletonBlock count={1} label="Checking current Project identity" />
       ) : (
         <NewProjectRepositorySource
+          expanded
           onBusyChange={setBusy}
           onUseCheckout={(path, _name, acquisitionId) => {
             if (!identity.data || attach.isPending) return;

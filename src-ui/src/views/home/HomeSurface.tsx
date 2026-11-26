@@ -6,7 +6,6 @@ import { HomeCoordinatorCard } from '../../components/home/HomeCoordinatorCard';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
 import { HomeStartComposer } from '../../components/home/HomeStartComposer';
 import { SkeletonBlock } from '../../components/state';
-import { useShowSurfacePage } from '../../contexts/useShowSurface';
 import { OVERVIEW_PRODUCT_NAME } from '../../lib/productNames';
 import type { NavigationView } from '../../types';
 import {
@@ -65,10 +64,6 @@ export function HomeSurface({
   // snooze snapshot, so the counts and the list they caption could disagree
   // about what is snoozed.
   const lanes = useHomeWorkLanes(model.workItems, model.workFacts);
-  // #928: Activity is a region surface with no standalone placement. "View
-  // Activity" goes to its PAGE — Activity takes `main` in Home's place, the
-  // same verb as the sidebar row — rather than docking it beside Home.
-  const showSurfacePage = useShowSurfacePage();
   // Lanes, not raw `workItems`: `partitionHomeWorkItems` hides a snoozed
   // item, and reading `workItems` directly here would put every snoozed row
   // back into the chart the counts beside it say is empty.
@@ -107,15 +102,18 @@ export function HomeSurface({
       : undefined;
   const listedLanes = continued ? withoutItem(lanes, continued) : lanes;
   // With Continue holding the only item, Recent work would be a heading
-  // over nothing: it is left out, and View Activity moves beside Continue.
+  // over nothing, so omit it while retaining loading and failure notes.
   // Loading, failure and remote notes still need the section.
-  const listEmpty =
-    Boolean(continued) &&
-    !model.workLoading &&
-    !model.workDegraded &&
-    !model.workError &&
-    model.remoteUnavailable.length === 0 &&
-    model.remoteAuthenticationRequired.length === 0 &&
+  const hasRemoteWorkNotice =
+    Boolean(model.remoteReadError) ||
+    model.remoteUnavailable.length > 0 ||
+    model.remoteAuthenticationRequired.length > 0;
+  const showRecentWork =
+    !continued ||
+    model.workLoading ||
+    model.workDegraded ||
+    model.workError ||
+    hasRemoteWorkNotice ||
     [
       listedLanes.needsYou,
       listedLanes.running,
@@ -125,19 +123,16 @@ export function HomeSurface({
       listedLanes.recentlyFinished,
       listedLanes.snoozed,
       listedLanes.settled,
-    ].every((items) => items.length === 0);
-  const continueCard =
-    !model.actionsLoading && model.primaryWorkItem ? (
-      <HomeContinueCard
-        model={model}
-        childrenById={lanes.childrenById}
-        id={CONTINUE_SECTION_ID}
-        onViewActivity={
-          listEmpty ? () => showSurfacePage('activity') : undefined
-        }
-      />
-    ) : null;
-  const recentWork = (
+    ].some((items) => items.length > 0);
+  const continueCard = continued ? (
+    <HomeContinueCard
+      model={model}
+      childrenById={lanes.childrenById}
+      id={CONTINUE_SECTION_ID}
+      offerRefresh={!showRecentWork}
+    />
+  ) : null;
+  const recentWork = showRecentWork && (
     <HomeRecentWorkSection
       id={RECENT_WORK_SECTION_ID}
       lanes={listedLanes}
@@ -147,11 +142,13 @@ export function HomeSurface({
       workDegraded={model.workDegraded}
       workError={model.workError}
       agents={model.agents}
+      remoteReadError={model.remoteReadError}
       remoteUnavailable={model.remoteUnavailable}
       remoteAuthenticationRequired={model.remoteAuthenticationRequired}
       onOpen={model.continueWork}
-      onViewActivity={() => showSurfacePage('activity')}
       onRetry={model.retryWork}
+      refresh={model.refreshWork}
+      updating={model.workUpdating}
     />
   );
   // One bar is not a comparison. The chart earns its height past one row.
@@ -187,24 +184,23 @@ export function HomeSurface({
           Skip to recent work
         </a>
       )}
-      {model.firstSession ? (
-        <header className="home-view__welcome">
-          <h1>Start your first conversation</h1>
-        </header>
-      ) : (
+      {!model.firstSession && (
         <h1 className="sr-only">{OVERVIEW_PRODUCT_NAME}</h1>
       )}
       {/* A plain wrapper: the form is the one "Start work" landmark. A
           section named the same nested a second landmark with one name. */}
       <div
-        className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}`}
+        className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}${model.firstSession ? ' home-view__welcome' : ''}`}
       >
-        <HomeStartComposer compact={hasWork || model.firstSession} />
+        <HomeStartComposer
+          compact={hasWork}
+          firstSession={model.firstSession}
+        />
       </div>
       {hasWork ? (
         <>
           {continueCard}
-          {!listEmpty && recentWork}
+          {recentWork}
           {actions}
           <HomeCoordinatorCard />
           {chart}
@@ -213,7 +209,7 @@ export function HomeSurface({
         <>
           {actions}
           <HomeCoordinatorCard />
-          {!model.firstSession && recentWork}
+          {(!model.firstSession || hasRemoteWorkNotice) && recentWork}
         </>
       )}
     </>

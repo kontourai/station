@@ -1,7 +1,0 @@
-{
-  "revision": "9065f79520a72288ebbe5ff3aa2e409c792bf6b9",
-
-  "notes": [
-    {"path":"packages/contracts/AGENTS.md","note":"Reviewed 'Contracts scope' against the branch's changes to docs/reference/contracts.md (orchestration instructions, first-turn delivery, Claude append, delegated_tool_blocked refusal, preview binding). Searched the document for delegation depth and child tool denials, delegate_task/send_message from a child, first-turn and system-prompt delivery, the Feature Preview list, and the capability-delivery receipt fields; no claim describes the changed behavior, and the changed code paths (route tool tag, resolver receipt, preview binding, prompt composition) do not alter what this document states.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
-  ]
-}

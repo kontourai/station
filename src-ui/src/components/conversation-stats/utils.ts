@@ -63,3 +63,40 @@ export function formatAverageTokens(
 
   return Math.round(totalTokens / turns).toLocaleString();
 }
+
+/**
+ * An engine-reported cost in the engine's own unit, never as USD: `0.0745
+ * credits`, `1.20 EUR`. A currency code stays a suffix; a vendor unit is
+ * pluralized only when it is a plain lowercase word.
+ */
+export function formatReportedCost(cost: {
+  amount: number;
+  unit: string;
+}): string {
+  const amount =
+    cost.amount >= 100
+      ? cost.amount.toFixed(0)
+      : cost.amount >= 1
+        ? cost.amount.toFixed(2)
+        : cost.amount.toPrecision(3).replace(/0+$/, '').replace(/\.$/, '');
+  const word = /^[a-z]+$/.test(cost.unit);
+  const unit =
+    word && cost.amount !== 1 && !cost.unit.endsWith('s')
+      ? `${cost.unit}s`
+      : cost.unit;
+  return `${amount} ${unit}`;
+}
+
+/**
+ * The cost of one turn, or `undefined` when there is none to divide: no cost
+ * was reported, or no turn was counted. The stats modal and `/stats` both
+ * show this, so they agree on when a per-turn cost exists.
+ */
+export function perTurnCostUsd(stats: {
+  estimatedCost?: number;
+  turns: number;
+}): number | undefined {
+  return stats.estimatedCost === undefined || stats.turns <= 0
+    ? undefined
+    : stats.estimatedCost / stats.turns;
+}

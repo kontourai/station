@@ -275,62 +275,93 @@ function literalSite(node, ast) {
 }
 
 /**
- * Every user-facing copy candidate in one source file, keyed by where it is
- * shown: `text:<tag>` for element text, `attr:<name>` for an attribute,
- * `prop:<name>` for a copy-named object property.
+ * An element's own text run: its JSX text, string or template literal
+ * children, and the text of inline phrasing children, joined. Inline children
+ * it reads join `absorbed` and literal children join `claimed` when given, so
+ * a caller that walks the whole tree counts each only once.
  */
-export function collectUiCopy(file, source) {
-  const ast = ts.createSourceFile(
+export function jsxTextRun(element, ast, absorbed, claimed) {
+  const parts = [];
+  for (const child of element.children) {
+    if (ts.isJsxText(child)) parts.push(child.text);
+    else if (ts.isJsxExpression(child)) {
+      const expression = child.expression;
+      if (
+        expression &&
+        (ts.isStringLiteral(expression) ||
+          ts.isNoSubstitutionTemplateLiteral(expression))
+      ) {
+        claimed?.add(expression);
+        parts.push(expression.text);
+      } else if (expression && ts.isTemplateExpression(expression)) {
+        claimed?.add(expression);
+        parts.push(templateText(expression));
+      }
+    } else if (ts.isJsxElement(child) && INLINE_TAG.test(tagName(child, ast))) {
+      absorbed?.add(child);
+      parts.push(jsxTextRun(child, ast, absorbed, claimed));
+    }
+  }
+  return parts.join('');
+}
+
+/** Parses one UI source file the way every copy rule reads it. */
+export function parseUiSource(file, source) {
+  return ts.createSourceFile(
     file,
     source,
     ts.ScriptTarget.Latest,
     true,
     file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
+}
+
+/**
+ * Accessible names, read as copy only when a caller asks for them: the
+ * `aria-label` and `alt` attributes, an `ariaLabel` prop, and an
+ * `ariaLabel` or `'aria-label'` object property.
+ */
+const ACCESSIBLE_NAME_ATTRIBUTE = /^(?:aria-label|ariaLabel|alt)$/;
+const ACCESSIBLE_NAME_PROPERTY = /^(?:aria-label|ariaLabel)$/;
+
+/**
+ * Every user-facing copy candidate in one source file, keyed by where it is
+ * shown: `text:<tag>` for element text, `attr:<name>` for an attribute,
+ * `prop:<name>` for a copy-named object property.
+ *
+ * Options, all off by default (the length rules never need them):
+ * - `words`: keep single-word text in element text and copy-bearing
+ *   attributes and properties (`Loading...`, a `Legacy` badge). The
+ *   catch-all literal rule still requires whitespace, because a single-word
+ *   literal there is almost always an identifier.
+ * - `accessibleNames`: read accessible names (`ACCESSIBLE_NAME_ATTRIBUTE`,
+ *   `ACCESSIBLE_NAME_PROPERTY`) as copy. A screen reader speaks them, so
+ *   wording rules apply even though length rules do not.
+ * - `ast`: a tree `parseUiSource` already built for this file, so a caller
+ *   with its own rules parses once.
+ */
+export function collectUiCopy(file, source, options = {}) {
+  const ast = options.ast ?? parseUiSource(file, source);
   const candidates = [];
-  const add = (key, raw) => {
+  const add = (key, raw, keepWords = false) => {
     const text = normalize(raw);
-    if (isProse(text)) candidates.push({ key, text });
+    if (keepWords && options.words ? /\S/.test(text) : isProse(text))
+      candidates.push({ key, text });
   };
   const absorbed = new Set();
   // Literals a copy-specific rule above already measured; the catch-all
   // literal rule skips them so nothing counts twice.
   const claimed = new Set();
-
-  /** The element's own text run; inline children are absorbed into it. */
-  function textRun(element) {
-    const parts = [];
-    for (const child of element.children) {
-      if (ts.isJsxText(child)) parts.push(child.text);
-      else if (ts.isJsxExpression(child)) {
-        const expression = child.expression;
-        if (
-          expression &&
-          (ts.isStringLiteral(expression) ||
-            ts.isNoSubstitutionTemplateLiteral(expression))
-        ) {
-          claimed.add(expression);
-          parts.push(expression.text);
-        } else if (expression && ts.isTemplateExpression(expression)) {
-          claimed.add(expression);
-          parts.push(templateText(expression));
-        }
-      } else if (
-        ts.isJsxElement(child) &&
-        INLINE_TAG.test(tagName(child, ast))
-      ) {
-        absorbed.add(child);
-        parts.push(textRun(child));
-      }
-    }
-    return parts.join('');
-  }
+  const isCopyAttribute = (name) =>
+    COPY_ATTRIBUTE.test(name) ||
+    (options.accessibleNames === true && ACCESSIBLE_NAME_ATTRIBUTE.test(name));
 
   function visit(node) {
     if (ts.isJsxElement(node) || ts.isJsxFragment(node)) {
       const tag = tagName(node, ast);
       if (CODE_TAG.test(tag)) return;
-      if (!absorbed.has(node)) add(`text:${tag}`, textRun(node));
+      if (!absorbed.has(node))
+        add(`text:${tag}`, jsxTextRun(node, ast, absorbed, claimed), true);
     }
     if (
       ts.isJsxExpression(node) &&
@@ -347,12 +378,12 @@ export function collectUiCopy(file, source) {
         !ts.isTemplateExpression(expression)
       )
         for (const text of literalAlternatives(expression, claimed))
-          add(`text:${tagName(node.parent, ast)}`, text);
+          add(`text:${tagName(node.parent, ast)}`, text, true);
     }
     if (
       ts.isJsxAttribute(node) &&
       node.initializer &&
-      COPY_ATTRIBUTE.test(node.name.getText(ast))
+      isCopyAttribute(node.name.getText(ast))
     ) {
       const name = node.name.getText(ast);
       const initializer = node.initializer;
@@ -360,15 +391,17 @@ export function collectUiCopy(file, source) {
         ts.isJsxExpression(initializer) ? initializer.expression : initializer,
         claimed,
       );
-      for (const text of texts) add(`attr:${name}`, text);
+      for (const text of texts) add(`attr:${name}`, text, true);
     }
     if (
       ts.isPropertyAssignment(node) &&
       (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) &&
-      COPY_ATTRIBUTE.test(node.name.text)
+      (COPY_ATTRIBUTE.test(node.name.text) ||
+        (options.accessibleNames === true &&
+          ACCESSIBLE_NAME_PROPERTY.test(node.name.text)))
     )
       for (const text of literalAlternatives(node.initializer, claimed))
-        add(`prop:${node.name.text}`, text);
+        add(`prop:${node.name.text}`, text, true);
     if (
       (ts.isStringLiteral(node) ||
         ts.isNoSubstitutionTemplateLiteral(node) ||
@@ -432,9 +465,9 @@ export function uiCopyInventory(root = process.cwd()) {
   return { counts, texts };
 }
 
-function assertInventory(inventory) {
+function assertInventory(inventory, label) {
   if (!inventory || typeof inventory !== 'object' || Array.isArray(inventory))
-    throw new Error('UI copy inventory must be an object');
+    throw new Error(`${label} inventory must be an object`);
   for (const counts of Object.values(inventory)) {
     if (
       !counts ||
@@ -444,18 +477,19 @@ function assertInventory(inventory) {
         (count) => !Number.isSafeInteger(count) || count < 0,
       )
     )
-      throw new Error('UI copy counts must be nonnegative integers');
+      throw new Error(`${label} counts must be nonnegative integers`);
   }
 }
 
 /**
  * Growth fails; shrinkage is reported so the baseline can be tightened, but
  * never fails (under a merge queue, two lanes that each shorten copy must not
- * refuse each other).
+ * refuse each other). The other UI ratchets with per-file kind counts
+ * (ui-copy-style, ui-css-slop) share it; `label` names theirs in errors.
  */
-export function compareUiCopy(current, baseline) {
-  assertInventory(current);
-  assertInventory(baseline);
+export function compareUiCopy(current, baseline, label = 'UI copy') {
+  assertInventory(current, label);
+  assertInventory(baseline, label);
   const added = [];
   const reduced = [];
   for (const [file, counts] of Object.entries(current)) {

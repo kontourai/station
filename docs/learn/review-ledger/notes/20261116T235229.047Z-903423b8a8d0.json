@@ -1,0 +1,7 @@
+{
+  "revision": "1b5c7e2a3f463ca54cd4ec2da5a517188ab9ee0f",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Push-once bullet now names ci:health as the source of the 66-minute median with its window and drops the 307 figure; keeps all eight PR: CI runs cancelled and 607 runner-minutes across the branch's workflows.","inputs":["docs/guides/development.md"]}
+  ]
+}

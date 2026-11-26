@@ -105,7 +105,7 @@ function KnowledgeWorkspace({
             description={errorText(error)}
             action={
               <button type="button" className="kl-button" onClick={retry}>
-                Try again
+                Retry
               </button>
             }
           />
@@ -162,7 +162,7 @@ function KnowledgeContent({
             className="kl-button"
             onClick={() => graphQuery.refetch()}
           >
-            Try again
+            Retry
           </button>
         }
       />

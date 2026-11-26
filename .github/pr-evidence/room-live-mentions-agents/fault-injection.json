@@ -1,0 +1,822 @@
+{
+  "base": "clean committed tree before each injection; restored with git checkout of the named file",
+  "injections": [
+    {
+      "id": "sdk-gap-check",
+      "behavior": "an injected sequence gap triggers a backfill",
+      "file": "packages/sdk/src/query-domains/projectRooms.ts",
+      "test": "packages/sdk/src/__tests__/project-room-live.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× a sequence gap is backfilled from history before the frame after it, never skipped 10119ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 5 passed (6)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  6 passed (6)"
+      ]
+    },
+    {
+      "id": "sdk-one-connection",
+      "behavior": "ten subscribed rooms use one connection (client hub)",
+      "file": "packages/sdk/src/client/project-room-live.ts",
+      "test": "packages/sdk/src/__tests__/project-room-live.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× ten rooms and the open one share one live connection 255ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 5 passed (6)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  6 passed (6)"
+      ]
+    },
+    {
+      "id": "server-one-connection",
+      "behavior": "ten subscribed rooms use one connection (server stream admits each)",
+      "file": "src-server/routes/projects/project-room-live.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): ten rooms stream over one connection, each admitted on its own 30003ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ]
+    },
+    {
+      "id": "server-gap-resync",
+      "behavior": "a burst the stream cannot describe is a resync, never a skip",
+      "file": "src-server/routes/projects/project-room-live.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): more appends than one pass may describe is a resync, never a silent skip 30007ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ]
+    },
+    {
+      "id": "typing-clears-on-stop",
+      "behavior": "typing clears when the typist stops",
+      "file": "src-server/services/projects/project-room-service.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): typing shows, clears when the typist stops, and clears when their stream drops 8311ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ],
+      "round1": {
+        "injected_exit": 0,
+        "injected_summary": [
+          "Tests  61 passed (61)"
+        ],
+        "note": "survived: the test did not reach the behavior; tightened in the next commit"
+      }
+    },
+    {
+      "id": "typing-clears-on-disconnect",
+      "behavior": "typing clears when the connection drops",
+      "file": "src-server/services/projects/project-room-service.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): typing shows, clears when the typist stops, and clears when their stream drops 6408ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ],
+      "round1": {
+        "injected_exit": 0,
+        "injected_summary": [
+          "Tests  61 passed (61)"
+        ],
+        "note": "survived: the test did not reach the behavior; tightened in the next commit"
+      }
+    },
+    {
+      "id": "typing-expires",
+      "behavior": "typing expires on its own",
+      "file": "src-server/services/projects/project-room-service.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): typing expires on its own when it is not renewed 251ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ]
+    },
+    {
+      "id": "mention-only-newly-named",
+      "behavior": "a person mention notifies only that person, once",
+      "file": "src-server/services/projects/project-room-service.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× mentions (#4799): a message names a member by id; only that person is told, once, and an edit tells only someone newly named 205ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ]
+    },
+    {
+      "id": "mention-member-check",
+      "behavior": "mentioning someone who is not a member is refused",
+      "file": "src-server/services/projects/project-room-service.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× mentions (#4799): a message names a member by id; only that person is told, once, and an edit tells only someone newly named 289ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ]
+    },
+    {
+      "id": "mention-principal-audience",
+      "behavior": "a mention reaches only that person's private feed",
+      "file": "src-server/services/projects/project-room-mention-notifications.ts",
+      "test": "src-server/services/projects/project-room-mention-notifications.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× a person mention reaches only that person, once, and opens the exact message 207ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 1 passed (2)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  2 passed (2)"
+      ]
+    },
+    {
+      "id": "mention-by-id-rename",
+      "behavior": "renaming a person updates how old mentions render",
+      "file": "src-ui/src/components/room/RoomMessageText.tsx",
+      "test": "src-ui/src/components/room/__tests__/RoomMessageText.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× a structured mention renders the current name by id, and the stored one when unknown 1756ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 1 passed (2)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  2 passed (2)"
+      ]
+    },
+    {
+      "id": "legacy-mention",
+      "behavior": "old **@name** messages still render",
+      "file": "src-ui/src/components/room/RoomMessageText.tsx",
+      "test": "src-ui/src/components/room/__tests__/RoomMessageText.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× an old **@Name** message in its stored shape still renders the chip 14ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 1 passed (2)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  2 passed (2)"
+      ]
+    },
+    {
+      "id": "picked-person-is-mention",
+      "behavior": "a person picked from @ is sent as a structured mention",
+      "file": "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "test": "src-ui/src/views/project-page/ProjectRoomLive.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× a person picked from @ is sent as a structured mention; a name typed by hand is not 175ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 5 passed (6)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  6 passed (6)"
+      ]
+    },
+    {
+      "id": "notification-opens-message",
+      "behavior": "opening the notification scrolls to the message",
+      "file": "src-ui/src/components/room/RoomConversation.tsx",
+      "test": "src-ui/src/views/project-page/ProjectRoomLive.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× a notification’s message is brought into view and marked 10148ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 5 passed (6)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  6 passed (6)"
+      ]
+    },
+    {
+      "id": "agent-working-hard-coded-on",
+      "behavior": "the working indicator follows the request lifecycle (fails if hard-coded on)",
+      "file": "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "test": "src-ui/src/views/project-page/ProjectRoomLive.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× the Agent working row appears and clears with the request record 10154ms",
+        "× the person who asked can Stop a working request, and Retry asks again with the same words 10173ms"
+      ],
+      "injected_summary": [
+        "Tests  2 failed | 4 passed (6)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  6 passed (6)"
+      ]
+    },
+    {
+      "id": "sidebar-working-hard-coded-on",
+      "behavior": "the sidebar working mark follows the request lifecycle",
+      "file": "packages/sdk/src/query-domains/projectRooms.ts",
+      "test": "src-ui/src/components/project-conversations/__tests__/ProjectConversationListLive.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× every channel rides one connection; a working Agent and a mention of the reader mark their rows 10206ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed (1)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  1 passed (1)"
+      ],
+      "round1": {
+        "injected_exit": 0,
+        "injected_summary": [
+          "Tests  1 passed (1)"
+        ],
+        "note": "survived: the test did not reach the behavior; tightened in the next commit"
+      }
+    },
+    {
+      "id": "sidebar-mention-dot",
+      "behavior": "a mention marks the channel with a mention dot",
+      "file": "src-ui/src/components/project-conversations/projectConversationIndex.ts",
+      "test": "src-ui/src/components/project-conversations/__tests__/ProjectConversationListLive.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× every channel rides one connection; a working Agent and a mention of the reader mark their rows 10991ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed (1)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  1 passed (1)"
+      ]
+    },
+    {
+      "id": "read-summary-mentioned",
+      "behavior": "the read summary derives mentions of the reader",
+      "file": "src-server/services/projects/project-room-store.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× mentions (#4799): the read summary marks a room whose unread messages name the reader 165ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ],
+      "round1": {
+        "injected_exit": 0,
+        "injected_summary": [
+          "Tests  61 passed (61)"
+        ],
+        "note": "survived: the test did not reach the behavior; tightened in the next commit"
+      }
+    },
+    {
+      "id": "members-active-only",
+      "behavior": "the member directory lists active members only",
+      "file": "src-server/services/projects/project-membership-store.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 160ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 85 passed (86)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  86 passed (86)"
+      ]
+    },
+    {
+      "id": "members-minimal-fields",
+      "behavior": "the member directory returns id, displayName and kind only",
+      "file": "src-server/services/projects/project-room-service.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 182ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 86 passed (87)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  87 passed (87)"
+      ]
+    },
+    {
+      "id": "members-non-member",
+      "behavior": "listing requires existing room read: a signed-in non-member is refused",
+      "file": "src-server/services/projects/project-membership-store.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 155ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 86 passed (87)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  87 passed (87)"
+      ]
+    },
+    {
+      "id": "members-revoked",
+      "behavior": "a revoked member is refused",
+      "file": "src-server/services/projects/project-membership-store.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× SSE checkpoints are guarded at queued delivery and terminate with revoked while presence is removed 250ms",
+        "× idle SSE periodically notices membership revocation and shutdown clears its timers 20397ms",
+        "× live (#4798): losing access ends that room with revoked, and a viewer cannot type 290ms",
+        "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 173ms",
+        "× live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages 5616ms"
+      ],
+      "injected_summary": [
+        "Tests  5 failed | 82 passed (87)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  87 passed (87)"
+      ]
+    },
+    {
+      "id": "stream-revoke-loop-check-only",
+      "behavior": "mid-stream revocation: remove only the per-frame admission check in the stream loop",
+      "file": "src-server/routes/projects/project-room-live.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 0,
+      "injected_failures": [],
+      "injected_summary": [
+        "Tests  87 passed (87)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  87 passed (87)"
+      ],
+      "note": "survives alone: the response guard re-checks the same admission before every chunk and answers with the terminal revoked frames. Removing the guard terminal, or both layers, is caught."
+    },
+    {
+      "id": "stream-revoke-guard-terminal-only",
+      "behavior": "mid-stream revocation: remove only the guard's terminal revoked frames",
+      "file": "src-server/routes/projects/project-room-live.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages 579ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 86 passed (87)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  87 passed (87)"
+      ]
+    },
+    {
+      "id": "stream-revoke-both-layers",
+      "behavior": "mid-stream revocation: remove the loop check and the guard's per-chunk re-check",
+      "file": "src-server/routes/projects/project-room-live.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages 533ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 86 passed (87)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  87 passed (87)"
+      ]
+    }
+  ],
+  "merged_tree": {
+    "head": "13523c593e23c265479d431fe4c548ff70e5b606",
+    "note": "re-verified after merging #4852 44deb5ae and main b36b3cae; preimage restored byte-exact (sha256) each time",
+    "injections": [
+      {
+        "id": "per-frame-revocation (guard terminal)",
+        "file": "src-server/routes/projects/project-room-live.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages 719ms"
+        ],
+        "injected_errors": [
+          "Error: lifecycle journal lock is held by a live process",
+          "AssertionError: expected [] to deeply equal [ 'revoked' ]"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 85 passed (86)"
+        ],
+        "preimage_sha256": "a2d58d7aea843440531b31abdf7c8aad6d1e0f01f1d3240d64e0567cdb08439e",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  86 passed (86)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "per-frame-revocation (loop and guard)",
+        "file": "src-server/routes/projects/project-room-live.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages 521ms"
+        ],
+        "injected_errors": [
+          "Error: lifecycle journal lock is held by a live process",
+          "AssertionError: expected [ 'presence', 'typing' ] to deeply equal [ 'revoked' ]"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 85 passed (86)"
+        ],
+        "preimage_sha256": "a2d58d7aea843440531b31abdf7c8aad6d1e0f01f1d3240d64e0567cdb08439e",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  86 passed (86)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "member-directory fields",
+        "file": "src-server/services/projects/project-room-service.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 203ms"
+        ],
+        "injected_errors": [
+          "Error: lifecycle journal lock is held by a live process",
+          "AssertionError: expected '{\"success\":true,\"data\":{\"members\":[{\"…' not to contain 'example.invalid'"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 85 passed (86)"
+        ],
+        "preimage_sha256": "fa18124c689ac8582aafeb7b1731deaaaf651d95523a0293de1bc02e49d1518a",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  86 passed (86)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "non-member refusal",
+        "file": "src-server/services/projects/project-membership-store.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 348ms"
+        ],
+        "injected_errors": [
+          "Error: lifecycle journal lock is held by a live process",
+          "AssertionError: /api/projects/example/room/members: expected 503 to be 403 // Object.is equality"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 85 passed (86)"
+        ],
+        "preimage_sha256": "253e382b5c0282997c467551eba597f386c5411621bddc7644fbf8b3c96bceaf",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  86 passed (86)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "revoked refusal",
+        "file": "src-server/services/projects/project-membership-store.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× SSE checkpoints are guarded at queued delivery and terminate with revoked while presence is removed 370ms",
+          "× idle SSE periodically notices membership revocation and shutdown clears its timers 20893ms",
+          "× live (#4798): losing access ends that room with revoked, and a viewer cannot type 417ms",
+          "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 518ms",
+          "× live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages 5903ms"
+        ],
+        "injected_errors": [
+          "Error: lifecycle journal lock is held by a live process",
+          "AssertionError: expected 'event: presence\\ndata: {\"participants…' to contain 'event: revoked'"
+        ],
+        "injected_summary": [
+          "Tests  5 failed | 81 passed (86)"
+        ],
+        "preimage_sha256": "253e382b5c0282997c467551eba597f386c5411621bddc7644fbf8b3c96bceaf",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  86 passed (86)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "live capability admission (enabled guard)",
+        "file": "packages/sdk/src/query-domains/projectRooms.ts",
+        "test": "src-ui/src/views/native-relay/__tests__/NativeRelayMemberShell.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× reads published task content through the real member SDK without starting operator resources 212ms"
+        ],
+        "injected_errors": [
+          "AssertionError: expected [ '/.well-known/station/v1', …(10) ] to deeply equal [ '/api/auth/authority', …(9) ]"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 4 passed (5)"
+        ],
+        "preimage_sha256": "f14ca9563f90b157fccd15130e9521d860a54902fb227d8e385595ccf2c3e900",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  5 passed (5)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "handshake literal (flag withdrawn)",
+        "file": "src-server/capabilities/station-capability-flags.ts",
+        "test": "src-server/services/ssh/__tests__/handshake-compatibility.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× a personal deployment advertises served flags and withholds the disabled chat preview 176ms",
+          "× server route test: the live HTTP response includes the seeded flags 134ms"
+        ],
+        "injected_errors": [
+          "AssertionError: expected { …(24) } to deeply equal { …(25) }",
+          "AssertionError: expected { …(24) } to deeply equal { …(25) }"
+        ],
+        "injected_summary": [
+          "Tests  2 failed | 4 passed (6)"
+        ],
+        "preimage_sha256": "d5db5e17ffe6edee7829c1538af87a82a79865bb0a620bbf0424fe00cb193bcb",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  6 passed (6)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "#4852 R10 revoked retry (replay skips authority)",
+        "file": "src-server/services/projects/project-room-store.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× message files: an accepted send retried after the sender loses room access is refused (#4852 review) 839ms"
+        ],
+        "injected_errors": [
+          "Error: lifecycle journal lock is held by a live process",
+          "AssertionError: expected { status: 200, code: undefined } to deeply equal { status: 403, …(1) }"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 85 passed (86)"
+        ],
+        "preimage_sha256": "d1aa8dc6f33fc874e75674810bbbd38be80e0e0f43c53bc13503a05d71712efa",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  86 passed (86)"
+        ],
+        "tree_clean_after": true
+      }
+    ]
+  },
+  "final_rounds": {
+    "note": "Pre-merge-gate fixes and the independent-review fix round. Hashes are git blob ids (git hash-object) of the named file; restored files match the preimage blob.",
+    "injections": [
+      {
+        "id": "for-you pending and no-scope (both reverted)",
+        "file": "src-ui/src/components/notifications/PersonMentionsSection.tsx + src-ui/src/pages/NotificationsPage.tsx",
+        "test": "src-ui/src/__tests__/NotificationsPage.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "pending and no-scope cases"
+        ],
+        "injected_summary": [
+          "pending/no-scope cases failed"
+        ],
+        "preimage_git_blob": "section bb23c105 / page bf900955",
+        "injected_git_blob": "section 78a41d2a / page bdf08eab",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  48 passed (48)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "hub replays an announced room to a late listener",
+        "file": "packages/sdk/src/client/project-room-live.ts",
+        "test": "packages/sdk/src/__tests__/project-room-live.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× a room opened after the sidebar already holds the connection still backfills a gap, never skips it"
+        ],
+        "injected_summary": [
+          "1 failed"
+        ],
+        "preimage_git_blob": "ceb6781e",
+        "injected_git_blob": "0a0112f7",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "all passed"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "sidebar index treats subscribed as activity",
+        "file": "packages/sdk/src/query-domains/projectRooms.ts",
+        "test": "src-ui/src/components/project-conversations/__tests__/ProjectConversationListLive.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× a message that lands while the stream is connecting still marks its row"
+        ],
+        "injected_summary": [
+          "1 failed"
+        ],
+        "preimage_git_blob": "5450b50f",
+        "injected_git_blob": "cbac4c08",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "all passed"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "notification focus retries and clears its flash",
+        "file": "src-ui/src/components/room/RoomConversation.tsx",
+        "test": "src-ui/src/__tests__/room-conversation-follow.browser.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "flicker case, 2 of 2 runs"
+        ],
+        "injected_summary": [
+          "failed"
+        ],
+        "preimage_git_blob": "9568f77a",
+        "injected_git_blob": "9b6783a7",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "passed"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "programmatic end scroll does not resume following past a focused message",
+        "file": "src-ui/src/components/room/RoomConversation.tsx",
+        "test": "src-ui/src/__tests__/room-conversation-follow.browser.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "lateScroll case, 2 of 2 runs"
+        ],
+        "injected_summary": [
+          "failed"
+        ],
+        "preimage_git_blob": "f1847074",
+        "injected_git_blob": "e89dbb57",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "5 of 5 runs passed"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "review P1: failed reconciliation marks the room stale (injected: never stale)",
+        "file": "packages/sdk/src/query-domains/projectRooms.ts",
+        "test": "packages/sdk/src/__tests__/project-room-live.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× a resync whose history read fails never lets the next append skip the messages it announced",
+          "× a reconnection whose history read fails never lets the next append skip the messages it announced"
+        ],
+        "injected_summary": [
+          "Tests  2 failed | 8 passed (10)"
+        ],
+        "preimage_git_blob": "a66f345c",
+        "injected_git_blob": "8e44ac07",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  10 passed (10)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "review P2: a read in flight keeps newer live rows (injected: none kept)",
+        "file": "packages/sdk/src/query-domains/projectRooms.ts",
+        "test": "packages/sdk/src/__tests__/project-room-live.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× a history read already in flight never undoes a live append, in the cache or for its caller"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 9 passed (10)"
+        ],
+        "preimage_git_blob": "a66f345c",
+        "injected_git_blob": "9c3ac6d5",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  10 passed (10)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "review P2: the agents frame carries unsettled requests (injected: none)",
+        "file": "src-server/services/projects/project-room-store.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× live (#4800): a request still working is carried however many newer requests have settled"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 86 passed (87)"
+        ],
+        "preimage_git_blob": "44b35259",
+        "injected_git_blob": "fdcdc0cb",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  87 passed (87)"
+        ],
+        "tree_clean_after": true
+      }
+    ]
+  }
+}

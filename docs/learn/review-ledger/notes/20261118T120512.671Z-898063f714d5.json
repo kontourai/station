@@ -1,0 +1,9 @@
+{
+  "revision": "5bc268ec28363f2c365546ddbbb24d7a9c9b6fb2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Verified the extraction uses one ranked failure list for the first excerpt and optional companions. Ownership and publication behavior are unchanged.","inputs":["docs/architecture/module-map.md","scripts/run-verification.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Confirmed the reporter's first excerpt comes from the same failure tier as its companions and that the CLI retains excerpt attribution together in the fallback. Focused tests cover both paths.","inputs":["docs/reference/verification-receipts.md","scripts/lib/verification-reporter.mjs","scripts/run-verification.mjs"]}
+  ]
+}

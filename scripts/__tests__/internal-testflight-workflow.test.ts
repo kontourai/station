@@ -23,7 +23,7 @@ const workflow = load(source) as {
 };
 
 describe('internal iOS TestFlight cohort workflow', () => {
-  test('build delivery uses the verified pnpm bootstrap before managed install', () => {
+  test('build delivery installs verified pnpm and Swift bridge prerequisites', () => {
     const reusable = load(delivery) as {
       jobs: {
         deliver: {
@@ -31,7 +31,7 @@ describe('internal iOS TestFlight cohort workflow', () => {
             name?: string;
             uses?: string;
             run?: string;
-            with?: unknown;
+            with?: { targets?: string; components?: string };
           }>;
         };
       };
@@ -49,6 +49,14 @@ describe('internal iOS TestFlight cohort workflow', () => {
     expect(steps[setup].with).toBeUndefined();
     expect(node).toBeGreaterThan(setup);
     expect(install).toBeGreaterThan(node);
+    const rust = steps.findIndex((step) =>
+      step.uses?.startsWith('dtolnay/rust-toolchain@'),
+    );
+    expect(rust).toBeGreaterThan(install);
+    expect(steps[rust].with?.targets).toBe('aarch64-apple-ios');
+    expect((steps[rust].with?.components ?? '').split(/[,\s]+/)).toContain(
+      'llvm-tools',
+    );
   });
   test('external distribution is a non-blocking Nightly opt-in, excluded from internal authority', () => {
     const reusable = load(delivery) as {
@@ -115,10 +123,9 @@ describe('internal iOS TestFlight cohort workflow', () => {
 
   test('is dispatch-only and binds exactly current main', () => {
     expect(Object.keys(workflow.on ?? {})).toEqual(['workflow_dispatch']);
-    expect(workflow.jobs?.plan?.needs).toEqual([
-      'admit-stable',
-      'admit-beta',
+    expect([workflow.jobs?.plan?.needs].flat().sort()).toEqual([
       'admit-nightly',
+      'admit-stable',
     ]);
     expect(source).toContain('test "$source_sha" = "$GITHUB_SHA"');
     expect(source).toContain('test "$remote_sha" = "$source_sha"');
@@ -145,23 +152,15 @@ describe('internal iOS TestFlight cohort workflow', () => {
     expect(signingWrapper).not.toContain('--passphrase ');
     expect(delivery).toContain('verify-ios-testflight-internal-tag.mjs');
   });
-  test('runs TestFlight only in Nightly then Beta then Stable order', () => {
-    expect(
-      Object.values(workflow.jobs ?? {})
-        .map((job) => job?.uses)
-        .filter(Boolean),
-    ).toEqual([
-      './.github/workflows/testflight-delivery.yml',
-      './.github/workflows/testflight-delivery.yml',
-      './.github/workflows/testflight-delivery.yml',
-    ]);
-    expect(workflow.jobs?.['deliver-beta']?.needs).toEqual([
+  test('runs TestFlight only in Nightly then Stable order', () => {
+    expect(workflow.jobs?.['deliver-nightly']?.with?.channel).toBe('nightly');
+    expect([workflow.jobs?.['deliver-nightly']?.needs].flat()).toEqual([
       'plan',
+    ]);
+    expect(workflow.jobs?.['deliver-stable']?.with?.channel).toBe('stable');
+    expect([workflow.jobs?.['deliver-stable']?.needs].flat().sort()).toEqual([
       'deliver-nightly',
-    ]);
-    expect(workflow.jobs?.['deliver-stable']?.needs).toEqual([
       'plan',
-      'deliver-beta',
     ]);
   });
   test('contains no public release or other publication surface', () => {
@@ -169,7 +168,6 @@ describe('internal iOS TestFlight cohort workflow', () => {
       .map((job) => job?.uses)
       .filter(Boolean);
     expect(reusableCalls).toEqual([
-      './.github/workflows/testflight-delivery.yml',
       './.github/workflows/testflight-delivery.yml',
       './.github/workflows/testflight-delivery.yml',
     ]);

@@ -1,9 +1,11 @@
+import { pluginLifecycleUnapplied } from '@kontourai/station-contracts/plugin';
 import {
   type RegistryCatalogTab,
   useInstalledRegistryItemsQuery,
   useInvalidateQuery,
   usePluginRegistryInstallMutation,
   usePluginRegistryPreviewMutation,
+  usePluginsQuery,
   useRegistryAgentActionMutation,
   useRegistryIntegrationActionMutation,
   useRegistryItemsQuery,
@@ -42,6 +44,10 @@ import {
   installedDependencyPermissions,
   type PreviewData,
 } from './plugin-management/types';
+import {
+  unappliedMessage,
+  unappliedTone,
+} from './plugin-management/view-utils';
 import './PluginManagementView.css';
 import './RegistryView.css';
 import './page-layout.css';
@@ -49,6 +55,13 @@ import './page-layout.css';
 function registryInstallationKey(tab: RegistryCatalogTab, itemId: string) {
   return `${tab}:${itemId}`;
 }
+
+/**
+ * A source chosen together with a switch to its catalog tab. The route
+ * boundary keys this view by route (`RouteViewBoundary`), so the tab switch
+ * remounts it; the choice is handed to that next mount, for that tab only.
+ */
+let sourceForNextTab: { tab: RegistryCatalogTab; source: string } | null = null;
 
 export function RegistryView({
   initialTab,
@@ -76,13 +89,28 @@ export function RegistryView({
   useEffect(() => {
     setActiveTab(initialTab ?? 'agents');
   }, [initialTab]);
-  const selectTab = (tab: RegistryCatalogTab) => {
+  // The route remounts this view for each tab (`RouteViewBoundary` keys by
+  // route), so the chosen source is handed to the next mount: browsing a
+  // source keeps it across tabs.
+  const selectTab = (
+    tab: RegistryCatalogTab,
+    source: string = selectedSource,
+  ) => {
     setActiveTab(tab);
-    if (!toolPicker) navigate(`/registry/${tab}`);
+    if (!toolPicker) {
+      sourceForNextTab = { tab, source };
+      navigate(`/registry/${tab}`);
+    }
   };
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState(installTarget ?? '');
-  const [selectedSource, setSelectedSource] = useState('all');
+  const [selectedSource, setSelectedSource] = useState(() => {
+    const handed = sourceForNextTab;
+    sourceForNextTab = null;
+    return handed && handed.tab === (initialTab ?? 'agents')
+      ? handed.source
+      : 'all';
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectedSelection, setInspectedSelection] = useState<{
     tab: RegistryCatalogTab;
@@ -142,6 +170,9 @@ export function RegistryView({
   const agentMutation = useRegistryAgentActionMutation();
   const integrationMutation = useRegistryIntegrationActionMutation();
   const pluginMutation = usePluginRegistryInstallMutation();
+  // Which installed plugins read Needs recovery, so an install of one offers
+  // Recover instead of a second copy.
+  const { data: installedPluginRows } = usePluginsQuery();
   const skillMutation = useRegistrySkillActionMutation();
   const layoutMutation = useRegistryLayoutActionMutation();
 
@@ -354,7 +385,7 @@ export function RegistryView({
     }
   };
 
-  const confirmPluginInstall = async () => {
+  const confirmPluginInstall = async (installAgainWhileInactive = false) => {
     const preview = pluginInstallPreview;
     if (!preview) return;
     const { data, item, itemId, tab } = preview;
@@ -364,6 +395,38 @@ export function RegistryView({
       data.manifest?.name ||
       item.displayName ||
       itemId;
+    const inactiveName = (installedPluginRows ?? []).find(
+      (row) =>
+        !('status' in row && row.status === 'rejected') &&
+        row.name === data.manifest?.name &&
+        'installationReadiness' in row &&
+        row.installationReadiness?.state === 'pending' &&
+        !('activationInFlight' in row && row.activationInFlight),
+    )?.name;
+    if (inactiveName && !installAgainWhileInactive) {
+      // Recovered, not installed again: see the Plugins view's install.
+      showToast(
+        `${displayName} is already installed but not active. Recover it to activate it; installing it again adds another copy of its code.`,
+        undefined,
+        undefined,
+        [
+          {
+            label: 'Recover plugin',
+            variant: 'primary' as const,
+            onClick: () => {
+              setPluginInstallPreview(null);
+              navigate(`/plugins/${encodeURIComponent(inactiveName)}`);
+            },
+          },
+          {
+            label: 'Install again anyway',
+            onClick: () => void confirmPluginInstall(true),
+          },
+        ],
+        'warning',
+      );
+      return;
+    }
     const pendingConsent = [
       ...data.permissions.pendingConsent,
       ...(data.dependencies ?? []).flatMap((dependency) =>
@@ -426,6 +489,36 @@ export function RegistryView({
     const callbacks = {
       onError: baseCallbacks.onError,
       onSuccess: async (result: unknown) => {
+        const unapplied = pluginLifecycleUnapplied(result);
+        if (unapplied) {
+          // Saved, not applied: the same outcome the Plugins view reports.
+          // No dependency host review now; it refuses a plugin that is not
+          // active, and the plugin's own row finishes the activation.
+          actionCallbacks(tab, item, itemId, false, () => {
+            setMessage(null);
+            showToast(
+              unappliedMessage('installed', displayName, unapplied),
+              undefined,
+              undefined,
+              installedPluginName
+                ? [
+                    {
+                      label: 'Open plugin',
+                      variant: 'primary' as const,
+                      onClick: () =>
+                        navigate(
+                          `/plugins/${encodeURIComponent(installedPluginName)}`,
+                        ),
+                    },
+                  ]
+                : undefined,
+              unappliedTone(unapplied),
+            );
+          }).onSuccess();
+          if (unapplied.kind === 'projection')
+            await reloadPluginsMutation.mutateAsync().catch(() => {});
+          return;
+        }
         baseCallbacks.onSuccess();
         void pluginRegistry.reload();
         const dependencyStatus = installedDependencyPermissions(result);
@@ -533,7 +626,15 @@ export function RegistryView({
       {!toolPicker && (
         <MarketplaceSources
           selected={selectedSource}
-          onSelect={setSelectedSource}
+          onSelect={(id, _kind, supplied) => {
+            setSelectedSource(id);
+            // Show the chosen source's catalog: keep the tab when the source
+            // supplies it, otherwise open its primary kind's tab.
+            const tabs: readonly RegistryCatalogTab[] = supplied ?? [];
+            if (tabs.length > 0 && !tabs.includes(activeTab))
+              selectTab(tabs[0]!, id);
+          }}
+          manage="dialog"
         />
       )}
       {installTarget ? (

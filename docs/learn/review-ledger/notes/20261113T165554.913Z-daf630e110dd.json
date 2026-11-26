@@ -1,0 +1,29 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked its statement that OpenCode and other ACP engines get no automatic resume after usage limits: unaffected, since the reattach reapply changes only how a reopened session restores its model and options. No claim changed.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked: the new process test acp-session-answers.process.test.ts is registered in vitest-resource-manifest.mjs and the path-read pin list like the Kiro suites; testing guidance unchanged. No claim changed.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the orchestration model launch section: requested/applied/reported model facts stay separate; effectiveModel remains requested on a reopen and reportedModel what runs. No claim changed.","inputs":["docs/reference/api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked steer and durability claims: ACP still discloses a connection-dependent fallback that may interrupt; the composer does not offer ACP steering; the cancel + re-prompt paragraph describes that fallback only. AcpProbeFailureCode gains engine-update-required (described in the ACP guide). No claim changed.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked: SDK lastError.code docs now list engine-update-required beside managed-runtime-not-installed (acpWorkspace.ts); usage-scope change does not alter SDK fold APIs. No claim changed.","inputs":["docs/reference/sdk.md","packages/shared/src/usage-semantics.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked: usage-semantics.ts keeps its API; acp moved from context-occupancy-only to per-turn with publication limited to recorded engines; shared.md names no per-provider scope. No claim changed.","inputs":["docs/reference/shared.md","packages/shared/src/usage-semantics.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked: the manual's ACP and engine topics route to the ACP guide; no Antigravity-specific or steer claim here. No claim changed.","inputs":["docs/reference/station-docs.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked: engine setup copy is generic; the new engine-update-required message appears in the same not-connected surfaces this guide describes without naming codes. No claim changed.","inputs":["docs/user/getting-started.md","src-ui/src/utils/stationFailure.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked: example does not depend on ACP reattach, steer or usage behavior. No claim changed.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Checked: vitest-resource-manifest.mjs gained one process test entry; the runtime context's test-resource notes unchanged. No claim changed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked: vitest-resource-manifest.mjs registration of acp-session-answers.process.test.ts follows the existing rule for process tests. No claim changed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked: stationFailure.ts change is a fixed translation of a typed probe code, matching the routing rules here. No claim changed.","inputs":["src-ui/AGENTS.md","src-ui/src/utils/stationFailure.ts"]}
+  ]
+}

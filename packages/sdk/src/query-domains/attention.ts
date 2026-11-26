@@ -1,6 +1,13 @@
 import type { AttentionProjection } from '@kontourai/station-contracts/attention';
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch, type ClientRequestOptions } from '../client/http';
+import { envelopeError } from '../client/api-error-message';
+import {
+  type ApiRequestScope,
+  authenticatedFetch,
+  type ClientRequestOptions,
+  readEnvelopeOrThrow,
+  readJsonBody,
+} from '../client/http';
 import { unlessDeadline } from '../client/request-deadline';
 import {
   type QueryConfig,
@@ -17,24 +24,22 @@ export async function fetchAttention(
     `${resolvedApiBase}/api/attention`,
     options,
   );
-  const result = (await response.json()) as {
-    success: boolean;
-    data?: AttentionProjection;
-    error?: string;
-  };
-  if (!response.ok || !result.success || !result.data) {
-    throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
-  }
-  return result.data;
+  const data = await readEnvelopeOrThrow<AttentionProjection>(response);
+  if (!data) throw new Error('Attention response is missing data');
+  return data;
 }
 
 export function useAttentionQuery(
-  apiBase?: string,
+  target?: string | ApiRequestScope,
   config?: QueryConfig<AttentionProjection>,
 ) {
+  const requestScope = typeof target === 'object' ? target : undefined;
+  const apiBase = typeof target === 'string' ? target : requestScope?.apiBase;
   return useApiQuery(
-    ['attention', apiBase ?? 'default'],
-    () => fetchAttention(apiBase),
+    requestScope
+      ? ['attention', requestScope.apiBase, requestScope.authorityKey]
+      : ['attention', apiBase ?? 'default'],
+    (signal) => fetchAttention(apiBase, { signal, requestScope }),
     { refetchInterval: 10_000, ...config },
   );
 }
@@ -76,13 +81,15 @@ export async function acknowledgeAttentionItem(
     `${resolvedApiBase}/api/attention/${encodeURIComponent(itemId)}/ack`,
     { method: 'POST' },
   );
-  const result = (await response.json()) as {
-    success: boolean;
-    error?: string;
-  };
-  if (response.status === 404 && result.error === NOT_ACKNOWLEDGEABLE) return;
-  if (!response.ok || !result.success) {
-    throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
+  // Read tolerantly: the stale-item branch needs the body, and a body that is
+  // not JSON must still report its status rather than a parse exception.
+  const result = (await readJsonBody(response)) as
+    | { success?: boolean; error?: unknown }
+    | null
+    | undefined;
+  if (response.status === 404 && result?.error === NOT_ACKNOWLEDGEABLE) return;
+  if (!response.ok || !result?.success) {
+    throw envelopeError(response, result, `HTTP ${response.status}`);
   }
 }
 

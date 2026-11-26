@@ -541,7 +541,15 @@ describe('CLI surface commands over HTTP', () => {
       }
       if (method === 'GET' && url.pathname === '/api/users/search') {
         const q = url.searchParams.get('q') || '';
-        sendJson(200, [{ alias: q, name: q }]);
+        if (q === 'unavailable') {
+          sendJson(503, {
+            success: false,
+            code: 'user_directory_unavailable',
+            error: 'People directory is unavailable',
+          });
+          return;
+        }
+        sendJson(200, q === 'no-match' ? [] : [{ alias: q, name: q }]);
         return;
       }
       if (method === 'GET' && url.pathname === '/api/users/testuser') {
@@ -627,6 +635,19 @@ describe('CLI surface commands over HTTP', () => {
             totalErrors: 0,
             days: Number(url.searchParams.get('days') || 14),
           },
+        });
+        return;
+      }
+      if (method === 'GET' && url.pathname === '/acp/setup') {
+        sendJson(200, {
+          success: true,
+          data: [
+            {
+              id: 'antigravity',
+              setupPath: '/connections/engines/new/antigravity',
+              httpTools: 'unknown',
+            },
+          ],
         });
         return;
       }
@@ -1022,6 +1043,7 @@ describe('CLI surface commands over HTTP', () => {
     await runCli(['feedback', 'status', `--api-base=${apiBase}`]);
     await runCli(['feedback', 'test', `--api-base=${apiBase}`]);
     await runCli(['insights', 'get', '--days=7', `--api-base=${apiBase}`]);
+    await runCli(['acp', 'setup', `--api-base=${apiBase}`]);
     await runCli(['acp', 'status', `--api-base=${apiBase}`]);
     await runCli(['acp', 'commands', `--api-base=${apiBase}`]);
     await runCli([
@@ -1096,6 +1118,30 @@ describe('CLI surface commands over HTTP', () => {
         !call[0].includes('"name": "review"'),
     );
     expect(filteredCommandOptionsCall).toBeDefined();
+  });
+
+  test('auth users search prints a successful empty array and preserves directory failure', async () => {
+    const { runCli } = await import('../cli.js');
+    const search = (query: string) =>
+      runCli(['auth', 'users', 'search', query, `--api-base=${apiBase}`]);
+
+    await search('no-match');
+    expect(_consoleLog).toHaveBeenCalledWith('[]');
+    _consoleLog.mockClear();
+
+    await expect(search('unavailable')).rejects.toMatchObject({
+      status: 503,
+      code: 'user_directory_unavailable',
+      message: 'People directory is unavailable',
+    });
+    expect(_consoleLog).not.toHaveBeenCalled();
+  });
+
+  test('ACP commands refuses an engine id instead of presenting a shared catalog as an engine check', async () => {
+    const { runCli } = await import('../cli.js');
+    await expect(
+      runCli(['acp', 'commands', 'grok', `--api-base=${apiBase}`]),
+    ).rejects.toThrow('takes no engine id');
   });
 
   // station#2844: flag-based engine-connection creation — adding a
@@ -1619,6 +1665,92 @@ describe('CLI surface commands over HTTP', () => {
     expect(state.flowCommandBodies).toHaveLength(0);
   });
 
+  test('flow attach-command refuses a malformed optional flag before requesting', async () => {
+    const { runCli } = await import('../cli.js');
+    const attach = (...flags: string[]) =>
+      runCli([
+        'flow',
+        'attach-command',
+        'demo',
+        'run-1',
+        '--gate=implement-gate',
+        '--command=npm run verify:static',
+        '--claim-type=quality.static-checks',
+        ...flags,
+        `--api-base=${apiBase}`,
+      ]);
+
+    // `30s` used to be sent as a 30 ms timeout.
+    await expect(attach('--timeout-ms=30s')).rejects.toThrow(
+      '--timeout-ms must be a positive integer.',
+    );
+    await expect(attach('--timeout-ms=0')).rejects.toThrow(
+      '--timeout-ms must be a positive integer.',
+    );
+    // `--label verify` parses as a bare flag plus a positional; the label
+    // used to be dropped without a word.
+    await expect(attach('--label', 'verify')).rejects.toThrow(
+      '--label requires a non-empty value',
+    );
+    expect(state.flowCommandBodies).toHaveLength(0);
+  });
+
+  test('schedule create accepts a display name without a slug, and refuses a body with neither', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'schedule',
+      'create',
+      `--api-base=${apiBase}`,
+      '--data={"displayName":"Daily report","prompt":"Generate report"}',
+    ]);
+    expect(state.scheduleJobs).toEqual([
+      { displayName: 'Daily report', prompt: 'Generate report' },
+    ]);
+
+    for (const data of [
+      '{"prompt":"Generate report"}',
+      '{"name":"","displayName":"","prompt":"Generate report"}',
+      '{"displayName":"Daily report"}',
+    ])
+      await expect(
+        runCli([
+          'schedule',
+          'create',
+          `--api-base=${apiBase}`,
+          `--data=${data}`,
+        ]),
+      ).rejects.toThrow(
+        'Scheduler create requires a nonempty prompt and a nonempty name or displayName',
+      );
+    expect(state.scheduleJobs).toHaveLength(1);
+  });
+
+  test('schedule preview and logs refuse a count that is not a whole number', async () => {
+    const { runCli } = await import('../cli.js');
+
+    // `abc` used to be sent to the server as `count=NaN`, and `5x` as 5.
+    await expect(
+      runCli([
+        'schedule',
+        'preview',
+        '0 9 * * *',
+        'abc',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow('count must be a whole number. Got: abc');
+    await expect(
+      runCli([
+        'schedule',
+        'logs',
+        'daily-report',
+        '5x',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow('count must be a whole number. Got: 5x');
+    expect(state.previewQueries).toHaveLength(0);
+  });
+
   test('insights events always bounds its window, so it cannot hang', async () => {
     const { runCli } = await import('../cli.js');
 
@@ -1695,9 +1827,14 @@ describe('CLI surface commands over HTTP', () => {
   test('insights events rejects a --days it cannot use', async () => {
     const { runCli } = await import('../cli.js');
 
-    await expect(
-      runCli(['insights', 'events', '--days=0', `--api-base=${apiBase}`]),
-    ).rejects.toThrow(/positive integer/);
+    // `7abc` used to be read as 7, and a bare `--days` (what `--days 7`
+    // parses to) as the default window.
+    for (const days of ['--days=0', '--days=7abc', '--days=1.5', '--days']) {
+      await expect(
+        runCli(['insights', 'events', days, `--api-base=${apiBase}`]),
+        days,
+      ).rejects.toThrow(/positive integer/);
+    }
     expect(state.monitoringEventQueries).toHaveLength(0);
   });
 

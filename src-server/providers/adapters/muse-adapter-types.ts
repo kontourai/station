@@ -1,4 +1,7 @@
-import type { ModelLaunchCapabilities } from '@kontourai/station-contracts/provider';
+import type {
+  ApprovalMode,
+  ModelLaunchCapabilities,
+} from '@kontourai/station-contracts/provider';
 import type { ProviderSession } from '../adapter-shape.js';
 import type { MuseServeSession } from './muse-serve-session.js';
 
@@ -41,6 +44,39 @@ export const MUSE_MODEL_LAUNCH: ModelLaunchCapabilities = {
   overrideAtResume: false,
   overridePerTurn: true,
 };
+
+/**
+ * Muse's reasoning-effort tiers, exactly as MSP 1.4.18 closes them
+ * (`ReasoningEffort`: `turn/start.reasoningEffort`, `turn/steer`,
+ * `session/setReasoningEffort`) and as `muse exec --reasoning-effort`
+ * spells them ("none|minimal|low|medium|high|xhigh|max|ultra"). Station's own
+ * effort words (Claude's low…max, Codex's minimal…xhigh) are all members, so
+ * `modelOptions.effort` maps onto a tier by identity; anything outside this
+ * list is refused before it reaches the engine, never coerced to a nearby
+ * tier. A tier muse knows may still be one the model does not offer: muse
+ * refuses that at admission, and the turn is refused with it.
+ */
+export const MUSE_REASONING_EFFORTS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+] as const;
+
+export type MuseReasoningEffort = (typeof MUSE_REASONING_EFFORTS)[number];
+
+export function isMuseReasoningEffort(
+  value: unknown,
+): value is MuseReasoningEffort {
+  return (
+    typeof value === 'string' &&
+    (MUSE_REASONING_EFFORTS as readonly string[]).includes(value)
+  );
+}
 
 /**
  * The two startup providers `muse exec --provider <MODE>` accepts, exactly as
@@ -297,6 +333,11 @@ export interface MuseSessionRecord {
    * of its serve host and of every turn's exec. Never created per turn.
    */
   tmpDir?: string;
+  /**
+   * #1942: the credential-profile home env resolved at session start; every
+   * exec turn of the session spawns under it. Absent: the user's own config.
+   */
+  appHomeEnv?: Record<string, string>;
   externalThreadId: string;
   /**
    * The `--session-id` handed to every `muse exec` for this thread. Muse's
@@ -307,6 +348,16 @@ export interface MuseSessionRecord {
   session: ProviderSession;
   cwd?: string;
   modelId?: string;
+  /**
+   * The tier the session started with (`modelOptions.effort`). A turn that
+   * names none sends this one; a turn that names one sends its own.
+   */
+  reasoningEffort?: MuseReasoningEffort;
+  /**
+   * The approval mode the session started with. An exec turn that names
+   * none runs under it, which decides whether a missing sandbox refuses it.
+   */
+  approvalMode?: ApprovalMode;
   activeTurn?: MuseActiveTurn;
   /** Set by `stopSession` so a child exit it caused is not re-classified. */
   stopped: boolean;

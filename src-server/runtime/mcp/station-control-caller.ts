@@ -43,11 +43,15 @@ import {
   stationControlTokenAssurance,
   verifyStationControlMcpTokenEntry,
 } from './station-control-mcp-token.js';
+import { stationControlRequestRun } from './station-control-request-runs.js';
 
 export interface StationControlCallerRecord {
   /** Rechecked only for a coordinator-scoped in-process credential. */
   readonly coordinatorCurrent?: () => boolean;
   readonly principal?: SessionActingPrincipal;
+  readonly appearanceOwnerId?: string;
+  /** See `StationControlCaller.ownTaskId`. */
+  readonly ownTaskId?: string;
   readonly localProjectId?: string;
   readonly projectIdSource?: 'session-record' | 'slug-lookup';
   readonly projectSlug?: string;
@@ -94,6 +98,9 @@ export type StationControlCallerRecordResolver = (
 export interface StationControlCallerRecordSources {
   /** Ownership-record principal (`OrchestrationService.resolveSessionActingPrincipal`). */
   actingPrincipal(sessionId: string): SessionActingPrincipal | undefined;
+  delegatedAppearanceOwner?(sessionId: string): string | undefined;
+  /** `OrchestrationService.stationControlOwnTaskGrant`. */
+  ownTaskGrant?(sessionId: string): string | undefined;
   /**
    * The metadata the session STARTED with (its first `session.started`).
    * Never the latest `session.configured`: engines publish sparse later
@@ -124,7 +131,18 @@ export function createStationControlCallerRecordResolver(
   sources: StationControlCallerRecordSources,
 ): StationControlCallerRecordResolver {
   return (sessionId) => {
+    // #2377 slice D: a request run (an invoke endpoint, a raw tool call)
+    // acts for the principal Station resolved for its authenticated request.
+    // It has no session records: no Project, no conversation.
+    const run = stationControlRequestRun(sessionId);
+    if (run)
+      return {
+        principal: { id: run.principalId, source: 'session-owner' as const },
+      };
     const principal = sources.actingPrincipal(sessionId);
+    const appearanceOwnerId = sources.delegatedAppearanceOwner?.(sessionId);
+    // Only for a Session that acts for no one: a principal needs no grant.
+    const ownTaskId = principal ? undefined : sources.ownTaskGrant?.(sessionId);
     const metadata = sources.startedMetadata(sessionId);
     const delegation = metadata?.delegation as
       | { projectSlug?: unknown }
@@ -150,6 +168,8 @@ export function createStationControlCallerRecordResolver(
     const conversationId = sources.conversationId(sessionId);
     return {
       ...(principal ? { principal } : {}),
+      ...(appearanceOwnerId ? { appearanceOwnerId } : {}),
+      ...(ownTaskId ? { ownTaskId } : {}),
       ...(localProjectId
         ? {
             localProjectId,
@@ -181,7 +201,13 @@ export function stationControlCallerRecordSources(runtime: {
   orchestrationService: Pick<
     OrchestrationService,
     'resolveSessionActingPrincipal' | 'firstStartedMetadataOfThread'
-  >;
+  > &
+    Partial<
+      Pick<
+        OrchestrationService,
+        'delegatedAppearanceOwner' | 'stationControlOwnTaskGrant'
+      >
+    >;
   eventStore?: {
     conversationForSession(
       sessionId: string,
@@ -193,10 +219,16 @@ export function stationControlCallerRecordSources(runtime: {
     };
   };
   getProject(slug: string): { readonly id: string };
+  /** The `coordinator-session` preview: off, no coordinator credential is honored. */
+  coordinatorEnabled(): boolean;
 }): StationControlCallerRecordSources {
   return {
     actingPrincipal: (sessionId) =>
       runtime.orchestrationService.resolveSessionActingPrincipal(sessionId),
+    ownTaskGrant: (sessionId) =>
+      runtime.orchestrationService.stationControlOwnTaskGrant?.(sessionId),
+    delegatedAppearanceOwner: (sessionId) =>
+      runtime.orchestrationService.delegatedAppearanceOwner?.(sessionId),
     startedMetadata: (sessionId) =>
       runtime.orchestrationService.firstStartedMetadataOfThread(sessionId),
     localProjectId: (slug) => {
@@ -211,9 +243,11 @@ export function stationControlCallerRecordSources(runtime: {
     conversationId: (sessionId) =>
       runtime.eventStore?.conversationForSession(sessionId)?.conversationId,
     coordinatorOwner: (conversationId) =>
-      runtime.eventStore
-        ?.coordinatorStore?.()
-        .designationForConversation(conversationId)?.actor.userId,
+      runtime.coordinatorEnabled()
+        ? runtime.eventStore
+            ?.coordinatorStore?.()
+            .designationForConversation(conversationId)?.actor.userId
+        : undefined,
   };
 }
 
@@ -238,6 +272,7 @@ function resolveVerifiedStationControlCaller(
     !verified ||
     (verified.serverId !== 'station-control' &&
       verified.serverId !== 'codex-tools' &&
+      verified.serverId !== 'codex-control' &&
       verified.serverId !== 'station-knowledge' &&
       verified.serverId !== 'coordinator-control' &&
       verified.serverId !== 'coordinator-knowledge')
@@ -266,6 +301,14 @@ function resolveVerifiedStationControlCaller(
   const caller: StationControlCaller = Object.freeze({
     sessionId: verified.sessionId,
     assurance,
+    ...(record?.appearanceOwnerId &&
+    assurance !== 'bearer-exposed' &&
+    !verified.callerRecordBinding
+      ? { appearanceOwnerId: record.appearanceOwnerId }
+      : {}),
+    ...(record?.ownTaskId && !record.principal
+      ? { ownTaskId: record.ownTaskId }
+      : {}),
     ...(record?.principal
       ? {
           principal: stationControlCallerPrincipal(
@@ -359,7 +402,8 @@ export function resolveStationControlCallerForRequest(
  *
  * Use {@link resolveStationControlCallerForRequest} for WHO: an
  * agent-originated request with a `null` caller is an agent Station cannot
- * attribute to a session (a pooled child), and must be treated as such.
+ * attribute to a session (a stray child or a copied token), and must be
+ * treated as such.
  */
 export function isAgentOriginatedRequest(request: Request): boolean {
   return (

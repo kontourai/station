@@ -1,5 +1,5 @@
 {
-  "description": "Error-level CodeQL findings that predate the enforceable SARIF policy, grandfathered pending triage (#688). An entry matches every error-level result sharing its rule, path, and primaryLocationLineHash, so editing the flagged line invalidates the entry. Remove an entry in the same change that resolves its finding: the PR gate warns about the stale entry (it reads this file from the base checkout and cannot see the removal), and the post-merge push-to-main gate fails on it.",
+  "description": "Error-level CodeQL findings that predate the enforceable SARIF policy, grandfathered pending triage (#688). An entry matches every error-level result sharing its rule, path, and primaryLocationLineHash, so editing the flagged line invalidates the entry. Remove an entry in the same change that resolves its finding: the merge-group gate warns about the stale entry (it reads this file from the base checkout and cannot see the removal), and the daily scheduled run on main fails on it.",
   "findings": [
     {
       "rule": "js/regex-injection",
@@ -10,16 +10,6 @@
       "rule": "js/request-forgery",
       "path": "src-server/services/discord/discord-gateway-service.ts",
       "lineHash": "e5ab68fdc6b4d1d4:1"
-    },
-    {
-      "rule": "js/user-controlled-bypass",
-      "path": "src-ui/src/utils/browserWebSocketAuth.ts",
-      "lineHash": "361ac214e7f5ea3c:1"
-    },
-    {
-      "rule": "js/user-controlled-bypass",
-      "path": "src-ui/src/utils/browserWebSocketAuth.ts",
-      "lineHash": "e658c76ce53272a6:1"
     }
   ]
 }

@@ -3,15 +3,23 @@
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { ConversationConnectionProvider } from '../components/conversation/ConversationConnectionContext';
 
+const directory = vi.hoisted(() => vi.fn());
+vi.mock('@kontourai/station-sdk/client', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-sdk/client')>()),
+  getConversationTurnDirectory: directory,
+}));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
 }));
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3242' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 
 vi.mock('../contexts/ToastContext', () => ({
@@ -95,7 +103,6 @@ function session(turns: number, tail = '') {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle' as const,
     createdAt: 1,
     updatedAt: 1,
@@ -103,6 +110,7 @@ function session(turns: number, tail = '') {
     messages: Array.from({ length: turns }, (_, turn) => [
       {
         id: `u-${turn}`,
+        turnId: `t-${turn}`,
         role: 'user' as const,
         content: `Question ${turn}`,
         timestamp: turn * 2,
@@ -118,13 +126,14 @@ function session(turns: number, tail = '') {
   };
 }
 
-type Session = ReturnType<typeof session>;
+type Session = ReturnType<typeof session> & { conversationId?: string };
 
 /** The same chat with `turns` more user turns of older history loaded. */
 function withOlderTurns(base: Session, turns: number): Session {
   const older = Array.from({ length: turns }, (_, turn) => [
     {
       id: `older-u-${turn}`,
+      turnId: `older-t-${turn}`,
       role: 'user' as const,
       content: `Older question ${turn}`,
       timestamp: -100 + turn * 2,
@@ -158,18 +167,42 @@ function renderList(
   extra: {
     hasOlderMessages?: boolean;
     scrollControlsTarget?: HTMLElement | null;
+    onLoadTurn?: (turnId: string, signal?: AbortSignal) => Promise<boolean>;
   } = {},
 ) {
-  const element = (next: Session, nextExtra = extra) => (
-    <ChatMessageList
-      activeSession={next}
-      fontSize={14}
-      showReasoning={false}
-      showToolDetails={false}
-      renderOverride={(message) => <>{message.content}</>}
-      {...nextExtra}
-    />
-  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+  });
+  const element = (next: Session, nextExtra = extra) => {
+    const body = (
+      <ChatMessageList
+        activeSession={next}
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        renderOverride={(message) => <>{message.content}</>}
+        {...nextExtra}
+      />
+    );
+    return nextExtra.onLoadTurn ? (
+      <QueryClientProvider client={client}>
+        <ConversationConnectionProvider
+          value={{
+            apiBase: 'http://localhost:3242',
+            requestScope: {
+              apiBase: 'http://localhost:3242',
+              authorityKey: 'person',
+              isCurrent: () => true,
+            },
+          }}
+        >
+          {body}
+        </ConversationConnectionProvider>
+      </QueryClientProvider>
+    ) : (
+      body
+    );
+  };
   const view = render(element(activeSession));
   const scroller = screen.getByRole('log');
   // Rows are 100px tall from the content top, in a column wide enough for
@@ -685,4 +718,100 @@ describe('Escape with the app shortcut dispatcher', () => {
     fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(onUp).toHaveBeenCalledTimes(1);
   });
+});
+
+test('Scroll to bottom retires an unloaded indexed jump before a late history response', async () => {
+  const first = { ...session(36), conversationId: 'conversation' };
+  directory.mockResolvedValue({
+    session: { conversationId: 'conversation', turnCount: 37 },
+    turns: [
+      ...Array.from({ length: 36 }, (_, index) => ({
+        turnId: `t-${35 - index}`,
+        request: `Question ${35 - index}`,
+        outcome: 'completed',
+      })),
+      {
+        turnId: 'older-t-0',
+        request: 'Original request',
+        outcome: 'completed',
+      },
+    ],
+    nextCursor: null,
+  });
+  let finish!: (found: boolean) => void;
+  const load = vi.fn(
+    (_id: string, _signal?: AbortSignal) =>
+      new Promise<boolean>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const { scroller, rerender } = renderList(first, {
+    hasOlderMessages: true,
+    onLoadTurn: load,
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(100);
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Turn 1 of 37: Original request' }),
+  );
+  readerScrollsTo(scroller, 200);
+  settle(scroller);
+  fireEvent.click(screen.getByRole('button', { name: 'Scroll to bottom' }));
+  expect(load.mock.calls[0][1]?.aborted).toBe(true);
+  await act(async () => {
+    rerender(withOlderTurns(first, 1));
+    finish(true);
+    await vi.advanceTimersByTimeAsync(100);
+  });
+  expect(
+    virtualizerProps.some(
+      (props) => props.revealRowId === `${SESSION_ID}:message:older-u-0`,
+    ),
+  ).toBe(false);
+});
+
+test('an indexed step announces its destination after loading an older history window', async () => {
+  const first = { ...session(1), conversationId: 'conversation' };
+  directory.mockResolvedValue({
+    session: { conversationId: 'conversation', turnCount: 2 },
+    turns: [
+      { turnId: 't-0', request: 'Question 0', outcome: 'completed' },
+      {
+        turnId: 'older-t-0',
+        request: 'Original request',
+        outcome: 'completed',
+      },
+    ],
+    nextCursor: null,
+  });
+  let finish!: (found: boolean) => void;
+  const load = vi.fn(
+    () =>
+      new Promise<boolean>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const { rerender } = renderList(first, {
+    hasOlderMessages: true,
+    onLoadTurn: load,
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(100);
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Previous turn' }));
+  expect(load).toHaveBeenCalledOnce();
+  await act(async () => {
+    finish(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    rerender(withOlderTurns(first, 1), {
+      hasOlderMessages: false,
+      onLoadTurn: load,
+    });
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(100);
+  });
+  expect(announcement()).toBe('Turn 1 of 2: Original request');
 });

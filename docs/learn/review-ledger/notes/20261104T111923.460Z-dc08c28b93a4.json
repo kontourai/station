@@ -1,7 +1,0 @@
-{
-  "revision": "c3d5d242c7a742e1133a336e347ec863ef990e83",
-
-  "notes": [
-    {"path":"docs/design/cli-triage.md","note":"docs/reference/cli.md change only: the doctor section now says External-agent readiness reads agent connections with the installed managed policy applied and that an unusable policy is a fail-level Managed policy check (lifecycle-doctor.ts collectDoctorReport, test lifecycle-doctor-managed.test.ts). The triage design's summarized source-doctor facts are unaffected: the report gains at most one Managed policy check through the same summary path.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]}
-  ]
-}

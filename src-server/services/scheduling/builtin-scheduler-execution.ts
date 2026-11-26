@@ -284,6 +284,7 @@ export async function executeSchedulerJobAttempt({
       // decision is made.
       await announceSchedulerJobFailure({
         job: job.name,
+        label: job.displayName ?? job.name,
         id,
         error: notInvokedError,
         broadcast,
@@ -344,8 +345,7 @@ export async function executeSchedulerJobAttempt({
         durationSecs,
       };
     }
-    observe(() => schedulerJobRuns.add(1, { status: 'success' }));
-    observe(() => schedulerJobDuration.record(durationSecs * 1000));
+    recordSettledJob('success', durationSecs);
     observe(() =>
       broadcast({
         event: 'job.completed',
@@ -399,10 +399,11 @@ export async function executeSchedulerJobAttempt({
         durationSecs,
       };
     }
-    observe(() => schedulerJobRuns.add(1, { status: 'error' }));
-    observe(() => schedulerJobDuration.record(durationSecs * 1000));
+    if (error instanceof SchedulerTurnFailedError)
+      recordSettledJob('error', durationSecs);
     await announceSchedulerJobFailure({
       job: job.name,
+      label: job.displayName ?? job.name,
       id,
       error: errorMessage,
       broadcast,
@@ -439,6 +440,7 @@ export async function executeSchedulerJobAttempt({
  */
 export async function announceSchedulerJobFailure({
   job,
+  label,
   id,
   error,
   broadcast,
@@ -446,8 +448,10 @@ export async function announceSchedulerJobFailure({
   outbox,
   announcedRunIds,
 }: {
-  /** Job NAME, as it appears on the Schedule page. */
+  /** Job NAME (the slug): the identity events and links carry. */
   job: string;
+  /** What the person calls the job; the notification title says it. */
+  label?: string;
   /** The run/log id this failure belongs to. Announced at most once. */
   id: string;
   /** Why it failed. Never empty — every caller derives a specific reason. */
@@ -506,6 +510,7 @@ export async function announceSchedulerJobFailure({
   );
   const delivered = await persistFailureNotification({
     job,
+    label: label ?? job,
     id,
     error,
     notificationService,
@@ -553,11 +558,13 @@ export async function announceSchedulerJobFailure({
  */
 function persistFailureNotification({
   job,
+  label,
   id,
   error,
   notificationService,
 }: {
   job: string;
+  label: string;
   id: string;
   error: string;
   notificationService: NotificationService | null;
@@ -572,7 +579,7 @@ function persistFailureNotification({
         try {
           await notificationService.schedule('scheduler', {
             category: 'job-failure',
-            title: `Job "${job}" failed`,
+            title: `Job "${label}" failed`,
             body: error,
             priority: 'high',
             dedupeTag: `scheduler:fail:${job}:${id}`,
@@ -668,6 +675,13 @@ class SchedulerIndeterminateInvocationError extends Error {
     super(message);
     this.name = 'SchedulerIndeterminateInvocationError';
   }
+}
+
+/** Count only confirmed executions whose terminal receipt this process applied. */
+function recordSettledJob(status: 'success' | 'error', durationSecs: number) {
+  const attributes = { source: 'built-in', status };
+  observe(() => schedulerJobRuns.add(1, attributes));
+  observe(() => schedulerJobDuration.record(durationSecs * 1000, attributes));
 }
 
 function observe(effect: () => void): void {

@@ -1,0 +1,7 @@
+{
+  "revision": "2de3c01fdfc38e1c752a60fbc739369dbac5370c",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-read the maximize claims against the changed useDockShellChrome.ts, RegionChromeBar.tsx and ChatDock.tsx. The control and the dock.maximize chord now share toggleDockMaximize, whose restoring half returns the dock to where it last rested, closed included, instead of Half. The page-seen restore described here is unchanged: it leaves the dock open at its docked size, now reconciling a Full snap to the level it was maximized from. The RegionState.maximized readers row still holds. No claim here depends on the restore target; no edit.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/hooks/useDockShellChrome.ts","src-ui/src/workspace-panes/RegionChromeBar.tsx","src-ui/src/workspace-panes/__tests__/RegionChromeBar.test.tsx"]}
+  ]
+}

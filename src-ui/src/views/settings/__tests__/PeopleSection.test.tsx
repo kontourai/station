@@ -13,6 +13,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision-surfaces';
 import { OwnAccessTokensPanel } from '../OwnAccessTokensPanel';
 import { PeopleSection } from '../PeopleSection';
 
@@ -209,6 +210,7 @@ describe('People section', () => {
       return list(call);
     };
     mount(<PeopleSection />);
+    expect(mountedDecisionSurfaces()).toContain('people-roles');
 
     const select = (await screen.findByLabelText(
       'Group for ada@example.com',
@@ -275,24 +277,35 @@ describe('People section', () => {
     expect(select.value).toBe('admin');
   });
 
-  test('a 401 group change says the operator credential is needed and keeps the group', async () => {
-    const list = peopleRoute(() => [ada()]);
-    handler = (call) =>
-      call.method === 'PUT'
-        ? json({ error: 'authentication_required' }, 401)
-        : list(call);
-    mount(<PeopleSection />);
+  test.each([
+    {
+      status: 401,
+      error: 'authentication_required',
+      remedy: 'Reconnect to Station.',
+    },
+    {
+      status: 403,
+      error: { code: 'operator_credential_required' },
+      remedy: 'Use the Station host CLI to change groups and tokens.',
+    },
+  ])(
+    'a $status group refusal gives the correct remedy and keeps the group',
+    async ({ status, error, remedy }) => {
+      const list = peopleRoute(() => [ada()]);
+      handler = (call) =>
+        call.method === 'PUT' ? json({ error }, status) : list(call);
+      mount(<PeopleSection />);
 
-    const select = (await screen.findByLabelText(
-      'Group for ada@example.com',
-    )) as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: 'admin' } });
+      const select = (await screen.findByLabelText(
+        'Group for ada@example.com',
+      )) as HTMLSelectElement;
+      fireEvent.change(select, { target: { value: 'admin' } });
 
-    const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('operator credential');
-    expect(alert.textContent).toContain('can only view');
-    expect(select.value).toBe('member');
-  });
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toContain(remedy);
+      expect(select.value).toBe('member');
+    },
+  );
 
   test('a group store that cannot take the change says so', async () => {
     const list = peopleRoute(() => [ada()]);
@@ -852,6 +865,19 @@ describe('People section', () => {
     expect(await screen.findByText('Nothing here yet')).toBeTruthy();
   });
 
+  test('an explicitly opened People section explains a denied read once', async () => {
+    handler = () => json({ error: { code: 'insufficient_scope' } }, 403);
+    mount(<PeopleSection showReadRefusal />);
+    await screen.findByText(
+      'Ask the Station operator to review who can connect.',
+    );
+    expect(
+      calls.filter((call) => call.path === '/api/pairing/people'),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByText('What each group allows')).toBeNull();
+  });
+
   test('a caller the route refuses sees no People section at all', async () => {
     handler = () => json({ error: { code: 'insufficient_scope' } }, 403);
     const { client, container } = mount(<PeopleSection />);
@@ -870,6 +896,8 @@ describe('Your access tokens', () => {
   test('a device tied to no person sees nothing, not an error', async () => {
     handler = () => json({ error: { code: 'person_device_required' } }, 403);
     const { client, container } = mount(<OwnAccessTokensPanel />);
+    // Custom CSS is held off while this grant UI is on screen.
+    expect(mountedDecisionSurfaces()).toContain('access-tokens');
     await waitFor(() => expect(settledInError(client, OWN_KEY)).toBe(true));
     expect(container.textContent).toBe('');
   });
