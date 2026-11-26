@@ -19,6 +19,7 @@ import {
 const refetch = vi.fn();
 let contextQuery: any;
 let listQuery: any;
+let pageAnswer: object | undefined;
 const contextInputs: unknown[] = [];
 const listQueries: unknown[] = [];
 let workspacePreview = false;
@@ -32,7 +33,11 @@ vi.mock('@kontourai/station-sdk', () => ({
   useFeaturePreviewsQuery: () => ({
     data: [{ id: 'pull-request-workspace', enabled: workspacePreview }],
   }),
-  useCheckoutPullRequestPages: () => [],
+  useCheckoutPullRequestPages: (
+    _scope: unknown,
+    _filter: unknown,
+    cursors: string[],
+  ) => cursors.map(() => ({ data: pageAnswer, isFetching: false })),
   usePullRequestContextQuery: (input: unknown) => {
     contextInputs.push(input);
     return contextQuery;
@@ -169,6 +174,7 @@ beforeEach(() => {
   listQueries.length = 0;
   activeChat = 'conv-1';
   workspacePreview = false;
+  pageAnswer = undefined;
   links = [];
   contextQuery = {
     isLoading: false,
@@ -199,6 +205,7 @@ test('the workspace preview groups observed branches and searches the loaded row
   listQuery.data = result([
     pullRequest({
       draft: true,
+      mergeability: 'conflicting',
       snapshot: {
         checks: 'pending',
         additions: 5,
@@ -218,6 +225,7 @@ test('the workspace preview groups observed branches and searches the loaded row
   expect(screen.getByRole('heading', { name: 'Repository' })).toBeTruthy();
   expect(screen.getByRole('img', { name: 'Draft' })).toBeTruthy();
   expect(screen.getAllByText('Checks pending')).toHaveLength(1);
+  expect(screen.getByText('Has conflicts')).toBeTruthy();
   expect(screen.getByText('5 additions, 2 deletions, 1 file')).toBeTruthy();
 
   fireEvent.change(
@@ -229,6 +237,18 @@ test('the workspace preview groups observed branches and searches the loaded row
   expect(rows()).toHaveLength(1);
   expect(rows()[0].textContent).toContain('Independent work');
   expect(screen.queryByText('Checks pending')).toBeNull();
+});
+
+test('shows Closed for a formerly draft pull request', () => {
+  workspacePreview = true;
+  listQuery.data = result([pullRequest({ state: 'CLOSED', draft: true })]);
+  mount();
+  fireEvent.change(
+    screen.getByRole('combobox', { name: 'Pull request state' }),
+    { target: { value: 'CLOSED' } },
+  );
+  expect(screen.getByRole('img', { name: 'Closed' })).toBeTruthy();
+  expect(screen.queryByRole('img', { name: 'Draft' })).toBeNull();
 });
 
 test('labels restored checkout rows with their age until the first current answer', () => {
@@ -250,7 +270,7 @@ test('labels restored checkout rows with their age until the first current answe
       pullRequests: result([pullRequest({ title: 'Saved title' })]),
     },
     dataUpdatedAt: Date.now() - 120_000,
-    isFetchedAfterMount: false,
+    isLastKnown: true,
     isFetching: false,
   };
 
@@ -268,13 +288,78 @@ test('labels restored checkout rows with their age until the first current answe
       pullRequests: result([pullRequest({ title: 'Current title' })]),
     },
     dataUpdatedAt: Date.now(),
-    isFetchedAfterMount: true,
+    isLastKnown: false,
   };
   rerender(view());
   expect(screen.getByRole('button', { name: 'Current title' })).toBeTruthy();
   expect(screen.getByText('current branch')).toBeTruthy();
   expect(screen.queryByText(/Last known for/)).toBeNull();
   expect(screen.queryByRole('button', { name: 'Saved title' })).toBeNull();
+
+  contextQuery = { ...contextQuery, isFetching: true };
+  rerender(view());
+  expect(screen.getByText('current branch')).toBeTruthy();
+  expect(screen.queryByText(/Last known for/)).toBeNull();
+});
+
+test('keeps loaded pages during a list refresh and resets them when the checkout changes', () => {
+  workspacePreview = true;
+  const client = new QueryClient();
+  const view = () => (
+    <QueryClientProvider client={client}>
+      <PullRequestsPanel
+        projectSlug="station"
+        activeRepoRoot="/repos/station"
+      />
+    </QueryClientProvider>
+  );
+  contextQuery = {
+    ...contextQuery,
+    data: {
+      ...contextQuery.data,
+      pullRequests: result([pullRequest()], { nextCursor: 'more' }),
+    },
+  };
+  pageAnswer = {
+    ...contextQuery.data,
+    pullRequests: result([pullRequest({ ref: '18', title: 'Second page' })]),
+  };
+  const { rerender } = render(view());
+  fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+  expect(
+    screen.getByRole('button', { name: 'Second page, Open' }),
+  ).toBeTruthy();
+  contextQuery = { ...contextQuery, isFetching: true };
+  rerender(view());
+  expect(
+    screen.getByRole('button', { name: 'Second page, Open' }),
+  ).toBeTruthy();
+  contextQuery = { ...contextQuery, isFetching: false, dataUpdatedAt: 1 };
+  rerender(view());
+  expect(
+    screen.getByRole('button', { name: 'Second page, Open' }),
+  ).toBeTruthy();
+  pageAnswer = {
+    ...pageAnswer,
+    repository: { owner: 'kontourai', name: 'other' },
+  };
+  rerender(view());
+  expect(refetch).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+
+  contextQuery = {
+    ...contextQuery,
+    data: {
+      ...contextQuery.data,
+      repository: { owner: 'kontourai', name: 'other' },
+    },
+  };
+  rerender(view());
+  expect(
+    screen.queryByRole('button', { name: 'Second page, Open' }),
+  ).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Load more' })).toBeTruthy();
 });
 
 describe('PullRequestsPanel', () => {

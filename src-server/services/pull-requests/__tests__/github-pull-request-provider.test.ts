@@ -363,6 +363,7 @@ describe('GitHubPullRequestProvider', () => {
       'headRefName',
       'headRefOid',
       'isDraft',
+      'mergeable',
       'number',
       'reviewDecision',
       'state',
@@ -386,6 +387,7 @@ describe('GitHubPullRequestProvider', () => {
       baseRefName: 'main',
       headRefOid: headSha,
       isDraft: true,
+      mergeable: 'CONFLICTING',
       reviewDecision: 'REVIEW_REQUIRED',
       updatedAt: '2026-11-25T20:00:00Z',
       additions: 4,
@@ -409,11 +411,16 @@ describe('GitHubPullRequestProvider', () => {
                           url: 'https://github.com/kontourai/station/pull/6',
                         }
                       : {}),
-                    headRef: {
-                      target: {
-                        oid: following ? 'b'.repeat(40) : headSha,
-                        statusCheckRollup: { state: 'PENDING' },
-                      },
+                    headRef: null,
+                    commits: {
+                      nodes: [
+                        {
+                          commit: {
+                            oid: following ? 'b'.repeat(40) : headSha,
+                            statusCheckRollup: { state: 'PENDING' },
+                          },
+                        },
+                      ],
                     },
                   },
                 ],
@@ -435,6 +442,7 @@ describe('GitHubPullRequestProvider', () => {
         {
           ref: '7',
           draft: true,
+          mergeability: 'conflicting',
           reviewDecision: 'review_required',
           snapshot: {
             checks: 'pending',
@@ -451,10 +459,10 @@ describe('GitHubPullRequestProvider', () => {
       expect.arrayContaining(['graphql', 'states[]=OPEN', 'first=30']),
     );
     const query = args?.find((arg: string) => arg.startsWith('query='));
-    expect(query).toContain('statusCheckRollup { state }');
-    expect(query).not.toMatch(
-      /\b(body|commits|reviews|comments|mergeable|mergeStateStatus)\b/,
+    expect(query).toContain(
+      'commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } }',
     );
+    expect(query).not.toMatch(/\b(body|reviews|comments|mergeStateStatus)\b/);
 
     const following = await provider.listPullRequestPage(context, {
       state: 'OPEN',

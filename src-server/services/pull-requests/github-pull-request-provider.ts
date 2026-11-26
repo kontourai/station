@@ -189,7 +189,7 @@ const githubMergeability = (value: unknown): PullRequest['mergeability'] =>
 
 const GITHUB_PULL_REQUEST_LIST_LIMIT = 30;
 const GITHUB_PULL_REQUEST_LIST_FIELDS =
-  'number,url,title,state,author,headRefName,baseRefName,headRefOid,isDraft,reviewDecision,statusCheckRollup,updatedAt,additions,deletions,changedFiles';
+  'number,url,title,state,author,headRefName,baseRefName,headRefOid,isDraft,reviewDecision,mergeable,statusCheckRollup,updatedAt,additions,deletions,changedFiles';
 const GITHUB_PULL_REQUEST_PAGE_QUERY = `query(
   $owner: String!, $name: String!, $first: Int!, $states: [PullRequestState!], $after: String
 ) {
@@ -197,9 +197,9 @@ const GITHUB_PULL_REQUEST_PAGE_QUERY = `query(
     pullRequests(first: $first, states: $states, after: $after, orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes {
         number url title state author { login url }
-        headRefName baseRefName headRefOid isDraft reviewDecision updatedAt
+        headRefName baseRefName headRefOid isDraft reviewDecision mergeable updatedAt
         additions deletions changedFiles
-        headRef { target { oid ... on Commit { statusCheckRollup { state } } } }
+        commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } }
       }
       pageInfo { hasNextPage endCursor }
     }
@@ -759,7 +759,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
           throw new Error('GitHub did not return the next pull request cursor');
         const items = page.nodes.map((node) => {
           const item = normalizeGitHubPullRequest(node, host);
-          const target = node.headRef?.target;
+          const target = node.commits?.nodes?.[0]?.commit;
           const state =
             target?.oid === item.headSha
               ? target?.statusCheckRollup?.state

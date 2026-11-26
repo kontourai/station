@@ -65,17 +65,27 @@ const sameRepository = (
   a.repository.owner === b.repository.owner &&
   a.repository.name === b.repository.name;
 
-/** Row chips for a pull request: its state, then the review decision. */
-function rowChips(pullRequest: {
-  state: string;
-  reviewStatus?: string;
-  reviewDecision?: PullRequest['reviewDecision'];
-  mergeability?: PullRequest['mergeability'];
-  snapshot?: PullRequest['snapshot'];
-  draft?: boolean;
-}): PullRequestChipValue[] {
+function displayedState(pullRequest: { state: string; draft?: boolean }) {
+  return normalizedState(pullRequest.state) === 'OPEN' && pullRequest.draft
+    ? 'DRAFT'
+    : pullRequest.state;
+}
+
+function rowChips(
+  pullRequest: {
+    state: string;
+    reviewStatus?: string;
+    reviewDecision?: PullRequest['reviewDecision'];
+    mergeability?: PullRequest['mergeability'];
+    snapshot?: PullRequest['snapshot'];
+    draft?: boolean;
+  },
+  compact = false,
+): PullRequestChipValue[] {
   const chips = [
-    pullRequestStateChip(pullRequest.draft ? 'DRAFT' : pullRequest.state),
+    pullRequestStateChip(
+      compact ? displayedState(pullRequest) : pullRequest.state,
+    ),
   ];
   const decision = reviewDecisionChip(
     pullRequest.reviewDecision ?? pullRequest.reviewStatus ?? '',
@@ -83,7 +93,7 @@ function rowChips(pullRequest: {
   if (decision) chips.push(decision);
   if (pullRequest.mergeability === 'conflicting')
     chips.push({ label: 'Has conflicts', tone: 'failure' });
-  const checks = pullRequest.snapshot?.checks;
+  const checks = compact ? pullRequest.snapshot?.checks : undefined;
   if (checks) {
     const checkChip: Record<typeof checks, PullRequestChipValue> = {
       passing: { label: 'Checks passed', tone: 'success' },
@@ -135,7 +145,7 @@ function useCheckoutPullRequests(
   const context = usePullRequestContextQuery(scope, {
     list: state,
     staleTime: 20_000,
-    refetchOnMount: 'always',
+    refetchOnMount: true,
   });
   const identity = context.data?.available ? context.data : undefined;
   const bundled = identity?.pullRequests;
@@ -154,9 +164,7 @@ function useCheckoutPullRequests(
     identity,
     query,
     result: bundled ?? fallback.data,
-    lastKnown:
-      !!bundled?.available &&
-      (!context.isFetchedAfterMount || context.isFetching || !!context.error),
+    lastKnown: !!bundled?.available && context.isLastKnown,
   };
 }
 
@@ -228,7 +236,10 @@ export function PullRequestsPanel({
     projectSlug,
     activeRepoRoot,
     filter,
-    pullRequests.dataUpdatedAt,
+    identity?.provider,
+    identity?.host,
+    identity?.repository.owner,
+    identity?.repository.name,
   ]);
   const [pagination, setPagination] = useState<{
     key: string;
@@ -243,6 +254,7 @@ export function PullRequestsPanel({
     { project: projectSlug, workingDirectory: activeRepoRoot ?? undefined },
     filter,
     cursors,
+    paginationKey,
   );
   const pageResults = pages.map(({ data }) =>
     identity &&
@@ -252,17 +264,31 @@ export function PullRequestsPanel({
       ? data.pullRequests
       : undefined,
   );
+  const mismatchedPage = pages.some(
+    ({ data }) =>
+      data?.available &&
+      identity &&
+      (data.provider !== identity.provider || !sameRepository(identity, data)),
+  );
+  useEffect(() => {
+    if (!mismatchedPage) return;
+    setPagination({ key: '', cursors: [] });
+    void context.refetch();
+  }, [mismatchedPage, context.refetch]);
   const lastPage = pages.at(-1);
   const nextCursor = lastPage
     ? pageResults.at(-1)?.nextCursor
     : identity?.pullRequests?.nextCursor;
   const failedPage =
-    lastPage && !lastPage.isFetching && !pageResults.at(-1)?.available;
+    lastPage &&
+    !mismatchedPage &&
+    !lastPage.isFetching &&
+    !pageResults.at(-1)?.available;
   const chatLinks = useConversationPullRequestLinks(activeChat ?? '');
 
   if (context.isLoading || (context.isPending && !context.data))
     return <ListSkeleton compact={compact} />;
-  if (context.error && !lastKnown) {
+  if (context.error && !context.data) {
     return (
       <Note
         tone="error"
@@ -499,14 +525,8 @@ export function PullRequestsPanel({
           key={pullRequest.ref}
           title={pullRequest.title}
           reference={`#${pullRequest.ref}`}
-          compactState={
-            compact
-              ? pullRequest.draft
-                ? 'DRAFT'
-                : pullRequest.state
-              : undefined
-          }
-          chips={rowChips(pullRequest).slice(compact ? 1 : 0)}
+          compactState={compact ? displayedState(pullRequest) : undefined}
+          chips={rowChips(pullRequest, compact).slice(compact ? 1 : 0)}
           meta={
             compact
               ? [
@@ -681,7 +701,7 @@ export function PullRequestsPanel({
           )}
         </>
       )}
-      {!lastKnown && failedPage && (
+      {compact && !lastKnown && failedPage && (
         <Note
           tone="error"
           text={
@@ -690,22 +710,27 @@ export function PullRequestsPanel({
           onRetry={() => void lastPage.refetch()}
         />
       )}
-      {!lastKnown && !failedPage && (nextCursor || lastPage?.isFetching) && (
-        <Button
-          disabled={
-            !nextCursor || cursors.includes(nextCursor) || lastPage?.isFetching
-          }
-          onClick={() => {
-            if (nextCursor)
-              setPagination({
-                key: paginationKey,
-                cursors: [...cursors, nextCursor],
-              });
-          }}
-        >
-          {lastPage?.isFetching ? 'Loading…' : 'Load more'}
-        </Button>
-      )}
+      {compact &&
+        !lastKnown &&
+        !failedPage &&
+        (nextCursor || lastPage?.isFetching) && (
+          <Button
+            disabled={
+              !nextCursor ||
+              cursors.includes(nextCursor) ||
+              lastPage?.isFetching
+            }
+            onClick={() => {
+              if (nextCursor)
+                setPagination({
+                  key: paginationKey,
+                  cursors: [...cursors, nextCursor],
+                });
+            }}
+          >
+            {lastPage?.isFetching ? 'Loading…' : 'Load more'}
+          </Button>
+        )}
       {!lastKnown && (
         <PullRequestDependencyStacks
           pullRequests={listed}

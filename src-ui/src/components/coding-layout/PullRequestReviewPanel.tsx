@@ -17,7 +17,7 @@ import {
   type PullRequestReviewTarget,
   submitPullRequestReview,
 } from '@kontourai/station-sdk/pull-request-review';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   activeChatsStore,
@@ -578,7 +578,10 @@ function ReviewHeader({
   showRepository: boolean;
 }) {
   const state = pullRequestStateChip(
-    pullRequest.draft ? 'DRAFT' : pullRequest.state,
+    ['OPEN', 'OPENED'].includes(pullRequest.state.toUpperCase()) &&
+      pullRequest.draft
+      ? 'DRAFT'
+      : pullRequest.state,
   );
   const decision = reviewDecisionChip(
     pullRequest.reviewDecision ?? pullRequest.reviewStatus,
@@ -775,6 +778,7 @@ function ReviewOwner({
     () => (patch === undefined ? NO_PLACED_LINES : placedLines(patch)),
     [patch],
   );
+  const queryClient = useQueryClient();
   const submit = async () => {
     if (!intent || !scope?.isCurrent() || submitting.current) return;
     submitting.current = true;
@@ -812,6 +816,12 @@ function ReviewOwner({
       ) {
         if (intent.action === 'comment') setBody('');
         void review.refetch();
+        void queryClient.invalidateQueries({
+          queryKey: ['checkout-pull-requests'],
+        });
+        void queryClient.invalidateQueries({
+          queryKey: ['checkout-pull-request-page', target.project],
+        });
       }
     } catch {
       if (scope.isCurrent()) {
@@ -1289,39 +1299,39 @@ function ReviewOwner({
                   </>
                 )}
                 {!redesigned && decisions}
-                {outcome && (
-                  <p
-                    ref={outcomeRef}
-                    className="pull-request-review__status"
-                    role="status"
-                  >
-                    {outcome.status === 'confirmed'
-                      ? `Confirmed by ${outcome.actor}${outcome.headSha ? ` for ${outcome.headSha}` : ''}.`
-                      : outcome.status === 'merged'
-                        ? 'Merged.'
-                        : outcome.status === 'queued-auto-merge'
-                          ? 'Auto-merge enabled.'
-                          : outcome.reason}
-                  </p>
-                )}
-                {uncertain && (
-                  <Button
-                    disabled={
-                      review.isFetching ||
-                      !!review.error ||
-                      review.dataUpdatedAt <= uncertainReadAt
-                    }
-                    onClick={() => {
-                      setUncertain(false);
-                      setOutcome(null);
-                    }}
-                  >
-                    Review again
-                  </Button>
-                )}
               </>
             )}
           </div>
+          {outcome && (
+            <p
+              ref={outcomeRef}
+              className="pull-request-review__status"
+              role="status"
+            >
+              {outcome.status === 'confirmed'
+                ? `Confirmed by ${outcome.actor}${outcome.headSha ? ` for ${outcome.headSha}` : ''}.`
+                : outcome.status === 'merged'
+                  ? 'Merged.'
+                  : outcome.status === 'queued-auto-merge'
+                    ? 'Auto-merge enabled.'
+                    : outcome.reason}
+            </p>
+          )}
+          {uncertain && (
+            <Button
+              disabled={
+                review.isFetching ||
+                !!review.error ||
+                review.dataUpdatedAt <= uncertainReadAt
+              }
+              onClick={() => {
+                setUncertain(false);
+                setOutcome(null);
+              }}
+            >
+              Review again
+            </Button>
+          )}
         </>
       )}
       <ConfirmModal

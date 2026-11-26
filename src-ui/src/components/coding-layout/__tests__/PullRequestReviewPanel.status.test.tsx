@@ -23,6 +23,7 @@ import {
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 
 beforeAll(() => {
+  Element.prototype.scrollIntoView = () => {};
   if (typeof globalThis.ResizeObserver === 'undefined') {
     globalThis.ResizeObserver = class {
       observe() {}
@@ -36,6 +37,7 @@ const openExternalLink = vi.fn(async (_url: string) => {});
 const snapshot = vi.hoisted(() => ({
   current: undefined as unknown as PullRequestReviewSnapshot,
   workspacePreview: false,
+  canApprove: false,
 }));
 
 vi.mock('../../../platform/openExternalLink', () => ({
@@ -49,7 +51,7 @@ vi.mock('@kontourai/station-sdk/pull-request-review', () => ({
       detail: true,
       open: false,
       comment: false,
-      approve: false,
+      approve: snapshot.canApprove,
       merge: false,
       autoMerge: false,
     },
@@ -99,6 +101,7 @@ vi.mock('../../../hooks/useUnsavedGuard', () => ({
   }),
 }));
 
+import { submitPullRequestReview } from '@kontourai/station-sdk/pull-request-review';
 import { PaneHeadSlotsContext } from '../../../workspace-panes/PaneHeadSlots';
 import { PullRequestReviewPanel } from '../PullRequestReviewPanel';
 
@@ -167,6 +170,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   snapshot.workspacePreview = false;
+  snapshot.canApprove = false;
 });
 
 describe('pull request status', () => {
@@ -198,6 +202,40 @@ describe('pull request status', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
     expect(screen.getByRole('heading', { name: 'Changed files' })).toBeTruthy();
+  });
+
+  test('reports approval while the Head review tab is selected', async () => {
+    snapshot.workspacePreview = true;
+    snapshot.canApprove = true;
+    snapshot.current = base();
+    vi.mocked(submitPullRequestReview).mockResolvedValue({
+      available: false,
+      reason: 'The pull request changed. Refresh before approving.',
+      effectiveCapabilities: {
+        list: true,
+        detail: true,
+        open: false,
+        comment: false,
+        approve: true,
+        merge: false,
+        autoMerge: false,
+      },
+      effectiveMergeMethods: [],
+      mergeMethodsSource: 'provider-default',
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Head review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    const confirmation = await screen.findByRole('dialog');
+    fireEvent.click(
+      within(confirmation).getByRole('button', { name: 'Approve' }),
+    );
+    expect(
+      await screen.findByText(
+        'The pull request changed. Refresh before approving.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('tabpanel', { name: 'Head review' })).toBeTruthy();
   });
 
   test('states conflicts and lists checks failures first, with counts from the list', async () => {

@@ -328,7 +328,20 @@ export function buildPersistOptions(options?: {
   };
 
   return {
-    persister,
+    persister: {
+      ...persister,
+      restoreClient: async () => {
+        const saved = await persister.restoreClient();
+        if (saved) {
+          for (const query of saved.clientState.queries) {
+            if (query.queryKey[0] !== 'checkout-pull-requests') continue;
+            query.state.dataUpdateCount = 0;
+            query.state.isInvalidated = true;
+          }
+        }
+        return saved;
+      },
+    },
     maxAge: QUERY_PERSISTENCE_MAX_AGE_MS,
     buster: queryPersistenceBuster(),
     dehydrateOptions,

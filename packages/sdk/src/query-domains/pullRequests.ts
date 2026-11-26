@@ -9,7 +9,7 @@ import type {
   PullRequestOpenInput,
   PullRequestResult,
 } from '@kontourai/station-contracts/pull-request-provider';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
@@ -85,22 +85,46 @@ export function usePullRequestContextQuery(
     context.workingDirectory,
   );
   const path = withContext('context', context);
-  return useApiQuery(
-    state ? ['checkout-pull-requests', state, ...key.slice(1)] : key,
-    () =>
-      request<PullRequestClientContext>(state ? `${path}&list=${state}` : path),
+  const client = useQueryClient();
+  const listKey = state
+    ? ['checkout-pull-requests', state, ...key.slice(1)]
+    : key;
+  const query = useApiQuery(
+    listKey,
+    async (signal) => {
+      const answer = await request<PullRequestClientContext>(
+        state ? `${path}&list=${state}` : path,
+        { signal },
+      );
+      if (
+        state &&
+        !signal?.aborted &&
+        answer.available &&
+        client.getQueryState(key)?.fetchStatus !== 'fetching'
+      ) {
+        const { pullRequests: _pullRequests, ...identity } = answer;
+        client.setQueryData(key, identity);
+      }
+      return answer;
+    },
     {
       ...(state === 'OPEN' ? { gcTime: PERSISTED_QUERY_GC_TIME_MS } : {}),
       ...config,
       enabled: !!context.project && (config?.enabled ?? true),
     },
   );
+  return {
+    ...query,
+    isLastKnown:
+      !!state && client.getQueryState(listKey)?.dataUpdateCount === 0,
+  };
 }
 /** Additional checkout list pages stay in memory for this list session. */
 export function useCheckoutPullRequestPages(
   context: PullRequestResolvingContext,
   state: CheckoutListState,
   cursors: readonly string[],
+  checkoutIdentity?: string,
 ) {
   const scopeKey = pullRequestContextQueryKey(
     context.project,
@@ -109,7 +133,13 @@ export function useCheckoutPullRequestPages(
   ).slice(1);
   return useQueries({
     queries: cursors.map((cursor) => ({
-      queryKey: ['checkout-pull-request-page', ...scopeKey, state, cursor],
+      queryKey: [
+        'checkout-pull-request-page',
+        ...scopeKey,
+        state,
+        checkoutIdentity ?? '',
+        cursor,
+      ],
       queryFn: ({ signal }) =>
         request<PullRequestClientContext>(
           `${withContext('context', context)}&list=${state}&cursor=${encodeURIComponent(cursor)}`,
@@ -245,6 +275,8 @@ export function useOpenPullRequestMutation(
     {
       invalidateKeys: [
         pullRequestsQueryKey(provider, host, `${owner}/${repo}`),
+        ['checkout-pull-requests'],
+        ['checkout-pull-request-page', context.project],
       ],
     },
   );
@@ -273,6 +305,8 @@ export function useCreatePullRequestCommentMutation(
     {
       invalidateKeys: [
         pullRequestsQueryKey(provider, host, `${owner}/${repo}`),
+        ['checkout-pull-requests'],
+        ['checkout-pull-request-page', context.project],
       ],
     },
   );
@@ -301,6 +335,8 @@ export function useApprovePullRequestMutation(
     {
       invalidateKeys: [
         pullRequestsQueryKey(provider, host, `${owner}/${repo}`),
+        ['checkout-pull-requests'],
+        ['checkout-pull-request-page', context.project],
       ],
     },
   );
@@ -329,6 +365,8 @@ export function useMergePullRequestMutation(
     {
       invalidateKeys: [
         pullRequestsQueryKey(provider, host, `${owner}/${repo}`),
+        ['checkout-pull-requests'],
+        ['checkout-pull-request-page', context.project],
         // A merge moves a Task board card; the server cleared its own
         // status cache on the write, so this refetch reads the forge. Every
         // Project's facts: the merge route does not name one.
