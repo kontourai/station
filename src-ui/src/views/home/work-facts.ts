@@ -79,6 +79,7 @@ export interface WorkActivity {
 }
 
 export interface WorkFacts {
+  taskOpenQuestionCount?: number;
   pullRequests?: ConversationListItem['pullRequests'];
   observedWorkspace?: ConversationListItem['observedWorkspace'];
   chatBinding?: ChatStationBindingV1;
@@ -247,8 +248,10 @@ export function buildWorkFacts({
     tasks.filter((task) => task.status === 'blocked').map((task) => task.id),
   );
   // #4003: a Task with an open Task-memory question owes a person an answer.
-  const answerTaskIds = new Set(
-    tasks.filter(taskAwaitsAnswer).map((task) => task.id),
+  const openTaskQuestions = new Map(
+    tasks
+      .filter(taskAwaitsAnswer)
+      .map((task) => [task.id, task.openQuestionCount]),
   );
   // #5398: every chat on this device that holds an unconfirmed message, by
   // the row identity `buildActiveChatTaskItems` gives it. Two chats can hold
@@ -361,7 +364,7 @@ export function buildWorkFacts({
         ),
         moreUrgentAttention(
           moreUrgentAttention(
-            item.kind === 'task' && answerTaskIds.has(item.id)
+            item.kind === 'task' && openTaskQuestions.has(item.id)
               ? 'answer'
               : undefined,
             item.kind === 'task' && blockedTaskIds.has(item.id)
@@ -377,6 +380,10 @@ export function buildWorkFacts({
         ),
       );
       if (attention) entry.attention = attention;
+      const questionCount =
+        item.kind === 'task' ? openTaskQuestions.get(item.id) : undefined;
+      if (questionCount !== undefined)
+        entry.taskOpenQuestionCount = questionCount;
     }
     if (item.lifecycleLabel === 'Running') {
       if (session?.ownedWork) {

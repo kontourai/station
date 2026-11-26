@@ -1443,7 +1443,7 @@ function InboxTaskRow({
       : undefined,
   });
   const menu = actions.length > 1;
-  const questionCount = item.taskOpenQuestionCount ?? 0;
+  const questionCount = facts?.taskOpenQuestionCount ?? 0;
   return (
     <div
       className={`chat-dock-inbox__row inbox-row inbox-row--card inbox-row--${chrome}${menu ? ' inbox-row--has-actions' : ''}`}

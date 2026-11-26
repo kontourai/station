@@ -104,9 +104,11 @@ describe('ChatDockInboxPanel', () => {
       ...item('question-task', 'Needs attention', NOW - 60_000),
       kind: 'task',
       kindLabel: 'Task · Needs input',
-      taskOpenQuestionCount: 2,
     };
-    const { props, rerender } = renderPanel({ items: [task] });
+    const { props, rerender } = renderPanel({
+      items: [task],
+      workFacts: new Map([[task.id, { taskOpenQuestionCount: 2 }]]),
+    });
     expect(
       screen.queryByRole('button', { name: '2 open questions' }),
     ).toBeNull();
