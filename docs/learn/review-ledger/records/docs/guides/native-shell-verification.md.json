@@ -176,7 +176,11 @@
 
     "src-ui/src/__tests__/local-restart-notice.browser.test.tsx",
 
-    "src-ui/src/__tests__/local-restart-notice.browser.fixture.tsx"
+    "src-ui/src/__tests__/local-restart-notice.browser.fixture.tsx",
+
+    "src-desktop/src/native_route_authorization.rs",
+
+    "src-ui/src/platform/native/stationProfileStorage.ts"
   ],
 
   "checks": [

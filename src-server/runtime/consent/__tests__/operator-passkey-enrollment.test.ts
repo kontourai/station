@@ -97,14 +97,19 @@ interface Harness {
   logCalls: unknown[][];
 }
 
-function build(origin: string | null = ORIGIN): Harness {
+function build(
+  origin: string | null = ORIGIN,
+  liveOrigin?: () => string | null,
+): Harness {
   const home = makeTempDir('station-passkey-');
   const clock = { now: 1_800_000_000_000 };
   const registry = OperatorPasskeyRegistry.open(home, () => clock.now);
   const { logger, calls } = makeLogger();
   const service = new OperatorPasskeyEnrollmentService({
     registry,
-    origin,
+    get origin() {
+      return liveOrigin ? liveOrigin() : origin;
+    },
     now: () => clock.now,
     logger,
   });
@@ -247,6 +252,18 @@ afterEach(() => {
 });
 
 describe('enrollment happy path', () => {
+  test('origin changes update availability but invalidate pending enrollment instead of moving it', async () => {
+    let origin: string | null = ORIGIN;
+    h.registry.close();
+    h = build(ORIGIN, () => origin);
+    const started = await startRequest(h);
+    origin = 'https://new.example.test';
+    expect(h.service.availability()).toMatchObject({ available: true, origin });
+    expect(() => h.service.confirm(started.code)).toThrow();
+    expect(() => h.service.status(started.requestId, 'P'.repeat(43))).toThrow();
+    origin = null;
+    expect(h.service.availability().available).toBe(false);
+  });
   test('browser requests, host confirms the displayed code, ceremony stores the public key', async () => {
     const started = await startRequest(h);
     expect(started.code).toMatch(/^[0-9]{6}$/);

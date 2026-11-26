@@ -10,13 +10,24 @@ import {
   useConnectionStatus,
   useConnections,
 } from '@kontourai/station-connect';
-import { Badge } from '@kontourai/ui/react';
+import {
+  isTrustedConsentOrigin,
+  type StationRoutePublication,
+} from '@kontourai/station-contracts/station-routes';
+import {
+  useConfigQuery,
+  useUpdateConfigMutation,
+} from '@kontourai/station-sdk';
+import { Badge, Field } from '@kontourai/ui/react';
 import { type FormEvent, useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import {
   useStationRoutesPreview,
   useStationRoutesQuery,
 } from '../../components/connections/useStationRoutes';
+import { ErrorState, SkeletonBlock } from '../../components/state';
+import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import {
   checkServerHealth,
   probeServerConnection,
@@ -60,8 +71,7 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
     pollInterval: 10_000,
   });
   const editable = connectionAcceptsRoutes(connection) && Boolean(addRoute);
-  // A profile that keeps one fixed route still lists what the Station reports.
-  const reported = useStationRoutesQuery(connection, !editable);
+  const reported = useStationRoutesQuery(connection, true);
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [address, setAddress] = useState('');
@@ -82,7 +92,7 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
         connectionRouteRemovable(connection, endpoint),
       )
     : [];
-  const extra = (reported.data ?? []).filter(
+  const extra = (reported.data?.routes ?? []).filter(
     (route) =>
       !connection.endpoints.some((endpoint) => endpoint.url === route.url),
   );
@@ -132,6 +142,27 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
         tabIndex={-1}
         className="station-routes"
       >
+        {reported.isPending && (
+          <SkeletonBlock count={1} label="Reading published routes" />
+        )}
+        {reported.isError && (
+          <ErrorState
+            variant="compact"
+            title="Published routes could not be refreshed"
+            action={
+              <Button size="sm" onClick={() => void reported.refetch()}>
+                Retry published routes
+              </Button>
+            }
+          />
+        )}
+        {reported.data?.publication && (
+          <RoutePublication
+            key={connection.id}
+            publication={reported.data.publication}
+            refresh={() => void reported.refetch()}
+          />
+        )}
         {failure && (
           <p className="station-routes__failure" role="status">
             {failure}
@@ -245,5 +276,198 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
           ))}
       </div>
     </SettingsSection>
+  );
+}
+
+const PUBLICATION_STATUS: Record<StationRoutePublication['status'], string> = {
+  ready: 'Approval HTTPS route ready',
+  unavailable: 'Approval HTTPS route unavailable',
+  ambiguous: 'Multiple approval HTTPS routes found; choose an origin',
+  disabled: 'Approval HTTPS publication disabled',
+};
+
+function RoutePublication({
+  publication,
+  refresh,
+}: {
+  publication: StationRoutePublication;
+  refresh: () => void;
+}) {
+  const config = useConfigQuery();
+  const update = useUpdateConfigMutation();
+  const savedOrigin = config.data?.trustedConsentOrigin;
+  const saved = savedOrigin ?? '';
+  const [draft, setDraft] = useState<string>();
+  const origin = draft ?? saved;
+  const dirty =
+    draft !== undefined && (origin !== saved || savedOrigin === undefined);
+  const { DiscardModal } = useUnsavedGuard(dirty);
+  const invalid = origin !== '' && !isTrustedConsentOrigin(origin);
+  const unavailable = config.isPending || config.isError || !config.data;
+
+  return (
+    <div className="content-stack">
+      <p className="settings__section-note">
+        App routes connect this device to a Station; approval pages use a
+        separate HTTPS origin.
+      </p>
+      <p role="status">
+        <Badge value={PUBLICATION_STATUS[publication.status]} />
+      </p>
+      <p className="station-routes__meta">
+        Approval origin: {publication.consentOrigin ?? 'None available'}
+        {' · '}Source: {publication.source}
+      </p>
+      <div>
+        <p>Published app origins</p>
+        {publication.appOrigins.length === 0 ? (
+          <p className="station-routes__meta">None published</p>
+        ) : (
+          publication.appOrigins.map((appOrigin) => (
+            <p key={appOrigin} className="station-routes__meta">
+              {appOrigin}
+            </p>
+          ))
+        )}
+      </div>
+      {publication.status === 'unavailable' && (
+        <details>
+          <summary>Set up HTTPS</summary>
+          <p className="settings__section-note">
+            Install and sign in to Tailscale on the Station host if needed.
+          </p>
+          <p className="settings__section-note">
+            Manually configure an HTTPS mapping with Tailscale Serve or your
+            HTTPS proxy, then refresh.
+          </p>
+        </details>
+      )}
+      <form
+        className="content-stack"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (invalid || unavailable || update.isPending || !dirty) return;
+          update.mutate(
+            { trustedConsentOrigin: origin },
+            {
+              onSuccess: () => {
+                setDraft(undefined);
+                refresh();
+              },
+            },
+          );
+        }}
+      >
+        <Field
+          label="Approval HTTPS origin"
+          htmlFor="trusted-consent-origin"
+          hint="Saving an empty origin enables automatic discovery instead of the startup fallback. Only this Station’s local operator can save changes."
+        >
+          <input
+            id="trusted-consent-origin"
+            className="station-routes__input"
+            type="text"
+            inputMode="url"
+            value={origin}
+            placeholder="Automatic discovery"
+            aria-describedby="trusted-consent-origin-help"
+            aria-invalid={invalid}
+            disabled={unavailable || update.isPending}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+        </Field>
+        <Button
+          type="button"
+          size="sm"
+          disabled={
+            unavailable ||
+            update.isPending ||
+            (savedOrigin === '' && origin === '')
+          }
+          onClick={() => setDraft('')}
+        >
+          Use automatic discovery
+        </Button>
+        <details>
+          <summary>Origin setup</summary>
+          <p
+            id="trusted-consent-origin-help"
+            className="settings__section-note"
+          >
+            Use an exact HTTPS DNS origin with no path, credentials, query, or
+            fragment.
+          </p>
+          <p className="settings__section-note">
+            STATION_TRUSTED_CONSENT_ORIGIN remains a fallback when this setting
+            is absent.
+          </p>
+          <p className="settings__section-note">
+            Publishing an origin does not grant access or configure HTTPS.
+          </p>
+        </details>
+        {invalid && (
+          <p role="alert">
+            Enter an exact HTTPS DNS origin, or leave empty for automatic
+            discovery.
+          </p>
+        )}
+        {config.isPending && (
+          <SkeletonBlock count={1} label="Reading approval origin setting" />
+        )}
+        {config.isError && (
+          <ErrorState
+            variant="compact"
+            title="The approval origin setting could not be read"
+            action={
+              <Button size="sm" onClick={() => void config.refetch()}>
+                Retry setting
+              </Button>
+            }
+          />
+        )}
+        {update.isError && (
+          <p role="alert">{describeStationFailure(update.error).body}</p>
+        )}
+        <ActionRow
+          overflowLabel="More approval route actions"
+          primary={
+            <Button
+              type="submit"
+              size="sm"
+              disabled={unavailable || invalid || !dirty || update.isPending}
+            >
+              {update.isPending ? 'Saving…' : 'Save approval origin'}
+            </Button>
+          }
+          secondary={
+            dirty ? (
+              <Button
+                size="sm"
+                disabled={update.isPending}
+                onClick={() => setDraft(undefined)}
+              >
+                Cancel
+              </Button>
+            ) : (
+              <Button size="sm" onClick={refresh}>
+                Refresh published routes
+              </Button>
+            )
+          }
+          overflow={
+            dirty
+              ? [
+                  {
+                    key: 'refresh',
+                    label: 'Refresh published routes',
+                    onSelect: refresh,
+                  },
+                ]
+              : []
+          }
+        />
+      </form>
+      <DiscardModal />
+    </div>
   );
 }

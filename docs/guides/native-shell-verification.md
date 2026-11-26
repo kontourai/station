@@ -963,8 +963,11 @@ frames, microphone capture, and persistence still require runtime acceptance.
 
 The mobile `station-discovery` plugin uses iOS NWBrowser/NetService and Android
 NsdManager for `_station._tcp.local.` services with TXT `v=1` and `transport`.
-It returns resolved private host/port hints, never credentials or authenticated
-Station identity. Android requires API 34 for resolver cancellation; earlier
+It returns resolved private host/port hints and optional TXT `appOrigin`, never
+credentials or authenticated Station identity. With the default-off dynamic
+publication preview, the adapter prefers a valid canonical HTTPS DNS app hint
+while retaining private LAN endpoint validation and legacy LAN fallback.
+Android requires API 34 for resolver cancellation; earlier
 versions report unavailable. iOS declares the exact Bonjour service and local
 network usage description. A fixed declared service does not require the
 multicast entitlement.
@@ -978,8 +981,9 @@ existing bounded NSD path. iOS `prepare` does not start browsing or request acce
 
 Scans are bounded and cancelled on explicit cancellation, foreground loss and
 provider disposal. The adapter validates every result before passing it to the
-candidate registry. Selection enters the existing address review, explicit HTTP
-consent and host approval path. Discovery does not widen server binding or
+candidate registry. Selection enters the existing address review and host
+approval path, with explicit unencrypted consent when selecting HTTP.
+Discovery does not widen server binding or
 enable publication; the host's local-operator toggle owns publication.
 
 Unit checks cover adapter filtering, status mapping, late results and cancel
@@ -988,3 +992,15 @@ real host's actual bound listener, exercise local-network permission, cancel,
 background and foreground recovery, and complete the intended pairing journey.
 iOS simulator compilation and Android builds alone do not establish physical
 LAN or permission behavior.
+
+### Same-Station native route admission
+
+The Rust host's `station_profile_refresh_routes` reads authenticated routes at
+the saved canonical anchor and admits only published HTTPS app origins with a
+matching fresh, credential-free public nonce proof. Nearby hints are not this
+authority. Admission stays in host memory for at most ten minutes, bound to the
+active binding epoch and profile revision; it does not rewrite the saved endpoint.
+See the [route threat boundary](../design/station-routes.md#native-host-authorized-alternate-origins).
+Rust fixtures and live host proof requests do not establish native IPC or
+physical-shell failover: those remain NOT_VERIFIED until exercised in an
+installed shell, including expiry, profile changes and unavailable-anchor recovery.

@@ -1,0 +1,7 @@
+{
+  "revision": "09fc618d14eabeab937ac8306658ba75b6f21280",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the desktop Windows packaging claims and both focused fixture owners at 09fc618d14: shortest safe ancestor placement preserves dependency/peer/alias resolution; file and directory bounds generate an NSIS install-root limit after configured resources are staged. Independent verifier exercised production exports, caught a scratch-only removed-check mutation and confirmed restoration. Current exact-source focused run has 47 passing tests and one concurrent packaged-startup readiness timeout; single packaged startup passed. Native extraction probe pending, signed Tauri shell and release delivery not verified. MSI custom paths are explicitly outside this NSIS guard.","inputs":["docs/guides/desktop-build.md","scripts/__tests__/desktop-runtime-pruning.test.ts","scripts/__tests__/server-build-portability.test.ts"]}
+  ]
+}

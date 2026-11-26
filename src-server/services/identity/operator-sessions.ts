@@ -29,6 +29,7 @@ export class OperatorSignInError extends Error {
   }
 }
 interface Ceremony {
+  origin: string;
   binding: string;
   deviceId: string;
   epoch: string;
@@ -90,6 +91,7 @@ export class OperatorSessionService {
     this.#budgets.set(key, budget);
     const nonce = randomBytes(32).toString('base64url');
     this.#ceremonies.set(digest(nonce), {
+      origin: this.deps.origin!,
       binding: digest(credential),
       deviceId: device.id,
       epoch: this.deps.epoch(),
@@ -106,6 +108,7 @@ export class OperatorSessionService {
     if (
       !this.signInUrl ||
       !ceremony ||
+      ceremony.origin !== this.deps.origin ||
       ceremony.expiresAt <= this.#now() ||
       ceremony.binding !== digest(credential) ||
       ceremony.deviceId !== this.#device(credential).id ||

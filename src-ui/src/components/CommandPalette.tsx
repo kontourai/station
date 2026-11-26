@@ -56,6 +56,7 @@ import {
   workspacePaneRequiresLayoutIdentity,
 } from '../workspace-panes/workspacePaneDirectRoute';
 import { Button } from './Button';
+import { useStationRoutesPreview } from './connections/useStationRoutes';
 import { Dialog } from './Dialog';
 import { requestFirstRunTour } from './first-run/first-run-store';
 import { LazyBoundary } from './LazyBoundary';
@@ -280,6 +281,7 @@ export function CommandPalette() {
   }, [open, query, settingsCatalog]);
 
   const developerFeatures = useDeveloperFeatures();
+  const stationRoutesEnabled = useStationRoutesPreview();
   const { developerToolsEnabled } = useDeviceSettings();
   const settingsCommands = useMemo(
     () =>
@@ -288,7 +290,7 @@ export function CommandPalette() {
         isDesktop,
         developerToolsEnabled,
         experimentalTrustEnabled: developerFeatures.trust,
-        experimentalStationRoutesEnabled: developerFeatures.stationRoutes,
+        experimentalStationRoutesEnabled: stationRoutesEnabled,
       }) ?? [],
     [
       isMobile,
@@ -296,7 +298,7 @@ export function CommandPalette() {
       settingsCatalog,
       developerToolsEnabled,
       developerFeatures.trust,
-      developerFeatures.stationRoutes,
+      stationRoutesEnabled,
     ],
   );
   const settingsLocaleFormatter: SettingsLocaleFormatter | null =

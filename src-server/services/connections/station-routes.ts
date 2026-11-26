@@ -57,6 +57,7 @@ export interface StationRoutesResolverInput {
   /** This node's Tailscale MagicDNS name, when Tailscale is present. */
   magicDnsHost: () => Promise<string | undefined>;
   environmentId: () => Promise<string>;
+  publication?: () => StationRoutesResponse['publication'];
 }
 
 export function createStationRoutesResolver(
@@ -91,6 +92,11 @@ export function createStationRoutesResolver(
       seen.add(route.url);
       return true;
     });
-    return { environmentId, routes: routes.slice(0, MAX_STATION_ROUTES) };
+    const publication = input.publication?.();
+    return {
+      environmentId,
+      routes: routes.slice(0, MAX_STATION_ROUTES),
+      ...(publication ? { publication } : {}),
+    };
   };
 }

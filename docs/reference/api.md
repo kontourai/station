@@ -6952,7 +6952,10 @@ is read. User messages carry the stable id a search hit names
 (`<turn start event id>:user`). A station-control caller that is not a bound
 operator is further limited to its own conversation, its scope, or a
 conversation a person referenced in its conversation, and reads as the
-session's owner; a bound operator keeps the operator's reach. An id Station
+session's owner; a bound operator keeps the operator's reach. For the owner's
+own conversation outside that reach, `conversation_out_of_scope` (403) carries
+the scope rule's `reason` when it has one (for example `host`), and its
+explanation names that cause. An id Station
 has no record of answers `conversation_not_found`; see the
 [read route](../../src-server/routes/chat/conversation-reference-read.ts).
 
@@ -8343,7 +8346,7 @@ step-up described above for an operator session. The enrollment confirmation
 routes still accept only the operator credential; a paired device holding
 `access:manage` is refused (401 `authentication_required`, pinned by a test that lets the device reach the handler). Errors: `invalid_code` (404), `device_mismatch` (409), `device_gone` (409, the requesting device was revoked or unpaired after it asked; pending requests also show its current scope and `active`), `rate_limited`
 (429, with `retryAfterMs`), `passkey_not_found` (404), `enrollment_unavailable`
-(503, `STATION_TRUSTED_CONSENT_ORIGIN` unset), `store_unavailable` (503, the passkey store cannot be opened privately). Each error carries one fixed message per code, and an unexpected failure returns `internal_error` (500) with a generic message and no cause text. The browser half is served on the
+(503, no trusted HTTPS approval origin is available from the legacy startup setting or the enabled dynamic publication preview), `store_unavailable` (503, the passkey store cannot be opened privately). Each error carries one fixed message per code, and an unexpected failure returns `internal_error` (500) with a generic message and no cause text. The browser half is served on the
 consent origin under `/operator/passkeys/enroll`; see the
 [enrollment guide](../guides/operator-passkeys.md). Owner:
 [host routes](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts),

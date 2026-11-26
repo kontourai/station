@@ -37,6 +37,7 @@ import { useInboxGroups } from './useInboxGroups';
 
 export interface InboxPanelControllerOptions extends WorkItemOpenHandlers {
   items: HomeWorkItem[];
+  taskQuestionsEnabled?: boolean;
   open: boolean;
   panelRef: RefObject<HTMLElement | null>;
   authority?: ReturnType<typeof useHostRequestAuthorityScope>;
@@ -146,7 +147,10 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
     invalidate,
   ]);
 
-  const activate = async (item: HomeWorkItem) => {
+  const activate = async (
+    item: HomeWorkItem,
+    taskView: 'overview' | 'plan' = 'overview',
+  ) => {
     invalidate();
     if (!open || authority === null || authority?.isCurrent() === false) return;
     const generation = selection.current.generation;
@@ -185,7 +189,7 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
           chat: null,
           maximize: null,
           surface: null,
-          taskView: 'overview',
+          taskView,
         });
         if (current()) options.onActivated?.();
         return;
@@ -248,6 +252,11 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
       onActivate: (item: HomeWorkItem) => {
         void activate(item);
       },
+      onOpenTaskQuestions: options.taskQuestionsEnabled
+        ? (item: HomeWorkItem) => {
+            void activate(item, 'plan');
+          }
+        : undefined,
       onSnoozeWake: (
         item: HomeWorkItem,
         wakeAt: number | null,
