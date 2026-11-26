@@ -31,6 +31,133 @@ function writeFixturePackage(
 }
 
 describe('desktop runtime pruning', () => {
+  it.each(['dependencies', 'peerDependencies'])(
+    'hoists conflicting %s without growing the installed OTLP dependency chain',
+    async (dependencyField) => {
+      const project = makeTempDir('station-runtime-hoist-');
+      const names = [
+        '@opentelemetry/exporter-trace-otlp-http',
+        '@opentelemetry/otlp-exporter-base',
+        '@opentelemetry/otlp-transformer',
+        '@opentelemetry/sdk-metrics',
+        '@opentelemetry/resources',
+      ];
+      let source = join(project, 'node_modules', names[0]);
+      for (const [index, name] of names.entries()) {
+        const next = names[index + 1];
+        if (index > 0) {
+          writeFixturePackage(
+            join(project, 'node_modules', name),
+            {
+              name,
+              version: '2.0.0',
+              main: 'index.cjs',
+            },
+            { 'index.cjs': "module.exports = ['2.0.0'];" },
+          );
+        }
+        writeFixturePackage(
+          source,
+          {
+            name,
+            version: '1.0.0',
+            main: 'index.cjs',
+            [dependencyField]: next ? { [next]: '1.0.0' } : {},
+          },
+          {
+            'index.cjs': `module.exports = ['1.0.0'${next ? `, ...require('${next}')` : ''}];`,
+          },
+        );
+        if (next) source = join(source, 'node_modules', next);
+      }
+      const output = join(project, 'release');
+      stageDesktopServerRuntime({
+        projectRoot: project,
+        outputRoot: output,
+        packages: names,
+        platform: 'win32',
+      });
+      const probe = await execFileAsync(
+        process.execPath,
+        [
+          '-e',
+          `console.log(JSON.stringify([require('${names[0]}'), require('${names[4]}')]));`,
+        ],
+        { cwd: output, windowsHide: true, timeout: 10_000 },
+      );
+      expect(JSON.parse(probe.stdout)).toEqual([
+        Array.from({ length: names.length }, () => '1.0.0'),
+        ['2.0.0'],
+      ]);
+      const pending = [output];
+      while (pending.length > 0) {
+        const directory = pending.pop()!;
+        for (const entry of readdirSync(directory, { withFileTypes: true })) {
+          const path = join(directory, entry.name);
+          expect(path.slice(output.length).length).toBeLessThan(180);
+          if (entry.isDirectory()) pending.push(path);
+        }
+      }
+    },
+  );
+
+  it('does not shadow a previously resolved dependency when hoisting a later descendant', async () => {
+    const project = makeTempDir('station-runtime-hoist-shadow-');
+    const modules = join(project, 'node_modules');
+    for (const [name, version, dependencies, entry] of [
+      ['shared', '1.0.0', {}, "module.exports = 'root';"],
+      ['child', '2.0.0', {}, "module.exports = 'unused';"],
+      ['middle', '2.0.0', {}, "module.exports = 'unused';"],
+      [
+        'owner',
+        '1.0.0',
+        { child: '1.0.0' },
+        "module.exports = require('child');",
+      ],
+      [
+        'owner/node_modules/child',
+        '1.0.0',
+        { shared: '1.0.0', middle: '1.0.0' },
+        "module.exports = [require('shared'), require('middle')];",
+      ],
+      [
+        'owner/node_modules/child/node_modules/middle',
+        '1.0.0',
+        { shared: '2.0.0' },
+        "module.exports = require('shared');",
+      ],
+      [
+        'owner/node_modules/child/node_modules/middle/node_modules/shared',
+        '2.0.0',
+        {},
+        "module.exports = 'nested';",
+      ],
+    ] as const) {
+      writeFixturePackage(
+        join(modules, name),
+        {
+          name: name.split('/').at(-1),
+          version,
+          dependencies,
+          main: 'index.cjs',
+        },
+        { 'index.cjs': entry },
+      );
+    }
+    const output = join(project, 'release');
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: ['shared', 'child', 'middle', 'owner'],
+    });
+    const probe = await execFileAsync(
+      process.execPath,
+      ['-e', "console.log(JSON.stringify(require('owner')));"],
+      { cwd: output, windowsHide: true, timeout: 10_000 },
+    );
+    expect(JSON.parse(probe.stdout)).toEqual(['root', 'nested']);
+  });
+
   it('keeps installed stable and incubating semantic conventions identical through Node import and require', async () => {
     const output = join(makeTempDir('station-runtime-semconv-'), 'release');
     stageDesktopServerRuntime({

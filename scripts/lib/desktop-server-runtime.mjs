@@ -33,6 +33,7 @@ const OPTIONAL_DESKTOP_SERVER_RUNTIME_PACKAGES = new Set(['fsevents']);
 export const WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR =
   'dist-desktop-wix-resources';
 export const WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG = 'tauri-config.json';
+const WINDOWS_INSTALL_ROOT_MIN_LENGTH = 45;
 
 function readPackage(packageRoot) {
   return JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
@@ -121,27 +122,40 @@ function targetPackageRoot(
   parentTargetRoot,
   outputRoot,
   planned,
+  resolutions,
 ) {
-  // Match Node's nearest node_modules lookup. A different nearer version
-  // shadows the root, even when the root has the requested version.
+  const candidates = [];
+  let target;
   let current = parentTargetRoot;
   while (true) {
-    const candidate = join(current, 'node_modules', packageName);
-    const visible = planned.get(candidate);
-    if (visible) {
-      return visible === sourceRoot
-        ? candidate
-        : join(parentTargetRoot, 'node_modules', packageName);
+    if (current === outputRoot || planned.has(current)) {
+      const candidate = join(current, 'node_modules', packageName);
+      const visible = planned.get(candidate);
+      const required = resolutions.get(candidate);
+      if (visible) {
+        if (visible === sourceRoot) target = candidate;
+        break;
+      }
+      if (required && required !== sourceRoot) break;
+      candidates.push(candidate);
     }
     if (current === outputRoot) break;
     current = dirname(current);
   }
-  return join(outputRoot, 'node_modules', packageName);
+  target ??= candidates.at(-1);
+  if (!target) {
+    throw new Error(
+      `Cannot preserve runtime dependency ${packageName} from ${parentTargetRoot}`,
+    );
+  }
+  for (const candidate of candidates) resolutions.set(candidate, sourceRoot);
+  return target;
 }
 
 function planRuntimePackages(packageNames, projectRoot, outputRoot) {
   outputRoot = resolve(outputRoot);
   const planned = new Map();
+  const resolutions = new Map();
   const queue = [];
   const add = (target, source) => {
     const existing = planned.get(target);
@@ -184,7 +198,14 @@ function planRuntimePackages(packageNames, projectRoot, outputRoot) {
     )) {
       const dependency = resolvePackageRoot(name, source, realName);
       add(
-        targetPackageRoot(name, dependency, target, outputRoot, planned),
+        targetPackageRoot(
+          name,
+          dependency,
+          target,
+          outputRoot,
+          planned,
+          resolutions,
+        ),
         dependency,
       );
     }
@@ -430,6 +451,7 @@ function stageWindowsWixPackage(
 function writeWindowsWixTauriConfig(
   windowsTauriConfigRoot,
   windowsWixResources,
+  maxInstallRootLength,
 ) {
   const resources = {
     // JSON merge-patch removes the ordinary deep runtime resource entry from
@@ -446,6 +468,10 @@ function writeWindowsWixTauriConfig(
   const configPath = join(
     windowsWixResources.root,
     WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG,
+  );
+  writeFileSync(
+    join(windowsWixResources.root, 'installer-path-budget.nsh'),
+    `!define STATION_WINDOWS_MAX_INSTALL_ROOT ${maxInstallRootLength}\n`,
   );
   writeFileSync(
     configPath,
@@ -467,15 +493,24 @@ function writeWindowsWixTauriConfig(
 export function inspectDesktopServerRuntime(
   runtimeRoot,
   budget = DESKTOP_SERVER_RUNTIME_BUDGET,
+  platform = process.platform,
 ) {
   let bytes = 0;
   let files = 0;
+  let maxInstallRootLength = 259;
   const pending = [join(runtimeRoot, 'node_modules')];
   while (pending.length > 0) {
     const current = pending.pop();
     if (!current || !existsSync(current)) continue;
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const entryPath = join(current, entry.name);
+      if (platform === 'win32') {
+        maxInstallRootLength = windowsInstallRootLimit(
+          maxInstallRootLength,
+          relative(runtimeRoot, entryPath),
+          entry.isDirectory(),
+        );
+      }
       if (entry.isDirectory()) {
         pending.push(entryPath);
         continue;
@@ -489,7 +524,67 @@ export function inspectDesktopServerRuntime(
       `Desktop server runtime exceeds its release budget: ${bytes} bytes/${files} files (maximum ${budget.maxBytes} bytes/${budget.maxFiles} files)`,
     );
   }
-  return { bytes, files };
+  return { bytes, files, maxInstallRootLength };
+}
+
+function windowsInstallRootLimit(currentLimit, installedPath, isDirectory) {
+  const maximum = isDirectory ? 247 : 259;
+  const limit = Math.min(currentLimit, maximum - 1 - installedPath.length);
+  if (limit < WINDOWS_INSTALL_ROOT_MIN_LENGTH) {
+    throw new Error(
+      `Windows installer path exceeds MAX_PATH with a ${WINDOWS_INSTALL_ROOT_MIN_LENGTH}-character install root: ${installedPath} (maximum install root ${limit})`,
+    );
+  }
+  return limit;
+}
+
+export function finalizeWindowsDesktopResourcePaths({
+  projectRoot,
+  resourceRoot = join(projectRoot, WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR),
+}) {
+  const header = join(resourceRoot, 'installer-path-budget.nsh');
+  rmSync(header, { force: true });
+  const configRoot = join(projectRoot, 'src-desktop');
+  const platformConfig = JSON.parse(
+    readFileSync(join(configRoot, 'tauri.windows.conf.json'), 'utf8'),
+  );
+  const overlay = JSON.parse(
+    readFileSync(
+      join(resourceRoot, WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG),
+      'utf8',
+    ),
+  );
+  const resources = {
+    ...platformConfig.bundle.resources,
+    ...overlay.bundle.resources,
+  };
+  let maxInstallRootLength = 259;
+  for (const [source, target] of Object.entries(resources)) {
+    if (target === null) continue;
+    const pending = [{ source: resolve(configRoot, source), target }];
+    while (pending.length > 0) {
+      const current = pending.pop();
+      const isDirectory = lstatSync(current.source).isDirectory();
+      maxInstallRootLength = windowsInstallRootLimit(
+        maxInstallRootLength,
+        current.target,
+        isDirectory,
+      );
+      if (isDirectory) {
+        for (const entry of readdirSync(current.source)) {
+          pending.push({
+            source: join(current.source, entry),
+            target: join(current.target, entry),
+          });
+        }
+      }
+    }
+  }
+  writeFileSync(
+    header,
+    `!define STATION_WINDOWS_MAX_INSTALL_ROOT ${maxInstallRootLength}\n`,
+  );
+  return { maxInstallRootLength };
 }
 
 export function stageDesktopServerRuntime({
@@ -531,9 +626,17 @@ export function stageDesktopServerRuntime({
       );
     }
   }
-  inspectDesktopServerRuntime(outputRoot, budget);
+  const { maxInstallRootLength } = inspectDesktopServerRuntime(
+    outputRoot,
+    budget,
+    platform,
+  );
   if (windowsWixResources) {
-    writeWindowsWixTauriConfig(windowsTauriConfigRoot, windowsWixResources);
+    writeWindowsWixTauriConfig(
+      windowsTauriConfigRoot,
+      windowsWixResources,
+      maxInstallRootLength,
+    );
   }
   return outputRoot;
 }

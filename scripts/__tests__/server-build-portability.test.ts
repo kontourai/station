@@ -29,12 +29,14 @@ import { withDesktopRuntimeListenerLease } from '../lib/desktop-runtime-port-lea
 import {
   DESKTOP_SERVER_RUNTIME_BUDGET,
   DESKTOP_SERVER_RUNTIME_PACKAGES,
+  finalizeWindowsDesktopResourcePaths,
   inspectDesktopServerRuntime,
   NON_RUNTIME_ARTIFACT,
   RUNTIME_DEPENDENCY_EXCLUSIONS,
   RUNTIME_PACKAGE_PRUNE_RULES,
   stageDesktopServerBundle,
   stageDesktopServerRuntime,
+  WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR,
   WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG,
 } from '../lib/desktop-server-runtime.mjs';
 import { STATION_SERVER_EXTERNALS } from '../lib/server-build-config.mjs';
@@ -755,22 +757,22 @@ function createBudgetFixture(root: string) {
   return projectRoot;
 }
 
-function createDeepRuntimeFixture(root: string) {
+function createDeepRuntimeFixture(root: string, depth = 7) {
   const projectRoot = join(root, 'project');
   const packageName = 'runtime-package-with-a-deliberately-long-name';
   let packageRoot = join(projectRoot, 'node_modules', packageName);
-  for (let index = 0; index < 7; index += 1) {
+  for (let index = 0; index < depth; index += 1) {
     mkdirSync(packageRoot, { recursive: true });
     writeFileSync(
       join(packageRoot, 'package.json'),
       JSON.stringify({
         name: packageName,
         version: '1.0.0',
-        dependencies: index < 6 ? { [packageName]: '1.0.0' } : {},
+        dependencies: index < depth - 1 ? { [packageName]: '1.0.0' } : {},
       }),
     );
     writeFileSync(join(packageRoot, 'runtime.js'), 'export default true;');
-    if (index < 6) {
+    if (index < depth - 1) {
       packageRoot = join(packageRoot, 'node_modules', packageName);
     }
   }
@@ -1009,7 +1011,7 @@ describe('server build package portability', () => {
     ]);
   });
 
-  it('keeps a loadable koffi for Windows staging and only its licenses elsewhere (#4524)', () => {
+  it('keeps a loadable koffi for Windows staging and only its licenses elsewhere (#4524)', async () => {
     const root = makeTempDir('station-runtime-koffi-');
     const stage = (platform: NodeJS.Platform) => {
       const output = join(root, platform);
@@ -1026,9 +1028,12 @@ describe('server build package portability', () => {
     // Use the installed host binary with the Windows retention rules. This
     // reaches koffi's real loader without pretending to run Win32 APIs here.
     const windows = stage('win32');
-    const requireStaged = createRequire(join(windows, '../probe.cjs'));
-    const koffi = requireStaged('koffi');
-    expect(koffi.sizeof('uint32_t')).toBe(4);
+    const probe = await execFileAsync(
+      process.execPath,
+      ['-e', "console.log(require('koffi').sizeof('uint32_t'));"],
+      { cwd: dirname(windows), windowsHide: true, timeout: 10_000 },
+    );
+    expect(probe.stdout.trim()).toBe('4');
     for (const dir of ['vendor', 'doc'])
       expect(existsSync(join(windows, 'koffi', dir))).toBe(false);
 
@@ -1477,11 +1482,128 @@ describe('server build package portability', () => {
     ).toBe('1.0.0');
   });
 
-  it('uses shallow WiX sources while preserving deep runtime destinations', () => {
+  it('rejects Windows runtime destinations that cannot fit below an ordinary install root', () => {
+    const root = makeTempDir('station-desktop-install-path-');
+    const { projectRoot, packageName } = createDeepRuntimeFixture(root);
+    expect(() =>
+      stageDesktopServerRuntime({
+        projectRoot,
+        outputRoot: join(root, 'runtime'),
+        packages: [packageName],
+        platform: 'win32',
+        windowsWixResourceRoot: join(root, 'wix-resources'),
+      }),
+    ).toThrow(/Windows installer path exceeds/);
+    expect(
+      existsSync(
+        join(root, 'wix-resources', WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG),
+      ),
+    ).toBe(false);
+    expect(() =>
+      stageDesktopServerRuntime({
+        projectRoot,
+        outputRoot: join(root, 'linux-runtime'),
+        packages: [packageName],
+        platform: 'linux',
+      }),
+    ).not.toThrow();
+  });
+
+  it.each([
+    ['file', 213],
+    ['directory', 201],
+  ] as const)(
+    'enforces the Windows %s destination boundary independently of build-host paths',
+    (kind, relativeLength) => {
+      const root = makeTempDir('station-desktop-path-boundary-');
+      const projectRoot = createBudgetFixture(root);
+      const outputRoot = join(root, 'runtime');
+      const wixRoot = join(root, 'wix-resources');
+      const packagePath = 'node_modules/fixture-runtime/';
+      const name = 'x'.repeat(relativeLength - packagePath.length);
+      const addEntry = (entryName: string) => {
+        const entryPath = join(projectRoot, packagePath, entryName);
+        if (kind === 'directory') mkdirSync(entryPath);
+        else writeFileSync(entryPath, 'payload');
+      };
+      addEntry(name);
+      stageDesktopServerRuntime({
+        projectRoot,
+        outputRoot,
+        packages: ['fixture-runtime'],
+        platform: 'win32',
+        windowsWixResourceRoot: wixRoot,
+      });
+      expect(
+        inspectDesktopServerRuntime(outputRoot, undefined, 'win32')
+          .maxInstallRootLength,
+      ).toBe(45);
+      expect(
+        readFileSync(join(wixRoot, 'installer-path-budget.nsh'), 'utf8'),
+      ).toBe('!define STATION_WINDOWS_MAX_INSTALL_ROOT 45\n');
+      addEntry(`${name}x`);
+      expect(() =>
+        stageDesktopServerRuntime({
+          projectRoot,
+          outputRoot,
+          packages: ['fixture-runtime'],
+          platform: 'win32',
+          windowsWixResourceRoot: wixRoot,
+        }),
+      ).toThrow(/Windows installer path exceeds/);
+      expect(existsSync(join(wixRoot, 'installer-path-budget.nsh'))).toBe(
+        false,
+      );
+    },
+  );
+
+  it('budgets all configured resource destinations after staging and invalidates unsafe headers', () => {
+    const root = makeTempDir('station-desktop-all-paths-');
+    const projectRoot = createBudgetFixture(root);
+    const outputRoot = join(projectRoot, 'dist-desktop-runtime');
+    const resourceRoot = join(
+      projectRoot,
+      WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR,
+    );
+    const configRoot = join(projectRoot, 'src-desktop');
+    mkdirSync(configRoot);
+    writeFileSync(
+      join(configRoot, 'tauri.windows.conf.json'),
+      JSON.stringify({ bundle: { resources: { '../schemas': 'schemas' } } }),
+    );
+    const schemas = join(projectRoot, 'schemas');
+    mkdirSync(schemas);
+    writeFileSync(join(schemas, 'x'.repeat(180)), 'schema');
+    stageDesktopServerRuntime({
+      projectRoot,
+      outputRoot,
+      packages: ['fixture-runtime'],
+      platform: 'win32',
+      windowsWixResourceRoot: resourceRoot,
+    });
+    expect(
+      finalizeWindowsDesktopResourcePaths({ projectRoot }).maxInstallRootLength,
+    ).toBe(70);
+    expect(
+      readFileSync(join(resourceRoot, 'installer-path-budget.nsh'), 'utf8'),
+    ).toBe('!define STATION_WINDOWS_MAX_INSTALL_ROOT 70\n');
+    writeFileSync(join(schemas, 'x'.repeat(206)), 'too deep');
+    expect(() => finalizeWindowsDesktopResourcePaths({ projectRoot })).toThrow(
+      /Windows installer path exceeds/,
+    );
+    expect(existsSync(join(resourceRoot, 'installer-path-budget.nsh'))).toBe(
+      false,
+    );
+  });
+
+  it('uses shallow WiX sources while keeping installable runtime destinations', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-desktop-wix-path-'));
     temporaryRoots.push(root);
-    const { projectRoot, packageName } = createDeepRuntimeFixture(root);
-    const outputRoot = join(root, 'runtime');
+    const { projectRoot, packageName } = createDeepRuntimeFixture(
+      join(root, 'build-host-'.repeat(15)),
+      2,
+    );
+    const outputRoot = join(projectRoot, 'runtime');
     const wixRoot = join(root, 'wix-resources');
     const configRoot = join(projectRoot, 'src-desktop');
     mkdirSync(configRoot, { recursive: true });
@@ -1504,20 +1626,21 @@ describe('server build package portability', () => {
     const deepTarget = [
       'node_modules',
       packageName,
-      ...Array.from({ length: 6 }, () => ['node_modules', packageName]).flat(),
+      'node_modules',
+      packageName,
     ].join('/');
     const [aliasSource] =
       Object.entries(config.bundle.resources).find(
         ([, target]) => target === deepTarget,
       ) ?? [];
-    expect(aliasSource).toMatch(/wix-resources\/package-0006$/);
+    expect(aliasSource).toMatch(/wix-resources\/package-0001$/);
     expect(
-      readFileSync(join(wixRoot, 'package-0006', 'runtime.js'), 'utf8'),
+      readFileSync(join(wixRoot, 'package-0001', 'runtime.js'), 'utf8'),
     ).toBe('export default true;');
 
     // This is the failing pre-fix shape: WiX receives the whole nested source
     // path. The generated map instead gives it a single shallow alias.
-    const legacyWixSource = `E:/station/src-desktop/../dist-desktop-runtime/${deepTarget}/runtime.js`;
+    const legacyWixSource = `${outputRoot}/${deepTarget}/runtime.js`;
     const shallowWixSource = `E:/station/src-desktop/${aliasSource}/runtime.js`;
     expect(legacyWixSource.length).toBeGreaterThan(260);
     expect(shallowWixSource.length).toBeLessThanOrEqual(260);
