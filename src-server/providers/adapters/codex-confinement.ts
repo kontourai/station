@@ -1,3 +1,4 @@
+import { existsSync, realpathSync } from 'node:fs';
 import { lstat, realpath } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type {
@@ -14,11 +15,13 @@ import {
   requiredConfinementLevel,
 } from '../../security/confinement/confinement-provider.js';
 import {
+  delegationGrantKeyPath,
   isAllowedExtraDelegationGitPath,
   isHighRiskDelegationGitPath,
 } from '../../security/confinement/delegation-grants.js';
 import { discoverSeatbeltGitLayout } from '../../security/confinement/seatbelt.js';
 import { isCanonicalPathWithin } from '../../utils/path-containment.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import type {
   CodexSandboxMode,
   CodexSandboxPolicy,
@@ -227,30 +230,34 @@ export function codexConfinementConfigArgs(
   confinement: StationConfinement | undefined,
   git?: ConfinementPlan['delegatedCodexGit'],
 ): string[] {
-  const profileDefinition = git
-    ? STATION_CODEX_PERMISSION_PROFILE_DEFINITION.replace(/}}}$/, () => {
-        const rules = new Map<string, string>();
-        for (const path of git.writableDirectories) rules.set(path, 'write');
-        for (const path of git.readOnlyPaths) rules.set(path, 'read');
-        const paths = Array.from(
-          rules,
-          ([path, mode]) => `${JSON.stringify(path)}=${JSON.stringify(mode)}`,
-        );
-        return `}${paths.length ? `,${paths.join(',')}` : ''}},network={enabled=${git.openNetwork}}}`;
-      })
-    : STATION_CODEX_PERMISSION_PROFILE_DEFINITION;
-  return confinement === 'host'
-    ? []
-    : [
-        '-c',
-        `default_permissions="${STATION_CODEX_PERMISSION_PROFILE}"`,
-        '-c',
-        profileDefinition,
-        '-c',
-        'sandbox_workspace_write.writable_roots=[]',
-        '-c',
-        'approvals_reviewer="user"',
-      ];
+  if (confinement === 'host') return [];
+  const key = delegationGrantKeyPath(resolveHomeDir());
+  const rules = new Map<string, string>();
+  for (const path of git?.writableDirectories ?? []) rules.set(path, 'write');
+  for (const path of git?.readOnlyPaths ?? []) rules.set(path, 'read');
+  if (existsSync(key)) {
+    rules.set(key, 'deny');
+    rules.set(realpathSync(key), 'deny');
+  }
+  const paths = Array.from(
+    rules,
+    ([path, mode]) => `${JSON.stringify(path)}=${JSON.stringify(mode)}`,
+  );
+  const network = git ? `,network={enabled=${git.openNetwork}}` : '';
+  const profileDefinition = STATION_CODEX_PERMISSION_PROFILE_DEFINITION.replace(
+    /}}}$/,
+    () => `}${paths.length ? `,${paths.join(',')}` : ''}}${network}}`,
+  );
+  return [
+    '-c',
+    `default_permissions="${STATION_CODEX_PERMISSION_PROFILE}"`,
+    '-c',
+    profileDefinition,
+    '-c',
+    'sandbox_workspace_write.writable_roots=[]',
+    '-c',
+    'approvals_reviewer="user"',
+  ];
 }
 
 /**

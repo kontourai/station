@@ -71,6 +71,7 @@ export function createDelegationGrantRoutes(
     }
     return c.json({
       success: true,
+      ignoredEntries: store.ignoredEntries(),
       data: grants.map((grant) => ({
         ...grant,
         highRiskGitWrites: Object.values(grant.extraGitWritePaths)

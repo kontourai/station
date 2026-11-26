@@ -39,13 +39,19 @@ interface Posture {
   expiresAt: number | null;
 }
 
-async function grantResponse<T>(request: Promise<Response>): Promise<T> {
+async function grantPayload<T>(
+  request: Promise<Response>,
+): Promise<{ data: T; ignoredEntries?: number }> {
   const response = await request;
   const result = await response.json();
   if (!response.ok || !result.success) {
     throw new Error(result.error ?? 'Unable to read delegation grants.');
   }
-  return result.data;
+  return result;
+}
+
+async function grantResponse<T>(request: Promise<Response>): Promise<T> {
+  return (await grantPayload<T>(request)).data;
 }
 
 function useGrantAuthority() {
@@ -116,7 +122,7 @@ function GrantControls({ authority }: { authority: Authority }) {
   const grants = useQuery({
     queryKey: key,
     queryFn: ({ signal }) =>
-      grantResponse<GrantRow[]>(
+      grantPayload<GrantRow[]>(
         getJson(endpoint, { requestScope: authority, signal }),
       ),
     retry: false,
@@ -156,10 +162,16 @@ function GrantControls({ authority }: { authority: Authority }) {
           action={<Button onClick={() => void grants.refetch()}>Retry</Button>}
         />
       )}
-      {grants.data?.length === 0 && (
+      {Boolean(grants.data?.ignoredEntries) && (
+        <p role="status">
+          Station ignored unsigned or invalid grants. Recreate grants you still
+          need from Settings.
+        </p>
+      )}
+      {grants.data?.data.length === 0 && (
         <Empty variant="compact" label="Grants appear here once added" />
       )}
-      {grants.data?.map((grant) => (
+      {grants.data?.data.map((grant) => (
         <section key={grant.id} className="content-stack">
           <h4>
             {grant.access === 'full-access' ? 'Full access' : 'Confined coding'}{' '}

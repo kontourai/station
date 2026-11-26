@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { expect, test } from 'vitest';
@@ -160,5 +160,31 @@ test('requires separate operator confirmation for writes to shared Git metadata'
   ).toBe(201);
   expect(await (await operator.request('/')).json()).toMatchObject({
     data: [{ highRiskGitWrites: true }],
+  });
+});
+
+test('ignores hand-added and modified grants while listing authenticated grants', async () => {
+  const { home, store, operator, enable } = mount();
+  await enable();
+  const valid = await createGrant(operator);
+  expect(valid.status).toBe(201);
+  const { data } = await readJson<{ data: { id: string } }>(valid);
+  const path = join(home, 'config', 'delegation-grants.json');
+  const [signed] = JSON.parse(readFileSync(path, 'utf8'));
+  const unsigned = {
+    ...signed.grant,
+    id: '512e80a5-884f-4983-910c-e7f93030ff7e',
+  };
+  const modified = {
+    ...signed,
+    grant: { ...signed.grant, models: ['forged-model'] },
+  };
+  writeFileSync(path, JSON.stringify([signed, unsigned, modified]));
+
+  expect(store.list().map(({ id }) => id)).toEqual([data.id]);
+  const list = await operator.request('/');
+  expect(await list.json()).toMatchObject({
+    ignoredEntries: 2,
+    data: [{ id: data.id, models: grant.models }],
   });
 });

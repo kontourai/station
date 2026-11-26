@@ -1,6 +1,17 @@
-import { randomUUID } from 'node:crypto';
-import { statSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  createHmac,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'node:crypto';
+import {
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
 import { parseConfinedNetworkSetting } from '@kontourai/station-contracts/execution-confinement';
 import {
   mutateJsonFile,
@@ -120,13 +131,45 @@ const storedGrant = delegationGrantSettingsSchema.safeExtend({
   createdAt: z.number().int().nonnegative(),
   createdBy: z.literal('operator'),
 });
-const storedGrants = z.array(storedGrant).max(256);
+const storedGrants = z.array(z.unknown()).max(256);
+const signedGrant = z.strictObject({
+  grant: storedGrant,
+  mac: z.string().regex(/^[a-f0-9]{64}$/),
+});
+
+export function delegationGrantKeyPath(stationHome: string): string {
+  return join(stationHome, 'security', 'delegation-grant.key');
+}
+
+function loadDelegationGrantKey(path: string): Buffer {
+  mkdirSync(dirname(path), { mode: 0o700, recursive: true });
+  try {
+    writeFileSync(path, randomBytes(32), { mode: 0o600, flag: 'wx' });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  const entry = lstatSync(path);
+  if (
+    !entry.isFile() ||
+    entry.size !== 32 ||
+    (process.platform !== 'win32' && (entry.mode & 0o077) !== 0)
+  ) {
+    throw new Error('Invalid delegation grant signing key.');
+  }
+  return readFileSync(path);
+}
 
 export type DelegationGrant = z.output<typeof storedGrant>;
 
 export class DelegationGrantStore {
   private readonly path: string;
-  private parsed?: { identity: string; grants: DelegationGrant[] };
+  private parsed?: {
+    identity: string;
+    grants: DelegationGrant[];
+    ignored: number;
+  };
+  private readonly key?: Buffer;
+  private ignored = 0;
   private readonly auditedExpirations = new Set<string>();
   private readonly io = { maxBytes: 256 * 1024, label: 'Delegation grants' };
 
@@ -135,6 +178,43 @@ export class DelegationGrantStore {
     private readonly logger: Logger,
   ) {
     this.path = join(stationHome, 'config', 'delegation-grants.json');
+    try {
+      this.key = loadDelegationGrantKey(delegationGrantKeyPath(stationHome));
+    } catch {
+      this.logger.error(
+        'Delegation grant signing key unavailable. Standing grants are disabled.',
+      );
+    }
+  }
+
+  ignoredEntries(): number {
+    return this.ignored;
+  }
+
+  private sign(grant: DelegationGrant): string {
+    if (!this.key) throw new Error('Delegation grant signing key unavailable.');
+    return createHmac('sha256', this.key)
+      .update(JSON.stringify(grant))
+      .digest('hex');
+  }
+
+  private authenticated(input: unknown) {
+    const entries = storedGrants.parse(input);
+    const verified: Array<z.output<typeof signedGrant>> = [];
+    for (const entry of entries) {
+      const parsed = signedGrant.safeParse(entry);
+      if (!parsed.success) continue;
+      const { grant, mac } = parsed.data;
+      if (
+        timingSafeEqual(
+          Buffer.from(mac, 'hex'),
+          Buffer.from(this.sign(grant), 'hex'),
+        )
+      ) {
+        verified.push(parsed.data);
+      }
+    }
+    return { verified, ignored: entries.length - verified.length };
   }
 
   list(): readonly DelegationGrant[] {
@@ -142,11 +222,13 @@ export class DelegationGrantStore {
   }
 
   readActive(): readonly DelegationGrant[] | undefined {
+    if (!this.key) return undefined;
     let grants: DelegationGrant[];
     try {
       const stat = statSync(this.path, { bigint: true, throwIfNoEntry: false });
       if (!stat) {
         this.parsed = undefined;
+        this.ignored = 0;
         return [];
       }
       const identity = [
@@ -158,11 +240,18 @@ export class DelegationGrantStore {
       ].join(':');
       if (this.parsed?.identity === identity) {
         grants = this.parsed.grants;
+        this.ignored = this.parsed.ignored;
       } else {
-        grants = storedGrants.parse(
+        const { verified, ignored } = this.authenticated(
           readJsonFile<unknown>(this.path, [], this.io),
         );
-        this.parsed = { identity, grants };
+        grants = verified.map(({ grant }) => grant);
+        this.ignored = ignored;
+        this.parsed = { identity, grants, ignored };
+        if (ignored > 0)
+          this.logger.warn('Ignored unauthenticated delegation grants', {
+            count: ignored,
+          });
       }
     } catch {
       this.parsed = undefined;
@@ -199,7 +288,11 @@ export class DelegationGrantStore {
     await mutateJsonFile<unknown>(
       this.path,
       [],
-      (current) => storedGrants.parse([...storedGrants.parse(current), grant]),
+      (current) =>
+        storedGrants.parse([
+          ...this.authenticated(current).verified,
+          { grant, mac: this.sign(grant) },
+        ]),
       { ...this.io, assertCurrent },
     );
     this.logger.info('Delegation grant created', { grantId: grant.id });
@@ -212,7 +305,7 @@ export class DelegationGrantStore {
       this.path,
       [],
       (current) =>
-        storedGrants.parse(current).filter((grant) => {
+        this.authenticated(current).verified.filter(({ grant }) => {
           if (grant.id !== id) return true;
           revoked = true;
           return false;

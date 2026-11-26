@@ -67,6 +67,14 @@ creation, widening, use, expiry, and revocation in the diagnostics log.
 If Station cannot read the grant file, it treats all standing grants as
 inactive and reports the outage in Settings and the diagnostics log.
 
+Station authenticates stored grants with an HMAC under a per-home signing key.
+Unsigned and invalid entries are ignored and reported in Settings. Operators
+must recreate unsigned grants from earlier preview builds. The signing key
+is private to the Station user and excluded from the confined Codex profile.
+A process running with full host access as the Station user can still read
+the key or restore previously signed state. This mechanism does not protect
+against a compromised host.
+
 Promotion requires real provider and forge evidence, negative filesystem and
 delegation tests, revocation through a live session harness, and independent
 security review. The control surface carries the cost of additional checkouts

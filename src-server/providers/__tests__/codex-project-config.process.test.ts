@@ -25,9 +25,13 @@ import type {
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfinementRefusedError } from '../../security/confinement/confinement-provider.js';
+import {
+  DelegationGrantStore,
+  delegationGrantKeyPath,
+} from '../../security/confinement/delegation-grants.js';
 import {
   canonicalPath,
   createSeatbeltConfinementProvider,
@@ -35,6 +39,7 @@ import {
   SANDBOX_EXEC,
 } from '../../security/confinement/seatbelt.js';
 import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   confinedClaudeSpawn,
   prepareConfinedClaudeLaunch,
@@ -88,6 +93,13 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
       const worktree = join(root, 'child');
       const other = join(root, 'other');
       const codexHome = join(root, 'codex-home');
+      const stationHome = join(root, 'station-home');
+      new DelegationGrantStore(
+        stationHome,
+        createLogger({ name: 'delegated-key-test', level: 'error' }),
+      );
+      const signingKey = delegationGrantKeyPath(stationHome);
+      const keyBefore = readFileSync(signingKey);
       mkdirSync(repo);
       mkdirSync(codexHome);
       writeFileSync(join(repo, 'base.txt'), 'base');
@@ -137,6 +149,13 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
         GIT_COMMITTER_NAME: 'probe',
         GIT_COMMITTER_EMAIL: 'probe@example.invalid',
       };
+      vi.stubEnv('STATION_HOME', stationHome);
+      let profile: string[];
+      try {
+        profile = codexConfinementConfigArgs('workspace', plan);
+      } finally {
+        vi.unstubAllEnvs();
+      }
       const run = (args: string[]) =>
         spawnSync(
           codexBinary!,
@@ -146,7 +165,7 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
             worktree,
             '-P',
             STATION_CODEX_PERMISSION_PROFILE,
-            ...codexConfinementConfigArgs('workspace', plan),
+            ...profile,
             '--',
             ...args,
           ],
@@ -158,6 +177,13 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
             windowsHide: true,
           },
         );
+
+      expect(run(['cat', signingKey]).status).not.toBe(0);
+      expect(
+        run(['sh', '-ec', 'printf overwrite > "$1"', 'key-probe', signingKey])
+          .status,
+      ).not.toBe(0);
+      expect(readFileSync(signingKey)).toEqual(keyBefore);
 
       writeFileSync(join(worktree, 'child.txt'), 'child');
       const commit = run([
