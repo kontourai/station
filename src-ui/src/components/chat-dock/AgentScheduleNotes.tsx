@@ -52,6 +52,7 @@ export function AgentScheduleNotes({
     loaded,
     cancelWakeUp,
     approveWakeUp,
+    wakeUpApprovalOutcome,
     declineWakeUp,
     declineProposal,
     approveProposal,
@@ -133,6 +134,7 @@ export function AgentScheduleNotes({
   return (
     <>
       {(confirmation ||
+        wakeUpApprovalOutcome ||
         visibleWakeUps.length > 0 ||
         proposals.list.length > 0 ||
         automationProposals.list.length > 0) && (
@@ -235,6 +237,13 @@ export function AgentScheduleNotes({
               />
             </PresenceRow>
           ))}
+          {wakeUpApprovalOutcome ? (
+            <li>
+              <div className="agent-schedule-card" role="alert">
+                Check-back approval closed. {wakeUpApprovalOutcome}
+              </div>
+            </li>
+          ) : null}
           {visibleWakeUps.map(({ item, key, phase }) => (
             <PresenceRow
               key={key}
@@ -256,6 +265,7 @@ export function AgentScheduleNotes({
                   }
                   failed={
                     (approveWakeUp.isError &&
+                      !wakeUpApprovalOutcome &&
                       approveWakeUp.variables === item.id) ||
                     (declineWakeUp.isError &&
                       declineWakeUp.variables === item.id)
@@ -341,12 +351,12 @@ function CheckBackApprovalCard({
   return (
     <section
       className="agent-schedule-card"
-      aria-label={`Check back at ${at}?`}
+      aria-label={`Approve check-back by ${at}`}
     >
       <p className="agent-schedule-card__title">
         <TimeGlyph className="agent-schedule-notes__glyph" />
         <strong>
-          Check back at <time dateTime={wakeUp.dueAt}>{at}</time>?
+          Approve check-back by <time dateTime={wakeUp.dueAt}>{at}</time>
         </strong>
       </p>
       <section

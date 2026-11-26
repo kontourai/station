@@ -135,10 +135,13 @@ export function useAgentSchedule(
       ),
     onSettled: settle,
   });
+  const scheduleScope = JSON.stringify(key);
   /** A check-back an unconfined session's agent asked for. */
   const approveWakeUp = useMutation({
+    mutationKey: [...key, 'approve-wake-up'],
+    onMutate: () => scheduleScope,
     mutationFn: async (wakeUpId: string) =>
-      readData(
+      readEnvelopeOrThrow(
         await mutateJson(
           `${base}/wake-ups/${encodeURIComponent(wakeUpId)}/approve`,
           'POST',
@@ -189,10 +192,9 @@ export function useAgentSchedule(
    * #4830: a person answers an agent's Automation proposal. Confirm creates
    * it disabled (a source) or observing (a rule) unless `enable` is set.
    */
-  const confirmationScope = JSON.stringify(key);
   const confirmAutomationProposal = useMutation({
     mutationKey: [...key, 'confirm-automation'],
-    onMutate: () => confirmationScope,
+    onMutate: () => scheduleScope,
     mutationFn: async (input: {
       id: string;
       kind: AutomationProposal['kind'];
@@ -263,7 +265,7 @@ export function useAgentSchedule(
     },
   });
   const currentConfirmation =
-    enabled && confirmAutomationProposal.context === confirmationScope
+    enabled && confirmAutomationProposal.context === scheduleScope
       ? confirmAutomationProposal
       : undefined;
   return {
@@ -272,6 +274,13 @@ export function useAgentSchedule(
     loaded: query.isSuccess,
     cancelWakeUp,
     approveWakeUp,
+    wakeUpApprovalOutcome:
+      enabled &&
+      approveWakeUp.context === scheduleScope &&
+      approveWakeUp.error instanceof StationHttpError &&
+      approveWakeUp.error.code === 'wake_up_settled'
+        ? approveWakeUp.error.message
+        : undefined,
     declineWakeUp,
     declineProposal,
     approveProposal,

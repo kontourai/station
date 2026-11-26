@@ -1,0 +1,7 @@
+{
+  "revision": "d757f7e74ee54b3405962b92ef5f3c9b2d722f0b",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Verified the approval card states the due time, a late approval carries the typed 409 outcome into the chat, and the existing due-time and person-only authority rules remain accurate.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

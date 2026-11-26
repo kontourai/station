@@ -915,8 +915,9 @@ canceling in a loop. Settled check-backs older than an hour are pruned.
 
 A caller that is not bound, in a Session that runs unconfined (`host`), is
 not refused: the check-back is recorded `needs_approval` and the result says
-so. The person sees a card above the composer ("Check back at 4:12 PM?", with
-the agent's whole note) and approves or declines it with one click; the
+so. The person sees a card above the composer ("Approve check-back by 4:12 PM",
+with the agent's whole note) and approves or declines it with one click. If they
+try to approve it after the deadline, Station tells them the time has passed. The
 chat's Automations section lists it as "Needs your approval". Only a person may
 answer it, under the same gate as a job proposal: a request that may be an
 agent's is refused, and one from a person who may not send to the
