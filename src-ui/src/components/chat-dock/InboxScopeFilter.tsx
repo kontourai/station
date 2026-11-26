@@ -33,15 +33,17 @@ const pullRequestFilters = [
 type PullRequestFilter = LinkedPullRequestFilter | 'priority' | '';
 
 export function InboxPullRequestFilter({
+  className,
   value,
   onChange,
 }: {
+  className?: string;
   value: PullRequestFilter;
   onChange: (value: PullRequestFilter) => void;
 }) {
   return (
     <select
-      className="choice-trigger"
+      className={className ? `choice-trigger ${className}` : 'choice-trigger'}
       aria-label="Pull request status"
       value={value}
       onChange={(event) => {
@@ -257,12 +259,6 @@ export function InboxScopeFilter({
           ))}
         </select>
       </label>
-      {scope.showPullRequestFilter && (
-        <InboxPullRequestFilter
-          value={scope.pullRequestFilter}
-          onChange={scope.setPullRequestFilter}
-        />
-      )}
       {inline ? (
         scope.hiddenAttention > 0 ? (
           <button

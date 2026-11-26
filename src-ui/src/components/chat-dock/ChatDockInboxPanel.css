@@ -280,6 +280,14 @@
   padding: var(--k-space-3);
   border-bottom: 1px solid var(--k-line);
 }
+.chat-dock-inbox__toolbar:has(> .chat-dock-inbox__pr-filter) {
+  flex-wrap: wrap;
+}
+.chat-dock-inbox__toolbar > .chat-dock-inbox__pr-filter {
+  flex: 1 0 100%;
+  min-block-size: var(--touch-target-min, 0px);
+}
+
 .chat-dock-inbox__group.chat-dock-inbox__group--shelf-start {
   margin-block-start: auto;
 }

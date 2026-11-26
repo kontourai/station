@@ -1303,8 +1303,12 @@ function TaskHeaderPullRequests({
 }) {
   const { data } = useTaskPullRequestFactsQuery(projectSlug);
   const entry = data?.tasks[task.id];
-  return entry?.taskCreatedAt === task.createdAt ? (
-    <TaskPullRequestRollup entry={entry} projectId={projectId} />
+  return entry?.taskCreatedAt === task.createdAt &&
+    entry.linkedPullRequests !== undefined &&
+    (entry.pullRequests.length > 0 || entry.linkedPullRequests.length > 0) ? (
+    <div className="task-room-header__pr-rollup">
+      <TaskPullRequestRollup entry={entry} projectId={projectId} />
+    </div>
   ) : null;
 }
 
