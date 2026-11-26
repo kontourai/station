@@ -688,6 +688,8 @@ test('the docked start composer defaults to the bound Project, never the foreign
   await act(async () => {});
   expect(screen.queryByRole('button', { name: /^New chats:/ })).toBeNull();
   expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  // The Chats list mounts lazily; wait for it rather than racing it.
+  await screen.findByRole('complementary', { name: 'Chats' });
   clickDockedNewChat();
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
