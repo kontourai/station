@@ -1,0 +1,277 @@
+{
+  "revision": "d4c1dc4aa1ed351c4bcfa01eae16277da6c364cc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced the scoped delegation path from grant storage and selection through runtime queue provisioning, turn admission, and the Codex permission rules for worktree metadata and Git data.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked ordinary and prepared-turn admission after standing-grant loss against the OrchestrationService and its session harness. An existing Session refuses the turn and a fresh start resolves current policy.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the configuration journey against the operator route, corrupt-file response, Settings error rendering, Project worktree-base policy and grant-loss admission.","inputs":["docs/reference/config.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the source delta against the held approval request shown in this capture. Standing-grant loss gates future turns only on grant-bound children. The request inspector and its recorded approval action are unchanged.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the source delta against the held approval request shown in this recording. Standing-grant loss gates future turns only on grant-bound children. The request inspector and its recorded approval action are unchanged.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed grant loss at ordinary and prepared turn admission. The changed branch only applies to Sessions with a standing delegation grant and preserves documented approval request inspection, Session read projections, and ordinary turn dispatch.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Traced the local standing-grant launch through one-level eligibility, Project worktree base selection, queued provisioning, and cleanup before a provider start. Existing remote, delegated continuation, claim delivery, and ungranted tool paths follow their prior contracts.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Checked the runtime composition change. Task provisioning, Session worktree finalization and local granted delegation share the worktree service. The changed wiring is limited to Git worktree lifecycle.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"The scoped delta injects the existing runtime worktree service into the local delegation dependency. Sign-in, step-up review, authentication middleware and their retained captures are unchanged by this delta. Reviewed the captures for the affected source dependency without recapturing.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Reviewed canonical repository queue admission and named unresolved-base refusal before checkout creation. The checkout pinned commit, repository config validation and registered cleanup target still own the documented boundaries.","inputs":["src-server/services/projects/worktree-provisioning-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed canonical repository queue admission and named unresolved-base refusal before checkout creation. The checkout pinned commit, repository config validation and registered cleanup target still own the documented boundaries.","inputs":["src-server/services/projects/worktree-provisioning-service.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Reviewed the real Git missing-ref and non-commit-ref cases. Both assert that refusal precedes any branch or worktree creation. The test checks the operator-facing base-failure reason.","inputs":["src-server/services/projects/__tests__/worktree-provisioning-service.test.ts"]},
+
+    {"path":"docs/design/automations.md","note":"The standing delegation subsection now explains refusal after grant loss. The changed subsection does not modify the unattended automation approval contract.","inputs":["docs/design/approval-posture-server-ordered.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The delegation grant subsection now describes Project base selection, grant-loss turn refusal and the Settings error for unreadable storage. The general configuration source and settings architecture descriptions are unchanged.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"The delegation grant subsection now describes Project base selection, grant-loss turn refusal and the Settings error for unreadable storage. The general configuration source and settings architecture descriptions are unchanged.","inputs":["docs/reference/config.md"]}
+  ]
+}
