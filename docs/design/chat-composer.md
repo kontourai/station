@@ -1081,6 +1081,9 @@ without the directory retain the explicitly labelled loaded-window map.
   clears a followed `#station-message=` link, which would otherwise hold the
   transcript on its message. Scroll to bottom returns to
   the latest; if focus was on it or the steps, focus moves to the transcript.
+  This explicit request overrides earlier momentum and row-anchor restorations.
+  Fresh wheel, touch, scrollbar or keyboard input interrupts its short glide;
+  Reduced motion returns to the latest immediately.
 
 History replay has its own timeline and shows no rail.
 

@@ -805,6 +805,13 @@ async function mockTaskFirstHome(
       await route.fulfill(json([]));
       return;
     }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/mobile-devices/agent-reveals'
+    ) {
+      await route.fulfill({ status: 404, json: { success: false } });
+      return;
+    }
     if (await fulfillStationShellRead(route)) return;
     await rejectUnexpectedFixtureRequest(route);
   });

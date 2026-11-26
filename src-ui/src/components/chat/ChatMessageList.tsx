@@ -1019,6 +1019,7 @@ function ChatMessageListComponent({
           ),
       );
       if (!row) return;
+      scrollAnimationRef.current?.cancel();
       isUserScrolledUpRef.current = true;
       setIsUserScrolledUp(true);
       setApprovalRevealRowId(row.id);
@@ -1055,6 +1056,7 @@ function ChatMessageListComponent({
       )
         return;
       event.preventDefault();
+      scrollAnimationRef.current?.cancel();
       isUserScrolledUpRef.current = true;
       visibleAnchorRef.current = request.anchor ?? null;
       setIsUserScrolledUp(true);
@@ -1098,6 +1100,7 @@ function ChatMessageListComponent({
     // The DOM target can only exist after the projected message count changes.
     void messages.length;
     if (!requestedMessageRowId) return;
+    scrollAnimationRef.current?.cancel();
     // Disable tail-follow before the child virtualizer receives the anchor.
     // Otherwise its normal new-message policy could undo the reveal.
     isUserScrolledUpRef.current = true;
@@ -1595,18 +1598,7 @@ function ChatMessageListComponent({
       Math.abs(target.clientHeight - previousClientHeight) >=
         RESIZE_REANCHOR_THRESHOLD_PX;
     lastClientHeightRef.current = target.clientHeight;
-    // Every frame of a "Scroll to bottom" glide is our own write, and reader
-    // input cancels the glide before its own scroll arrives. Momentum the
-    // reader started before tapping emits no input event: a scroll that moves
-    // against the glide is theirs and ends it.
-    if (scrollAnimationRef.current) {
-      // (Content that shrank under the glide clamps it to the new end; that
-      // reads as reaching the end below, which pins, the glide's own goal.)
-      const glide = lastProgrammaticScrollRef.current;
-      if (!glide || target.scrollTop >= glide.top - PROGRAMMATIC_SCROLL_ECHO_PX)
-        return;
-      scrollAnimationRef.current.cancel();
-    }
+    if (scrollAnimationRef.current) return;
     // A dock/keyboard resize can dispatch `scroll` before ResizeObserver gets
     // its turn. Preserve the reader's prior intent during that event: an
     // already-pinned transcript stays pinned, while an intentionally scrolled
