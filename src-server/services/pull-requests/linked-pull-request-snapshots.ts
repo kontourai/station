@@ -22,7 +22,9 @@ function linkedSnapshotFromStatus(
           ? { state: 'armed' }
           : pullRequest.landing === 'not-queued'
             ? { state: 'not-queued' }
-            : undefined;
+            : pullRequest.provider === 'gitlab'
+              ? { state: 'not-applicable' }
+              : undefined;
   return {
     ...pullRequest.snapshot,
     title: pullRequest.title,
@@ -33,6 +35,9 @@ function linkedSnapshotFromStatus(
     isDraft: pullRequest.draft,
     mergeability: pullRequest.mergeability,
     reviewDecision: pullRequest.reviewDecision,
+    ...(pullRequest.mergeReadiness === 'clean'
+      ? { reviewGateSatisfied: true }
+      : {}),
     ...(landing ? { landing } : {}),
   };
 }
@@ -79,22 +84,20 @@ export class LinkedPullRequestSnapshots {
       }
       this.entries.set(key, { identity, requestedAt: now });
     }
+    const observedTime = (snapshot?: LinkedPullRequestSnapshot) =>
+      Date.parse(snapshot?.observedAt ?? '');
+    const isFresh = (snapshot?: LinkedPullRequestSnapshot) => {
+      const age = now - observedTime(snapshot);
+      return age >= 0 && age < FRESH_MILLISECONDS;
+    };
     const feedback = this.feedback(identity);
     const cached = entry?.snapshot;
-    // Keep the richer observation for the same head, as long as the narrow
-    // read did not see a state transition.
     if (
-      feedback &&
-      (!cached ||
-        Date.parse(feedback.observedAt ?? '') >=
-          Date.parse(cached.observedAt ?? '') ||
-        (feedback.head === cached.head &&
-          feedback.pullRequestState === cached.pullRequestState &&
-          (entry?.readAt ?? 0) - Date.parse(feedback.observedAt ?? '') <
-            KEEP_MILLISECONDS))
+      isFresh(feedback) &&
+      (!isFresh(cached) || observedTime(feedback) >= observedTime(cached))
     )
       return feedback;
-    return cached;
+    return isFresh(cached) ? cached : undefined;
   }
 
   tick(input: { now: number; signal: AbortSignal }): void {

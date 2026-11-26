@@ -228,7 +228,7 @@ export function ProjectTasksSection({
     tasksSettled: tasksData !== undefined && !taskReadFailed,
     agents: agentSummaries,
     // Only the board reads the forge; the list claims nothing about PRs.
-    readPullRequests: presentation === 'board' || showPullRequestRollup,
+    readPullRequests: presentation === 'board',
   });
   const tasksById = new Map(sortedTasks.map((task) => [task.id, task]));
   const [pendingTaskIds, setPendingTaskIds] = useState<ReadonlySet<string>>(

@@ -1,9 +1,10 @@
 /**
- * The one GitHub read pull request agent feedback makes per pull request:
- * a single `gh api graphql --hostname <host>` for state, head and base,
+ * The core GitHub pull request feedback read:
+ * `gh api graphql --hostname <host>` for state, head and base,
  * mergeability, the head commit's checks, review threads (with their
  * resolved and outdated state, which the REST review-comment read cannot
- * give) and each reviewer's latest review.
+ * give) and each reviewer's latest review. A separate optional read adds
+ * merge queue facts when the host supports them.
  *
  * gh runs through the provider's own transport, so it starts in an empty
  * directory and never reads a checkout (#2363). Strings are passed with
@@ -34,12 +35,6 @@ export const GITHUB_FEEDBACK_QUERY = `query($owner: String!, $name: String!, $nu
       additions
       deletions
       changedFiles
-      isInMergeQueue
-      mergeQueueEntry { position }
-      autoMergeRequest { enabledAt }
-      queueRemovals: timelineItems(last: 1, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
-        nodes { ... on RemovedFromMergeQueueEvent { id createdAt reason } }
-      }
       url
       state
       merged
@@ -105,6 +100,21 @@ export const GITHUB_FEEDBACK_QUERY = `query($owner: String!, $name: String!, $nu
   }
 }`;
 
+const GITHUB_FEEDBACK_LANDING_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      headRefOid
+      mergeStateStatus
+      isInMergeQueue
+      mergeQueueEntry { position }
+      autoMergeRequest { enabledAt }
+      queueRemovals: timelineItems(last: 1, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+        nodes { ... on RemovedFromMergeQueueEvent { id createdAt reason } }
+      }
+    }
+  }
+}`;
+
 const NUMBER = /^[1-9]\d{0,9}$/;
 /**
  * Forge text is cut once gh's answer is parsed, so the stored observation
@@ -126,6 +136,7 @@ const HOST = /^[a-z0-9.-]{1,253}(?::\d{1,5})?$/;
 /** The gh argv for one read; refuses an identity that is not plainly one. */
 function githubFeedbackArgs(
   identity: Pick<PullRequestLinkIdentity, 'host' | 'repository' | 'ref'>,
+  query = GITHUB_FEEDBACK_QUERY,
 ): string[] {
   const host = identity.host.toLowerCase();
   if (
@@ -141,7 +152,7 @@ function githubFeedbackArgs(
     '--hostname',
     host,
     '-f',
-    `query=${GITHUB_FEEDBACK_QUERY}`,
+    `query=${query}`,
     '-f',
     `owner=${identity.repository.owner}`,
     '-f',
@@ -505,6 +516,28 @@ export async function readGitHubFeedbackObservation(
         cause: 'not-found',
         reason: 'GitHub did not return this pull request.',
       };
+    if (observation.state === 'OPEN' && observation.snapshot) {
+      try {
+        const landingAnswer = await gh(
+          githubFeedbackArgs(identity, GITHUB_FEEDBACK_LANDING_QUERY),
+        );
+        const parsed = JSON.parse(landingAnswer.stdout);
+        const pullRequest = parsed?.data?.repository?.pullRequest;
+        if (
+          !parsed?.errors?.length &&
+          pullRequest?.headRefOid === observation.headSha
+        ) {
+          observation.snapshot.landing = snapshotLanding(
+            pullRequest,
+            observation.state,
+          );
+          if (pullRequest.mergeStateStatus === 'CLEAN')
+            observation.snapshot.reviewGateSatisfied = true;
+        }
+      } catch {
+        // Older Enterprise schemas may not support merge queues.
+      }
+    }
     return { state: 'observed', observation };
   } catch {
     return {

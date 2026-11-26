@@ -1253,6 +1253,7 @@ export class PullRequestFeedbackDelivery {
     }
     const landing = observation.snapshot?.landing;
     if (
+      claim.settings.fixFailingChecks &&
       landing?.state === 'removed' &&
       Date.parse(landing.at) >= Date.parse(claim.enabledAt)
     ) {

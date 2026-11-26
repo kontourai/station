@@ -2109,7 +2109,10 @@ draft, checks, review decision, mergeability, updated, closed and merged
 times, diff counts and landing state. Checks can be passing, failing,
 pending or awaiting approval. Queue entries can include a position and
 removals have a forge event ID, a timestamp and an optional reason. A
-missing fact is unknown. Unsupported and unavailable observations carry a
+removal matches the failing filter for up to 15 minutes unless checks pass.
+A forge can explicitly report that review requirements are satisfied even
+when it omits a review decision. GitLab has no merge queue status here.
+A missing fact is unknown. Unsupported and unavailable observations carry a
 reason. `PullRequest.headSha` and `baseSha` carry exact revisions when the
 provider supplies them.
 

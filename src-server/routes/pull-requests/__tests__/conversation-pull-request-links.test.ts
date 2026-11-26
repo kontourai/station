@@ -11,6 +11,7 @@ import recordedFixture from '../../../services/pull-requests/__tests__/fixtures/
 };
 import { ConversationPullRequestLinkStore } from '../../../services/pull-requests/conversation-pull-request-link-store.js';
 import { normalizeGitHubFeedbackObservation } from '../../../services/pull-requests/github-feedback-observation.js';
+import { LinkedPullRequestSnapshots } from '../../../services/pull-requests/linked-pull-request-snapshots.js';
 import { createConversationPullRequestLinkRoutes } from '../conversation-pull-request-links.js';
 
 const roots: string[] = [];
@@ -31,7 +32,9 @@ function fixture(
     conversationId: string,
     observations: readonly unknown[],
   ) => void,
-  snapshots?: ReadonlyMap<string, LinkedPullRequestSnapshot>,
+  snapshots?:
+    | ReadonlyMap<string, LinkedPullRequestSnapshot>
+    | LinkedPullRequestSnapshots,
 ) {
   const root = mkdtempSync(join(tmpdir(), 'station-pr-link-routes-'));
   roots.push(root);
@@ -64,7 +67,10 @@ function fixture(
         canRead: () => authority.read,
         operator: () => authority.actor,
         declared,
-        snapshot: (link) => snapshots?.get(link.ref),
+        snapshot: (link) =>
+          snapshots instanceof LinkedPullRequestSnapshots
+            ? snapshots.get(link)
+            : snapshots?.get(link.ref),
         ...(lineageSessionIds ? { lineageSessionIds } : {}),
         ...(observed ? { observed } : {}),
       },
@@ -416,4 +422,44 @@ test('projects cached GitHub observations without another forge read and preserv
   expect(data.links[1]?.status).not.toHaveProperty('checks');
   expect(data.links[1]?.status).not.toHaveProperty('reviewDecision');
   expect(x.provider.getPullRequestByIdentity).not.toHaveBeenCalled();
+});
+
+test('refresh uses a live provider read once its feedback snapshot expires', async () => {
+  const observedAt = '2026-11-25T15:00:00Z';
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse(observedAt));
+  try {
+    const snapshots = new LinkedPullRequestSnapshots(
+      () => [],
+      () => true,
+      () => ({ title: 'Old open state', pullRequestState: 'OPEN', observedAt }),
+    );
+    const observed = vi.fn();
+    const x = fixture(
+      async () => [{ ...identity, source: 'task-declared' }],
+      undefined,
+      observed,
+      snapshots,
+    );
+    x.provider.getPullRequestByIdentity.mockResolvedValue({
+      available: true,
+      data: { ...identity, title: 'Merged change', state: 'MERGED' },
+    });
+    expect((await x.app.request('/conversation-1')).status).toBe(200);
+    expect(x.provider.getPullRequestByIdentity).not.toHaveBeenCalled();
+    clock.mockReturnValue(Date.parse(observedAt) + 120_000);
+    const response = await x.app.request('/conversation-1');
+    expect(response.status).toBe(200);
+    expect(x.provider.getPullRequestByIdentity).toHaveBeenCalledOnce();
+    expect(observed).toHaveBeenLastCalledWith(
+      expect.any(Request),
+      'conversation-1',
+      [
+        expect.objectContaining({
+          status: expect.objectContaining({ pullRequestState: 'MERGED' }),
+        }),
+      ],
+    );
+  } finally {
+    clock.mockRestore();
+  }
 });

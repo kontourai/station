@@ -13240,53 +13240,74 @@ export function configureRuntimeRoutes(
             )
             .map((item) => item.id),
         ) ?? new Map(),
-      (request, item) => {
-        if (
-          item.source !== 'runtime' ||
-          !item.projectSlug ||
-          item.environmentId ||
-          !pullRequestFeedback?.linkedSnapshotsEnabled() ||
-          !canReadConversation(request, item.id)
-        )
-          return undefined;
-        const currentId =
-          context.orchestrationService.currentConversationSessionId(item.id);
-        const session =
-          context.orchestrationEventStore?.readSessionByThread(currentId);
-        if (!session?.cwd) return undefined;
-        try {
-          const project = context.projectService.getProject(item.projectSlug);
-          const projectRoot = project.workingDirectory
-            ? resolve(expandTilde(project.workingDirectory))
-            : undefined;
-          if (!projectRoot) return undefined;
-          const metadata =
-            context.orchestrationService.firstStartedMetadataOfThread(
-              currentId,
-            );
-          const worktree: unknown =
-            metadata?.worktree ?? metadata?.workspaceIsolation;
-          const base =
-            worktree &&
-            typeof worktree === 'object' &&
-            'mode' in worktree &&
-            worktree.mode === 'worktree' &&
-            'path' in worktree &&
-            worktree.path === session.cwd &&
-            'baseCommit' in worktree &&
-            typeof worktree.baseCommit === 'string' &&
-            'baseRef' in worktree &&
-            typeof worktree.baseRef === 'string'
-              ? { ref: worktree.baseRef, commit: worktree.baseCommit }
-              : undefined;
-          return sessionDiffStatSnapshots.get(currentId, {
-            cwd: session.cwd,
-            projectRoot,
-            base,
-          });
-        } catch {
-          return undefined;
-        }
+      (request, items) => {
+        if (!pullRequestFeedback?.linkedSnapshotsEnabled()) return new Map();
+        const roots = new Map<string, string | undefined>();
+        const authority = conversationReadAuthorityForRequest(request);
+        const observe = (item: (typeof items)[number]) => {
+          if (
+            item.source !== 'runtime' ||
+            !item.projectSlug ||
+            item.environmentId ||
+            !context.orchestrationService.canUserReadConversation(
+              item.id,
+              authority,
+            )
+          )
+            return undefined;
+          const currentId =
+            context.orchestrationService.currentConversationSessionId(item.id);
+          const session =
+            context.orchestrationEventStore?.readSessionByThread(currentId);
+          if (!session?.cwd) return undefined;
+          try {
+            if (!roots.has(item.projectSlug)) {
+              roots.set(item.projectSlug, undefined);
+              const project = context.projectService.getProject(
+                item.projectSlug,
+              );
+              if (project.workingDirectory)
+                roots.set(
+                  item.projectSlug,
+                  resolve(expandTilde(project.workingDirectory)),
+                );
+            }
+            const projectRoot = roots.get(item.projectSlug);
+            if (!projectRoot) return undefined;
+            const metadata =
+              context.orchestrationService.firstStartedMetadataOfThread(
+                currentId,
+              );
+            const worktree: unknown =
+              metadata?.worktree ?? metadata?.workspaceIsolation;
+            const base =
+              worktree &&
+              typeof worktree === 'object' &&
+              'mode' in worktree &&
+              worktree.mode === 'worktree' &&
+              'path' in worktree &&
+              worktree.path === session.cwd &&
+              'baseCommit' in worktree &&
+              typeof worktree.baseCommit === 'string' &&
+              'baseRef' in worktree &&
+              typeof worktree.baseRef === 'string'
+                ? { ref: worktree.baseRef, commit: worktree.baseCommit }
+                : undefined;
+            return sessionDiffStatSnapshots.get(currentId, {
+              cwd: session.cwd,
+              projectRoot,
+              base,
+            });
+          } catch {
+            return undefined;
+          }
+        };
+        return new Map(
+          items.flatMap((item) => {
+            const workspace = observe(item);
+            return workspace ? [[item.id, workspace] as const] : [];
+          }),
+        );
       },
     ),
   );

@@ -1301,7 +1301,9 @@ function TaskHeaderPullRequests({
   projectSlug: string;
   projectId: string;
 }) {
-  const { data } = useTaskPullRequestFactsQuery(projectSlug);
+  const { data } = useTaskPullRequestFactsQuery(projectSlug, {
+    taskId: task.id,
+  });
   const entry = data?.tasks[task.id];
   return entry?.taskCreatedAt === task.createdAt &&
     entry.linkedPullRequests !== undefined &&

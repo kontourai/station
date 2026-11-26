@@ -25,6 +25,8 @@ export interface LinkedPullRequestSnapshot {
   isDraft?: boolean;
   checks?: 'passing' | 'failing' | 'pending' | 'awaiting-approval';
   reviewDecision?: 'approved' | 'changes_requested' | 'review_required';
+  /** The forge explicitly reports that its merge requirements are satisfied. */
+  reviewGateSatisfied?: true;
   mergeability?: 'mergeable' | 'conflicting' | 'unknown';
   mergedAt?: string;
   closedAt?: string;
@@ -33,7 +35,7 @@ export interface LinkedPullRequestSnapshot {
   deletions?: number;
   changedFiles?: number;
   landing?:
-    | { state: 'armed' | 'merged' | 'not-queued' }
+    | { state: 'armed' | 'merged' | 'not-queued' | 'not-applicable' }
     | { state: 'queued'; position?: number }
     | { state: 'removed'; id: string; at: string; reason?: string };
 }
@@ -61,22 +63,33 @@ export type LinkedPullRequestFilter =
 export function linkedPullRequestMatches(
   snapshot: LinkedPullRequestSnapshot,
   filter: LinkedPullRequestFilter,
+  now = Date.now(),
 ): boolean {
   if (filter === 'merged') return snapshot.pullRequestState === 'MERGED';
   if (snapshot.pullRequestState !== 'OPEN') return false;
-  if (filter === 'failing')
+  if (filter === 'failing') {
+    const removalAge =
+      snapshot.landing?.state === 'removed'
+        ? now - Date.parse(snapshot.landing.at)
+        : Number.NaN;
     return (
       snapshot.checks === 'failing' ||
       snapshot.mergeability === 'conflicting' ||
-      snapshot.landing?.state === 'removed'
+      (snapshot.checks !== 'passing' &&
+        removalAge >= 0 &&
+        removalAge < 15 * 60_000)
     );
+  }
   if (filter === 'awaiting-review')
     return snapshot.reviewDecision === 'review_required';
   return (
     snapshot.isDraft === false &&
     snapshot.checks === 'passing' &&
-    snapshot.reviewDecision === 'approved' &&
+    (snapshot.reviewDecision === 'approved' ||
+      (snapshot.reviewDecision === undefined &&
+        snapshot.reviewGateSatisfied === true)) &&
     snapshot.mergeability === 'mergeable' &&
-    snapshot.landing?.state === 'not-queued'
+    (snapshot.landing?.state === 'not-queued' ||
+      snapshot.landing?.state === 'not-applicable')
   );
 }

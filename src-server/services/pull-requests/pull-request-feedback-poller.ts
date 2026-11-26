@@ -98,14 +98,17 @@ export interface PullRequestFeedbackPollSummary {
   read: number;
 }
 
-/** What a read shows, minus when it was read: equal digests mean nothing changed. */
+/** Feedback inputs that can keep a claim active. Display-only changes do not. */
 function observationDigest(observation: PullRequestFeedbackObservation) {
   const { observedAt: _observedAt, snapshot, ...rest } = observation;
   return createHash('sha256')
     .update(
       JSON.stringify({
         ...rest,
-        snapshot: snapshot && { ...snapshot, observedAt: undefined },
+        queueRemovalId:
+          snapshot?.landing?.state === 'removed'
+            ? snapshot.landing.id
+            : undefined,
       }),
     )
     .digest('hex');

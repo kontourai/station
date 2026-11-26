@@ -13,6 +13,7 @@ interface Workspace {
 
 const LIMIT = 200;
 const TTL = 120_000;
+const RETAIN_FOR = 15 * 60_000;
 const TIMEOUT = 2_500;
 
 async function observe(
@@ -84,11 +85,17 @@ async function observe(
 export class SessionDiffStatSnapshots {
   private readonly entries = new Map<
     string,
-    { workspace: Workspace; at?: number; facts?: ObservedSessionWorkspace }
+    {
+      workspace: Workspace;
+      requestedAt: number;
+      at?: number;
+      facts?: ObservedSessionWorkspace;
+    }
   >();
   private refreshing = false;
 
   get(id: string, workspace: Workspace): ObservedSessionWorkspace | undefined {
+    const now = Date.now();
     const prior = this.entries.get(id);
     const entry =
       prior &&
@@ -96,22 +103,24 @@ export class SessionDiffStatSnapshots {
       prior.workspace.projectRoot === workspace.projectRoot &&
       prior.workspace.base?.commit === workspace.base?.commit
         ? prior
-        : { workspace };
+        : { workspace, requestedAt: now };
+    entry.requestedAt = now;
     this.entries.delete(id);
     this.entries.set(id, entry);
     if (this.entries.size > LIMIT) {
       const oldest = this.entries.keys().next();
       if (!oldest.done) this.entries.delete(oldest.value);
     }
-    return entry.at && Date.now() - entry.at < TTL * 3
-      ? entry.facts
-      : undefined;
+    return entry.at && now - entry.at < TTL * 3 ? entry.facts : undefined;
   }
 
   async refresh(now: number, allowed: () => boolean): Promise<void> {
     if (this.refreshing || !allowed()) return;
     this.refreshing = true;
     try {
+      for (const [id, entry] of this.entries) {
+        if (now - entry.requestedAt >= RETAIN_FOR) this.entries.delete(id);
+      }
       const due = [...this.entries.values()]
         .filter((entry) => now - (entry.at ?? 0) >= TTL)
         .sort((a, b) => (a.at ?? 0) - (b.at ?? 0))

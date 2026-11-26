@@ -252,6 +252,10 @@ describe('pull request agent feedback reaches the owning conversation', () => {
       t.observe(observation!);
     };
     observeRemoval('RFMQE_first', '2026-11-10T12:01:00.000Z');
+    t.claim({ ...BOTH, fixFailingChecks: false, addressReviewComments: false });
+    await delivery.deliver(CONVERSATION);
+    expect(t.entries()).toHaveLength(0);
+    t.claim();
     await t.deliverPlaced(delivery);
     observeRemoval('RFMQE_first', '2026-11-10T12:01:00.000Z');
     await delivery.deliver(CONVERSATION);

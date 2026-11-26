@@ -902,7 +902,13 @@ export function createTaskRoutes(
     const service = serviceForRequest(c.req.raw);
     if (!service) return c.json({ success: true, data: empty });
     const authority = options.readAuthorityForRequest?.(c.req.raw);
-    const tasks = service.listTasks(projectId);
+    const taskId = c.req.query('taskId')?.trim();
+    const task = taskId ? service.readTask(taskId) : undefined;
+    const tasks = taskId
+      ? task?.projectId === projectId
+        ? [task]
+        : []
+      : service.listTasks(projectId);
     const data = await readTaskPullRequestFacts({
       tasks,
       listKept: (taskIds) =>

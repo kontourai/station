@@ -2623,7 +2623,7 @@ describe('Task routes', () => {
         isRequestPrincipalCurrent: principalCurrent,
         pullRequestProviders: () => [provider as never],
       });
-      return { app, task, readTaskForOpen };
+      return { app, task, readTaskForOpen, service };
     }
 
     test('answers the readable kept pull requests, and is never read as a Task id', async () => {
@@ -2649,6 +2649,38 @@ describe('Task routes', () => {
       });
       expect(body.data.tasks[task.id].pullRequests).toHaveLength(1);
       expect(readTaskForOpen).not.toHaveBeenCalled();
+    });
+
+    test('a Task header reads just its own kept pull requests', async () => {
+      const { app, task, service } = await arrange();
+      const other = await service.createTask({
+        projectId: 'project-alpha',
+        title: 'Another Task',
+      });
+      vi.mocked(
+        service.listKeptDeclaredPullRequestsForTasks,
+      ).mockImplementation((taskIds) =>
+        taskIds.includes(other.id)
+          ? [
+              keptOn(task.id, '7', 'readable-run'),
+              keptOn(other.id, '8', 'readable-run'),
+            ]
+          : [keptOn(task.id, '7', 'readable-run')],
+      );
+      githubProvider.getPullRequestByIdentity.mockClear();
+      const query = new URLSearchParams({
+        projectId: task.projectId,
+        taskId: task.id,
+      });
+      const response = await app.request(`/pull-request-facts?${query}`);
+      expect(response.status).toBe(200);
+      const body = await readJson<any>(response);
+      expect(Object.keys(body.data.tasks)).toEqual([task.id]);
+      expect(
+        githubProvider.getPullRequestByIdentity.mock.calls.map(
+          ([, ref]) => ref,
+        ),
+      ).toEqual(['7']);
     });
 
     test('a requester who lost standing during the provider reads gets 404', async () => {

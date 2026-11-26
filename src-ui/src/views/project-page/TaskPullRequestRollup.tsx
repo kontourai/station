@@ -37,6 +37,9 @@ function linkedTaskRequests(entry: TaskPullRequestFactsEntry) {
                   checks: status.checks,
                   isDraft: status.draft,
                   reviewDecision: status.reviewDecision,
+                  ...(status.readiness === 'clean'
+                    ? { reviewGateSatisfied: true }
+                    : {}),
                   mergeability: status.mergeability,
                   landing:
                     status.landing === 'auto-merge'
@@ -45,7 +48,9 @@ function linkedTaskRequests(entry: TaskPullRequestFactsEntry) {
                         ? { state: 'queued' }
                         : status.landing
                           ? { state: 'not-queued' }
-                          : undefined,
+                          : fact.provider === 'gitlab'
+                            ? { state: 'not-applicable' }
+                            : undefined,
                 },
         },
       ];
@@ -105,7 +110,7 @@ function tally(requests: ReturnType<typeof linkedTaskRequests>) {
       else if (
         status.checks === 'passing' &&
         status.mergeability === 'mergeable' &&
-        status.reviewDecision
+        (status.reviewDecision || status.reviewGateSatisfied)
       )
         key = 'passing';
     }
