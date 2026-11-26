@@ -124,9 +124,14 @@ A grant lists its Agents, models, and Projects. Project is the default scope.
 A matching parent conversation takes precedence over a Project grant, which
 takes precedence over a Station grant. An explicit allowlist is refused when
 the engine cannot enforce it. Codex supports open network through its own
-sandbox. For a delegated worktree, explicit additional Git paths are relative
-to the repository's common Git directory. Codex accepts existing directories
-for those writes.
+sandbox. For a delegated worktree, Station uses the Project’s configured
+worktree base or the fetched default branch. Explicit additional Git paths
+are relative to the repository's common Git directory. Codex accepts existing
+directories for those writes.
+
+Revocation and expiry block further turns in a child that used the grant.
+Start a new session to apply the current policy. An unreadable grant file
+disables standing grants and Settings shows the error.
 
 See the [delegation grants decision](../decisions/delegation-grants.md).
 

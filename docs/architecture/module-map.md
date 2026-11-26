@@ -2595,10 +2595,15 @@ stores operator choices and resolves the narrowest matching scope. The
 requires a current operator principal. The
 [delegation executor](../../src-server/tools/station-control-delegation.ts)
 combines caller proof, resolved target, and verified workspace ownership
-before handing a grant to the session lifecycle. The
+before handing a grant to the session lifecycle. The runtime's worktree
+provisioner uses the same per-repository queue for delegation and Task
+worktrees. The
+[turn-admission boundary](../../src-server/services/orchestration/orchestration-service.ts)
+refuses further turns when the standing grant ends. The
 [Codex profile owner](../../src-server/providers/adapters/codex-confinement.ts)
-bounds Git writes to the worktree's own metadata and branch namespace and
-keeps protected metadata read-only.
+defines the writable worktree metadata, shared object store, branch namespace,
+and operator-selected extra paths. Its read-only rules protect worktree
+metadata such as `config.worktree`.
 
 ## SessionLifecycleModule
 
