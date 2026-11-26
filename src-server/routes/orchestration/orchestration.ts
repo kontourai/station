@@ -3715,7 +3715,11 @@ export function createOrchestrationRoutes(
       // the winner is still sending a shared stage under the same key.
       if (
         (errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE ||
-          errorCode(error) === 'client_turn_input_conflict') &&
+          errorCode(error) === 'client_turn_input_conflict' ||
+          (error instanceof OrchestrationCommandDispatchError &&
+            error.receipt.status === 'rejected' &&
+            error.kind === 'busy' &&
+            error.failurePhase === 'refused')) &&
         stagedAttachmentsForRelease?.length &&
         stagedBindingForRelease &&
         releasePrincipal
