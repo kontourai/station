@@ -2011,8 +2011,9 @@ signal across that asynchronous boundary.
 
 `readSearchMessage(apiBase, { sessionId, matchedEventId, continuation? },
 { requestScope, signal? })`, from `@kontourai/station-sdk/client`, reads a page
-of the exact canonical event's prompt or completed output. Every page is
-reauthorized; text is never read from the search index. Pages contain at most
+of the exact canonical prompt or completed reply. For ACP completions that carry
+no final output field, the reader uses the text deltas recorded before that
+completion in the same Session and turn. Every page is reauthorized; text is never read from the search index. Pages contain at most
 4,096 Unicode code points, with an existing 128 KiB source allowance and the
 same isolated reader deadline. The opaque continuation binds Session/event,
 content and recorded metadata; changed content refuses continuation instead of
