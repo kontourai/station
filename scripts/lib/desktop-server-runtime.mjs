@@ -19,6 +19,7 @@ export const DESKTOP_SERVER_RUNTIME_PACKAGES = STATION_SERVER_EXTERNALS;
  * light.exe` (station#2424). The file budget must therefore sit BELOW the
  * ceiling, not above it — at 80,000 this gate stayed green while the tree
  * grew to 68,828 files and Windows packaging became impossible.
+ * @type {Readonly<{ maxBytes: number, maxFiles: number }>}
  */
 export const DESKTOP_SERVER_RUNTIME_BUDGET = Object.freeze({
   maxBytes: 512 * 1024 * 1024,
