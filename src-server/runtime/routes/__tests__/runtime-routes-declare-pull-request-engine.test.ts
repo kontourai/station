@@ -31,6 +31,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { registerPullRequestProvider } from '../../../providers/registries/registry.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
+import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -332,7 +333,9 @@ describe('an external engine declares a pull request: the Task shows it, a merge
       locality: 'home-possession',
       mintKind: 'local-grant',
     }).credential;
+    const logger = { debug() {}, info() {}, warn() {}, error() {} };
     const context = deepStub({
+      featurePreviews: new FeaturePreviewRegistry(homeDir, logger),
       projectSharedTasks: undefined,
       deploymentAuthentication: undefined,
       localAccounts: undefined,
@@ -344,7 +347,7 @@ describe('an external engine declares a pull request: the Task shows it, a merge
         getProjectHomeDir: () => homeDir,
         loadAppConfig: () => ({}),
       },
-      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      logger,
       activeAgents: new Map(),
       agentService: { listAgents: () => [] },
       agentMetadataMap: new Map(),
