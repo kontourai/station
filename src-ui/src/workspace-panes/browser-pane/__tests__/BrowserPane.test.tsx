@@ -1636,6 +1636,29 @@ describe('BrowserPane wave 2 fix round', () => {
     expect(screen.queryByText(/The page showed a dialog/)).toBeNull();
   });
 
+  test('Sessions can show only tabs from the selected tab’s chat', async () => {
+    const current = sessionView({ threadId: 'chat-one' });
+    const other = sessionView({
+      browserSessionId: OTHER,
+      threadId: 'chat-two',
+      url: 'https://other.example/',
+    });
+    renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(current),
+      'GET /api/browser/sessions?projectSlug=alpha': ok([current, other]),
+    });
+    await chooseFromMenu('Sessions');
+    const unrelated = 'Open https://other.example/';
+    await screen.findByRole('button', { name: unrelated });
+    const filter = screen.getByRole('button', { name: 'From this chat' });
+    fireEvent.click(filter);
+    expect(screen.queryByRole('button', { name: unrelated })).toBeNull();
+    expect(screen.getByText('Showing in this pane.')).toBeTruthy();
+    fireEvent.click(filter);
+    expect(screen.getByRole('button', { name: unrelated })).toBeTruthy();
+  });
+
   test('a navigation Station refused is credited to Station (D2)', async () => {
     renderPane({
       'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,

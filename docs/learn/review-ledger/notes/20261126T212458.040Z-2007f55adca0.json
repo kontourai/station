@@ -1,0 +1,63 @@
+{
+  "revision": "da8b98c3eac2b5e3af798ae7e4b26462382478fb",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reviewed the default-off Inbox Task questions catalog entry, existing Task permissions, and the shared shortcut to the Plan tab. The focused Inbox and registry suites passed 104 tests.","inputs":["docs/user/settings.md","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/components/inbox-row/InboxRow.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/views/home/home-view-model.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the optional Inbox Task question shortcut. It uses the existing live question count and Task Plan navigation, and leaves the existing chat, Task navigation and authority paths intact while disabled.","inputs":["src-ui/src/views/home/home-view-model.ts"]}
+  ]
+}
