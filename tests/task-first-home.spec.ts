@@ -1948,7 +1948,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await installMockOrchestrationSse(page);
     await mockTaskFirstHome(page);
     await page.goto('/');
-    await startProjectTask(page, { settle: true });
+    await startProjectTask(page);
+    await page.getByRole('button', { name: 'Show Chat', exact: true }).click();
+    await completeStartedTurn(page, 'Start the project task.');
 
     await profileJourney(
       page,
