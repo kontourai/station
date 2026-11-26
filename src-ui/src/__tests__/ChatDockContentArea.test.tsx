@@ -53,6 +53,13 @@ describe('ChatDockContentArea', () => {
     expect(onNewChat).toHaveBeenCalledOnce();
   });
 
+  test('names why a chat cannot start when no Agent is ready', () => {
+    renderContentArea(vi.fn(), vi.fn(), false, null, true);
+    expect(screen.getByText('No Agent is ready to chat')).toBeTruthy();
+    expect(screen.getByText('Connect an engine to start a chat.')).toBeTruthy();
+    expect(screen.queryByText('No chat open')).toBeNull();
+  });
+
   test('starts a chat through the empty dock action', () => {
     const onNewChat = vi.fn();
     renderContentArea(vi.fn(), onNewChat, false);
@@ -156,10 +163,12 @@ function renderContentArea(
   onNewChat = vi.fn(),
   isHistoryOpen = true,
   activeSession: ChatSession | null = null,
+  noAgentReady = false,
 ) {
   return render(
     <ChatDockContentArea
       activeSession={activeSession}
+      noAgentReady={noAgentReady}
       activeOrchestrationSession={null}
       activeOrchestrationSessionRead="present"
       onRetryOrchestrationSessions={() => {}}

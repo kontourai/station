@@ -780,13 +780,15 @@ test('the docked New chat button opens a draft in the bound Project with one rea
 
 test('the dock reads run locations only while the start composer is open, and hands them over', async () => {
   deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
-  navigationStore.navigate('/', { dock: 'open' });
+  navigationStore.navigate('/');
   renderDockedPane();
   await act(async () => {});
-  // Nothing reads run locations while the dock shows no start composer.
+  // Nothing reads run locations while the dock shows no start composer
+  // (folded to its toolbar).
   expect(runLocationReads).toEqual([]);
 
-  clickDockedNewChat();
+  // #5592: an open dock with no chat shows its start composer itself.
+  act(() => navigationStore.setDockState(true, false));
   await screen.findByRole('region', { name: 'New chat picker' });
 
   expect(runLocationReads.length).toBeGreaterThan(0);
@@ -1374,6 +1376,7 @@ test('the ambient dock publishes its open New chat draft, and a full-screen pane
     seen.push(useDockNewChatDraftOpen());
     return null;
   }
+  navigationStore.navigate('/', { dock: 'open' });
   renderInProviders(
     <>
       <Probe />
@@ -1385,14 +1388,23 @@ test('the ambient dock publishes its open New chat draft, and a full-screen pane
     </>,
   );
   await act(async () => {});
-  expect(seen.at(-1)).toBe(false);
+  // #5592: an open dock with no chat shows its own draft, and says so.
+  await screen.findByRole('region', { name: 'New chat picker' });
+  await waitFor(() => expect(seen.at(-1)).toBe(true));
   act(() => {
     dispatchNewChatIntent({});
   });
   await screen.findByRole('region', { name: 'New chat picker' });
   await waitFor(() => expect(seen.at(-1)).toBe(true));
+  // Asked for, the draft dismisses back to the dock it opened in, which
+  // has no chat, so the dock's own draft stands again.
+  act(() => pickerProps.at(-1)!.onClose());
+  await screen.findByRole('region', { name: 'New chat picker' });
+  await waitFor(() => expect(seen.at(-1)).toBe(true));
+  // Dismissing the dock's own draft folds the dock: nothing is published.
   act(() => pickerProps.at(-1)!.onClose());
   await waitFor(() => expect(seen.at(-1)).toBe(false));
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
   cleanup();
 
   seen.length = 0;
@@ -2439,4 +2451,47 @@ test('Start focuses the new chat’s composer', async () => {
       screen.getByRole('textbox', { name: 'Chat composer' }),
     ),
   );
+});
+
+// #5592: no "No chat open" card. An open dock with no chat shows its New
+// chat draft, ready to type; nothing is created until it is sent.
+test('an open dock with no chat shows its New chat draft and starts nothing until sent', async () => {
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  await screen.findByRole('region', { name: 'New chat picker' });
+  // The pane under the draft is hidden, not an empty card on screen.
+  expect(
+    screen.queryByText('No chat open')?.closest('[hidden]') ?? null,
+  ).not.toBeNull();
+  expect(createChatSession).not.toHaveBeenCalled();
+
+  act(() => {
+    pickerProps
+      .at(-1)!
+      .onSelect(
+        { slug: 'assistant', name: 'Assistant' },
+        undefined,
+        undefined,
+        'Go',
+      );
+  });
+  await act(async () => {});
+  expect(createChatSession).toHaveBeenCalledTimes(1);
+});
+
+test('dismissing the dock’s own draft folds the dock to its toolbar and it stays folded', async () => {
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  await screen.findByRole('region', { name: 'New chat picker' });
+
+  act(() => pickerProps.at(-1)!.onClose());
+  await waitFor(() =>
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(false),
+  );
+  await act(async () => {});
+  // Folded, the dock has no pane to fill: the draft does not come back.
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
+  expect(createChatSession).not.toHaveBeenCalled();
 });
