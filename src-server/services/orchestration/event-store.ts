@@ -19386,7 +19386,6 @@ export class EventStore {
       event.method === 'turn.completed' ? text(event.outputText) : undefined;
     if (
       event.method === 'turn.completed' &&
-      event.provider === 'acp' &&
       event.turnId &&
       event.outputText === undefined
     ) {
