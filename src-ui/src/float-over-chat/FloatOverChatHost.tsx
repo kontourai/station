@@ -612,11 +612,25 @@ function MobileBrowserHandoff({
   transport: FloatFetch;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [paneError, setPaneError] = useState<string | null>(null);
+  const openBrowser = useOpenBrowserSessionInRegion();
   const selected = sessions.find(
     (session) => session.browserSessionId === selectedId,
   );
   const onControlState = useCallback(() => {}, []);
-  const close = () => setSelectedId(null);
+  const close = () => {
+    setSelectedId(null);
+    setPaneError(null);
+  };
+  const openInPane = () => {
+    if (!openBrowser || !selected) return;
+    const outcome = openBrowser({
+      projectId: selected.projectId,
+      browserSessionId: selected.browserSessionId,
+    });
+    if (outcome.ok) close();
+    else setPaneError(describeOpenInRegionRefusal(outcome.reason));
+  };
 
   return (
     <div className="float-over-chat__browser-handoff">
@@ -636,6 +650,10 @@ function MobileBrowserHandoff({
             <strong>{selected ? hostOf(selected.url) : 'Browser'}</strong>
             <Button onClick={close}>Close browser</Button>
           </div>
+          {selected && openBrowser && (
+            <Button onClick={openInPane}>Open in Browser pane</Button>
+          )}
+          {paneError && <p role="status">{paneError}</p>}
           {selected ? (
             <div className="float-over-chat__browser-dialog-view">
               <BrowserSessionSurface

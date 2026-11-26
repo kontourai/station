@@ -967,7 +967,7 @@ describe('settings catalog completeness', () => {
     );
     const expected: string[] = RESETTABLE_STATION_SETTING_KEYS.map(
       (key) => idForKey.get(key as string) as string,
-    ).filter((id) => id !== 'surface-trust');
+    ).filter((id) => id !== 'surface-trust' && id !== 'station-routes');
     expect(expected.filter(Boolean)).toHaveLength(expected.length);
     const domOrder = () =>
       [...container.querySelectorAll('[data-catalog-id]')]

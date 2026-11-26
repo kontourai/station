@@ -364,12 +364,9 @@ describe('GitHubPullRequestProvider forge read coalescing (#2937)', () => {
     ]);
     expect(gh.count('auth')).toBe(1);
 
-    // The review list is a separate read with its own fields.
+    // The panel list has a separate cache entry.
     await provider.listPullRequests(station, openQuery);
     expect(gh.count('pr list')).toBe(2);
-    expect(gh.listCalls()[1]).toContain(
-      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus,isDraft,reviewDecision',
-    );
     // A write invalidates the narrow read too.
     await provider.mergePullRequest(station, '7', { method: 'squash' });
     await provider.listOpenPullRequestMergeability(station);

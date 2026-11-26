@@ -19,6 +19,11 @@ import { isStationUiProxyUnavailableResponse } from './station-ui-proxy';
 
 type HealthRoute =
   | {
+      kind: 'native-direct';
+      identityTransport: typeof fetch;
+      isCurrent(): boolean;
+    }
+  | {
       kind: 'relay';
       transport: typeof fetch;
       identityTransport?: typeof fetch;
@@ -63,6 +68,7 @@ let healthRouteResolver:
       authenticated?: boolean,
     ) => HealthRoute | Promise<HealthRoute>)
   | undefined;
+const nativeHealthResponseBindings = new WeakMap<Response, () => boolean>();
 
 /** Installed by the active Station owner, never by broker discovery. */
 export function setStationHealthRouteResolver(
@@ -86,6 +92,9 @@ async function healthFetch(
     return Promise.reject(new Error('Station broker route is not ready'));
   if (route?.kind === 'reject')
     return Promise.reject(new Error('Station route is not ready'));
+  if (route?.kind === 'native-direct') {
+    if (!route.isCurrent()) throw new Error('Station route is retired');
+  }
   if (route?.kind === 'native-relay') {
     if (!route.isCurrent()) throw new Error('Station route is retired');
     return route.transport(url, init);
@@ -124,6 +133,13 @@ async function stationAuthenticatedFetch(
     return Promise.reject(new Error('Station broker route is not ready'));
   if (route?.kind === 'reject')
     return Promise.reject(new Error('Station route is not ready'));
+  if (route?.kind === 'native-direct') {
+    if (!route.isCurrent()) throw new Error('Station route is retired');
+    const response = await route.identityTransport(url, init);
+    if (!route.isCurrent()) throw new Error('Station route is retired');
+    nativeHealthResponseBindings.set(response, route.isCurrent);
+    return response;
+  }
   if (route?.kind === 'native-relay') {
     if (!route.identityTransport || !route.isCurrent())
       throw Object.assign(
@@ -410,6 +426,8 @@ async function probeUntilAnswered(
       return await failedResponse(identityResponse, 'authenticated');
     }
     const identity = (await identityResponse.json()) as { bootId?: unknown };
+    if (nativeHealthResponseBindings.get(identityResponse)?.() === false)
+      throw new Error('Station route is retired');
     return typeof identity.bootId === 'string' && identity.bootId
       ? { ok: true, bootId: identity.bootId }
       : { ok: false, reason: 'unsupported-capability-version' };

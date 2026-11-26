@@ -4,7 +4,7 @@ import type {
   BrowserSessionView,
 } from '@kontourai/station-contracts/workspace-browser-pane';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Button } from '../../components/Button';
 import {
   Empty,
@@ -12,6 +12,8 @@ import {
   SkeletonBlock,
   SkeletonList,
 } from '../../components/state';
+import { activeChatsStore } from '../../contexts/ActiveChatsContext';
+import { navigationStore } from '../../contexts/NavigationContext';
 import {
   type BrowserPaneApi,
   browserPaneKeys,
@@ -213,6 +215,16 @@ export function BrowserSessionList({
   hideWhenEmpty?: boolean;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [chatOnly, setChatOnly] = useState(false);
+  const activeChatId = useSyncExternalStore(navigationStore.subscribe, () => {
+    const { activeChat, activeConversation } = navigationStore.getSnapshot();
+    return activeChat ?? activeConversation;
+  });
+  const activeChat = useSyncExternalStore(activeChatsStore.subscribe, () =>
+    activeChatId
+      ? activeChatsStore.getChatForExecutionSession(activeChatId)
+      : undefined,
+  );
   const sessions = useQuery({
     queryKey: browserPaneKeys.sessions(apiBase, projectSlug),
     queryFn: ({ signal }) => api.sessions(projectSlug, signal),
@@ -220,12 +232,40 @@ export function BrowserSessionList({
   });
   if (hideWhenEmpty && (sessions.isPending || sessions.data?.length === 0))
     return null;
+  const currentThread = sessions.data?.find(
+    (session) => session.browserSessionId === currentSessionId,
+  )?.threadId;
+  const conversationIds =
+    activeChat?.projectSlug === projectSlug
+      ? [activeChatId, activeChat.currentSessionId, activeChat.conversationId]
+      : currentThread
+        ? [currentThread]
+        : [];
+  const filterAvailable = conversationIds.some(Boolean);
+  const filtered = chatOnly && filterAvailable;
+  const displayedSessions = filtered
+    ? sessions.data?.filter(
+        (session) =>
+          session.threadId && conversationIds.includes(session.threadId),
+      )
+    : sessions.data;
+
   return (
     <section
       className="browser-pane__panel"
       aria-labelledby="browser-sessions-heading"
     >
       <h3 id="browser-sessions-heading">Sessions</h3>
+      {filterAvailable && (
+        <Button
+          size="sm"
+          className="browser-pane__control"
+          aria-pressed={filtered}
+          onClick={() => setChatOnly(!filtered)}
+        >
+          From this chat
+        </Button>
+      )}
       {sessions.isPending ? (
         <SkeletonList count={2} label="Loading browser sessions" />
       ) : sessions.isError ? (
@@ -233,15 +273,19 @@ export function BrowserSessionList({
           title="Browser sessions could not be listed"
           description={describeBrowserFailure(sessions.error)}
         />
-      ) : sessions.data.length === 0 ? (
+      ) : !displayedSessions?.length ? (
         <Empty
           variant="compact"
-          label="Nothing open yet"
-          description="Sessions you or an agent open appear here."
+          label={
+            filtered ? 'No browser sessions from this chat' : 'Nothing open yet'
+          }
+          description={
+            filtered ? undefined : 'Sessions you or an agent open appear here.'
+          }
         />
       ) : (
         <ul className="browser-pane__list" aria-label="Browser sessions">
-          {sessions.data.map((session) => {
+          {displayedSessions.map((session) => {
             const current = session.browserSessionId === currentSessionId;
             const showFull = expanded === session.browserSessionId;
             const driver = session.activity?.lastDriver;

@@ -238,3 +238,14 @@ condition = "AND"
 paths = ['''^patches/node-forge-1\.4\.0\.patch$''']
 regexTarget = "secret"
 regexes = ['''^F=u\.handleCertificateVerify$''', '''^pbewithSHAAnd40BitRC2\-CBC$''']
+
+[[allowlists]]
+description = "Verified cancellation screenshot-review prose; no credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^Cancelled/Nothing$''']
+paths = [
+  '''(^|/)docs/learn/review-ledger/notes/20261126T105123\.425Z-e2620131155e\.json$''',
+  '''(^|/)docs/learn/review-ledger/notes/archive/[0-9a-f]{40}\.json$''',
+]

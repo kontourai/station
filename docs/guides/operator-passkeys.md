@@ -20,11 +20,14 @@ authority.
 - Station must be reachable at an **HTTPS name**, not an IP address. WebAuthn
   scopes a passkey to a domain, so a Station reachable only by IP has no remote
   operator sign-in.
-- Set `STATION_TRUSTED_CONSENT_ORIGIN` to the HTTPS origin that reaches the
-  consent listener, as described in
+- Provide a trusted HTTPS origin that reaches the consent listener, as described in
   [Reaching the consent origin over HTTPS](deployment.md#reaching-the-consent-origin-over-https).
+  With the default-off **Dynamic HTTPS routes** preview enabled, Station can
+  discover an existing, separate Tailscale Serve approval mapping, or the local
+  operator can save **Approval HTTPS origin** in Routes settings without restarting.
+  Otherwise, set `STATION_TRUSTED_CONSENT_ORIGIN` before starting Station.
   The passkey's relying-party ID is that origin's host, so enroll from the
-  same name you will use later. Without this setting enrollment is
+  same name you will use later. Without a trusted HTTPS approval origin enrollment is
   unavailable and the page and the CLI both say so.
 - The browser must already be **paired** with this Station and open on the
   same host name as the consent origin. A passkey is not a way to pair.
@@ -228,7 +231,7 @@ remains the recovery path when no other passkey is available.
 
 Passkeys are kept in `authentication/operator-passkeys.sqlite` under the
 Station home. The file is created when the first enrollment begins; a Station
-without `STATION_TRUSTED_CONSENT_ORIGIN` never creates it. It is a private file (mode 0600 in a 0700 directory) that
+without a trusted HTTPS approval origin cannot begin enrollment. It is a private file (mode 0600 in a 0700 directory) that
 holds each passkey's credential id, public key, signature counter, transports and label.
 Operator sessions share this private store for reads and per-action step-up. Their
 random cookie secrets are stored only as hashes, alongside device/passkey bindings
@@ -238,7 +241,7 @@ and expiry times.
 
 | Message | Meaning |
 | --- | --- |
-| Enrollment is unavailable | `STATION_TRUSTED_CONSENT_ORIGIN` is not set. |
+| Enrollment is unavailable | No trusted HTTPS approval origin is available. Check Routes settings or the legacy `STATION_TRUSTED_CONSENT_ORIGIN` setting. |
 | The request with that code was not opened by the device you named | `--device` does not match the requesting device. Nothing was confirmed; list the requests and check who asked. |
 | The device that opened this request is no longer paired | It was revoked or unpaired after asking. Nothing was confirmed. |
 | No pending enrollment request has that code | The code is wrong, was already used, or expired. |

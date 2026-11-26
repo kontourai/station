@@ -1,0 +1,15 @@
+{
+  "revision": "69982c5ca1831542c5e8a39a1a000b26aca3e04d",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Checked restoreClient and the local IndexedDB shelf against the documented outbox boundary. Only the restored first Open GitHub page is invalidated by this path. The outbox and raw Session persistence exclusions still follow their own owners.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/lib/queryPersistence.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Followed the SDK reference from the integration table and checked that the bundled and checkout-only context queries still use the same authenticated HTTP endpoint. Cache seeding stays within the current QueryClient.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the SDK context hook, persisted checkout restoration and paged list consumer. A saved checkout page keeps its original timestamp and is invalidated on restore. A successful live read seeds the same checkout's context and clears the restored-state flag. Later pages are keyed by caller-provided checkout identity.","inputs":["docs/reference/sdk.md","src-server/services/pull-requests/pull-request-review.ts","src-ui/src/lib/queryPersistence.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Checked the preview switch against the Load more controls and review actions. The list consumer scopes loaded pages to repository identity, preserves them across background refreshes, and opens the live forge review. The focused list regressions exercise refresh and checkout changes.","inputs":["docs/user/pull-request-guides.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked that the checkout query's flag, seeding and cursor scope behavior are described in the canonical SDK reference and that the SDK tests and mounted consumer tests ran in the same focused batch.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

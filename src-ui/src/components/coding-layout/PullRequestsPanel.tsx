@@ -2,19 +2,22 @@ import type {
   ConversationPullRequestLinkObservation,
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
-import type {
-  PullRequest,
-  PullRequestResult,
-} from '@kontourai/station-contracts/pull-request-provider';
+import type { PullRequest } from '@kontourai/station-contracts/pull-request-provider';
 import {
+  useCheckoutPullRequestPages,
   usePullRequestContextQuery,
   usePullRequestsQuery,
 } from '@kontourai/station-sdk';
-import { useEffect, useRef, useState } from 'react';
+import { Input, Select } from '@kontourai/ui/react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { openExternalLink } from '../../platform/openExternalLink';
+import { plural } from '../../utils/plural';
 import { describeStationFailure } from '../../utils/stationFailure';
 import type { OverflowAction } from '../ActionOverflowMenu';
+import { Button } from '../Button';
 import { IconButton } from '../IconButton';
 import { ArrowRightGlyph, PlusGlyph, RefreshGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
@@ -27,11 +30,12 @@ import {
   reviewDecisionChip,
 } from '../pull-requests/pull-request-chips';
 import { pullRequestExternalLabel } from '../pull-requests/pull-request-external';
+import { RelativeTime } from '../pull-requests/RelativeTime';
 import {
   linkKey,
   useConversationPullRequestLinks,
 } from '../pull-requests/useConversationPullRequestLinks';
-import { SkeletonBlock, SkeletonList } from '../state';
+import { Empty, FilteredEmpty, SkeletonBlock, SkeletonList } from '../state';
 import { PullRequestDependencyStacks } from './PullRequestDependencyStacks';
 import './PullRequestsPanel.css';
 
@@ -49,7 +53,8 @@ const FILTERS: readonly { value: StateFilter; label: string }[] = [
 ];
 
 function normalizedState(state: string) {
-  return state.trim().toUpperCase();
+  const key = state.trim().toUpperCase();
+  return key === 'OPENED' ? 'OPEN' : key;
 }
 
 const sameRepository = (
@@ -60,20 +65,107 @@ const sameRepository = (
   a.repository.owner === b.repository.owner &&
   a.repository.name === b.repository.name;
 
-/** Row chips for a pull request: its state, then the review decision. */
-function rowChips(pullRequest: {
-  state: string;
-  reviewStatus?: string;
-  mergeability?: PullRequest['mergeability'];
-}): PullRequestChipValue[] {
-  const chips = [pullRequestStateChip(pullRequest.state)];
-  const decision = pullRequest.reviewStatus
-    ? reviewDecisionChip(pullRequest.reviewStatus)
-    : null;
+function displayedState(pullRequest: { state: string; draft?: boolean }) {
+  return normalizedState(pullRequest.state) === 'OPEN' && pullRequest.draft
+    ? 'DRAFT'
+    : pullRequest.state;
+}
+
+function rowChips(
+  pullRequest: {
+    state: string;
+    reviewStatus?: string;
+    reviewDecision?: PullRequest['reviewDecision'];
+    mergeability?: PullRequest['mergeability'];
+    snapshot?: PullRequest['snapshot'];
+    draft?: boolean;
+  },
+  compact = false,
+): PullRequestChipValue[] {
+  const chips = [
+    pullRequestStateChip(
+      compact ? displayedState(pullRequest) : pullRequest.state,
+    ),
+  ];
+  const decision = reviewDecisionChip(
+    pullRequest.reviewDecision ?? pullRequest.reviewStatus ?? '',
+  );
   if (decision) chips.push(decision);
   if (pullRequest.mergeability === 'conflicting')
     chips.push({ label: 'Has conflicts', tone: 'failure' });
+  const checks = compact ? pullRequest.snapshot?.checks : undefined;
+  if (checks) {
+    const checkChip: Record<typeof checks, PullRequestChipValue> = {
+      passing: { label: 'Checks passed', tone: 'success' },
+      failing: { label: 'Checks failed', tone: 'failure' },
+      pending: { label: 'Checks pending', tone: 'pending' },
+      'awaiting-approval': { label: 'Checks need approval', tone: 'pending' },
+    };
+    chips.push(checkChip[checks]);
+  }
   return chips;
+}
+
+const LIST_GROUPS = [
+  'This chat',
+  'This Task',
+  'This branch',
+  'Repository',
+] as const;
+type ListGroup = (typeof LIST_GROUPS)[number];
+
+function rowGroup(
+  source: ConversationPullRequestLinkObservation['source'] | undefined,
+  isBranch = false,
+): ListGroup {
+  if (source === 'explicit') return 'This chat';
+  if (source === 'task-declared') return 'This Task';
+  if (isBranch || source === 'branch-derived') return 'This branch';
+  return 'Repository';
+}
+
+function ListSkeleton({ compact }: { compact: boolean }) {
+  return (
+    <div
+      className={
+        compact ? 'pull-requests-panel pull-requests-panel--preview' : undefined
+      }
+    >
+      <SkeletonList count={3} label="Loading pull requests" />
+    </div>
+  );
+}
+
+function useCheckoutPullRequests(
+  project: string,
+  workingDirectory: string | undefined,
+  state: StateFilter,
+) {
+  const scope = { project, workingDirectory };
+  const context = usePullRequestContextQuery(scope, {
+    list: state,
+    staleTime: 20_000,
+    refetchOnMount: true,
+  });
+  const identity = context.data?.available ? context.data : undefined;
+  const bundled = identity?.pullRequests;
+  const fallback = usePullRequestsQuery(
+    identity?.provider ?? '',
+    identity?.host ?? '',
+    identity?.repository.owner ?? '',
+    identity?.repository.name ?? '',
+    scope,
+    { state },
+    { enabled: !!identity && bundled === undefined },
+  );
+  const query = bundled ? context : fallback;
+  return {
+    context,
+    identity,
+    query,
+    result: bundled ?? fallback.data,
+    lastKnown: !!bundled?.available && context.isLastKnown,
+  };
 }
 
 /**
@@ -110,6 +202,8 @@ export function PullRequestsPanel({
   initialSelected?: PullRequestLinkIdentity | null;
 }) {
   const activeChat = useNavigation((state) => state.activeChat);
+  const compact = useSurfaceVisibilityFlags().has('pull-request-workspace');
+  const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<PullRequestLinkIdentity | null>(
     initialSelected,
   );
@@ -129,26 +223,72 @@ export function PullRequestsPanel({
     setReturnFocusTo(null);
   }, [selected, returnFocusTo]);
   const [filter, setFilter] = useState<StateFilter>('OPEN');
+  const now = useCoarseNow();
   const [linking, setLinking] = useState(false);
-  const resolvingContext = {
-    project: projectSlug,
-    workingDirectory: activeRepoRoot ?? undefined,
-  };
-  const context = usePullRequestContextQuery(resolvingContext);
-  const identity = context.data?.available ? context.data : undefined;
-  const pullRequests = usePullRequestsQuery(
-    identity?.provider ?? '',
-    identity?.host ?? '',
-    identity?.repository.owner ?? '',
-    identity?.repository.name ?? '',
-    resolvingContext,
-    { state: filter },
-    { enabled: !!identity },
+  const {
+    context,
+    identity,
+    query: pullRequests,
+    result,
+    lastKnown,
+  } = useCheckoutPullRequests(projectSlug, activeRepoRoot ?? undefined, filter);
+  const paginationKey = JSON.stringify([
+    projectSlug,
+    activeRepoRoot,
+    filter,
+    identity?.provider,
+    identity?.host,
+    identity?.repository.owner,
+    identity?.repository.name,
+  ]);
+  const [pagination, setPagination] = useState<{
+    key: string;
+    cursors: string[];
+  }>({
+    key: '',
+    cursors: [],
+  });
+  const cursors =
+    !lastKnown && pagination.key === paginationKey ? pagination.cursors : [];
+  const pages = useCheckoutPullRequestPages(
+    { project: projectSlug, workingDirectory: activeRepoRoot ?? undefined },
+    filter,
+    cursors,
+    paginationKey,
   );
+  const pageResults = pages.map(({ data }) =>
+    identity &&
+    data?.available &&
+    data.provider === identity.provider &&
+    sameRepository(identity, data)
+      ? data.pullRequests
+      : undefined,
+  );
+  const mismatchedPage = pages.some(
+    ({ data }) =>
+      data?.available &&
+      identity &&
+      (data.provider !== identity.provider || !sameRepository(identity, data)),
+  );
+  useEffect(() => {
+    if (!mismatchedPage) return;
+    setPagination({ key: '', cursors: [] });
+    void context.refetch();
+  }, [mismatchedPage, context.refetch]);
+  const lastPage = pages.at(-1);
+  const nextCursor = lastPage
+    ? pageResults.at(-1)?.nextCursor
+    : identity?.pullRequests?.nextCursor;
+  const failedPage =
+    lastPage &&
+    !mismatchedPage &&
+    !lastPage.isFetching &&
+    !pageResults.at(-1)?.available;
   const chatLinks = useConversationPullRequestLinks(activeChat ?? '');
 
-  if (context.isLoading) return <SkeletonList count={3} />;
-  if (context.error) {
+  if (context.isLoading || (context.isPending && !context.data))
+    return <ListSkeleton compact={compact} />;
+  if (context.error && !context.data) {
     return (
       <Note
         tone="error"
@@ -196,13 +336,27 @@ export function PullRequestsPanel({
             setSelected(null);
           },
           focusTitleOnOpen: focusReviewTitle,
+          linkedGroups: activeChat
+            ? [
+                ...new Set(
+                  (chatLinks.links.data?.links ?? [])
+                    .filter((link) => linkKey(link) === linkKey(selected))
+                    .flatMap((link) =>
+                      link.source === 'explicit' ||
+                      link.source === 'task-declared'
+                        ? [rowGroup(link.source)]
+                        : [],
+                    ),
+                ),
+              ]
+            : undefined,
         }}
         pending={<SkeletonBlock label="Opening pull request review" />}
       />
     );
   }
-  if (pullRequests.isLoading) return <SkeletonList count={3} />;
-  if (pullRequests.error) {
+  if (pullRequests.isLoading) return <ListSkeleton compact={compact} />;
+  if (pullRequests.error && !lastKnown) {
     return (
       <Note
         tone="error"
@@ -212,9 +366,6 @@ export function PullRequestsPanel({
     );
   }
 
-  const result = pullRequests.data as
-    | PullRequestResult<PullRequest[]>
-    | undefined;
   if (!result?.available) {
     return (
       <Note
@@ -224,10 +375,28 @@ export function PullRequestsPanel({
       />
     );
   }
-  const listed = result.data ?? [];
+  const listed = [
+    ...new Map(
+      [
+        ...(result.data ?? []),
+        ...pageResults.flatMap((page) =>
+          page?.available ? (page.data ?? []) : [],
+        ),
+      ].map((pullRequest) => [pullRequest.ref, pullRequest] as const),
+    ).values(),
+  ];
+  const query = compact ? search.trim().toLowerCase() : '';
   const visible = listed.filter(
     (pullRequest) =>
-      filter === 'ALL' || normalizedState(pullRequest.state) === filter,
+      (filter === 'ALL' || normalizedState(pullRequest.state) === filter) &&
+      (!query ||
+        [
+          pullRequest.title,
+          `#${pullRequest.ref}`,
+          pullRequest.author.login,
+          pullRequest.sourceBranch,
+          pullRequest.targetBranch,
+        ].some((value) => value.toLowerCase().includes(query))),
   );
   const observedAt = new Date(
     pullRequests.dataUpdatedAt || Date.now(),
@@ -278,23 +447,177 @@ export function PullRequestsPanel({
         ]
       : [];
 
+  const linkedRows = elsewhere.flatMap((link) => {
+    const status = link.status;
+    // A link elsewhere names its host: two hosts may hold the
+    // same owner/name/number, and they are two pull requests.
+    const reference = `${link.host}/${link.repository.owner}/${link.repository.name} #${link.ref}`;
+    const title = status.state === 'current' ? status.title : reference;
+    if (
+      query &&
+      ![title, reference].some((value) => value.toLowerCase().includes(query))
+    )
+      return [];
+    return [
+      {
+        group: rowGroup(link.source),
+        row: (
+          <PullRequestRow
+            key={`${link.source}:${linkKey(link)}`}
+            title={title}
+            compactState={
+              compact && status.state === 'current'
+                ? status.pullRequestState
+                : undefined
+            }
+            reference={reference}
+            chips={
+              status.state === 'current'
+                ? rowChips({ state: status.pullRequestState }).slice(
+                    compact ? 1 : 0,
+                  )
+                : []
+            }
+            meta={[
+              link.source === 'task-declared'
+                ? 'from a Task'
+                : link.source === 'branch-derived'
+                  ? 'from branch'
+                  : 'linked',
+            ]}
+            note={status.state === 'current' ? undefined : status.reason}
+            openRef={rowRef(linkKey(link))}
+            onOpen={
+              status.state === 'current' ? () => openLinked(link) : undefined
+            }
+            overflow={unlinkAction(
+              link.source === 'explicit' ? link : undefined,
+            )}
+            overflowLabel={`More actions for #${link.ref}`}
+          />
+        ),
+      },
+    ];
+  });
+  const listedRows = visible.map((pullRequest) => {
+    const key = linkKey({
+      provider: pullRequest.provider,
+      host: pullRequest.host,
+      repository: pullRequest.repository,
+      ref: pullRequest.ref,
+    });
+    const current = !lastKnown && pullRequest.sourceBranch === identity?.branch;
+    const source = explicitByKey.has(key)
+      ? 'explicit'
+      : links.find((link) => linkKey(link) === key)?.source;
+    const { additions, deletions, changedFiles, updatedAt } =
+      pullRequest.snapshot ?? {};
+    const stats =
+      additions !== undefined &&
+      deletions !== undefined &&
+      changedFiles !== undefined
+        ? { additions, deletions, files: changedFiles }
+        : undefined;
+    return {
+      group: rowGroup(source, current),
+      row: (
+        <PullRequestRow
+          key={pullRequest.ref}
+          title={pullRequest.title}
+          reference={`#${pullRequest.ref}`}
+          compactState={compact ? displayedState(pullRequest) : undefined}
+          chips={rowChips(pullRequest, compact).slice(compact ? 1 : 0)}
+          meta={
+            compact
+              ? [
+                  pullRequest.author.login,
+                  `${pullRequest.sourceBranch} → ${pullRequest.targetBranch}`,
+                ].filter(Boolean)
+              : [pullRequest.author.login]
+          }
+          trailing={
+            compact && updatedAt && <RelativeTime iso={updatedAt} now={now} />
+          }
+          stats={
+            compact &&
+            stats && (
+              <span className="pull-request-row__stats">
+                <span className="sr-only">
+                  {plural(stats.additions, 'addition')},{' '}
+                  {plural(stats.deletions, 'deletion')},{' '}
+                  {plural(stats.files, 'file')}
+                </span>
+                <span aria-hidden="true">
+                  +{stats.additions} −{stats.deletions} ·{' '}
+                  {plural(stats.files, 'file')}
+                </span>
+              </span>
+            )
+          }
+          current={!compact && current}
+          openRef={rowRef(key)}
+          onOpen={() => open(pullRequest)}
+          overflow={[
+            {
+              key: 'external',
+              label: pullRequestExternalLabel(pullRequest.url),
+              onSelect: () => void openExternalLink(pullRequest.url),
+            },
+            ...unlinkAction(explicitByKey.get(key)),
+          ]}
+          overflowLabel={`More actions for #${pullRequest.ref}`}
+        />
+      ),
+    };
+  });
   return (
-    <section className="pull-requests-panel" aria-label="Pull requests">
+    <section
+      className={`pull-requests-panel${compact ? ' pull-requests-panel--preview' : ''}`}
+      aria-label="Pull requests"
+    >
       <div className="pull-requests-panel__bar">
-        <fieldset className="pull-requests-panel__filter">
-          <legend className="sr-only">Pull request state</legend>
-          {FILTERS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className="pull-requests-panel__filter-option"
-              aria-pressed={filter === option.value}
-              onClick={() => setFilter(option.value)}
+        {compact ? (
+          <div className="filter-toolbar pull-requests-panel__search">
+            <Input
+              type="search"
+              aria-label="Search loaded pull requests"
+              placeholder="Search pull requests"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <Select
+              aria-label="Pull request state"
+              value={filter}
+              onChange={(event) => {
+                const next = FILTERS.find(
+                  ({ value }) => value === event.target.value,
+                );
+                if (next) setFilter(next.value);
+              }}
             >
-              {option.label}
-            </button>
-          ))}
-        </fieldset>
+              {FILTERS.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        ) : (
+          <fieldset className="pull-requests-panel__filter">
+            <legend className="sr-only">Pull request state</legend>
+            {FILTERS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className="pull-requests-panel__filter-option"
+                aria-pressed={filter === option.value}
+                onClick={() => setFilter(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </fieldset>
+        )}
         <div className="pull-requests-panel__tools">
           {activeChat && chatLinks.canWrite && (
             <IconButton
@@ -322,6 +645,12 @@ export function PullRequestsPanel({
           </IconButton>
         </div>
       </div>
+      {lastKnown && identity && (
+        <p className="pull-requests-panel__note" role="status">
+          Last known for {identity.repository.owner}/{identity.repository.name}{' '}
+          as of <RelativeTime iso={observedAt} now={now} />
+        </p>
+      )}
       {linking && activeChat && (
         <LinkPullRequestField
           scope={identity ?? {}}
@@ -339,97 +668,111 @@ export function PullRequestsPanel({
           {chatLinks.mutationError}
         </p>
       )}
-      {elsewhere.length > 0 && (
-        <>
-          <h3 className="pull-requests-panel__label">Linked to this chat</h3>
-          <ul className="pull-requests-panel__list">
-            {elsewhere.map((link) => {
-              const status = link.status;
-              // A link elsewhere names its host: two hosts may hold the
-              // same owner/name/number, and they are two pull requests.
-              const reference = `${link.host}/${link.repository.owner}/${link.repository.name} #${link.ref}`;
-              return (
-                <PullRequestRow
-                  key={`${link.source}:${linkKey(link)}`}
-                  title={status.state === 'current' ? status.title : reference}
-                  reference={reference}
-                  chips={
-                    status.state === 'current'
-                      ? rowChips({ state: status.pullRequestState })
-                      : []
-                  }
-                  meta={[
-                    link.source === 'task-declared'
-                      ? 'from a Task'
-                      : link.source === 'branch-derived'
-                        ? 'from branch'
-                        : 'linked',
-                  ]}
-                  note={status.state === 'current' ? undefined : status.reason}
-                  openRef={rowRef(linkKey(link))}
-                  onOpen={
-                    status.state === 'current'
-                      ? () => openLinked(link)
-                      : undefined
-                  }
-                  overflow={unlinkAction(
-                    link.source === 'explicit' ? link : undefined,
-                  )}
-                  overflowLabel={`More actions for #${link.ref}`}
-                />
-              );
-            })}
-          </ul>
-        </>
-      )}
-      {visible.length === 0 ? (
-        <Note
-          text={
-            filter === 'ALL'
-              ? 'No pull requests'
-              : `No ${filter.toLowerCase()} pull requests`
-          }
+      {compact ? (
+        <CompactList
+          rows={[...linkedRows, ...listedRows]}
+          search={search}
+          onClear={() => setSearch('')}
         />
       ) : (
-        <ul className="pull-requests-panel__list">
-          {visible.map((pullRequest) => {
-            const key = linkKey({
-              provider: pullRequest.provider,
-              host: pullRequest.host,
-              repository: pullRequest.repository,
-              ref: pullRequest.ref,
-            });
-            return (
-              <PullRequestRow
-                key={pullRequest.ref}
-                title={pullRequest.title}
-                reference={`#${pullRequest.ref}`}
-                chips={rowChips(pullRequest)}
-                meta={[pullRequest.author.login]}
-                current={pullRequest.sourceBranch === identity?.branch}
-                openRef={rowRef(key)}
-                onOpen={() => open(pullRequest)}
-                overflow={[
-                  {
-                    key: 'external',
-                    label: pullRequestExternalLabel(pullRequest.url),
-                    onSelect: () => void openExternalLink(pullRequest.url),
-                  },
-                  ...unlinkAction(explicitByKey.get(key)),
-                ]}
-                overflowLabel={`More actions for #${pullRequest.ref}`}
-              />
-            );
-          })}
-        </ul>
+        <>
+          {linkedRows.length > 0 && (
+            <>
+              <h3 className="pull-requests-panel__label">
+                Linked to this chat
+              </h3>
+              <ul className="pull-requests-panel__list">
+                {linkedRows.map(({ row }) => row)}
+              </ul>
+            </>
+          )}
+          {listedRows.length === 0 ? (
+            <Note
+              text={
+                filter === 'ALL'
+                  ? 'No pull requests'
+                  : `No ${filter.toLowerCase()} pull requests`
+              }
+            />
+          ) : (
+            <ul className="pull-requests-panel__list">
+              {listedRows.map(({ row }) => row)}
+            </ul>
+          )}
+        </>
       )}
-      <PullRequestDependencyStacks
-        pullRequests={listed}
-        observedAt={observedAt}
-        onOpen={open}
-      />
+      {compact && !lastKnown && failedPage && (
+        <Note
+          tone="error"
+          text={
+            pageResults.at(-1)?.reason ?? 'More pull requests could not be read'
+          }
+          onRetry={() => void lastPage.refetch()}
+        />
+      )}
+      {compact &&
+        !lastKnown &&
+        !failedPage &&
+        (nextCursor || lastPage?.isFetching) && (
+          <Button
+            disabled={
+              !nextCursor ||
+              cursors.includes(nextCursor) ||
+              lastPage?.isFetching
+            }
+            onClick={() => {
+              if (nextCursor)
+                setPagination({
+                  key: paginationKey,
+                  cursors: [...cursors, nextCursor],
+                });
+            }}
+          >
+            {lastPage?.isFetching ? 'Loading…' : 'Load more'}
+          </Button>
+        )}
+      {!lastKnown && (
+        <PullRequestDependencyStacks
+          pullRequests={listed}
+          observedAt={observedAt}
+          onOpen={open}
+        />
+      )}
     </section>
   );
+}
+
+function CompactList({
+  rows,
+  search,
+  onClear,
+}: {
+  rows: { group: ListGroup; row: ReactNode }[];
+  search: string;
+  onClear: () => void;
+}) {
+  if (rows.length === 0)
+    return search.trim() ? (
+      <FilteredEmpty
+        query={search}
+        noun="loaded pull requests"
+        onClear={onClear}
+      />
+    ) : (
+      <Empty variant="compact" label="Pull requests will appear here" />
+    );
+  return LIST_GROUPS.map((group) => {
+    const members = rows.filter((item) => item.group === group);
+    if (members.length === 0) return null;
+    return (
+      <div key={group}>
+        <h3 className="pull-requests-panel__label">{group}</h3>
+        <ul className="pull-requests-panel__list">
+          {members.map(({ row }) => row)}
+        </ul>
+      </div>
+    );
+  });
 }
 
 /** One line, and one action when there is one. No box. */
@@ -480,31 +823,19 @@ export function CurrentBranchPullRequestLine({
   activeRepoRoot?: string | null;
   onOpen: (pullRequest: PullRequestLinkIdentity) => void;
 }) {
-  const resolvingContext = {
-    project: projectSlug,
-    workingDirectory: activeRepoRoot ?? undefined,
-  };
-  const context = usePullRequestContextQuery(resolvingContext);
-  const identity = context.data?.available ? context.data : undefined;
-  const pullRequests = usePullRequestsQuery(
-    identity?.provider ?? '',
-    identity?.host ?? '',
-    identity?.repository.owner ?? '',
-    identity?.repository.name ?? '',
-    resolvingContext,
-    { state: 'OPEN' },
-    { enabled: !!identity },
+  const { identity, result, lastKnown } = useCheckoutPullRequests(
+    projectSlug,
+    activeRepoRoot ?? undefined,
+    'OPEN',
   );
-  const result = pullRequests.data as
-    | PullRequestResult<PullRequest[]>
-    | undefined;
-  const pullRequest = result?.available
-    ? (result.data ?? []).find(
-        (candidate) =>
-          candidate.sourceBranch === identity?.branch &&
-          normalizedState(candidate.state) === 'OPEN',
-      )
-    : undefined;
+  const pullRequest =
+    !lastKnown && result?.available
+      ? (result.data ?? []).find(
+          (candidate) =>
+            candidate.sourceBranch === identity?.branch &&
+            normalizedState(candidate.state) === 'OPEN',
+        )
+      : undefined;
   if (!pullRequest) return null;
   return (
     <button
