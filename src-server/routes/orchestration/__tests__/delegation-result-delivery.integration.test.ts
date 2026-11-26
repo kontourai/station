@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
  * turn claim is) and its receipted steer.
  */
 import { join } from 'node:path';
+import { pullRequestFeedbackKey } from '@kontourai/station-contracts/pull-request-feedback';
 import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
@@ -89,6 +90,14 @@ function harness(path: string): Harness {
   const steers: Harness['steers'] = [];
   const ports: DelegationResultDeliveryPorts = {
     store: store.delegationResultStore(),
+    requestEvents: (threadId) =>
+      store
+        .listEventsByMethods(threadId, ['request.opened'])
+        .flatMap(({ payload, sequence }) =>
+          payload.method === 'request.opened'
+            ? [{ event: payload, sequence }]
+            : [],
+        ),
     foldEvents: (threadId) =>
       store
         .listEventsByMethods(threadId, ACTIVE_TURN_FOLD_METHODS)
@@ -718,6 +727,188 @@ describe('delegated task result delivery (#3158)', () => {
     await second.delivery.reconcile();
     expect(second.starts).toHaveLength(1);
     expect(second.starts[0]!.text).toContain('> finished while down');
+  });
+
+  test('only the subscriber can cancel a watch before its turn settles', async () => {
+    const h = setup();
+    const watchId = 'session-watch:cancelled';
+    h.delivery.watchSession(
+      {
+        childConversationId: watchId,
+        parentConversationId: PARENT,
+        taskId: CHILD,
+        actor: { userId: OWNER, attribution: 'verified-bound' },
+      },
+      {
+        sessionId: CHILD,
+        turnId: 'cancelled-turn',
+        cursor: 0,
+        attention: false,
+      },
+    );
+    expect(h.delivery.cancelWatch(watchId, ROOT, OWNER)).toBeUndefined();
+    expect(h.delivery.cancelWatch(watchId, PARENT, OWNER)).toEqual({
+      cancelled: true,
+      inFlight: false,
+    });
+    runChildTurn(h, CHILD, 'cancelled-turn', 'finished after cancellation');
+    await h.delivery.reconcile();
+    expect(h.starts).toHaveLength(0);
+    expect(
+      h.store.delegationResultStore().coordinationChildren(OWNER).get(PARENT),
+    ).toBeUndefined();
+  });
+
+  test('an attention-only watch stops waiting on an ordinary settlement without a wake', async () => {
+    const h = setup();
+    h.delivery.watchSession(
+      {
+        childConversationId: 'session-watch:attention-only',
+        parentConversationId: PARENT,
+        taskId: CHILD,
+        actor: { userId: OWNER, attribution: 'verified-bound' },
+      },
+      {
+        sessionId: CHILD,
+        turnId: 'normal-turn',
+        cursor: 0,
+        attention: true,
+        settle: false,
+      },
+    );
+    runChildTurn(h, CHILD, 'normal-turn', 'finished normally');
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(0);
+    expect(
+      h.store.delegationResultStore().coordinationChildren(OWNER).get(PARENT),
+    ).toEqual([expect.objectContaining({ waiting: false, sessionId: CHILD })]);
+  });
+
+  test('a pull request merge queued for a busy subscriber survives restart', async () => {
+    const path = join(
+      makeTempDir('delegation-result-'),
+      'orchestration.sqlite',
+    );
+    const first = setup(path);
+    const identity = {
+      provider: 'github',
+      host: 'github.com',
+      repository: { owner: 'acme', name: 'notes' },
+      ref: '72',
+    };
+    const prKey = pullRequestFeedbackKey(identity);
+    expect(
+      first.delivery.watchPullRequest(
+        {
+          childConversationId: 'pr-watch:notes-72',
+          parentConversationId: PARENT,
+          taskId: prKey,
+          actor: { userId: OWNER, attribution: 'verified-bound' },
+        },
+        prKey,
+        identity,
+      ),
+    ).toBe('armed');
+    emit(first, PARENT, 'turn.started', { turnId: 'parent-running' });
+    const observation = {
+      identity,
+      url: 'https://github.com/acme/notes/pull/72',
+      state: 'MERGED' as const,
+      draft: false,
+      headSha: 'a'.repeat(40),
+      baseSha: 'b'.repeat(40),
+      headRefName: 'notes',
+      baseRefName: 'main',
+      mergeable: 'unknown' as const,
+      checks: [],
+      checksTruncated: false,
+      threads: [],
+      threadsTotal: 0,
+      reviews: [],
+      observedAt: new Date().toISOString(),
+    };
+    first.delivery.observePullRequest(prKey, observation);
+    await first.delivery.idle();
+    expect(first.starts).toHaveLength(0);
+    first.delivery.stop();
+    first.store.close();
+    open.splice(open.indexOf(first), 1);
+
+    const second = setup(path);
+    emit(second, PARENT, 'turn.completed', { turnId: 'parent-running' });
+    await second.delivery.reconcile();
+    second.delivery.observePullRequest(prKey, observation);
+    await second.delivery.idle();
+    expect(second.starts).toHaveLength(1);
+    expect(second.starts[0]!.parentConversationId).toBe(PARENT);
+    expect(second.starts[0]!.text).toContain('acme/notes #72 merged');
+  });
+
+  test('a watched turn still wakes its sender if a newer turn ran before delivery resumed', async () => {
+    const path = join(
+      makeTempDir('delegation-result-'),
+      'orchestration.sqlite',
+    );
+    const first = setup(path);
+    expect(
+      first.delivery.watchSession(
+        {
+          childConversationId: 'session-watch:sent-message',
+          parentConversationId: PARENT,
+          taskId: CHILD,
+          actor: { userId: OWNER, attribution: 'verified-bound' },
+        },
+        {
+          sessionId: CHILD,
+          turnId: 'sent-turn',
+          cursor: 0,
+          attention: false,
+        },
+      ),
+    ).toBe('armed');
+    first.delivery.stop();
+    const offline = { store: first.store, bus: new EventBus() };
+    runChildTurn(offline, CHILD, 'sent-turn', 'watched response');
+    runChildTurn(offline, CHILD, 'next-turn', 'unrelated response');
+    first.store.close();
+    open.splice(open.indexOf(first), 1);
+
+    const second = setup(path);
+    await second.delivery.reconcile();
+    await second.delivery.reconcile();
+    expect(second.starts).toHaveLength(1);
+    expect(second.starts[0]!.parentConversationId).toBe(PARENT);
+    expect(second.starts[0]!.text).toContain('> watched response');
+  });
+
+  test('a persisted approval wakes only the delegating parent once after restart', async () => {
+    const path = join(
+      makeTempDir('delegation-result-'),
+      'orchestration.sqlite',
+    );
+    const first = setup(path);
+    await routes(first, PARENT, () => 'running').delegate();
+    first.delivery.stop();
+    first.store.appendEvent({
+      method: 'request.opened',
+      provider: 'claude',
+      eventId: randomUUID(),
+      threadId: CHILD,
+      requestId: 'approval-1',
+      requestType: 'approval',
+      title: 'Approve writing the notes',
+      createdAt: new Date().toISOString(),
+    });
+    first.store.close();
+    open.splice(open.indexOf(first), 1);
+
+    const second = setup(path);
+    await second.delivery.reconcile();
+    await second.delivery.reconcile();
+    expect(second.starts).toHaveLength(1);
+    expect(second.starts[0]!.parentConversationId).toBe(PARENT);
+    expect(second.starts[0]!.text).toContain('> Approve writing the notes');
+    expect(second.starts[0]!.text).toContain('Decisions stay with the person');
   });
 
   test('an unacknowledged start is re-driven after restart under its original id', async () => {

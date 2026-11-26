@@ -509,6 +509,17 @@ Session by its `sessionId`, without creating a task.
   `no_active_turn` when idle. Steering is delivered once, through the engine's
   mid-turn input, and an engine without it answers `session_busy`. The result
   carries the Session's `sessionId`, the `turnId`, and an `eventCursor`.
+  Set `notifyOnSettle` for a wake when the addressed turn ends, and
+  `notifyOnAttention` for requests that need the person and for a turn that
+  ends in an error or engine exit. Station derives the wake destination from
+  the calling Session. Use the subscription for coordination across turns
+  and keep `schedule_wake_up` as a long fallback heartbeat.
+- `watch_pull_request_status` watches a pull request already linked to a
+  readable Session in the caller's Project. With Pull request agent feedback
+  enabled, it delivers merge, closure, queue-removal, and required-check
+  changes without taking ownership of the pull request's feedback.
+- `cancel_coordination_subscription` closes a subscription owned by the
+  calling conversation. A delivery already in flight can still arrive.
 - `interrupt_session` stops the running turn of the Session (optionally a named
   `turnId`) and answers `no-active-turn` when nothing runs.
 - `wait_session` observes for at most 50 seconds until `turn-settled` (a turn

@@ -526,7 +526,18 @@ export function AgentsWorkspacePane() {
     </h3>
   );
 
-  const nothing = runningCount === 0 && finishedCount === 0;
+  const subscriptions = new Map(
+    sessions
+      .filter(
+        (session) =>
+          scope === 'all' || input.chatKeyFor(session.threadId) === chatKey,
+      )
+      .flatMap((session) => session.coordination?.children ?? [])
+      .filter((child) => child.kind !== 'delegation')
+      .map((child) => [child.id, child] as const),
+  );
+  const nothing =
+    runningCount === 0 && finishedCount === 0 && subscriptions.size === 0;
   let body: ReactNode;
   if (nothing && (readModelFailed || readModelStale))
     body = (
@@ -561,6 +572,22 @@ export function AgentsWorkspacePane() {
   else
     body = (
       <div className="background-tasks-sheet__body">
+        {subscriptions.size > 0 && (
+          <section className="background-tasks-sheet__section">
+            <h3>Subscriptions</h3>
+            <ul className="background-tasks-sheet__list">
+              {[...subscriptions.values()].map((child) => (
+                <li key={child.id} className="agents-pane__note">
+                  {child.kind === 'pull-request'
+                    ? `${child.identity.repository.owner}/${child.identity.repository.name} #${child.identity.ref}`
+                    : `Session ${child.sessionId}`}
+                  {' · '}
+                  {child.waiting ? 'Waiting' : 'Settled'}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {subagentNotice && (
           <p className="agents-pane__note">
             {subagentNotice.label}

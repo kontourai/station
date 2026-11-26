@@ -1750,7 +1750,15 @@
     },
     "send_to_session": {
       "cli": ["chat"],
-      "note": "Different route and authority: MCP POST /api/orchestration/session-control/send (agent-to-agent, caller required, sender named); `chat --session <id>` is the person's own send via POST /api/orchestration/chat. Issue #3427 says the person send is the intended CLI equivalent. Modes (steer/auto/requestKey) not exposed by CLI."
+      "note": "Different route and authority: MCP POST /api/orchestration/session-control/send (agent-to-agent, caller required, sender named); `chat --session <id>` is the person's own send via POST /api/orchestration/chat. Issue #3427 says the person send is the intended CLI equivalent. Modes (steer/auto/requestKey) not exposed by CLI. The notifyOnSettle and notifyOnAttention parameters require a verified agent Session to receive the wake and have no person-send equivalent."
+    },
+    "cancel_coordination_subscription": {
+      "exempt": "agent-self",
+      "reason": "Cancels a subscription owned by the verified calling conversation."
+    },
+    "watch_pull_request_status": {
+      "exempt": "agent-self",
+      "reason": "The verified calling Session receives status wakes for a pull request linked in its Project."
     },
     "settle_conversation": {
       "cli": ["conversation settle", "conversation reopen"],

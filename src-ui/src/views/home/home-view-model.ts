@@ -52,6 +52,7 @@ import {
 export interface HomeWorkItem {
   receivedAgentMessage?: true;
   nextWakeUpAt?: string;
+  waitingOnChildren?: number;
   id: string;
   /** Durable conversation identity when this row represents one. */
   conversationId?: string;
@@ -485,6 +486,7 @@ function buildSessionWorkItem(
     ...(cwdLabel ? { cwdLabel } : {}),
     turnProgress: activeTurnProgress(session),
     nextWakeUpAt: session.nextWakeUpAt,
+    waitingOnChildren: session.coordination?.waiting,
     // #2312 review: a Draft's own clocks move without anyone touching it — a
     // stop (idle reaper, shutdown) rewrites `updatedAt`, engine housekeeping
     // bumps `lastEventAt` — and would keep an abandoned Draft out of the
@@ -724,6 +726,7 @@ function mergeHomeWorkItems(
       updatedAt: Math.max(existing.updatedAt, item.updatedAt),
       lifecycleLabel: mergedLifecycleLabel,
       nextWakeUpAt: orchestration?.nextWakeUpAt,
+      waitingOnChildren: orchestration?.waitingOnChildren,
       activeReason:
         mergedLifecycleLabel === 'Running'
           ? (orchestration?.activeReason ?? chat?.activeReason)

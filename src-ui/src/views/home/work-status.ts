@@ -160,6 +160,16 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
     };
   }
   if (
+    item.waitingOnChildren &&
+    (item.lifecycleLabel === 'Completed' || item.lifecycleLabel === 'Recent')
+  )
+    return {
+      rung: 'childWork',
+      lane: 'running',
+      tone: 'neutral',
+      word: `Waiting on ${item.waitingOnChildren}`,
+    };
+  if (
     item.nextWakeUpAt &&
     parseEpochMs(item.nextWakeUpAt) !== undefined &&
     (item.lifecycleLabel === 'Completed' || item.lifecycleLabel === 'Recent')

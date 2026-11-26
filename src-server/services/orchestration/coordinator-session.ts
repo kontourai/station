@@ -762,6 +762,11 @@ export interface CoordinatorWakePorts {
   conversationOf(sessionId: string): string;
   /** The conversation that delegated this one, when one did (#3158). */
   delegatedBy(conversationId: string): string | undefined;
+  handlesApprovalWake?(
+    parentConversationId: string,
+    sessionId: string,
+    itemKey: string,
+  ): boolean;
   /** Hand a wake to the coordinator conversation's inbox. */
   submit(input: {
     conversationId: string;
@@ -825,7 +830,12 @@ export class CoordinatorWakeDelivery {
       // outcome) to its parent; a child waiting on the person does not settle.
       if (
         delegatedBy === designation.conversationId &&
-        item.kind !== 'needs-you'
+        (item.kind !== 'needs-you' ||
+          this.ports.handlesApprovalWake?.(
+            designation.conversationId,
+            item.sessionId,
+            item.itemKey,
+          ))
       )
         continue;
       const userId = designation.actor.userId;
@@ -1166,6 +1176,7 @@ export function wireCoordinatorWakes(deps: {
   >;
   mayRead(userId: string, sessionId: string): boolean;
   readonly pictureEnabled?: () => boolean;
+  readonly handlesApprovalWake?: CoordinatorWakePorts['handlesApprovalWake'];
   readonly logger: CoordinatorWakePorts['logger'];
   readonly now?: () => number;
   readonly setTimer?: CoordinatorWakePorts['setTimer'];
@@ -1173,6 +1184,9 @@ export function wireCoordinatorWakes(deps: {
   const delivery = new CoordinatorWakeDelivery({
     store: deps.store,
     enabled: deps.enabled,
+    ...(deps.handlesApprovalWake
+      ? { handlesApprovalWake: deps.handlesApprovalWake }
+      : {}),
     ...(deps.pictureEnabled ? { pictureEnabled: deps.pictureEnabled } : {}),
     mayRead: deps.mayRead,
     conversationOf: (sessionId) =>

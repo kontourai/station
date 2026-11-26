@@ -7339,6 +7339,60 @@ export function configureRuntimeRoutes(
     return new DelegationResultDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.delegationResultStore(),
+      mayReadPullRequestWatch: (owner, authorization) => {
+        const inProject = (conversationId: string) => {
+          const threadId =
+            context.orchestrationService.currentConversationSessionId(
+              conversationId,
+            );
+          const target = stationControlDispatchScope.target(
+            { kind: 'thread', threadId, remote: false },
+            'view',
+          );
+          return (
+            target?.scope.kind === 'project' &&
+            target.scope.id === authorization.projectId &&
+            !target.host &&
+            context.orchestrationService.canUserReadSession(
+              threadId,
+              readAuthorityForExecution(owner.actor.userId),
+            )
+          );
+        };
+        return (
+          inProject(owner.parentConversationId) &&
+          inProject(authorization.sourceConversationId) &&
+          pullRequestFeedback?.mayReadStatusWatch(
+            authorization.sourceConversationId,
+            owner.taskId,
+          ) === true
+        );
+      },
+      inspectWatchStart: (conversationId, deliveryId) => {
+        const receipt = context.orchestrationService.inspectTurnDelivery(
+          conversationId,
+          deliveryId,
+          INTERNAL_SESSION_READ_SCOPE,
+        );
+        return receipt?.outcome === 'started' ? receipt : undefined;
+      },
+      blockedEvents: (threadId) =>
+        eventStore
+          .listEventsByMethods(threadId, ['session.state-changed'])
+          .flatMap(({ payload, sequence }) =>
+            payload.method === 'session.state-changed' &&
+            payload.sessionState === 'blocked'
+              ? [{ event: payload, sequence }]
+              : [],
+          ),
+      requestEvents: (threadId) =>
+        eventStore
+          .listEventsByMethods(threadId, ['request.opened'])
+          .flatMap(({ payload, sequence }) =>
+            payload.method === 'request.opened'
+              ? [{ event: payload, sequence }]
+              : [],
+          ),
       // Opt-in resolution: a delegation result reports the exact reply,
       // even one EventStore stored out of line (event-content-spill).
       turnEvents: (threadId, turnId, methods, limit, invocationId) =>
@@ -7401,6 +7455,23 @@ export function configureRuntimeRoutes(
       ),
     });
   }
+
+  const coordinationPreview =
+    hostedTenantRegistry === undefined
+      ? context.featurePreviews.bind({
+          id: 'coordinating-sessions',
+          label: 'Coordinating Sessions',
+          description:
+            'Show the Sessions, delegated tasks and pull requests a chat is waiting on.',
+        })
+      : undefined;
+  context.orchestrationService.bindCoordinationPreview?.(
+    () =>
+      coordinationPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) === true,
+  );
 
   // #3158: a delegated child's result goes back to the conversation that
   // delegated it. Personal Stations only: a hosted delivery would run outside
@@ -7743,6 +7814,9 @@ export function configureRuntimeRoutes(
           eventStore: context.orchestrationEventStore,
           store: coordinatorStore,
           enabled: coordinatorSessionEnabled,
+          handlesApprovalWake: (parent, session, itemKey) =>
+            delegationResults?.handlesApprovalWake(parent, session, itemKey) ===
+            true,
           pictureEnabled: () =>
             picturePreview?.select({
               enabled: () => true,
@@ -8300,6 +8374,9 @@ export function configureRuntimeRoutes(
     context.app.route(
       '/api/orchestration/session-control',
       createSessionAgentControlRoutes({
+        delegationResults,
+        watchPullRequest: (source, projectId, ref, owner) =>
+          pullRequestFeedback?.subscribeStatus(source, projectId, ref, owner),
         waiter: sessionTurnWaiter,
         orchestrationService: context.orchestrationService,
         eventStore: context.orchestrationEventStore,
@@ -11344,6 +11421,7 @@ export function configureRuntimeRoutes(
     );
   const sessionDiffStatSnapshots = new SessionDiffStatSnapshots();
   pullRequestFeedback = composePullRequestFeedbackRuntime({
+    coordination: delegationResults,
     homeDir: context.configLoader.getProjectHomeDir(),
     hosted: hostedTenantRegistry !== undefined,
     featurePreviews: context.featurePreviews,

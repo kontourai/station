@@ -17,10 +17,8 @@
  *
  * What triggers it. A child state TRANSITION, read from the durable event log
  * after the event was persisted (the bus publishes after the append) and
- * re-read at startup. Today the only transition is `settled` (the child's
- * current Session has no open turn and its newest turn ended); a later slice
- * adds `needs_input`/`blocked`/`failed` as further transition kinds keyed the
- * same way (#3628).
+ * re-read at startup. A verified turn terminal records `settled`. An opened
+ * request records `needs_input` without spending turn suppressions.
  *
  * Exactly once. Each transition is one row, keyed by the child conversation
  * and the transition (`settled:<session>:<turn>`), holding the text composed
@@ -87,7 +85,9 @@ import {
   type ClientOriginSender,
   UNKNOWN_CLIENT_REPORTED_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
+import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import {
+  type CoordinationChild,
   type InterruptTurnResult,
   PENDING_TURN_INTERRUPT_TTL_MS,
 } from '@kontourai/station-contracts/orchestration';
@@ -99,6 +99,11 @@ import {
   isSessionLifecycleState,
   isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
+import type { PullRequestFeedbackObservation } from '@kontourai/station-contracts/pull-request-feedback';
+import type {
+  RequestOpenedEvent,
+  SessionStateChangedEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { errorMessage } from '../../utils/error-message.js';
 import {
@@ -127,8 +132,11 @@ export const DELEGATION_RESULT_CLIENT_ORIGIN: ClientOrigin = Object.freeze({
   reported: UNKNOWN_CLIENT_REPORTED_ORIGIN,
 });
 
-/** The child transitions that produce a delivery. #3628 slice 2 adds more. */
-export type DelegationResultTransition = 'settled';
+export type DelegationResultTransition =
+  | 'settled'
+  | 'needs_input'
+  | 'blocked'
+  | 'pull_request';
 
 export type DelegationResultState =
   | 'pending'
@@ -178,6 +186,29 @@ export const DELEGATION_RESULT_DELIVERY_SCHEMA = `CREATE TABLE IF NOT EXISTS del
   armed_at INTEGER NOT NULL,
   last_activity_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS delegation_result_session_watches (
+  watch_id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  cursor INTEGER NOT NULL,
+  attention INTEGER NOT NULL,
+  settle INTEGER NOT NULL DEFAULT 1,
+  pending_json TEXT,
+  cancelled INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS delegation_result_session_watches_session
+  ON delegation_result_session_watches (session_id);
+CREATE TABLE IF NOT EXISTS delegation_result_pull_request_watches (
+  watch_id TEXT PRIMARY KEY,
+  pr_key TEXT NOT NULL,
+  identity_json TEXT NOT NULL,
+  authorization_json TEXT,
+  status_json TEXT,
+  closed INTEGER NOT NULL DEFAULT 0,
+  cancelled INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS delegation_result_pull_request_watches_pr
+  ON delegation_result_pull_request_watches (pr_key, closed);
 CREATE INDEX IF NOT EXISTS delegation_result_owners_task
   ON delegation_result_owners (task_id);
 CREATE TABLE IF NOT EXISTS delegation_result_deliveries (
@@ -326,6 +357,28 @@ function migrateDelegationResultSchemaNow(db: SqliteDatabase): void {
     `UPDATE delegation_result_owners SET last_activity_at = armed_at
      WHERE last_activity_at = 0`,
   );
+  const watches = columns('delegation_result_session_watches');
+  if (!watches.has('settle'))
+    db.exec(
+      'ALTER TABLE delegation_result_session_watches ADD COLUMN settle INTEGER NOT NULL DEFAULT 1',
+    );
+  if (!watches.has('cancelled'))
+    db.exec(
+      'ALTER TABLE delegation_result_session_watches ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0',
+    );
+  if (!watches.has('pending_json'))
+    db.exec(
+      'ALTER TABLE delegation_result_session_watches ADD COLUMN pending_json TEXT',
+    );
+  const prWatches = columns('delegation_result_pull_request_watches');
+  if (!prWatches.has('cancelled'))
+    db.exec(
+      'ALTER TABLE delegation_result_pull_request_watches ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0',
+    );
+  if (!prWatches.has('authorization_json'))
+    db.exec(
+      'ALTER TABLE delegation_result_pull_request_watches ADD COLUMN authorization_json TEXT',
+    );
   const deliveries = columns('delegation_result_deliveries');
   if (!deliveries.has('attempts'))
     db.exec(
@@ -377,6 +430,35 @@ export interface DelegationResultOwner {
   readonly parentConversationId: string;
   readonly actor: DelegationResultActor;
   readonly childAgent?: string;
+  readonly armedAt: number;
+}
+
+interface PullRequestWatchAuthorization {
+  readonly sourceConversationId: string;
+  readonly projectId: string;
+}
+
+interface PullRequestWatchStatus {
+  readonly state: PullRequestFeedbackObservation['state'];
+  readonly head: string;
+  readonly required?: 'failed' | 'passed';
+  readonly removal?: string;
+}
+
+interface PendingSessionWatch {
+  readonly branch: SessionDeliveryBranch;
+  readonly conversationId: string;
+  readonly deliveryId: string;
+}
+
+interface SessionWatch {
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly cursor: number;
+  readonly attention: boolean;
+  readonly settle?: boolean;
+  readonly cancelled?: boolean;
+  readonly pending?: PendingSessionWatch;
 }
 
 export type DelegationResultArm = Pick<
@@ -390,7 +472,9 @@ export type DelegationResultArm = Pick<
  */
 export type DelegationResultOutcome =
   | SessionSettledTurn['outcome']
-  | 'interrupted';
+  | 'interrupted'
+  | 'needs-input'
+  | 'pull-request-status';
 
 export interface DelegationResultRow {
   readonly childConversationId: string;
@@ -453,6 +537,7 @@ export function createSqliteDelegationResultStore(
         ...(principal ? { principal } : {}),
       },
       ...(row.child_agent ? { childAgent: String(row.child_agent) } : {}),
+      armedAt: Number(row.armed_at),
     };
   };
   const rowOf = (row: Record<string, unknown>): DelegationResultRow => ({
@@ -628,6 +713,12 @@ export function createSqliteDelegationResultStore(
          SELECT child_conversation_id FROM delegation_result_deliveries
          WHERE state IN ('pending', 'claimed'))`,
     ).run(cutoff);
+    db.exec(`DELETE FROM delegation_result_pull_request_watches WHERE NOT EXISTS (
+      SELECT 1 FROM delegation_result_owners WHERE child_conversation_id = watch_id
+    )`);
+    db.exec(`DELETE FROM delegation_result_session_watches WHERE NOT EXISTS (
+      SELECT 1 FROM delegation_result_owners WHERE child_conversation_id = watch_id
+    )`);
   };
 
   return {
@@ -665,13 +756,312 @@ export function createSqliteDelegationResultStore(
         );
       return changes(inserted) > 0 ? 'armed' : 'already-armed';
     },
+    armSessionWatch(owner: DelegationResultArm, watch: SessionWatch) {
+      return atomically(() => {
+        const result = this.armNow(owner);
+        if (result === 'armed')
+          db.prepare(
+            `INSERT INTO delegation_result_session_watches
+               (watch_id, session_id, turn_id, cursor, attention, settle, pending_json)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          ).run(
+            owner.childConversationId,
+            watch.sessionId,
+            watch.turnId,
+            watch.cursor,
+            Number(watch.attention),
+            Number(watch.settle !== false),
+            watch.pending ? JSON.stringify(watch.pending) : null,
+          );
+        return result;
+      });
+    },
+    sessionWatch(watchId: string): SessionWatch | undefined {
+      const row = db
+        .prepare(
+          `SELECT session_id, turn_id, cursor, attention, settle, cancelled, pending_json
+         FROM delegation_result_session_watches WHERE watch_id = ?`,
+        )
+        .get(watchId) as
+        | {
+            session_id: string;
+            turn_id: string;
+            cursor: number;
+            attention: number;
+            settle: number;
+            cancelled: number;
+            pending_json: string | null;
+          }
+        | undefined;
+      return (
+        row && {
+          sessionId: row.session_id,
+          turnId: row.turn_id,
+          cursor: row.cursor,
+          attention: row.attention === 1,
+          settle: row.settle === 1,
+          cancelled: row.cancelled === 1,
+          ...(row.pending_json
+            ? { pending: JSON.parse(row.pending_json) as PendingSessionWatch }
+            : {}),
+        }
+      );
+    },
+    activateSessionWatch(
+      watchId: string,
+      sessionId: string,
+      turnId: string,
+    ): boolean {
+      return (
+        changes(
+          db
+            .prepare(
+              `UPDATE delegation_result_session_watches
+         SET cursor = CASE WHEN session_id = ? THEN cursor ELSE 0 END,
+             session_id = ?, turn_id = ?, pending_json = NULL
+         WHERE watch_id = ? AND pending_json IS NOT NULL AND cancelled = 0`,
+            )
+            .run(sessionId, sessionId, turnId, watchId),
+        ) > 0
+      );
+    },
+    dropPendingWatch(watchId: string): void {
+      atomically(() => {
+        const deleted = changes(
+          db
+            .prepare(
+              `DELETE FROM delegation_result_session_watches
+           WHERE watch_id = ? AND pending_json IS NOT NULL AND cancelled = 0`,
+            )
+            .run(watchId),
+        );
+        if (deleted)
+          db.prepare(
+            'DELETE FROM delegation_result_owners WHERE child_conversation_id = ?',
+          ).run(watchId);
+      });
+    },
+    confirmedSteerWatchTurn(
+      sessionId: string,
+      deliveryId: string,
+    ): string | undefined {
+      const result = db
+        .prepare(
+          'SELECT confirmed_turn_id FROM orchestration_steer_inputs WHERE thread_id = ? AND client_input_id = ?',
+        )
+        .get(sessionId, deliveryId) as
+        | { confirmed_turn_id: string | null }
+        | undefined;
+      return result?.confirmed_turn_id ?? undefined;
+    },
+    watchesForSession(sessionId: string): string[] {
+      return (
+        db
+          .prepare(
+            `SELECT watch_id FROM delegation_result_session_watches
+         WHERE session_id = ? AND cancelled = 0 AND NOT EXISTS (
+           SELECT 1 FROM delegation_result_deliveries
+           WHERE child_conversation_id = watch_id AND transition = 'settled'
+         )`,
+          )
+          .all(sessionId) as { watch_id: string }[]
+      ).map(({ watch_id }) => watch_id);
+    },
+    armPullRequestWatch(
+      owner: DelegationResultArm,
+      prKey: string,
+      identity: PullRequestLinkIdentity,
+      authorization?: PullRequestWatchAuthorization,
+    ) {
+      return atomically(() => {
+        const result = this.armNow(owner);
+        if (result === 'armed')
+          db.prepare(
+            `INSERT INTO delegation_result_pull_request_watches
+               (watch_id, pr_key, identity_json, authorization_json) VALUES (?, ?, ?, ?)`,
+          ).run(
+            owner.childConversationId,
+            prKey,
+            JSON.stringify(identity),
+            authorization ? JSON.stringify(authorization) : null,
+          );
+        return result;
+      });
+    },
+    pullRequestWatchAuthorization(
+      watchId: string,
+    ): PullRequestWatchAuthorization | undefined {
+      const row = db
+        .prepare(
+          'SELECT authorization_json FROM delegation_result_pull_request_watches WHERE watch_id = ?',
+        )
+        .get(watchId) as { authorization_json: string | null } | undefined;
+      return row?.authorization_json
+        ? (JSON.parse(row.authorization_json) as PullRequestWatchAuthorization)
+        : undefined;
+    },
+    isPullRequestWatch(watchId: string): boolean {
+      return Boolean(
+        db
+          .prepare(
+            'SELECT 1 FROM delegation_result_pull_request_watches WHERE watch_id = ?',
+          )
+          .get(watchId),
+      );
+    },
+    watchedPullRequests(): {
+      prKey: string;
+      identity: PullRequestLinkIdentity;
+    }[] {
+      const rows = db
+        .prepare(
+          `SELECT DISTINCT pr_key, identity_json
+         FROM delegation_result_pull_request_watches WHERE closed = 0 AND cancelled = 0 ORDER BY pr_key`,
+        )
+        .all() as { pr_key: string; identity_json: string }[];
+      return rows.map((row) => ({
+        prKey: row.pr_key,
+        identity: JSON.parse(row.identity_json) as PullRequestLinkIdentity,
+      }));
+    },
+    observePullRequestWatch(
+      prKey: string,
+      status: PullRequestWatchStatus,
+      event: (
+        prior: PullRequestWatchStatus | undefined,
+        owner: DelegationResultOwner,
+      ) => void,
+    ): string[] {
+      return atomically(() => {
+        const rows = db
+          .prepare(
+            `SELECT watch_id, status_json FROM delegation_result_pull_request_watches
+           WHERE pr_key = ? AND closed = 0 AND cancelled = 0`,
+          )
+          .all(prKey) as { watch_id: string; status_json: string | null }[];
+        for (const row of rows) {
+          const owner = readOwner(row.watch_id);
+          if (!owner) continue;
+          const prior = row.status_json
+            ? (JSON.parse(row.status_json) as PullRequestWatchStatus)
+            : undefined;
+          event(prior, owner);
+          db.prepare(
+            `UPDATE delegation_result_pull_request_watches SET status_json = ?, closed = ?
+             WHERE watch_id = ?`,
+          ).run(
+            JSON.stringify(status),
+            Number(status.state !== 'OPEN'),
+            row.watch_id,
+          );
+          this.touchOwner(row.watch_id);
+        }
+        return rows.map(({ watch_id }) => watch_id);
+      });
+    },
+    coordinationChildren(
+      userId: string,
+      parentConversationId?: string,
+    ): Map<string, CoordinationChild[]> {
+      const rows = db
+        .prepare(
+          `SELECT owner.child_conversation_id as id, owner.parent_conversation_id as parent,
+           owner.task_id, sw.session_id, pr.identity_json,
+           CASE
+             WHEN EXISTS (SELECT 1 FROM delegation_result_deliveries delivery
+               WHERE delivery.child_conversation_id = owner.child_conversation_id
+                 AND delivery.state IN ('pending', 'claimed')) THEN 1
+             WHEN pr.watch_id IS NOT NULL THEN 1 - pr.closed
+             WHEN EXISTS (SELECT 1 FROM delegation_result_deliveries delivery
+               WHERE delivery.child_conversation_id = owner.child_conversation_id
+                 AND delivery.transition = 'settled') THEN 0
+             ELSE 1
+           END AS waiting
+         FROM delegation_result_owners owner
+         LEFT JOIN delegation_result_session_watches sw ON sw.watch_id = owner.child_conversation_id
+         LEFT JOIN delegation_result_pull_request_watches pr ON pr.watch_id = owner.child_conversation_id
+         WHERE owner.owner_user_id = ? AND coalesce(sw.cancelled, 0) = 0 AND coalesce(pr.cancelled, 0) = 0
+           AND (? IS NULL OR owner.parent_conversation_id = ?)
+         ORDER BY waiting DESC, owner.last_activity_at DESC`,
+        )
+        .all(
+          userId,
+          parentConversationId ?? null,
+          parentConversationId ?? null,
+        ) as {
+        id: string;
+        parent: string;
+        task_id: string;
+        session_id: string | null;
+        identity_json: string | null;
+        waiting: number;
+      }[];
+      const byParent = new Map<string, CoordinationChild[]>();
+      for (const row of rows) {
+        const base = { id: row.id, waiting: row.waiting === 1 };
+        const child: CoordinationChild = row.identity_json
+          ? {
+              ...base,
+              kind: 'pull-request',
+              identity: JSON.parse(
+                row.identity_json,
+              ) as PullRequestLinkIdentity,
+            }
+          : row.session_id
+            ? { ...base, kind: 'session', sessionId: row.session_id }
+            : { ...base, kind: 'delegation', sessionId: row.id };
+        const children = byParent.get(row.parent);
+        if (children) children.push(child);
+        else byParent.set(row.parent, [child]);
+      }
+      return byParent;
+    },
+    cancelWatch(watchId: string, parentConversationId: string, userId: string) {
+      return atomically(() => {
+        const owner = readOwner(watchId);
+        if (
+          owner?.parentConversationId !== parentConversationId ||
+          owner.actor.userId !== userId
+        )
+          return undefined;
+        const sessionRows = changes(
+          db
+            .prepare(
+              'UPDATE delegation_result_session_watches SET cancelled = 1 WHERE watch_id = ?',
+            )
+            .run(watchId),
+        );
+        const prRows = changes(
+          db
+            .prepare(
+              'UPDATE delegation_result_pull_request_watches SET cancelled = 1 WHERE watch_id = ?',
+            )
+            .run(watchId),
+        );
+        if (!sessionRows && !prRows) return undefined;
+        const inFlight = this.listForChild(watchId).some(
+          ({ state }) => state === 'claimed',
+        );
+        this.consumeNow(watchId);
+        this.touchOwner(watchId);
+        return { cancelled: true as const, inFlight };
+      });
+    },
     owner: readOwner,
     /** The owner a task reference names: its conversation id or task id. */
     ownerByReference(reference: string): DelegationResultOwner | undefined {
       const row = db
         .prepare(
           `SELECT * FROM delegation_result_owners
-           WHERE child_conversation_id = ? OR task_id = ? OR task_id = ?
+           WHERE (child_conversation_id = ? OR task_id = ? OR task_id = ?)
+             AND NOT EXISTS (
+               SELECT 1 FROM delegation_result_session_watches
+               WHERE watch_id = child_conversation_id
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM delegation_result_pull_request_watches
+               WHERE watch_id = child_conversation_id
+             )
            LIMIT 1`,
         )
         .get(reference, reference, `task:${reference}`) as
@@ -724,7 +1114,10 @@ export function createSqliteDelegationResultStore(
         DelegationResultRow,
         'fence' | 'decision' | 'unconfirmed' | 'attempts' | 'state'
       >,
-      options: { readonly caughtUp?: boolean } = {},
+      options: {
+        readonly caughtUp?: boolean;
+        readonly suppressWake?: boolean;
+      } = {},
     ): boolean {
       const waitingBefore = options.caughtUp ? openedAt : undefined;
       return atomically(() => {
@@ -737,7 +1130,7 @@ export function createSqliteDelegationResultStore(
                    (child_conversation_id, transition_key, transition, parent_conversation_id,
                     child_session_id, child_turn_id, outcome, delivery_id, text, state,
                     created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               )
               .run(
                 row.childConversationId,
@@ -749,11 +1142,14 @@ export function createSqliteDelegationResultStore(
                 row.outcome,
                 row.deliveryId,
                 row.text,
+                options.suppressWake ? 'consumed' : 'pending',
                 at,
                 at,
               ),
           ) > 0;
         if (!written) return false;
+        this.touchOwner(row.childConversationId);
+        if (row.transition !== 'settled') return true;
         if (row.childTurnId) {
           bindUnlogged(
             row.childConversationId,
@@ -785,7 +1181,6 @@ export function createSqliteDelegationResultStore(
         // the suppression waiting for that turn too.
         if (row.outcome !== 'error')
           dropUnbound(row.childConversationId, waitingBefore);
-        this.touchOwner(row.childConversationId);
         return true;
       });
     },
@@ -1078,6 +1473,21 @@ export interface DelegationResultDeliveryPorts {
   readonly store: DelegationResultStore;
   /** The Session's lifecycle fold events, oldest first (`ACTIVE_TURN_FOLD_METHODS`). */
   foldEvents(threadId: string): readonly SessionWaitFoldEvent[];
+  mayReadPullRequestWatch?(
+    owner: DelegationResultOwner,
+    authorization: PullRequestWatchAuthorization,
+  ): boolean;
+  inspectWatchStart?(
+    conversationId: string,
+    deliveryId: string,
+  ): { sessionId: string; turnId: string } | undefined;
+  blockedEvents?(
+    threadId: string,
+  ): readonly { sequence: number; event: SessionStateChangedEvent }[];
+  requestEvents?(threadId: string): readonly {
+    sequence: number;
+    event: RequestOpenedEvent;
+  }[];
   headSequence(threadId: string): number;
   /** One turn's events of these methods, oldest first, at most `limit`. */
   turnEvents(
@@ -1198,6 +1608,8 @@ const PENDING_INTERRUPT_TERMINALS = new Set([
 ]);
 
 const FOLD_METHODS = new Set([
+  'session.state-changed',
+  'request.opened',
   'turn.started',
   'turn.completed',
   'turn.aborted',
@@ -1207,6 +1619,8 @@ const FOLD_METHODS = new Set([
 
 const OUTCOME_WORDS: Record<DelegationResultOutcome, string> = {
   completed: 'finished its turn',
+  'needs-input': 'needs the person',
+  'pull-request-status': 'received a pull request update',
   interrupted: 'was interrupted when Station restarted, before it finished',
   aborted: 'was stopped',
   error: 'failed',
@@ -1469,6 +1883,159 @@ export class DelegationResultDelivery {
     this.driveChild(owner.childConversationId);
   }
 
+  watchPullRequest(
+    owner: DelegationResultArm,
+    prKey: string,
+    identity: PullRequestLinkIdentity,
+    authorization?: PullRequestWatchAuthorization,
+  ) {
+    return this.ports.store.armPullRequestWatch(
+      owner,
+      prKey,
+      identity,
+      authorization,
+    );
+  }
+
+  watchedPullRequests() {
+    return this.ports.store.watchedPullRequests();
+  }
+
+  observePullRequest(
+    prKey: string,
+    observation: PullRequestFeedbackObservation,
+  ): void {
+    if (this.stopped) return;
+    const requiredChecks = observation.checks.filter((check) => check.required);
+    const required = requiredChecks.some(
+      (check) =>
+        check.completed &&
+        check.conclusion !== null &&
+        !['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(check.conclusion),
+    )
+      ? 'failed'
+      : !observation.checksTruncated &&
+          requiredChecks.length > 0 &&
+          requiredChecks.every(
+            (check) => check.completed && check.conclusion !== null,
+          )
+        ? 'passed'
+        : undefined;
+    const landing = observation.snapshot?.landing;
+    const removal = landing?.state === 'removed' ? landing : undefined;
+    const status: PullRequestWatchStatus = {
+      state: observation.state,
+      head: observation.headSha,
+      ...(required ? { required } : {}),
+      ...(removal ? { removal: removal.id } : {}),
+    };
+    const watchIds = this.ports.store.observePullRequestWatch(
+      prKey,
+      status,
+      (prior, owner) => {
+        if (!this.mayReadPullRequestWatch(owner)) return;
+        const identity = observation.identity;
+        const record = (key: string, message: string, details?: string) => {
+          const transitionKey = `pull_request:${key}`;
+          const childSessionId = this.ports.currentSessionId(
+            owner.parentConversationId,
+          );
+          this.ports.store.record({
+            childConversationId: owner.childConversationId,
+            transitionKey,
+            transition: 'pull_request',
+            parentConversationId: owner.parentConversationId,
+            childSessionId,
+            outcome: 'pull-request-status',
+            deliveryId: deliveryIdFor(owner.childConversationId, transitionKey),
+            text: [
+              `[Station: pull request ${flat(identity.repository.owner)}/${flat(identity.repository.name)} #${flat(identity.ref)} ${message}.]`,
+              ...(details ? [`> ${flat(details)}`] : []),
+            ].join('\n'),
+          });
+        };
+        if (status.state !== 'OPEN') {
+          record(status.state, status.state === 'MERGED' ? 'merged' : 'closed');
+          return;
+        }
+        if (removal && prior && prior.removal !== removal.id)
+          record(
+            `queue:${removal.id}`,
+            'was removed from the merge queue',
+            removal.reason,
+          );
+        if (
+          required &&
+          prior &&
+          (prior.head !== status.head || prior.required !== required)
+        )
+          record(
+            `checks:${status.head}:${required}:${observation.observedAt}`,
+            `required checks ${required}`,
+          );
+      },
+    );
+    for (const watchId of watchIds) this.driveChild(watchId);
+  }
+
+  handlesApprovalWake(
+    parentConversationId: string,
+    sessionId: string,
+    itemKey: string,
+  ): boolean {
+    const prefix = `needs-you:orchestration:${sessionId}:`;
+    if (!itemKey.startsWith(prefix)) return false;
+    const owner = this.ports.store.owner(this.ports.conversationOf(sessionId));
+    if (owner?.parentConversationId !== parentConversationId) return false;
+    const requestId = itemKey.slice(prefix.length);
+    return (
+      this.ports
+        .requestEvents?.(sessionId)
+        .some(
+          ({ event }) =>
+            event.requestId === requestId &&
+            this.ports.store.has(
+              owner.childConversationId,
+              `needs_input:${sessionId}:${event.eventId}`,
+            ),
+        ) === true
+    );
+  }
+
+  cancelWatch(watchId: string, parentConversationId: string, userId: string) {
+    return this.ports.store.cancelWatch(watchId, parentConversationId, userId);
+  }
+
+  prepareWatch(
+    owner: DelegationResultArm,
+    watch: Omit<SessionWatch, 'turnId' | 'pending'>,
+    pending: PendingSessionWatch,
+  ) {
+    return this.ports.store.armSessionWatch(owner, {
+      ...watch,
+      turnId: '',
+      pending,
+    });
+  }
+
+  dropPendingWatch(watchId: string): void {
+    this.ports.store.dropPendingWatch(watchId);
+  }
+
+  watchSession(owner: DelegationResultArm, watch: SessionWatch) {
+    const result = this.ports.store.armSessionWatch(owner, watch);
+    const activated = this.ports.store.activateSessionWatch(
+      owner.childConversationId,
+      watch.sessionId,
+      watch.turnId,
+    );
+    if (result === 'armed' || activated) {
+      this.evaluateChild(owner.childConversationId);
+      this.driveChild(owner.childConversationId);
+    }
+    return result;
+  }
+
   /**
    * A `get_task` read by the owning parent that reported the child at rest
    * consumes the transition it saw. The child is evaluated first, from the
@@ -1611,9 +2178,18 @@ export class DelegationResultDelivery {
   private onFoldEvent(threadId: string, method: string): void {
     if (this.stopped) return;
     const conversationId = this.ports.conversationOf(threadId);
-    if (this.ports.store.owner(conversationId)) {
+    const owner = this.ports.store.owner(conversationId);
+    if (owner) {
       this.ports.store.touchOwner(conversationId);
-      this.evaluateChild(conversationId, 'live');
+      if (method === 'request.opened') {
+        if (threadId === this.ports.currentSessionId(conversationId))
+          this.recordRequests(owner, threadId);
+      } else if (method === 'session.state-changed') {
+        if (threadId === this.ports.currentSessionId(conversationId))
+          this.recordBlocks(owner, threadId);
+      } else {
+        this.evaluateChild(conversationId, 'live');
+      }
       // The service drops its pending cancel on any of these terminals for
       // the thread, settled turn or not (`CooperativeStop
       // .applyPendingTurnInterrupt`): a held dispatch whose Session exits
@@ -1625,6 +2201,10 @@ export class DelegationResultDelivery {
       )
         this.ports.store.dropUnboundSuppressions(conversationId);
       this.driveChild(conversationId);
+    }
+    for (const watchId of this.ports.store.watchesForSession(threadId)) {
+      this.evaluateChild(watchId);
+      this.driveChild(watchId);
     }
     // The thread may be a parent whose turn just ended: a queued result can
     // now start its next turn.
@@ -1645,13 +2225,75 @@ export class DelegationResultDelivery {
   ): void {
     const owner = this.ports.store.owner(childConversationId);
     if (!owner) return;
-    const thread = this.ports.currentSessionId(childConversationId);
+    if (this.ports.store.isPullRequestWatch(childConversationId)) return;
+    const watch = this.ports.store.sessionWatch(childConversationId);
+    if (watch?.cancelled) return;
+    if (watch?.pending) {
+      const { branch, deliveryId, conversationId } = watch.pending;
+      const steerTurnId =
+        branch === 'steer'
+          ? this.ports.store.confirmedSteerWatchTurn(
+              watch.sessionId,
+              deliveryId,
+            )
+          : undefined;
+      const confirmed =
+        branch === 'start'
+          ? this.ports.inspectWatchStart?.(conversationId, deliveryId)
+          : steerTurnId
+            ? { sessionId: watch.sessionId, turnId: steerTurnId }
+            : undefined;
+      if (
+        confirmed &&
+        this.ports.store.activateSessionWatch(
+          childConversationId,
+          confirmed.sessionId,
+          confirmed.turnId,
+        )
+      )
+        this.evaluateChild(childConversationId);
+      return;
+    }
+    const thread =
+      watch?.sessionId ?? this.ports.currentSessionId(childConversationId);
+    if (
+      watch &&
+      this.ports.store
+        .listForChild(childConversationId)
+        .some((row) => row.transition === 'settled')
+    )
+      return;
+    if (source === 'caught-up' && (!watch || watch.attention)) {
+      this.recordRequests(owner, thread, watch);
+      this.recordBlocks(owner, thread, watch);
+    }
+    const events = this.ports.foldEvents(thread);
+    const nextTurn = watch
+      ? events.findIndex(
+          ({ event, sequence }) =>
+            sequence > watch.cursor &&
+            event.method === 'turn.started' &&
+            event.turnId !== watch.turnId,
+        )
+      : -1;
     const { view, interrupted } = evaluateSessionWait(
-      { ...this.foldPorts(), coordinatorBusy: () => false },
+      {
+        ...this.foldPorts(),
+        foldEvents: () => (nextTurn < 0 ? events : events.slice(0, nextTurn)),
+        coordinatorBusy: () => false,
+      },
       thread,
       'turn-settled',
-      0,
+      watch?.cursor ?? 0,
     );
+    if (watch) {
+      const terminal =
+        interrupted &&
+        (!view.settledTurn || interrupted.sequence > view.settledTurn.sequence)
+          ? interrupted
+          : view.settledTurn;
+      if (terminal?.turnId !== watch.turnId) return;
+    }
     if (view.openTurnId)
       this.ports.store.bindUnloggedSuppressions(
         childConversationId,
@@ -1713,9 +2355,9 @@ export class DelegationResultDelivery {
           settled.invocationId,
         )
       : { text: '', incomplete: false };
-    const terminal = this.ports
-      .foldEvents(thread)
-      .find(({ sequence }) => sequence === settled.sequence)?.event;
+    const terminal = events.find(
+      ({ sequence }) => sequence === settled.sequence,
+    )?.event;
     if (!terminal)
       throw new Error(
         'Child terminal identity is unavailable; result remains undelivered.',
@@ -1729,7 +2371,12 @@ export class DelegationResultDelivery {
         childSessionId: thread,
         ...(settled.turnId ? { childTurnId: settled.turnId } : {}),
         outcome: settled.outcome,
-        deliveryId: deliveryIdFor(thread, terminal.eventId),
+        deliveryId: deliveryIdFor(
+          thread,
+          watch
+            ? JSON.stringify([owner.parentConversationId, terminal.eventId])
+            : terminal.eventId,
+        ),
         text: composeDelegationResultText({
           taskId: owner.taskId,
           ...(owner.childAgent ? { agent: owner.childAgent } : {}),
@@ -1739,7 +2386,13 @@ export class DelegationResultDelivery {
           outputIncomplete: output.incomplete,
         }),
       },
-      { caughtUp: source === 'caught-up' },
+      {
+        caughtUp: source === 'caught-up',
+        suppressWake:
+          watch?.settle === false &&
+          settled.outcome !== 'error' &&
+          settled.outcome !== 'exited',
+      },
     );
   }
 
@@ -1773,7 +2426,12 @@ export class DelegationResultDelivery {
         childSessionId: thread,
         childTurnId: interrupted.turnId,
         outcome: 'interrupted',
-        deliveryId: deliveryIdFor(thread, interrupted.eventId),
+        deliveryId: deliveryIdFor(
+          thread,
+          this.ports.store.sessionWatch(childConversationId)
+            ? JSON.stringify([owner.parentConversationId, interrupted.eventId])
+            : interrupted.eventId,
+        ),
         text: composeDelegationResultText({
           taskId: owner.taskId,
           ...(owner.childAgent ? { agent: owner.childAgent } : {}),
@@ -1785,6 +2443,76 @@ export class DelegationResultDelivery {
       },
       { caughtUp: source === 'caught-up' },
     );
+  }
+
+  private recordBlocks(
+    owner: DelegationResultOwner,
+    thread: string,
+    watch?: SessionWatch,
+  ): void {
+    for (const { event, sequence } of this.ports.blockedEvents?.(thread) ??
+      []) {
+      if (watch) {
+        if (
+          sequence <= watch.cursor ||
+          (event.turnId && event.turnId !== watch.turnId)
+        )
+          continue;
+      } else if (!(Date.parse(event.createdAt) >= owner.armedAt)) continue;
+      const transitionKey = `blocked:${thread}:${event.eventId}`;
+      this.ports.store.record({
+        childConversationId: owner.childConversationId,
+        transitionKey,
+        transition: 'blocked',
+        parentConversationId: owner.parentConversationId,
+        childSessionId: thread,
+        outcome: 'needs-input',
+        deliveryId: deliveryIdFor(
+          thread,
+          watch
+            ? JSON.stringify([owner.parentConversationId, event.eventId])
+            : event.eventId,
+        ),
+        text: `[Station: Session ${JSON.stringify(flat(thread))} is blocked. Open the Session for its current status.]`,
+      });
+    }
+  }
+
+  private recordRequests(
+    owner: DelegationResultOwner,
+    thread: string,
+    watch?: SessionWatch,
+  ): void {
+    for (const { event: request, sequence } of this.ports.requestEvents?.(
+      thread,
+    ) ?? []) {
+      if (watch) {
+        if (sequence <= watch.cursor || request.turnId !== watch.turnId)
+          continue;
+      } else if (!(Date.parse(request.createdAt) >= owner.armedAt)) continue;
+      const transitionKey = `needs_input:${thread}:${request.eventId}`;
+      if (this.ports.store.has(owner.childConversationId, transitionKey))
+        continue;
+      this.ports.store.record({
+        childConversationId: owner.childConversationId,
+        transitionKey,
+        transition: 'needs_input',
+        parentConversationId: owner.parentConversationId,
+        childSessionId: thread,
+        ...(request.turnId ? { childTurnId: request.turnId } : {}),
+        outcome: 'needs-input',
+        deliveryId: deliveryIdFor(
+          thread,
+          watch
+            ? JSON.stringify([owner.parentConversationId, request.eventId])
+            : request.eventId,
+        ),
+        text: [
+          `[Station: Session ${JSON.stringify(flat(thread))} needs the person. Decisions stay with the person. Open the Session for its current status.]`,
+          `> ${flat(request.title)}`,
+        ].join('\n'),
+      });
+    }
   }
 
   private driveChild(childConversationId: string): void {
@@ -1815,6 +2543,7 @@ export class DelegationResultDelivery {
   }
 
   private canDeliverRow(row: DelegationResultRow): boolean {
+    if (row.transition !== 'settled') return true;
     const identity = readSettlementIdentity(row);
     if (!identity) return false;
     if (identity.kind === 'interrupted') return true;
@@ -1850,11 +2579,26 @@ export class DelegationResultDelivery {
     );
   }
 
+  private mayReadPullRequestWatch(owner: DelegationResultOwner): boolean {
+    const authorization = this.ports.store.pullRequestWatchAuthorization(
+      owner.childConversationId,
+    );
+    return (
+      !authorization ||
+      this.ports.mayReadPullRequestWatch?.(owner, authorization) === true
+    );
+  }
+
   private async attempt(row: DelegationResultRow): Promise<void> {
     const store = this.ports.store;
     if (!this.canDeliverRow(row)) return;
     const owner = store.owner(row.childConversationId);
     if (!owner) return store.settle(row, 'refused', 'owner-missing');
+    if (
+      row.transition === 'pull_request' &&
+      !this.mayReadPullRequestWatch(owner)
+    )
+      return store.settle(row, 'refused', 'pull-request-watch-access-changed');
     let pinned: { branch: SessionDeliveryBranch; threadId: string } | undefined;
     if (row.state === 'pending') {
       if (!store.claim(row)) return;

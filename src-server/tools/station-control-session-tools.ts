@@ -62,6 +62,16 @@ export const sendToSessionInputSchema = z
         '`auto` (default): steer a running Session, start an idle one. `start`: only start a turn on an idle Session (a running one answers session_busy). `steer`: only add to a running turn (an idle one answers no_active_turn).',
       ),
     requestKey,
+    notifyOnSettle: z
+      .boolean()
+      .optional()
+      .describe('Wake the sending Session when this turn settles.'),
+    notifyOnAttention: z
+      .boolean()
+      .optional()
+      .describe(
+        'Also wake the sending Session when this turn needs the person.',
+      ),
   })
   .strict();
 
@@ -154,6 +164,37 @@ export function registerSessionTools(registry: StationControlToolRegistry) {
     sendToSessionInputSchema,
     async (input) =>
       callRoute(`${SESSION_CONTROL_API}/send`, {
+        method: 'POST',
+        body: input,
+      }),
+  );
+
+  registry.toolWithSchema(
+    'cancel_coordination_subscription',
+    'Cancel a Session or pull request subscription this conversation created. A delivery already in flight may still arrive.',
+    z.object({ subscriptionId: z.string().min(1).max(2048) }).strict(),
+    async (input) =>
+      callRoute(`${SESSION_CONTROL_API}/cancel-subscription`, {
+        method: 'POST',
+        body: input,
+      }),
+  );
+
+  registry.toolWithSchema(
+    'watch_pull_request_status',
+    'Wake this Session when a linked pull request in its Project merges, closes, leaves the merge queue, or changes required-check status. Requires the Pull request agent feedback preview. The subscription sends status updates.',
+    z
+      .object({
+        sessionId,
+        ref: z
+          .string()
+          .regex(/^[1-9]\d*$/)
+          .max(32)
+          .describe('Pull request number linked to the source Session.'),
+      })
+      .strict(),
+    async (input) =>
+      callRoute(`${SESSION_CONTROL_API}/watch-pull-request`, {
         method: 'POST',
         body: input,
       }),

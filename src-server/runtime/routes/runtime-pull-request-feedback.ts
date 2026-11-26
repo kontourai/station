@@ -10,6 +10,7 @@
  */
 
 import { resolve } from 'node:path';
+import type { DelegationResultDelivery } from '../../services/orchestration/delegation-result-delivery.js';
 import type {
   ConversationPullRequestLink,
   ConversationPullRequestLinkObservation,
@@ -156,6 +157,10 @@ const REDELIVER_METHODS = new Set([
 export interface PullRequestFeedbackRuntimeDeps {
   homeDir: string;
   hosted: boolean;
+  coordination?: Pick<
+    DelegationResultDelivery,
+    'watchPullRequest' | 'watchedPullRequests' | 'observePullRequest'
+  >;
   featurePreviews: FeaturePreviewRegistry;
   eventStore: EventStore | undefined;
   inbox: ThreadInboxDelivery | undefined;
@@ -238,6 +243,16 @@ export interface PullRequestFeedbackRuntime {
   snapshotFor(
     identity: PullRequestLinkIdentity,
   ): LinkedPullRequestSnapshot | undefined;
+  subscribeStatus(
+    sourceConversationId: string,
+    projectId: string,
+    ref: string,
+    owner: Omit<
+      Parameters<DelegationResultDelivery['watchPullRequest']>[0],
+      'taskId' | 'childConversationId'
+    >,
+  ): { id: string; status: 'armed' | 'already-armed' | 'capacity' } | undefined;
+  mayReadStatusWatch(sourceConversationId: string, prKey: string): boolean;
   linkedSnapshotsEnabled(): boolean;
   snapshotsForConversations(
     ids: readonly string[],
@@ -829,6 +844,9 @@ export function composePullRequestFeedbackRuntime(
     enabled,
     store: () => holder.forRead(),
     providers: deps.providers,
+    statusWatches: () => deps.coordination?.watchedPullRequests() ?? [],
+    observeStatus: (prKey, observation) =>
+      deps.coordination?.observePullRequest(prKey, observation),
     session,
     lastTurnAt,
     delivery: () => delivery,
@@ -938,6 +956,36 @@ export function composePullRequestFeedbackRuntime(
       taskBranches?.nudge(conversationId, sessionId),
   });
   return {
+    mayReadStatusWatch: (sourceConversationId, prKey) =>
+      enabled() &&
+      linkedNow(sourceConversationId).some(
+        (link) => pullRequestFeedbackKey(link) === prKey,
+      ),
+    subscribeStatus(sourceConversationId, projectId, ref, owner) {
+      if (!enabled() || !deps.coordination) return undefined;
+      const matching = new Map(
+        linkedNow(sourceConversationId)
+          .filter((link) => link.ref === ref)
+          .map((link) => [pullRequestFeedbackKey(link), link] as const),
+      );
+      if (matching.size !== 1) return undefined;
+      const entry = matching.entries().next().value;
+      if (!entry) return undefined;
+      const [prKey, { host, provider, repository }] = entry;
+      holder.forWrite();
+      const id = `pr-watch:${JSON.stringify([owner.parentConversationId, prKey])}`;
+      const status = deps.coordination.watchPullRequest(
+        {
+          ...owner,
+          childConversationId: id,
+          taskId: prKey,
+        },
+        prKey,
+        { host, provider, repository, ref },
+        { sourceConversationId, projectId },
+      );
+      return { id, status };
+    },
     routeArgs: [
       ownership,
       () => delivery,

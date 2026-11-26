@@ -2772,6 +2772,12 @@ export class OrchestrationService {
     });
   }
 
+  private coordinationPreviewEnabled?: () => boolean;
+
+  bindCoordinationPreview(enabled: () => boolean): void {
+    this.coordinationPreviewEnabled = enabled;
+  }
+
   private taskSourceVerifier?: (sessionId: string) => Promise<void>;
   bindTaskSourceVerifier(verifier: (sessionId: string) => Promise<void>): void {
     this.taskSourceVerifier = verifier;
@@ -6222,6 +6228,12 @@ export class OrchestrationService {
     const lineageByThread =
       eventStore?.conversationLineageForThreads(readableThreadIds);
     const nextWakeUps = eventStore?.agentScheduleStore().nextArmedWakeUps();
+    const coordination =
+      'userId' in authority && this.coordinationPreviewEnabled?.()
+        ? eventStore
+            ?.delegationResultStore()
+            .coordinationChildren(authority.userId)
+        : undefined;
     // #5050: admit the runtime home once per build, and only if some row
     // asks. Admission walks every path component (`lstat`/`realpath`); per
     // row it was the read model's largest CPU cost. Never kept across builds,
@@ -6287,10 +6299,24 @@ export class OrchestrationService {
         const nextWakeUpAt = conversationId
           ? nextWakeUps?.get(conversationId)
           : undefined;
+        const children = coordination
+          ?.get(conversationId ?? threadId)
+          ?.filter(
+            (child) =>
+              child.kind === 'pull-request' || canList(child.sessionId),
+          );
         return {
           ...summary,
           ...(conversationId ? { conversationId } : {}),
           ...(nextWakeUpAt ? { nextWakeUpAt } : {}),
+          ...(children?.length
+            ? {
+                coordination: {
+                  waiting: children.filter((child) => child.waiting).length,
+                  children: children.slice(0, 64),
+                },
+              }
+            : {}),
         };
       })
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -6898,7 +6924,7 @@ export class OrchestrationService {
       authority,
       !options,
       (_base, loaded, persisted) =>
-        this.readSessionDetail(threadId, loaded, persisted, options),
+        this.readSessionDetail(threadId, loaded, persisted, authority, options),
     );
   }
 
@@ -6932,6 +6958,7 @@ export class OrchestrationService {
     threadId: string,
     loaded: ProviderSession | undefined,
     persisted: ProviderSession | undefined,
+    authority: SessionReadScope,
     options?: { eventMethods: readonly string[]; includeLatestEvent?: boolean },
   ): Promise<OrchestrationSessionDetail> {
     // Legacy detail callers keep full replay; fact readers name their methods.
@@ -6970,28 +6997,54 @@ export class OrchestrationService {
       this.conversationActivity?.readForThread(threadId);
     const conversationDraftFacts =
       this.options.eventStore?.conversationDraftFacts(threadId);
+    const eventStore = this.options.eventStore;
+    const conversationId =
+      eventStore?.conversationForSession(threadId)?.conversationId ?? threadId;
+    const children =
+      'userId' in authority && this.coordinationPreviewEnabled?.()
+        ? eventStore
+            ?.delegationResultStore()
+            .coordinationChildren(authority.userId, conversationId)
+            .get(conversationId)
+            ?.filter(
+              (child) =>
+                child.kind === 'pull-request' ||
+                this.sessionAuthz.canReadSession(child.sessionId, authority),
+            )
+        : undefined;
     return {
-      session: buildOrchestrationSessionSummary({
-        readOwnedWork: this.readOwnedWork,
-        readDurabilityProfile: this.durabilityProfileForProvider,
-        persisted,
-        loaded,
-        events: summaryEvents,
-        eventCount: this.options.eventStore?.countEventsByThread(threadId) ?? 0,
-        ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
-        turnProgress: this.turnProgress.read(threadId),
-        engineStartWait: this.engineStartWaits.get(threadId)?.observation,
-        readChildWork: this.readChildWork,
-        ...(conversationActivity ? { conversationActivity } : {}),
-        ...(conversationFirstPromptedTurn
-          ? { conversationFirstPromptedTurn }
+      session: {
+        ...buildOrchestrationSessionSummary({
+          readOwnedWork: this.readOwnedWork,
+          readDurabilityProfile: this.durabilityProfileForProvider,
+          persisted,
+          loaded,
+          events: summaryEvents,
+          eventCount:
+            this.options.eventStore?.countEventsByThread(threadId) ?? 0,
+          ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
+          turnProgress: this.turnProgress.read(threadId),
+          engineStartWait: this.engineStartWaits.get(threadId)?.observation,
+          readChildWork: this.readChildWork,
+          ...(conversationActivity ? { conversationActivity } : {}),
+          ...(conversationFirstPromptedTurn
+            ? { conversationFirstPromptedTurn }
+            : {}),
+          answerability: this.observeAnswerability(
+            threadId,
+            (loaded ?? persisted)?.provider,
+            new Date().toISOString(),
+          ),
+        }),
+        ...(children?.length
+          ? {
+              coordination: {
+                waiting: children.filter((child) => child.waiting).length,
+                children: children.slice(0, 64),
+              },
+            }
           : {}),
-        answerability: this.observeAnswerability(
-          threadId,
-          (loaded ?? persisted)?.provider,
-          new Date().toISOString(),
-        ),
-      }),
+      },
       events,
       ...(recovery ? { recovery } : {}),
     };
