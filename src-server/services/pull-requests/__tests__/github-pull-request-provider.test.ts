@@ -342,39 +342,90 @@ describe('GitHubPullRequestProvider', () => {
     expect(transport.mock.calls[0]?.[1]).not.toHaveProperty('workingDirectory');
   });
 
-  test('every full pull request read asks gh for the draft flag and review decision', async () => {
-    const identity = {
-      host: 'github.com',
-      repository: { owner: 'kontourai', name: 'station' },
-    };
-    const stdout = JSON.stringify({
-      number: 7,
-      url: 'https://github.com/kontourai/station/pull/7',
-      title: 'Title',
-      state: 'OPEN',
-      headRefName: 'feature',
-      baseRefName: 'main',
-    });
-    const transport = vi.fn().mockResolvedValue({ stdout });
+  test('lists pull requests with summary fields and an explicit limit', async () => {
+    const transport = vi.fn().mockResolvedValue({ stdout: '[]' });
     const provider = new GitHubPullRequestProvider(transport);
-    await provider.getPullRequestByIdentity(identity, '7');
-    await provider.getPullRequest(context, '7');
-    transport.mockResolvedValue({ stdout: '[]' });
-    await provider.listPullRequests(context, {});
-    const fieldLists = transport.mock.calls
-      .map(([args]) => args as string[])
-      .filter((args) => args[0] === 'pr' && args.includes('--json'))
-      .map((args) => (args[args.indexOf('--json') + 1] ?? '').split(','));
-    expect(fieldLists).toHaveLength(3);
-    for (const fields of fieldLists)
-      expect(fields).toEqual(
+
+    await expect(provider.listPullRequests(context, {})).resolves.toMatchObject(
+      {
+        available: true,
+        data: [],
+      },
+    );
+    const args = transport.mock.calls.find(([argv]) => argv[0] === 'pr')?.[0];
+    expect(args).toEqual(expect.arrayContaining(['list', '--limit', '30']));
+    expect(args?.[args.indexOf('--json') + 1].split(',').sort()).toEqual([
+      'additions',
+      'author',
+      'baseRefName',
+      'changedFiles',
+      'deletions',
+      'headRefName',
+      'headRefOid',
+      'isDraft',
+      'number',
+      'reviewDecision',
+      'state',
+      'statusCheckRollup',
+      'title',
+      'updatedAt',
+      'url',
+    ]);
+  });
+
+  test.each(['checkout', 'identity'])(
+    'reads full pull request detail by %s',
+    async (target) => {
+      const identity = {
+        host: 'github.com',
+        repository: { owner: 'kontourai', name: 'station' },
+      };
+      const stdout = JSON.stringify({
+        number: 7,
+        url: 'https://github.com/kontourai/station/pull/7',
+        title: 'Title',
+        state: 'OPEN',
+        headRefName: 'feature',
+        baseRefName: 'main',
+        body: 'Description',
+        commits: [{ oid: 'a'.repeat(40) }],
+        reviews: [{ state: 'APPROVED' }],
+        comments: [{ body: 'Looks good' }],
+        isDraft: false,
+        reviewDecision: 'APPROVED',
+        mergeStateStatus: 'CLEAN',
+      });
+      const transport = vi.fn().mockResolvedValue({ stdout });
+      const provider = new GitHubPullRequestProvider(transport);
+      const result = await (target === 'checkout'
+        ? provider.getPullRequest(context, '7')
+        : provider.getPullRequestByIdentity(identity, '7'));
+      expect(result).toMatchObject({
+        available: true,
+        data: {
+          body: 'Description',
+          commits: 1,
+          reviewStatus: 'APPROVED',
+          comments: 1,
+          draft: false,
+          reviewDecision: 'approved',
+          mergeReadiness: 'clean',
+        },
+      });
+      const args = transport.mock.calls.find(([argv]) => argv[0] === 'pr')?.[0];
+      expect(args?.[args.indexOf('--json') + 1].split(',')).toEqual(
         expect.arrayContaining([
+          'body',
+          'commits',
+          'reviews',
+          'comments',
           'isDraft',
           'reviewDecision',
           'mergeStateStatus',
         ]),
       );
-  });
+    },
+  );
 
   test.each([
     ['CLEAN', 'clean'],

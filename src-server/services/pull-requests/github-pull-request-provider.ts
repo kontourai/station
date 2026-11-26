@@ -185,12 +185,10 @@ const githubMergeability = (value: unknown): PullRequest['mergeability'] =>
       ? 'conflicting'
       : 'unknown';
 
-/**
- * One field list for every full pull request read (list, view, view by
- * identity), so a field the normalizer reads cannot be missing from one of
- * them.
- */
-const GITHUB_PULL_REQUEST_FIELDS =
+const GITHUB_PULL_REQUEST_LIST_LIMIT = 30;
+const GITHUB_PULL_REQUEST_LIST_FIELDS =
+  'number,url,title,state,author,headRefName,baseRefName,headRefOid,isDraft,reviewDecision,statusCheckRollup,updatedAt,additions,deletions,changedFiles';
+const GITHUB_PULL_REQUEST_DETAIL_FIELDS =
   'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus,isDraft,reviewDecision';
 
 /**
@@ -627,9 +625,10 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
         '--repo',
         `${host}/${c.repository.owner}/${c.repository.name}`,
         '--json',
-        GITHUB_PULL_REQUEST_FIELDS,
+        GITHUB_PULL_REQUEST_LIST_FIELDS,
         ...(q.state ? ['--state', q.state.toLowerCase()] : []),
-        ...(q.limit ? ['--limit', String(q.limit)] : []),
+        '--limit',
+        String(q.limit ?? GITHUB_PULL_REQUEST_LIST_LIMIT),
       ],
       { shared: true },
     );
@@ -682,7 +681,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      GITHUB_PULL_REQUEST_FIELDS,
+      GITHUB_PULL_REQUEST_DETAIL_FIELDS,
     ]);
   }
   getPullRequestByIdentity(
@@ -696,7 +695,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${c.host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      GITHUB_PULL_REQUEST_FIELDS,
+      GITHUB_PULL_REQUEST_DETAIL_FIELDS,
     ]);
   }
   /** Agent feedback's one read per pull request (github-feedback-observation.ts). */
