@@ -14,6 +14,7 @@ import { Button } from '../Button';
 import { TerminalGlyph } from '../icons/Glyph';
 import './AgentScheduleNotes.css';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
+import { ScheduleCardActions } from './ScheduleCardActions';
 
 function endedRun(run: TerminalRun): boolean {
   return run.state === 'exited' || run.state === 'failed';
@@ -151,27 +152,15 @@ export function TerminalRunNotes({
                   )?.message ?? "That didn't go through. Try again."}
                 </p>
               ) : null}
-              <div className="agent-schedule-card__actions">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  pending={approve.isPending && approve.variables === run.runId}
-                  pendingLabel="Starting…"
-                  disabled={busy}
-                  onClick={() => approve.mutate(run.runId)}
-                >
-                  Run
-                </Button>
-                <Button
-                  size="sm"
-                  pending={decline.isPending && decline.variables === run.runId}
-                  pendingLabel="Declining…"
-                  disabled={busy}
-                  onClick={() => decline.mutate(run.runId)}
-                >
-                  Decline
-                </Button>
-              </div>
+              <ScheduleCardActions
+                acceptLabel="Run"
+                acceptingLabel="Starting…"
+                busy={busy}
+                accepting={approve.isPending && approve.variables === run.runId}
+                declining={decline.isPending && decline.variables === run.runId}
+                onAccept={() => approve.mutate(run.runId)}
+                onDecline={() => decline.mutate(run.runId)}
+              />
             </section>
           ) : (
             <div className="agent-schedule-notes__note" title={run.cwd}>

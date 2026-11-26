@@ -187,25 +187,53 @@ const SCHEDULE_TOOLS = new Set([
   'propose_job',
 ]);
 
+interface SchedulePart {
+  type?: string;
+  toolName?: string;
+  state?: string;
+  args?: unknown;
+  input?: unknown;
+}
+
+/** Whether a tool call's text names a scheduling tool, by the call object. */
+const callNamesScheduleTool = new WeakMap<object, boolean>();
+
+/**
+ * Whether a call is a scheduling tool, or a script that ran one. A script
+ * tool runs Station Control tools inside a single call, so the stream never
+ * shows the scheduling tool as a call of its own; the script's arguments
+ * name it. The arguments are read once per call: a part that was not
+ * updated keeps its object across stream updates.
+ */
+function mayHaveScheduled(part: SchedulePart): boolean {
+  if (SCHEDULE_TOOLS.has(stationControlToolName(part.toolName) ?? ''))
+    return true;
+  let named = callNamesScheduleTool.get(part);
+  if (named === undefined) {
+    const call = JSON.stringify(part.args ?? part.input ?? '');
+    named = [...SCHEDULE_TOOLS].some((tool) => call.includes(tool));
+    callNamesScheduleTool.set(part, named);
+  }
+  return named;
+}
+
 /**
  * When the chat's schedule may have changed: a turn started or ended (a
- * check-back sent, a stop), or the running turn finished a scheduling tool
- * call. Not every streamed event: the summary's event count moves on every
- * delta, and each move re-read the schedule.
+ * check-back sent, a stop), or the running turn finished a call that
+ * scheduled something. Not every streamed event: the summary's event count
+ * moves on every delta, and each move re-read the schedule.
  */
 export function agentScheduleRefreshKey(
   openTurnId: string | undefined,
-  parts:
-    | readonly { type?: string; toolName?: string; state?: string }[]
-    | undefined,
+  parts: readonly SchedulePart[] | undefined,
 ): string {
   const scheduled = (parts ?? []).filter(
     (part) =>
       part.type === 'tool-invocation' &&
-      SCHEDULE_TOOLS.has(stationControlToolName(part.toolName) ?? '') &&
       part.state !== 'call' &&
       part.state !== 'running' &&
-      part.state !== 'partial-call',
+      part.state !== 'partial-call' &&
+      mayHaveScheduled(part),
   ).length;
   return `${openTurnId ?? 'idle'}:${scheduled}`;
 }

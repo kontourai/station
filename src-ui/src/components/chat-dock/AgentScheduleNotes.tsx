@@ -20,6 +20,7 @@ import { Checkbox } from '../Checkbox';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { CalendarGlyph, TimeGlyph } from '../icons/Glyph';
 import { scheduleText } from './agentScheduleText';
+import { ScheduleCardActions } from './ScheduleCardActions';
 import './AgentScheduleNotes.css';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { ScheduledCheckBackContext } from '../status/ScheduledCheckBackContext';
@@ -361,27 +362,15 @@ function CheckBackApprovalCard({
           That didn't go through. Try again.
         </p>
       ) : null}
-      <div className="agent-schedule-card__actions">
-        <Button
-          variant="primary"
-          size="sm"
-          pending={approving}
-          pendingLabel="Approving…"
-          disabled={busy}
-          onClick={onApprove}
-        >
-          Approve
-        </Button>
-        <Button
-          size="sm"
-          pending={declining}
-          pendingLabel="Declining…"
-          disabled={busy}
-          onClick={onDecline}
-        >
-          Decline
-        </Button>
-      </div>
+      <ScheduleCardActions
+        acceptLabel="Approve"
+        acceptingLabel="Approving…"
+        busy={busy}
+        accepting={approving}
+        declining={declining}
+        onAccept={onApprove}
+        onDecline={onDecline}
+      />
     </section>
   );
 }
@@ -455,27 +444,15 @@ function JobProposalCard({
           That didn't go through. Try again.
         </p>
       ) : null}
-      <div className="agent-schedule-card__actions">
-        <Button
-          variant="primary"
-          size="sm"
-          pending={approving}
-          pendingLabel="Creating…"
-          disabled={busy}
-          onClick={onApprove}
-        >
-          Approve
-        </Button>
-        <Button
-          size="sm"
-          pending={declining}
-          pendingLabel="Declining…"
-          disabled={busy}
-          onClick={onDecline}
-        >
-          Decline
-        </Button>
-      </div>
+      <ScheduleCardActions
+        acceptLabel="Approve"
+        acceptingLabel="Creating…"
+        busy={busy}
+        accepting={approving}
+        declining={declining}
+        onAccept={onApprove}
+        onDecline={onDecline}
+      />
     </section>
   );
 }
@@ -648,27 +625,15 @@ function AutomationProposalCard({
           {errorMessage}
         </p>
       ) : null}
-      <div className="agent-schedule-card__actions">
-        <Button
-          variant="primary"
-          size="sm"
-          pending={confirming}
-          pendingLabel="Creating…"
-          disabled={busy}
-          onClick={() => onConfirm(enable)}
-        >
-          Confirm
-        </Button>
-        <Button
-          size="sm"
-          pending={declining}
-          pendingLabel="Declining…"
-          disabled={busy}
-          onClick={onDecline}
-        >
-          Decline
-        </Button>
-      </div>
+      <ScheduleCardActions
+        acceptLabel="Confirm"
+        acceptingLabel="Creating…"
+        busy={busy}
+        accepting={confirming}
+        declining={declining}
+        onAccept={() => onConfirm(enable)}
+        onDecline={onDecline}
+      />
     </section>
   );
 }
