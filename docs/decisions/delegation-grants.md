@@ -37,7 +37,9 @@ existing workspace floor.
 ## Worktree and network
 
 The child's own worktree is on by default. Station provisions it before
-starting the child, using the fetched default branch as its base. For confined
+starting the child, using the Project’s configured worktree base or the
+fetched default branch. If that ref cannot resolve to a commit, Station
+refuses the delegation before creating a branch or checkout. For confined
 coding work, the child receives the worktree's own Git directory and the
 minimum object and ref write paths needed to commit and push. The operator can
 configure additional Git write paths per Project. Hooks and configuration

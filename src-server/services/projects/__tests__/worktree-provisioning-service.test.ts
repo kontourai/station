@@ -388,7 +388,7 @@ describe('WorktreeProvisioningService', () => {
     expect(calls.map((call) => call.args.join(' '))).toEqual([
       `-C ${repoPath} status --porcelain`,
       `-C ${repoPath} rev-parse --verify --quiet refs/heads/${branch}`,
-      `-C ${repoPath} rev-parse --verify --end-of-options HEAD^{commit}`,
+      `-C ${repoPath} rev-parse --verify --quiet --end-of-options HEAD^{commit}`,
       `-C ${repoPath} worktree add -b ${branch} ${join(
         worktreeBaseDir,
         segment,
@@ -471,7 +471,9 @@ describe('WorktreeProvisioningService', () => {
           providerKind: 'codex',
           isolation: { mode: 'worktree', policy: { baseRef, worktreeBaseDir } },
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(
+        `Station could not resolve worktree base ${baseRef} to a Git commit.`,
+      );
       expect(existsSync(worktreeBaseDir)).toBe(false);
       expect(git(repoPath, ['worktree', 'list', '--porcelain'])).toBe(before);
       expect(

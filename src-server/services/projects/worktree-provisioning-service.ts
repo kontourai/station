@@ -2025,22 +2025,23 @@ export class WorktreeProvisioningService {
         throw new Error(`Worktree branch already exists: ${branch}`);
       }
 
-      const baseCommit = (
-        await this.git.run(
-          [
-            ...repo,
-            'rev-parse',
-            '--verify',
-            '--end-of-options',
-            `${policy.baseRef}^{commit}`,
-          ],
-          { env },
-        )
-      ).stdout.trim();
-      if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(baseCommit)) {
-        throw new Error(
-          'Cannot resolve the worktree base to a full Git commit',
-        );
+      const baseResult = await this.git.run(
+        [
+          ...repo,
+          'rev-parse',
+          '--verify',
+          '--quiet',
+          '--end-of-options',
+          `${policy.baseRef}^{commit}`,
+        ],
+        { allowCodes: [0, 1], env },
+      );
+      const baseCommit = baseResult.stdout.trim();
+      if (
+        baseResult.code !== 0 ||
+        !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(baseCommit)
+      ) {
+        throw new WorktreeBaseRefError(policy.baseRef);
       }
 
       const worktreeBaseDir = resolveWorktreeBaseDir(
@@ -2161,6 +2162,15 @@ export class WorktreeRepositoryConfigError extends Error {
         : "Station did not create an isolated worktree: git could not read this repository's configuration.",
     );
     this.name = 'WorktreeRepositoryConfigError';
+  }
+}
+
+export class WorktreeBaseRefError extends Error {
+  constructor(baseRef: string) {
+    super(
+      `Station could not resolve worktree base ${baseRef} to a Git commit.`,
+    );
+    this.name = 'WorktreeBaseRefError';
   }
 }
 

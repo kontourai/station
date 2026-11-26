@@ -193,7 +193,10 @@ import {
 import { assertProjectWorktreeDirectory } from '../services/projects/project-service.js';
 import type { TaskDispatchAgentStart } from '../services/projects/task-dispatcher.js';
 import type { TaskRoomInvocationAdmission } from '../services/projects/task-room-work-module.js';
-import { WorktreeProvisioningService } from '../services/projects/worktree-provisioning-service.js';
+import {
+  WorktreeBaseRefError,
+  WorktreeProvisioningService,
+} from '../services/projects/worktree-provisioning-service.js';
 import {
   fetchRemoteStation,
   isRemoteStationTarget,
@@ -6421,19 +6424,31 @@ export async function delegateTask(
                 workspace.cwd,
               );
               input.dispatchCwdAdmission?.recheck(workspace.cwd, 'session');
-              return delegationWorktrees.provision({
-                repoPath: workspace.cwd,
-                threadId: sessionId,
-                providerKind: resolved.provider,
-                isolation: {
-                  mode: 'worktree',
-                  policy: {
-                    ...workspace.workspaceIsolation.policy,
-                    branchPrefix: `station-delegation/${createHash('sha256').update(sessionId).digest('hex').slice(0, 32)}`,
-                    baseRef: 'refs/remotes/origin/HEAD',
+              return delegationWorktrees
+                .provision({
+                  repoPath: workspace.cwd,
+                  threadId: sessionId,
+                  providerKind: resolved.provider,
+                  isolation: {
+                    mode: 'worktree',
+                    policy: {
+                      ...workspace.workspaceIsolation.policy,
+                      branchPrefix: `station-delegation/${createHash('sha256').update(sessionId).digest('hex').slice(0, 32)}`,
+                      baseRef:
+                        workspace.workspaceIsolation.policy?.baseRef ??
+                        'refs/remotes/origin/HEAD',
+                    },
                   },
-                },
-              });
+                })
+                .catch((error: unknown) => {
+                  if (error instanceof WorktreeBaseRefError) {
+                    throw new LocalStationRefusal(
+                      'delegation_grant_base_ref_unavailable',
+                      error.message,
+                    );
+                  }
+                  throw error;
+                });
             })()
           : undefined;
       const resolvedCwd = worktree?.path ?? workspace?.cwd;
