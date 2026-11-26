@@ -1759,6 +1759,13 @@ The inbox list has no list-level overflow menu (each row has its own ⋯): a
 failed read offers Retry, disabled while the re-read runs. Full-size cards in the desktop and mobile Inbox share the title and project
 column. Status and one time align on the right. Hover or keyboard focus exposes
 the desktop row's ⋯ menu. A touch row keeps the agent named beside its mark.
+
+With the Pull request agent feedback preview enabled, the inbox also shows
+linked pull request chips and observed worktree diff counts. The PR chip opens
+the selected pull request beside Chat. If several are linked, it opens a chooser.
+The pull request picker beside scope filters or sorts Chats by observed state.
+Filtering includes only matching observations. Closing a PR opened from a row
+returns focus to that row.
 Mark done offers a
 transient Undo toast, which **Undo last action** (⌘Z / Ctrl+Z, rebindable)
 also reaches while the toast is shown. Native editor and terminal undo retain

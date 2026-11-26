@@ -9,7 +9,7 @@ import type {
 } from '@kontourai/station-contracts/pull-request-provider';
 import { readPullRequestByIdentity } from './pull-request-identity-read.js';
 
-export function linkedSnapshotFromStatus(
+function linkedSnapshotFromStatus(
   pullRequest: PullRequest,
   observedAt: string,
 ): LinkedPullRequestSnapshot {
