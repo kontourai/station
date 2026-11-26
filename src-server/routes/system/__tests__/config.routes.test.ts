@@ -1667,6 +1667,28 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     },
   );
 
+  test('the internal Station principal cannot set delegation grants on app config', async () => {
+    const loader = createMockConfigLoader();
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: 'internal',
+        credential: 'internal-test',
+        authority: 'operator-credential',
+        source: 'bearer',
+      });
+      await next();
+    });
+    app.route('/', createConfigRoutes(loader as never, mockLogger));
+    const response = await app.request('/app', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ delegationGrants: [], region: 'us-west-2' }),
+    });
+    expect(response.status).toBe(403);
+    expect(loader.mutateAppConfig).not.toHaveBeenCalled();
+  });
+
   test('the internal Station principal cannot change telemetry destinations even with manage scope', async () => {
     const loader = createMockConfigLoader();
     const app = new Hono();

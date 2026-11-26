@@ -616,6 +616,18 @@ export function createConfigRoutes(
             400,
           );
       }
+      if (Object.hasOwn(body as object, 'delegationGrants')) {
+        logRefusal('delegation_grants_config_write_refused');
+        return c.json(
+          {
+            success: false,
+            code: COMMAND_NOT_GRANTED_CODE,
+            error:
+              'Use the operator delegation grants settings to change grants.',
+          },
+          403,
+        );
+      }
       // The first-run record is a TRANSITION, not a setting (review M1). Left
       // on this route it was an ordinary composite: an `orchestration:operate`
       // peer could re-arm an existing home as `pending` and re-run the guided

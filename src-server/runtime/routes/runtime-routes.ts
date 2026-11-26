@@ -73,6 +73,7 @@ import { createProjectRoomRoutes } from '../../routes/projects/project-room-rout
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
 import { createAccountSharingRoutes } from '../../routes/system/account-sharing-routes.js';
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
+import { createDelegationGrantRoutes } from '../../routes/system/delegation-grants.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
 import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
 import {
@@ -100,6 +101,7 @@ import {
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
 import { sessionNetworkRestricted } from '../../security/confinement/confinement-provider.js';
+import { DelegationGrantStore } from '../../security/confinement/delegation-grants.js';
 import {
   classifyOperatorCredentialPosition,
   isHostLocalOperatorCredentialUse,
@@ -4998,6 +5000,25 @@ export function configureRuntimeRoutes(
     ) &&
     (!operatorDeviceViewRequests.has(request) ||
       isOwnedOperatorDevice(request));
+  if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+    const delegationGrantsPreview = context.featurePreviews.bind({
+      id: 'delegation-grants',
+      label: 'Delegation grants',
+      description: 'Manage the access granted to named delegations.',
+    });
+    const delegationGrants = new DelegationGrantStore(
+      context.configLoader.getProjectHomeDir(),
+      context.logger,
+    );
+    context.app.route(
+      '/config/delegation-grants',
+      createDelegationGrantRoutes(
+        delegationGrants,
+        delegationGrantsPreview,
+        isRequestPrincipalCurrent,
+      ),
+    );
+  }
   const admitOperatorDeviceView = (request: Request) => {
     if (!isRequestPrincipalCurrent(request) || !isOwnedOperatorDevice(request))
       return false;
