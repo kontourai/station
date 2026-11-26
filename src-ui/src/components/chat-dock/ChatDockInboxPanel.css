@@ -340,7 +340,7 @@
 .inbox-row__pull-request {
   position: absolute;
   inset-inline-end: var(--inbox-row-pad-inline);
-  inset-block-end: var(--space-2);
+  inset-block-end: var(--k-space-1);
 }
 
 .inbox-row__pull-request .inbox-row__chip {
@@ -363,6 +363,6 @@
 .inbox-row__diff-stat {
   position: absolute;
   inset-inline-end: var(--inbox-row-pad-inline);
-  inset-block-start: var(--space-2);
+  inset-block-start: var(--k-space-1);
   pointer-events: none;
 }

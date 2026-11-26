@@ -13256,7 +13256,10 @@ export function configureRuntimeRoutes(
         if (!session?.cwd) return undefined;
         try {
           const project = context.projectService.getProject(item.projectSlug);
-          if (!project.workingDirectory) return undefined;
+          const projectRoot = project.workingDirectory
+            ? resolve(expandTilde(project.workingDirectory))
+            : undefined;
+          if (!projectRoot) return undefined;
           const metadata =
             context.orchestrationService.firstStartedMetadataOfThread(
               currentId,
@@ -13278,7 +13281,7 @@ export function configureRuntimeRoutes(
               : undefined;
           return sessionDiffStatSnapshots.get(currentId, {
             cwd: session.cwd,
-            projectRoot: project.workingDirectory,
+            projectRoot,
             base,
           });
         } catch {
