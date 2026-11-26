@@ -1958,19 +1958,16 @@ test.describe('Task-first Home (#332, mocked)', () => {
       'desktop-workspace',
       { files: 1, taskContexts: 1 },
       async () => {
-        // Delegate/Commands/Files/Task-context collapse into one grouped "+"
-        // menu next to attach + mic (docs/design/chat-composer.md §3.2) — open
-        // it to reach the Files/Task-context toggles.
         const actionsMenuTrigger = page.getByRole('button', {
-          name: 'Composer actions',
+          name: 'More dock actions',
         });
         await expect(actionsMenuTrigger).toBeVisible();
 
         await actionsMenuTrigger.click();
-        const menu = page.getByRole('menu', { name: 'Composer actions' });
+        const menu = page.getByRole('menu', { name: 'More dock actions' });
         await expect(menu).toBeVisible();
         const filesTrigger = menu.getByRole('menuitemcheckbox', {
-          name: 'Files (1)',
+          name: 'Changed files (1)',
         });
         await expect(filesTrigger).toBeVisible();
         await filesTrigger.click();

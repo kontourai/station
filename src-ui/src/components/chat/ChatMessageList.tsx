@@ -1305,6 +1305,7 @@ function ChatMessageListComponent({
       const returning = lastClientHeightRef.current === 0;
       lastClientHeightRef.current = el.clientHeight;
       const resized = reanchorGate.shouldReanchor(el.clientHeight);
+      if (scrollAnimationRef.current) return;
       if (!returning && !resized) return;
       if (isUserScrolledUpRef.current || readerHoldRef.current) {
         if (
@@ -1981,6 +1982,7 @@ function ChatMessageListComponent({
       el.focus({ preventScroll: true });
     setReaderRestoreRequest(null);
     visibleAnchorRef.current = null;
+    setScrollAnchorVersion((version) => version + 1);
     scrollAnimationRef.current?.cancel();
     const token = {};
     scrollAnimationTokenRef.current = token;
@@ -2721,6 +2723,7 @@ function ChatMessageListComponent({
                           }
                           followTick={`${tailContentLength}:${tailPartsLength}`}
                           anchorVersion={scrollAnchorVersion}
+                          preserveAnchor={!scrollingToBottom}
                           revealRowId={
                             requestedMessageRowId ??
                             approvalRevealRowId ??
