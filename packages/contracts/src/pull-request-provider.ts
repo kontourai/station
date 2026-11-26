@@ -111,7 +111,7 @@ export type PullRequestClientContext =
       /** Owner of the local branch's configured push target, when known. */
       pushTargetOwner?: string;
       /** First page when the client asks for a list with the checkout context. */
-      pullRequests?: PullRequestResult<PullRequest[]>;
+      pullRequests?: PullRequestResult<PullRequest[]> & { nextCursor?: string };
     }
   | {
       available: false;
@@ -142,6 +142,10 @@ export interface PullRequest {
   comments: number;
   nativeId: string;
   mergeability: 'mergeable' | 'conflicting' | 'unknown';
+  /** Repository list metadata reported by the forge. */
+  updatedAt?: string;
+  changeStats?: { additions: number; deletions: number; files: number };
+  checksState?: 'pending' | 'failure' | 'success';
   /** The forge's draft flag. Absent: the provider did not report it. */
   draft?: boolean;
   /**
@@ -189,6 +193,10 @@ export interface PullRequestBranchMergeability {
 export interface PullRequestListQuery {
   state?: string;
   limit?: number;
+}
+export interface PullRequestPage {
+  items: PullRequest[];
+  nextCursor?: string;
 }
 export interface PullRequestOpenInput {
   title: string;
@@ -329,6 +337,10 @@ export interface IPullRequestProvider {
     context: PullRequestRepositoryContext,
     query: PullRequestListQuery,
   ): Promise<PullRequestResult<PullRequest[]>>;
+  listPullRequestPage?(
+    context: PullRequestRepositoryContext,
+    query: PullRequestListQuery & { cursor?: string },
+  ): Promise<PullRequestResult<PullRequestPage>>;
   getPullRequest(
     context: PullRequestRepositoryContext,
     ref: string,

@@ -26,6 +26,7 @@ import {
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { plural } from '../../utils/plural';
@@ -62,7 +63,7 @@ import {
 } from '../pull-requests/pull-request-external';
 import { RelativeTime } from '../pull-requests/RelativeTime';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
-import { ErrorState, SkeletonBlock } from '../state';
+import { Empty, ErrorState, SkeletonBlock } from '../state';
 import { Tabs, tabElementId, tabPanelElementId } from '../Tabs';
 import { PullRequestGuide } from './PullRequestGuide';
 import './PullRequestReviewPanel.css';
@@ -77,6 +78,19 @@ type Intent =
       method: PullRequestMergeMethod;
       autoMerge: boolean;
     };
+
+const LEGACY_REVIEW_TABS = [
+  { key: 'review', label: 'Review' },
+  { key: 'guide', label: 'Guide' },
+] as const;
+const PREVIEW_REVIEW_TABS = [
+  { key: 'review', label: 'Conversation' },
+  { key: 'files', label: 'Files' },
+  { key: 'checks', label: 'Checks' },
+  { key: 'guide', label: 'Guide' },
+  { key: 'head-review', label: 'Head review' },
+] as const;
+type ReviewTab = (typeof PREVIEW_REVIEW_TABS)[number]['key'];
 
 const MERGEABILITY_COPY: Record<PullRequest['mergeability'], string> = {
   mergeable: 'Merges cleanly into',
@@ -556,13 +570,19 @@ function ReviewHeader({
   pullRequest,
   headSha,
   observedAt,
+  showRepository,
 }: {
   pullRequest: PullRequest;
   headSha: string;
   observedAt: string;
+  showRepository: boolean;
 }) {
-  const state = pullRequestStateChip(pullRequest.state);
-  const decision = reviewDecisionChip(pullRequest.reviewStatus);
+  const state = pullRequestStateChip(
+    pullRequest.draft ? 'DRAFT' : pullRequest.state,
+  );
+  const decision = reviewDecisionChip(
+    pullRequest.reviewDecision ?? pullRequest.reviewStatus,
+  );
   const now = useCoarseNow();
   return (
     <div className="pull-request-review__head">
@@ -579,10 +599,12 @@ function ReviewHeader({
         <span>{plural(pullRequest.commits, 'commit')}</span>
       </div>
       <div className="pull-request-review__meta pull-request-review__meta--secondary">
-        <span title={pullRequest.host}>
-          {pullRequest.repository.owner}/{pullRequest.repository.name} #
-          {pullRequest.ref}
-        </span>
+        {showRepository && (
+          <span title={pullRequest.host}>
+            {pullRequest.repository.owner}/{pullRequest.repository.name} #
+            {pullRequest.ref}
+          </span>
+        )}
         <code title={`Head ${headSha}`}>{headSha.slice(0, 7)}</code>
         <RelativeTime iso={observedAt} now={now} />
       </div>
@@ -609,6 +631,7 @@ export function PullRequestReviewPanel({
   target,
   onBack,
   focusTitleOnOpen = false,
+  linkedGroups,
 }: {
   target: PullRequestReviewTarget;
   onBack?: () => void;
@@ -618,6 +641,7 @@ export function PullRequestReviewPanel({
    * does not fall to <body> when that line unmounts.
    */
   focusTitleOnOpen?: boolean;
+  linkedGroups?: readonly string[];
 }) {
   const scope = useHostRequestAuthorityScope();
   const identity = JSON.stringify([
@@ -633,6 +657,7 @@ export function PullRequestReviewPanel({
       target={target}
       onBack={onBack}
       focusTitleOnOpen={focusTitleOnOpen}
+      linkedGroups={linkedGroups}
       scope={scope}
       identity={identity}
     />
@@ -642,12 +667,14 @@ function ReviewOwner({
   target,
   onBack,
   focusTitleOnOpen,
+  linkedGroups,
   scope,
   identity,
 }: {
   target: PullRequestReviewTarget;
   onBack?: () => void;
   focusTitleOnOpen: boolean;
+  linkedGroups?: readonly string[];
   scope: ReturnType<typeof useHostRequestAuthorityScope>;
   identity: string;
 }) {
@@ -688,7 +715,12 @@ function ReviewOwner({
     ];
   };
   const titleRef = useRef<HTMLHeadingElement>(null);
-  const [reviewTab, setReviewTab] = useState<'review' | 'guide'>('review');
+  const redesigned = useSurfaceVisibilityFlags().has('pull-request-workspace');
+  const [selectedTab, setReviewTab] = useState<ReviewTab>('review');
+  const tabs = redesigned ? PREVIEW_REVIEW_TABS : LEGACY_REVIEW_TABS;
+  const reviewTab = tabs.some((tab) => tab.key === selectedTab)
+    ? selectedTab
+    : 'review';
   const [method, setMethod] = useState<PullRequestMergeMethod>('merge');
   const { guard, DiscardModal } = useUnsavedGuard(Boolean(body) || pending);
   const activeChatKey = activeChat
@@ -913,8 +945,47 @@ function ReviewOwner({
         },
       ]
     : [];
+  const decisions = data && (
+    <>
+      <ResponsiveSurfaceActions className="pull-request-review__actions pull-request-review__decision">
+        <Button
+          variant="primary"
+          disabled={
+            !writable ||
+            !open ||
+            !caps?.approve ||
+            data.diff.state !== 'available'
+          }
+          onClick={() =>
+            setIntent({
+              action: 'approve',
+              expectedHeadSha: data.headSha,
+            })
+          }
+        >
+          Approve
+        </Button>
+        {open && (caps?.merge || caps?.autoMerge) && (
+          <ActionOverflowMenu
+            actions={mergeActions}
+            label="Merge options"
+            triggerText="Merge"
+            reserveGlyphColumn
+          />
+        )}
+      </ResponsiveSurfaceActions>
+      {open && !caps?.merge && !caps?.autoMerge && (
+        <p className="pull-request-review__muted">
+          Merging is not permitted here.
+        </p>
+      )}
+    </>
+  );
   return (
-    <section className="pull-request-review" aria-label="Pull request review">
+    <section
+      className={`pull-request-review${redesigned ? ' pull-request-review--preview' : ''}`}
+      aria-label="Pull request review"
+    >
       <div className="pull-request-review__bar">
         {onBack && (
           <IconButton
@@ -926,9 +997,19 @@ function ReviewOwner({
             <ArrowLeftGlyph />
           </IconButton>
         )}
-        <h2 ref={titleRef} tabIndex={-1} className="pull-request-review__title">
-          {data?.pullRequest.title ?? `#${target.ref}`}
-        </h2>
+        {redesigned ? (
+          <span className="pull-request-review__crumb" title={target.host}>
+            {target.owner}/{target.repository} #{target.ref}
+          </span>
+        ) : (
+          <h2
+            ref={titleRef}
+            tabIndex={-1}
+            className="pull-request-review__title"
+          >
+            {data?.pullRequest.title ?? `#${target.ref}`}
+          </h2>
+        )}
         {/* One row at every width: the title wraps its words; the icons
             keep their place. */}
         <div className="pull-request-review__bar-actions">
@@ -973,6 +1054,11 @@ function ReviewOwner({
           ) : null}
         </div>
       </div>
+      {redesigned && (
+        <h2 ref={titleRef} tabIndex={-1} className="pull-request-review__title">
+          {data?.pullRequest.title ?? `#${target.ref}`}
+        </h2>
+      )}
       {!scope?.isCurrent() ? (
         <ErrorState
           variant="compact"
@@ -999,12 +1085,24 @@ function ReviewOwner({
             pullRequest={data.pullRequest}
             headSha={data.headSha}
             observedAt={data.observedAt}
+            showRepository={!redesigned}
           />
           <PullRequestFeedbackStrip
             strip={feedback}
             reference={`${target.owner}/${target.repository} #${target.ref}`}
           />
-          <PullRequestHeadReviewSection strip={feedback} />
+          {redesigned && linkedGroups && linkedGroups.length > 0 && (
+            <div className="pull-request-review__meta">
+              {linkedGroups.map((group) => (
+                <PullRequestChip key={group} label={group} tone="neutral" />
+              ))}
+            </div>
+          )}
+          {redesigned ? (
+            decisions
+          ) : (
+            <PullRequestHeadReviewSection strip={feedback} />
+          )}
           <p
             className="pull-request-review__status pull-request-review__status--live"
             role="status"
@@ -1015,18 +1113,17 @@ function ReviewOwner({
           <Tabs
             id="pull-request-review-views"
             aria-label="Pull request views"
-            items={[
-              { key: 'review', label: 'Review' },
-              { key: 'guide', label: 'Guide' },
-            ]}
+            items={tabs}
             activeKey={reviewTab}
             activation="automatic"
-            onSelect={(key) =>
-              setReviewTab(key === 'guide' ? 'guide' : 'review')
-            }
+            onSelect={(key) => {
+              const tab = tabs.find((item) => item.key === key);
+              if (tab) setReviewTab(tab.key);
+            }}
           />
           <div
             role="tabpanel"
+            className={redesigned ? 'content-stack' : undefined}
             id={tabPanelElementId('pull-request-review-views', reviewTab)}
             aria-labelledby={tabElementId(
               'pull-request-review-views',
@@ -1035,28 +1132,40 @@ function ReviewOwner({
           >
             {reviewTab === 'guide' ? (
               <PullRequestGuide target={target} headSha={data.headSha} />
+            ) : reviewTab === 'head-review' ? (
+              <PullRequestHeadReviewSection
+                strip={feedback}
+                empty={
+                  <Empty variant="compact" label="No head review available" />
+                }
+              />
             ) : (
               <>
-                <h3>Status</h3>
-                <p
-                  className="pull-request-review__mergeability"
-                  data-mergeability={data.pullRequest.mergeability}
-                >
-                  {MERGEABILITY_COPY[data.pullRequest.mergeability]}{' '}
-                  <code>{data.pullRequest.targetBranch}</code>.
-                </p>
-                <PullRequestChecks
-                  checks={data.checks}
-                  siteName={siteName}
-                  onAddToChat={activeChat ? addCheckToChat : undefined}
-                  justAdded={justAdded}
-                  sent={
-                    sentChecks?.headSha === data.headSha
-                      ? sentChecks
-                      : undefined
-                  }
-                />
-                {data.pullRequest.body?.trim() ? (
+                {(!redesigned || reviewTab === 'checks') && (
+                  <>
+                    <h3>Status</h3>
+                    <p
+                      className="pull-request-review__mergeability"
+                      data-mergeability={data.pullRequest.mergeability}
+                    >
+                      {MERGEABILITY_COPY[data.pullRequest.mergeability]}{' '}
+                      <code>{data.pullRequest.targetBranch}</code>.
+                    </p>
+                    <PullRequestChecks
+                      checks={data.checks}
+                      siteName={siteName}
+                      onAddToChat={activeChat ? addCheckToChat : undefined}
+                      justAdded={justAdded}
+                      sent={
+                        sentChecks?.headSha === data.headSha
+                          ? sentChecks
+                          : undefined
+                      }
+                    />
+                  </>
+                )}
+                {(!redesigned || reviewTab === 'review') &&
+                data.pullRequest.body?.trim() ? (
                   <>
                     <h3>Description</h3>
                     <div className="pull-request-review__body">
@@ -1064,143 +1173,121 @@ function ReviewOwner({
                     </div>
                   </>
                 ) : null}
-                <h3>Changed files</h3>
-                {data.diff.state === 'available' ? (
-                  <div
-                    className="pull-request-review__diff"
-                    style={{
-                      height: Math.min(
-                        480,
-                        Math.max(
-                          160,
-                          data.diff.patch.split('\n').length * 22 + 64,
-                        ),
-                      ),
-                    }}
-                  >
-                    {/* The review's changed files are a diff inside the pane, not
+                {(!redesigned || reviewTab === 'files') && (
+                  <>
+                    <h3>Changed files</h3>
+                    {data.diff.state === 'available' ? (
+                      <div
+                        className="pull-request-review__diff"
+                        style={{
+                          height: Math.min(
+                            480,
+                            Math.max(
+                              160,
+                              data.diff.patch.split('\n').length * 22 + 64,
+                            ),
+                          ),
+                        }}
+                      >
+                        {/* The review's changed files are a diff inside the pane, not
                   the pane: fenced from a host's head slots so the side
                   panel's head keeps the Diff pane's own counts and tools, and
                   this diff draws its own row. */}
-                    <PaneHeadSlotsContext.Provider value={null}>
-                      <LazyBoundary
-                        load={loadDiff}
-                        componentProps={{
-                          diff: data.diff.patch,
-                          observationKey: identity,
-                          ...(data.reviewComments?.state === 'available'
-                            ? { providerComments: data.reviewComments.comments }
-                            : {}),
-                        }}
-                        pending={
-                          <SkeletonBlock label="Preparing changed files" />
-                        }
-                      />
-                    </PaneHeadSlotsContext.Provider>
-                  </div>
-                ) : (
-                  <ErrorState
-                    variant="compact"
-                    title="Diff unavailable"
-                    description={data.diff.reason}
-                  />
-                )}
-                <UnplacedReviewComments
-                  comments={data.reviewComments}
-                  placed={placed}
-                  siteName={siteName}
-                />
-                <h3>Discussion</h3>
-                {data.discussionPartial && (
-                  <p className="pull-request-review__muted">
-                    Older comments on {siteName}
-                  </p>
-                )}
-                <ol className="pull-request-review__discussion">
-                  {data.discussion.map((item) => (
-                    <li key={`${item.kind}:${item.id}`}>
-                      <strong>{item.author}</strong>{' '}
-                      <span className="pull-request-review__muted">
-                        {item.state
-                          ? (reviewDecisionChip(item.state)?.label ??
-                            humanise(item.state))
-                          : item.kind}
-                      </span>
-                      <div className="pull-request-review__body">
-                        {item.body}
+                        <PaneHeadSlotsContext.Provider value={null}>
+                          <LazyBoundary
+                            load={loadDiff}
+                            componentProps={{
+                              diff: data.diff.patch,
+                              observationKey: identity,
+                              ...(data.reviewComments?.state === 'available'
+                                ? {
+                                    providerComments:
+                                      data.reviewComments.comments,
+                                  }
+                                : {}),
+                            }}
+                            pending={
+                              <SkeletonBlock label="Preparing changed files" />
+                            }
+                          />
+                        </PaneHeadSlotsContext.Provider>
                       </div>
-                    </li>
-                  ))}
-                </ol>
-                <label className="pull-request-review__comment">
-                  Comment
-                  <textarea
-                    className="editor-textarea"
-                    value={body}
-                    maxLength={16_384}
-                    disabled={pending}
-                    onChange={(event) => setBody(event.target.value)}
-                  />
-                </label>
-                {!caps?.comment && (
-                  <p className="pull-request-review__muted">
-                    Comments are not permitted here.
-                  </p>
-                )}
-                {!caps?.approve && (
-                  <p className="pull-request-review__muted">
-                    Approvals are not permitted here.
-                  </p>
-                )}
-                {/* Post comment is the comment field's own submit. */}
-                <ResponsiveSurfaceActions className="pull-request-review__actions">
-                  <Button
-                    disabled={!writable || !caps?.comment || !body.trim()}
-                    onClick={() =>
-                      setIntent({
-                        action: 'comment',
-                        expectedHeadSha: data.headSha,
-                        body,
-                      })
-                    }
-                  >
-                    Post comment
-                  </Button>
-                </ResponsiveSurfaceActions>
-                {/* The decision row: Approve, and Merge as one menu (the method as
-              a choice inside it, then the two merge commands). */}
-                <ResponsiveSurfaceActions className="pull-request-review__actions pull-request-review__decision">
-                  <Button
-                    variant="primary"
-                    disabled={
-                      !writable ||
-                      !open ||
-                      !caps?.approve ||
-                      data.diff.state !== 'available'
-                    }
-                    onClick={() =>
-                      setIntent({
-                        action: 'approve',
-                        expectedHeadSha: data.headSha,
-                      })
-                    }
-                  >
-                    Approve
-                  </Button>
-                  {open && (caps?.merge || caps?.autoMerge) && (
-                    <ActionOverflowMenu
-                      actions={mergeActions}
-                      label="Merge options"
-                      triggerText="Merge"
-                      reserveGlyphColumn
+                    ) : (
+                      <ErrorState
+                        variant="compact"
+                        title="Diff unavailable"
+                        description={data.diff.reason}
+                      />
+                    )}
+                    <UnplacedReviewComments
+                      comments={data.reviewComments}
+                      placed={placed}
+                      siteName={siteName}
                     />
-                  )}
-                </ResponsiveSurfaceActions>
-                {open && !caps?.merge && !caps?.autoMerge && (
-                  <p className="pull-request-review__muted">
-                    Merging is not permitted here.
-                  </p>
+                  </>
                 )}
+                {(!redesigned || reviewTab === 'review') && (
+                  <>
+                    <h3>Discussion</h3>
+                    {data.discussionPartial && (
+                      <p className="pull-request-review__muted">
+                        Older comments on {siteName}
+                      </p>
+                    )}
+                    <ol className="pull-request-review__discussion">
+                      {data.discussion.map((item) => (
+                        <li key={`${item.kind}:${item.id}`}>
+                          <strong>{item.author}</strong>{' '}
+                          <span className="pull-request-review__muted">
+                            {item.state
+                              ? (reviewDecisionChip(item.state)?.label ??
+                                humanise(item.state))
+                              : item.kind}
+                          </span>
+                          <div className="pull-request-review__body">
+                            {item.body}
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                    <label className="pull-request-review__comment">
+                      Comment
+                      <textarea
+                        className="editor-textarea"
+                        value={body}
+                        maxLength={16_384}
+                        disabled={pending}
+                        onChange={(event) => setBody(event.target.value)}
+                      />
+                    </label>
+                    {!caps?.comment && (
+                      <p className="pull-request-review__muted">
+                        Comments are not permitted here.
+                      </p>
+                    )}
+                    {!caps?.approve && (
+                      <p className="pull-request-review__muted">
+                        Approvals are not permitted here.
+                      </p>
+                    )}
+                    {/* Post comment is the comment field's own submit. */}
+                    <ResponsiveSurfaceActions className="pull-request-review__actions">
+                      <Button
+                        disabled={!writable || !caps?.comment || !body.trim()}
+                        onClick={() =>
+                          setIntent({
+                            action: 'comment',
+                            expectedHeadSha: data.headSha,
+                            body,
+                          })
+                        }
+                      >
+                        Post comment
+                      </Button>
+                    </ResponsiveSurfaceActions>
+                  </>
+                )}
+                {!redesigned && decisions}
                 {outcome && (
                   <p
                     ref={outcomeRef}

@@ -9,6 +9,7 @@ import type {
   PullRequestOpenInput,
   PullRequestResult,
 } from '@kontourai/station-contracts/pull-request-provider';
+import { useQueries } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
@@ -69,10 +70,12 @@ function withContext(path: string, context: PullRequestResolvingContext) {
     query.set('workingDirectory', context.workingDirectory);
   return `${path}?${query}`;
 }
+type CheckoutListState = 'OPEN' | 'MERGED' | 'CLOSED' | 'ALL';
+
 export function usePullRequestContextQuery(
   context: PullRequestResolvingContext,
   config?: QueryConfig<PullRequestClientContext> & {
-    list?: 'OPEN' | 'MERGED' | 'CLOSED' | 'ALL';
+    list?: CheckoutListState;
   },
 ) {
   const state = config?.list;
@@ -92,6 +95,30 @@ export function usePullRequestContextQuery(
       enabled: !!context.project && (config?.enabled ?? true),
     },
   );
+}
+/** Additional checkout list pages stay in memory for this list session. */
+export function useCheckoutPullRequestPages(
+  context: PullRequestResolvingContext,
+  state: CheckoutListState,
+  cursors: readonly string[],
+) {
+  return useQueries({
+    queries: cursors.map((cursor) => ({
+      queryKey: [
+        'checkout-pull-request-page',
+        context.project,
+        context.thread ?? '',
+        context.workingDirectory ?? '',
+        state,
+        cursor,
+      ],
+      queryFn: () =>
+        request<PullRequestClientContext>(
+          `${withContext('context', context)}&list=${state}&cursor=${encodeURIComponent(cursor)}`,
+        ),
+      staleTime: 20_000,
+    })),
+  });
 }
 export function usePullRequestsQuery(
   provider: string,

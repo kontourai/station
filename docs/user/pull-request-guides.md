@@ -18,7 +18,14 @@ Use **Rewrite guide** to try again or incorporate a new revision or preference.
 Ordinary requests reuse a guide for the current head; Rewrite explicitly forces
 regeneration. A request for a newer head is refused while an older head is running.
 Code excerpts can receive keyboard focus; scroll horizontally to read long lines.
-The Guide tab is read-only: return to **Review** to comment or approve.
+Use **Review** to comment or approve. With the **Pull request workspace**
+preview enabled, use **Conversation** to comment and the review header to
+approve. **Files**, **Checks** and **Head review** have their own tabs.
+
+In Coding, open **Diff → Pull requests**. On GitHub, Station can show the
+last Open list while it asks for a fresh one. The list names the repository and
+shows when the saved rows were read. Use **Load more** to read the next page.
+Opening a row reads the current review from the forge.
 
 A push makes the saved guide stale. On the next guide read, Station compares
 its head SHA with the provider's current head and hides obsolete excerpts and

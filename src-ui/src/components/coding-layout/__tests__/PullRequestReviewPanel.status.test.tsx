@@ -35,6 +35,7 @@ beforeAll(() => {
 const openExternalLink = vi.fn(async (_url: string) => {});
 const snapshot = vi.hoisted(() => ({
   current: undefined as unknown as PullRequestReviewSnapshot,
+  workspacePreview: false,
 }));
 
 vi.mock('../../../platform/openExternalLink', () => ({
@@ -66,7 +67,11 @@ vi.mock('@kontourai/station-sdk', () => ({
   useCreateDiffCommentMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteDiffCommentMutation: () => ({ mutate: vi.fn(), isPending: false }),
   // Agent feedback's preview is off: its strip reads nothing.
-  useFeaturePreviewsQuery: () => ({ data: [] }),
+  useFeaturePreviewsQuery: () => ({
+    data: [
+      { id: 'pull-request-workspace', enabled: snapshot.workspacePreview },
+    ],
+  }),
 }));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({
@@ -161,9 +166,40 @@ function mount(onBack?: () => void) {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  snapshot.workspacePreview = false;
 });
 
 describe('pull request status', () => {
+  test('the workspace preview gives forge checks and changed files their own tabs', async () => {
+    snapshot.workspacePreview = true;
+    snapshot.current = base({
+      checks: {
+        state: 'available',
+        partial: false,
+        checks: [{ name: 'station CI', state: 'failure' }],
+      },
+    });
+    mount();
+
+    const conversation = await screen.findByRole('tabpanel', {
+      name: 'Conversation',
+    });
+    expect(
+      within(conversation).getByRole('heading', { name: 'Discussion' }),
+    ).toBeTruthy();
+    expect(within(conversation).queryByText('station CI')).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Checks' }));
+    const checks = screen.getByRole('tabpanel', { name: 'Checks' });
+    expect(within(checks).getByText('station CI')).toBeTruthy();
+    expect(
+      within(checks).queryByRole('heading', { name: 'Discussion' }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
+    expect(screen.getByRole('heading', { name: 'Changed files' })).toBeTruthy();
+  });
+
   test('states conflicts and lists checks failures first, with counts from the list', async () => {
     snapshot.current = base({
       checks: {

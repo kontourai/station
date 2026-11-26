@@ -21,6 +21,7 @@ let contextQuery: any;
 let listQuery: any;
 const contextInputs: unknown[] = [];
 const listQueries: unknown[] = [];
+let workspacePreview = false;
 let activeChat: string | null = 'conv-1';
 let links: ConversationPullRequestLinkObservation[] = [];
 const linkConversationPullRequest = vi.fn(async () => ({}));
@@ -28,6 +29,10 @@ const unlinkConversationPullRequest = vi.fn(async () => ({}));
 const openExternalLink = vi.fn(async (_url: string) => {});
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({
+    data: [{ id: 'pull-request-workspace', enabled: workspacePreview }],
+  }),
+  useCheckoutPullRequestPages: () => [],
   usePullRequestContextQuery: (input: unknown) => {
     contextInputs.push(input);
     return contextQuery;
@@ -163,6 +168,7 @@ beforeEach(() => {
   contextInputs.length = 0;
   listQueries.length = 0;
   activeChat = 'conv-1';
+  workspacePreview = false;
   links = [];
   contextQuery = {
     isLoading: false,
@@ -187,6 +193,39 @@ beforeEach(() => {
 });
 
 afterEach(() => cleanup());
+
+test('the workspace preview groups observed branches and searches the loaded rows', () => {
+  workspacePreview = true;
+  listQuery.data = result([
+    pullRequest({
+      draft: true,
+      checksState: 'pending',
+      changeStats: { additions: 5, deletions: 2, files: 1 },
+    }),
+    pullRequest({
+      ref: '18',
+      title: 'Independent work',
+      sourceBranch: 'feat/elsewhere',
+    }),
+  ]);
+  mount();
+
+  expect(screen.getByRole('heading', { name: 'This branch' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Repository' })).toBeTruthy();
+  expect(screen.getByRole('img', { name: 'Draft' })).toBeTruthy();
+  expect(screen.getAllByText('Checks pending')).toHaveLength(1);
+  expect(screen.getByText('5 additions, 2 deletions, 1 file')).toBeTruthy();
+
+  fireEvent.change(
+    screen.getByRole('searchbox', { name: 'Search loaded pull requests' }),
+    {
+      target: { value: '18' },
+    },
+  );
+  expect(rows()).toHaveLength(1);
+  expect(rows()[0].textContent).toContain('Independent work');
+  expect(screen.queryByText('Checks pending')).toBeNull();
+});
 
 test('labels restored checkout rows with their age until the first current answer', () => {
   const client = new QueryClient({

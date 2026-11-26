@@ -4,10 +4,12 @@ import type {
   PullRequestAvailability,
   PullRequestBranchMergeability,
   PullRequestCapabilities,
+  PullRequestListQuery,
   PullRequestMergeInput,
   PullRequestMergeMethod,
   PullRequestMergeReadiness,
   PullRequestMergeResult,
+  PullRequestPage,
   PullRequestRepositoryContext,
   PullRequestRepositoryIdentityContext,
   PullRequestResult,
@@ -19,6 +21,7 @@ import { readGitHubFeedbackObservation } from './github-feedback-observation.js'
 import { readGitHubPullRequestsByHead } from './github-pull-requests-by-head.js';
 import { isConfiguredGitLabHost } from './gitlab-pull-request-provider.js';
 import {
+  readGitHubChecks,
   readPullRequestReview,
   writePullRequestReview,
 } from './pull-request-review.js';
@@ -188,6 +191,21 @@ const githubMergeability = (value: unknown): PullRequest['mergeability'] =>
 const GITHUB_PULL_REQUEST_LIST_LIMIT = 30;
 const GITHUB_PULL_REQUEST_LIST_FIELDS =
   'number,url,title,state,author,headRefName,baseRefName,headRefOid,isDraft,reviewDecision,statusCheckRollup,updatedAt,additions,deletions,changedFiles';
+const GITHUB_PULL_REQUEST_PAGE_QUERY = `query(
+  $owner: String!, $name: String!, $first: Int!, $states: [PullRequestState!], $after: String
+) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: $first, states: $states, after: $after, orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes {
+        number url title state author { login url }
+        headRefName baseRefName headRefOid isDraft reviewDecision updatedAt
+        additions deletions changedFiles
+        headRef { target { oid ... on Commit { statusCheckRollup { state } } } }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`;
 const GITHUB_PULL_REQUEST_DETAIL_FIELDS =
   'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus,isDraft,reviewDecision';
 
@@ -249,6 +267,26 @@ const githubReviewDecision = (value: unknown): PullRequest['reviewDecision'] =>
         ? 'review_required'
         : undefined;
 
+function summarizeGitHubChecks(rollup: unknown): PullRequest['checksState'] {
+  if (!Array.isArray(rollup) || rollup.length === 0) return undefined;
+  const observation = readGitHubChecks(rollup);
+  if (observation.state !== 'available') return undefined;
+  if (observation.checks.some(({ state }) => state === 'failure'))
+    return 'failure';
+  if (observation.checks.some(({ state }) => state === 'pending'))
+    return 'pending';
+  if (
+    !observation.partial &&
+    observation.checks.every(
+      ({ state }) =>
+        state === 'success' || state === 'neutral' || state === 'skipped',
+    ) &&
+    observation.checks.some(({ state }) => state === 'success')
+  )
+    return 'success';
+  return undefined;
+}
+
 export function normalizeGitHubPullRequest(
   value: any,
   host: string,
@@ -262,6 +300,18 @@ export function normalizeGitHubPullRequest(
     typeof value.baseRefName !== 'string'
   )
     throw new Error('GitHub CLI returned an incomplete pull request');
+  const checksState = summarizeGitHubChecks(value.statusCheckRollup);
+  const changeStats = [
+    value.additions,
+    value.deletions,
+    value.changedFiles,
+  ].every((count) => Number.isSafeInteger(count) && count >= 0)
+    ? {
+        additions: value.additions,
+        deletions: value.deletions,
+        files: value.changedFiles,
+      }
+    : undefined;
   return {
     provider: 'github',
     host,
@@ -286,6 +336,12 @@ export function normalizeGitHubPullRequest(
       : 'NONE',
     comments: Array.isArray(value.comments) ? value.comments.length : 0,
     nativeId: String(value.number),
+    ...(typeof value.updatedAt === 'string' &&
+    Number.isFinite(Date.parse(value.updatedAt))
+      ? { updatedAt: value.updatedAt }
+      : {}),
+    ...(changeStats ? { changeStats } : {}),
+    ...(checksState ? { checksState } : {}),
     mergeability: githubMergeability(value.mergeable),
     ...(typeof value.isDraft === 'boolean' ? { draft: value.isDraft } : {}),
     ...(githubReviewDecision(value.reviewDecision)
@@ -631,6 +687,87 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
         String(q.limit ?? GITHUB_PULL_REQUEST_LIST_LIMIT),
       ],
       { shared: true },
+    );
+  }
+  listPullRequestPage(
+    context: PullRequestRepositoryContext,
+    query: PullRequestListQuery & { cursor?: string },
+  ): Promise<PullRequestResult<PullRequestPage>> {
+    const host = this.getHost(context);
+    const { owner, name } = context.repository;
+    return this.read(
+      context,
+      [
+        'api',
+        'graphql',
+        '--hostname',
+        host,
+        '-f',
+        `query=${GITHUB_PULL_REQUEST_PAGE_QUERY}`,
+        '-f',
+        `owner=${owner}`,
+        '-f',
+        `name=${name}`,
+        '-F',
+        `first=${query.limit ?? GITHUB_PULL_REQUEST_LIST_LIMIT}`,
+        ...(query.state && query.state !== 'ALL'
+          ? ['-f', `states[]=${query.state}`]
+          : []),
+        ...(query.cursor ? ['-f', `after=${query.cursor}`] : []),
+      ],
+      true,
+      (parsed) => {
+        const page = (
+          parsed as {
+            data?: {
+              repository?: {
+                pullRequests?: {
+                  nodes?: unknown;
+                  pageInfo?: { hasNextPage?: unknown; endCursor?: unknown };
+                };
+              };
+            };
+          }
+        ).data?.repository?.pullRequests;
+        if (
+          !Array.isArray(page?.nodes) ||
+          typeof page.pageInfo?.hasNextPage !== 'boolean'
+        )
+          throw new Error('GitHub did not return a pull request page');
+        const cursor = page.pageInfo.endCursor;
+        if (
+          page.pageInfo.hasNextPage &&
+          (typeof cursor !== 'string' || !cursor || cursor === query.cursor)
+        )
+          throw new Error('GitHub did not return the next pull request cursor');
+        const items = page.nodes.map((node) => {
+          const item = normalizeGitHubPullRequest(node, host);
+          const target = node.headRef?.target;
+          const state =
+            target?.oid === item.headSha
+              ? target?.statusCheckRollup?.state
+              : undefined;
+          const checksState =
+            state === 'SUCCESS'
+              ? 'success'
+              : state === 'FAILURE' || state === 'ERROR'
+                ? 'failure'
+                : state === 'PENDING' || state === 'EXPECTED'
+                  ? 'pending'
+                  : undefined;
+          return {
+            ...item,
+            repository: { owner, name },
+            ...(checksState ? { checksState } : {}),
+          } satisfies PullRequest;
+        });
+        return {
+          items,
+          ...(page.pageInfo.hasNextPage && typeof cursor === 'string'
+            ? { nextCursor: cursor }
+            : {}),
+        };
+      },
     );
   }
   /**

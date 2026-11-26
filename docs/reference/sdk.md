@@ -6486,6 +6486,15 @@ and compares these owners case-insensitively when both are present. If either
 owner is absent, it matches on branch alone; the upstream branch name is never
 a substitute for the local branch.
 
+Set `config.list` to `OPEN`, `MERGED`, `CLOSED` or `ALL` to request the
+checkout and its first pull request page together. On supporting hosts the
+available context includes a `pullRequests` result, which can report that the
+forge read failed while the checkout context remains available. Older hosts
+omit this field. The SDK gives each requested state a separate query key.
+GitHub returns a `nextCursor` when more rows are available. Pass those opaque
+cursors to `useCheckoutPullRequestPages` with the same checkout and state.
+Subsequent pages have independent memory-only query keys.
+
 ## Conversation pull-request links
 
 `@kontourai/station-sdk/conversation-pull-request-links` reads, links, and

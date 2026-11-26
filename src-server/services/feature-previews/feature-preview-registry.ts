@@ -106,6 +106,12 @@ export class FeaturePreviewRegistry {
       description: 'Show member names and presence in shared Task rooms.',
     });
     this.rememberConsumer({
+      id: 'pull-request-workspace',
+      label: 'Pull request workspace',
+      description:
+        'Group and search pull requests in Coding and review them in dedicated tabs.',
+    });
+    this.rememberConsumer({
       id: 'apps-library',
       label: 'Apps library',
       description:

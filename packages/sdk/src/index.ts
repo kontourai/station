@@ -1566,6 +1566,7 @@ export {
   pullRequestMergeabilityQueryKey,
   pullRequestsQueryKey,
   useApprovePullRequestMutation,
+  useCheckoutPullRequestPages,
   useCreatePullRequestCommentMutation,
   useMergePullRequestMutation,
   useOpenPullRequestMutation,

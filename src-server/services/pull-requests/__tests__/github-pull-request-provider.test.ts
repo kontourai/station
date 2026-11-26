@@ -373,6 +373,94 @@ describe('GitHubPullRequestProvider', () => {
     ]);
   });
 
+  test('pages checkout summaries and only attributes checks to the observed head', async () => {
+    const headSha = 'a'.repeat(40);
+    const nextCursor = 'Y3Vyc29yOjE=';
+    const summary = {
+      number: 7,
+      url: 'https://github.com/kontourai/station/pull/7',
+      title: 'Title',
+      state: 'OPEN',
+      author: { login: 'casey', url: 'https://github.com/casey' },
+      headRefName: 'feature',
+      baseRefName: 'main',
+      headRefOid: headSha,
+      isDraft: true,
+      reviewDecision: 'REVIEW_REQUIRED',
+      updatedAt: '2026-11-25T20:00:00Z',
+      additions: 4,
+      deletions: 1,
+      changedFiles: 2,
+    };
+    const transport = vi.fn().mockImplementation(async (args: string[]) => {
+      if (args[0] === 'auth') return { stdout: '' };
+      const following = args.includes(`after=${nextCursor}`);
+      return {
+        stdout: JSON.stringify({
+          data: {
+            repository: {
+              pullRequests: {
+                nodes: [
+                  {
+                    ...summary,
+                    ...(following
+                      ? {
+                          number: 6,
+                          url: 'https://github.com/kontourai/station/pull/6',
+                        }
+                      : {}),
+                    headRef: {
+                      target: {
+                        oid: following ? 'b'.repeat(40) : headSha,
+                        statusCheckRollup: { state: 'PENDING' },
+                      },
+                    },
+                  },
+                ],
+                pageInfo: { hasNextPage: !following, endCursor: nextCursor },
+              },
+            },
+          },
+        }),
+      };
+    });
+    const provider = new GitHubPullRequestProvider(transport);
+
+    const first = await provider.listPullRequestPage(context, {
+      state: 'OPEN',
+    });
+    expect(first.data).toMatchObject({
+      nextCursor,
+      items: [
+        {
+          ref: '7',
+          draft: true,
+          checksState: 'pending',
+          reviewDecision: 'review_required',
+          changeStats: { additions: 4, deletions: 1, files: 2 },
+          updatedAt: '2026-11-25T20:00:00Z',
+        },
+      ],
+    });
+    const args = transport.mock.calls.find(([argv]) => argv[0] === 'api')?.[0];
+    expect(args).toEqual(
+      expect.arrayContaining(['graphql', 'states[]=OPEN', 'first=30']),
+    );
+    const query = args?.find((arg: string) => arg.startsWith('query='));
+    expect(query).toContain('statusCheckRollup { state }');
+    expect(query).not.toMatch(
+      /\b(body|commits|reviews|comments|mergeable|mergeStateStatus)\b/,
+    );
+
+    const following = await provider.listPullRequestPage(context, {
+      state: 'OPEN',
+      cursor: first.data?.nextCursor,
+    });
+    expect(following.data).toMatchObject({ items: [{ ref: '6' }] });
+    expect(following.data?.items[0]).not.toHaveProperty('checksState');
+    expect(following.data).not.toHaveProperty('nextCursor');
+  });
+
   test.each(['checkout', 'identity'])(
     'reads full pull request detail by %s',
     async (target) => {

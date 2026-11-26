@@ -220,7 +220,12 @@ function readChecks(
       };
     }
   }
-  const rollup = value.statusCheckRollup;
+  return readGitHubChecks(value.statusCheckRollup);
+}
+
+export function readGitHubChecks(
+  rollup: unknown,
+): PullRequestChecksObservation {
   if (!Array.isArray(rollup))
     return {
       state: 'unavailable',

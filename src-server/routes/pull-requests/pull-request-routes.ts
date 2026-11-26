@@ -137,6 +137,31 @@ export function createPullRequestRoutes(
       await provider.listPullRequests(checkout, { state, limit }),
     );
   };
+  const checkoutList = async (
+    provider: IPullRequestProvider,
+    checkout: Parameters<IPullRequestProvider['listPullRequests']>[0],
+    state: string,
+    cursor: string | undefined,
+  ) => {
+    if (!provider.listPullRequestPage)
+      return list(provider, checkout, state, 30);
+    pullRequestOps.add(1, {
+      operation: 'list',
+      repo: `${checkout.repository.owner}/${checkout.repository.name}`,
+    });
+    const { data, ...availability } = await provider.listPullRequestPage(
+      checkout,
+      {
+        state,
+        cursor,
+        limit: 30,
+      },
+    );
+    return {
+      ...narrow(provider, { ...availability, data: data?.items }),
+      ...(data?.nextCursor ? { nextCursor: data.nextCursor } : {}),
+    };
+  };
   app.get('/context', async (c) => {
     const resolution = await context(c, { requireBranchState: false });
     if (!resolution?.available) {
@@ -171,10 +196,23 @@ export function createPullRequestRoutes(
         400,
       );
     }
+    const cursor = c.req.query('cursor');
+    if (
+      cursor !== undefined &&
+      (!state ||
+        !provider.listPullRequestPage ||
+        !cursor ||
+        cursor.length > 512)
+    ) {
+      return c.json(
+        { success: false, error: 'Invalid pull request page cursor' },
+        400,
+      );
+    }
     const pullRequests =
       state === undefined
         ? undefined
-        : await list(provider, resolution.context, state, 30);
+        : await checkoutList(provider, resolution.context, state, cursor);
     return c.json({
       success: true,
       data: {
