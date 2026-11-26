@@ -103,6 +103,7 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
           ['worktree', 'add', '-qb', name!, dir!],
           {
             cwd: repo,
+            windowsHide: true,
             encoding: 'utf8',
           },
         );
@@ -143,7 +144,13 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
             '--',
             ...args,
           ],
-          { cwd: worktree, env, encoding: 'utf8', timeout: 30_000 },
+          {
+            cwd: worktree,
+            env,
+            encoding: 'utf8',
+            timeout: 30_000,
+            windowsHide: true,
+          },
         );
 
       writeFileSync(join(worktree, 'child.txt'), 'child');
@@ -155,6 +162,7 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
       expect(commit.status, commit.stderr).toBe(0);
       const result = spawnSync('git', ['show', 'HEAD:child.txt'], {
         cwd: worktree,
+        windowsHide: true,
         encoding: 'utf8',
       });
       expect(result.status, result.stderr).toBe(0);
