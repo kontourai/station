@@ -1,3 +1,4 @@
+import type { LinkedPullRequestSnapshot } from './conversation-pull-request-links.js';
 import type {
   PullRequestFeedbackObservationResult,
   PullRequestsByHeadResult,
@@ -142,10 +143,6 @@ export interface PullRequest {
   comments: number;
   nativeId: string;
   mergeability: 'mergeable' | 'conflicting' | 'unknown';
-  /** Repository list metadata reported by the forge. */
-  updatedAt?: string;
-  changeStats?: { additions: number; deletions: number; files: number };
-  checksState?: 'pending' | 'failure' | 'success';
   /** The forge's draft flag. Absent: the provider did not report it. */
   draft?: boolean;
   /**
@@ -168,6 +165,16 @@ export interface PullRequest {
    * status read observes it, and only for an open pull request.
    */
   landing?: PullRequestLanding;
+  snapshot?: Pick<
+    LinkedPullRequestSnapshot,
+    | 'checks'
+    | 'updatedAt'
+    | 'mergedAt'
+    | 'closedAt'
+    | 'additions'
+    | 'deletions'
+    | 'changedFiles'
+  >;
 }
 export type PullRequestLanding = 'auto-merge' | 'merge-queue' | 'not-queued';
 export type PullRequestMergeReadiness =

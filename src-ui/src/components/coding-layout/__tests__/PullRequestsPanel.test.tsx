@@ -199,8 +199,12 @@ test('the workspace preview groups observed branches and searches the loaded row
   listQuery.data = result([
     pullRequest({
       draft: true,
-      checksState: 'pending',
-      changeStats: { additions: 5, deletions: 2, files: 1 },
+      snapshot: {
+        checks: 'pending',
+        additions: 5,
+        deletions: 2,
+        changedFiles: 1,
+      },
     }),
     pullRequest({
       ref: '18',

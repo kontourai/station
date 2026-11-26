@@ -435,10 +435,14 @@ describe('GitHubPullRequestProvider', () => {
         {
           ref: '7',
           draft: true,
-          checksState: 'pending',
           reviewDecision: 'review_required',
-          changeStats: { additions: 4, deletions: 1, files: 2 },
-          updatedAt: '2026-11-25T20:00:00Z',
+          snapshot: {
+            checks: 'pending',
+            additions: 4,
+            deletions: 1,
+            changedFiles: 2,
+            updatedAt: '2026-11-25T20:00:00Z',
+          },
         },
       ],
     });
@@ -457,7 +461,7 @@ describe('GitHubPullRequestProvider', () => {
       cursor: first.data?.nextCursor,
     });
     expect(following.data).toMatchObject({ items: [{ ref: '6' }] });
-    expect(following.data?.items[0]).not.toHaveProperty('checksState');
+    expect(following.data?.items[0]).not.toHaveProperty('snapshot.checks');
     expect(following.data).not.toHaveProperty('nextCursor');
   });
 

@@ -35,6 +35,7 @@ vi.mock('../contexts/useOpenInRegion', () => ({
 }));
 vi.mock('../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: [] }),
   useProjectQuery: () => ({
     data: {
       id: 'project-demo',

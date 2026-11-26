@@ -9,9 +9,11 @@
  * removed again when the model refuses.
  */
 
-import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { InboxLinkedPullRequest } from '../../components/chat-dock/InboxLinkedPullRequest';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
   FILE_PREVIEW_PANE_STATE_STORAGE_PREFIX,
@@ -33,6 +35,12 @@ const PR = {
 };
 const PR_ID = 'pr:github.com/kontourai/station#2049';
 const PROJECT = { projectId: 'project-uuid', projectSlug: 'station' };
+
+vi.mock('../ProjectsContext', () => ({
+  useProjects: () => ({
+    projects: [{ id: PROJECT.projectId, slug: PROJECT.projectSlug }],
+  }),
+}));
 
 let model: ReturnType<typeof useRegionModel> | null = null;
 /** The production openers a region-hosted pane reads, once a model is mounted. */
@@ -56,7 +64,7 @@ function Probe() {
   return null;
 }
 
-async function mount(innerWidth = 1024) {
+async function mount(innerWidth = 1024, children?: React.ReactNode) {
   Object.defineProperty(window, 'innerWidth', {
     configurable: true,
     value: innerWidth,
@@ -66,6 +74,7 @@ async function mount(innerWidth = 1024) {
       <NavigationProvider>
         <RegionModelProvider>
           <Probe />
+          {children}
         </RegionModelProvider>
       </NavigationProvider>
     </KeyboardShortcutsProvider>,
@@ -114,6 +123,58 @@ afterEach(() => {
 });
 
 describe('opening an instance-keyed pane in a region (#2049)', () => {
+  test.each(['keyboard', 'pointer'] as const)(
+    '%s opens a linked PR beside Chat and closing returns to its row',
+    async (input) => {
+      await mount(
+        1280,
+        <div className="inbox-row">
+          <button type="button" className="inbox-row__open">
+            Linked chat
+          </button>
+          <InboxLinkedPullRequest
+            projectSlug={PROJECT.projectSlug}
+            links={[
+              {
+                provider: 'github',
+                host: PR.host,
+                repository: { owner: PR.owner, name: PR.repository },
+                ref: PR.ref,
+                source: 'explicit',
+                observedAt: '2026-11-25T15:00:00Z',
+                status: {
+                  state: 'current',
+                  title: 'Improve linked pull requests',
+                  pullRequestState: 'OPEN',
+                  checks: 'failing',
+                },
+              },
+            ]}
+          />
+        </div>,
+      );
+      const user = userEvent.setup();
+      const row = screen.getByRole('button', { name: 'Linked chat' });
+      const chip = screen.getByRole('button', {
+        name: 'Open pull request #2049 · Failing',
+      });
+      if (input === 'keyboard') {
+        row.focus();
+        await user.tab();
+        expect(document.activeElement).toBe(chip);
+        await user.keyboard('{Enter}');
+      } else {
+        await user.click(chip);
+      }
+      expect(current().model.regions.right.panes).toContain(PR_ID);
+      act(() => {
+        current().model.removePane('right', PR_ID);
+      });
+      expect(current().model.regions.right.panes).not.toContain(PR_ID);
+      expect(document.activeElement).toBe(row);
+    },
+  );
+
   test('a pull request opens as a tab and a second open reveals the same one', async () => {
     await mount();
     const { panes: openers } = current();

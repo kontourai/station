@@ -3296,6 +3296,62 @@ describe('Global Conversation Routes', () => {
     },
   );
 
+  test('projects workspace observations in one batch per inventory page', async () => {
+    const observed = vi.fn(
+      () => new Map([['thread-1', { branch: 'feature' }]]),
+    );
+    const items = ['thread-1', 'thread-2'].map((id) => ({
+      id,
+      source: 'runtime',
+      agentSlug: 'claude',
+      projectSlug: 'project-alpha',
+      title: id,
+      createdAt: '2026-07-23T00:00:00Z',
+      updatedAt: '2026-07-23T00:01:00Z',
+      messageCount: 2,
+      mutable: false,
+      answerability: { answerable: true },
+    }));
+    const app = createGlobalConversationRoutes(
+      new Map(),
+      { getConversation: () => null },
+      mockLogger,
+      undefined,
+      {
+        readSessionConversation: vi.fn(),
+        searchSessionMessages: vi.fn(),
+        listConversationHistoryPage: vi
+          .fn()
+          .mockResolvedValue({ items, hasMore: false }),
+      },
+      () => 'bound-user',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      observed,
+    );
+    const body = await json(await app.request('/'));
+    expect(observed).toHaveBeenCalledExactlyOnceWith(
+      expect.anything(),
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'thread-1' }),
+        expect.objectContaining({ id: 'thread-2' }),
+      ]),
+    );
+    expect(body.data.items).toEqual([
+      expect.objectContaining({ id: 'thread-2' }),
+      expect.objectContaining({
+        id: 'thread-1',
+        observedWorkspace: { branch: 'feature' },
+      }),
+    ]);
+    expect(body.data.items[0]).not.toHaveProperty('observedWorkspace');
+  });
+
   // S2 of archive#1302: the global conversation-inventory endpoint. Folds the
   // orchestration session leg (across every agent) and every registered
   // adapter's file-store conversations, tags each item's `source`, and

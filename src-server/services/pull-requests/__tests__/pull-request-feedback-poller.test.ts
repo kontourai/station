@@ -168,6 +168,44 @@ describe('pull request feedback detection', () => {
     expect(t.reads).toEqual(['github.com#1', 'github.com#1', 'github.com#2']);
   });
 
+  it('keeps the quiet interval when only display facts change', async () => {
+    const t = setup();
+    const identity = pr('1');
+    const key = pullRequestFeedbackKey(identity);
+    t.claim(identity, 'chat-a');
+    t.turns.set('chat-a', NOW);
+    const first = normalizeGitHubFeedbackObservation(
+      recorded,
+      identity,
+      new Date(NOW).toISOString(),
+    )!;
+    let snapshot = {
+      title: 'Queue candidate',
+      pullRequestState: 'OPEN',
+      updatedAt: new Date(NOW).toISOString(),
+      additions: 3,
+      landing: { state: 'queued' as const, position: 3 },
+    };
+    t.answers.set('1', () => ({
+      state: 'observed',
+      observation: { ...first, snapshot },
+    }));
+    await t.poll(NOW);
+    const later = NOW + 2 * MINUTE;
+    snapshot = {
+      ...snapshot,
+      updatedAt: new Date(later).toISOString(),
+      additions: 9,
+      landing: { state: 'queued', position: 1 },
+    };
+    await t.poll(later);
+    expect(t.reads).toHaveLength(2);
+    expect(t.store.observation(key)).toMatchObject({
+      unchangedSince: new Date(NOW).toISOString(),
+      observation: { snapshot },
+    });
+  });
+
   it('a tick reads at most MAX_PER_TICK, oldest due first', async () => {
     const t = setup();
     expect(MAX_PER_TICK).toBe(20);

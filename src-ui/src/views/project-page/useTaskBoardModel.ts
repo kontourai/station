@@ -5,6 +5,7 @@ import {
   type TaskLaneId,
   type TaskLaneInput,
   type TaskLanePartition,
+  type TaskPullRequestFactsProjection,
 } from '@kontourai/station-contracts/task-lane';
 import {
   type OrchestrationSessionSummary,
@@ -36,6 +37,7 @@ export interface TaskBoardModel {
     refetch: ReturnType<typeof useOrchestrationSessionsQuery>['refetch'];
   };
   pullRequests: {
+    entries?: TaskPullRequestFactsProjection['tasks'];
     /** The first read has not answered yet. */
     checking: boolean;
     /**
@@ -192,6 +194,7 @@ export function useTaskBoardModel({
     },
     pullRequests: {
       checking: !factsSettled,
+      entries: facts?.tasks,
       settled: factsSettled,
       failed: factsFailed,
       ...(facts?.observedAt ? { asOf: facts.observedAt } : {}),

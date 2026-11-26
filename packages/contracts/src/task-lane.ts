@@ -1,4 +1,8 @@
-import type { PullRequestLinkIdentity } from './conversation-pull-request-links.js';
+import type {
+  ConversationPullRequestLinkObservation,
+  LinkedPullRequestSnapshot,
+  PullRequestLinkIdentity,
+} from './conversation-pull-request-links.js';
 import type { OrchestrationSessionSummary } from './orchestration.js';
 import type {
   PullRequest,
@@ -92,6 +96,7 @@ export interface TaskPullRequestFact extends PullRequestLinkIdentity {
         draft?: boolean;
         reviewDecision?: PullRequest['reviewDecision'];
         readiness?: PullRequestMergeReadiness;
+        checks?: LinkedPullRequestSnapshot['checks'];
         mergeability: PullRequest['mergeability'];
         sourceBranch?: string;
         /** Armed or queued to merge; absent when not observed. */
@@ -136,6 +141,7 @@ export interface TaskPullRequestFeedbackFact {
 export interface TaskPullRequestFactsEntry {
   taskCreatedAt: string;
   pullRequests: TaskPullRequestFact[];
+  linkedPullRequests?: ConversationPullRequestLinkObservation[];
   /** Some kept pull requests were not read (a per-request bound). */
   partial?: true;
 }

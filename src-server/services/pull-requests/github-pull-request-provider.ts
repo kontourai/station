@@ -21,7 +21,6 @@ import { readGitHubFeedbackObservation } from './github-feedback-observation.js'
 import { readGitHubPullRequestsByHead } from './github-pull-requests-by-head.js';
 import { isConfiguredGitLabHost } from './gitlab-pull-request-provider.js';
 import {
-  readGitHubChecks,
   readPullRequestReview,
   writePullRequestReview,
 } from './pull-request-review.js';
@@ -215,7 +214,7 @@ const GITHUB_PULL_REQUEST_DETAIL_FIELDS =
  * comments, which are the expensive parts of a full read.
  */
 const GITHUB_PULL_REQUEST_STATUS_FIELDS =
-  'number,url,title,state,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,isDraft,reviewDecision,autoMergeRequest';
+  'number,url,title,state,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,isDraft,reviewDecision,autoMergeRequest,statusCheckRollup,updatedAt,mergedAt,closedAt,additions,deletions,changedFiles';
 
 /**
  * Whether an open pull request sits in its repository's merge queue (#5064).
@@ -267,23 +266,42 @@ const githubReviewDecision = (value: unknown): PullRequest['reviewDecision'] =>
         ? 'review_required'
         : undefined;
 
-function summarizeGitHubChecks(rollup: unknown): PullRequest['checksState'] {
-  if (!Array.isArray(rollup) || rollup.length === 0) return undefined;
-  const observation = readGitHubChecks(rollup);
-  if (observation.state !== 'available') return undefined;
-  if (observation.checks.some(({ state }) => state === 'failure'))
-    return 'failure';
-  if (observation.checks.some(({ state }) => state === 'pending'))
+function statusChecks(
+  value: unknown,
+): NonNullable<PullRequest['snapshot']>['checks'] {
+  if (!Array.isArray(value) || !value.length) return undefined;
+  const checks = value.map((check) => {
+    if (check?.__typename === 'StatusContext') return check?.state;
+    if (check?.__typename !== 'CheckRun') return undefined;
+    if (check.status === 'WAITING' || check.conclusion === 'ACTION_REQUIRED')
+      return 'WAITING';
+    return check.status === 'COMPLETED' ? check.conclusion : check.status;
+  });
+  if (
+    checks.some((state) =>
+      [
+        'FAILURE',
+        'ERROR',
+        'TIMED_OUT',
+        'CANCELLED',
+        'STARTUP_FAILURE',
+      ].includes(state),
+    )
+  )
+    return 'failing';
+  if (checks.includes('WAITING')) return 'awaiting-approval';
+  if (
+    checks.some((state) =>
+      ['EXPECTED', 'PENDING', 'IN_PROGRESS', 'QUEUED', 'REQUESTED'].includes(
+        state,
+      ),
+    )
+  )
     return 'pending';
   if (
-    !observation.partial &&
-    observation.checks.every(
-      ({ state }) =>
-        state === 'success' || state === 'neutral' || state === 'skipped',
-    ) &&
-    observation.checks.some(({ state }) => state === 'success')
+    checks.every((state) => ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(state))
   )
-    return 'success';
+    return 'passing';
   return undefined;
 }
 
@@ -300,19 +318,24 @@ export function normalizeGitHubPullRequest(
     typeof value.baseRefName !== 'string'
   )
     throw new Error('GitHub CLI returned an incomplete pull request');
-  const checksState = summarizeGitHubChecks(value.statusCheckRollup);
-  const changeStats = [
-    value.additions,
-    value.deletions,
-    value.changedFiles,
-  ].every((count) => Number.isSafeInteger(count) && count >= 0)
-    ? {
-        additions: value.additions,
-        deletions: value.deletions,
-        files: value.changedFiles,
-      }
-    : undefined;
+  const checks = statusChecks(value.statusCheckRollup);
+  const snapshot = {
+    ...(checks ? { checks } : {}),
+    ...Object.fromEntries(
+      ['updatedAt', 'mergedAt', 'closedAt'].flatMap((key) =>
+        typeof value[key] === 'string' ? [[key, value[key]]] : [],
+      ),
+    ),
+    ...Object.fromEntries(
+      ['additions', 'deletions', 'changedFiles'].flatMap((key) =>
+        Number.isSafeInteger(value[key]) && value[key] >= 0
+          ? [[key, value[key]]]
+          : [],
+      ),
+    ),
+  };
   return {
+    ...(Object.keys(snapshot).length ? { snapshot } : {}),
     provider: 'github',
     host,
     ref: String(value.number),
@@ -336,12 +359,6 @@ export function normalizeGitHubPullRequest(
       : 'NONE',
     comments: Array.isArray(value.comments) ? value.comments.length : 0,
     nativeId: String(value.number),
-    ...(typeof value.updatedAt === 'string' &&
-    Number.isFinite(Date.parse(value.updatedAt))
-      ? { updatedAt: value.updatedAt }
-      : {}),
-    ...(changeStats ? { changeStats } : {}),
-    ...(checksState ? { checksState } : {}),
     mergeability: githubMergeability(value.mergeable),
     ...(typeof value.isDraft === 'boolean' ? { draft: value.isDraft } : {}),
     ...(githubReviewDecision(value.reviewDecision)
@@ -747,18 +764,18 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
             target?.oid === item.headSha
               ? target?.statusCheckRollup?.state
               : undefined;
-          const checksState =
+          const checks =
             state === 'SUCCESS'
-              ? 'success'
+              ? 'passing'
               : state === 'FAILURE' || state === 'ERROR'
-                ? 'failure'
+                ? 'failing'
                 : state === 'PENDING' || state === 'EXPECTED'
                   ? 'pending'
                   : undefined;
           return {
             ...item,
             repository: { owner, name },
-            ...(checksState ? { checksState } : {}),
+            ...(checks ? { snapshot: { ...item.snapshot, checks } } : {}),
           } satisfies PullRequest;
         });
         return {

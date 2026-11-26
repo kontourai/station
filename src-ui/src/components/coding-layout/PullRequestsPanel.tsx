@@ -71,7 +71,7 @@ function rowChips(pullRequest: {
   reviewStatus?: string;
   reviewDecision?: PullRequest['reviewDecision'];
   mergeability?: PullRequest['mergeability'];
-  checksState?: PullRequest['checksState'];
+  snapshot?: PullRequest['snapshot'];
   draft?: boolean;
 }): PullRequestChipValue[] {
   const chips = [
@@ -83,15 +83,16 @@ function rowChips(pullRequest: {
   if (decision) chips.push(decision);
   if (pullRequest.mergeability === 'conflicting')
     chips.push({ label: 'Has conflicts', tone: 'failure' });
-  if (pullRequest.checksState)
-    chips.push({
-      label: {
-        success: 'Checks passed',
-        failure: 'Checks failed',
-        pending: 'Checks pending',
-      }[pullRequest.checksState],
-      tone: pullRequest.checksState,
-    });
+  const checks = pullRequest.snapshot?.checks;
+  if (checks) {
+    const checkChip: Record<typeof checks, PullRequestChipValue> = {
+      passing: { label: 'Checks passed', tone: 'success' },
+      failing: { label: 'Checks failed', tone: 'failure' },
+      pending: { label: 'Checks pending', tone: 'pending' },
+      'awaiting-approval': { label: 'Checks need approval', tone: 'pending' },
+    };
+    chips.push(checkChip[checks]);
+  }
   return chips;
 }
 
@@ -483,7 +484,14 @@ export function PullRequestsPanel({
     const source = explicitByKey.has(key)
       ? 'explicit'
       : links.find((link) => linkKey(link) === key)?.source;
-    const stats = pullRequest.changeStats;
+    const { additions, deletions, changedFiles, updatedAt } =
+      pullRequest.snapshot ?? {};
+    const stats =
+      additions !== undefined &&
+      deletions !== undefined &&
+      changedFiles !== undefined
+        ? { additions, deletions, files: changedFiles }
+        : undefined;
     return {
       group: rowGroup(source, current),
       row: (
@@ -508,10 +516,7 @@ export function PullRequestsPanel({
               : [pullRequest.author.login]
           }
           trailing={
-            compact &&
-            pullRequest.updatedAt && (
-              <RelativeTime iso={pullRequest.updatedAt} now={now} />
-            )
+            compact && updatedAt && <RelativeTime iso={updatedAt} now={now} />
           }
           stats={
             compact &&
