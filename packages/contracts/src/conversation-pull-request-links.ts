@@ -51,3 +51,32 @@ export interface ConversationPullRequestLinksProjection {
   observedAt: string;
   links: ConversationPullRequestLinkObservation[];
 }
+
+export type LinkedPullRequestFilter =
+  | 'failing'
+  | 'awaiting-review'
+  | 'ready'
+  | 'merged';
+
+export function linkedPullRequestMatches(
+  snapshot: LinkedPullRequestSnapshot,
+  filter: LinkedPullRequestFilter,
+): boolean {
+  if (filter === 'merged') return snapshot.pullRequestState === 'MERGED';
+  if (snapshot.pullRequestState !== 'OPEN') return false;
+  if (filter === 'failing')
+    return (
+      snapshot.checks === 'failing' ||
+      snapshot.mergeability === 'conflicting' ||
+      snapshot.landing?.state === 'removed'
+    );
+  if (filter === 'awaiting-review')
+    return snapshot.reviewDecision === 'review_required';
+  return (
+    snapshot.isDraft === false &&
+    snapshot.checks === 'passing' &&
+    snapshot.reviewDecision === 'approved' &&
+    snapshot.mergeability === 'mergeable' &&
+    snapshot.landing?.state === 'not-queued'
+  );
+}

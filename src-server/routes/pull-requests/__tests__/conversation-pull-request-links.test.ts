@@ -403,15 +403,17 @@ test('projects cached GitHub observations without another forge read and preserv
   );
   const response = await x.app.request('/conversation-1');
   expect(response.status).toBe(200);
-  const { data } = await response.json();
+  const { data } = (await response.json()) as {
+    data: { links: { status: unknown }[] };
+  };
   expect(data.links).toHaveLength(2);
-  expect(data.links[0].status).toMatchObject({
+  expect(data.links[0]?.status).toMatchObject({
     title: 'Exact change',
     checks: 'failing',
     reviewDecision: 'changes_requested',
     observedAt,
   });
-  expect(data.links[1].status).not.toHaveProperty('checks');
-  expect(data.links[1].status).not.toHaveProperty('reviewDecision');
+  expect(data.links[1]?.status).not.toHaveProperty('checks');
+  expect(data.links[1]?.status).not.toHaveProperty('reviewDecision');
   expect(x.provider.getPullRequestByIdentity).not.toHaveBeenCalled();
 });

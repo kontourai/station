@@ -4233,6 +4233,15 @@ export class TaskGraphService {
       }));
   }
 
+  listTaskDispatchSessionsForTasks(
+    taskIds: readonly string[],
+  ): ReadonlyMap<string, string[]> {
+    const byTaskId = new Map(taskIds.map((id) => [id, [] as string[]]));
+    for (const dispatch of this.readStore().dispatches)
+      byTaskId.get(dispatch.taskId)?.push(dispatch.sessionId);
+    return byTaskId;
+  }
+
   readSessionRelations(sessionId: string): SessionRelations {
     const links = this.readStore().links.filter(
       (link) =>

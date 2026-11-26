@@ -498,6 +498,18 @@ export function createTaskRoutes(
       request: Request,
       taskSessionId?: string,
     ) => TaskPullRequestFeedbackFact | undefined;
+    linkedPullRequestSnapshotsEnabled?: () => boolean;
+    linkedPullRequestsForTasks?: (
+      request: Request,
+      taskSessions: ReadonlyMap<string, readonly string[]>,
+    ) =>
+      | ReadonlyMap<
+          string,
+          NonNullable<
+            TaskPullRequestFactsProjection['tasks'][string]['linkedPullRequests']
+          >
+        >
+      | undefined;
     /** Exact-identity tracker reads (#4003). Personal mode only. */
     workItemObserver?: WorkItemObserver;
     /**
@@ -890,8 +902,9 @@ export function createTaskRoutes(
     const service = serviceForRequest(c.req.raw);
     if (!service) return c.json({ success: true, data: empty });
     const authority = options.readAuthorityForRequest?.(c.req.raw);
+    const tasks = service.listTasks(projectId);
     const data = await readTaskPullRequestFacts({
-      tasks: service.listTasks(projectId),
+      tasks,
       listKept: (taskIds) =>
         service.listKeptDeclaredPullRequestsForTasks(taskIds),
       canRead: (sessionId) =>
@@ -900,6 +913,38 @@ export function createTaskRoutes(
       feedbackFor: (identity, taskSessionId) =>
         options.pullRequestFeedbackFor?.(identity, c.req.raw, taskSessionId),
     });
+    if (options.linkedPullRequestSnapshotsEnabled?.()) {
+      const taskIds = Object.keys(data.tasks);
+      const workChats = await options.workChatConversations?.(
+        c.req.raw,
+        tasks.filter((task) => data.tasks[task.id]),
+      );
+      const dispatched = service.listTaskDispatchSessionsForTasks(taskIds);
+      const taskSessions = new Map(
+        tasks
+          .filter((task) => data.tasks[task.id])
+          .map((task) => [
+            task.id,
+            [
+              ...new Set([
+                ...(task.sessionId ? [task.sessionId] : []),
+                ...(dispatched.get(task.id) ?? []),
+                ...(workChats?.get(task.id) ?? []),
+              ]),
+            ].filter(
+              (id) => authority && options.canReadSession?.(id, authority),
+            ),
+          ]),
+      );
+      const linked = options.linkedPullRequestsForTasks?.(
+        c.req.raw,
+        taskSessions,
+      );
+      if (linked) {
+        for (const [taskId, entry] of Object.entries(data.tasks))
+          entry.linkedPullRequests = linked.get(taskId) ?? [];
+      }
+    }
     // The provider reads take time; the requester may have lost the
     // standing it started with. Still a non-disclosing 404, with a code so a
     // client can tell it from a Station that has no such route.

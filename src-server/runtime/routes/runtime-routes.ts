@@ -235,6 +235,7 @@ import {
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { RecordingLimiter } from '../../services/projects/recording-limiter.js';
+import { SessionDiffStatSnapshots } from '../../services/projects/session-diff-stat-snapshots.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
 import { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
@@ -5992,6 +5993,40 @@ export function configureRuntimeRoutes(
       pullRequestProviders: () =>
         listProviders('pullRequest').map((entry) => entry.provider),
       pullRequestFeedbackFor: (...a) => pullRequestFeedback?.factFor(...a),
+      linkedPullRequestSnapshotsEnabled: () =>
+        pullRequestFeedback?.linkedSnapshotsEnabled() ?? false,
+      linkedPullRequestsForTasks: (request, taskSessions) => {
+        if (!pullRequestFeedback?.linkedSnapshotsEnabled()) return undefined;
+        const conversations = new Map(
+          [...taskSessions].map(([id, sessions]) => [
+            id,
+            [
+              ...new Set(
+                sessions.map(
+                  (session) =>
+                    context.orchestrationEventStore?.conversationForSession(
+                      session,
+                    )?.conversationId ?? session,
+                ),
+              ),
+            ].filter((conversationId) =>
+              context.orchestrationService.canUserReadConversation(
+                conversationId,
+                conversationReadAuthorityForRequest(request),
+              ),
+            ),
+          ]),
+        );
+        const observed = pullRequestFeedback.snapshotsForConversations([
+          ...new Set([...conversations.values()].flat()),
+        ]);
+        return new Map(
+          [...conversations].map(([id, members]) => [
+            id,
+            members.flatMap((member) => observed.get(member) ?? []),
+          ]),
+        );
+      },
       logger: context.logger,
       readAutomationTask: (task) => readAutomationTask?.(task),
       workChatConversations: taskInboxProjection,
@@ -11126,6 +11161,7 @@ export function configureRuntimeRoutes(
   registerPullRequestProvider(
     new GitHubPullRequestProvider(undefined, undefined, {
       readMergeQueue: () =>
+        (pullRequestFeedback?.linkedSnapshotsEnabled() ?? false) ||
         projectOverviewPreview.select({
           enabled: () => true,
           disabled: () => false,
@@ -11306,6 +11342,7 @@ export function configureRuntimeRoutes(
       id,
       conversationReadAuthorityForRequest(request),
     );
+  const sessionDiffStatSnapshots = new SessionDiffStatSnapshots();
   pullRequestFeedback = composePullRequestFeedbackRuntime({
     homeDir: context.configLoader.getProjectHomeDir(),
     hosted: hostedTenantRegistry !== undefined,
@@ -11316,6 +11353,8 @@ export function configureRuntimeRoutes(
     eventBus: context.eventBus,
     logger: context.logger,
     links: conversationPullRequestLinks,
+    refreshWorkspaceFacts: (now, enabled) =>
+      sessionDiffStatSnapshots.refresh(now, enabled),
     providers: () =>
       listProviders('pullRequest').map((entry) => entry.provider),
     keptForSessions: (ids) =>
@@ -13192,6 +13231,60 @@ export function configureRuntimeRoutes(
       ),
       context.environmentSecurityService,
       readMarkers,
+      (request, items) =>
+        pullRequestFeedback?.snapshotsForConversations(
+          items
+            .filter(
+              (item) =>
+                !item.environmentId && canReadConversation(request, item.id),
+            )
+            .map((item) => item.id),
+        ) ?? new Map(),
+      (request, item) => {
+        if (
+          item.source !== 'runtime' ||
+          !item.projectSlug ||
+          item.environmentId ||
+          !pullRequestFeedback?.linkedSnapshotsEnabled() ||
+          !canReadConversation(request, item.id)
+        )
+          return undefined;
+        const currentId =
+          context.orchestrationService.currentConversationSessionId(item.id);
+        const session =
+          context.orchestrationEventStore?.readSessionByThread(currentId);
+        if (!session?.cwd) return undefined;
+        try {
+          const project = context.projectService.getProject(item.projectSlug);
+          if (!project.workingDirectory) return undefined;
+          const metadata =
+            context.orchestrationService.firstStartedMetadataOfThread(
+              currentId,
+            );
+          const worktree: unknown =
+            metadata?.worktree ?? metadata?.workspaceIsolation;
+          const base =
+            worktree &&
+            typeof worktree === 'object' &&
+            'mode' in worktree &&
+            worktree.mode === 'worktree' &&
+            'path' in worktree &&
+            worktree.path === session.cwd &&
+            'baseCommit' in worktree &&
+            typeof worktree.baseCommit === 'string' &&
+            'baseRef' in worktree &&
+            typeof worktree.baseRef === 'string'
+              ? { ref: worktree.baseRef, commit: worktree.baseCommit }
+              : undefined;
+          return sessionDiffStatSnapshots.get(currentId, {
+            cwd: session.cwd,
+            projectRoot: project.workingDirectory,
+            base,
+          });
+        } catch {
+          return undefined;
+        }
+      },
     ),
   );
   // `rename_session`'s own leaf (never the person's `PATCH`, which stamps

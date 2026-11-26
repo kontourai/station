@@ -1232,8 +1232,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // #3042/#3043: the inbox rows' status facts, derived beside `taskItems`
   // (never carried on them).
   const workFactSources = useMemo(
-    () => ({ tasks: durableTasks.data ?? [] }),
-    [durableTasks.data],
+    () => ({ tasks: durableTasks.data ?? [], inventoryById }),
+    [durableTasks.data, inventoryById],
   );
   const workFacts = useWorkFacts(
     taskItems,

@@ -78,6 +78,7 @@ import {
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { ErrorState } from '../state';
+import { InboxLinkedPullRequest } from './InboxLinkedPullRequest';
 import { discardUnsentDraft } from './inbox-dismissals';
 import type { MobileActivityGroup } from './mobile-activity-groups';
 import { inboxResolutionId } from './mobile-inbox-selection';
@@ -1283,6 +1284,22 @@ export function InboxRow({
           </>
         )}
       </button>
+      {!actionsOnHold && facts?.pullRequests?.length ? (
+        <InboxLinkedPullRequest
+          links={facts?.pullRequests}
+          projectSlug={item.projectSlug}
+        />
+      ) : null}
+      {facts?.observedWorkspace?.diffStat && (
+        <span
+          className="inbox-row__diff-stat inbox-row__chip"
+          role="img"
+          aria-label={`${facts?.observedWorkspace.diffStat.insertions} insertions, ${facts?.observedWorkspace.diffStat.deletions} deletions`}
+        >
+          +{facts?.observedWorkspace.diffStat.insertions} −
+          {facts?.observedWorkspace.diffStat.deletions}
+        </span>
+      )}
       {hasActions && !actionsOnHold && (
         <div className="chat-dock-inbox__row-actions inbox-row__actions">
           {/* One ⋯: a menu on a hover chrome, the Details sheet on touch. */}

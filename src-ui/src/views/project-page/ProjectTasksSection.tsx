@@ -53,6 +53,7 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { useOpenPullRequestInRegion } from '../../contexts/useOpenInRegion';
 import { useShowSurface } from '../../contexts/useShowSurface';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { isStationReadAccessRefusal } from '../../lib/queryDefaults';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
 import { requestTaskShaping } from '../../lib/task-shaping';
@@ -60,6 +61,7 @@ import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { openSessionFromSummary } from '../../utils/openSession';
 import { absoluteTime } from '../../utils/relativeTime';
 import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
+import { TaskPullRequestRollup } from './TaskPullRequestRollup';
 import {
   TASK_TONE,
   type TaskStatusPresentation,
@@ -214,13 +216,16 @@ export function ProjectTasksSection({
       (!tasksData?.length || presentation === 'board' || tasksAccessRefused),
   );
   const sortedTasks = sortTasks(tasks);
+  const showPullRequestRollup = useSurfaceVisibilityFlags().has(
+    'pull-request-agent-feedback',
+  );
   const board = useTaskBoardModel({
     projectSlug: slug,
     tasks,
     tasksSettled: tasksData !== undefined && !taskReadFailed,
     agents: agentSummaries,
     // Only the board reads the forge; the list claims nothing about PRs.
-    readPullRequests: presentation === 'board',
+    readPullRequests: presentation === 'board' || showPullRequestRollup,
   });
   const tasksById = new Map(sortedTasks.map((task) => [task.id, task]));
   const [pendingTaskIds, setPendingTaskIds] = useState<ReadonlySet<string>>(
@@ -946,6 +951,13 @@ export function ProjectTasksSection({
                           Open Task
                         </span>
                       </a>
+                      {board.pullRequests.entries?.[task.id]
+                        ?.linkedPullRequests !== undefined && (
+                        <TaskPullRequestRollup
+                          entry={board.pullRequests.entries[task.id]}
+                          projectId={projectId}
+                        />
+                      )}
                       <Button
                         size="sm"
                         aria-label={`Details for ${task.title}`}

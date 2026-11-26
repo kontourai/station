@@ -177,6 +177,7 @@ vi.mock('../contexts/useOpenInRegion', () => ({
 vi.mock('../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: [] }),
   taskQueries: {
     list: (projectId?: string) => ({ queryKey: ['tasks', projectId ?? 'all'] }),
     graph: (taskId: string) => ({ queryKey: ['task-graph', taskId] }),

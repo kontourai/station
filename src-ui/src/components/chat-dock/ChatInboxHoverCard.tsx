@@ -374,6 +374,7 @@ function ChatInboxCardBody({
   // suppresses the section; "unknown yet" does not (explicit and Task-kept
   // links stay visible while git is still being read or has no local cwd).
   const gitIsNonRepo = git.data != null && git.data.isRepo === false;
+  const cachedLinks = hostDetails ? facts?.pullRequests : undefined;
   const links = useQuery({
     queryKey: [
       'conversation-pull-request-links',
@@ -390,7 +391,8 @@ function ChatInboxCardBody({
       hostDetails &&
       !!scope?.isCurrent() &&
       !!item.conversationId &&
-      !gitIsNonRepo,
+      !gitIsNonRepo &&
+      !cachedLinks,
     retry: false,
     staleTime: 15_000,
     refetchOnMount: false,
@@ -447,23 +449,24 @@ function ChatInboxCardBody({
     </section>
   ) : null;
 
-  const prLinks = hostDetails ? (links.data?.links ?? []) : [];
+  const prLinks = hostDetails ? (cachedLinks ?? links.data?.links ?? []) : [];
   const prSectionVisible =
     hostDetails &&
     !!item.conversationId &&
     !gitIsNonRepo &&
-    (links.isPending || !!links.error || prLinks.length > 0);
+    (prLinks.length > 0 ||
+      (!cachedLinks && (links.isPending || !!links.error)));
   const prSection = prSectionVisible ? (
     <section
       className="chat-dock-inbox-hover-card__section"
       aria-label="Pull requests"
     >
       <h4>Pull requests</h4>
-      {links.isPending ? (
+      {!cachedLinks && links.isPending ? (
         <p className="chat-dock-inbox-hover-card__gap">
           Reading pull requests…
         </p>
-      ) : links.error ? (
+      ) : !cachedLinks && links.error ? (
         <p className="chat-dock-inbox-hover-card__gap">
           Pull requests unavailable
         </p>

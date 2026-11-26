@@ -254,6 +254,9 @@ function toFact(
       title: pullRequest.title,
       mergeability: pullRequest.mergeability,
       sourceBranch: pullRequest.sourceBranch,
+      ...(pullRequest.snapshot?.checks
+        ? { checks: pullRequest.snapshot.checks }
+        : {}),
       ...(pullRequest.headSha ? { headSha: pullRequest.headSha } : {}),
       ...(pullRequest.draft !== undefined ? { draft: pullRequest.draft } : {}),
       ...(pullRequest.reviewDecision

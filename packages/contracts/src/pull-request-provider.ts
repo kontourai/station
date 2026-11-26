@@ -1,3 +1,4 @@
+import type { LinkedPullRequestSnapshot } from './conversation-pull-request-links.js';
 import type {
   PullRequestFeedbackObservationResult,
   PullRequestsByHeadResult,
@@ -162,6 +163,16 @@ export interface PullRequest {
    * status read observes it, and only for an open pull request.
    */
   landing?: PullRequestLanding;
+  snapshot?: Pick<
+    LinkedPullRequestSnapshot,
+    | 'checks'
+    | 'updatedAt'
+    | 'mergedAt'
+    | 'closedAt'
+    | 'additions'
+    | 'deletions'
+    | 'changedFiles'
+  >;
 }
 export type PullRequestLanding = 'auto-merge' | 'merge-queue' | 'not-queued';
 export type PullRequestMergeReadiness =

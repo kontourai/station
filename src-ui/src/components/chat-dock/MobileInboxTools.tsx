@@ -8,7 +8,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
-import type { useInboxScope } from './InboxScopeFilter';
+import { InboxPullRequestFilter, type useInboxScope } from './InboxScopeFilter';
 
 export const INBOX_STATUSES = [
   'All statuses',
@@ -47,6 +47,9 @@ export function MobileInboxTools({
   const [station, setStation] = useState('all');
   const [project, setProject] = useState('all');
   const [draftStatus, setDraftStatus] = useState(status);
+  const [draftPullRequest, setDraftPullRequest] = useState(
+    scope.pullRequestFilter,
+  );
   const trigger = useRef<HTMLElement | null>(null);
   const labelId = useId();
   const choices = [...scope.projectChoices.values()].filter(
@@ -72,6 +75,7 @@ export function MobileInboxTools({
             (scope.value.startsWith('project:') ? scope.value : 'all')),
     );
     setDraftStatus(status);
+    setDraftPullRequest(scope.pullRequestFilter);
     setQuery('');
     setFilters(true);
   };
@@ -79,6 +83,7 @@ export function MobileInboxTools({
     const selected = project === 'all' ? station : project;
     if (scopeEdited && selected !== scope.value) scope.onChange(selected);
     onStatus(draftStatus);
+    scope.setPullRequestFilter(draftPullRequest);
     setFilters(false);
   };
   return (
@@ -103,6 +108,7 @@ export function MobileInboxTools({
             data-filtered={
               scope.effectiveValue !== 'all' ||
               status !== 'All statuses' ||
+              !!scope.pullRequestFilter ||
               undefined
             }
             onClick={(e) => openFilters(e.currentTarget)}
@@ -144,6 +150,12 @@ export function MobileInboxTools({
             onClose={() => setFilters(false)}
           />
           <div className="mobile-inbox-filters__body">
+            {scope.showPullRequestFilter && (
+              <InboxPullRequestFilter
+                value={draftPullRequest}
+                onChange={setDraftPullRequest}
+              />
+            )}
             <fieldset>
               <legend>Station</legend>
               <div className="mobile-inbox-filters__choices">

@@ -19,6 +19,7 @@ import {
   usePluginsQuery,
   useQueryClient,
   useTaskGraphQuery,
+  useTaskPullRequestFactsQuery,
   useTaskWorkItemQuery,
 } from '@kontourai/station-sdk';
 import { useProjectTaskRoomDiscoveryQuery } from '@kontourai/station-sdk/project-task-rooms';
@@ -71,6 +72,7 @@ import {
   WorkspacePaneHostOpenContext,
 } from '../workspace-panes/WorkspacePaneHostOpenContext';
 import { WorkspacePaneHostRuntime } from '../workspace-panes/workspacePaneHostRuntime';
+import { TaskPullRequestRollup } from './project-page/TaskPullRequestRollup';
 import {
   observeTaskExperienceAvailability,
   type ResolvedTaskExperience,
@@ -653,6 +655,9 @@ function TaskWorkspaceContent({
   const integrations = references.filter(
     (reference) => reference.kind === 'external',
   );
+  const showPullRequestRollup = useSurfaceVisibilityFlags().has(
+    'pull-request-agent-feedback',
+  );
   const tabStripRef = useRef<HTMLDivElement>(null);
   const revealTab = useCallback((button: HTMLElement) => {
     const strip = tabStripRef.current;
@@ -691,6 +696,13 @@ function TaskWorkspaceContent({
         projectId={projectId}
         onDetails={() => setTab('Details')}
       />
+      {showPullRequestRollup && (
+        <TaskHeaderPullRequests
+          task={graph.task}
+          projectSlug={projectSlug}
+          projectId={projectId}
+        />
+      )}
       <div
         className="task-room-tabs page__tabs"
         ref={tabStripRef}
@@ -1278,6 +1290,22 @@ function TaskExperienceBoundary({
       )}
     </section>
   );
+}
+
+function TaskHeaderPullRequests({
+  task,
+  projectSlug,
+  projectId,
+}: {
+  task: TaskRecord;
+  projectSlug: string;
+  projectId: string;
+}) {
+  const { data } = useTaskPullRequestFactsQuery(projectSlug);
+  const entry = data?.tasks[task.id];
+  return entry?.taskCreatedAt === task.createdAt ? (
+    <TaskPullRequestRollup entry={entry} projectId={projectId} />
+  ) : null;
 }
 
 function TaskHeader({ task }: { task: TaskRecord }) {
