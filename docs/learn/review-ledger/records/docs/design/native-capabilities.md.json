@@ -124,7 +124,9 @@
 
     "src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/ShareIntakeSession.kt",
 
-    "src-ui/src/__tests__/PlatformProfile.test.tsx"
+    "src-ui/src/__tests__/PlatformProfile.test.tsx",
+
+    "src-desktop/src/native_route_authorization.rs"
   ],
 
   "checks": [

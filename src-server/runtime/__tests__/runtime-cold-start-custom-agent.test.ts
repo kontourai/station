@@ -58,6 +58,7 @@ import {
   acquireStationHomeMaintenanceLease,
   StationHomeActiveError,
 } from '@kontourai/station-shared/station-home-lifecycle';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { adoptNativeEngineConnection } from '../../domain/agent-registry.js';
@@ -266,10 +267,7 @@ vi.mock('../frameworks/voltagent-hono-runtime.js', () => ({
           () => void
         >;
         await config.configureFullApp({
-          // The production Hono app exposes this live registration list.
-          // Keep the lifecycle harness structurally honest now that startup
-          // verifies the completed route surface (archive#2000).
-          app: { routes: [] },
+          app: new Hono(),
           routes: handlers,
           middlewares: handlers,
         });

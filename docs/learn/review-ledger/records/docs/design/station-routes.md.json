@@ -1,0 +1,33 @@
+{
+  "path": "docs/design/station-routes.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Routes design and default-off implementation boundaries: authenticated route discovery, distinct app and approval publication, temporary native HTTPS admission and untrusted Nearby hints. Current discovery and native ranking statements reconciled with their callers; later relay consolidation remains proposed.",
+
+  "limits": "Change-scoped source and fixture review, not installed-shell, signed-installer or physical-device qualification. Public identity and relayable nonce proofs alone do not authorize alternate credential origins. Canonical profile ownership, TLS validation and existing access permissions remain required.",
+
+  "sources": [
+    "packages/connect/src/core/ConnectionHealthCoordinator.ts",
+
+    "packages/connect/src/react/useConnectionStatus.ts",
+
+    "packages/contracts/src/station-routes.ts",
+
+    "src-desktop/src/native_route_authorization.rs",
+
+    "src-server/services/connections/route-publications.ts",
+
+    "src-server/services/connections/station-routes.ts",
+
+    "src-ui/src/components/connections/useStationRoutes.ts",
+
+    "src-ui/src/platform/native/stationProfileStorage.ts",
+
+    "src-ui/src/views/settings/StationRoutesSection.tsx"
+  ],
+
+  "checks": []
+}

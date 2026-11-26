@@ -89,7 +89,11 @@ class StationDiscoveryPlugin(private val activity: Activity) : Plugin(activity) 
             if (info.attributes["v"]?.toString(Charsets.UTF_8) == "1" && (transport == "http" || transport == "https") && host != null && !host.isLoopbackAddress && !host.isAnyLocalAddress && !host.isMulticastAddress && (host.isSiteLocalAddress || host.isLinkLocalAddress || (host.address.size == 16 && (host.address[0].toInt() and 0xfe) == 0xfc)) && info.port in 1..65535) {
               val address = host.hostAddress
               if (address != null && !address.contains('%')) {
-                candidates[info.serviceName] = JSObject().put("name", info.serviceName.take(100)).put("host", address).put("port", info.port).put("transport", transport)
+                val candidate = JSObject().put("name", info.serviceName.take(100)).put("host", address).put("port", info.port).put("transport", transport)
+                info.attributes["appOrigin"]?.takeIf { it.size in 1..245 }?.let {
+                  candidate.put("appOrigin", it.toString(Charsets.UTF_8))
+                }
+                candidates[info.serviceName] = candidate
               }
             }
           }

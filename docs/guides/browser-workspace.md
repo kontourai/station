@@ -66,7 +66,10 @@ for the full rules.
 
 On a phone-sized conversation, **Open browser** opens the latest live tab
 bound to that conversation. **Close browser** returns to chat and leaves
-the tab running.
+the tab running. **Open in Browser pane** selects that same live tab in the
+Project's Browser pane. In the pane's **Sessions** list, toggle **From this
+chat** to find tabs associated with the active chat or the selected tab's
+conversation.
 
 Enable **Inline browser activity** in **Settings → Advanced → Feature
 previews** to try a browser view beside its tool calls. It is off by default.

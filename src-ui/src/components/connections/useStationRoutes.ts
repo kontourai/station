@@ -7,16 +7,21 @@ import {
 import {
   parseStationRoutesResponse,
   STATION_ROUTES_PATH,
-  type StationRoute,
+  type StationRoutesResponse,
 } from '@kontourai/station-contracts/station-routes';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { useQuery } from '@tanstack/react-query';
 import { createElement, useEffect } from 'react';
 import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import {
   checkServerHealth,
   probeServerConnection,
 } from '../../lib/serverHealth';
+import {
+  nativeProfileRepository,
+  usePlatformProfile,
+} from '../../platform/PlatformProfileContext';
 
 /**
  * The routes the active Station reports (docs/design/station-routes.md).
@@ -29,17 +34,32 @@ export function useStationRoutesQuery(
   enabled: boolean,
 ) {
   const { apiBase } = useConnections();
+  const { isTauri } = usePlatformProfile();
+  const nativeConnection =
+    isTauri &&
+    connection?.id.startsWith('station-profile:') &&
+    !connection.nativeBrokerRoute
+      ? connection
+      : null;
+  const nativeBindingId = nativeConnection
+    ? (nativeProfileRepository().captureNativeRequestBinding(
+        nativeConnection.id,
+        nativeConnection.url,
+      )?.bindingId ?? null)
+    : null;
   return useQuery({
     queryKey: [
       'station-routes',
       connection?.id ?? null,
       connection?.environmentId ?? null,
       apiBase,
+      nativeBindingId,
     ],
     enabled: enabled && Boolean(connection?.environmentId),
     staleTime: 5 * 60_000,
+    refetchInterval: nativeConnection ? 5 * 60_000 : false,
     retry: false,
-    queryFn: async ({ signal }): Promise<StationRoute[] | null> => {
+    queryFn: async ({ signal }): Promise<StationRoutesResponse | null> => {
       const response = await authenticatedFetch(
         `${apiBase}${STATION_ROUTES_PATH}`,
         { signal },
@@ -50,14 +70,20 @@ export function useStationRoutesQuery(
       if (!parsed || parsed.environmentId !== connection?.environmentId) {
         return null;
       }
-      return parsed.routes;
+      if (nativeConnection) {
+        await nativeProfileRepository().refreshNativeRoutes(
+          nativeConnection.id,
+        );
+      }
+      return parsed;
     },
   });
 }
 
-/** Whether the Station routes preview is on for this device. */
 export function useStationRoutesPreview(): boolean {
-  return useDeveloperFeatures().stationRoutes;
+  const devicePreview = useDeveloperFeatures().stationRoutes;
+  const flags = useSurfaceVisibilityFlags();
+  return devicePreview || flags.has('dynamic-route-publications');
 }
 
 /**
@@ -81,14 +107,14 @@ function StationRouteLearner() {
   );
   const routes = useStationRoutesQuery(
     activeConnection,
-    accepts && status === 'connected',
+    status === 'connected',
   );
   useEffect(() => {
     if (!routes.data || !activeConnection?.environmentId || !accepts) return;
     applyAdvertisedRoutes?.(
       activeConnection.id,
       activeConnection.environmentId,
-      routes.data,
+      routes.data.routes,
     );
   }, [routes.data, activeConnection, accepts, applyAdvertisedRoutes]);
   return null;

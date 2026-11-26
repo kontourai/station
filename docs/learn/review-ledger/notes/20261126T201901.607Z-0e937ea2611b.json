@@ -1,0 +1,11 @@
+{
+  "revision": "72a416c8bf3e8118ced38f6cc820b4862611c6e0",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed shared Inbox row composition and controls. Existing hosts omit the optional storyboard attention content. The shared row and desktop and mobile host suites passed 100 assertions.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed shared Inbox row composition and controls. Existing hosts omit the optional storyboard attention content. The shared row and desktop and mobile host suites passed 100 assertions.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed shared Inbox row composition and controls. Existing hosts omit the optional storyboard attention content. The shared row and desktop and mobile host suites passed 100 assertions.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

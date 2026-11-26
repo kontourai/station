@@ -12828,6 +12828,7 @@ export function configureRuntimeRoutes(
             context.configLoader.getProjectHomeDir(),
           ),
         ).problem(directory),
+      () => context.consentChannel.publication !== undefined,
       (request) => {
         if (!readDelegationGrants || !isRequestPrincipalCurrent(request))
           return undefined;

@@ -2661,7 +2661,11 @@ off and on to retry. Private IPv4 LAN interfaces are supported; IPv6 listeners (
 and public-only listeners report unavailable.
 
 The Node API publishes `_station._tcp.local` only after its listener binds,
-using that listener's actual port. TXT contains only `v=1` and `transport=http`.
+using that listener's actual port. TXT contains `v=1` and `transport=http`.
+The default-off `dynamic-route-publications` preview can also publish an
+`appOrigin` hint: an exact canonical HTTPS DNS origin for this Station's app.
+The native adapter still requires a resolved private LAN endpoint, prefers a
+valid HTTPS hint, and otherwise retains the legacy LAN URL.
 The adapter restricts address records and multicast sockets to private IPv4
 interfaces reachable through the actual listener binding. A specific bind does
 not advertise another interface. Disable, listener stop, port restart, and
@@ -2673,8 +2677,10 @@ can reach the host through its firewall or Wi-Fi isolation.
 Discovery names and addresses are untrusted hints, never identity or access
 grants. Selecting a LAN HTTP result still requires explicit **Allow unencrypted**
 consent for that exact origin and the existing host approval ceremony before a
-connection can be saved or activated. The advertisement contains no arbitrary
-URL, credentials, pairing token, or trusted identity. The strict HTTPS pairing
+connection can be saved or activated. An HTTPS hint still enters existing
+Request Access and identity verification; it is not saved-route merge authority.
+The advertisement contains no credentials, pairing token, or trusted identity.
+The strict HTTPS pairing
 QR flow remains available for remote access; LAN discovery does not enumerate
 another app's tailnet inventory or change Tailscale settings.
 

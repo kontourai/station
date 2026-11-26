@@ -76,6 +76,87 @@ const mockLogger = {
 };
 
 describe('Config Routes', () => {
+  test('approval origin changes require the bound operator and reject noncanonical origins', async () => {
+    const loader = createMockConfigLoader();
+    const activateConfiguration = vi.fn(async () => {
+      throw new Error('agent provider is unavailable');
+    });
+    const request = (origin: unknown) => ({
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trustedConsentOrigin: origin }),
+    });
+    const refused = createConfigRoutes(loader as any, mockLogger);
+    expect(
+      (await refused.request('/app', request('https://approvals.example.test')))
+        .status,
+    ).toBe(403);
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+    const disabled = createConfigRoutes(
+      loader as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => true,
+    );
+    expect(
+      (
+        await disabled.request(
+          '/app',
+          request('https://approvals.example.test'),
+        )
+      ).status,
+    ).toBe(404);
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+    const operator = createConfigRoutes(
+      loader as any,
+      mockLogger,
+      undefined,
+      activateConfiguration,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => true,
+    );
+    for (const origin of [
+      'http://example.test',
+      'https://127.0.0.1',
+      'https://example.test/path',
+      'https://EXAMPLE.test',
+      7,
+    ]) {
+      expect((await operator.request('/app', request(origin))).status).toBe(
+        400,
+      );
+    }
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+    expect(
+      (
+        await operator.request(
+          '/app',
+          request('https://approvals.example.test'),
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (await json(await operator.request('/app'))).data.trustedConsentOrigin,
+    ).toBe('https://approvals.example.test');
+    expect(activateConfiguration).not.toHaveBeenCalled();
+    expect((await operator.request('/app', request(''))).status).toBe(200);
+    expect(
+      (await json(await operator.request('/app'))).data.trustedConsentOrigin,
+    ).toBe('');
+  });
   test('nearby discovery requires the bound local operator, persists opt-in, and reports listener reality separately', async () => {
     const loader = createMockConfigLoader();
     const refused = createConfigRoutes(loader as any, mockLogger);

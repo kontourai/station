@@ -177,6 +177,15 @@ for installed-shell and physical-network evidence requirements. The source and
 unit checks do not qualify permission prompts, real mobile discovery or background
 recovery.
 
+With the default-off [dynamic publication preview](station-routes.md#dynamic-https-publications-preview),
+the native adapter may offer a canonical HTTPS DNS `appOrigin` TXT hint after
+validating the resolved private LAN endpoint. This is still untrusted discovery:
+it neither admits a saved credential to that origin nor changes host approval.
+The [native host route-admission command](station-routes.md#native-host-authorized-alternate-origins)
+uses authenticated canonical-anchor publications, normal TLS and fresh proof
+comparison separately. Its temporary admission does not alter the canonical
+profile endpoint or confer new Device permissions.
+
 ### Fold geometry
 
 The [station-fold plugin](../../src-desktop/plugins/station-fold/src/lib.rs)

@@ -4,6 +4,7 @@ import type {
   TelemetryTierChoices,
 } from '@kontourai/station-contracts/product-telemetry';
 import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
+import { useStationRoutesPreview } from '../components/connections/useStationRoutes';
 import { SectionNavigation } from '../components/SectionNavigation';
 import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useTelemetryNotice } from '../hooks/useTelemetryNotice';
@@ -267,6 +268,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const { setDeviceSetting, resetDeviceSetting } = useDeviceSettingsActions();
   const { isMobile, isDesktop } = usePlatformProfile();
   const developerFeatures = useDeveloperFeatures();
+  const stationRoutesEnabled = useStationRoutesPreview();
   // #2144 slice 6 item D. The same query the disclosure card reads; React
   // Query dedupes on its key so there is one request, not two answers.
   const telemetryDisclosure = useUsageTelemetryDisclosureState();
@@ -407,7 +409,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           isOperator,
           developerToolsEnabled,
           experimentalTrustEnabled: developerFeatures.trust,
-          experimentalStationRoutesEnabled: developerFeatures.stationRoutes,
+          experimentalStationRoutesEnabled: stationRoutesEnabled,
         }).map((entry) => entry.section)
       : activeSection === 'overview'
         ? ALL_LEAF_SECTION_IDS.filter(operatorMayView)
@@ -466,7 +468,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       (entry.conditional === 'experimental-trust' &&
         !developerFeatures.trust) ||
       (entry.conditional === 'experimental-station-routes' &&
-        !developerFeatures.stationRoutes)
+        !stationRoutesEnabled)
     ) {
       setHighlightAnnouncement(
         'This experimental tool is off. Enable it in Advanced → Developer tools.',
@@ -609,7 +611,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     locale,
     developerToolsEnabled,
     developerFeatures.trust,
-    developerFeatures.stationRoutes,
+    stationRoutesEnabled,
   ]);
 
   // Reconciling the server snapshot with the form is a question about *time*,

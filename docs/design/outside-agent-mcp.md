@@ -164,8 +164,10 @@ local refusal naming the configured R, never a redirect or metadata alias.
 An origin/issuer change revokes existing grants and requires new registration
 and approval. Do not silently retarget tokens or redirect bearer requests.
 
-`C` is the existing `STATION_TRUSTED_CONSENT_ORIGIN`, a separate HTTPS origin
-that reaches only the consent listener. It may share O's DNS name on a different
+`C` is the trusted approval HTTPS origin, provided by the legacy
+`STATION_TRUSTED_CONSENT_ORIGIN` setting or the enabled
+[dynamic publication preview](station-routes.md#dynamic-https-publications-preview).
+It reaches only the consent listener. It may share O's DNS name on a different
 port, as in S3/S4; it must remain a different origin. Operator cookies reaching
 both ports do not authorize ceremonies on O. Browser approval on C requires
 the already paired Device and operator session used by S3. The OAuth client
