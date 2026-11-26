@@ -216,6 +216,17 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   **Regenerate** and **Edit and resend** fork before a message with that
   message's Agent, so they open no picker while it can run; the same dialog
   appears only when that fork fails or the Agent cannot run.
+- **No empty pane.** An open desktop dock with no chat in its pane shows
+  this draft itself, ready to type, instead of an empty "No chat open" card
+  (#5592). Nothing is created until it is sent. Dismissing that draft folds
+  the dock to its toolbar, since there is no chat behind it; a draft someone
+  asked for (New chat, a Project or plugin request) dismisses as before, back
+  to the dock's own draft with its text kept. A chat that was picked but
+  could not be opened keeps its recovery prompt in its place. A phone (which
+  shows its Chats list) and a full-screen layout keep their own no-chat
+  state, and with no Agents the card remains and says so
+  ([`ChatDock`](../../src-ui/src/components/chat-dock/ChatDock.tsx),
+  [`ChatDockContentArea`](../../src-ui/src/components/chat-dock/ChatDockContentArea.tsx)).
 - **Leaving.** Escape, Back or **Cancel return** dismisses the
   draft and hands back its text; on a phone this restores the dock size the
   draft replaced. Start closes it as started before
@@ -1306,6 +1317,8 @@ appear; Agent & model narrows instead. At 390px a running turn's full row (Clear
 Send, mode picker and Stop) still wraps to a second line once the draft holds
 text. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn.
+On every screen the mode picker appears only once the composer holds
+something to send, so an empty composer gives it no room.
 The mode picker defaults to **Queue** for every engine. Station holds a
 follow-up for the next turn when the current one is still running. A chosen
 mode holds until the conversation changes. Claude Code, Codex, Muse on `muse serve` and the GitHub Copilot (SDK)
@@ -1371,7 +1384,9 @@ never a zero count.
 **Remove** or **Dismiss** uses the original message key and the server's
 authorization and placement checks; rows without a permitted key are
 read-only. Held rows offer no local edit, reorder, send-now or steer action; an
-owned unconfirmed steer offers explicit Review and resend.
+owned unconfirmed steer offers **Review and resend**. When a steer misses its
+target turn, **Restore to draft** is available to its sender. The sender can
+then edit the text and choose when to send it.
 A busy-composer Queue submission requests inbox admission. Eligible submissions
 may be held; Station may instead return a started-turn receipt if the turn has
 ended or the request takes the live path. Apply a pending approval choice before
@@ -1399,8 +1414,8 @@ Send on a closed window's copy releases its original durable outbox key for
 server handoff. It never moves into a new per-tab automatic queue. Restored
 sessionStorage input has no originating Station/authority and is held for
 **Review destination**; it cannot drain, interrupt or steer automatically.
-Review and resend transfers its text into an empty composer before removing
-the retained row, preserving any existing draft.
+**Review and resend** and **Restore to draft** transfer the text into an empty
+composer before removing the retained row. An existing draft stays in place.
 Rows, and the list itself, grow in and collapse out (height and opacity) rather
 than popping.
 In a dock too short for the list and the draft, the list yields before the
@@ -1742,7 +1757,7 @@ work, with Settled at the bottom by default. With no shelf expanded they stack
 from the top of the list. A collapsed shelf still lists the row of the chat on
 screen, so the open chat is never hidden from the inbox. Shelf menus offer Move up and
 Move down; that order is saved on this device within expanded and collapsed
-shelves. The inbox header is one line: search, the
+shelves. The inbox header groups search, the
 work scope picker (its "Show work" label kept for assistive technology), and
 New chat. Work the scope hides that needs the person is a count badge on the
 picker, which shows all work (2026-11-16); the phone keeps its "Show all"
@@ -1755,6 +1770,13 @@ The inbox list has no list-level overflow menu (each row has its own ⋯): a
 failed read offers Retry, disabled while the re-read runs. Full-size cards in the desktop and mobile Inbox share the title and project
 column. Status and one time align on the right. Hover or keyboard focus exposes
 the desktop row's ⋯ menu. A touch row keeps the agent named beside its mark.
+
+With the Pull request agent feedback preview enabled, the inbox also shows
+linked pull request chips and observed worktree diff counts. The PR chip opens
+the selected pull request beside Chat. If several are linked, it opens a chooser.
+The pull request picker below search and scope filters or sorts Chats by observed state.
+Filtering includes only matching observations. Closing a PR opened from a row
+returns focus to that row.
 Mark done offers a
 transient Undo toast, which **Undo last action** (⌘Z / Ctrl+Z, rebindable)
 also reaches while the toast is shown. Native editor and terminal undo retain

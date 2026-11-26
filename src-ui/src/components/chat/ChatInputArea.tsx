@@ -2307,10 +2307,10 @@ export function ChatInputArea({
               )}
             </ComposerRunControl>
           </div>
-          {/* On a phone Send/Queue hide (keeping their width) until there is
-              something to send, so typing never moves Stop. Stop therefore
-              sits after them, at the row's edge: before them it floated
-              beside an empty reserved gap. Desktop keeps Stop first. */}
+          {/* On a phone Send and the mode picker take no room until there is
+              something to send, so Stop sits after them, at the row's edge,
+              and typing never moves it. Desktop keeps Stop first; its mode
+              picker also waits for a draft. */}
           <div
             className="chat-input__send-group"
             data-stop-placement={isMobile ? 'trailing' : undefined}
@@ -2411,7 +2411,9 @@ export function ChatInputArea({
                   {submitAction?.label ?? 'Send'}
                 </span>
               </button>
-              {turnInFlight && onQueueFollowUp && (
+              {/* The mode is a choice about a draft: with nothing to send it
+                  takes no room, on any screen. */}
+              {turnInFlight && onQueueFollowUp && hasSendableDraft && (
                 <button
                   type="button"
                   className={`chat-input__send-mode ${
@@ -2440,7 +2442,7 @@ export function ChatInputArea({
               />
             )}
           </div>
-          {sendModeOpen && (
+          {sendModeOpen && hasSendableDraft && (
             <ResponsiveDialogSurface
               layer="popover"
               ariaLabel="Send mode"

@@ -361,6 +361,42 @@ describe('AcpToolUpdateSupervisor', () => {
     expect(events.at(-1)).not.toHaveProperty('output');
   });
 
+  test('publishes tool identity and input revisions without repeating identical start events', () => {
+    const { events, supervisor } = harness();
+    const metadata = {
+      toolCallId: 'redrawn',
+      name: 'lookup',
+      hasName: true,
+      title: 'Find a file',
+      hasTitle: true,
+      rawInput: { name: 'a.md', options: { recursive: true } },
+      hasRawInput: true,
+    };
+    supervisor.acceptStarted(metadata);
+    supervisor.acceptUpdate({
+      ...metadata,
+      rawInput: { options: { recursive: true }, name: 'a.md' },
+    });
+    supervisor.acceptUpdate({ ...metadata, title: 'Find another file' });
+    supervisor.acceptUpdate({
+      ...metadata,
+      rawInput: { name: 'b.md', options: { recursive: true } },
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'redrawn',
+      status: 'completed',
+      hasStatus: true,
+    });
+
+    expect(events.map((event) => event.method)).toEqual([
+      'tool.started',
+      'tool.started',
+      'tool.completed',
+    ]);
+    expect(events[0]).toMatchObject({ arguments: { name: 'a.md' } });
+    expect(events[1]).toMatchObject({ arguments: { name: 'b.md' } });
+  });
+
   test('preserves mixed content encounter order and excludes image bytes', () => {
     const { events, supervisor } = harness();
     supervisor.acceptStarted({ toolCallId: 'mixed' });
@@ -1009,6 +1045,71 @@ describe('AcpToolUpdateSupervisor — omission notes on a failed call', () => {
     expect(terminal.status).toBe('error');
     expect(terminal.error).toBe(
       'capture failed\n[image omitted]\n[image not shown: image/svg+xml is not a supported image type]',
+    );
+  });
+});
+
+describe('AcpToolUpdateSupervisor — a failed call always states why', () => {
+  test('a failure reported only in rawOutput becomes the error text', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'raw-failed' });
+    supervisor.acceptUpdate({
+      toolCallId: 'raw-failed',
+      hasRawOutput: true,
+      rawOutput: {
+        error: 'station_control_out_of_scope: Session is not bound',
+      },
+      status: 'failed',
+      hasStatus: true,
+    });
+    const terminal = events.at(-1) as any;
+    expect(terminal.method).toBe('tool.completed');
+    expect(terminal.status).toBe('error');
+    expect(terminal.error).toBe(
+      'station_control_out_of_scope: Session is not bound',
+    );
+  });
+
+  test('a string rawOutput is used verbatim when content is absent', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'raw-string' });
+    supervisor.acceptUpdate({
+      toolCallId: 'raw-string',
+      hasRawOutput: true,
+      rawOutput: 'permission denied',
+      status: 'failed',
+      hasStatus: true,
+    });
+    expect((events.at(-1) as any).error).toBe('permission denied');
+  });
+
+  test('content still wins over rawOutput for the error text', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'both' });
+    supervisor.acceptUpdate({
+      toolCallId: 'both',
+      hasContent: true,
+      content: text('readable failure'),
+      hasRawOutput: true,
+      rawOutput: { error: 'raw failure' },
+      status: 'failed',
+      hasStatus: true,
+    });
+    expect((events.at(-1) as any).error).toBe('readable failure');
+  });
+
+  test('a failure with no reason says so instead of a blank error', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'silent' });
+    supervisor.acceptUpdate({
+      toolCallId: 'silent',
+      status: 'failed',
+      hasStatus: true,
+    });
+    const terminal = events.at(-1) as any;
+    expect(terminal.status).toBe('error');
+    expect(terminal.error).toBe(
+      'The engine reported that this tool call failed but gave no reason.',
     );
   });
 });

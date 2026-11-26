@@ -1,0 +1,7 @@
+{
+  "revision": "9c7b88204fa04ac4f26f14e72505122eb74c955b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the pending follow-up list, server placement transition, and delivery cues. A matching client turn stays in one mounted row during custody transfer. Order, count, editing authority, and unavailable-state guidance remain accurate.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/QueuedMessages.tsx"]}
+  ]
+}

@@ -19,7 +19,7 @@ import {
   InboxGroupList,
   type InboxGroupListProps,
 } from './ChatDockInboxRows';
-import { InboxScopeFilter } from './InboxScopeFilter';
+import { InboxPullRequestFilter, InboxScopeFilter } from './InboxScopeFilter';
 import {
   type InboxPanelControllerOptions,
   useInboxPanelController,
@@ -176,6 +176,13 @@ function ChatDockInboxPanelImpl({
         />
         <InboxScopeFilter scope={scope} inline />
         {onNewChat && <NewChatAction iconOnly onClick={onNewChat} />}
+        {scope.showPullRequestFilter && (
+          <InboxPullRequestFilter
+            className="chat-dock-inbox__pr-filter"
+            value={scope.pullRequestFilter}
+            onChange={scope.setPullRequestFilter}
+          />
+        )}
       </div>
       <div className="chat-dock-inbox__scroll">
         {sync && (sync.failed || sync.refresh?.recovering) && (

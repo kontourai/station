@@ -1,0 +1,7 @@
+{
+  "revision": "6f79b4bde6496a5dc171a5acd3f765548842c9d9",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed against the active-chats-state type, which gains an optional stationOrigin field on client-side chat messages. No HTTP route, request or response shape changed; no prose change.","inputs":["docs/reference/api.md","src-ui/src/contexts/active-chats-state.ts"]}
+  ]
+}

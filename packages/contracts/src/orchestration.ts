@@ -4,6 +4,7 @@ import type { QueuedChatAttachmentDescriptor } from './chat-attachment.js';
 import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin, ClientOriginSender } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
+import type { ConversationPullRequestLinkObservation } from './conversation-pull-request-links.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
 import type {
   InputRequestContent,
@@ -28,6 +29,7 @@ import type {
   SessionTransitionSource,
 } from './session-lifecycle.js';
 import type { SkillExperienceIdentityV1 } from './skill-experience.js';
+import type { ObservedSessionWorkspace } from './workspace-isolation.js';
 
 export type {
   AttachedSessionSourceMetadata,
@@ -2211,6 +2213,8 @@ export interface ConversationReadStateUnavailable {
  */
 export interface ConversationListItem {
   id: string;
+  pullRequests?: ConversationPullRequestLinkObservation[];
+  observedWorkspace?: ObservedSessionWorkspace;
   source: 'runtime' | 'store';
   agentSlug: AgentId;
   projectSlug?: string;

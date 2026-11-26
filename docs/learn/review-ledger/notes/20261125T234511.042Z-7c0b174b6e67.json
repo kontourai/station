@@ -1,0 +1,7 @@
+{
+  "revision": "6f79b4bde6496a5dc171a5acd3f765548842c9d9",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the chat and composer passages against ChatInputArea and active-chats-state: the Steer/Queue picker now appears only once there is a draft, and the guide makes no claim about the picker's visibility or default. No prose change. Checked with ChatInputArea tests.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/contexts/active-chats-state.ts"]}
+  ]
+}

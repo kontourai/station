@@ -1231,6 +1231,10 @@ be `declared` without any other engine reading "nothing running".
 
 When the runtime invokes a tool, the adapter translates the ACP `tool_call` session update into a `tool.started` canonical event, and subsequent `tool_call_update` notifications into `tool.progress`/`tool.completed` events — rendered by the same tool-activity UI every provider uses.
 
+Station publishes a revised `tool.started` for the same call when its projected
+name, kind, or arguments change. Repeated metadata with the same values keeps
+the existing event.
+
 The ACP `kind` the runtime reports (`read`, `edit`, `execute`, `search`, …) rides those events as `toolKind` and is kept across an update that omits it, so the terminal still says what the call was; a value outside the ACP vocabulary is dropped rather than coerced. The chat classifies a row by that kind first. A runtime that reports no programmatic `name` has its human `title` published as `toolName` — for OpenCode's shell tool the whole command line — and the chat shows such a title as written, never humanizing it the way it does an identifier-style name like `shell_exec`.
 
 ### Tool Approval (Runtime → User)

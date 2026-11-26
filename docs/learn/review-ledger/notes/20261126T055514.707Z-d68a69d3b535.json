@@ -1,0 +1,7 @@
+{
+  "revision": "2b0d58a8c664bd61de3c74ab48ff47b9acd2ed0e",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed optional snapshot fields and unknown handling against the GitHub response parser, link route and Task facts projection. Focused cache and missing-check fault injections failed as intended and passed after restoration.","inputs":["docs/reference/contracts.md","packages/contracts/src/conversation-pull-request-links.ts","packages/contracts/src/orchestration.ts","packages/contracts/src/pull-request-provider.ts","packages/contracts/src/workspace-isolation.ts","src-server/routes/pull-requests/__tests__/conversation-pull-request-links.test.ts","src-server/routes/pull-requests/conversation-pull-request-links.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/projects/task-graph-service.ts","src-ui/src/views/home/work-facts.ts"]}
+  ]
+}

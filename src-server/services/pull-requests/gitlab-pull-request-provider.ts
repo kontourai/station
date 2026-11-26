@@ -146,6 +146,32 @@ function gitLabMergeReadiness(
   }
 }
 
+function gitLabChecks(
+  value: any,
+): NonNullable<PullRequest['snapshot']>['checks'] {
+  const pipeline = value.head_pipeline;
+  if (!pipeline || typeof value.sha !== 'string' || pipeline.sha !== value.sha)
+    return undefined;
+  switch (pipeline.status) {
+    case 'success':
+      return 'passing';
+    case 'failed':
+    case 'canceled':
+      return 'failing';
+    case 'manual':
+      return 'awaiting-approval';
+    case 'created':
+    case 'pending':
+    case 'preparing':
+    case 'running':
+    case 'waiting_for_resource':
+    case 'scheduled':
+      return 'pending';
+    default:
+      return undefined;
+  }
+}
+
 export function normalizeGitLabMergeRequest(
   value: any,
   host: string,
@@ -160,7 +186,19 @@ export function normalizeGitLabMergeRequest(
   ) {
     throw new Error('GitLab CLI returned an incomplete merge request');
   }
+  const checks = gitLabChecks(value);
+  const snapshot = {
+    ...(checks ? { checks } : {}),
+    ...Object.fromEntries(
+      [
+        ['updatedAt', value.updated_at],
+        ['mergedAt', value.merged_at],
+        ['closedAt', value.closed_at],
+      ].filter(([, date]) => typeof date === 'string'),
+    ),
+  };
   return {
+    ...(Object.keys(snapshot).length ? { snapshot } : {}),
     provider: 'gitlab',
     host,
     ref: String(value.iid),

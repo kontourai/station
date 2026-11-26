@@ -2011,8 +2011,9 @@ signal across that asynchronous boundary.
 
 `readSearchMessage(apiBase, { sessionId, matchedEventId, continuation? },
 { requestScope, signal? })`, from `@kontourai/station-sdk/client`, reads a page
-of the exact canonical event's prompt or completed output. Every page is
-reauthorized; text is never read from the search index. Pages contain at most
+of the exact canonical prompt or completed reply. For ACP completions that carry
+no final output field, the reader uses the text deltas recorded before that
+completion in the same Session and turn. Every page is reauthorized; text is never read from the search index. Pages contain at most
 4,096 Unicode code points, with an existing 128 KiB source allowance and the
 same isolated reader deadline. The opaque continuation binds Session/event,
 content and recorded metadata; changed content refuses continuation instead of
@@ -5075,8 +5076,9 @@ content, while retaining the observed HTTP status (usually 200).
   and keeps the last answer when a refresh fails. A host that answers a plain
   404 (one older than this read) resolves to `null`, and the board then
   claims nothing about pull requests; a 404 with `request_principal_changed`
-  (lost standing) is an error. Only the board enables it; the list view
-  claims nothing about pull requests. `useMergePullRequestMutation`
+  (lost standing) is an error. The board enables the Project-wide read. A
+  Task header passes `{ taskId }` to the hook to read just that Task. The
+  list view does not read pull request facts. `useMergePullRequestMutation`
   invalidates every Project's facts query, so a merge through Station moves
   its card on the next read.
 - `createTask` and `createTaskReference` accept an optional `requestScope`

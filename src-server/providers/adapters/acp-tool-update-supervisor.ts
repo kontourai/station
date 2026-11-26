@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
 import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
@@ -136,6 +137,7 @@ type AcpToolUpdate = {
 };
 
 type CallState = {
+  reportedStart?: true;
   name?: string;
   title?: string;
   proxiedMcpToolName?: string;
@@ -731,6 +733,34 @@ function displayContent(
   return joined || undefined;
 }
 
+const FAILED_WITHOUT_REASON =
+  'The engine reported that this tool call failed but gave no reason.';
+
+/** The failure text an engine put in rawOutput, as one readable string. */
+function displayRawOutput(call: CallState): string | undefined {
+  if (!call.hasRawOutput) return undefined;
+  const raw = call.rawOutput;
+  if (typeof raw === 'string') return raw.trim() || undefined;
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    const record = raw as Record<string, unknown>;
+    for (const key of ['error', 'message', 'stderr', 'output']) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+      if (value && typeof value === 'object') {
+        const nested = (value as Record<string, unknown>).message;
+        if (typeof nested === 'string' && nested.trim()) return nested.trim();
+      }
+    }
+  }
+  try {
+    const serialized = JSON.stringify(raw);
+    return serialized && serialized !== '{}' ? serialized : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function receiptFor(call: CallState): ToolOutputReceipt | undefined {
   const sources = [
     call.rawInputReceipt,
@@ -833,12 +863,17 @@ export class AcpToolUpdateSupervisor {
     // last valid one; an unchanged kind is not new metadata.
     const nextKind = update.hasKind ? engineToolKind(update.kind) : undefined;
     const kindChanged = nextKind !== undefined && nextKind !== call.kind;
-    const metadataChanged =
+    const hasMetadataUpdate =
       start ||
       update.hasName ||
       update.hasTitle ||
       kindChanged ||
       update.hasRawInput;
+    const previousIdentity =
+      call.reportedStart && hasMetadataUpdate
+        ? toolIdentity(update.toolCallId, call)
+        : undefined;
+    const previousInput = call.rawInput;
     if (update.hasName)
       call.name = typeof update.name === 'string' ? update.name : undefined;
     if (update.hasTitle)
@@ -945,7 +980,17 @@ export class AcpToolUpdateSupervisor {
         }
       }
     }
-    if (metadataChanged) this.emitStarted(update.toolCallId, call);
+    if (
+      hasMetadataUpdate &&
+      (!isDeepStrictEqual(
+        previousIdentity,
+        toolIdentity(update.toolCallId, call),
+      ) ||
+        !isDeepStrictEqual(previousInput, call.rawInput))
+    ) {
+      call.reportedStart = true;
+      this.emitStarted(update.toolCallId, call);
+    }
     if (terminal) {
       this.flushCall(call);
       this.complete(update.toolCallId, call, update.status ?? 'failed');
@@ -1062,10 +1107,16 @@ export class AcpToolUpdateSupervisor {
               : 'error',
         ...(status === 'failed'
           ? {
+              // Some engines (Antigravity) report a failure only in rawOutput,
+              // and some give no reason at all. A failed call never reaches
+              // the person or the Agent as a blank error.
               error:
-                [displayContent(call.content), omissions]
+                [
+                  displayContent(call.content) ?? displayRawOutput(call),
+                  omissions,
+                ]
                   .filter(Boolean)
-                  .join('\n') || undefined,
+                  .join('\n') || FAILED_WITHOUT_REASON,
             }
           : output === undefined
             ? {}

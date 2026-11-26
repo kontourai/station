@@ -7,7 +7,10 @@
  * and delivers (`src-server/services/pull-requests/pull-request-feedback-*`);
  * see `docs/decisions/pull-request-agent-feedback.md`.
  */
-import type { PullRequestLinkIdentity } from './conversation-pull-request-links.js';
+import type {
+  LinkedPullRequestSnapshot,
+  PullRequestLinkIdentity,
+} from './conversation-pull-request-links.js';
 
 /** The Feature Preview every part of this feature is behind. */
 export const PULL_REQUEST_FEEDBACK_PREVIEW_ID = 'pull-request-agent-feedback';
@@ -26,6 +29,7 @@ export type PullRequestFeedbackCategory =
   | 'failing-checks'
   | 'review-threads'
   | 'merge-conflict'
+  | 'merge-queue-removal'
   | 'review-findings';
 
 /**
@@ -196,6 +200,7 @@ export interface PullRequestFeedbackObservation {
   /** The forge login the read ran as. */
   viewerLogin?: string;
   observedAt: string;
+  snapshot?: LinkedPullRequestSnapshot;
 }
 
 export type PullRequestFeedbackUnavailableCause =
@@ -411,6 +416,7 @@ const CATEGORY_WORDS: Record<
   'failing-checks': ['failing check', 'failing checks'],
   'review-threads': ['review comment', 'review comments'],
   'merge-conflict': ['merge conflict', 'merge conflicts'],
+  'merge-queue-removal': ['merge queue removal', 'merge queue removals'],
   'review-findings': ['review finding', 'review findings'],
 };
 

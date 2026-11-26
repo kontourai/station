@@ -1,0 +1,7 @@
+{
+  "revision": "6f79b4bde6496a5dc171a5acd3f765548842c9d9",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed against conversationTranscriptParts, which now copies metadata.stationOrigin onto ChatMessage. The MCP UI host claims do not depend on user-row origin labels; no prose change. Checked with the ChatMessageList.agentMessages focused test.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/hooks/orchestration/conversationTranscriptParts.ts"]}
+  ]
+}

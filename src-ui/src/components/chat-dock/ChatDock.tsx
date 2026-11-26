@@ -1232,8 +1232,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // #3042/#3043: the inbox rows' status facts, derived beside `taskItems`
   // (never carried on them).
   const workFactSources = useMemo(
-    () => ({ tasks: durableTasks.data ?? [] }),
-    [durableTasks.data],
+    () => ({ tasks: durableTasks.data ?? [], inventoryById }),
+    [durableTasks.data, inventoryById],
   );
   const workFacts = useWorkFacts(
     taskItems,
@@ -1405,6 +1405,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // The dock as it was before a phone draft forced it to full height, so a
   // dismissed draft puts it back and a started one opens its chat at that
   // size. Includes the maximize memory the forcing overwrote.
+  // #5592: a draft the dock opened on its own because it had no chat to
+  // show (no "No chat open" card). Dismissing it has nothing to go back to,
+  // so the dock folds to its toolbar instead of reopening the same draft.
+  // It keeps the dock's size: only a draft someone asked for takes a phone
+  // to full height.
+  const restingDraft = useRef(false);
+  // Set when that draft is dismissed: the dock is folding, so the pane must
+  // not open another one before it has. Cleared once the pane is closed.
+  const restingSuppressed = useRef(false);
   const dockBeforeDraft = useRef<{
     open: boolean;
     maximized: boolean;
@@ -1435,7 +1444,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     lastDockMaximized,
   ]);
   const revealNewChatDraft = useEffectEvent(() => {
-    if (showNewChatModal) revealDockForDraft();
+    if (showNewChatModal && !restingDraft.current) revealDockForDraft();
   });
   useEffect(() => {
     if (newChatRequestEpoch > 0) revealNewChatDraft();
@@ -1454,6 +1463,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // The draft's own dismissal (Escape, Back): the dock goes back
   // to the size it had before the draft forced it, maximize memory included.
   const dismissNewChatDraft = useCallback(() => {
+    // The dock's own draft has nothing behind it to return to: the dock
+    // folds to its toolbar rather than reopening the same draft. A draft
+    // someone asked for returns to the dock as it was (its text kept).
+    if (restingDraft.current) {
+      restingDraft.current = false;
+      restingSuppressed.current = true;
+      dockBeforeDraft.current = null;
+      closeNewChatDraft();
+      setDockState(false, lastDockMaximized);
+      return;
+    }
     const before = dockBeforeDraft.current;
     if (before) {
       if (!before.open) setDockState(false, before.remembered);
@@ -1461,7 +1481,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       else setDockState(true, false);
     }
     closeNewChatDraft();
-  }, [closeNewChatDraft, setDockState, collapseMaximizedDock]);
+  }, [
+    closeNewChatDraft,
+    setDockState,
+    collapseMaximizedDock,
+    lastDockMaximized,
+  ]);
   // A started draft is a chat now: the dock stays open at the size it had,
   // as opening any chat does (`focusSession`); the full height was the draft's.
   // Called before Start navigates, whose collapse of the draft's Back entry
@@ -1498,6 +1523,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // files, choices, a hand-off, a Task) still replaces it.
   const requestNewChat = useCallback(
     (intent?: NewChatIntent) => {
+      // Asked for, it is an ordinary draft now, whoever opened it.
+      restingDraft.current = false;
       cancelReaderOpen();
       setMobileInboxOpen(false);
       if (newChatDraftOpen.current && !newChatIntentCarriesPayload(intent)) {
@@ -3228,6 +3255,62 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const openingLabel = openingConversationLabel(openingChat);
   const showChatContent =
     workspaceShown && !conversationOpenRecovery && !importedSessionId;
+  // #5592: an open chat pane with no chat in it shows the New chat draft,
+  // ready to type, instead of an empty "No chat open" card. Nothing is
+  // created until the draft is sent. Only when nothing is on its way in: a
+  // chat the URL names, one opening, a child reader, the phone inbox, or a
+  // recovery prompt each keep the pane.
+  // Agents exist to start one with; with none the card says so instead.
+  const hasAgents = agentsLoaded && agents.length > 0;
+  // The desktop dock only: a phone shows the Chats list or a full-height
+  // draft someone asked for, and a full-screen layout keeps its own card.
+  const paneHasNoChat =
+    !isMobile &&
+    !isFullscreenPlacement &&
+    isDockOpen &&
+    showChatContent &&
+    !isCollapsedDragPreview &&
+    !showNewChatModal &&
+    !activeChat &&
+    !activeSession &&
+    openingChat === null &&
+    !workingParentPending &&
+    !isChildReaderOpen &&
+    !isHistoryOpen &&
+    hasAgents;
+  // Any other way the draft closes (it started, or a chat opened over it)
+  // ends its resting role; a later empty pane opens a fresh one. Declared
+  // before the effect below, which marks the next one as resting.
+  useEffect(() => {
+    if (!showNewChatModal) restingDraft.current = false;
+  }, [showNewChatModal]);
+  // A chat someone picked that could not be opened owns the pane: its
+  // recovery (Retry, and Start new chat only where the server allows one)
+  // replaces the dock's own draft rather than sitting under it.
+  // So does conversation history opened from the Chats list: it renders in
+  // the same pane.
+  useEffect(() => {
+    if (
+      (conversationOpenRecovery || isHistoryOpen) &&
+      restingDraft.current &&
+      showNewChatModal
+    )
+      closeNewChatDraft();
+  }, [
+    conversationOpenRecovery,
+    isHistoryOpen,
+    showNewChatModal,
+    closeNewChatDraft,
+  ]);
+  useEffect(() => {
+    if (restingSuppressed.current) {
+      if (!isPaneOpen) restingSuppressed.current = false;
+      return;
+    }
+    if (!paneHasNoChat) return;
+    restingDraft.current = true;
+    setShowNewChatModal(true);
+  }, [paneHasNoChat, isPaneOpen, setShowNewChatModal]);
 
   useEffect(() => {
     const openProjectChats = (event: Event) => {
@@ -3257,6 +3340,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           name: projectName,
           composerDraft: detail.composerDraft,
         });
+        restingDraft.current = false;
         setShowNewChatModal(true);
         telemetry.track('ui.chat.entry', {
           source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
@@ -3283,6 +3367,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           slug: detail.projectSlug,
           name: projectName,
         });
+        restingDraft.current = false;
         setShowNewChatModal(true);
         return;
       }
@@ -3311,6 +3396,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         slug: detail.projectSlug,
         name: projectName,
       });
+      restingDraft.current = false;
       setShowNewChatModal(true);
       telemetry.track('ui.chat.entry', {
         source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
@@ -5075,6 +5161,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                 inert={showNewChatModal || coveringStaleChat}
                               >
                                 <ChatDockContentArea
+                                  noAgentReady={
+                                    agentsLoaded && agents.length === 0
+                                  }
                                   connection={conversationConnection}
                                   transcriptSnapshotRef={
                                     continueInProjectEnabled && hostConversation
