@@ -213,9 +213,15 @@ describe('read_conversation admission', () => {
         actor: { kind: 'operator' },
       },
     ]);
+    // The owner's, in another Project: the Project explanation, and that
+    // reason by name.
     expect(await read('/api/conversations/C1/read')).toMatchObject({
       status: 403,
-      body: { code: 'conversation_out_of_scope' },
+      body: {
+        code: 'conversation_out_of_scope',
+        reason: 'other-project',
+        error: expect.stringContaining("outside your session's Project"),
+      },
     });
   });
 

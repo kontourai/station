@@ -188,13 +188,14 @@ function refuse(
   const refusal = REFUSALS[code];
   const reason =
     scope?.code === 'station_control_out_of_scope' ? scope.reason : undefined;
+  const notAdmitted = Boolean(scope) && reason === undefined;
   return c.json(
     {
       success: false,
       code,
       error:
         (reason && OUT_OF_SCOPE_BY_REASON[reason]) ||
-        (scope && NOT_ADMITTED) ||
+        (notAdmitted && NOT_ADMITTED) ||
         refusal.explanation,
       ...(reason ? { reason } : {}),
     },
