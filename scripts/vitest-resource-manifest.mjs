@@ -1148,6 +1148,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // These tests start real children through the owned-process helper rather
   // than importing node:child_process directly.
   'scripts/__tests__/owned-process.test.ts',
+  'scripts/__tests__/windows-owned-protocol.test.ts',
   // #2269: drives the REAL muse adapter (production spawnOwnedChild +
   // production terminateProcessTree, no injected terminate) against tiny
   // Node fixtures emitting valid Muse JSONL with short injected idle/total

@@ -29,6 +29,7 @@ function compilerDiagnostic(compiled) {
       ? `compiler timed out after ${GUARD_COMPILER_TIMEOUT_MS}ms`
       : undefined,
     compiled.error?.message,
+    `compiler pid ${compiled.pid ?? 'unavailable'}; status ${compiled.status ?? 'null'}; signal ${compiled.signal ?? 'none'}`,
     compiled.stdout?.trim(),
     compiled.stderr?.trim(),
     compiled.status == null ? undefined : `exit ${compiled.status}`,
@@ -43,6 +44,8 @@ function compilerDiagnostic(compiled) {
  *   source?: string,
  *   spawnProcess?: (command: string, args: string[], options: import('node:child_process').SpawnSyncOptionsWithStringEncoding) => {
  *     status: number | null,
+ *     pid?: number,
+ *     signal?: NodeJS.Signals | null,
  *     error?: Error,
  *     stdout?: string,
  *     stderr?: string,
@@ -79,13 +82,22 @@ export function buildWindowsOwnedGuard({
       const diagnostic = compilerDiagnostic(compiled);
       throw new Error(
         `Windows Job guard compilation failed: ${diagnostic || 'unknown compiler failure'}`,
+        { cause: compiled.error },
       );
     }
     assertRegularPrivateFile(staged);
     renameSync(staged, output);
     assertRegularPrivateFile(output);
   } catch (error) {
-    rmSync(directory, { recursive: true, force: true });
+    try {
+      rmSync(directory, { recursive: true, force: true });
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `${error.message}\nWindows Job guard cleanup failed for ${directory}: ${cleanupError.message}`,
+        { cause: error },
+      );
+    }
     throw error;
   }
   return {
