@@ -49,6 +49,7 @@ import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { createLogger } from '../../../utils/logger.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
@@ -333,7 +334,10 @@ describe('an external engine declares a pull request: the Task shows it, a merge
       locality: 'home-possession',
       mintKind: 'local-grant',
     }).credential;
-    const logger = { debug() {}, info() {}, warn() {}, error() {} };
+    const logger = createLogger({
+      name: 'pull-request-route-test',
+      level: 'error',
+    });
     const context = deepStub({
       featurePreviews: new FeaturePreviewRegistry(homeDir, logger),
       projectSharedTasks: undefined,
