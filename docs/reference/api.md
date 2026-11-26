@@ -6952,7 +6952,10 @@ is read. User messages carry the stable id a search hit names
 (`<turn start event id>:user`). A station-control caller that is not a bound
 operator is further limited to its own conversation, its scope, or a
 conversation a person referenced in its conversation, and reads as the
-session's owner; a bound operator keeps the operator's reach. An id Station
+session's owner; a bound operator keeps the operator's reach. For the owner's
+own conversation outside that reach, `conversation_out_of_scope` (403) carries
+the scope rule's `reason` when it has one (for example `host`), and its
+explanation names that cause. An id Station
 has no record of answers `conversation_not_found`; see the
 [read route](../../src-server/routes/chat/conversation-reference-read.ts).
 
