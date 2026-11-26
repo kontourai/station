@@ -397,6 +397,7 @@ describe('an Automation proposal waits for the person (#4830)', () => {
       toggle.focus();
       await user.keyboard(' ');
       await user.tab();
+      await user.tab();
       expect(document.activeElement).toBe(
         screen.getByRole('button', { name: 'Confirm' }),
       );
@@ -917,34 +918,35 @@ describe('when the chat re-reads its schedule', () => {
     await waitFor(() => expect(gets()).toBe(2));
   });
 
-  test('the key moves with a turn boundary or a finished scheduling call, not with streamed output', async () => {
+  test.each([
+    { toolName: 'mcp__station-control__schedule_wake_up' },
+    {
+      toolName: 'functions.exec',
+      args: 'await tools.schedule_wake_up({minutes: 20})',
+    },
+  ])('refreshes after $toolName finishes a scheduling call', async (call) => {
     const { agentScheduleRefreshKey } = await import(
       '../components/chat-dock/ChatDockBody'
     );
-    const running = [
-      { type: 'text' },
-      {
-        type: 'tool-invocation',
-        toolName: 'mcp__station-control__schedule_wake_up',
-        state: 'running',
-      },
-    ];
-    const base = agentScheduleRefreshKey('turn-1', running);
-    // More text, another tool: same key.
+    const invocation = {
+      type: 'tool-invocation',
+      toolName: call.toolName,
+      state: 'running',
+      args: '',
+    };
+    const parts = [{ type: 'text' }, invocation];
+    const base = agentScheduleRefreshKey('turn-1', parts);
     expect(
       agentScheduleRefreshKey('turn-1', [
-        ...running,
+        ...parts,
         { type: 'text' },
         { type: 'tool-invocation', toolName: 'Bash', state: 'completed' },
       ]),
     ).toBe(base);
-    // The scheduling call finished: a new key.
-    expect(
-      agentScheduleRefreshKey('turn-1', [
-        running[0]!,
-        { ...running[1]!, state: 'completed' },
-      ]),
-    ).not.toBe(base);
+
+    invocation.args = call.args ?? '';
+    invocation.state = 'completed';
+    expect(agentScheduleRefreshKey('turn-1', parts)).not.toBe(base);
     // The turn ended.
     expect(agentScheduleRefreshKey(undefined, [])).not.toBe(base);
   });
