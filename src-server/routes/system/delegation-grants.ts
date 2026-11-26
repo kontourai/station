@@ -7,6 +7,7 @@ import {
 import {
   type DelegationGrantStore,
   delegationGrantSettingsSchema,
+  isHighRiskDelegationGitPath,
 } from '../../security/confinement/delegation-grants.js';
 import {
   FeaturePreviewDisabledError,
@@ -72,6 +73,9 @@ export function createDelegationGrantRoutes(
       success: true,
       data: grants.map((grant) => ({
         ...grant,
+        highRiskGitWrites: Object.values(grant.extraGitWritePaths)
+          .flat()
+          .some(isHighRiskDelegationGitPath),
         children: childrenOf?.(grant.id) ?? [],
       })),
     });
@@ -99,7 +103,12 @@ export function createDelegationGrantRoutes(
     const settings = delegationGrantSettingsSchema.safeParse(input);
     if (!settings.success) {
       return c.json(
-        { success: false, error: 'Invalid delegation grant settings.' },
+        {
+          success: false,
+          error:
+            settings.error.issues[0]?.message ??
+            'Invalid delegation grant settings.',
+        },
         400,
       );
     }

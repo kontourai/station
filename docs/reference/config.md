@@ -126,8 +126,11 @@ takes precedence over a Station grant. An explicit allowlist is refused when
 the engine cannot enforce it. Codex supports open network through its own
 sandbox. For a delegated worktree, Station uses the Project’s configured
 worktree base or the fetched default branch. Explicit additional Git paths
-are relative to the repository's common Git directory. Codex accepts existing
-directories for those writes.
+are relative to the repository's common Git directory. Codex requires those
+paths to exist. The object store and worktree administration directories are
+excluded from extra writes. Shared hooks, configuration, and refs require
+separate confirmation. Settings and the child posture identify high-risk
+writes when they apply.
 
 Revocation and expiry block further turns in a child that used the grant.
 Start a new session to apply the current policy. An unreadable grant file

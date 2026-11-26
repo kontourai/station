@@ -13,7 +13,10 @@ import {
   type ConfinementProvider,
   requiredConfinementLevel,
 } from '../../security/confinement/confinement-provider.js';
-import { isAllowedExtraDelegationGitPath } from '../../security/confinement/delegation-grants.js';
+import {
+  isAllowedExtraDelegationGitPath,
+  isHighRiskDelegationGitPath,
+} from '../../security/confinement/delegation-grants.js';
 import { discoverSeatbeltGitLayout } from '../../security/confinement/seatbelt.js';
 import { isCanonicalPathWithin } from '../../utils/path-containment.js';
 import type {
@@ -54,6 +57,7 @@ export async function codexDelegatedGitPlan(
   worktree: WorktreeSessionMetadata,
   extraGitWritePaths: readonly string[],
   openNetwork: boolean,
+  highRiskGitWritesConfirmed = false,
 ): Promise<NonNullable<ConfinementPlan['delegatedCodexGit']>> {
   const layout = await discoverSeatbeltGitLayout(worktree.path);
   const commonDir = join(await realpath(worktree.repoPath), '.git');
@@ -73,24 +77,35 @@ export async function codexDelegatedGitPlan(
     throw new Error('Delegation grant includes a protected Git write path.');
   }
 
+  if (
+    !highRiskGitWritesConfirmed &&
+    extraGitWritePaths.some(isHighRiskDelegationGitPath)
+  ) {
+    throw new Error(
+      'High-risk Git writes require separate operator confirmation.',
+    );
+  }
+
   const branchDir = dirname(worktree.branch);
+  const extraPaths = extraGitWritePaths.map((path) => join(commonDir, path));
   const writableDirectories = [
     layout.gitDir,
     join(commonDir, 'objects'),
     join(commonDir, 'refs', 'heads', branchDir),
     join(commonDir, 'logs', 'refs', 'heads', branchDir),
-    ...extraGitWritePaths.map((path) => join(commonDir, path)),
+    ...extraPaths,
   ];
   for (const directory of new Set(writableDirectories)) {
     const stats = await lstat(directory);
     if (
       !isCanonicalPathWithin(commonDir, directory) ||
       directory === commonDir ||
-      !stats.isDirectory() ||
+      (!stats.isDirectory() &&
+        !(extraPaths.includes(directory) && stats.isFile())) ||
       (await realpath(directory)) !== directory
     ) {
       throw new Error(
-        'Codex delegated Git writes require an existing Git directory.',
+        'Codex delegated Git writes require an existing, canonical Git path.',
       );
     }
   }

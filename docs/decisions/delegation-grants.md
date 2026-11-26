@@ -42,9 +42,12 @@ fetched default branch. If that ref cannot resolve to a commit, Station
 refuses the delegation before creating a branch or checkout. For confined
 coding work, the child receives the worktree's own Git directory and the
 minimum object and ref write paths needed to commit and push. The operator can
-configure additional Git write paths per Project. Hooks and configuration
-require an explicit addition. The primary checkout and sibling worktrees stay
-outside the child's writable workspace.
+configure additional Git write paths per Project. Extra paths cannot include
+the common object store or any worktree administration directory. Paths under
+refs, hooks, and shared Git configuration require separate operator
+confirmation. Hooks and configuration can give the child code execution as
+the operator on a later Git command. The primary checkout and sibling
+worktrees stay outside the child's writable workspace.
 
 Egress defaults to an editable allowlist on engines that can enforce it. The
 initial list covers the Project forge, model endpoint, and package registries.

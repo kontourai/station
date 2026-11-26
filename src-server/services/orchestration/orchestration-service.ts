@@ -9769,6 +9769,8 @@ export class OrchestrationService {
                       scope: delegationLaunch.grant.scope.kind,
                       worktree: delegationLaunch.grant.ownWorktree,
                       egress: 'open',
+                      highRiskGitWrites:
+                        delegationLaunch.highRiskGitWrites === true,
                       expiry: delegationLaunch.grant.expiry,
                       grantor: delegationLaunch.grant.createdBy,
                     },
@@ -17498,6 +17500,7 @@ export class OrchestrationService {
       access: launch.current() ? grant.access : 'expired',
       ownWorktree: grant.ownWorktree,
       network: 'open' as const,
+      highRiskGitWrites: launch.highRiskGitWrites === true,
       expiresAt:
         grant.expiry.kind === 'duration'
           ? grant.createdAt + grant.expiry.seconds * 1000

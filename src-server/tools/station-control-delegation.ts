@@ -115,6 +115,7 @@ import { readConfinementRecord } from '../security/confinement/confinement-provi
 import {
   type DelegationGrant,
   type DelegationLaunch,
+  isHighRiskDelegationGitPath,
   selectDelegationGrant,
   type VerifiedDelegationGrantParent,
 } from '../security/confinement/delegation-grants.js';
@@ -6500,6 +6501,13 @@ export async function delegateTask(
         grant && workspace?.kind === 'project'
           ? {
               grant,
+              highRiskGitWrites: Boolean(
+                worktree &&
+                  grant.access === 'confined' &&
+                  grant.extraGitWritePaths[workspace.projectSlug]?.some(
+                    isHighRiskDelegationGitPath,
+                  ),
+              ),
               current: bindDelegationGrantCurrent(applicableGrant, grant.id),
               ...(grant.access === 'confined'
                 ? {
@@ -6508,6 +6516,7 @@ export async function delegateTask(
                           worktree,
                           grant.extraGitWritePaths[workspace.projectSlug] ?? [],
                           true,
+                          grant.highRiskGitWritesConfirmed,
                         )
                       : {
                           writableDirectories: [],

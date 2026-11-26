@@ -27,6 +27,7 @@ interface GrantRow {
   createdBy: string;
   extraGitWritePaths: Record<string, string[]>;
   children: string[];
+  highRiskGitWrites?: boolean;
 }
 
 interface Posture {
@@ -34,6 +35,7 @@ interface Posture {
   access: GrantRow['access'] | 'expired';
   ownWorktree: boolean;
   network: 'open';
+  highRiskGitWrites?: boolean;
   expiresAt: number | null;
 }
 
@@ -91,8 +93,11 @@ export function DelegationGrantPostureBadge({
   const expiry = expiresAt
     ? ` · Expires ${new Date(expiresAt).toLocaleTimeString()}`
     : '';
+  const risk = query.data.highRiskGitWrites ? ' · High-risk Git writes' : '';
   return (
-    <Badge value={`${posture} · Open network · ${scope} grant${expiry}`} />
+    <Badge
+      value={`${posture} · Open network · ${scope} grant${expiry}${risk}`}
+    />
   );
 }
 
@@ -160,6 +165,9 @@ function GrantControls({ authority }: { authority: Authority }) {
             {grant.access === 'full-access' ? 'Full access' : 'Confined coding'}{' '}
             · {grant.scope.kind}
           </h4>
+          {grant.highRiskGitWrites && (
+            <Badge value="High-risk Git writes" tone="caution" />
+          )}
           <dl>
             {grant.scope.conversationId && (
               <>
@@ -290,6 +298,11 @@ function GrantControls({ authority }: { authority: Authority }) {
             />
           </label>
           <label>
+            <input name="highRiskGitWritesConfirmed" type="checkbox" /> I
+            confirm writes to shared Git metadata. Writing hooks or config can
+            let the child run code as me on the next Git command.
+          </label>
+          <label>
             Expiry{' '}
             <select
               name="expiry"
@@ -358,6 +371,7 @@ function settings(fields: FormData) {
       expiry === 'duration'
         ? { kind: expiry, seconds: Number(field('duration')) * 60 }
         : { kind: expiry },
+    highRiskGitWritesConfirmed: fields.has('highRiskGitWritesConfirmed'),
     extraGitWritePaths: JSON.parse(field('extraGitWritePaths').trim() || '{}'),
   };
 }

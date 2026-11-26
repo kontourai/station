@@ -67,39 +67,55 @@ export function isAllowedExtraDelegationGitPath(path: string): boolean {
   return root !== 'worktrees' && root !== 'objects';
 }
 
-export const delegationGrantSettingsSchema = z.strictObject({
-  access: z.enum(['confined', 'full-access']),
-  scope: scope.default({ kind: 'project' }),
-  agents: targets,
-  models: targets,
-  projects: targets,
-  ownWorktree: z.boolean().default(true),
-  network: network.default({ mode: 'default' }),
-  expiry: expiry.default({ kind: 'parent-session' }),
-  extraGitWritePaths: z
-    .record(
-      identity,
-      z
-        .array(
-          z
-            .string()
-            .min(1)
-            .max(1024)
-            .refine(
-              isAllowedExtraDelegationGitPath,
-              'Path must stay within the common Git directory and outside protected Git metadata',
-            ),
-        )
-        .max(64),
-    )
-    .default({}),
-});
+export function isHighRiskDelegationGitPath(path: string): boolean {
+  return /^(?:hooks|config|config\.worktree|packed-refs|refs)(?:\/|$)/i.test(
+    path,
+  );
+}
+
+export const delegationGrantSettingsSchema = z
+  .strictObject({
+    access: z.enum(['confined', 'full-access']),
+    scope: scope.default({ kind: 'project' }),
+    agents: targets,
+    models: targets,
+    projects: targets,
+    ownWorktree: z.boolean().default(true),
+    network: network.default({ mode: 'default' }),
+    expiry: expiry.default({ kind: 'parent-session' }),
+    highRiskGitWritesConfirmed: z.boolean().default(false),
+    extraGitWritePaths: z
+      .record(
+        identity,
+        z
+          .array(
+            z
+              .string()
+              .min(1)
+              .max(1024)
+              .refine(
+                isAllowedExtraDelegationGitPath,
+                'Path must stay within the common Git directory and outside protected Git metadata',
+              ),
+          )
+          .max(64),
+      )
+      .default({}),
+  })
+  .refine(
+    (grant) =>
+      grant.highRiskGitWritesConfirmed ||
+      !Object.values(grant.extraGitWritePaths)
+        .flat()
+        .some(isHighRiskDelegationGitPath),
+    'High-risk Git writes require separate operator confirmation',
+  );
 
 export type DelegationGrantSettings = z.output<
   typeof delegationGrantSettingsSchema
 >;
 
-const storedGrant = delegationGrantSettingsSchema.extend({
+const storedGrant = delegationGrantSettingsSchema.safeExtend({
   id: z.string().uuid(),
   createdAt: z.number().int().nonnegative(),
   createdBy: z.literal('operator'),
@@ -255,6 +271,7 @@ export function selectDelegationGrant(
 
 export interface DelegationLaunch {
   readonly grant: DelegationGrant;
+  readonly highRiskGitWrites?: boolean;
   readonly current: () => boolean;
   readonly codexGit?: import('@kontourai/station-contracts/execution-confinement').ConfinementPlan['delegatedCodexGit'];
 }

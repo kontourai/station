@@ -129,3 +129,36 @@ test.each([
     expect(await listed.json()).toMatchObject({ data: [] });
   },
 );
+
+test('requires separate operator confirmation for writes to shared Git metadata', async () => {
+  const { operator, enable } = mount();
+  await enable();
+  const request = {
+    ...grant,
+    extraGitWritePaths: {
+      'test-project': [
+        'hooks',
+        'config',
+        'refs/remotes',
+        'refs/heads/topic',
+        'packed-refs',
+      ],
+    },
+  };
+  const refused = await createGrant(operator, request);
+  expect(refused.status).toBe(400);
+  expect(await refused.json()).toMatchObject({
+    error: expect.stringContaining('separate operator confirmation'),
+  });
+  expect(
+    (
+      await createGrant(operator, {
+        ...request,
+        highRiskGitWritesConfirmed: true,
+      })
+    ).status,
+  ).toBe(201);
+  expect(await (await operator.request('/')).json()).toMatchObject({
+    data: [{ highRiskGitWrites: true }],
+  });
+});
