@@ -1,0 +1,7 @@
+{
+  "revision": "098880a5645ec75dff959b4651f11d8b9b8ec9d4",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated the shipped learning bundle from the current module map. Checked that the delegation subsection describes the runtime worktree queue, grant-loss turn refusal, and the writable and protected Git paths. Tool interface and topic inventory are unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}
