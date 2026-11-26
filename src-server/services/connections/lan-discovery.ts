@@ -25,6 +25,9 @@ export function lanDiscoveryFor(owner: object): LanDiscovery {
 
 export class LanDiscovery {
   private enabled = false;
+  private resolveAppOrigin?: () => Promise<string | undefined>;
+  private appOrigin?: string;
+  private refreshingOrigin = false;
   private generation = 0;
   private listener?: Server;
   private queue: Promise<void> = Promise.resolve();
@@ -45,6 +48,33 @@ export class LanDiscovery {
 
   snapshot(): LanDiscoveryStatus {
     return { ...this.status };
+  }
+
+  setAppOriginResolver(resolve: () => Promise<string | undefined>): void {
+    this.resolveAppOrigin = resolve;
+  }
+
+  private async refreshAppOrigin(): Promise<void> {
+    if (this.refreshingOrigin || !this.enabled || !this.publication?.service)
+      return;
+    this.refreshingOrigin = true;
+    const publication = this.publication;
+    try {
+      const resolved = await this.resolveAppOrigin?.().catch(() => undefined);
+      const origin =
+        resolved && Buffer.byteLength(resolved, 'utf8') <= 245
+          ? resolved
+          : undefined;
+      if (publication !== this.publication || origin === this.appOrigin) return;
+      this.appOrigin = origin;
+      publication.service?.updateTxt({
+        v: '1',
+        transport: 'http',
+        ...(origin ? { appOrigin: origin } : {}),
+      });
+    } finally {
+      this.refreshingOrigin = false;
+    }
   }
 
   /**
@@ -77,6 +107,7 @@ export class LanDiscovery {
     });
     clearInterval(this.networkTimer);
     this.networkTimer = setInterval(() => {
+      void this.refreshAppOrigin().catch(() => undefined);
       if (
         this.enabled &&
         JSON.stringify(this.lanInterfaces()) !== this.networkKey
@@ -175,13 +206,23 @@ export class LanDiscovery {
         });
         const publication: NonNullable<typeof this.publication> = { responder };
         this.publication = publication;
+        const origin = await this.resolveAppOrigin?.().catch(() => undefined);
+        this.appOrigin =
+          origin && Buffer.byteLength(origin, 'utf8') <= 245
+            ? origin
+            : undefined;
+        if (generation !== this.generation) return;
         const service = responder.createService({
           name: this.name,
           type: 'station',
           port: bound.port,
           restrictedAddresses: addresses,
           disabledIpv6: true,
-          txt: { v: '1', transport: 'http' },
+          txt: {
+            v: '1',
+            transport: 'http',
+            ...(this.appOrigin ? { appOrigin: this.appOrigin } : {}),
+          },
         });
         publication.service = service;
         let failedPublication = false;

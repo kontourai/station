@@ -97,7 +97,12 @@ private final class DiscoveryScan: NSObject, NetServiceDelegate {
       let privateV4 = parts.count == 4 && (parts[0] == 10 || (parts[0] == 172 && (16...31).contains(parts[1])) || (parts[0] == 192 && parts[1] == 168) || (parts[0] == 169 && parts[1] == 254))
       let privateV6 = host.lowercased().hasPrefix("fc") || host.lowercased().hasPrefix("fd")
       guard privateV4 || privateV6 else { continue }
-      candidates[key] = ["name": String(sender.name.prefix(100)), "host": host, "port": sender.port, "transport": transport]
+      var candidate: JsonObject = ["name": String(sender.name.prefix(100)), "host": host, "port": sender.port, "transport": transport]
+      if let data = txt["appOrigin"], !data.isEmpty, data.count <= 245,
+        let appOrigin = String(data: data, encoding: .utf8) {
+        candidate["appOrigin"] = appOrigin
+      }
+      candidates[key] = candidate
       break
     }
   }

@@ -321,11 +321,14 @@ export function createRuntimeSystemRouteDeps(
     ...(resolveRuntimeConnectionRoutesEnabled()
       ? {
           resolveStationRoutes: createStationRoutesResolver({
+            publication: () => context.consentChannel?.publication,
             boundAddress: () =>
               lanDiscoveryFor(context.configLoader).boundAddress(),
             networkInterfaces,
             servedOrigins: () =>
-              publicIngressOriginResolver(context.port).resolve(),
+              context.consentChannel.publication
+                ? Promise.resolve(context.consentChannel.publication.appOrigins)
+                : publicIngressOriginResolver(context.port).resolve(),
             magicDnsHost: () =>
               publicIngressOriginResolver(context.port).magicDnsHost(),
             environmentId: async () =>

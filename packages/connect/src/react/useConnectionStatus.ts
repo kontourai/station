@@ -156,7 +156,12 @@ export function useConnectionStatus({
           : [])
       ).map((endpoint) => ({
         ...endpoint,
-        priority: endpoint.id === selected ? -1 : endpoint.priority,
+        priority:
+          endpoint.id === selected
+            ? nativeShell && activeConnection?.hostOwnedCredential
+              ? Math.min(endpoint.priority ?? 100, -1)
+              : -1
+            : endpoint.priority,
       }));
     },
     compatibility: () => ({
@@ -223,6 +228,21 @@ export function useConnectionStatus({
     entry.coordinator.getSnapshot,
     entry.coordinator.getSnapshot,
   );
+
+  const nativeRoutesKey =
+    nativeShell && activeConnection?.hostOwnedCredential
+      ? activeConnection.endpoints
+          .map((endpoint) => endpoint.url)
+          .sort()
+          .join('\n')
+      : '';
+  const previousNativeRoutes = useRef({ key, routes: nativeRoutesKey });
+  useEffect(() => {
+    const previous = previousNativeRoutes.current;
+    previousNativeRoutes.current = { key, routes: nativeRoutesKey };
+    if (previous.key === key && previous.routes !== nativeRoutesKey)
+      entry.coordinator.trigger();
+  }, [key, nativeRoutesKey, entry]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

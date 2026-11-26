@@ -841,9 +841,11 @@
     {
       "id": "station-routes",
       "label": "Routes",
-      "scope": "device",
+      "help": "Leave empty for automatic discovery or enter an exact HTTPS DNS origin.",
+      "scope": "mixed",
       "section": "station-routes",
-      "route": "/settings?view=station-routes&highlight=station-routes"
+      "route": "/settings?view=station-routes&highlight=station-routes",
+      "configKey": "trustedConsentOrigin"
     },
     {
       "id": "personal-knowledge-store",

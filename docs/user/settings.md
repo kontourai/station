@@ -205,6 +205,7 @@ only when this Station's build can run it; if none is, the section says
 
 | ID | Name | What turning it on does | Notable cost/risk |
 | --- | --- | --- | --- |
+| `dynamic-route-publications` | Dynamic HTTPS routes | Discovers this Station's existing Tailscale Serve app and separate approval origins live. The local operator can persist **Approval HTTPS origin** in Routes settings without restarting; enabled requests read the current saved configuration. See [HTTPS deployment](../guides/deployment.md#reaching-the-consent-origin-over-https). | Off by default. Saving a changed origin is refused while off; legacy environment/HTTP behavior remains. Does not provision Serve or grant access. Nearby TXT `appOrigin` is only an untrusted connection hint; Request Access and identity verification still apply. Installed Android/iOS physical-device behavior is not established by adapter tests. |
 | `durable-station-agent` | Crash-durable Station Agent | Keeps Station-engine text turns running after a client disconnect and resumes journaled steps after restart. Stop still cancels. | Experimental; writes every model/tool step to private SQLite and can add substantial latency. An uncertain model request is surfaced without automatic resend; pending approvals still require an answer. |
 | `reviewed-usage-tariffs` | Reviewed usage tariffs | Lets the operator review exact Bearing source bytes and route/model tariff bindings for later usage capture. | No default price or live fetching. Retail values remain separate from billing, subscription fees and quota. Historical snapshots stay frozen. |
 | `codex-bound-browser-device-tools` | Codex browser and device tools | Offers eligible Codex Sessions the built-in browser and device tools over a bound channel. A new Codex Session whose Agent has Station Control also gets every Station Control tool on that channel instead of a header token, which adds about 110 KB of tool definitions to each thread. | Calls require current Project access and tool approval policy; browser pages and device contents can contain private data. Changing this choice retires existing bindings; start a new Session to use it again. |
@@ -421,8 +422,11 @@ The row’s Details menu offers the same actions with the preview off.
 this device reaches the current Station on, which one is in use, which failed
 and why, and **Add route** for an address you type. **Edit** removes routes you
 added. While connected, the app also learns the LAN, Tailscale and Tailscale
-HTTPS addresses the Station reports, marked "found automatically". The app saved on a phone or desktop
-lists those addresses but still connects only through its saved one; see
+HTTPS addresses the Station reports, marked "found automatically". Native apps
+retain the saved canonical address; the host can temporarily admit published
+HTTPS app origins for that same Station after checking its authenticated routes
+and fresh public proof. Nearby hints alone never authorize credential use.
+Installed-shell failover remains NOT_VERIFIED; see
 [Station routes](https://github.com/kontourai/station/blob/main/docs/design/station-routes.md).
 
 ## GitHub automations

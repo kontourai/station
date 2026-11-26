@@ -293,6 +293,22 @@ operator may grant or remove `access:devices`. CLI and Paired devices UI use the
 same authenticated principal. See the [CLI reference](../reference/cli.md#environment)
 and [threat model](../security/remote-access-threat-model.md).
 
+[RoutePublications](../../src-server/services/connections/route-publications.ts)
+owns the default-off `dynamic-route-publications` preview's live app/approval
+origin split and persisted operator override/legacy environment precedence.
+It reads existing host Serve mappings, not browser-provisioned infrastructure.
+LAN TXT `appOrigin` is an untrusted connection hint, not approval or saved-route
+merge authority. See the [route design](../design/station-routes.md#dynamic-https-publications-preview)
+and [HTTPS deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https)
+for failure behavior and physical-device verification limits.
+
+[Native route authorization](../../src-desktop/src/native_route_authorization.rs)
+owns `station_profile_refresh_routes`: authenticated canonical-anchor discovery,
+credential-free candidate proof and temporary same-Station HTTPS admission.
+The credential dispatcher in [lib.rs](../../src-desktop/src/lib.rs) enforces
+binding epoch, profile revision, exact origin and expiry before scoped credential
+use and pooled-agent reuse; the saved canonical credential binding is unchanged.
+
 Operator passkeys are a separate operator identity (#3257). The
 [enrollment service](../../src-server/services/identity/operator-passkey-enrollment.ts)
 owns the confirm-by-code request and the single-use WebAuthn ceremony, and the

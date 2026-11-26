@@ -32,6 +32,7 @@ vi.mock('@homebridge/ciao', () => ({
           reject = no;
         });
         const service = {
+          updateTxt: vi.fn(),
           advertise: vi.fn(() => pending),
           destroy: vi.fn(async () => {}),
           getFQDN: () => 'Nearby Station._station._tcp.local.',
@@ -53,6 +54,7 @@ vi.mock('@homebridge/ciao', () => ({
 }));
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
+  vi.useRealTimers();
   for (const stop of cleanup.splice(0).reverse()) await stop();
   doubles.entries.length = 0;
   doubles.listeners.length = 0;
@@ -80,6 +82,39 @@ function host(discovery: LanDiscovery, hostname = '0.0.0.0') {
   return provider;
 }
 describe('API host discovery lifecycle', () => {
+  it('publishes only the current app-origin hint and withdraws it without restarting discovery', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    let origin: string | undefined = 'https://station.example.ts.net:8448';
+    const discovery = new LanDiscovery();
+    discovery.setAppOriginResolver(async () => origin);
+    const provider = host(discovery);
+    await provider.start();
+    await discovery.configure({ lanDiscoveryEnabled: true });
+    const entry = doubles.entries.at(-1);
+    expect(entry.config.txt).toEqual({
+      v: '1',
+      transport: 'http',
+      appOrigin: origin,
+    });
+    entry.resolve();
+    await Promise.resolve();
+    expect(discovery.snapshot().state).toBe('published');
+    origin = 'https://station.example.ts.net:8450';
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(entry.service.updateTxt).toHaveBeenLastCalledWith({
+      v: '1',
+      transport: 'http',
+      appOrigin: origin,
+    });
+    origin = undefined;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(entry.service.updateTxt).toHaveBeenLastCalledWith({
+      v: '1',
+      transport: 'http',
+    });
+    expect(discovery.snapshot().state).toBe('published');
+    expect(entry.service.destroy).not.toHaveBeenCalled();
+  });
   it('defaults off, publishes actual bound API port after completed announcement and withdraws live', async () => {
     const discovery = new LanDiscovery();
     const provider = host(discovery);

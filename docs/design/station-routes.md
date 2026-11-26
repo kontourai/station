@@ -35,8 +35,9 @@ which addresses exist, how each was found, and which one is in use.
   [ConnectionStore.ts](../../packages/connect/src/core/ConnectionStore.ts)).
 - Native apps save a `StationProfile` with exactly one `endpoint`
   ([station-profile.ts](../../packages/contracts/src/station-profile.ts)). The
-  native host binds the profile's credential to that exact origin and refuses
-  to send it anywhere else; changing the address drops the credential.
+  native host retains that canonical credential origin. The in-progress native
+  admission below adds temporary authority for specific alternate HTTPS origins;
+  it does not replace the canonical endpoint or copy credentials.
 
 ## Model
 
@@ -92,12 +93,63 @@ merges the answer:
 - never touches routes the user added;
 - skips plain `http:` routes on an `https:` page, which the browser would block.
 
+On a desktop's first start, discovery waits until the native-owned local
+profile has been provisioned, authenticated, and connected. With either Routes
+preview enabled, the shared Routes query also reads advertisements for native
+profiles. Displaying one is not permission to send the profile's credential
+there. Host-owned refresh admits alternates separately, as described below;
+canonical local HTTP lifecycle ownership remains unchanged. No authenticated
+Routes read occurs before the canonical profile is authorized.
+
 ### Why an advertised route cannot point at another server
 
-Learning a route does not trust it. Every probe of every route still fetches
-the public handshake and refuses a different `environmentId` before any
-credentialed request is sent. A route that answers as another Station shows as
-**Different Station** and is never selected.
+Learning a route does not trust it. A public handshake's `environmentId` is
+copyable discovery data, not cryptographic authentication. A mismatched ID is
+grounds for refusal, but a matching ID alone must not authorize sending a saved
+credential to a new origin. Native admission requires the authenticated anchor's
+authorization and the fresh proof described below.
+
+### Native host-authorized alternate origins
+
+**Status: implementation in progress; native execution and failover are
+NOT_VERIFIED.** The host-owned `station_profile_refresh_routes` command in
+[native_route_authorization.rs](../../src-desktop/src/native_route_authorization.rs)
+returns an admission receipt, not credentials. Its intended boundary is:
+
+1. Capture the active binding epoch (`bindingId`), profile-store revision,
+   canonical origin, and environment identity. Fetch `/api/system/routes` with
+   the saved credential only at that already-authorized canonical anchor.
+2. Require the response's environment identity to match. Candidates must be in
+   both `publication.appOrigins` and its published `tailscale-https` routes,
+   using exact canonical HTTPS DNS origins. An approval origin, Nearby hint,
+   or user-entered address is not admission authority.
+3. Request the existing public nonce proof at the anchor and each candidate,
+   using the same fresh nonce and no bearer or cookies. Refuse redirects and
+   bound requests and responses. Require matching protocol, environment, nonce,
+   and signature. The nonce must satisfy the existing proof route's
+   43-character base64url contract; an arbitrary UUID is not compatible.
+4. Recheck the captured binding and profile revision before committing. Keep
+   admitted origins only in host memory for at most ten minutes, bound to that
+   epoch, revision, canonical origin, and environment. A receipt exposes origins
+   and expiry; it cannot expand the host's authorization.
+
+The proof is HMAC-SHA256 from `EnvironmentSecurityService.createPublicProof`,
+not a public-key identity certificate. Comparing anchor and candidate proofs
+avoids requiring a paired Device to possess the operator secret. Freshness
+prevents stale replay, but the public proof can be relayed live: it is **not
+standalone authentication**. Authority comes from the authenticated anchor's
+owned HTTPS app-origin advertisement, together with HTTPS certificate validation.
+An attacker-controlled origin must never gain authority merely by returning
+the same proof. No cloud account is involved; existing Device permissions apply.
+
+The desktop's owned loopback HTTP endpoint remains canonical. This does not
+authorize arbitrary LAN HTTP alternates or weaken remote TLS. Failover may use
+only a currently admitted alternate, never an address that merely passes the
+public handshake. Do not rewrite the profile endpoint or persist alternate
+credential bindings. Expiry, binding/profile changes, restart, and failed
+refresh cannot mint new authority. If the canonical anchor is unreachable,
+existing admission lasts only until expiry; this is not offline anchor recovery.
+Request Access remains the recovery path when no authorized route is available.
 
 ## Status
 
@@ -141,15 +193,20 @@ the connection manager, which keeps one compact card per saved Station:
 1. **Browser-saved Stations** (this change): the discovery route, the merge,
    per-route status, the Routes UI, add and remove. Failover is real for
    browser-saved Stations: the coordinator already walks every route.
-   Native profiles show their one address and the advertised ones, read-only,
-   with no failover. A browser sign-in kept as a cookie (`device-session`)
-   belongs to one origin, so on other routes it reads as a sign-in failure; a
-   saved credential works on every verified route.
-2. **Native profiles**: `StationProfile.routes` (a list of origins). The native
-   host binds the credential to the profile's `environmentId` instead of one
-   origin, and sends it to a route only after that route's handshake answers
-   with the same `environmentId` (the same rule as phase 1, enforced in Rust).
-   The CLI reads the same list. Needs device evidence per
+   Native alternate admission is the bounded phase 2 slice below, not evidence
+   of qualified failover. A browser sign-in kept as a cookie (`device-session`)
+   belongs to one origin, so on other routes it reads as a sign-in failure.
+   Browser-saved bearer connections retain the existing route-selection policy:
+   advertised routes are merged from the authenticated Station when its reported
+   `environmentId` matches, and candidate handshakes compare that public ID.
+   This is not cryptographic proof of candidate ownership and does not use the
+   native host's authenticated-publication-plus-nonce admission below. A route
+   may still fail transport, browser policy or authentication checks.
+2. **Native profiles** (in progress): preserve the canonical endpoint and add
+   temporary host-authorized HTTPS alternates through authenticated anchor
+   publication plus fresh proof comparison. A matching public identity alone
+   never widens credential authority. CLI route parity is not established by
+   this slice. Needs device evidence per
    [native shell verification](../guides/native-shell-verification.md).
 3. **Relay as a route**: fold a relay route into the same saved Station by
    `environmentId`, ranked last, instead of a separate connection. This
@@ -158,11 +215,55 @@ the connection manager, which keeps one compact card per saved Station:
 
 ## Not changing
 
-- Pairing, credentials and trust: a route never widens what a credential may
-  do or where it may be sent beyond a verified same-Station address.
-- Nearby discovery (mDNS): unchanged. Phase 1 does not need it; a later change
-  can add the `environmentId` to its record so an unpaired device can match a
-  nearby Station to a saved one.
+- Pairing and credential permissions do not change. Browser-saved connections
+  retain their existing public-identity route checks, not the stronger native
+  admission boundary. Native credentials remain bound to the canonical anchor
+  except for the host-authorized HTTPS alternates described above.
+- Nearby discovery (mDNS) does not establish identity or merge routes into a
+  saved Station. The optional HTTPS app-origin hint below changes only the
+  address offered for connection; Request Access and the handshake still own
+  pairing and identity verification.
+
+## Dynamic HTTPS publications preview
+
+The separate Station-wide **Dynamic HTTPS routes** preview
+(`dynamic-route-publications`) is **off by default**. Enable it under
+Settings → Advanced → Feature previews; it does not replace the device
+**Station routes** preview. The runtime-owned
+[RoutePublications](../../src-server/services/connections/route-publications.ts)
+uses existing Tailscale Serve mappings, refreshed from host state, to distinguish:
+
+- **App origins**, mapped to this Station's app/API listeners, for connections.
+- **Approval origin**, mapped to the separate consent listener, for approval
+  pages and passkey ceremonies; it is not an app connection route.
+
+The local operator can persist `trustedConsentOrigin` through **Approval HTTPS
+origin** in the Routes settings, without restarting. An absent persisted setting
+uses the legacy `STATION_TRUSTED_CONSENT_ORIGIN` startup value. An explicitly
+saved empty value requests automatic discovery instead of that environment
+fallback. Automatic selection requires exactly one separate approval mapping
+with the same hostname as a discovered app origin; missing or ambiguous mappings
+leave approval HTTPS unavailable, without guessing or falling back to HTTP.
+An origin discovered as an app mapping cannot also be configured for approval.
+With the preview off, the legacy environment/HTTP behavior remains in effect.
+Saving an origin neither provisions HTTPS nor grants access. See the
+[deployment HTTPS guide](../guides/deployment.md#reaching-the-consent-origin-over-https)
+for the operator-owned mapping and exact-origin requirements.
+
+When LAN publication is enabled and there is exactly one discovered app origin,
+the publisher can include it as DNS-SD TXT `appOrigin`, refreshing it as host
+publication changes. Android/iOS discovery retains resolved private-LAN endpoint
+validation before preferring a canonical HTTPS DNS hint; an absent or rejected
+hint keeps the legacy LAN URL. TXT is untrusted discovery input, never consent
+metadata, an identity assertion, a credential grant, or authority to apply
+advertised routes to a saved Station.
+
+This boundary does not qualify installed-device multicast, local-network
+permissions, TLS, lifecycle, pairing, or route failover. Those require physical
+Android/iOS evidence; adapter tests alone do not establish them. Native
+credentials remain canonical-origin bound except for the temporary admission
+above. Native shell execution and physical-device failover are **NOT_VERIFIED**,
+not implied by discovery or adapter coverage.
 
 ## Evidence to land each phase
 
@@ -170,5 +271,9 @@ the connection manager, which keeps one compact card per saved Station:
   server route test (paired read, refused when unauthenticated, loopback-only
   advertises nothing); a browser render of the Routes list at 390 and 1440 px
   in both themes.
-- Phase 2: Rust tests that the credential is never sent to a route before its
-  handshake matches, and a physical device switching between LAN and Tailscale.
+- Phase 2: host tests proving no candidate bearer before anchor authorization
+  and proof matching; refusal for unadvertised origins, mismatched proofs,
+  redirects, expiry, stale binding/revision, and refresh failure. UI tests must
+  prove failover cannot bypass host admission. Real native shell and physical
+  Android/iOS journeys must separately establish TLS, lifecycle, and switching;
+  until then record those outcomes as **NOT_VERIFIED**.
