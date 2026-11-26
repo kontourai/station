@@ -1,0 +1,7 @@
+{
+  "revision": "c36cc5635c315db4eb2d056d2117b766e80a72d1",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-checked the three read_conversation passages after the follow-up fix to the read route: a refusal for a Project reason keeps the Project explanation and names that reason, and one for a cause that is not the Project gets an explanation that matches it. The guide's statements match conversation-reference-read.ts at this head. Rest of the guide not re-reviewed.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

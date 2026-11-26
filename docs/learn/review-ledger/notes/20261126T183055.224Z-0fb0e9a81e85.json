@@ -1,0 +1,7 @@
+{
+  "revision": "4d251a8931b739602d19443267e4a6bde86390bd",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Checked its three links into the self-configuring agent guide (dispatch authority, Session control, work discovery): those headings are unchanged, and the guide change only states what stops a read_conversation refusal. The compact reader and provenance claims here are unaffected. Rest of the reference not re-reviewed.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md"]}
+  ]
+}

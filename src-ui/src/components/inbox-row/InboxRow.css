@@ -1059,3 +1059,7 @@
 .mobile-inbox .inbox-row--touch:has(> .inbox-row__actions) {
   display: flex;
 }
+
+.inbox-row__question-link {
+  padding: 0 var(--k-space-3) var(--k-space-2);
+}

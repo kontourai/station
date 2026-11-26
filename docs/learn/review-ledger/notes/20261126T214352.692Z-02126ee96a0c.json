@@ -1,0 +1,11 @@
+{
+  "revision": "8516f15cf1c6298ba454ed3319b27e69017b2f25",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed integration of the storyboard row and the live question shortcut. The storyboard still opts into the fixture action slots. The live action consumes optional WorkFacts and navigates to the Task Plan only when used.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed integration of the storyboard row and the live question shortcut. The storyboard still opts into the fixture action slots. The live action consumes optional WorkFacts and navigates to the Task Plan only when used.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed integration of the storyboard row and the live question shortcut. The storyboard still opts into the fixture action slots. The live action consumes optional WorkFacts and navigates to the Task Plan only when used.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}
