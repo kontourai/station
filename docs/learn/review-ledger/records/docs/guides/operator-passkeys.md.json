@@ -56,7 +56,9 @@
 
     "src-server/runtime/routes/project-sharing-step-up.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-project-sharing-step-up.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-project-sharing-step-up.test.ts",
+
+    "src-server/services/connections/route-publications.ts"
   ],
 
   "checks": [
