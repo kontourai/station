@@ -3,7 +3,8 @@
 **Status: proposal, phase 1 in progress.** Owner: the connection client
 ([`packages/connect`](../../packages/connect/src/core/)) and the system routes
 ([`src-server/routes/system`](../../src-server/routes/system/)). Phase 1 ships
-behind the device preview **Station routes**, off by default.
+behind either the device preview **Station routes** or the Station-wide
+**Dynamic HTTPS routes** preview, both off by default.
 
 ## Outcome
 
@@ -28,8 +29,9 @@ which addresses exist, how each was found, and which one is in use.
 - Each probe checks the Station's identity: `probeServerConnection` refuses a
   handshake whose `environmentId` differs from the saved one
   ([serverHealth.ts](../../src-ui/src/lib/serverHealth.ts)).
-- Endpoints are added only by editing the connection's address or by pairing.
-  Nothing learns the other addresses a Station is reachable on.
+- Endpoints can be added by editing the connection's address or by pairing.
+  With either Routes preview enabled, the connected client also learns the
+  Station's advertised addresses through the shared Routes query below.
 - A relay route and an SSH tunnel are saved as separate connections
   (`addBrokerRoute`, `addHostTunnel` in
   [ConnectionStore.ts](../../packages/connect/src/core/ConnectionStore.ts)).
@@ -58,10 +60,12 @@ The route's kind is derived from its address, never stored separately:
 | broker route | relay | Relay |
 | anything else | internet | Internet |
 
-Order is the existing rank: the selected route first, then priority, then kind.
-A route that answered last stays selected, so a phone that moved off the home
-network does not retry the LAN address first on every probe after the first
-failover.
+Browser connections rank the selected route first, then priority, then kind.
+For a native profile with host-owned credentials, a host-admitted HTTPS
+alternate has priority -2, ahead of the selected local route's -1; an advertised
+address alone receives no credential authority. A route that answered last
+stays selected, so a phone that moved off the home network does not retry the
+LAN address first on every probe after the first failover.
 
 ## Discovery
 

@@ -100,7 +100,8 @@ Advanced → Developer tools reveals five independent, default-off device opt-in
 `experimental-flow`, `experimental-readiness`, `experimental-trust`,
 `experimental-station-routes`, and `experimental-sheet-gestures`.
 `surface-trust` is visible only with the Trust preview enabled, and the
-Devices page's `station-routes` section only with the Station routes preview. Search and the
+Devices page's `station-routes` section with either the Station routes device
+preview or the Station-wide Dynamic HTTPS routes preview. Search and the
 command palette omit hidden preview settings. A deep link to an opted-out
 control announces that the tool is off rather than waiting for a missing row.
 The registry remains a build-wide inventory; its presence does not mean a row
