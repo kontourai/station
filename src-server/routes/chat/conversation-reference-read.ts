@@ -462,7 +462,7 @@ export type ConversationReadAccess = 'own' | 'scope' | 'reference' | 'person';
  * own conversation: anyone else's reads as not found, with nothing added.
  */
 export type ConversationReadAdmission =
-  | { access: ConversationReadAccess; targetExists: boolean }
+  | { access: ConversationReadAccess; targetExists: boolean; refusal?: never }
   | {
       refusal: 'conversation_out_of_scope';
       scope: StationControlRefusal;

@@ -41,7 +41,11 @@ const UNREADABLE = 'human:test:unreadable';
 /** A Session whose own Project Station cannot confirm. */
 const UNREADABLE_CALLER: StationControlCaller = {
   ...AGENT,
-  principal: { ...AGENT.principal, id: UNREADABLE },
+  principal: {
+    id: UNREADABLE,
+    source: 'session-owner',
+    elevationEligible: true,
+  },
   projectIdSource: 'slug-lookup',
 };
 const OWN_PROJECT = { kind: 'project', id: 'project-1' } as const;
