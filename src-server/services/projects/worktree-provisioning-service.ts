@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, realpathSync, type Stats } from 'node:fs';
-import { mkdir, readdir, readFile, rm } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import {
   basename,
   dirname,
@@ -31,6 +31,7 @@ import {
 import { spawnGit } from '../../utils/git-exec.js';
 import { createKeyedSerialQueue } from '../../utils/keyed-serial-queue.js';
 import { expandTilde } from '../../utils/paths.js';
+import { locateGitDirectories } from './git-directory-confinement.js';
 import {
   type LiveRepository,
   RepositoryConfigRefusedError,
@@ -1163,6 +1164,20 @@ export class WorktreeProvisioningService {
       return { kind: 'refused', reason: shape, detail: SHAPE_DETAIL[shape] };
     const checkouts = await this.branchCheckouts(metadata);
     if (!checkouts.registered) return { kind: 'missing' };
+    const dotGit = join(metadata.path, '.git');
+    const layout = await locateGitDirectories(
+      metadata.path,
+      dotGit,
+      await lstat(dotGit, { bigint: true }),
+    );
+    if (layout && dirname(layout.commonDir) === layout.gitDir) {
+      return {
+        kind: 'refused',
+        reason: 'unsafe-config',
+        detail:
+          'This delegated worktree has private Git storage. Use Git in its checkout to manage its output.',
+      };
+    }
     const opened = await this.openCheckedForFinalization(metadata);
     if ('kept' in opened)
       return {
@@ -1172,14 +1187,6 @@ export class WorktreeProvisioningService {
       };
     const { repository, worktree } = opened;
     try {
-      if (repository.commonDir !== worktree.commonDir) {
-        return {
-          kind: 'refused',
-          reason: 'unsafe-config',
-          detail:
-            'This delegated worktree has private Git storage. Use Git in its checkout to manage its output.',
-        };
-      }
       const head = await this.ownBranchTip(repository, metadata.branch);
       if (head.kind === 'missing') return head;
       if (head.kind === 'unsafe-config')

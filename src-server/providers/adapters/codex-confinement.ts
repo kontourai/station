@@ -119,6 +119,7 @@ export async function codexDelegatedGitPlan(
   if (
     !base ||
     !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(base) ||
+    /[\r\n]/.test(commonObjects) ||
     (await realpath(commonObjects)) !== commonObjects ||
     (await realpath(sharedConfig)) !== sharedConfig ||
     existsSync(join(commonDir, 'reftable'))
