@@ -42,7 +42,7 @@ const stories = [
   },
   {
     id: 'states',
-    title: 'Loading, empty and error states',
+    title: 'Empty, error and loading states',
     files: [
       '../components/Skeleton.tsx',
       '../components/state/Empty.tsx',
@@ -148,7 +148,7 @@ function Catalog() {
           </ul>
         </section>
         <section id="states">
-          <h2>Loading, empty and error states</h2>
+          <h2>Empty, error and loading states</h2>
           <SkeletonList count={2} label="Loading Tasks" />
           <Empty variant="compact" label="No open Tasks" />
           <ErrorState
