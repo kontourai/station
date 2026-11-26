@@ -1,0 +1,9 @@
+{
+  "revision": "34722c8ff6c1c6fb8228d52f68d5f0a62897ceb4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#5592: one existing test now waits for the lazily mounted Chats list before clicking New chat; no documented claim changed.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"#5592: one existing test now waits for the lazily mounted Chats list before clicking New chat; no documented claim changed.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]}
+  ]
+}
