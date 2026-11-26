@@ -1,3 +1,5 @@
+import { lstat, realpath } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type {
   ConfinementPlan,
   ConfinementPosture,
@@ -6,10 +8,12 @@ import {
   PROVIDER_CODEX,
   type StationConfinement,
 } from '@kontourai/station-contracts/provider';
+import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import {
   type ConfinementProvider,
   requiredConfinementLevel,
 } from '../../security/confinement/confinement-provider.js';
+import { discoverSeatbeltGitLayout } from '../../security/confinement/seatbelt.js';
 import { isCanonicalPathWithin } from '../../utils/path-containment.js';
 import type {
   CodexSandboxMode,
@@ -39,6 +43,64 @@ export interface CodexSandboxEvidence {
    */
   requestedProfile?: string | undefined;
   reportedProfile?: string | undefined;
+}
+
+/**
+ * The ref and its lock must share a writable directory for Git's rename.
+ * Provisioning reserves a branch namespace for each delegated worktree.
+ */
+export async function codexDelegatedGitPlan(
+  worktree: WorktreeSessionMetadata,
+  extraGitWritePaths: readonly string[],
+  openNetwork: boolean,
+): Promise<NonNullable<ConfinementPlan['delegatedCodexGit']>> {
+  const layout = await discoverSeatbeltGitLayout(worktree.path);
+  const commonDir = join(await realpath(worktree.repoPath), '.git');
+  if (
+    !layout ||
+    layout.commonDir !== commonDir ||
+    dirname(layout.gitDir) !== join(commonDir, 'worktrees') ||
+    layout.branch !== worktree.branch ||
+    !/^station-delegation\/[a-f0-9]{32}\/[^/]+$/.test(worktree.branch)
+  ) {
+    throw new Error(
+      'Delegated coding requires a verified worktree with its own Git ref namespace.',
+    );
+  }
+
+  const branchDir = dirname(worktree.branch);
+  const writableDirectories = [
+    layout.gitDir,
+    join(commonDir, 'objects'),
+    join(commonDir, 'refs', 'heads', branchDir),
+    join(commonDir, 'logs', 'refs', 'heads', branchDir),
+    ...extraGitWritePaths.map((path) => join(commonDir, path)),
+  ];
+  for (const directory of new Set(writableDirectories)) {
+    const stats = await lstat(directory);
+    if (
+      !isCanonicalPathWithin(commonDir, directory) ||
+      directory === commonDir ||
+      !stats.isDirectory() ||
+      (await realpath(directory)) !== directory
+    ) {
+      throw new Error(
+        'Codex delegated Git writes require an existing Git directory.',
+      );
+    }
+  }
+  return {
+    writableDirectories: [...new Set(writableDirectories)],
+    readOnlyPaths: [
+      join(layout.gitDir, 'commondir'),
+      join(layout.gitDir, 'gitdir'),
+      join(layout.gitDir, 'config'),
+      join(layout.gitDir, 'config.worktree'),
+      join(layout.gitDir, 'hooks'),
+      join(commonDir, 'objects', 'info'),
+    ],
+    openNetwork,
+  };
 }
 
 /**
@@ -143,14 +205,27 @@ function rootsConfined(
  */
 export function codexConfinementConfigArgs(
   confinement: StationConfinement | undefined,
+  git?: ConfinementPlan['delegatedCodexGit'],
 ): string[] {
+  const profileDefinition = git
+    ? STATION_CODEX_PERMISSION_PROFILE_DEFINITION.replace(/}}}$/, () => {
+        const rules = new Map<string, string>();
+        for (const path of git.writableDirectories) rules.set(path, 'write');
+        for (const path of git.readOnlyPaths) rules.set(path, 'read');
+        const paths = Array.from(
+          rules,
+          ([path, mode]) => `${JSON.stringify(path)}=${JSON.stringify(mode)}`,
+        );
+        return `}${paths.length ? `,${paths.join(',')}` : ''}},network={enabled=${git.openNetwork}}}`;
+      })
+    : STATION_CODEX_PERMISSION_PROFILE_DEFINITION;
   return confinement === 'host'
     ? []
     : [
         '-c',
         `default_permissions="${STATION_CODEX_PERMISSION_PROFILE}"`,
         '-c',
-        STATION_CODEX_PERMISSION_PROFILE_DEFINITION,
+        profileDefinition,
         '-c',
         'sandbox_workspace_write.writable_roots=[]',
         '-c',

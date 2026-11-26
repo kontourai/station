@@ -2421,7 +2421,10 @@ export class CodexAdapter implements ProviderAdapterShape {
     const spawnArgs = [
       ...connectionLaunch.args,
       ...(toolServers.configArgs ?? []),
-      ...codexConfinementConfigArgs(input.confinement),
+      ...codexConfinementConfigArgs(
+        input.confinement,
+        input.confinementPlan?.delegatedCodexGit,
+      ),
     ];
     // Only a session start gets the per-session TMPDIR; quota, model and
     // maintenance probes keep the shared engine-spawn directory.
@@ -2839,6 +2842,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         permittedRoots: [
           ...(sessionTmpDir ? [sessionTmpDir] : []),
           engineSpawnTmpDirPath(),
+          ...(plan?.delegatedCodexGit?.writableDirectories ?? []),
         ],
         // #3800: Station relies on its profile wherever it sent no mode.
         ...(sandboxRequest && !sandboxWire
