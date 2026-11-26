@@ -1,0 +1,43 @@
+{
+  "revision": "3b92d3e0b2e2305f45154b5db05feca020bdece0",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Checked the public SDK boundary and the checkout page hook. The React SDK wraps an authenticated Station HTTP read through its pull request query domain.","inputs":["docs/architecture.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Checked the KnowledgeRecall component exports and its request boundary against the SDK barrel. The checkout page hook belongs to the pull request query domain.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Traced checkout page persistence through shouldPersistQuery and the authority-owned IndexedDB shelf. The GitHub Open snapshot holds successful summary reads and displays their age. The mutation queue and raw Session adoption use their existing separate storage boundaries.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/lib/queryPersistence.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Checked the pane host and frame contract against the SDK checkout page hook. The hook uses authenticated Station HTTP. Pane messages and related-pane grants are owned by the pane host.","inputs":["docs/design/pane-host-contract.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the Settings link and the operator instructions in this guide against the feature preview catalog. The Pull request workspace choice controls list and review presentation. Preview permissions use the ordinary runtime guards.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Matched the new Settings row and default-off registry entry to the UI consumers in the list and review panes. The toggle changes presentation and uses the existing Station-wide preview catalog and authorization.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Followed the SDK reference link to the documented checkout response and cursor hook. Both use the existing authenticated integration surface, and older hosts still return the ordinary checkout context.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the shared controls, pane sizing, and mobile touch floor cited by this guide against the SDK barrel. The new checkout hook supplies list data through React Query.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the documented SDK appearance hooks and rootThemeSignature against the React barrel. The pull request workspace derives appearance from the app shell and uses the shared UI tokens.","inputs":["docs/guides/theming.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Traced the React checkout page query through the existing server route and provider. The provider reads a bounded response under the existing project checkout resolution. The React-free clients use their explicit subpaths.","inputs":["docs/patterns/backend.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Traced the list flow through the SDK domain, React Query, and mounted list and review consumers. Cursor reads remain query-owned. Preview gating and the saved-row age label stay in the UI.","inputs":["docs/patterns/frontend.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Checked the Settings ownership row against the new preview registry entry. Settings owns the toggle. Coding owns the list and review presentation.","inputs":["docs/plans/whole-app-ux-campaign.md","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the optional checkout page result, cursor, and head-bound checks. The review snapshot and the branch conflict indicator each use their specified provider reads.","inputs":["docs/reference/contracts.md","packages/contracts/src/pull-request-provider.ts","src-server/services/pull-requests/pull-request-review.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the documented list option, cursor hook, and older-host omission against the SDK export, route tests, and GitHub provider tests. The authority-owned client saves the first successful GitHub Open summary and keeps later pages memory-only.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts","src-server/services/pull-requests/pull-request-review.ts","src-ui/src/lib/queryPersistence.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Traced Coding's list, labelled saved rows, Load more, and the review preview tabs through the mounted browser flow and the checkout and review consumers. The forge detail still supplies the guide's current head and discussion.","inputs":["docs/user/pull-request-guides.md","src-server/routes/pull-requests/pull-request-routes.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Matched the Pull request workspace entry to the default-off registry and mounted Settings switch. Checked its list search, grouping, and review tabs against the UI consumers.","inputs":["docs/user/settings.md","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Checked the example imports for the host SDK, agent approval and send, and audio against the SDK barrel. The checkout page hook is exported from the React entry in its own pull request domain.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked the public cursor hook and context option against the SDK reference and source. The new behavior is documented in the canonical SDK reference and exercised by the focused contract and consumer suites.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/README.md","note":"Checked the SDK React host entry and the explicit React-free client subpaths. The new checkout pagination hook is exported on the React entry.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts"]}
+  ]
+}

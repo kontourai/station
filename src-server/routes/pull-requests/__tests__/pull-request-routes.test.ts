@@ -145,6 +145,33 @@ describe('pull request operator gate', () => {
       expect(transport).not.toHaveBeenCalled();
     },
   );
+  test('lists the resolved checkout in the same request as its context', async () => {
+    const fixture = app();
+    fixture.provider.listPullRequests.mockResolvedValue({
+      available: true,
+      effectiveCapabilities: caps,
+      effectiveMergeMethods: ['squash'],
+      mergeMethodsSource: 'repository',
+      data: [],
+    });
+    const answer = await fixture.app.request(
+      '/context?project=station&list=OPEN',
+    );
+    expect(answer.status).toBe(200);
+    await expect(answer.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        provider: 'github',
+        repository: { owner: 'o', name: 'r' },
+        branch: 'b',
+        pullRequests: { available: true, data: [] },
+      },
+    });
+    expect(fixture.provider.listPullRequests).toHaveBeenCalledExactlyOnceWith(
+      (await context()).context,
+      { state: 'OPEN', limit: 30 },
+    );
+  });
   test('exposes server-resolved forge identity and preserves unavailable reasons', async () => {
     const x = app();
     const available = await x.app.request('/context?project=station');
