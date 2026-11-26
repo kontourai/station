@@ -92,6 +92,12 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
       mkdirSync(codexHome);
       writeFileSync(join(repo, 'base.txt'), 'base');
       commitAll(repo);
+      const extension = spawnSync(
+        'git',
+        ['config', 'extensions.worktreeConfig', 'true'],
+        { cwd: repo, encoding: 'utf8' },
+      );
+      expect(extension.status, extension.stderr).toBe(0);
       const branch =
         'station-delegation/0123456789abcdef0123456789abcdef/child';
       for (const [name, dir] of [
@@ -167,6 +173,27 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
       });
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toBe('child');
+      const worktreeGit = spawnSync(
+        'git',
+        ['rev-parse', '--absolute-git-dir'],
+        { cwd: worktree, encoding: 'utf8' },
+      );
+      expect(worktreeGit.status, worktreeGit.stderr).toBe(0);
+      const worktreeConfig = join(worktreeGit.stdout.trim(), 'config.worktree');
+      expect(existsSync(worktreeConfig)).toBe(false);
+      const configWrite = run([
+        'git',
+        'config',
+        '--worktree',
+        'core.hooksPath',
+        worktree,
+      ]);
+      expect(configWrite.status, configWrite.stderr).not.toBe(0);
+      expect(configWrite.stderr).toMatch(
+        /Read-only file system|Permission denied|Device or resource busy/,
+      );
+      expect(existsSync(worktreeConfig)).toBe(false);
+
       for (const path of [
         join(repo, 'probe'),
         join(other, 'probe'),
