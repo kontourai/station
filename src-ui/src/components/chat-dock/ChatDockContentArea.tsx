@@ -36,6 +36,11 @@ const loadSkillExperiencePanel = () =>
 
 interface ChatDockContentAreaProps {
   activeSession: ChatSession | null;
+  /**
+   * #5592: with no chat open the desktop dock shows its New chat draft
+   * instead of an empty card. With no Agents the card remains and says so.
+   */
+  noAgentReady?: boolean;
   transcriptSnapshotRef?: ComponentProps<
     typeof ChatDockBody
   >['transcriptSnapshotRef'];
@@ -166,6 +171,7 @@ function ChatDockContentAreaImpl({
   onForkFromTurn,
   onResendFromMessage,
   onNewChat,
+  noAgentReady = false,
   onRetryConversationOpen,
   onOpenBackgroundTasks,
 }: ChatDockContentAreaProps) {
@@ -313,7 +319,10 @@ function ChatDockContentAreaImpl({
             <Empty
               variant="prominent"
               className="chat-dock__no-chat"
-              label="No chat open"
+              label={noAgentReady ? 'No Agents yet' : 'No chat open'}
+              description={
+                noAgentReady ? 'Create an Agent to start a chat.' : undefined
+              }
               action={<NewChatAction onClick={() => onNewChat()} />}
             />
           )}

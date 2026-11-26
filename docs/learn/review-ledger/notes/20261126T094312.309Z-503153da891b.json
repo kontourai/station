@@ -1,0 +1,7 @@
+{
+  "revision": "5771ec3eb643fd2809e344e152ee5efa770e2486",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added the No empty pane bullet for #5592: an open dock with no chat shows the New chat draft (ChatDock paneHasNoChat/restingDraft), keeps the dock size, folds the dock on dismiss, yields to conversation-open recovery; the empty card remains only with no Agent (ChatDockContentArea noAgentReady). Checked against ChatWorkspacePaneComposerDraft and ChatDockPickerRecovery tests.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockContentArea.tsx"]}
+  ]
+}
