@@ -14,6 +14,7 @@ import type {
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Locator, type Page } from '@playwright/test';
 import type { PluginPublishInspection } from '../src-ui/src/views/project-page/pluginPublishClient';
+import { createLongSessionEventWindowHandler } from './fixtures/long-session';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import {
   E2E_STATION_CAPABILITIES,
@@ -119,6 +120,11 @@ async function mockTaskFirstHome(
     localStorage.setItem('station:onboarding-setup-dismissed', '1');
   });
   await page.route('**/events', (route) => route.abort());
+  await page.route('**/acp/connections', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill(json([]))
+      : rejectUnexpectedFixtureRequest(route),
+  );
   await page.route(
     '**/agents/codex-agent/conversations/task-first-home/messages',
     (route) => route.fulfill(json([])),
@@ -351,6 +357,7 @@ async function mockTaskFirstHome(
                 threadId: `history-${index}`,
                 conversationId: `conversation-${index}`,
                 displayTitle: `History session ${index}`,
+                eventCount: 0,
                 delegation: undefined,
                 lifecycleState: 'completed',
                 status: 'closed',
@@ -495,6 +502,26 @@ async function mockTaskFirstHome(
         );
         return;
       }
+    }
+    const historyWindow = path.match(
+      /^\/api\/orchestration\/sessions\/history-(\d+)\/event-window$/,
+    );
+    if (historyWindow && options.historyCount) {
+      const query = new URL(route.request().url()).searchParams;
+      if (
+        route.request().method() !== 'GET' ||
+        Number(historyWindow[1]) >= options.historyCount ||
+        query.get('direction') !== 'newest' ||
+        query.get('turnLimit') !== '1' ||
+        query.has('cursor')
+      )
+        return rejectUnexpectedFixtureRequest(route);
+      await createLongSessionEventWindowHandler({
+        threadId: `history-${historyWindow[1]}`,
+        provider: taskSession.provider,
+        availableTurns: () => [],
+      })(route);
+      return;
     }
     if (path === '/api/orchestration/sessions/task-first-home') {
       await route.fulfill(
@@ -1918,93 +1945,108 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
   test('desktop active work reveals real files and task context beside usable chat', async ({
     page,
-  }) => {
+  }, testInfo) => {
+    await installJourneyProfile(page);
     await installMockOrchestrationSse(page);
     await mockTaskFirstHome(page);
     await page.goto('/');
     await startProjectTask(page, { settle: true });
 
-    // Delegate/Commands/Files/Task-context collapse into one grouped "+"
-    // menu next to attach + mic (docs/design/chat-composer.md §3.2) — open
-    // it to reach the Files/Task-context toggles.
-    const actionsMenuTrigger = page.getByRole('button', {
-      name: 'Composer actions',
-    });
-    await expect(actionsMenuTrigger).toBeVisible();
+    await profileJourney(
+      page,
+      testInfo,
+      'desktop-workspace',
+      { files: 1, taskContexts: 1 },
+      async () => {
+        // Delegate/Commands/Files/Task-context collapse into one grouped "+"
+        // menu next to attach + mic (docs/design/chat-composer.md §3.2) — open
+        // it to reach the Files/Task-context toggles.
+        const actionsMenuTrigger = page.getByRole('button', {
+          name: 'Composer actions',
+        });
+        await expect(actionsMenuTrigger).toBeVisible();
 
-    await actionsMenuTrigger.click();
-    const menu = page.getByRole('menu', { name: 'Composer actions' });
-    await expect(menu).toBeVisible();
-    const filesTrigger = menu.getByRole('menuitemcheckbox', {
-      name: 'Files (1)',
-    });
-    await expect(filesTrigger).toBeVisible();
-    await filesTrigger.click();
-    await expect(
-      page.getByRole('complementary', { name: 'Active work files' }),
-    ).toBeVisible();
-    await expect(page.locator('.chat-dock textarea')).toBeVisible();
+        await actionsMenuTrigger.click();
+        const menu = page.getByRole('menu', { name: 'Composer actions' });
+        await expect(menu).toBeVisible();
+        const filesTrigger = menu.getByRole('menuitemcheckbox', {
+          name: 'Files (1)',
+        });
+        await expect(filesTrigger).toBeVisible();
+        await filesTrigger.click();
+        await expect(
+          page.getByRole('complementary', { name: 'Active work files' }),
+        ).toBeVisible();
+        await expect(page.locator('.chat-dock textarea')).toBeVisible();
 
-    // Task context replaces the files panel beside the same usable chat.
-    await actionsMenuTrigger.click();
-    await expect(menu).toBeVisible();
-    await menu.getByRole('menuitemcheckbox', { name: 'Task context' }).click();
-    const context = page.getByRole('complementary', { name: 'Task context' });
-    await expect(context).toContainText('feat/contextual-active-work');
-    await expect(context).toContainText('Checks');
-    await expect(context).toContainText('Unavailable');
-    await expect(page.locator('.chat-dock textarea')).toBeVisible();
+        // Task context replaces the files panel beside the same usable chat.
+        await actionsMenuTrigger.click();
+        await expect(menu).toBeVisible();
+        await menu
+          .getByRole('menuitemcheckbox', { name: 'Task context' })
+          .click();
+        const context = page.getByRole('complementary', {
+          name: 'Task context',
+        });
+        await expect(context).toContainText('feat/contextual-active-work');
+        await expect(context).toContainText('Checks');
+        await expect(context).toContainText('Unavailable');
+        await expect(page.locator('.chat-dock textarea')).toBeVisible();
 
-    const geometry = await page
-      .locator('.chat-dock__workspace')
-      .evaluate((el) => ({
-        clientWidth: el.clientWidth,
-        scrollWidth: el.scrollWidth,
-        clientHeight: el.clientHeight,
-        scrollHeight: el.scrollHeight,
-      }));
-    expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
-    expect(geometry.scrollHeight).toBeLessThanOrEqual(
-      geometry.clientHeight + 1,
+        const geometry = await page
+          .locator('.chat-dock__workspace')
+          .evaluate((el) => ({
+            clientWidth: el.clientWidth,
+            scrollWidth: el.scrollWidth,
+            clientHeight: el.clientHeight,
+            scrollHeight: el.scrollHeight,
+          }));
+        expect(geometry.scrollWidth).toBeLessThanOrEqual(
+          geometry.clientWidth + 1,
+        );
+        expect(geometry.scrollHeight).toBeLessThanOrEqual(
+          geometry.clientHeight + 1,
+        );
+
+        // A changed file opens in the editor route, where the same chat's
+        // composer is still the usable surface.
+        await actionsMenuTrigger.click();
+        await expect(menu).toBeVisible();
+        await filesTrigger.click();
+        // The opened file's pane reads its changes against HEAD (#3365). Wait
+        // for that read so the test, not teardown timing, decides it ran.
+        const changesRead = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname ===
+              '/api/projects/station/file-preview/changes' &&
+            response.request().method() === 'POST',
+        );
+        await page
+          .getByRole('button', { name: 'Open src-ui/src/App.tsx in editor' })
+          .click();
+        await expect
+          .poll(() => new URL(page.url()).pathname)
+          .toBe('/projects/station/layouts/coding');
+        expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
+          'src-ui/src/App.tsx',
+        );
+        const changes = await changesRead;
+        expect(changes.status()).toBe(200);
+        // The pane asked for the file it opened.
+        expect(changes.request().postDataJSON()).toMatchObject({
+          path: 'src-ui/src/App.tsx',
+        });
+        // The opened preview shows the file and consumed the read: the Changes
+        // toggle counts the declared patch's one changed line.
+        await expect(page.getByText('export function App() {}')).toBeVisible();
+        await expect(
+          page.getByRole('button', { name: 'Changes vs HEAD, 1 changed line' }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('textbox', { name: 'Message', exact: true }),
+        ).toBeVisible();
+      },
     );
-
-    // A changed file opens in the editor route, where the same chat's
-    // composer is still the usable surface.
-    await actionsMenuTrigger.click();
-    await expect(menu).toBeVisible();
-    await filesTrigger.click();
-    // The opened file's pane reads its changes against HEAD (#3365). Wait
-    // for that read so the test, not teardown timing, decides it ran.
-    const changesRead = page.waitForResponse(
-      (response) =>
-        new URL(response.url()).pathname ===
-          '/api/projects/station/file-preview/changes' &&
-        response.request().method() === 'POST',
-    );
-    await page
-      .getByRole('button', { name: 'Open src-ui/src/App.tsx in editor' })
-      .click();
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toBe('/projects/station/layouts/coding');
-    expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
-      'src-ui/src/App.tsx',
-    );
-    const changes = await changesRead;
-    expect(changes.status()).toBe(200);
-    // The pane asked for the file it opened.
-    expect(changes.request().postDataJSON()).toMatchObject({
-      path: 'src-ui/src/App.tsx',
-    });
-    // The opened preview shows the file and consumed the read: the Changes
-    // toggle counts the declared patch's one changed line.
-    await expect(page.getByText('export function App() {}')).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Changes vs HEAD, 1 changed line' }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('textbox', { name: 'Message', exact: true }),
-    ).toBeVisible();
   });
 
   // #1180: the Activity surface is one of the places where `SplitPaneLayout`'s
@@ -2991,31 +3033,64 @@ test.describe('Task-first Home (#332, mocked)', () => {
   });
 });
 
-test('profiles Home with substantial session history', async ({
-  page,
-}, testInfo) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await installJourneyProfile(page);
-  await mockTaskFirstHome(page, { historyCount: 1000 });
-  await profileJourney(
+for (const viewport of [
+  { width: 1280, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test(`profiles Home with substantial session history at ${viewport.width}px`, async ({
     page,
-    testInfo,
-    'home-history',
-    { sessions: 1000 },
-    async () => {
-      const response = page.waitForResponse(
-        (response) =>
-          new URL(response.url()).pathname ===
-          '/api/orchestration/sessions/read-model',
-      );
-      await page.goto('/');
-      expect((await (await response).json()).data).toHaveLength(1000);
-      await expect(
-        page.getByRole('form', { name: 'Start work' }),
-      ).toBeVisible();
-      await expect(
-        page.getByText('History session 0', { exact: true }).first(),
-      ).toBeVisible();
-    },
-  );
-});
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await installJourneyProfile(page);
+    await mockTaskFirstHome(page, { historyCount: 1000 });
+    await profileJourney(
+      page,
+      testInfo,
+      viewport.width === 1280 ? 'home-history' : 'home-history-mobile',
+      { sessions: 1000 },
+      async () => {
+        const response = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname ===
+            '/api/orchestration/sessions/read-model',
+        );
+        await page.goto('/');
+        expect((await (await response).json()).data).toHaveLength(1000);
+        await expect(
+          page.getByRole('form', { name: 'Start work' }),
+        ).toBeVisible();
+        await expect(
+          page.getByText('History session 0', { exact: true }).first(),
+        ).toBeVisible();
+      },
+    );
+    const composer = page
+      .getByRole('form', { name: 'Start work' })
+      .getByRole('textbox', { name: 'What would you like done?' });
+    const draft = 'Keep this draft while I browse recent work';
+    await composer.click();
+    await composer.pressSequentially(draft);
+    await expect(composer).toHaveValue(draft);
+    await expect(composer).toBeFocused();
+    const bounds = await composer.boundingBox();
+    expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    await page
+      .getByText('History session 0', { exact: true })
+      .first()
+      .scrollIntoViewIfNeeded();
+    await expect(composer).toBeFocused();
+    await composer.scrollIntoViewIfNeeded();
+    await expect(composer).toHaveValue(draft);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth + 1,
+      ),
+    ).toBe(true);
+    await testInfo.attach('home-history-draft-and-focus', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
+  });
+}
