@@ -261,6 +261,7 @@ export function MobileInboxTools({
                   setStation('all');
                   setProject('all');
                   setDraftStatus('All statuses');
+                  setDraftPullRequest('');
                   setQuery('');
                 }}
               >
