@@ -4,7 +4,6 @@ import {
   type ConversationInboxEntry,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
 } from '@kontourai/station-contracts/orchestration';
-import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { turnInterruptedContinueClientTurnId } from '@kontourai/station-shared/conversation-message';
@@ -13,9 +12,9 @@ import { describe, expect, test, vi } from 'vitest';
 import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
 import { restartContinuationEntry } from '../../../services/orchestration/restart-continuation.js';
 import { turnDedupKey } from '../../../services/orchestration/station-turn-dedup-bindings.js';
+import { foregroundTurnSubmissionDigest } from '../../../services/orchestration/turn-submission-digest.js';
 import { PullRequestFeedbackPoller } from '../../../services/pull-requests/pull-request-feedback-poller.js';
 import { PullRequestFeedbackStore } from '../../../services/pull-requests/pull-request-feedback-store.js';
-import { foregroundTurnSubmissionDigest } from '../../../services/orchestration/turn-submission-digest.js';
 
 import {
   AGENT,
@@ -174,7 +173,7 @@ describe('coordination wakes through the inbox harness', () => {
               state: 'observed',
               observation,
             }),
-          } as unknown as IPullRequestProvider,
+          },
         ],
         session: () => ({ state: 'idle' }),
         lastTurnAt: () => undefined,

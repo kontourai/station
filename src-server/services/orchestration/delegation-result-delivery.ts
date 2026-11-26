@@ -95,15 +95,15 @@ import {
   isPrincipalRef,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
-import {
-  isSessionLifecycleState,
-  isSessionLifecycleStateAtRest,
-} from '@kontourai/station-contracts/session-lifecycle';
 import type { PullRequestFeedbackObservation } from '@kontourai/station-contracts/pull-request-feedback';
 import type {
   RequestOpenedEvent,
   SessionStateChangedEvent,
 } from '@kontourai/station-contracts/runtime-events';
+import {
+  isSessionLifecycleState,
+  isSessionLifecycleStateAtRest,
+} from '@kontourai/station-contracts/session-lifecycle';
 import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { errorMessage } from '../../utils/error-message.js';
 import {

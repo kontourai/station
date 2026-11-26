@@ -33,19 +33,19 @@ import {
   queuedAttachmentsOf,
   readQueuedAttachmentFrom,
 } from '../../../../runtime/routes/conversation-start-ports.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../../security/runtime-request-security.js';
+import { bindStationControlRequestAuthority } from '../../../../security/station-control-request-authority.js';
 import { prepareManagedAcpWorkspace } from '../../../../services/acp/managed-acp-workspace.js';
 import {
   type ExecutionSessionBinding,
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
 } from '../../../../services/execution-target/execution-target-execution.js';
-import { setRuntimeAuthenticatedRequestPrincipal } from '../../../../security/runtime-request-security.js';
-import { bindStationControlRequestAuthority } from '../../../../security/station-control-request-authority.js';
+import { AttachmentStagingService } from '../../../../services/orchestration/attachment-staging-service.js';
 import {
   DELEGATION_RESULT_CLIENT_ORIGIN,
   DelegationResultDelivery,
 } from '../../../../services/orchestration/delegation-result-delivery.js';
-import { AttachmentStagingService } from '../../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../../services/orchestration/event-store.js';
 import { memoryContinuationForInbox } from '../../../../services/orchestration/memory-exhaustion-continuation.js';

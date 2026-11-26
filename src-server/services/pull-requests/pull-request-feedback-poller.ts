@@ -61,7 +61,10 @@ const CLOSED_INTERVAL_MS = 6 * 60 * MINUTE;
 export interface PullRequestFeedbackPollerPorts {
   enabled(): boolean;
   store(): PullRequestFeedbackStore | undefined;
-  providers(): IPullRequestProvider[];
+  providers(): readonly Pick<
+    IPullRequestProvider,
+    'id' | 'canServeHost' | 'getFeedbackObservation'
+  >[];
   statusWatches?(): readonly {
     prKey: string;
     identity: PullRequestLinkIdentity;

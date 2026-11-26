@@ -1,6 +1,6 @@
 import type { SessionInventoryLiveItem } from '@kontourai/station-basis-pane/session-inventory-view';
-import type { AnySessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
 import type { CoordinationChild } from '@kontourai/station-contracts/orchestration';
+import type { AnySessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
 import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useCallback, useRef, useSyncExternalStore } from 'react';

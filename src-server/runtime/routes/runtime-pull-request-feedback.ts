@@ -10,7 +10,6 @@
  */
 
 import { resolve } from 'node:path';
-import type { DelegationResultDelivery } from '../../services/orchestration/delegation-result-delivery.js';
 import type {
   ConversationPullRequestLink,
   ConversationPullRequestLinkObservation,
@@ -46,6 +45,7 @@ import { readReviewRepositoryIdentity } from '../../services/evidence/git-review
 import type { ReviewEvidenceModule } from '../../services/evidence/review-evidence-module.js';
 import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
+import type { DelegationResultDelivery } from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
