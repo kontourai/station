@@ -197,6 +197,7 @@ describe('buildStationResetPlan', () => {
       'titleModel',
       // Pairing: restore the Station's default-off LAN publication choice.
       'lanDiscoveryEnabled',
+      'trustedConsentOrigin',
       // My knowledge store: past conversations in Knowledge. Clearing it
       // stops the next startup registering root:conversations; it does not
       // remove a root that already exists.

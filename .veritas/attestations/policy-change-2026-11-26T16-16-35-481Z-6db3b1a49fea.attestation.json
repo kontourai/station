@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-11-26T16-16-35-481Z-6db3b1a49fea",
+  "kind": "policy-change",
+  "actor": {
+    "id": "briananderson1222",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-11-26T16:16:35.481Z",
+  "repoStandardsHash": "sha256:8c563254b3fc8eaab01f4796829b4f2433f171b0874ed08b4a1f803a41143402",
+  "repoMapHash": "sha256:ebcf01c0d5267b3e273081ecd1680a425f726bfc3f97683ead5f1ced008c11c6",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-11-08T23-39-48-038Z-6e59f453a2fa",
+  "validUntilDays": 90,
+  "notes": "Owner authorized an exact generic-api-key exception for non-secret Cancelled/Nothing screenshot-review prose, constrained to its immutable review note and archives; threat model remains preventing actual credential disclosure. No credential or rule-wide/path-wide suppression.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-11-08T23-39-48-038Z-6e59f453a2fa",
+    "approvalRef": "chat:2026-11-26:do-what-you-need-to-get-all-delivered-and-merged",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-11-26T16-16-35-481Z-6db3b1a49fea",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "29e44f8be4bf44bf03497259d1de030a915ea8a65f9f93f188b896582f64e2f2",
+        "validUntil": "2027-02-24T16:16:35.481Z"
+      },
+      "createdAt": "2026-11-26T16:16:35.481Z",
+      "updatedAt": "2026-11-26T16:16:35.481Z",
+      "status": "proposed",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "weak",
+        "reviewerAuthority": "none",
+        "evidenceStrength": "weak",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-11-26T16-16-35-481Z-6db3b1a49fea",
+      "claimId": "veritas.attestation.policy-change-2026-11-26T16-16-35-481Z-6db3b1a49fea",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Owner authorized an exact generic-api-key exception for non-secret Cancelled/Nothing screenshot-review prose, constrained to its immutable review note and archives; threat model remains preventing actual credential disclosure. No credential or rule-wide/path-wide suppression.",
+      "observedAt": "2026-11-26T16:16:35.481Z",
+      "collectedBy": "briananderson1222",
+      "integrityRef": "29e44f8be4bf44bf03497259d1de030a915ea8a65f9f93f188b896582f64e2f2",
+      "metadata": {
+        "actor": {
+          "id": "briananderson1222",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-11-26T16:16:35.481Z",
+        "validUntil": "2027-02-24T16:16:35.481Z",
+        "contentHash": "29e44f8be4bf44bf03497259d1de030a915ea8a65f9f93f188b896582f64e2f2"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-11-26T16-16-35-481Z-6db3b1a49fea.proposed",
+      "claimId": "veritas.attestation.policy-change-2026-11-26T16-16-35-481Z-6db3b1a49fea",
+      "status": "proposed",
+      "actor": "briananderson1222",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-11-26T16-16-35-481Z-6db3b1a49fea"
+      ],
+      "createdAt": "2026-11-26T16:16:35.481Z"
+    }
+  },
+  "recordIntegrity": {
+    "algorithm": "veritas-attestation-record-v1",
+    "digest": "787d010866c3c8acdaa23f3f6a4019e480e82d5a8cc87b864199fc758ab2321a"
+  }
+}

@@ -20,7 +20,9 @@
 
     "src-ui/src/hooks/useSectionNavigation.ts",
 
-    "src-ui/src/hooks/useDeveloperFeatures.ts"
+    "src-ui/src/hooks/useDeveloperFeatures.ts",
+
+    "src-ui/src/components/connections/useStationRoutes.ts"
   ],
 
   "checks": [

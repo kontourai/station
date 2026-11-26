@@ -61,6 +61,7 @@ async function build(
     hosted?: boolean;
     accountBound?: boolean;
     firstScope?: string;
+    resolveOrigin?: () => string | null;
   } = {},
 ) {
   const home = makeTemp('station-operator-session-');
@@ -137,7 +138,9 @@ async function build(
   const origin = options.origin === undefined ? ORIGIN : options.origin;
   const sessionService = new OperatorSessionService({
     registry,
-    origin,
+    get origin() {
+      return options.resolveOrigin ? options.resolveOrigin() : origin;
+    },
     now: () => clock.now,
     identifyDevice: (credential) => security.identifyDevice(credential),
     epoch: () =>
@@ -833,6 +836,20 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
     expect(() => h.sessionService.renderNonce(h.first.credential)).toThrow(
       'rate_limited',
     );
+  });
+
+  test('a sign-in nonce cannot move to a newly published approval origin', async () => {
+    let origin: string | null = ORIGIN;
+    const h = await build({ resolveOrigin: () => origin });
+    await h.enroll();
+    const nonce = h.sessionService.renderNonce(h.first.credential);
+    origin = 'https://new.example.test';
+    expect(h.sessionService.signInUrl).toBe(`${origin}/operator/sign-in`);
+    await expect(
+      h.sessionService.options(nonce, h.first.credential),
+    ).rejects.toMatchObject({ code: 'challenge_invalid' });
+    origin = null;
+    expect(h.sessionService.signInUrl).toBeNull();
   });
 
   test('consent-origin sign-out consumes its nonce, clears the cookie, and ends reads', async () => {

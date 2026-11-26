@@ -15,6 +15,7 @@ import {
   type StationProfileRelayRoute,
   type StationProfileStore,
 } from '@kontourai/station-contracts';
+import { isTrustedConsentOrigin } from '@kontourai/station-contracts/station-routes';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { invokeTauri } from './tauriInvoke';
 
@@ -299,6 +300,7 @@ export interface NativeStationProfileRepository {
     connectionId: string,
     exactOrigin: string,
   ): NativeProfileRequestBinding | null;
+  refreshNativeRoutes(connectionId: string): Promise<void>;
   /**
    * Same-user local self-authorization (archive#1715, revised archive#1818):
    * the process-selected Station's name, IF it is a local-service install
@@ -439,11 +441,14 @@ export class NativeStationProfileStorage
     | { name: string; instanceId?: string; baseDir?: string }
     | undefined;
   private selectionProvenanceHydrated = false;
+  private authorizationGeneration = 0;
   private activeRequestBinding:
     | (NativeProfileRequestBinding & {
         connectionId: string;
         credentialRef: StationProfileCredentialRef;
         environmentId?: string;
+        authorizedOrigins?: string[];
+        expiresAtMs?: number;
       })
     | undefined;
 
@@ -476,6 +481,8 @@ export class NativeStationProfileStorage
   }
 
   private replaceProfileStore(store: StationProfileStore): void {
+    if (store.revision !== this.profileStore.revision)
+      this.authorizationGeneration += 1;
     // A metadata-only refresh (for example `updatedAt` on another profile)
     // must not strand the current native request epoch. Preserve it only if
     // the exact selected connection still has the same configured authority.
@@ -500,9 +507,20 @@ export class NativeStationProfileStorage
     this.profileStore = store;
     this.hydrateClientSelectionProvenance();
     const selectableProfiles = store.profiles;
-    const connections = selectableProfiles.map((profile) =>
-      savedConnectionFromStationProfile(profile, store.revision),
+    const previousConnections: SavedConnection[] = JSON.parse(
+      this.values.get(CONNECTIONS_KEY) ?? '[]',
     );
+    const connections = selectableProfiles.map((profile) => {
+      const connection = savedConnectionFromStationProfile(
+        profile,
+        store.revision,
+      );
+      return this.withNativeRoutes(
+        connection,
+        previousConnections.find((candidate) => candidate.id === connection.id)
+          ?.url,
+      );
+    });
     this.values.set(CONNECTIONS_KEY, JSON.stringify(connections));
     this.relayRouteProfileSnapshot = Object.freeze(
       store.profiles
@@ -786,6 +804,10 @@ export class NativeStationProfileStorage
     // `ConnectionStore` records a temporary selected connection through this
     // key. Retaining it only in memory is intentional: navigation and a
     // one-off selection never rewrite the shared CLI default.
+    if (key === ACTIVE_KEY && this.values.get(key) !== value) {
+      this.authorizationGeneration += 1;
+      this.activeRequestBinding = undefined;
+    }
     this.values.set(key, value);
   }
 
@@ -1163,6 +1185,7 @@ export class NativeStationProfileStorage
       (candidate) => profileConnectionId(candidate) === connectionId,
     );
     if (!profile) return false;
+    const generation = ++this.authorizationGeneration;
 
     const previousActive = this.values.get(ACTIVE_KEY);
     // ConnectionStore republishes ACTIVE_KEY during ordinary metadata writes,
@@ -1175,6 +1198,7 @@ export class NativeStationProfileStorage
     else if (explicit && this.persistsClientSelection)
       this.clientSelectionStorage.remove(EXPLICIT_SELECTION_KEY);
     this.values.set(ACTIVE_KEY, connectionId);
+    this.activeRequestBinding = undefined;
     if (!profile.credentialRef) return false;
     try {
       const exactOrigin = normalizedPairingEndpoint(
@@ -1185,6 +1209,7 @@ export class NativeStationProfileStorage
         'station_profile_authorize_active',
         { profileName: profile.name },
       );
+      if (generation !== this.authorizationGeneration) return false;
       const binding = parseNativeProfileAuthorizationReceipt(
         result,
         exactOrigin,
@@ -1203,6 +1228,7 @@ export class NativeStationProfileStorage
       };
       return true;
     } catch (error) {
+      if (generation !== this.authorizationGeneration) throw error;
       if (previousActive === undefined) this.values.delete(ACTIVE_KEY);
       else this.values.set(ACTIVE_KEY, previousActive);
       throw error;
@@ -1242,10 +1268,111 @@ export class NativeStationProfileStorage
   ): NativeProfileRequestBinding | null {
     const binding = this.activeRequestBinding;
     return binding &&
+      this.values.get(ACTIVE_KEY) === connectionId &&
       binding.connectionId === connectionId &&
-      binding.exactOrigin === exactOrigin
-      ? { bindingId: binding.bindingId, exactOrigin: binding.exactOrigin }
+      (binding.exactOrigin === exactOrigin ||
+        (Boolean(binding.expiresAtMs && binding.expiresAtMs > Date.now()) &&
+          binding.authorizedOrigins?.includes(exactOrigin)))
+      ? { bindingId: binding.bindingId, exactOrigin }
       : null;
+  }
+
+  async refreshNativeRoutes(connectionId: string): Promise<void> {
+    const binding = this.activeRequestBinding;
+    if (
+      !binding ||
+      binding.connectionId !== connectionId ||
+      this.values.get(ACTIVE_KEY) !== connectionId
+    )
+      return;
+    try {
+      const value = await this.bridge.invoke<unknown>(
+        'station_profile_refresh_routes',
+        {
+          bindingId: binding.bindingId,
+        },
+      );
+      if (
+        this.activeRequestBinding !== binding ||
+        this.values.get(ACTIVE_KEY) !== connectionId
+      )
+        return;
+      if (!value || typeof value !== 'object' || Array.isArray(value))
+        throw new Error('invalid_native_route_receipt');
+      const receipt = value as Record<string, unknown>;
+      const now = Date.now();
+      if (
+        Object.keys(receipt).length !== 4 ||
+        receipt.bindingId !== binding.bindingId ||
+        receipt.exactOrigin !== binding.exactOrigin ||
+        !Array.isArray(receipt.authorizedOrigins) ||
+        receipt.authorizedOrigins.length > 16 ||
+        new Set(receipt.authorizedOrigins).size !==
+          receipt.authorizedOrigins.length ||
+        !receipt.authorizedOrigins.every(isTrustedConsentOrigin) ||
+        typeof receipt.expiresAtMs !== 'number' ||
+        !Number.isSafeInteger(receipt.expiresAtMs) ||
+        receipt.expiresAtMs <= now ||
+        receipt.expiresAtMs > now + 10 * 60_000
+      )
+        throw new Error('invalid_native_route_receipt');
+      binding.authorizedOrigins = receipt.authorizedOrigins;
+      binding.expiresAtMs = receipt.expiresAtMs;
+    } catch (error) {
+      if (this.activeRequestBinding === binding) {
+        binding.authorizedOrigins = [];
+        binding.expiresAtMs = undefined;
+        this.publishNativeRoutes();
+      }
+      throw error;
+    }
+    this.publishNativeRoutes();
+  }
+
+  private publishNativeRoutes(): void {
+    const previous = this.values.get(CONNECTIONS_KEY);
+    const connections: SavedConnection[] = JSON.parse(previous ?? '[]');
+    const projected = JSON.stringify(
+      connections.map((connection) => this.withNativeRoutes(connection)),
+    );
+    if (previous === projected) return;
+    this.values.set(CONNECTIONS_KEY, projected);
+    for (const listener of this.relayRouteProfileListeners) listener();
+  }
+
+  private withNativeRoutes(
+    connection: SavedConnection,
+    selectedUrl = connection.url,
+  ): SavedConnection {
+    const binding = this.activeRequestBinding;
+    if (
+      !binding ||
+      binding.connectionId !== connection.id ||
+      connection.nativeBrokerRoute
+    )
+      return connection;
+    const anchor = createAccessEndpoint(binding.exactOrigin);
+    const alternatives =
+      binding.expiresAtMs && binding.expiresAtMs > Date.now()
+        ? (binding.authorizedOrigins ?? [])
+            .filter((origin) => origin !== binding.exactOrigin)
+            .map((origin) => ({
+              ...createAccessEndpoint(origin),
+              priority: -2,
+            }))
+        : [];
+    const endpoints = [...alternatives, anchor];
+    const selected =
+      endpoints.find((endpoint) => endpoint.url === selectedUrl) ?? anchor;
+    const accessMethods = endpoints.map(createDirectHttpAccessMethod);
+    return {
+      ...connection,
+      endpoints,
+      accessMethods,
+      url: selected.url,
+      selectedEndpointId: selected.id,
+      selectedAccessMethodId: createDirectHttpAccessMethod(selected).id,
+    };
   }
 
   pendingLocalSelfProvisionProfileName(): string | undefined {

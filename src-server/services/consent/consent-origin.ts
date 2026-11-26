@@ -9,6 +9,7 @@
  * quietly issuing plain-http ones would hide the mistake.
  */
 import { isIP } from 'node:net';
+import { isTrustedConsentOrigin } from '@kontourai/station-contracts/station-routes';
 
 export const TRUSTED_CONSENT_ORIGIN_ENV = 'STATION_TRUSTED_CONSENT_ORIGIN';
 
@@ -85,6 +86,9 @@ export function parseTrustedConsentOrigin(
   // a trailing slash, uppercase, whitespace and a spelled-out default port.
   if (raw !== url.origin) {
     throw new TrustedConsentOriginError(`use the canonical form ${url.origin}`);
+  }
+  if (!isTrustedConsentOrigin(raw)) {
+    throw new TrustedConsentOriginError('the host must be a valid DNS name');
   }
   return url.origin;
 }

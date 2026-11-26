@@ -12788,6 +12788,7 @@ export function configureRuntimeRoutes(
             context.configLoader.getProjectHomeDir(),
           ),
         ).problem(directory),
+      () => context.consentChannel.publication !== undefined,
     ),
   );
   context.app.route(
