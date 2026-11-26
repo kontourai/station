@@ -61,7 +61,10 @@ import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { openSessionFromSummary } from '../../utils/openSession';
 import { absoluteTime } from '../../utils/relativeTime';
 import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
-import { TaskPullRequestRollup } from './TaskPullRequestRollup';
+import {
+  ProjectPullRequestRollup,
+  TaskPullRequestRollup,
+} from './TaskPullRequestRollup';
 import {
   TASK_TONE,
   type TaskStatusPresentation,
@@ -670,6 +673,9 @@ export function ProjectTasksSection({
         </>
       }
     >
+      {presentation === 'board' && showPullRequestRollup && (
+        <ProjectPullRequestRollup entries={board.pullRequests.entries} />
+      )}
       {presentation === 'list' && (
         <nav
           className="project-tasks-section__collections"

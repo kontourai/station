@@ -264,18 +264,30 @@ function snapshotChecks(
   rollup: any,
   contexts: readonly any[],
 ): LinkedPullRequestSnapshot['checks'] {
+  const waiting = contexts.some(
+    (node) =>
+      node?.status === 'WAITING' || node?.conclusion === 'ACTION_REQUIRED',
+  );
   switch (rollup?.state) {
     case 'ERROR':
-    case 'FAILURE':
       return 'failing';
+    case 'FAILURE':
+      return waiting &&
+        rollup.contexts?.totalCount === contexts.length &&
+        !contexts.some((node) =>
+          [
+            'FAILURE',
+            'ERROR',
+            'TIMED_OUT',
+            'CANCELLED',
+            'STARTUP_FAILURE',
+          ].includes(node?.state ?? node?.conclusion),
+        )
+        ? 'awaiting-approval'
+        : 'failing';
     case 'PENDING':
     case 'EXPECTED':
-      return contexts.some(
-        (node) =>
-          node?.status === 'WAITING' || node?.conclusion === 'ACTION_REQUIRED',
-      )
-        ? 'awaiting-approval'
-        : 'pending';
+      return waiting ? 'awaiting-approval' : 'pending';
     case 'SUCCESS':
       return rollup.contexts?.totalCount > 0 || contexts.length > 0
         ? 'passing'
