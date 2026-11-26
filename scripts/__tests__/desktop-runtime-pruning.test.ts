@@ -9,7 +9,7 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { stageDesktopServerRuntime } from '../lib/desktop-server-runtime.mjs';
 
@@ -31,6 +31,127 @@ function writeFixturePackage(
 }
 
 describe('desktop runtime pruning', () => {
+  it.each([false, true])(
+    'preserves the payload with opt-in stage diagnostics enabled=%s',
+    (enabled) => {
+      const project = makeTempDir('station-runtime-diagnostics-');
+      const packages = Array.from(
+        { length: 12 },
+        (_, index) => `fixture-${index}`,
+      );
+      for (const name of packages) {
+        writeFixturePackage(
+          join(project, 'node_modules', name),
+          { name, version: '1.0.0', main: 'index.cjs' },
+          { 'index.cjs': 'module.exports = 42;', 'index.d.ts': 'export {};' },
+        );
+      }
+      const output = join(project, 'release');
+      const diagnostic = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      vi.stubEnv('STATION_DESKTOP_BUILD_DIAGNOSTICS', enabled ? '1' : '0');
+      try {
+        expect(
+          stageDesktopServerRuntime({
+            projectRoot: project,
+            outputRoot: output,
+            packages,
+            platform: 'win32',
+          }),
+        ).toBe(output);
+        for (const name of packages) {
+          expect(
+            readFileSync(
+              join(output, 'node_modules', name, 'index.cjs'),
+              'utf8',
+            ),
+          ).toBe('module.exports = 42;');
+          expect(
+            existsSync(join(output, 'node_modules', name, 'index.d.ts')),
+          ).toBe(false);
+        }
+        if (!enabled) {
+          expect(diagnostic).not.toHaveBeenCalled();
+          return;
+        }
+        const receipts = diagnostic.mock.calls.map(([, receipt]) =>
+          JSON.parse(String(receipt)),
+        );
+        expect(receipts.map(({ phase, event }) => `${phase}:${event}`)).toEqual(
+          [
+            'prepare output:start',
+            'prepare output:end',
+            'planning:start',
+            'planning:end',
+            'copy:start',
+            'copy:end',
+            'inspection:start',
+            'inspection:end',
+          ],
+        );
+        expect(receipts[3].work).toMatchObject({
+          plannedPackages: 12,
+          uniqueSources: 12,
+        });
+        expect(receipts[5].work).toMatchObject({
+          runtimeCopies: 12,
+          wixCopies: 0,
+          filterRejected: 12,
+        });
+        expect(receipts[5].slowPackages).toHaveLength(10);
+        expect(
+          receipts[5].slowPackages.every(
+            ({ completed }: { completed: boolean }) => completed,
+          ),
+        ).toBe(true);
+        expect(receipts[7].work).toMatchObject({ inspectedFiles: 24 });
+        expect(receipts[7].work.inspectedBytes).toBeGreaterThan(0);
+        expect(receipts[7].parentCpuMicros).toEqual({
+          user: expect.any(Number),
+          system: expect.any(Number),
+        });
+      } finally {
+        diagnostic.mockRestore();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
+  it('attributes a release-budget failure to inspection without stale copy context', () => {
+    const project = makeTempDir('station-runtime-diagnostics-failure-');
+    writeFixturePackage(join(project, 'node_modules/fixture'), {
+      name: 'fixture',
+      version: '1.0.0',
+    });
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('STATION_DESKTOP_BUILD_DIAGNOSTICS', '1');
+    try {
+      expect(() =>
+        stageDesktopServerRuntime({
+          projectRoot: project,
+          outputRoot: join(project, 'release'),
+          packages: ['fixture'],
+          budget: { maxBytes: 0, maxFiles: 0 },
+        }),
+      ).toThrow('Desktop server runtime exceeds its release budget');
+      const receipt = JSON.parse(String(diagnostic.mock.calls.at(-1)?.[1]));
+      expect(receipt).toMatchObject({
+        phase: 'inspection',
+        event: 'failed',
+        work: { inspectedFiles: 1 },
+      });
+      expect(receipt.error.message).toContain(
+        'Desktop server runtime exceeds its release budget',
+      );
+      expect(receipt).not.toHaveProperty('currentPackage');
+      expect(receipt).not.toHaveProperty('lastCopyEntry');
+    } finally {
+      diagnostic.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it.each(['dependencies', 'peerDependencies'])(
     'hoists conflicting %s without growing the installed OTLP dependency chain',
     async (dependencyField) => {

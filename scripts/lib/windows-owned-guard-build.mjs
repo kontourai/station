@@ -3,6 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { chmodSync, lstatSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { spawnSyncBounded } from './bounded-capture.mjs';
+
+const GUARD_COMPILER_TIMEOUT_MS = 10_000;
 
 function assertRegularPrivateFile(path) {
   let info;
@@ -22,6 +25,9 @@ function assertRegularPrivateFile(path) {
 
 function compilerDiagnostic(compiled) {
   return [
+    compiled.error?.code === 'ETIMEDOUT'
+      ? `compiler timed out after ${GUARD_COMPILER_TIMEOUT_MS}ms`
+      : undefined,
     compiled.error?.message,
     compiled.stdout?.trim(),
     compiled.stderr?.trim(),
@@ -58,10 +64,16 @@ export function buildWindowsOwnedGuard({
     ? join(windir, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe')
     : 'csc.exe';
   try {
-    const compiled = spawnProcess(
+    const compiled = spawnSyncBounded(
       compiler,
       ['/nologo', '/target:exe', `/out:${staged}`, source],
-      { encoding: 'utf8', windowsHide: true },
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: GUARD_COMPILER_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      },
+      { run: spawnProcess },
     );
     if (compiled.error || compiled.status !== 0) {
       const diagnostic = compilerDiagnostic(compiled);

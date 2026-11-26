@@ -1,5 +1,6 @@
 import {
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -108,6 +109,38 @@ test('launcher wires its settlement controller and rejects partial control EOF',
 });
 
 describe('Windows owned guard build', () => {
+  test('refuses timed-out compiler output and removes its private directory', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-guard-build-test-'));
+    try {
+      expect(() =>
+        buildWindowsOwnedGuard({
+          tempDirectory: root,
+          spawnProcess: (_compiler, args, options) => {
+            expect(options.timeout).toBe(10_000);
+            expect(options.maxBuffer).toBe(1024 * 1024);
+            const staged = args.find((argument) =>
+              argument.startsWith('/out:'),
+            );
+            if (!staged) throw new Error('missing compiler output argument');
+            writeFileSync(staged.slice('/out:'.length), 'partial executable');
+            return {
+              status: null,
+              error: Object.assign(new Error('compiler stalled'), {
+                code: 'ETIMEDOUT',
+              }),
+              stdout: 'partial compiler output',
+            };
+          },
+        }),
+      ).toThrow(
+        /compiler timed out after 10000ms[\s\S]*partial compiler output/,
+      );
+      expect(readdirSync(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('uses a unique private staged executable and rejects an empty compiler result', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-guard-build-test-'));
     const source = join(root, 'guard.cs');

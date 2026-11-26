@@ -60,9 +60,16 @@ function declaredPackageName(dependencyName, spec) {
   return name;
 }
 
-function resolvePackageRoot(packageName, fromRoot, expectedName = packageName) {
+function resolvePackageRoot(
+  packageName,
+  fromRoot,
+  expectedName = packageName,
+  work,
+) {
+  if (work) work.resolutionCalls += 1;
   let current = realpathSync(fromRoot);
   while (true) {
+    if (work) work.resolutionCandidates += 1;
     const candidate = join(current, 'node_modules', ...packageName.split('/'));
     const manifest = join(candidate, 'package.json');
     if (existsSync(manifest)) {
@@ -93,7 +100,7 @@ function declaredDependencySpecs(pkg) {
 }
 
 /** The installed runtime dependencies of a package, as `[name, realName]`. */
-function installedRuntimeDependencies(pkg, packageRoot) {
+function installedRuntimeDependencies(pkg, packageRoot, work) {
   const excluded = new Set(
     RUNTIME_DEPENDENCY_EXCLUSIONS.filter(
       (rule) => rule.package === pkg.name,
@@ -104,7 +111,7 @@ function installedRuntimeDependencies(pkg, packageRoot) {
     if (excluded.has(name)) continue;
     const realName = declaredPackageName(name, spec);
     try {
-      resolvePackageRoot(name, packageRoot, realName);
+      resolvePackageRoot(name, packageRoot, realName, work);
     } catch {
       if (pkg.optionalDependencies?.[name]) continue;
       throw new Error(
@@ -152,7 +159,7 @@ function targetPackageRoot(
   return target;
 }
 
-function planRuntimePackages(packageNames, projectRoot, outputRoot) {
+function planRuntimePackages(packageNames, projectRoot, outputRoot, work) {
   outputRoot = resolve(outputRoot);
   const planned = new Map();
   const resolutions = new Map();
@@ -181,6 +188,7 @@ function planRuntimePackages(packageNames, projectRoot, outputRoot) {
         name,
         projectRoot,
         declaredPackageName(name, projectSpecs[name]),
+        work,
       );
     } catch (error) {
       if (OPTIONAL_DESKTOP_SERVER_RUNTIME_PACKAGES.has(name)) continue;
@@ -195,8 +203,10 @@ function planRuntimePackages(packageNames, projectRoot, outputRoot) {
     for (const [name, realName] of installedRuntimeDependencies(
       readPackage(source),
       source,
+      work,
     )) {
-      const dependency = resolvePackageRoot(name, source, realName);
+      if (work) work.dependencyEdges += 1;
+      const dependency = resolvePackageRoot(name, source, realName, work);
       add(
         targetPackageRoot(
           name,
@@ -394,7 +404,7 @@ export const RUNTIME_DEPENDENCY_EXCLUSIONS = Object.freeze([
   }),
 ]);
 
-function packageCopyOptions(sourceRoot, target) {
+function packageCopyOptions(sourceRoot, target, work) {
   const pkg = readPackage(sourceRoot);
   const packageName = pkg.name;
   const rules = RUNTIME_PACKAGE_PRUNE_RULES.filter(
@@ -407,15 +417,24 @@ function packageCopyOptions(sourceRoot, target) {
     dereference: true,
     filter: (source) => {
       const segments = relative(sourceRoot, source).split(sep);
+      if (work) {
+        work.filterEntries += 1;
+        work.lastCopyEntry = source;
+      }
       if (segments.length === 1 && segments[0] === '') return true;
-      if (segments.includes('node_modules')) return false;
-      if (rules.some((rule) => rule.excludes(segments, target, packageName)))
+      if (
+        segments.includes('node_modules') ||
+        rules.some((rule) => rule.excludes(segments, target, packageName))
+      ) {
+        if (work) work.filterRejected += 1;
         return false;
+      }
       // Match files only: a directory whose name ends in one of these
       // extensions would otherwise drop everything beneath it.
-      return (
-        !NON_RUNTIME_ARTIFACT.test(source) || lstatSync(source).isDirectory()
-      );
+      const included =
+        !NON_RUNTIME_ARTIFACT.test(source) || lstatSync(source).isDirectory();
+      if (work && !included) work.filterRejected += 1;
+      return included;
     },
   };
 }
@@ -435,10 +454,12 @@ function stageWindowsWixPackage(
   outputRoot,
   windowsWixResources,
   target,
+  work,
 ) {
   const alias = `package-${String(windowsWixResources.entries.length).padStart(4, '0')}`;
   const aliasRoot = join(windowsWixResources.root, alias);
-  cpSync(sourceRoot, aliasRoot, packageCopyOptions(sourceRoot, target));
+  cpSync(sourceRoot, aliasRoot, packageCopyOptions(sourceRoot, target, work));
+  if (work) work.wixCopies += 1;
   windowsWixResources.entries.push({
     aliasRoot,
     target: join(
@@ -494,6 +515,7 @@ export function inspectDesktopServerRuntime(
   runtimeRoot,
   budget = DESKTOP_SERVER_RUNTIME_BUDGET,
   platform = process.platform,
+  work,
 ) {
   let bytes = 0;
   let files = 0;
@@ -502,6 +524,7 @@ export function inspectDesktopServerRuntime(
   while (pending.length > 0) {
     const current = pending.pop();
     if (!current || !existsSync(current)) continue;
+    if (work) work.inspectedDirectories += 1;
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const entryPath = join(current, entry.name);
       if (platform === 'win32') {
@@ -516,7 +539,12 @@ export function inspectDesktopServerRuntime(
         continue;
       }
       files += 1;
-      bytes += lstatSync(entryPath).size;
+      const size = lstatSync(entryPath).size;
+      bytes += size;
+      if (work) {
+        work.inspectedFiles += 1;
+        work.inspectedBytes += size;
+      }
     }
   }
   if (bytes > budget.maxBytes || files > budget.maxFiles) {
@@ -597,6 +625,79 @@ export function stageDesktopServerRuntime({
   platform = process.platform,
   arch = process.arch,
 } = {}) {
+  const diagnostic = process.env.STATION_DESKTOP_BUILD_DIAGNOSTICS === '1';
+  const startedAt = diagnostic ? performance.now() : 0;
+  const work = diagnostic
+    ? {
+        resolutionCalls: 0,
+        resolutionCandidates: 0,
+        dependencyEdges: 0,
+        plannedPackages: 0,
+        uniqueSources: 0,
+        runtimeCopies: 0,
+        wixCopies: 0,
+        filterEntries: 0,
+        filterRejected: 0,
+        inspectedDirectories: 0,
+        inspectedFiles: 0,
+        inspectedBytes: 0,
+      }
+    : undefined;
+  const slowPackages = [];
+  let currentPackage;
+  const phase = (name, action) => {
+    if (!diagnostic) return action();
+    const phaseStartedAt = performance.now();
+    const cpuStarted = process.cpuUsage();
+    const before = { ...work };
+    console.error(
+      '[desktop-runtime stage]',
+      JSON.stringify({
+        phase: name,
+        event: 'start',
+        elapsedMs: Math.round(phaseStartedAt - startedAt),
+      }),
+    );
+    let failure;
+    try {
+      return action();
+    } catch (error) {
+      failure = error;
+      throw error;
+    } finally {
+      const cpu = process.cpuUsage(cpuStarted);
+      console.error(
+        '[desktop-runtime stage]',
+        JSON.stringify({
+          phase: name,
+          event: failure ? 'failed' : 'end',
+          elapsedMs: Math.round(performance.now() - startedAt),
+          durationMs: Math.round(performance.now() - phaseStartedAt),
+          parentCpuMicros: cpu,
+          work: Object.fromEntries(
+            Object.entries(work)
+              .filter(([, value]) => typeof value === 'number')
+              .map(([key, value]) => [key, value - before[key]]),
+          ),
+          ...(name === 'copy' ? { slowPackages } : {}),
+          ...(failure
+            ? {
+                error: {
+                  message: failure.message,
+                  code: failure.code,
+                  syscall: failure.syscall,
+                  path: failure.path,
+                  dest: failure.dest,
+                },
+              }
+            : {}),
+          ...(failure && name === 'copy'
+            ? { currentPackage, lastCopyEntry: work.lastCopyEntry }
+            : {}),
+        }),
+      );
+    }
+  };
   const runtimeTarget = { platform, arch };
   const windowsWixResources = windowsWixResourceRoot
     ? { root: resolve(windowsWixResourceRoot), entries: [] }
@@ -606,30 +707,61 @@ export function stageDesktopServerRuntime({
       'Windows WiX resource root must differ from runtime output',
     );
   }
-  rmSync(outputRoot, { recursive: true, force: true });
-  if (windowsWixResources) {
-    rmSync(windowsWixResources.root, { recursive: true, force: true });
-    mkdirSync(windowsWixResources.root, { recursive: true });
-  }
-  mkdirSync(outputRoot, { recursive: true });
-  const planned = planRuntimePackages(packages, projectRoot, outputRoot);
-  for (const [target, source] of planned) {
-    mkdirSync(dirname(target), { recursive: true });
-    cpSync(source, target, packageCopyOptions(source, runtimeTarget));
+  phase('prepare output', () => {
+    rmSync(outputRoot, { recursive: true, force: true });
     if (windowsWixResources) {
-      stageWindowsWixPackage(
-        source,
-        target,
-        outputRoot,
-        windowsWixResources,
-        runtimeTarget,
-      );
+      rmSync(windowsWixResources.root, { recursive: true, force: true });
+      mkdirSync(windowsWixResources.root, { recursive: true });
     }
-  }
-  const { maxInstallRootLength } = inspectDesktopServerRuntime(
-    outputRoot,
-    budget,
-    platform,
+    mkdirSync(outputRoot, { recursive: true });
+  });
+  const planned = phase('planning', () => {
+    const result = planRuntimePackages(packages, projectRoot, outputRoot, work);
+    if (work) {
+      work.plannedPackages = result.size;
+      work.uniqueSources = new Set(result.values()).size;
+    }
+    return result;
+  });
+  phase('copy', () => {
+    for (const [target, source] of planned) {
+      const copyStartedAt = diagnostic ? performance.now() : 0;
+      const entriesBefore = work?.filterEntries;
+      currentPackage = diagnostic ? { source, target } : undefined;
+      let completed = false;
+      try {
+        mkdirSync(dirname(target), { recursive: true });
+        cpSync(source, target, packageCopyOptions(source, runtimeTarget, work));
+        if (work) work.runtimeCopies += 1;
+        if (windowsWixResources) {
+          stageWindowsWixPackage(
+            source,
+            target,
+            outputRoot,
+            windowsWixResources,
+            runtimeTarget,
+            work,
+          );
+        }
+        completed = true;
+      } finally {
+        if (diagnostic) {
+          slowPackages.push({
+            ...currentPackage,
+            durationMs: Math.round(performance.now() - copyStartedAt),
+            filterEntries: work.filterEntries - entriesBefore,
+            completed,
+          });
+          slowPackages.sort(
+            (left, right) => right.durationMs - left.durationMs,
+          );
+          if (slowPackages.length > 10) slowPackages.pop();
+        }
+      }
+    }
+  });
+  const { maxInstallRootLength } = phase('inspection', () =>
+    inspectDesktopServerRuntime(outputRoot, budget, platform, work),
   );
   if (windowsWixResources) {
     writeWindowsWixTauriConfig(
