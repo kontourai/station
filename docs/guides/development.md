@@ -1312,3 +1312,19 @@ npm run docs:pages:build
 ```
 
 The generated `dist-pages/` directory is disposable and should not be edited by hand.
+
+### Inbox storyboard
+
+Run `npm run dev:ui -- --host 127.0.0.1 --port 4178 --strictPort` and open
+`/inbox-storyboard.html` on that development server. The storyboard uses
+Station’s Task row, status rendering, theme tokens, buttons, and swipe hook.
+Compare the shipping row anatomy and the proposed attention actions with the
+same fixtures. Toggle phone width and swipe left on a proposed row to reveal
+actions. Replies, approvals, retries, acknowledgements, and snoozes use
+temporary fixture state. They make no Station API requests.
+
+Use this pattern for another flow when it needs repeatable visual review.
+Import the production components, supply representative fixtures at their
+input boundary, and keep proposed interactions in the storyboard until they
+are wired to the owning runtime. The storyboard is a Vite development entry
+and is outside the product build inputs.
