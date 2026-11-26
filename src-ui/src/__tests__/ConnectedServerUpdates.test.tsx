@@ -1065,8 +1065,8 @@ describe('ConnectedServerUpdates', () => {
     expect(screen.queryByText(/Installed service on this Mac\./)).toBeNull();
   });
 
-  it('resolves unresolved while a persisted connection has no native binding yet', async () => {
-    await renderHarness({
+  it('keeps an unbound persisted connection unresolved without authenticated transport', async () => {
+    const { queryClient } = await renderHarness({
       store: SERVICE_STORE,
       authorize: false,
       bundledStatus: sidecarStatus({
@@ -1079,12 +1079,14 @@ describe('ConnectedServerUpdates', () => {
       identity: () =>
         identityResponseFor({ instanceId: 'svc-instance-1', bootId: 'b2' }),
     });
-    await waitConnected();
-    await waitIdentitySettled();
+    await waitFor(() => expect(health?.status).toBe('error'));
+    expect(context?.identityReady).toBe(false);
     expect(
       await screen.findByText('Server update method unknown.'),
     ).toBeTruthy();
     expect(screen.queryByText(/Installed service on this Mac\./)).toBeNull();
+    expect(identityCalls).toHaveLength(0);
+    expect(coreUpdateAttempts(queryClient)).toBe(0);
   });
 
   it('resolves unresolved and keeps the card silent about method when identity is incomplete', async () => {

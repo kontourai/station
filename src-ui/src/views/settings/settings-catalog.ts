@@ -1036,7 +1036,6 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   'deployed-build': 'informational',
   'message-context': 'temporary',
   'mobile-pairing': 'informational',
-  'station-routes': 'mixed',
 };
 
 /**

@@ -842,7 +842,7 @@
       "id": "station-routes",
       "label": "Routes",
       "help": "Leave empty for automatic discovery or enter an exact HTTPS DNS origin.",
-      "scope": "mixed",
+      "scope": "station",
       "section": "station-routes",
       "route": "/settings?view=station-routes&highlight=station-routes",
       "configKey": "trustedConsentOrigin"
