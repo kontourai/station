@@ -56,15 +56,26 @@ export function createDelegationGrantRoutes(
     throw error;
   });
 
-  app.get('/', (c) =>
-    c.json({
+  app.get('/', (c) => {
+    const grants = store.readActive();
+    if (!grants) {
+      return c.json(
+        {
+          success: false,
+          error:
+            'Delegation grants could not be read. Standing grants are disabled.',
+        },
+        503,
+      );
+    }
+    return c.json({
       success: true,
-      data: store.list().map((grant) => ({
+      data: grants.map((grant) => ({
         ...grant,
         children: childrenOf?.(grant.id) ?? [],
       })),
-    }),
-  );
+    });
+  });
   app.get('/sessions/:id', (c) =>
     c.json({ success: true, data: postureOf?.(c.req.param('id')) ?? null }),
   );

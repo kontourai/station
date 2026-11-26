@@ -1,3 +1,5 @@
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Hono } from 'hono';
 import { expect, test } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
@@ -26,11 +28,8 @@ function mount() {
     label: 'Delegation grants',
     description: 'Manage access for named delegations.',
   });
-  const routes = createDelegationGrantRoutes(
-    new DelegationGrantStore(home, logger),
-    preview,
-    () => true,
-  );
+  const store = new DelegationGrantStore(home, logger);
+  const routes = createDelegationGrantRoutes(store, preview, () => true);
   const internal = new Hono();
   internal.use('*', async (c, next) => {
     setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
@@ -43,6 +42,8 @@ function mount() {
   });
   internal.route('/', routes);
   return {
+    home,
+    store,
     operator: withOperatorPrincipal(routes),
     internal,
     enable: () => previews.setEnabled('delegation-grants', true),
@@ -88,4 +89,19 @@ test('an internal agent cannot create grants by presenting the internal operator
   expect((await createGrant(internal)).status).toBe(403);
   const listed = await operator.request('/');
   expect(await listed.json()).toMatchObject({ data: [] });
+});
+
+test('a corrupt grants file withdraws standing grants and reports the outage to the operator', async () => {
+  const { home, store, operator, enable } = mount();
+  await enable();
+  expect((await createGrant(operator)).status).toBe(201);
+  expect(store.list()).toHaveLength(1);
+
+  writeFileSync(join(home, 'config', 'delegation-grants.json'), '{');
+  expect(store.list()).toEqual([]);
+  const response = await operator.request('/');
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({
+    error: expect.stringContaining('Standing grants are disabled'),
+  });
 });

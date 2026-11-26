@@ -58,6 +58,8 @@ children. Settings offers revoke on each grant. Each child session and Task
 shows the effective posture and its reason, derived from the start record and
 current enforcement. Report a refusal or fallback before the first turn. Audit
 creation, widening, use, expiry, and revocation in the diagnostics log.
+If Station cannot read the grant file, it treats all standing grants as
+inactive and reports the outage in Settings and the diagnostics log.
 
 Promotion requires real provider and forge evidence, negative filesystem and
 delegation tests, revocation through a live session harness, and independent

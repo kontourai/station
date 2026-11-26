@@ -113,21 +113,34 @@ export class DelegationGrantStore {
   }
 
   list(): readonly DelegationGrant[] {
+    return this.readActive() ?? [];
+  }
+
+  readActive(): readonly DelegationGrant[] | undefined {
+    let grants: DelegationGrant[];
+    try {
+      grants = storedGrants.parse(
+        readJsonFile<unknown>(this.path, [], this.io),
+      );
+    } catch {
+      this.logger.error(
+        'Delegation grants could not be read. Standing grants are disabled.',
+      );
+      return undefined;
+    }
     const now = Date.now();
-    return storedGrants
-      .parse(readJsonFile<unknown>(this.path, [], this.io))
-      .filter((grant) => {
-        if (
-          grant.expiry.kind !== 'duration' ||
-          now < grant.createdAt + grant.expiry.seconds * 1000
-        )
-          return true;
-        if (!this.auditedExpirations.has(grant.id)) {
-          this.auditedExpirations.add(grant.id);
-          this.logger.info('Delegation grant expired', { grantId: grant.id });
-        }
-        return false;
-      });
+    return grants.filter((grant) => {
+      if (
+        grant.expiry.kind !== 'duration' ||
+        now < grant.createdAt + grant.expiry.seconds * 1000
+      )
+        return true;
+      if (!this.auditedExpirations.has(grant.id)) {
+        this.auditedExpirations.add(grant.id);
+        this.logger.info('Delegation grant expired', { grantId: grant.id });
+      }
+      return false;
+    });
   }
 
   async create(
