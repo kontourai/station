@@ -1564,24 +1564,24 @@ test.describe('Task-first Home (#332, mocked)', () => {
       }),
     ).toHaveAttribute('aria-current', 'true');
 
-    // Back on Home with the dock open and no chat in it.
+    // Back on Home with the dock open and no chat in it: the dock shows its
+    // own New chat draft, ready to type, instead of a "No chat open" card
+    // (#5592), and Home's composer steps aside for it.
     await page.goto('/?dock=open');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBeNull();
-    await expect(page.getByText('No chat open')).toBeVisible();
-
-    // The selection Home's chips name is the one the dock's draft opens
-    // with: the same chips, the same words. Opening the project's work bound
-    // the dock to it, so both now open on Station.
-    await expect(advertised).toBeVisible();
+    await expect(page.getByText('No chat open')).toHaveCount(0);
+    const dialog = page.getByRole('region', { name: 'New chat', exact: true });
+    await expect(dialog).toBeVisible();
+    const draft = dialog.getByRole('form', { name: 'Start work' });
     await expect(
-      homeComposer.getByRole('button', {
-        name: 'Project: Station',
-        exact: true,
-      }),
-    ).toBeVisible();
-    const { dialog, draft } = await openNewChatDraft(page);
+      page.locator('.home-view').getByRole('form', { name: 'Start work' }),
+    ).toHaveCount(0);
+
+    // The selection Home's chips named is the one the dock's draft opens
+    // with: the same chips, the same words. Opening the project's work bound
+    // the dock to it, so the draft opens on Station.
     await expect(
       await runSetupControl(draft, (panel) =>
         panel.getByRole('button', {
@@ -1596,8 +1596,25 @@ test.describe('Task-first Home (#332, mocked)', () => {
         exact: true,
       }),
     ).toBeVisible();
+    // Dismissing a draft the dock opened on its own folds the dock to its
+    // toolbar: there is no chat behind it to return to.
     await dialog.press('Escape');
     await expect(dialog).toHaveCount(0);
+    // With the dock folded, Home's own composer is back and names the same
+    // selection the dock's draft opened with.
+    const homeAgain = page.getByRole('form', { name: 'Start work' });
+    await expect(homeAgain).toBeVisible();
+    await expect(
+      await runSetupControl(homeAgain, (panel) =>
+        panel.getByRole('button', {
+          name: 'Agent: Codex · gpt-5.3-codex',
+          exact: true,
+        }),
+      ),
+    ).toBeVisible();
+    await expect(
+      homeAgain.getByRole('button', { name: 'Project: Station', exact: true }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: /Open local project/i }).click();
     await expect(
@@ -1612,7 +1629,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       .toBeNull();
     await expect
       .poll(() => new URL(page.url()).searchParams.get('dock'))
-      .toBe('open');
+      .not.toBe('open');
 
     // station#settings-revamp slice 5: the dead `/providers` alias is
     // removed — use the canonical connections/models deep link instead.

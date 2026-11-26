@@ -1,0 +1,7 @@
+{
+  "revision": "eab032cf19f8f218ff968d8261948cd14a6ae075",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"#5592 adds the optional noAgentReady prop that names why the empty card shows; no other behaviour changed.","inputs":["src-ui/src/components/chat-dock/ChatDockContentArea.tsx"]}
+  ]
+}

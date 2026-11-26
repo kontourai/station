@@ -1,5 +1,89 @@
 [
   {
+    "timestampUtc": "2026-11-26T14:27:01Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261126",
+    "sha": "43b37b0b61932bcaff05d24bee7169de7424c142",
+    "artifactBuiltAt": "2026-11-26T13:15:50.525Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45826539800",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt partial",
+    "notes": [
+      "ios: TestFlight delivery success (run 45826539800)",
+      "macos: NOT_VERIFIED (macos provider outcome unknown: unresolved:run:45826539800:desktop-state-absent:abandoned (the provider effect may already be live))",
+      "windows: NOT_VERIFIED (windows provider outcome unknown: unresolved:run:45826539800:desktop-state-absent:abandoned (the provider effect may already be live))"
+    ],
+    "changelog": {
+      "previousSha": "b1970563c7d38992c0aa1124ee2b21d7b52c317c",
+      "groups": {
+        "feat": [
+          "[#5591](https://github.com/kontourai/station/pull/5591) feat(chat): show linked pull request facts in Chats and Tasks",
+          "[#5571](https://github.com/kontourai/station/pull/5571) feat(ui): give Half a 380px floor on phones"
+        ],
+        "fix": [
+          "[#5582](https://github.com/kontourai/station/pull/5582) fix(chat): reconcile completed tools in reconnect snapshots",
+          "[#5581](https://github.com/kontourai/station/pull/5581) fix(search): recover streamed ACP replies",
+          "[#5577](https://github.com/kontourai/station/pull/5577) fix(chat): restore an undelivered steer to the draft",
+          "[#5579](https://github.com/kontourai/station/pull/5579) fix(chat): release attachment staging after a busy send refusal",
+          "[#5575](https://github.com/kontourai/station/pull/5575) fix(chat): keep a pending row mounted across inbox admission",
+          "[#5574](https://github.com/kontourai/station/pull/5574) fix(chat): explain failed ACP tools, label delegated briefs, and hide an idle Steer/Queue picker",
+          "[#5578](https://github.com/kontourai/station/pull/5578) fix(acp): suppress identical tool start updates",
+          "[#5576](https://github.com/kontourai/station/pull/5576) fix(chat): explain the deadline for check-back approval",
+          "[#5573](https://github.com/kontourai/station/pull/5573) fix(chat): restore shared styling for composer approvals",
+          "[#5572](https://github.com/kontourai/station/pull/5572) fix(chat): reopen conversation links and unify the Chats dock"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
+    "timestampUtc": "2026-11-26T13:18:05Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261126.45826539800",
+    "sha": "43b37b0b61932bcaff05d24bee7169de7424c142",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45826539800",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261126.45826539800 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "b1970563c7d38992c0aa1124ee2b21d7b52c317c",
+      "groups": {
+        "feat": [
+          "[#5591](https://github.com/kontourai/station/pull/5591) feat(chat): show linked pull request facts in Chats and Tasks",
+          "[#5571](https://github.com/kontourai/station/pull/5571) feat(ui): give Half a 380px floor on phones"
+        ],
+        "fix": [
+          "[#5582](https://github.com/kontourai/station/pull/5582) fix(chat): reconcile completed tools in reconnect snapshots",
+          "[#5581](https://github.com/kontourai/station/pull/5581) fix(search): recover streamed ACP replies",
+          "[#5577](https://github.com/kontourai/station/pull/5577) fix(chat): restore an undelivered steer to the draft",
+          "[#5579](https://github.com/kontourai/station/pull/5579) fix(chat): release attachment staging after a busy send refusal",
+          "[#5575](https://github.com/kontourai/station/pull/5575) fix(chat): keep a pending row mounted across inbox admission",
+          "[#5574](https://github.com/kontourai/station/pull/5574) fix(chat): explain failed ACP tools, label delegated briefs, and hide an idle Steer/Queue picker",
+          "[#5578](https://github.com/kontourai/station/pull/5578) fix(acp): suppress identical tool start updates",
+          "[#5576](https://github.com/kontourai/station/pull/5576) fix(chat): explain the deadline for check-back approval",
+          "[#5573](https://github.com/kontourai/station/pull/5573) fix(chat): restore shared styling for composer approvals",
+          "[#5572](https://github.com/kontourai/station/pull/5572) fix(chat): reopen conversation links and unify the Chats dock"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
     "timestampUtc": "2026-11-25T21:13:39Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261125.2",
