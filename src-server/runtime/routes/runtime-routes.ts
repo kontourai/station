@@ -13266,11 +13266,10 @@ export function configureRuntimeRoutes(
               const project = context.projectService.getProject(
                 item.projectSlug,
               );
-              if (project.workingDirectory)
-                roots.set(
-                  item.projectSlug,
-                  resolve(expandTilde(project.workingDirectory)),
-                );
+              const root = project.workingDirectory
+                ? resolve(expandTilde(project.workingDirectory))
+                : undefined;
+              roots.set(item.projectSlug, root);
             }
             const projectRoot = roots.get(item.projectSlug);
             if (!projectRoot) return undefined;
