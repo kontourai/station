@@ -2587,6 +2587,19 @@ run into a Task-bound chat reads `automation`), `coordinator-wake-dispatch.test.
 (a real dispatched Task Session) and the classifier table in
 `thread-inbox.test.ts`.
 
+### Delegation grants
+
+[DelegationGrantStore](../../src-server/security/confinement/delegation-grants.ts)
+stores operator choices and resolves the narrowest matching scope. The
+[configuration route](../../src-server/routes/system/delegation-grants.ts)
+requires a current operator principal. The
+[delegation executor](../../src-server/tools/station-control-delegation.ts)
+combines caller proof, resolved target, and verified workspace ownership
+before handing a grant to the session lifecycle. The
+[Codex profile owner](../../src-server/providers/adapters/codex-confinement.ts)
+bounds Git writes to the worktree's own metadata and branch namespace and
+keeps protected metadata read-only.
+
 ## SessionLifecycleModule
 
 Marking a Session complete can race a new turn. The [lifecycle module](../../src-server/services/orchestration/session-lifecycle-module.ts) coordinates the transition with provider invocation and reruns its checks after completion preparation, so an old view cannot close newly active work.
@@ -3361,19 +3374,6 @@ Observation and pinned SDK contract tags are evidence pointers, not a fresh prov
 Add or remove a tuple together with its actual handler and evidence; do not
 replace exact matching with wildcard vendor routing.
 
-
-## Delegation grants
-
-[DelegationGrantStore](../../src-server/security/confinement/delegation-grants.ts)
-stores operator choices and resolves the narrowest matching scope. The
-[configuration route](../../src-server/routes/system/delegation-grants.ts)
-requires a current operator principal. The
-[delegation executor](../../src-server/tools/station-control-delegation.ts)
-combines caller proof, resolved target, and verified workspace ownership
-before handing a grant to the session lifecycle. The
-[Codex profile owner](../../src-server/providers/adapters/codex-confinement.ts)
-bounds Git writes to the worktree's own metadata and branch namespace and
-keeps protected metadata read-only.
 
 ## JsonFileMutationAuthority
 
