@@ -1396,8 +1396,8 @@ test('the ambient dock publishes its open New chat draft, and a full-screen pane
   });
   await screen.findByRole('region', { name: 'New chat picker' });
   await waitFor(() => expect(seen.at(-1)).toBe(true));
-  // Asked for, the draft dismisses back to the dock it opened in, which
-  // has no chat, so the dock's own draft stands again.
+  // Asked for, the draft dismisses back to the dock as it was, which has no
+  // chat, so the dock's own draft stands again (its text kept).
   act(() => pickerProps.at(-1)!.onClose());
   await screen.findByRole('region', { name: 'New chat picker' });
   await waitFor(() => expect(seen.at(-1)).toBe(true));
@@ -2494,4 +2494,51 @@ test('dismissing the dock’s own draft folds the dock to its toolbar and it sta
   // Folded, the dock has no pane to fill: the draft does not come back.
   expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
   expect(createChatSession).not.toHaveBeenCalled();
+});
+
+test('a phone and a full-screen pane keep their own no-chat state', async () => {
+  dockProbe.mobile = true;
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
+  cleanup();
+
+  dockProbe.mobile = false;
+  renderInProviders(
+    <ChatWorkspacePane
+      placement="fullscreen"
+      projectSlug="pulse"
+      layoutSlug="coding"
+    />,
+  );
+  await act(async () => {});
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
+});
+
+test('a Project-requested draft over the dock’s own draft dismisses as a requested one', async () => {
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  await screen.findByRole('region', { name: 'New chat picker' });
+  act(() => {
+    requestProjectChat({
+      projectSlug: 'pulse',
+      projectName: 'Pulse',
+      source: 'new-plugin',
+      composerDraft: draft,
+    });
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  // Requested, it is not the dock's own draft: dismissing it does not fold
+  // the dock. The dock's own draft then stands, and that one folds it.
+  act(() => pickerProps.at(-1)!.onClose());
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+  act(() => pickerProps.at(-1)!.onClose());
+  await waitFor(() =>
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(false),
+  );
+  await act(async () => {});
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
 });

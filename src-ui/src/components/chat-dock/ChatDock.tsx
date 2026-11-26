@@ -1463,9 +1463,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // The draft's own dismissal (Escape, Back): the dock goes back
   // to the size it had before the draft forced it, maximize memory included.
   const dismissNewChatDraft = useCallback(() => {
+    // The dock's own draft has nothing behind it to return to: the dock
+    // folds to its toolbar rather than reopening the same draft. A draft
+    // someone asked for returns to the dock as it was (its text kept).
     if (restingDraft.current) {
-      // A full-screen placement has no toolbar to fold to: the draft stays.
-      if (isFullscreenPlacement) return;
       restingDraft.current = false;
       restingSuppressed.current = true;
       dockBeforeDraft.current = null;
@@ -1484,7 +1485,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     closeNewChatDraft,
     setDockState,
     collapseMaximizedDock,
-    isFullscreenPlacement,
     lastDockMaximized,
   ]);
   // A started draft is a chat now: the dock stays open at the size it had,
@@ -3260,8 +3260,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // created until the draft is sent. Only when nothing is on its way in: a
   // chat the URL names, one opening, a child reader, the phone inbox, or a
   // recovery prompt each keep the pane.
+  // Agents exist to start one with; with none the card says so instead.
+  const hasAgents = agentsLoaded && agents.length > 0;
+  // The desktop dock only: a phone shows the Chats list or a full-height
+  // draft someone asked for, and a full-screen layout keeps its own card.
   const paneHasNoChat =
-    isPaneOpen &&
+    !isMobile &&
+    !isFullscreenPlacement &&
+    isDockOpen &&
     showChatContent &&
     !isCollapsedDragPreview &&
     !showNewChatModal &&
@@ -3270,9 +3276,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     openingChat === null &&
     !workingParentPending &&
     !isChildReaderOpen &&
-    !mobileInboxShown &&
-    agentsLoaded &&
-    agents.length > 0;
+    hasAgents;
   // Any other way the draft closes (it started, or a chat opened over it)
   // ends its resting role; a later empty pane opens a fresh one. Declared
   // before the effect below, which marks the next one as resting.
@@ -3324,6 +3328,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           name: projectName,
           composerDraft: detail.composerDraft,
         });
+        restingDraft.current = false;
         setShowNewChatModal(true);
         telemetry.track('ui.chat.entry', {
           source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
@@ -3350,6 +3355,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           slug: detail.projectSlug,
           name: projectName,
         });
+        restingDraft.current = false;
         setShowNewChatModal(true);
         return;
       }
@@ -3378,6 +3384,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         slug: detail.projectSlug,
         name: projectName,
       });
+      restingDraft.current = false;
       setShowNewChatModal(true);
       telemetry.track('ui.chat.entry', {
         source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,

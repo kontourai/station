@@ -37,9 +37,8 @@ const loadSkillExperiencePanel = () =>
 interface ChatDockContentAreaProps {
   activeSession: ChatSession | null;
   /**
-   * #5592: with no chat open the dock shows its New chat draft instead of
-   * an empty card. The card remains only while no Agent can start a chat,
-   * and then says so.
+   * #5592: with no chat open the desktop dock shows its New chat draft
+   * instead of an empty card. With no Agents the card remains and says so.
    */
   noAgentReady?: boolean;
   transcriptSnapshotRef?: ComponentProps<
@@ -320,11 +319,9 @@ function ChatDockContentAreaImpl({
             <Empty
               variant="prominent"
               className="chat-dock__no-chat"
-              label={
-                noAgentReady ? 'No Agent is ready to chat' : 'No chat open'
-              }
+              label={noAgentReady ? 'No Agents yet' : 'No chat open'}
               description={
-                noAgentReady ? 'Connect an engine to start a chat.' : undefined
+                noAgentReady ? 'Create an Agent to start a chat.' : undefined
               }
               action={<NewChatAction onClick={() => onNewChat()} />}
             />

@@ -1600,7 +1600,21 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // toolbar: there is no chat behind it to return to.
     await dialog.press('Escape');
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByRole('form', { name: 'Start work' })).toBeVisible();
+    // With the dock folded, Home's own composer is back and names the same
+    // selection the dock's draft opened with.
+    const homeAgain = page.getByRole('form', { name: 'Start work' });
+    await expect(homeAgain).toBeVisible();
+    await expect(
+      await runSetupControl(homeAgain, (panel) =>
+        panel.getByRole('button', {
+          name: 'Agent: Codex · gpt-5.3-codex',
+          exact: true,
+        }),
+      ),
+    ).toBeVisible();
+    await expect(
+      homeAgain.getByRole('button', { name: 'Project: Station', exact: true }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: /Open local project/i }).click();
     await expect(

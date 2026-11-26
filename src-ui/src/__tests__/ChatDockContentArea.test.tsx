@@ -53,10 +53,10 @@ describe('ChatDockContentArea', () => {
     expect(onNewChat).toHaveBeenCalledOnce();
   });
 
-  test('names why a chat cannot start when no Agent is ready', () => {
+  test('says there are no Agents when none exist', () => {
     renderContentArea(vi.fn(), vi.fn(), false, null, true);
-    expect(screen.getByText('No Agent is ready to chat')).toBeTruthy();
-    expect(screen.getByText('Connect an engine to start a chat.')).toBeTruthy();
+    expect(screen.getByText('No Agents yet')).toBeTruthy();
+    expect(screen.getByText('Create an Agent to start a chat.')).toBeTruthy();
     expect(screen.queryByText('No chat open')).toBeNull();
   });
 
