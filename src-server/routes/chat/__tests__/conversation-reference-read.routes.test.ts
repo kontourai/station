@@ -32,6 +32,19 @@ const BOUND_OPERATOR: StationControlCaller = {
     elevationEligible: true,
   },
 };
+/** The operator's credential from an engine Station does not host. */
+const UNBOUND_OPERATOR: StationControlCaller = {
+  ...BOUND_OPERATOR,
+  assurance: 'bearer-exposed',
+};
+const UNREADABLE = 'human:test:unreadable';
+/** A Session whose own Project Station cannot confirm. */
+const UNREADABLE_CALLER: StationControlCaller = {
+  ...AGENT,
+  principal: { ...AGENT.principal, id: UNREADABLE },
+  projectIdSource: 'slug-lookup',
+};
+const OWN_PROJECT = { kind: 'project', id: 'project-1' } as const;
 
 /** Conversation `C1` was started as session `C1` and continued in `S1`. */
 const SESSIONS: Record<string, string> = { S1: 'C1', caller: 'caller-conv' };
@@ -53,6 +66,54 @@ const TARGETS: Record<string, StationControlDispatchTarget> = {
     ownerId: 'human:test:someone-else',
     scope: { kind: 'project', id: 'project-1' },
     host: false,
+    remote: false,
+    ownerHoldsAction: true,
+  },
+  // The owner's, in the caller's own Project, stopped by how or where it
+  // runs rather than by its Project.
+  host: {
+    ownerId: OWNER,
+    scope: OWN_PROJECT,
+    host: true,
+    remote: false,
+    ownerHoldsAction: true,
+  },
+  'unreadable-caller': {
+    ownerId: UNREADABLE,
+    scope: OWN_PROJECT,
+    host: false,
+    remote: false,
+    ownerHoldsAction: true,
+  },
+  'target-unavailable': {
+    ownerId: OWNER,
+    scope: { kind: 'unreadable' },
+    host: false,
+    remote: false,
+    ownerHoldsAction: true,
+  },
+  // The operator's own, on another Station.
+  remote: {
+    ownerId: STATION_CONTROL_OPERATOR_PRINCIPAL_ID,
+    scope: OWN_PROJECT,
+    host: false,
+    remote: true,
+    ownerHoldsAction: true,
+  },
+  // The owner's, on another Station a caller not acting for the operator may
+  // not name.
+  'another-station': {
+    ownerId: OWNER,
+    scope: OWN_PROJECT,
+    host: false,
+    remote: true,
+    ownerHoldsAction: true,
+  },
+  // Another person's, running unconfined.
+  'other-owner-host': {
+    ownerId: 'human:test:someone-else',
+    scope: OWN_PROJECT,
+    host: true,
     remote: false,
     ownerHoldsAction: true,
   },
@@ -155,6 +216,66 @@ describe('read_conversation admission', () => {
     expect(await read('/api/conversations/C1/read')).toMatchObject({
       status: 403,
       body: { code: 'conversation_out_of_scope' },
+    });
+  });
+
+  test.each([
+    ['host', AGENT, 'host'],
+    ['target-unavailable', AGENT, 'target-unavailable'],
+    ['unreadable-caller', UNREADABLE_CALLER, 'unreadable-caller'],
+    ['remote', UNBOUND_OPERATOR, 'remote'],
+  ] as const)(
+    'without a reference, a refusal for %s names that cause and not another Project',
+    async (reason, caller, conversationId) => {
+      const { status, body } = await app(
+        caller,
+        [],
+      )(`/api/conversations/${conversationId}/read`);
+      expect(status).toBe(403);
+      expect(body.code).toBe('conversation_out_of_scope');
+      expect(body.reason).toBe(reason);
+      expect(body.error).not.toContain('outside your session');
+      expect(body.error).toContain(
+        'Ask the person to reference the conversation in a message to you.',
+      );
+    },
+  );
+
+  test('a conversation on another Station the caller may not name is refused without a reason it cannot know', async () => {
+    const { status, body } = await app(
+      AGENT,
+      [],
+    )('/api/conversations/another-station/read');
+    expect(status).toBe(403);
+    expect(body.code).toBe('conversation_out_of_scope');
+    expect(body.reason).toBeUndefined();
+    expect(body.error).not.toContain('outside your session');
+  });
+
+  test('the remedy a refusal names lifts it: a person’s reference admits their own chat that runs unconfined', async () => {
+    const read = app(AGENT, [
+      {
+        thread: 'caller',
+        prompt: 'Compare with [Chat](/activity?session=host).',
+        actor: { kind: 'operator' },
+      },
+    ]);
+    expect(await read('/api/conversations/host/read')).toMatchObject({
+      status: 200,
+      body: { data: { conversationId: 'host', access: 'reference' } },
+    });
+  });
+
+  test('another person’s chat that runs unconfined still reads as absent, with nothing added', async () => {
+    const { status, body } = await app(
+      AGENT,
+      [],
+    )('/api/conversations/other-owner-host/read');
+    expect(status).toBe(404);
+    expect(body).toEqual({
+      success: false,
+      code: 'conversation_not_found',
+      error: expect.any(String),
     });
   });
 
