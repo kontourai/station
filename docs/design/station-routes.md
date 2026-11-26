@@ -89,8 +89,10 @@ The handshake capability `connectionRoutes` tells a client the route exists.
 An older Station omits it, and the client simply learns nothing.
 
 The client asks only the Station it is already connected to and authenticated
-with, and only when the response's `environmentId` equals the saved one. It
-merges the answer:
+with. A first-run browser can read publication settings from its exact page
+origin before its connection has a saved identity. This does not bind an
+identity or authorize alternate routes. Route learning still requires the
+response's `environmentId` to equal the saved one. It merges the answer:
 
 - adds new advertised routes;
 - drops advertised routes the Station stopped reporting, except the one in use;
