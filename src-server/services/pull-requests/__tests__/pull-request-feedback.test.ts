@@ -222,6 +222,49 @@ async function setup() {
 }
 
 describe('pull request agent feedback reaches the owning conversation', () => {
+  it('places one inbox entry per merge queue removal ID', async () => {
+    const t = await setup();
+    t.claim();
+    const delivery = t.use(new PullRequestFeedbackDelivery(t.ports()));
+    const answer = structuredClone(recorded);
+    const pr = answer.data.repository.pullRequest;
+    Object.assign(pr, {
+      title: 'Queue candidate',
+      mergeable: 'MERGEABLE',
+      reviewDecision: 'APPROVED',
+      isInMergeQueue: false,
+      mergeQueueEntry: null,
+      autoMergeRequest: null,
+      commits: { nodes: [{ commit: { oid: HEAD, statusCheckRollup: null } }] },
+      reviewThreads: { totalCount: 0, nodes: [] },
+      latestReviews: { nodes: [] },
+    });
+    const observeRemoval = (id: string, date: string) => {
+      pr.queueRemovals = {
+        nodes: [{ id, createdAt: date, reason: 'Checks failed' }],
+      };
+      const observation = normalizeGitHubFeedbackObservation(
+        answer,
+        IDENTITY,
+        date,
+      );
+      expect(observation).toBeDefined();
+      t.observe(observation!);
+    };
+    observeRemoval('RFMQE_first', '2026-11-10T12:01:00.000Z');
+    await t.deliverPlaced(delivery);
+    observeRemoval('RFMQE_first', '2026-11-10T12:01:00.000Z');
+    await delivery.deliver(CONVERSATION);
+    expect(t.entries()).toHaveLength(1);
+    observeRemoval('RFMQE_second', '2026-11-10T12:02:00.000Z');
+    await t.deliverPlaced(delivery);
+    expect(t.entries()).toHaveLength(2);
+    expect(t.feedbackPrompts()).toEqual([
+      expect.stringContaining('Removed from the merge queue'),
+      expect.stringContaining('Removed from the merge queue'),
+    ]);
+  });
+
   it('(a) an idle agent gets one message with exactly the failing checks, each named once', async () => {
     const t = await setup();
     t.claim();

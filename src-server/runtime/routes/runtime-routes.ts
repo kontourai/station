@@ -11295,6 +11295,7 @@ export function configureRuntimeRoutes(
           );
         },
         derived: (id) => pullRequestFeedback?.derivedLinks(id) ?? [],
+        snapshot: (identity) => pullRequestFeedback?.snapshotFor(identity),
       },
     ),
   );

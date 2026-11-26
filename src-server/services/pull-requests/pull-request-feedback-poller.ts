@@ -100,8 +100,15 @@ export interface PullRequestFeedbackPollSummary {
 
 /** What a read shows, minus when it was read: equal digests mean nothing changed. */
 function observationDigest(observation: PullRequestFeedbackObservation) {
-  const { observedAt: _observedAt, ...rest } = observation;
-  return createHash('sha256').update(JSON.stringify(rest)).digest('hex');
+  const { observedAt: _observedAt, snapshot, ...rest } = observation;
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        ...rest,
+        snapshot: snapshot && { ...snapshot, observedAt: undefined },
+      }),
+    )
+    .digest('hex');
 }
 
 export class PullRequestFeedbackPoller {

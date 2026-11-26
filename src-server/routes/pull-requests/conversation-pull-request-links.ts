@@ -1,6 +1,7 @@
 import type {
   ConversationPullRequestLink,
   ConversationPullRequestLinkObservation,
+  LinkedPullRequestSnapshot,
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
@@ -40,6 +41,9 @@ type Access = {
     request: Request,
     conversationId: string,
   ) => Promise<ConversationPullRequestLink[]>;
+  snapshot?: (
+    link: PullRequestLinkIdentity,
+  ) => LinkedPullRequestSnapshot | undefined;
   /**
    * Pull requests Station found opened from the chat's Task's own branch
    * (`branch-derived`), after the declared ones: a pull request also linked
@@ -112,7 +116,16 @@ export function createConversationPullRequestLinkRoutes(
     const observe = async (
       link: (typeof links)[number],
     ): Promise<ConversationPullRequestLinkObservation> => {
-      const read = await readPullRequestByIdentity(providers, link);
+      const snapshot = access.snapshot?.(link);
+      if (snapshot)
+        return {
+          ...link,
+          observedAt: snapshot.observedAt ?? observedAt,
+          status: { state: 'current', ...snapshot },
+        };
+      const read = await readPullRequestByIdentity(providers, link, {
+        status: true,
+      });
       if (read.kind === 'unsupported')
         return {
           ...link,
@@ -138,7 +151,7 @@ export function createConversationPullRequestLinkRoutes(
       const pullRequest = read.pullRequest;
       return {
         ...link,
-        observedAt,
+        observedAt: read.observedAt ?? observedAt,
         status: {
           state: 'current',
           title: pullRequest.title,

@@ -10,7 +10,10 @@
  * `-f` (raw); only the validated number uses `-F`, which would otherwise
  * read a value starting with `@` as a file.
  */
-import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
+import type {
+  LinkedPullRequestSnapshot,
+  PullRequestLinkIdentity,
+} from '@kontourai/station-contracts/conversation-pull-request-links';
 import type {
   PullRequestFeedbackCheck,
   PullRequestFeedbackObservation,
@@ -24,6 +27,19 @@ export const GITHUB_FEEDBACK_QUERY = `query($owner: String!, $name: String!, $nu
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       number
+      title
+      updatedAt
+      mergedAt
+      closedAt
+      additions
+      deletions
+      changedFiles
+      isInMergeQueue
+      mergeQueueEntry { position }
+      autoMergeRequest { enabledAt }
+      queueRemovals: timelineItems(last: 1, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+        nodes { ... on RemovedFromMergeQueueEvent { id createdAt reason } }
+      }
       url
       state
       merged
@@ -40,6 +56,7 @@ export const GITHUB_FEEDBACK_QUERY = `query($owner: String!, $name: String!, $nu
           commit {
             oid
             statusCheckRollup {
+              state
               contexts(first: 100) {
                 totalCount
                 nodes {
@@ -237,6 +254,67 @@ function normalizeReview(node: any): PullRequestFeedbackReview | undefined {
   };
 }
 
+function nonNegativeCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function snapshotChecks(
+  rollup: any,
+  contexts: readonly any[],
+): LinkedPullRequestSnapshot['checks'] {
+  switch (rollup?.state) {
+    case 'ERROR':
+    case 'FAILURE':
+      return 'failing';
+    case 'PENDING':
+    case 'EXPECTED':
+      return contexts.some(
+        (node) =>
+          node?.status === 'WAITING' || node?.conclusion === 'ACTION_REQUIRED',
+      )
+        ? 'awaiting-approval'
+        : 'pending';
+    case 'SUCCESS':
+      return rollup.contexts?.totalCount > 0 || contexts.length > 0
+        ? 'passing'
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function snapshotLanding(
+  pr: any,
+  state: string,
+): LinkedPullRequestSnapshot['landing'] {
+  if (state === 'MERGED') return { state: 'merged' };
+  if (state !== 'OPEN') return undefined;
+  if (pr.isInMergeQueue === true) {
+    const position = nonNegativeCount(pr.mergeQueueEntry?.position);
+    return { state: 'queued', ...(position !== undefined ? { position } : {}) };
+  }
+  if (pr.isInMergeQueue !== false) return undefined;
+  const removal = pr.queueRemovals?.nodes?.at(-1);
+  const removalId = text(removal?.id);
+  const removedAt = text(removal?.createdAt);
+  const armedAt = text(pr.autoMergeRequest?.enabledAt);
+  if (removalId && removedAt && (!armedAt || removedAt >= armedAt)) {
+    const reason = capped(text(removal.reason), EXCERPT_CHARS);
+    return {
+      state: 'removed',
+      id: removalId,
+      at: removedAt,
+      ...(reason ? { reason } : {}),
+    };
+  }
+  if (armedAt) return { state: 'armed' };
+  if (pr.autoMergeRequest === null && Array.isArray(pr.queueRemovals?.nodes))
+    return { state: 'not-queued' };
+  return undefined;
+}
+
 /** gh's JSON for one read, as an observation; throws on an incomplete one. */
 export function normalizeGitHubFeedbackObservation(
   parsed: unknown,
@@ -269,7 +347,44 @@ export function normalizeGitHubFeedbackObservation(
   const state = pr.merged === true ? 'MERGED' : pr.state.toUpperCase();
   const headOwner = login(pr.headRepositoryOwner);
   const viewerLogin = login(data.viewer);
+  const mergeable =
+    pr.mergeable === 'MERGEABLE'
+      ? 'mergeable'
+      : pr.mergeable === 'CONFLICTING'
+        ? 'conflicting'
+        : 'unknown';
+  const reviewDecision =
+    pr.reviewDecision === 'APPROVED'
+      ? 'approved'
+      : pr.reviewDecision === 'CHANGES_REQUESTED'
+        ? 'changes_requested'
+        : pr.reviewDecision === 'REVIEW_REQUIRED'
+          ? 'review_required'
+          : undefined;
+  const title = capped(text(pr.title), NAME_CHARS);
   return {
+    ...(title
+      ? {
+          snapshot: {
+            title,
+            pullRequestState: state,
+            url: pr.url,
+            head: pr.headRefOid,
+            observedAt,
+            isDraft: typeof pr.isDraft === 'boolean' ? pr.isDraft : undefined,
+            checks: snapshotChecks(rollup, contextNodes),
+            reviewDecision,
+            mergeability: mergeable,
+            updatedAt: text(pr.updatedAt),
+            mergedAt: text(pr.mergedAt),
+            closedAt: text(pr.closedAt),
+            additions: nonNegativeCount(pr.additions),
+            deletions: nonNegativeCount(pr.deletions),
+            changedFiles: nonNegativeCount(pr.changedFiles),
+            landing: snapshotLanding(pr, state),
+          },
+        }
+      : {}),
     identity: {
       provider: identity.provider,
       host: identity.host.toLowerCase(),
@@ -284,12 +399,7 @@ export function normalizeGitHubFeedbackObservation(
     headRefName: pr.headRefName,
     baseRefName: pr.baseRefName,
     ...(headOwner ? { headOwner } : {}),
-    mergeable:
-      pr.mergeable === 'MERGEABLE'
-        ? 'mergeable'
-        : pr.mergeable === 'CONFLICTING'
-          ? 'conflicting'
-          : 'unknown',
+    mergeable,
     ...(text(pr.reviewDecision) ? { reviewDecision: pr.reviewDecision } : {}),
     checks: contextNodes
       .map(normalizeCheck)

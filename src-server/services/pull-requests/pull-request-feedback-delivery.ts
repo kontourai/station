@@ -1251,6 +1251,21 @@ export class PullRequestFeedbackDelivery {
       const conflict = conflictCandidate(observation);
       if (conflict) candidates.push(conflict);
     }
+    const landing = observation.snapshot?.landing;
+    if (
+      landing?.state === 'removed' &&
+      Date.parse(landing.at) >= Date.parse(claim.enabledAt)
+    ) {
+      candidates.push({
+        category: 'merge-queue-removal',
+        signature: landing.id,
+        summary: { count: 1 },
+        render: (_maxItems, excerptChars) => [
+          'Removed from the merge queue. Inspect the queue result before trying to land again.',
+          ...excerpt(landing.reason ?? '', excerptChars),
+        ],
+      });
+    }
     // Station's own review of this head: sent under "Address review
     // comments", or when a person chose Send to agent for it.
     const headReview = this.ports.headReviewEnabled?.()
@@ -1270,6 +1285,7 @@ export class PullRequestFeedbackDelivery {
       'failing-checks',
       'review-threads',
       'merge-conflict',
+      'merge-queue-removal',
       'review-findings',
     ] as const)
       if (!(category === 'failing-checks' && failing === 'pending'))

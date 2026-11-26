@@ -12,6 +12,7 @@
 import { resolve } from 'node:path';
 import type {
   ConversationPullRequestLink,
+  LinkedPullRequestSnapshot,
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
 import {
@@ -231,6 +232,9 @@ export interface PullRequestFeedbackRuntime {
    * pull request list. Empty while the preview is off.
    */
   derivedLinks(conversationId: string): ConversationPullRequestLink[];
+  snapshotFor(
+    identity: PullRequestLinkIdentity,
+  ): LinkedPullRequestSnapshot | undefined;
   /**
    * A kept pull request's feedback for the Task board, as this request may
    * see it: undefined while the preview is off or unless it may read the
@@ -880,6 +884,11 @@ export function composePullRequestFeedbackRuntime(
         });
         return [];
       }
+    },
+    snapshotFor: (identity: PullRequestLinkIdentity) => {
+      const store = enabled() ? holder.forRead() : undefined;
+      return store?.observation(pullRequestFeedbackKey(identity))?.observation
+        .snapshot;
     },
     factFor: (identity, request, taskSessionId) => {
       const store = enabled() ? holder.forRead() : undefined;

@@ -1,4 +1,5 @@
 import { buildSessionInventoryViewModel } from '@kontourai/station-basis-pane/session-inventory-view';
+import type { LinkedPullRequestSnapshot } from '@kontourai/station-contracts/conversation-pull-request-links';
 import type { GitReadLocation, GitStatusResult } from '@kontourai/station-sdk';
 import { useGitStatusQuery } from '@kontourai/station-sdk';
 import { getConversationPullRequestLinks } from '@kontourai/station-sdk/conversation-pull-request-links';
@@ -55,6 +56,41 @@ const BASIS_GROUP_ORDER = [
   'execution',
   'inputs',
 ] as const;
+
+const checksLabels = {
+  passing: 'Checks passing',
+  failing: 'Checks failing',
+  pending: 'Checks pending',
+  'awaiting-approval': 'Checks awaiting approval',
+};
+
+const reviewLabels = {
+  approved: 'Approved',
+  changes_requested: 'Changes requested',
+  review_required: 'Awaiting review',
+};
+
+function pullRequestStatusText(status: LinkedPullRequestSnapshot) {
+  const landing = status.landing;
+  return [
+    status.pullRequestState,
+    status.isDraft ? 'Draft' : undefined,
+    status.checks ? checksLabels[status.checks] : undefined,
+    status.reviewDecision ? reviewLabels[status.reviewDecision] : undefined,
+    status.mergeability === 'conflicting' ? 'Merge conflict' : undefined,
+    landing?.state === 'armed' ? 'Auto-merge armed' : undefined,
+    landing?.state === 'queued'
+      ? landing.position === undefined
+        ? 'In merge queue'
+        : `Queue position ${landing.position}`
+      : undefined,
+    landing?.state === 'removed'
+      ? ['Removed from merge queue', landing.reason].filter(Boolean).join(' · ')
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
 
 function sourceLabel(source: 'explicit' | 'branch-derived' | 'task-declared') {
   return source === 'explicit'
@@ -451,7 +487,7 @@ function ChatInboxCardBody({
                 <span className="chat-dock-inbox-hover-card__pr-meta">
                   {sourceLabel(link.source)}
                   {link.status.state === 'current'
-                    ? ` · ${link.status.pullRequestState}`
+                    ? ` · ${pullRequestStatusText(link.status)}`
                     : ` · ${link.status.state}`}
                 </span>
               </li>
