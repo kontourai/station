@@ -238,3 +238,14 @@ export type WorktreeOutputSettlementRefusal =
   | 'pull-request-unavailable'
   | 'pull-request-not-open-or-merged'
   | 'pull-request-mismatch';
+
+export interface ObservedSessionWorkspace {
+  branch?: string;
+  diffStat?: {
+    insertions: number;
+    deletions: number;
+    files: number;
+    baseRef: string;
+    observedAt: string;
+  };
+}

@@ -1,6 +1,7 @@
 import {
   Fragment,
   type KeyboardEvent,
+  type ReactNode,
   useEffect,
   useId,
   useLayoutEffect,
@@ -39,12 +40,14 @@ export function RowMenu({
   items,
   label = 'More actions',
   triggerClassName,
+  triggerContent,
   onOpenChange,
 }: {
   items: readonly RowMenuItem[];
   label?: string;
   /** Replaces the trigger's own class, for a host with its own action slot. */
   triggerClassName?: string;
+  triggerContent?: ReactNode;
   /** Told when the menu opens and closes (a host hides its hover card). */
   onOpenChange?: (open: boolean) => void;
 }) {
@@ -189,7 +192,7 @@ export function RowMenu({
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((value) => !value)}
       >
-        <MoreGlyph />
+        {triggerContent ?? <MoreGlyph />}
       </button>
       {open ? (
         <div

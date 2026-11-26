@@ -199,7 +199,7 @@ const GITHUB_PULL_REQUEST_FIELDS =
  * comments, which are the expensive parts of a full read.
  */
 const GITHUB_PULL_REQUEST_STATUS_FIELDS =
-  'number,url,title,state,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,isDraft,reviewDecision,autoMergeRequest';
+  'number,url,title,state,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,isDraft,reviewDecision,autoMergeRequest,statusCheckRollup,updatedAt,mergedAt,closedAt,additions,deletions,changedFiles';
 
 /**
  * Whether an open pull request sits in its repository's merge queue (#5064).
@@ -251,6 +251,45 @@ const githubReviewDecision = (value: unknown): PullRequest['reviewDecision'] =>
         ? 'review_required'
         : undefined;
 
+function statusChecks(
+  value: unknown,
+): NonNullable<PullRequest['snapshot']>['checks'] {
+  if (!Array.isArray(value) || !value.length) return undefined;
+  const checks = value.map((check) => {
+    if (check?.__typename === 'StatusContext') return check?.state;
+    if (check?.__typename !== 'CheckRun') return undefined;
+    if (check.status === 'WAITING' || check.conclusion === 'ACTION_REQUIRED')
+      return 'WAITING';
+    return check.status === 'COMPLETED' ? check.conclusion : check.status;
+  });
+  if (
+    checks.some((state) =>
+      [
+        'FAILURE',
+        'ERROR',
+        'TIMED_OUT',
+        'CANCELLED',
+        'STARTUP_FAILURE',
+      ].includes(state),
+    )
+  )
+    return 'failing';
+  if (checks.includes('WAITING')) return 'awaiting-approval';
+  if (
+    checks.some((state) =>
+      ['EXPECTED', 'PENDING', 'IN_PROGRESS', 'QUEUED', 'REQUESTED'].includes(
+        state,
+      ),
+    )
+  )
+    return 'pending';
+  if (
+    checks.every((state) => ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(state))
+  )
+    return 'passing';
+  return undefined;
+}
+
 export function normalizeGitHubPullRequest(
   value: any,
   host: string,
@@ -264,7 +303,24 @@ export function normalizeGitHubPullRequest(
     typeof value.baseRefName !== 'string'
   )
     throw new Error('GitHub CLI returned an incomplete pull request');
+  const checks = statusChecks(value.statusCheckRollup);
+  const snapshot = {
+    ...(checks ? { checks } : {}),
+    ...Object.fromEntries(
+      ['updatedAt', 'mergedAt', 'closedAt'].flatMap((key) =>
+        typeof value[key] === 'string' ? [[key, value[key]]] : [],
+      ),
+    ),
+    ...Object.fromEntries(
+      ['additions', 'deletions', 'changedFiles'].flatMap((key) =>
+        Number.isSafeInteger(value[key]) && value[key] >= 0
+          ? [[key, value[key]]]
+          : [],
+      ),
+    ),
+  };
   return {
+    ...(Object.keys(snapshot).length ? { snapshot } : {}),
     provider: 'github',
     host,
     ref: String(value.number),

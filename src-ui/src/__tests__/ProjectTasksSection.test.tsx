@@ -35,6 +35,11 @@ const {
   useTasksQuery: vi.fn(),
   useOrchestrationSessionActivityQuery: vi.fn(),
 }));
+let showPullRequestRollup = false;
+vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () =>
+    new Set(showPullRequestRollup ? ['pull-request-agent-feedback'] : []),
+}));
 const invalidateQueries = vi.fn();
 const setQueryData = vi.fn();
 const createTask = vi.fn();
@@ -177,6 +182,7 @@ vi.mock('../contexts/useOpenInRegion', () => ({
 vi.mock('../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: [] }),
   taskQueries: {
     list: (projectId?: string) => ({ queryKey: ['tasks', projectId ?? 'all'] }),
     graph: (taskId: string) => ({ queryKey: ['task-graph', taskId] }),
@@ -247,6 +253,7 @@ describe('ProjectTasksSection', () => {
     showToast.mockReset();
     refetchTasks.mockReset();
     tasksError = undefined;
+    showPullRequestRollup = false;
     useTasksQuery.mockReset();
     useTasksQuery.mockImplementation(() => ({
       data: tasks,
@@ -536,7 +543,8 @@ describe('ProjectTasksSection', () => {
     });
   });
 
-  test('only the board reads pull request facts from the forge', () => {
+  test('only the board reads pull request facts even with the preview enabled', () => {
+    showPullRequestRollup = true;
     const { unmount } = render(<ProjectTasksSection slug="project-alpha" />);
     expect(
       useTaskPullRequestFactsQuery.mock.calls.every(
