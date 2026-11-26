@@ -1440,6 +1440,7 @@ interface DelegateTaskRequest {
   createRequestCallerSessionId?: string;
   taskRoomAttachments?: ChatAttachmentInput[];
   delegatedAppearance?: { ownerId: string; parentSessionId: string };
+  delegationGrantParent?: import('../../security/confinement/delegation-grants.js').VerifiedDelegationGrantParent;
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
   /** Human-authored room title, before the provider brief is appended. */
@@ -4902,6 +4903,27 @@ export function createOrchestrationRoutes(
           parentSessionId: caller.sessionId,
         };
       }
+      const grantParent =
+        caller?.principal?.elevationEligible &&
+        caller.assurance !== 'bearer-exposed' &&
+        caller.principal.id === userId &&
+        connectedAccountOwnerIdForTurnAccount(caller.principal.id) &&
+        !tenantExecutionContextForRequest(c.req.raw) &&
+        resolvedDelegation?.provenance === 'caller-derived' &&
+        delegation?.depth === 1 &&
+        delegation.parentSessionId === caller.sessionId &&
+        delegation.parentConversationId &&
+        body.target.environment?.kind === 'current' &&
+        body.target.workspace?.kind === 'project' &&
+        !body.taskRoomRequest &&
+        !('sessionId' in body && body.sessionId)
+          ? {
+              sessionId: caller.sessionId,
+              conversationId: delegation.parentConversationId,
+              credentialCurrent: () =>
+                deps.isRequestPrincipalCurrent?.(c.req.raw) === true,
+            }
+          : undefined;
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
       if (roomRequest && body.clientTurnId !== roomRequest.operationId)
@@ -4932,6 +4954,9 @@ export function createOrchestrationRoutes(
           ...(sessionGroupAdmission ? { sessionGroupAdmission } : {}),
           createRequestIntent: body,
           ...(delegatedAppearance ? { delegatedAppearance } : {}),
+          ...(grantParent && !sessionId
+            ? { delegationGrantParent: grantParent }
+            : {}),
           createRequestCallerSessionId: await createRequestCallerSession(
             c.req.raw,
           ),

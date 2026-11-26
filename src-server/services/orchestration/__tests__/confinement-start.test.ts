@@ -39,6 +39,7 @@ import {
   confinedNetworkPlan,
   observedConfinementRecord,
 } from '../../../security/confinement/confinement-provider.js';
+import { delegationGrantSettingsSchema } from '../../../security/confinement/delegation-grants.js';
 import { createSeatbeltConfinementProvider } from '../../../security/confinement/seatbelt.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -282,6 +283,55 @@ describe('#2494: a start resolves its confinement before the engine is touched',
         : undefined,
     );
   }
+
+  test('a standing full-access child cannot grant full access and re-confines on its next turn after revoke', async () => {
+    await start('operator-parent', 'codex', {
+      operator: true,
+      approvalMode: 'never',
+    });
+    await waitForStarted('operator-parent');
+    expect(service.delegationParentHasFullAccess('operator-parent')).toBe(true);
+
+    let revoked = false;
+    const grant = {
+      ...delegationGrantSettingsSchema.parse({ access: 'full-access' }),
+      id: 'test-grant',
+      createdAt: 0,
+      createdBy: 'operator' as const,
+    };
+    const result = await service.startSessionInternal(
+      {
+        type: 'start-session',
+        input: { threadId: 'standing-child', provider: 'codex' },
+      },
+      {},
+      {
+        delegationLaunch: {
+          grant,
+          current: () =>
+            !revoked &&
+            service.delegationParentHasFullAccess('operator-parent'),
+        },
+      },
+    );
+    expect(result.status, JSON.stringify(result)).toBe('accepted');
+    await waitForStarted('standing-child');
+    expect(codex.starts.at(-1)?.confinement).toBe('host');
+
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'standing-child', input: 'Before revoke' },
+    });
+    expect(codex.turns.at(-1)?.confinement).toBe('host');
+    expect(service.delegationParentHasFullAccess('standing-child')).toBe(false);
+
+    revoked = true;
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'standing-child', input: 'After revoke' },
+    });
+    expect(codex.turns.at(-1)?.confinement).toBe('workspace');
+  });
 
   /** The record the thread's latest persisted `session.started` carries. */
   function persistedRecord(threadId: string): unknown {

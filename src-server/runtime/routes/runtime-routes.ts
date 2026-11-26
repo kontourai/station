@@ -101,7 +101,10 @@ import {
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
 import { sessionNetworkRestricted } from '../../security/confinement/confinement-provider.js';
-import { DelegationGrantStore } from '../../security/confinement/delegation-grants.js';
+import {
+  type DelegationGrant,
+  DelegationGrantStore,
+} from '../../security/confinement/delegation-grants.js';
 import {
   classifyOperatorCredentialPosition,
   isHostLocalOperatorCredentialUse,
@@ -5001,6 +5004,7 @@ export function configureRuntimeRoutes(
     ) &&
     (!operatorDeviceViewRequests.has(request) ||
       isOwnedOperatorDevice(request));
+  let readDelegationGrants: (() => readonly DelegationGrant[]) | undefined;
   if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
     const delegationGrantsPreview = context.featurePreviews.bind({
       id: 'delegation-grants',
@@ -5011,6 +5015,11 @@ export function configureRuntimeRoutes(
       context.configLoader.getProjectHomeDir(),
       context.logger,
     );
+    readDelegationGrants = () =>
+      delegationGrantsPreview.select({
+        enabled: () => delegationGrants.list(),
+        disabled: () => [],
+      });
     context.app.route(
       '/config/delegation-grants',
       createDelegationGrantRoutes(
@@ -8046,6 +8055,7 @@ export function configureRuntimeRoutes(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
           remoteStations,
+          readDelegationGrants,
         ),
       ),
       taskRoomWork: {

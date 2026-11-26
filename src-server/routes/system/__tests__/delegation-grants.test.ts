@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { expect, test } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
+import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { DelegationGrantStore } from '../../../security/confinement/delegation-grants.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
@@ -65,7 +66,7 @@ test('an operator can create and revoke a grant only with the preview enabled', 
 
   const created = await createGrant(operator);
   expect(created.status).toBe(201);
-  const { data } = await created.json();
+  const { data } = await readJson<{ data: { id: string } }>(created);
   expect(data).toMatchObject({
     ...grant,
     ownWorktree: true,

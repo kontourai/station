@@ -153,7 +153,13 @@ export class DelegationGrantStore {
   }
 }
 
-interface DelegationGrantTarget {
+export interface VerifiedDelegationGrantParent {
+  sessionId: string;
+  conversationId: string;
+  credentialCurrent(): boolean;
+}
+
+export interface DelegationGrantTarget {
   agent: string;
   model: string;
   project: string;
@@ -189,4 +195,10 @@ export function selectDelegationGrant(
   return first && (!second || first.scope.kind !== second.scope.kind)
     ? first
     : undefined;
+}
+
+export interface DelegationLaunch {
+  readonly grant: DelegationGrant;
+  readonly current: () => boolean;
+  readonly codexGit?: import('@kontourai/station-contracts/execution-confinement').ConfinementPlan['delegatedCodexGit'];
 }

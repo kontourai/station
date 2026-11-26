@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { resolve as resolveFilesystemPath } from 'node:path';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
@@ -95,6 +95,7 @@ import {
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
 import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-files';
+import { codexDelegatedGitPlan } from '../providers/adapters/codex-confinement.js';
 import {
   ACP_UNKNOWN_FAILURE_GUIDANCE,
   delegatedRuntimeFailureGuidance,
@@ -111,6 +112,12 @@ import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-te
 import type { FullAccessGrant } from '../security/coding-authority.js';
 import { WORKING_DIRECTORY_NOT_GRANTED_CODE } from '../security/coding-authority.js';
 import { readConfinementRecord } from '../security/confinement/confinement-provider.js';
+import {
+  type DelegationGrant,
+  type DelegationLaunch,
+  selectDelegationGrant,
+  type VerifiedDelegationGrantParent,
+} from '../security/confinement/delegation-grants.js';
 import { managedEngineRefusalFor } from '../security/managed-engine-limits.js';
 import {
   assertPreparationRequirementSupported,
@@ -183,8 +190,10 @@ import {
   ReceiverExecutionRefusal,
   receiverAdmittedCwd,
 } from '../services/projects/project-contribution-service.js';
+import { assertProjectWorktreeDirectory } from '../services/projects/project-service.js';
 import type { TaskDispatchAgentStart } from '../services/projects/task-dispatcher.js';
 import type { TaskRoomInvocationAdmission } from '../services/projects/task-room-work-module.js';
+import { WorktreeProvisioningService } from '../services/projects/worktree-provisioning-service.js';
 import {
   fetchRemoteStation,
   isRemoteStationTarget,
@@ -435,6 +444,7 @@ export interface DelegateTaskInput {
   appearanceProposal?: boolean;
   /** Composed from the verified parent at the local route. */
   delegatedAppearance?: { ownerId: string; parentSessionId: string };
+  delegationGrantParent?: VerifiedDelegationGrantParent;
   /** Server-only current-host staging authority, composed by the authenticated route. */
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
@@ -5742,10 +5752,13 @@ export function isInboundDelegationPeer(
   return inboundDeviceKind === 'delegation';
 }
 
+const delegationWorktrees = new WorktreeProvisioningService();
+
 export async function delegateTask(
   input: DelegateTaskInput,
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
+  readDelegationGrants?: () => readonly DelegationGrant[],
 ): Promise<DelegatedTaskHandle> {
   assertInheritedDelegationToolPolicy(input.delegation);
   input = snapshotTurnSubmissionFields(
@@ -6343,7 +6356,109 @@ export async function delegateTask(
         }
       : undefined;
     const create = async (sessionId: string): Promise<DelegatedTaskHandle> => {
-      const resolvedCwd = resolved.workspace?.cwd;
+      const workspace = resolved.workspace;
+      const parent = input.delegationGrantParent;
+      const applicableGrant = () => {
+        if (
+          !readDelegationGrants ||
+          !parent?.credentialCurrent() ||
+          input.delegationProvenance !== 'caller-derived' ||
+          input.delegation?.depth !== 1 ||
+          input.delegation.parentSessionId !== parent.sessionId ||
+          workspace?.kind !== 'project' ||
+          !resolved.modelId
+        )
+          return undefined;
+        const grant = selectDelegationGrant(
+          readDelegationGrants(),
+          {
+            agent: resolved.agentId,
+            model: resolved.modelId,
+            project: workspace.projectSlug,
+            parentConversationId: parent.conversationId,
+            parentSessionActive: orchestrationService.delegationParentActive(
+              parent.sessionId,
+            ),
+          },
+          Date.now(),
+        );
+        return grant?.access === 'full-access' &&
+          !orchestrationService.delegationParentHasFullAccess(parent.sessionId)
+          ? undefined
+          : grant;
+      };
+      const grant = applicableGrant();
+      if (
+        grant &&
+        (resolved.provider !== 'codex' || grant.network.mode === 'allowlist')
+      ) {
+        throw new LocalStationRefusal(
+          'delegation_grant_network_unavailable',
+          'The selected delegation grant requires a network policy this engine cannot apply.',
+        );
+      }
+      if (grant && (input.stagedFiles || portableIntent || input.sessionId)) {
+        throw new LocalStationRefusal(
+          'delegation_grant_workspace_unavailable',
+          'This delegation cannot apply its grant to an existing or prepared workspace.',
+        );
+      }
+      const worktree =
+        grant?.ownWorktree && workspace?.kind === 'project'
+          ? await (async () => {
+              await assertProjectWorktreeDirectory(
+                workspace.projectSlug,
+                workspace.cwd,
+              );
+              input.dispatchCwdAdmission?.recheck(workspace.cwd, 'session');
+              return delegationWorktrees.provision({
+                repoPath: workspace.cwd,
+                threadId: sessionId,
+                providerKind: resolved.provider,
+                isolation: {
+                  mode: 'worktree',
+                  policy: {
+                    ...workspace.workspaceIsolation.policy,
+                    branchPrefix: `station-delegation/${createHash('sha256').update(sessionId).digest('hex').slice(0, 32)}`,
+                    baseRef: 'refs/remotes/origin/HEAD',
+                  },
+                },
+              });
+            })()
+          : undefined;
+      const resolvedCwd = worktree?.path ?? workspace?.cwd;
+      const executionWorkspace =
+        worktree && workspace?.kind === 'project'
+          ? await captureExecutionWorkspaceBinding({
+              threadId: sessionId,
+              ownerThreadId: sessionId,
+              projectSlug: workspace.projectSlug,
+              cwd: worktree.path,
+              worktree,
+            })
+          : undefined;
+      const delegationLaunch: DelegationLaunch | undefined =
+        grant && workspace?.kind === 'project'
+          ? {
+              grant,
+              current: () => applicableGrant()?.id === grant.id,
+              ...(grant.access === 'confined'
+                ? {
+                    codexGit: worktree
+                      ? await codexDelegatedGitPlan(
+                          worktree,
+                          grant.extraGitWritePaths[workspace.projectSlug] ?? [],
+                          true,
+                        )
+                      : {
+                          writableDirectories: [],
+                          readOnlyPaths: [],
+                          openNetwork: true,
+                        },
+                  }
+                : {}),
+            }
+          : undefined;
       // #484 phase A: the server-minted admitted coordinate for the provider
       // effect path — the EXACT admitted cwd (execution root when it selects
       // the resource, else the resource's bound path), normalized exactly as
@@ -6543,6 +6658,9 @@ export async function delegateTask(
               metadata: {
                 agentId: resolved.agentId,
                 agentSlug: resolved.agentId,
+                ...(worktree
+                  ? { worktree, workspaceIsolation: { mode: 'worktree' } }
+                  : {}),
                 ...(input.title ? { delegationTitle: input.title } : {}),
                 ...(resolved.expectedDefinitionFingerprint
                   ? {
@@ -6564,7 +6682,7 @@ export async function delegateTask(
                 ...(project?.slug ? { projectSlug: project.slug } : {}),
                 // Preserve the resolved creation policy for continuation. The
                 // current Project default cannot certify an earlier launch.
-                ...(resolved.workspace?.kind === 'project'
+                ...(!worktree && resolved.workspace?.kind === 'project'
                   ? {
                       workspaceIsolation: resolved.workspace.workspaceIsolation,
                     }
@@ -6611,6 +6729,8 @@ export async function delegateTask(
               environmentId: target.environmentId,
             },
             resourceAdmissionIntent: 'delegated_background',
+            ...(executionWorkspace ? { executionWorkspace } : {}),
+            ...(delegationLaunch ? { delegationLaunch } : {}),
             ...(group
               ? {
                   beforeProviderStart: (threadId: string) =>
