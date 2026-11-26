@@ -1,0 +1,9 @@
+{
+  "revision": "75e835a2dcec457337a02e3b6e904242a04eacb3",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Checked reconnect handling in the Agents pane and conversation background-task guidance. A snapshot settles an exact recorded tool completion, while gaps without outcome evidence remain unresolved. The mounted count regression and Chromium fixture cover the display before transcript catch-up.","inputs":["src-ui/src/contexts/background-tasks-store.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked reconnect handling in the Agents pane and conversation background-task guidance. A snapshot settles an exact recorded tool completion, while gaps without outcome evidence remain unresolved. The mounted count regression and Chromium fixture cover the display before transcript catch-up.","inputs":["src-ui/src/contexts/background-tasks-store.ts"]}
+  ]
+}
