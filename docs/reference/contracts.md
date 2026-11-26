@@ -2104,10 +2104,24 @@ it does not discover every provider's quota policy.
 `conversation-pull-request-links` defines exact provider, host, repository, and
 native-ref identities for Conversation links. Explicit links, branch-derived
 associations, and Task-kept declarations retain distinct `source` values.
-Provider refresh results carry an observation time and either current state or
-an explicit unsupported/unavailable reason. `PullRequest.headSha` and
-`baseSha` are optional because a provider that omits exact revisions must not
-be presented as current by inference.
+A current observation can include a timed `LinkedPullRequestSnapshot` with
+draft, checks, review decision, mergeability, updated, closed and merged
+times, diff counts and landing state. Checks can be passing, failing,
+pending or awaiting approval. Queue entries can include a position and
+removals have a forge event ID, a timestamp and an optional reason. A
+removal matches the failing filter for up to 15 minutes unless checks pass.
+A forge can explicitly report that review requirements are satisfied even
+when it omits a review decision. GitLab has no merge queue status here.
+A missing fact is unknown. Unsupported and unavailable observations carry a
+reason. `PullRequest.headSha` and `baseSha` carry exact revisions when the
+provider supplies them.
+
+With the Pull request agent feedback preview enabled, conversation
+inventory pages carry optional linked observations and local workspace
+observations. Workspace diff counts name their observed base and time.
+Task pull request facts can also carry readable linked observations from
+the Task's chats. Both projections reuse observations and keep missing
+facts visible when they aggregate links.
 
 `pull-request-feedback` defines pull request agent feedback: a person's
 switches, the forge observation (checks with their required flag, review
@@ -2120,7 +2134,8 @@ the `pull-request-head-review` preview is on. The newest review reads as
 `PullRequestHeadReview` (`headReview` on both views, with `current`), why
 the observed head has none yet as `PullRequestHeadReviewWaiting`
 (`headReviewWaiting`), and its required findings go as a `review-findings`
-delivery. `IPullRequestProvider.getFeedbackObservation` is
+delivery. Merge queue removals use a `merge-queue-removal` delivery keyed by
+the forge event ID. `IPullRequestProvider.getFeedbackObservation` is
 optional; a provider without it reads as `unsupported`. A `paused` status
 carries `cap` (`head` or `day`, for a round limit) and `at` when it paused.
 The attention subpath's `PullRequestFeedbackAttentionItem`

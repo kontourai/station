@@ -17,6 +17,7 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
 import { migrateSnoozeKey, writeSnooze } from '../utils/activity-snooze-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import { buildOrchestrationItems } from '../views/home/home-view-model';
+import type { WorkFacts } from '../views/home/work-facts';
 import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 // The app supplies connection authority; these isolated row tests supply the
@@ -1197,4 +1198,42 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
     expect(within(row).getByText('active agent')).toBeTruthy();
     expect(within(row).getAllByText('1m ago')).toHaveLength(1);
   });
+});
+
+it('filters Chats by a known PR state without matching an unknown check', () => {
+  const pullRequest = {
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'acme', name: 'team' },
+    source: 'explicit' as const,
+    ref: '17',
+    observedAt: '2026-11-25T15:00:00Z',
+    status: {
+      state: 'current' as const,
+      title: 'Fix a check',
+      pullRequestState: 'OPEN',
+    },
+  };
+  const workFacts = new Map<string, WorkFacts>([
+    [
+      'active',
+      {
+        pullRequests: [
+          {
+            ...pullRequest,
+            status: { ...pullRequest.status, checks: 'failing' },
+          },
+        ],
+      },
+    ],
+    ['attention', { pullRequests: [{ ...pullRequest, ref: '18' }] }],
+  ]);
+  renderPanel({ workFacts });
+  const filter = screen.getByRole('combobox', { name: 'Pull request status' });
+  fireEvent.change(filter, { target: { value: 'failing' } });
+  expect(screen.getByText('active title')).toBeTruthy();
+  expect(screen.queryByText('attention title')).toBeNull();
+  fireEvent.change(filter, { target: { value: 'ready' } });
+  expect(screen.queryByText('active title')).toBeNull();
+  expect(screen.queryByText('attention title')).toBeNull();
 });
