@@ -53,6 +53,20 @@ const network = z
     'Invalid egress allowlist',
   );
 
+export function isAllowedExtraDelegationGitPath(path: string): boolean {
+  if (!path || path.length > 1024) return false;
+  const parts = path.split('/');
+  if (
+    parts.some(
+      (part) =>
+        !part || part === '.' || part === '..' || /[\\:\p{Cc}]/u.test(part),
+    )
+  )
+    return false;
+  const root = parts[0]?.toLowerCase();
+  return root !== 'worktrees' && root !== 'objects';
+}
+
 export const delegationGrantSettingsSchema = z.strictObject({
   access: z.enum(['confined', 'full-access']),
   scope: scope.default({ kind: 'project' }),
@@ -71,16 +85,9 @@ export const delegationGrantSettingsSchema = z.strictObject({
             .string()
             .min(1)
             .max(1024)
-            .refine((path) =>
-              path
-                .split('/')
-                .every(
-                  (part) =>
-                    part !== '' &&
-                    part !== '.' &&
-                    part !== '..' &&
-                    !/[\\:\p{Cc}]/u.test(part),
-                ),
+            .refine(
+              isAllowedExtraDelegationGitPath,
+              'Path must stay within the common Git directory and outside protected Git metadata',
             ),
         )
         .max(64),

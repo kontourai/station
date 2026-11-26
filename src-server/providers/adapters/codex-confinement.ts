@@ -13,6 +13,7 @@ import {
   type ConfinementProvider,
   requiredConfinementLevel,
 } from '../../security/confinement/confinement-provider.js';
+import { isAllowedExtraDelegationGitPath } from '../../security/confinement/delegation-grants.js';
 import { discoverSeatbeltGitLayout } from '../../security/confinement/seatbelt.js';
 import { isCanonicalPathWithin } from '../../utils/path-containment.js';
 import type {
@@ -66,6 +67,10 @@ export async function codexDelegatedGitPlan(
     throw new Error(
       'Delegated coding requires a verified worktree with its own Git ref namespace.',
     );
+  }
+
+  if (!extraGitWritePaths.every(isAllowedExtraDelegationGitPath)) {
+    throw new Error('Delegation grant includes a protected Git write path.');
   }
 
   const branchDir = dirname(worktree.branch);

@@ -50,7 +50,7 @@ function mount() {
   };
 }
 
-function createGrant(app: Hono, input = grant) {
+function createGrant(app: Hono, input: object = grant) {
   return app.request('/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -105,3 +105,27 @@ test('a corrupt grants file withdraws standing grants and reports the outage to 
     error: expect.stringContaining('Standing grants are disabled'),
   });
 });
+
+test.each([
+  'objects',
+  'objects/info',
+  'objects/aa',
+  'OBJECTS/INFO/alternates',
+  'worktrees',
+  'worktrees/another',
+  '../config',
+  '/tmp',
+])(
+  'the operator cannot grant writes to a protected Git path: %s',
+  async (path) => {
+    const { operator, enable } = mount();
+    await enable();
+    const response = await createGrant(operator, {
+      ...grant,
+      extraGitWritePaths: { 'test-project': [path] },
+    });
+    expect(response.status).toBe(400);
+    const listed = await operator.request('/');
+    expect(await listed.json()).toMatchObject({ data: [] });
+  },
+);
