@@ -1,0 +1,7 @@
+{
+  "revision": "a703505683a9d3b8818f5920296fd3c7bcf89fe9",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the pending inbox list and composer recovery path. A person's refused steer can restore its text into an empty draft while Station retains exact-turn admission and requires an explicit send.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/QueuedMessages.tsx"]}
+  ]
+}

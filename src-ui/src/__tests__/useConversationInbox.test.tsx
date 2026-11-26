@@ -270,6 +270,58 @@ test('an unknown steer offers explicit review and resend without automatically s
   ).toBe(false);
 });
 
+test('only your ended-turn steer can be restored after the composer accepts the text', async () => {
+  const missedSteer: ConversationInboxEntry = {
+    ...entry('refused', 'missed-steer'),
+    kind: 'steer',
+    ownedByCaller: true,
+    reasonCode: 'steer_turn_ended',
+    message: 'check the queue first',
+  };
+  let dismissed = false;
+  const fetcher = vi.fn(async (_url: unknown, options?: RequestInit) => {
+    if (options?.method === 'DELETE') {
+      dismissed = true;
+      return Response.json({
+        success: true,
+        data: { ...missedSteer, state: 'cancelled' },
+      });
+    }
+    return response([
+      ...(dismissed ? [] : [missedSteer]),
+      {
+        ...missedSteer,
+        clientTurnId: 'someone-elses-steer',
+        message: 'another sender',
+        ownedByCaller: false,
+      },
+    ]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const restore = vi.fn(() => false);
+  mount({ messages: [] }, restore);
+  await screen.findByText('2 pending');
+  expand();
+
+  const restoreButton = screen.getByRole('button', {
+    name: 'Restore to draft',
+  });
+  fireEvent.click(restoreButton);
+  expect(restore).toHaveBeenCalledExactlyOnceWith('check the queue first');
+  expect(
+    fetcher.mock.calls.every(
+      ([, options]) => !options?.method || options.method === 'GET',
+    ),
+  ).toBe(true);
+
+  restore.mockReturnValue(true);
+  fireEvent.click(restoreButton);
+  await waitFor(() => expect(dismissed).toBe(true));
+  expect(
+    fetcher.mock.calls.some(([, options]) => options?.method === 'POST'),
+  ).toBe(false);
+});
+
 test('a failed refresh makes a previously available count unavailable, never zero', async () => {
   let failed = false;
   vi.stubGlobal(

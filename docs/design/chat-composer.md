@@ -1373,7 +1373,9 @@ never a zero count.
 **Remove** or **Dismiss** uses the original message key and the server's
 authorization and placement checks; rows without a permitted key are
 read-only. Held rows offer no local edit, reorder, send-now or steer action; an
-owned unconfirmed steer offers explicit Review and resend.
+owned unconfirmed steer offers **Review and resend**. When a steer misses its
+target turn, **Restore to draft** is available to its sender. The sender can
+then edit the text and choose when to send it.
 A busy-composer Queue submission requests inbox admission. Eligible submissions
 may be held; Station may instead return a started-turn receipt if the turn has
 ended or the request takes the live path. Apply a pending approval choice before
@@ -1401,8 +1403,8 @@ Send on a closed window's copy releases its original durable outbox key for
 server handoff. It never moves into a new per-tab automatic queue. Restored
 sessionStorage input has no originating Station/authority and is held for
 **Review destination**; it cannot drain, interrupt or steer automatically.
-Review and resend transfers its text into an empty composer before removing
-the retained row, preserving any existing draft.
+**Review and resend** and **Restore to draft** transfer the text into an empty
+composer before removing the retained row. An existing draft stays in place.
 Rows, and the list itself, grow in and collapse out (height and opacity) rather
 than popping.
 In a dock too short for the list and the draft, the list yields before the
