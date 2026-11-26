@@ -1,6 +1,6 @@
 import { useFeaturePreviewsQuery } from '@kontourai/station-sdk';
 import { authenticatedFetch, getJson } from '@kontourai/station-sdk/client';
-import { Badge } from '@kontourai/ui/react';
+import { Badge, Empty } from '@kontourai/ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
@@ -149,7 +149,9 @@ function GrantControls({ authority }: { authority: Authority }) {
           action={<Button onClick={() => void grants.refetch()}>Retry</Button>}
         />
       )}
-      {grants.data?.length === 0 && <p>No delegation grants.</p>}
+      {grants.data?.length === 0 && (
+        <Empty variant="compact" label="Grants appear here once added" />
+      )}
       {grants.data?.map((grant) => (
         <section key={grant.id} className="content-stack">
           <h4>
