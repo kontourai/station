@@ -2733,11 +2733,12 @@ function LiveConversationBody({
             : undefined
         }
       />
-      {/* #3157: the limited conversation's own banner, from the server's
-          recovery projection; it re-reads with each snapshot update. */}
       <DelegationGrantPostureBadge
+        apiBase={apiBase}
         sessionId={activeOrchestrationSession?.threadId}
       />
+      {/* #3157: the limited conversation's own banner, from the server's
+          recovery projection; it re-reads with each snapshot update. */}
       <UsageLimitBanner
         apiBase={apiBase}
         scope={mentionRequestScope}

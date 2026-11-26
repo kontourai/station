@@ -54,11 +54,14 @@ function useGrantAuthority() {
 }
 
 export function DelegationGrantPostureBadge({
+  apiBase,
   sessionId,
 }: {
+  apiBase: string;
   sessionId?: string;
 }) {
-  const authority = useGrantAuthority();
+  const host = useGrantAuthority();
+  const authority = host?.apiBase === apiBase ? host : undefined;
   const query = useQuery({
     enabled: Boolean(authority && sessionId),
     queryKey: ['delegation-grant-posture', authority?.authorityKey, sessionId],
