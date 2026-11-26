@@ -212,6 +212,11 @@ export interface ChatMessage {
    */
   stationRestartContinuation?: boolean;
   /**
+   * A delegated Task's brief or an Automation's run: a Station flow sent it,
+   * the person did not type it. The row says which (`stationTurnOrigin`).
+   */
+  stationOrigin?: 'delegation' | 'automation';
+  /**
    * An in-place engine rewind hid this turn from the engine. The row stays
    * in the transcript, shown dimmed with a Rewound badge.
    */

@@ -192,15 +192,18 @@ Adapter mappings, same Station event:
 
 The pending-message section starts collapsed. Expanding it reveals each mode,
 status and its explicit Send now action. Send remains separate from Stop. The
-Send-mode picker defaults to native Steer for engines whose matrix declares
-native steering (Claude Code, Codex, Muse and the GitHub Copilot (SDK) preview engine), and to Queue elsewhere. Other engines hold steering until a supported safe boundary can be
-proven, and currently wait for turn completion. Send now explicitly overrides
+Send-mode picker defaults to Queue for every engine (#5194); Steer is an
+explicit choice, additive on engines whose matrix declares native steering
+(Claude Code, Codex, Muse and the GitHub Copilot (SDK) preview engine). Other
+engines hold steering until a supported safe boundary can be proven, and
+currently wait for turn completion. Send now explicitly overrides
 that waiting, stopping immediately and sending after a settled receipt.
 
 Return uses the device preference and the selected Send mode. Desktop defaults
 to sending; touch devices default to a new line. Shift+Return adds a line and
-Ctrl/Cmd+Return sends, outside IME composition. Mobile submit controls are icons,
-revealed for a sendable draft while their space stays reserved. See the
+Ctrl/Cmd+Return sends, outside IME composition. Mobile submit controls are icons. They,
+and the Send-mode picker on every screen, appear once there is a sendable draft
+and take no room before. See the
 [composer contract](chat-composer.md#turn-activity-and-follow-up-delivery) for
 current interaction and delivery policy. The adapter table above describes
 explicit engine commands, not a promise of native steering on every ACP Session.

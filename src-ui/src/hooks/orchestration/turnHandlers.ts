@@ -19,7 +19,10 @@ import {
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
 } from '@kontourai/station-contracts/runtime-events';
-import { agentMessageInput } from '@kontourai/station-shared/agent-message-frame';
+import {
+  agentMessageInput,
+  stationTurnOrigin,
+} from '@kontourai/station-shared/agent-message-frame';
 import { isStationRestartContinuationTurn } from '@kontourai/station-shared/conversation-message';
 import {
   outboundStationIdentity,
@@ -252,6 +255,9 @@ export function handleTurnStartedEvent(
           : {}),
         ...(isStationRestartContinuationTurn(event)
           ? { stationRestartContinuation: true }
+          : {}),
+        ...(stationTurnOrigin(event)
+          ? { stationOrigin: stationTurnOrigin(event) }
           : {}),
       });
     }

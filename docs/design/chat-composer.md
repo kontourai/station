@@ -1306,6 +1306,8 @@ appear; Agent & model narrows instead. At 390px a running turn's full row (Clear
 Send, mode picker and Stop) still wraps to a second line once the draft holds
 text. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn.
+On every screen the mode picker appears only once the composer holds
+something to send, so an empty composer gives it no room.
 The mode picker defaults to **Queue** for every engine. Station holds a
 follow-up for the next turn when the current one is still running. A chosen
 mode holds until the conversation changes. Claude Code, Codex, Muse on `muse serve` and the GitHub Copilot (SDK)

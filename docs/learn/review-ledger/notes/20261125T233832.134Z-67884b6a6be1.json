@@ -1,0 +1,7 @@
+{
+  "revision": "4232d0d8069e6bceceb2d9787492820550b4f12b",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Reviewed the tool-update supervisor change: a failed ACP tool call's error now falls back to rawOutput (string, or an error/message/stderr/output field, else compact JSON) when content is absent, and otherwise states that the engine gave no reason. The guide makes no claim about failed-call error text, and its runtime.error and Kiro Internal-error sections are unaffected; no prose change. Checked with acp-tool-update-supervisor and acp-adapter-events focused tests, including a revert that failed the new cases. Limit: the Antigravity rawOutput shape is inferred; recorded nightly events kept no raw frames.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-tool-update-supervisor.ts"]}
+  ]
+}

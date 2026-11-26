@@ -1715,6 +1715,11 @@ records the settled child Session as its sender on both start and steer,
 while retaining the internal actor and the delegating owner’s authority.
 Its text uses the same agent-message frame; declaring a sender kind grants
 no additional access.
+An internal turn with no sender still reads as unattributed, but when its
+recorded `dispatchOrigin` is `delegation` or `automation` (and it is not
+person-authored) the projection marks the row `stationOrigin`
+(`stationTurnOrigin`), and the row names that flow, a delegated Task's brief
+or an Automation run, instead of "sender unknown". It grants nothing.
 
 **Idempotence.** `deliveryId` is the `clientTurnId` of a start and the
 `clientInputId` of a steer, so the durable turn claim and the steer receipt

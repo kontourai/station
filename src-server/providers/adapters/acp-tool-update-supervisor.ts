@@ -733,6 +733,34 @@ function displayContent(
   return joined || undefined;
 }
 
+const FAILED_WITHOUT_REASON =
+  'The engine reported that this tool call failed but gave no reason.';
+
+/** The failure text an engine put in rawOutput, as one readable string. */
+function displayRawOutput(call: CallState): string | undefined {
+  if (!call.hasRawOutput) return undefined;
+  const raw = call.rawOutput;
+  if (typeof raw === 'string') return raw.trim() || undefined;
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    const record = raw as Record<string, unknown>;
+    for (const key of ['error', 'message', 'stderr', 'output']) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+      if (value && typeof value === 'object') {
+        const nested = (value as Record<string, unknown>).message;
+        if (typeof nested === 'string' && nested.trim()) return nested.trim();
+      }
+    }
+  }
+  try {
+    const serialized = JSON.stringify(raw);
+    return serialized && serialized !== '{}' ? serialized : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function receiptFor(call: CallState): ToolOutputReceipt | undefined {
   const sources = [
     call.rawInputReceipt,
@@ -1079,10 +1107,16 @@ export class AcpToolUpdateSupervisor {
               : 'error',
         ...(status === 'failed'
           ? {
+              // Some engines (Antigravity) report a failure only in rawOutput,
+              // and some give no reason at all. A failed call never reaches
+              // the person or the Agent as a blank error.
               error:
-                [displayContent(call.content), omissions]
+                [
+                  displayContent(call.content) ?? displayRawOutput(call),
+                  omissions,
+                ]
                   .filter(Boolean)
-                  .join('\n') || undefined,
+                  .join('\n') || FAILED_WITHOUT_REASON,
             }
           : output === undefined
             ? {}

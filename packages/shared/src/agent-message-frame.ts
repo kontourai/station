@@ -125,3 +125,25 @@ export function agentMessageInput(event: {
       : event.prompt,
   };
 }
+
+/**
+ * Which Station flow sent a user-role turn that nobody typed: a delegated
+ * Task's brief or an Automation's run. `undefined` for the person's own words,
+ * for a turn another agent sent (it has a sender), and for every other origin,
+ * which keeps its existing presentation.
+ */
+export type StationTurnOrigin = 'delegation' | 'automation';
+
+export function stationTurnOrigin(event: {
+  dispatchOrigin?: unknown;
+  authoredBy?: unknown;
+  clientOrigin?: { sender?: unknown; actor?: { kind?: string } };
+}): StationTurnOrigin | undefined {
+  if (event.clientOrigin?.actor?.kind !== 'internal') return undefined;
+  if (event.authoredBy === 'person') return undefined;
+  if (clientOriginSender(event.clientOrigin)) return undefined;
+  return event.dispatchOrigin === 'delegation' ||
+    event.dispatchOrigin === 'automation'
+    ? event.dispatchOrigin
+    : undefined;
+}

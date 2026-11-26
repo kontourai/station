@@ -1,0 +1,7 @@
+{
+  "revision": "3a9db85388b9612f9c8e2ef3be3f5e742d551bc5",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed against the regenerated station-docs-content.ts. The only change is the shipped corpus picking up the edited prose in session-tape-replay.md and module-map.md; the docs MCP tools, topic shape and generation path are unchanged. No prose change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

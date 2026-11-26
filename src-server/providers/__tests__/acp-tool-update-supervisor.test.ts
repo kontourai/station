@@ -1048,3 +1048,68 @@ describe('AcpToolUpdateSupervisor — omission notes on a failed call', () => {
     );
   });
 });
+
+describe('AcpToolUpdateSupervisor — a failed call always states why', () => {
+  test('a failure reported only in rawOutput becomes the error text', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'raw-failed' });
+    supervisor.acceptUpdate({
+      toolCallId: 'raw-failed',
+      hasRawOutput: true,
+      rawOutput: {
+        error: 'station_control_out_of_scope: Session is not bound',
+      },
+      status: 'failed',
+      hasStatus: true,
+    });
+    const terminal = events.at(-1) as any;
+    expect(terminal.method).toBe('tool.completed');
+    expect(terminal.status).toBe('error');
+    expect(terminal.error).toBe(
+      'station_control_out_of_scope: Session is not bound',
+    );
+  });
+
+  test('a string rawOutput is used verbatim when content is absent', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'raw-string' });
+    supervisor.acceptUpdate({
+      toolCallId: 'raw-string',
+      hasRawOutput: true,
+      rawOutput: 'permission denied',
+      status: 'failed',
+      hasStatus: true,
+    });
+    expect((events.at(-1) as any).error).toBe('permission denied');
+  });
+
+  test('content still wins over rawOutput for the error text', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'both' });
+    supervisor.acceptUpdate({
+      toolCallId: 'both',
+      hasContent: true,
+      content: text('readable failure'),
+      hasRawOutput: true,
+      rawOutput: { error: 'raw failure' },
+      status: 'failed',
+      hasStatus: true,
+    });
+    expect((events.at(-1) as any).error).toBe('readable failure');
+  });
+
+  test('a failure with no reason says so instead of a blank error', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'silent' });
+    supervisor.acceptUpdate({
+      toolCallId: 'silent',
+      status: 'failed',
+      hasStatus: true,
+    });
+    const terminal = events.at(-1) as any;
+    expect(terminal.status).toBe('error');
+    expect(terminal.error).toBe(
+      'The engine reported that this tool call failed but gave no reason.',
+    );
+  });
+});

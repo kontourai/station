@@ -23,10 +23,28 @@ function senderAgentLabel(sender: ClientOriginSender): string | undefined {
 
 const PULL_REQUEST_FEEDBACK_LABEL = 'Pull request feedback from Station';
 
+/** Which Station flow sent a row nobody typed (`stationTurnOrigin`). */
+export type IncomingStationOrigin = 'delegation' | 'automation';
+
+/**
+ * An unattributed row a known Station flow sent says which flow: a delegated
+ * Task's brief is the delegating agent's instructions, not "sender unknown".
+ */
+function unattributedLabel(origin: IncomingStationOrigin | undefined): string {
+  if (origin === 'delegation') return 'Task brief from the delegating agent';
+  if (origin === 'automation') return 'Automation run started by Station';
+  return 'Automated message · sender unknown';
+}
+
 /** The accessible name of the whole incoming message. */
-export function incomingMessageLabel(sender: ClientOriginSender): string {
+export function incomingMessageLabel(
+  sender: ClientOriginSender,
+  origin?: IncomingStationOrigin,
+): string {
   if (sender.kind === 'unattributed')
-    return 'Automated message: sender unknown';
+    return origin
+      ? `${unattributedLabel(origin)}, not from you`
+      : 'Automated message: sender unknown';
   if (sender.kind === 'provider') return 'The engine replied on its own';
   if (sender.kind === 'coordinator') return 'Update from Station';
   if (sender.kind === 'pull-request-feedback')
@@ -44,14 +62,19 @@ export function incomingMessageLabel(sender: ClientOriginSender): string {
  */
 export function IncomingAgentHeader({
   sender,
+  origin,
 }: {
   sender: ClientOriginSender;
+  origin?: IncomingStationOrigin;
 }) {
   if (sender.kind === 'unattributed')
     return (
-      <p className="agent-cause">
+      <p
+        className="agent-cause"
+        {...(origin ? { 'data-station-origin': origin } : {})}
+      >
         <InboxGlyph />
-        Automated message · sender unknown
+        {unattributedLabel(origin)}
       </p>
     );
   if (sender.kind === 'provider')
@@ -113,14 +136,16 @@ export function IncomingAgentHeader({
 /** The phone cause stays one row until the reader asks for its details. */
 export function IncomingAgentCause({
   sender,
+  origin,
   children,
 }: {
   sender: ClientOriginSender;
+  origin?: IncomingStationOrigin;
   children?: ReactNode;
 }) {
   const label =
     sender.kind === 'unattributed'
-      ? 'Automated message · sender unknown'
+      ? unattributedLabel(origin)
       : sender.kind === 'provider'
         ? 'The engine replied on its own'
         : sender.kind === 'coordinator'
@@ -141,7 +166,7 @@ export function IncomingAgentCause({
         <ArrowDownGlyph className="agent-cause__caret" />
       </summary>
       <div className="agent-cause-disclosure__details agent-incoming">
-        <IncomingAgentHeader sender={sender} />
+        <IncomingAgentHeader sender={sender} origin={origin} />
         {sender.kind === 'provider' && (
           <p>
             {senderAgentLabel(sender) ?? 'The engine'} started this turn without
