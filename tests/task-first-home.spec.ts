@@ -971,11 +971,9 @@ async function startProjectTask(
   );
   await sendDraft(await openProjectDraft(page), prompt);
   await sent;
-  // Desktop keeps the standalone project-context row; a phone folds the project
-  // into the one-row header's eyebrow above the chat title.
-  const projectContext = page.locator('.chat-dock__project-context');
-  const mobileEyebrow = page.locator('.chat-dock__mobile-eyebrow');
-  await expect(projectContext.or(mobileEyebrow).first()).toBeVisible();
+  const chatHeader = page.locator('.chat-dock__header');
+  await expect(chatHeader).toBeVisible();
+  await expect(chatHeader).toContainText(prompt);
   if (options.settle) await completeStartedTurn(page, prompt);
 }
 

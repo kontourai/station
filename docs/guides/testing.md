@@ -249,6 +249,8 @@ Long-task records are drained at the browser-clock snapshots and filtered to the
 
 Per-journey files describe the measured phase; only a completed wrapper summary means every selected test, including fixture teardown, succeeded. Profiles retain `.cpuprofile`, `.heapprofile`, per-journey JSON, source maps when emitted by the opt-in build, and a median summary. Inspect before choosing a fix. Preserve the real journey's assertions, then compare the same workload after the change. A counter can become a regression assertion when it represents a deterministic contract, such as one store read per request. Do not turn a noisy single-host timing into a blocking gate merely because a cleanup improved one sample.
 
+The initial web/UI hill-climb target is a 25% reduction in median scripting and a 20% reduction in median journey elapsed time, with no initial bundle growth against a fresh matched baseline. Compare alternating baseline/candidate runs on the same host, production build mode, corpus, viewport and measurement interval; reject a candidate without a useful measured gain. These are improvement goals, not achieved release budgets. Preserve immediate composer input, draft/focus retention, canonical navigation intent, touch targets and reader position. Measure input-to-paint separately: Home readiness timings and post-measurement typing assertions do not establish interaction latency. A failed transcript, conversation or workspace journey leaves the application-wide baseline incomplete even when Home passes; physical phones and native shells require their own evidence.
+
 ### Real-server performance scenario
 
 Commit first, then run `npm run perf:server-scenario`. The

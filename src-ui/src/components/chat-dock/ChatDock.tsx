@@ -1471,12 +1471,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const readerHistoryVisible = useRef(false);
   readerHistoryVisible.current =
     isMobile && isPaneOpen && (!isFullscreenPlacement || fullscreenOnScreen);
-  const mobileReaderHistoryActive =
-    readerHistoryVisible.current &&
-    (Boolean(activeChat) || !mobileInboxShown) &&
-    Boolean(activeChat || importedSessionId);
   useLayoutEffect(() => {
-    if (!mobileReaderHistoryActive) return;
+    if (
+      !isMobile ||
+      !isPaneOpen ||
+      (isFullscreenPlacement && !fullscreenOnScreen) ||
+      (mobileInboxShown && !activeChat) ||
+      !(activeChat || importedSessionId)
+    )
+      return;
     return registerDialogHistory(
       mobileReaderHistoryId,
       (reason) => {
@@ -1497,7 +1500,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       { adoptLiveEntry: true },
     );
   }, [
-    mobileReaderHistoryActive,
+    isMobile,
+    isPaneOpen,
+    isFullscreenPlacement,
+    fullscreenOnScreen,
+    mobileInboxShown,
     activeChat,
     importedSessionId,
     mobileReaderHistoryId,

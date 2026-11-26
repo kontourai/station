@@ -5171,7 +5171,7 @@ test('profiles switching between authoritative conversations', async ({
   await seedMobileTaskSwitcher(page);
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
-  const switcher = page.getByRole('button', { name: /^(Inbox|Back to chat)$/ });
+  const switcher = page.getByRole('button', { name: 'Chats', exact: true });
   const menu = page.getByRole('region', { name: 'Chats', exact: true });
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
   await expect(switcher).toBeVisible();
