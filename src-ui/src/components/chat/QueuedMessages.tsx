@@ -224,7 +224,7 @@ export function QueuedMessages({
       ? [{ key: 'outbox', node: outbox.node }]
       : []),
     ...[...localRows].reverse().map(({ row, idx }) => ({
-      key: `local:${row.id}`,
+      key: metadata?.[idx]?.id ? `turn:${metadata[idx].id}` : `local:${row.id}`,
       node: renderLocalRow(row, idx),
     })),
     ...[...heldEntries]
@@ -235,7 +235,9 @@ export function QueuedMessages({
           (a.entry.position ?? Number.MAX_SAFE_INTEGER),
       )
       .map(({ entry, index }) => ({
-        key: `held:${entry.clientTurnId ?? `${entry.createdAt}:${index}`}`,
+        key: entry.clientTurnId
+          ? `turn:${entry.clientTurnId}`
+          : `held:${entry.createdAt}:${index}`,
         node: renderHeldRow(entry),
       })),
   ];
