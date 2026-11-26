@@ -111,6 +111,8 @@ export type PullRequestClientContext =
       branch?: string;
       /** Owner of the local branch's configured push target, when known. */
       pushTargetOwner?: string;
+      /** First page when the client asks for a list with the checkout context. */
+      pullRequests?: PullRequestResult<PullRequest[]> & { nextCursor?: string };
     }
   | {
       available: false;
@@ -198,6 +200,10 @@ export interface PullRequestBranchMergeability {
 export interface PullRequestListQuery {
   state?: string;
   limit?: number;
+}
+export interface PullRequestPage {
+  items: PullRequest[];
+  nextCursor?: string;
 }
 export interface PullRequestOpenInput {
   title: string;
@@ -338,6 +344,10 @@ export interface IPullRequestProvider {
     context: PullRequestRepositoryContext,
     query: PullRequestListQuery,
   ): Promise<PullRequestResult<PullRequest[]>>;
+  listPullRequestPage?(
+    context: PullRequestRepositoryContext,
+    query: PullRequestListQuery & { cursor?: string },
+  ): Promise<PullRequestResult<PullRequestPage>>;
   getPullRequest(
     context: PullRequestRepositoryContext,
     ref: string,

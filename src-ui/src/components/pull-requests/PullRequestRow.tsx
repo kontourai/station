@@ -6,8 +6,15 @@ import {
   type OverflowMenuHandle,
 } from '../ActionOverflowMenu';
 import {
+  PullRequestClosedGlyph,
+  PullRequestDraftGlyph,
+  PullRequestGlyph,
+  PullRequestMergedGlyph,
+} from '../icons/Glyph';
+import {
   PullRequestChip,
   type PullRequestChipValue,
+  pullRequestStateChip,
 } from './pull-request-chips';
 import './PullRequestRow.css';
 
@@ -23,6 +30,8 @@ export function PullRequestRow({
   chips = [],
   meta = [],
   trailing,
+  compactState,
+  stats,
   onOpen,
   openRef,
   openLabel,
@@ -40,6 +49,8 @@ export function PullRequestRow({
   meta?: readonly string[];
   /** The time, at the end of the meta line. */
   trailing?: ReactNode;
+  compactState?: string;
+  stats?: ReactNode;
   /** Opens the review. Without it the title is text, not a button. */
   onOpen?: () => void;
   /** The open button, for a list that returns focus to it. */
@@ -63,16 +74,45 @@ export function PullRequestRow({
     enabled: overflow.length > 0,
     onOpen: () => menu.current?.open() ?? false,
   });
+  const state = compactState ? pullRequestStateChip(compactState) : undefined;
+  const StateGlyph =
+    state?.label === 'Merged'
+      ? PullRequestMergedGlyph
+      : state?.label === 'Draft'
+        ? PullRequestDraftGlyph
+        : state?.label === 'Closed'
+          ? PullRequestClosedGlyph
+          : PullRequestGlyph;
+  const titleText = <span className="pull-request-row__title">{title}</span>;
+  const badges = chips.map((chip) => (
+    <PullRequestChip key={chip.label} {...chip} />
+  ));
   const body = (
     <>
-      <span className="pull-request-row__title">{title}</span>
+      {state ? (
+        <span className="pull-request-row__heading">
+          <span
+            className="pull-request-row__state"
+            data-state={state.label}
+            role="img"
+            aria-label={state.label}
+            title={state.label}
+          >
+            <StateGlyph />
+          </span>
+          {reference !== title && (
+            <span className="pull-request-row__reference">{reference}</span>
+          )}
+          {titleText}
+        </span>
+      ) : (
+        titleText
+      )}
       <span className="pull-request-row__meta">
-        {reference !== title && (
+        {!state && reference !== title && (
           <span className="pull-request-row__reference">{reference}</span>
         )}
-        {chips.map((chip) => (
-          <PullRequestChip key={chip.label} {...chip} />
-        ))}
+        {!state && badges}
         {current && (
           <span className="pull-request-row__current">current branch</span>
         )}
@@ -81,11 +121,18 @@ export function PullRequestRow({
         ))}
         {trailing}
       </span>
+      {state && (
+        <span className="pull-request-row__facts">
+          {badges}
+          {stats}
+        </span>
+      )}
     </>
   );
   return (
     <li
       className="pull-request-row"
+      data-compact={state ? true : undefined}
       data-current={current ? 'true' : undefined}
       {...gesture}
     >
@@ -94,7 +141,7 @@ export function PullRequestRow({
           ref={openRef}
           type="button"
           className="pull-request-row__open"
-          aria-label={openLabel ?? title}
+          aria-label={openLabel ?? (state ? `${title}, ${state.label}` : title)}
           onClick={onOpen}
         >
           {body}

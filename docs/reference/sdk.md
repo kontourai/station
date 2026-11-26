@@ -6487,6 +6487,20 @@ and compares these owners case-insensitively when both are present. If either
 owner is absent, it matches on branch alone; the upstream branch name is never
 a substitute for the local branch.
 
+Set `config.list` to `OPEN`, `MERGED`, `CLOSED` or `ALL` to request the
+checkout and its first pull request page together. On supporting hosts the
+available context includes a `pullRequests` result, which can report that the
+forge read failed while the checkout context remains available. Older hosts
+omit this field. The SDK caches each requested state separately and seeds the
+checkout-only cache from a fresh bundled response. After the app restores a
+saved list, the query's `isLastKnown` flag stays set until the server returns
+a new answer. Background refreshes of a live result keep that flag clear.
+GitHub returns a `nextCursor` when more rows are available. Pass those opaque
+cursors to `useCheckoutPullRequestPages` with the same checkout and state.
+Subsequent pages have independent memory-only query keys. Pass a stable
+checkout identity as the optional fourth argument to segregate pages when
+the same working directory resolves to a different repository.
+
 ## Conversation pull-request links
 
 `@kontourai/station-sdk/conversation-pull-request-links` reads, links, and
