@@ -188,6 +188,52 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
+test('labels restored checkout rows with their age until the first current answer', () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = () => (
+    <QueryClientProvider client={client}>
+      <PullRequestsPanel
+        projectSlug="station"
+        activeRepoRoot="/repos/station"
+      />
+    </QueryClientProvider>
+  );
+  contextQuery = {
+    ...contextQuery,
+    data: {
+      ...contextQuery.data,
+      pullRequests: result([pullRequest({ title: 'Saved title' })]),
+    },
+    dataUpdatedAt: Date.now() - 120_000,
+    isFetchedAfterMount: false,
+    isFetching: false,
+  };
+
+  const { rerender } = render(view());
+  expect(screen.getByRole('button', { name: 'Saved title' })).toBeTruthy();
+  expect(screen.getByText(/Last known for/).textContent).toContain(
+    'Last known for kontourai/station as of 2m',
+  );
+  expect(screen.queryByText('current branch')).toBeNull();
+
+  contextQuery = {
+    ...contextQuery,
+    data: {
+      ...contextQuery.data,
+      pullRequests: result([pullRequest({ title: 'Current title' })]),
+    },
+    dataUpdatedAt: Date.now(),
+    isFetchedAfterMount: true,
+  };
+  rerender(view());
+  expect(screen.getByRole('button', { name: 'Current title' })).toBeTruthy();
+  expect(screen.getByText('current branch')).toBeTruthy();
+  expect(screen.queryByText(/Last known for/)).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Saved title' })).toBeNull();
+});
+
 describe('PullRequestsPanel', () => {
   test('a row is the title as its one action; everything else is behind the row menu', async () => {
     listQuery.data = result([

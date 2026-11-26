@@ -122,6 +122,21 @@ export function createPullRequestRoutes(
       result.effectiveMergeMethods,
     ),
   });
+  const list = async (
+    provider: IPullRequestProvider,
+    checkout: Parameters<IPullRequestProvider['listPullRequests']>[0],
+    state: string | undefined,
+    limit?: number,
+  ) => {
+    pullRequestOps.add(1, {
+      operation: 'list',
+      repo: `${checkout.repository.owner}/${checkout.repository.name}`,
+    });
+    return narrow(
+      provider,
+      await provider.listPullRequests(checkout, { state, limit }),
+    );
+  };
   app.get('/context', async (c) => {
     const resolution = await context(c, { requireBranchState: false });
     if (!resolution?.available) {
@@ -146,10 +161,25 @@ export function createPullRequestRoutes(
         data: { available: false, reason: 'Provider unavailable' },
       });
     }
+    const state = c.req.query('list');
+    if (
+      state !== undefined &&
+      !['OPEN', 'MERGED', 'CLOSED', 'ALL'].includes(state)
+    ) {
+      return c.json(
+        { success: false, error: 'Invalid pull request state' },
+        400,
+      );
+    }
+    const pullRequests =
+      state === undefined
+        ? undefined
+        : await list(provider, resolution.context, state, 30);
     return c.json({
       success: true,
       data: {
         available: true,
+        ...(pullRequests ? { pullRequests } : {}),
         provider: provider.id,
         providerLabel: provider.displayName,
         automation: {
@@ -175,22 +205,14 @@ export function createPullRequestRoutes(
     const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
-    pullRequestOps.add(1, {
-      operation: 'list',
-      repo: `${x.context.repository.owner}/${x.context.repository.name}`,
-    });
     return c.json({
       success: true,
-      data: narrow(
+      data: await list(
         x.provider,
-        await x.provider.listPullRequests(x.context, {
-          state: c.req.query('state'),
-          // Absent, unreadable or zero leaves the provider's own default.
-          // 100 is the most one GitLab page carries.
-          limit:
-            boundedIntQuery(c.req.query('limit'), { min: 0, max: 100 }) ||
-            undefined,
-        }),
+        x.context,
+        c.req.query('state'),
+        boundedIntQuery(c.req.query('limit'), { min: 0, max: 100 }) ||
+          undefined,
       ),
     });
   });

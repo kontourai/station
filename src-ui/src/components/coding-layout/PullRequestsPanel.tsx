@@ -12,6 +12,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { describeStationFailure } from '../../utils/stationFailure';
 import type { OverflowAction } from '../ActionOverflowMenu';
@@ -27,6 +28,7 @@ import {
   reviewDecisionChip,
 } from '../pull-requests/pull-request-chips';
 import { pullRequestExternalLabel } from '../pull-requests/pull-request-external';
+import { RelativeTime } from '../pull-requests/RelativeTime';
 import {
   linkKey,
   useConversationPullRequestLinks,
@@ -74,6 +76,42 @@ function rowChips(pullRequest: {
   if (pullRequest.mergeability === 'conflicting')
     chips.push({ label: 'Has conflicts', tone: 'failure' });
   return chips;
+}
+
+function useCheckoutPullRequests(
+  project: string,
+  workingDirectory: string | undefined,
+  state: StateFilter,
+) {
+  const scope = { project, workingDirectory };
+  const context = usePullRequestContextQuery(scope, {
+    list: state,
+    staleTime: 20_000,
+    refetchOnMount: 'always',
+  });
+  const identity = context.data?.available ? context.data : undefined;
+  const bundled = identity?.pullRequests;
+  const fallback = usePullRequestsQuery(
+    identity?.provider ?? '',
+    identity?.host ?? '',
+    identity?.repository.owner ?? '',
+    identity?.repository.name ?? '',
+    scope,
+    { state },
+    { enabled: !!identity && bundled === undefined },
+  );
+  const query = bundled ? context : fallback;
+  return {
+    context,
+    identity,
+    query,
+    result:
+      bundled ??
+      (fallback.data as PullRequestResult<PullRequest[]> | undefined),
+    lastKnown:
+      !!bundled?.available &&
+      (!context.isFetchedAfterMount || context.isFetching || !!context.error),
+  };
 }
 
 /**
@@ -129,26 +167,19 @@ export function PullRequestsPanel({
     setReturnFocusTo(null);
   }, [selected, returnFocusTo]);
   const [filter, setFilter] = useState<StateFilter>('OPEN');
+  const now = useCoarseNow();
   const [linking, setLinking] = useState(false);
-  const resolvingContext = {
-    project: projectSlug,
-    workingDirectory: activeRepoRoot ?? undefined,
-  };
-  const context = usePullRequestContextQuery(resolvingContext);
-  const identity = context.data?.available ? context.data : undefined;
-  const pullRequests = usePullRequestsQuery(
-    identity?.provider ?? '',
-    identity?.host ?? '',
-    identity?.repository.owner ?? '',
-    identity?.repository.name ?? '',
-    resolvingContext,
-    { state: filter },
-    { enabled: !!identity },
-  );
+  const {
+    context,
+    identity,
+    query: pullRequests,
+    result,
+    lastKnown,
+  } = useCheckoutPullRequests(projectSlug, activeRepoRoot ?? undefined, filter);
   const chatLinks = useConversationPullRequestLinks(activeChat ?? '');
 
   if (context.isLoading) return <SkeletonList count={3} />;
-  if (context.error) {
+  if (context.error && !lastKnown) {
     return (
       <Note
         tone="error"
@@ -202,7 +233,7 @@ export function PullRequestsPanel({
     );
   }
   if (pullRequests.isLoading) return <SkeletonList count={3} />;
-  if (pullRequests.error) {
+  if (pullRequests.error && !lastKnown) {
     return (
       <Note
         tone="error"
@@ -212,9 +243,6 @@ export function PullRequestsPanel({
     );
   }
 
-  const result = pullRequests.data as
-    | PullRequestResult<PullRequest[]>
-    | undefined;
   if (!result?.available) {
     return (
       <Note
@@ -322,6 +350,12 @@ export function PullRequestsPanel({
           </IconButton>
         </div>
       </div>
+      {lastKnown && identity && (
+        <p className="pull-requests-panel__note" role="status">
+          Last known for {identity.repository.owner}/{identity.repository.name}{' '}
+          as of <RelativeTime iso={observedAt} now={now} />
+        </p>
+      )}
       {linking && activeChat && (
         <LinkPullRequestField
           scope={identity ?? {}}
@@ -406,7 +440,9 @@ export function PullRequestsPanel({
                 reference={`#${pullRequest.ref}`}
                 chips={rowChips(pullRequest)}
                 meta={[pullRequest.author.login]}
-                current={pullRequest.sourceBranch === identity?.branch}
+                current={
+                  !lastKnown && pullRequest.sourceBranch === identity?.branch
+                }
                 openRef={rowRef(key)}
                 onOpen={() => open(pullRequest)}
                 overflow={[
@@ -423,11 +459,13 @@ export function PullRequestsPanel({
           })}
         </ul>
       )}
-      <PullRequestDependencyStacks
-        pullRequests={listed}
-        observedAt={observedAt}
-        onOpen={open}
-      />
+      {!lastKnown && (
+        <PullRequestDependencyStacks
+          pullRequests={listed}
+          observedAt={observedAt}
+          onOpen={open}
+        />
+      )}
     </section>
   );
 }
@@ -480,31 +518,19 @@ export function CurrentBranchPullRequestLine({
   activeRepoRoot?: string | null;
   onOpen: (pullRequest: PullRequestLinkIdentity) => void;
 }) {
-  const resolvingContext = {
-    project: projectSlug,
-    workingDirectory: activeRepoRoot ?? undefined,
-  };
-  const context = usePullRequestContextQuery(resolvingContext);
-  const identity = context.data?.available ? context.data : undefined;
-  const pullRequests = usePullRequestsQuery(
-    identity?.provider ?? '',
-    identity?.host ?? '',
-    identity?.repository.owner ?? '',
-    identity?.repository.name ?? '',
-    resolvingContext,
-    { state: 'OPEN' },
-    { enabled: !!identity },
+  const { identity, result, lastKnown } = useCheckoutPullRequests(
+    projectSlug,
+    activeRepoRoot ?? undefined,
+    'OPEN',
   );
-  const result = pullRequests.data as
-    | PullRequestResult<PullRequest[]>
-    | undefined;
-  const pullRequest = result?.available
-    ? (result.data ?? []).find(
-        (candidate) =>
-          candidate.sourceBranch === identity?.branch &&
-          normalizedState(candidate.state) === 'OPEN',
-      )
-    : undefined;
+  const pullRequest =
+    !lastKnown && result?.available
+      ? (result.data ?? []).find(
+          (candidate) =>
+            candidate.sourceBranch === identity?.branch &&
+            normalizedState(candidate.state) === 'OPEN',
+        )
+      : undefined;
   if (!pullRequest) return null;
   return (
     <button

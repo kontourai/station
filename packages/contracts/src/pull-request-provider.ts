@@ -110,6 +110,8 @@ export type PullRequestClientContext =
       branch?: string;
       /** Owner of the local branch's configured push target, when known. */
       pushTargetOwner?: string;
+      /** First page when the client asks for a list with the checkout context. */
+      pullRequests?: PullRequestResult<PullRequest[]>;
     }
   | {
       available: false;

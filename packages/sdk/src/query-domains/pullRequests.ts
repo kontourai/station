@@ -12,7 +12,12 @@ import type {
 import { _getApiBase } from '../api';
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
-import { type QueryConfig, useApiMutation, useApiQuery } from '../query-core';
+import {
+  PERSISTED_QUERY_GC_TIME_MS,
+  type QueryConfig,
+  useApiMutation,
+  useApiQuery,
+} from '../query-core';
 import { taskQueries } from '../queryFactories';
 
 type Result<T> = { success: boolean; data?: T; error?: string };
@@ -66,16 +71,23 @@ function withContext(path: string, context: PullRequestResolvingContext) {
 }
 export function usePullRequestContextQuery(
   context: PullRequestResolvingContext,
-  config?: QueryConfig<PullRequestClientContext>,
+  config?: QueryConfig<PullRequestClientContext> & {
+    list?: 'OPEN' | 'MERGED' | 'CLOSED' | 'ALL';
+  },
 ) {
+  const state = config?.list;
+  const key = pullRequestContextQueryKey(
+    context.project,
+    context.thread,
+    context.workingDirectory,
+  );
+  const path = withContext('context', context);
   return useApiQuery(
-    pullRequestContextQueryKey(
-      context.project,
-      context.thread,
-      context.workingDirectory,
-    ),
-    () => request<PullRequestClientContext>(withContext('context', context)),
+    state ? ['checkout-pull-requests', state, ...key.slice(1)] : key,
+    () =>
+      request<PullRequestClientContext>(state ? `${path}&list=${state}` : path),
     {
+      ...(state === 'OPEN' ? { gcTime: PERSISTED_QUERY_GC_TIME_MS } : {}),
       ...config,
       enabled: !!context.project && (config?.enabled ?? true),
     },
