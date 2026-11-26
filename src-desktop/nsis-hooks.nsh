@@ -24,7 +24,6 @@
 
 !macro NSIS_HOOK_PREINSTALL
   Push $0
-  GetFullPathName $INSTDIR "$INSTDIR"
   StrLen $0 "$INSTDIR"
   ${If} $0 > ${STATION_WINDOWS_MAX_INSTALL_ROOT}
     Pop $0
