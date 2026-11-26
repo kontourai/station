@@ -1080,9 +1080,12 @@ describe('ConnectedServerUpdates', () => {
         identityResponseFor({ instanceId: 'svc-instance-1', bootId: 'b2' }),
     });
     await waitFor(() => expect(health?.status).toBe('error'));
+    expect(context?.kind).toBe('unresolved');
     expect(context?.identityReady).toBe(false);
     expect(
-      await screen.findByText('Server update method unknown.'),
+      await screen.findByText(
+        'Connected server unavailable. Reconnect to check its update status.',
+      ),
     ).toBeTruthy();
     expect(screen.queryByText(/Installed service on this Mac\./)).toBeNull();
     expect(identityCalls).toHaveLength(0);
