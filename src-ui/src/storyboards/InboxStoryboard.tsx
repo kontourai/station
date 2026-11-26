@@ -47,7 +47,7 @@ function task(example: Example): HomeWorkItem {
     kindLabel: (
       {
         Reply: TASK_AWAITS_ANSWER_LABEL,
-        Review: 'Task · Needs you',
+        Review: 'Task · In review',
         Retry: 'Task · Blocked',
       } as const
     )[example.action],
@@ -135,6 +135,7 @@ function StoryRow({
       <div className="storyboard-swipe-content">
         <InboxTaskRow
           item={task(example)}
+          isSnoozed={false}
           now={now}
           chrome={phone ? 'touch' : 'hover'}
           onActivate={() => onAction(example, example.action)}
