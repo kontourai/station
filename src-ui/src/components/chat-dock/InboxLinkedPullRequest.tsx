@@ -10,7 +10,7 @@ const checks = {
   passing: 'Passing',
   failing: 'Failing',
   pending: 'Pending',
-  'awaiting-approval': 'Approval needed',
+  'awaiting-approval': 'Checks need approval',
 };
 
 export function InboxLinkedPullRequest({

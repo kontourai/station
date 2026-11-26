@@ -61,7 +61,7 @@ const checksLabels = {
   passing: 'Checks passing',
   failing: 'Checks failing',
   pending: 'Checks pending',
-  'awaiting-approval': 'Checks awaiting approval',
+  'awaiting-approval': 'Checks need approval',
 };
 
 const reviewLabels = {

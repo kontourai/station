@@ -78,7 +78,7 @@ const labels = {
   armed: 'armed',
   queued: 'queued',
   pending: 'pending',
-  approval: 'checks awaiting approval',
+  approval: 'checks need approval',
   draft: 'draft',
   passing: 'passing',
   merged: 'merged',
