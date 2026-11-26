@@ -24,8 +24,10 @@ approve. **Files**, **Checks** and **Head review** have their own tabs.
 
 In Coding, open **Diff → Pull requests**. On GitHub, Station can show the
 last Open list while it asks for a fresh one. The list names the repository and
-shows when the saved rows were read. Use **Load more** to read the next page.
-Opening a row reads the current review from the forge.
+shows when the saved rows were read. With the **Pull request workspace**
+preview enabled, use **Load more** to read the next page. A background refresh
+keeps loaded pages for the same repository. Opening a row reads the current
+review from the forge.
 
 A push makes the saved guide stale. On the next guide read, Station compares
 its head SHA with the provider's current head and hides obsolete excerpts and
