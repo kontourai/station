@@ -38,11 +38,13 @@ export function useStationRoutesQuery(
   const nativeConnection =
     isTauri &&
     connection?.id.startsWith('station-profile:') &&
-    !connection.nativeBrokerRoute;
+    !connection.nativeBrokerRoute
+      ? connection
+      : null;
   const nativeBindingId = nativeConnection
     ? (nativeProfileRepository().captureNativeRequestBinding(
-        connection.id,
-        connection.url,
+        nativeConnection.id,
+        nativeConnection.url,
       )?.bindingId ?? null)
     : null;
   return useQuery({
@@ -69,7 +71,9 @@ export function useStationRoutesQuery(
         return null;
       }
       if (nativeConnection) {
-        await nativeProfileRepository().refreshNativeRoutes(connection.id);
+        await nativeProfileRepository().refreshNativeRoutes(
+          nativeConnection.id,
+        );
       }
       return parsed;
     },

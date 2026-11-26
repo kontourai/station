@@ -107,6 +107,30 @@ function runtimeWithDesignation() {
 }
 
 describe('#3628 coordinator-session preview in the runtime', () => {
+  test('runtime route composition wraps requests in the real consent publication scope', async () => {
+    const runtime = new StationRuntime({
+      projectHomeDir: makeTempDir('station-runtime-publication-compose-'),
+      port: 43197,
+      logLevel: 'error',
+    }) as any;
+    const app = new Hono();
+    const publication = vi.spyOn(runtime.consentChannel, 'withPublication');
+    try {
+      runtime.stationEnvironmentId = 'station-test';
+      runtime.runtimeSearch = { stop() {}, close: async () => {} };
+      expect(() => runtime.configureRoutes(app)).toThrow(StopComposition);
+      app.get('/publication-probe', (context) => context.text('reached'));
+      const response = await app.request('/publication-probe');
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe('reached');
+      expect(publication).toHaveBeenCalledOnce();
+    } finally {
+      publication.mockRestore();
+      runtime.runtimeSearch = undefined;
+      await runtime.shutdown();
+    }
+  });
+
   test('is offered off, and the Claude adapter treats the designated chat as ordinary until it is on', async () => {
     const { runtime, registry } = runtimeWithDesignation();
     expect(registry.list()).toEqual(

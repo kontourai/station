@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { Hono } from 'hono';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   createGateTestRegistry,
@@ -33,7 +34,7 @@ const STARTUP_FAILURE = new Error('startup failed after route composition');
 vi.mock('../runtime-initialize.js', () => ({
   initializeRuntime: vi.fn(
     async (deps: { configureRoutes: (app: unknown) => void }) => {
-      deps.configureRoutes({});
+      deps.configureRoutes(new Hono());
       throw STARTUP_FAILURE;
     },
   ),

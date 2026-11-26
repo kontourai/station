@@ -2843,9 +2843,7 @@ export function configureRuntimeRoutes(
   );
   context.app.use('*', async (c, next) => {
     bindFullAccessRefusalIdentity(c.req.raw, fullAccessRefusalIdentity);
-    if (context.consentChannel)
-      await context.consentChannel.withPublication(next);
-    else await next();
+    await next();
   });
   // #2377 slice A: every request the boundary above stamped `kind:'internal'`
   // (every station-control tool call, and Station's own server code) is

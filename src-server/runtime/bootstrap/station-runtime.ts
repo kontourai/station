@@ -5768,6 +5768,9 @@ export class StationRuntime {
   private configureRoutes(
     app: Parameters<NonNullable<HonoServerConfig['configureApp']>>[0],
   ): void {
+    app.use('*', async (_context, next) =>
+      this.consentChannel.withPublication(next),
+    );
     this.codexToolDispatch = async (request) => app.fetch(request);
     // The existing handshake environment identity qualifies these local owner
     // records; it is not a new logical Station or machine identity.

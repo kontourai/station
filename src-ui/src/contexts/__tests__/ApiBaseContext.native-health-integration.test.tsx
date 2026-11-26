@@ -455,15 +455,13 @@ describe('ApiBaseContext native health integration', () => {
     const publicAttempts = vi.mocked(fetch).mock.calls.length;
     const privateAttempts = nativeTransport.mock.calls.length;
     expect(
-      (
-        await probeServerConnection(
-          unknown,
-          undefined,
-          'environment-1',
-          new AbortController().signal,
-        )
-      ).ok,
-    ).toBe(false);
+      await probeServerConnection(
+        unknown,
+        undefined,
+        'environment-1',
+        new AbortController().signal,
+      ),
+    ).toMatchObject({ ok: false });
     expect(vi.mocked(fetch).mock.calls).toHaveLength(publicAttempts);
     expect(nativeTransport.mock.calls).toHaveLength(privateAttempts);
 
@@ -514,15 +512,13 @@ describe('ApiBaseContext native health integration', () => {
     await waitFor(() => expect(health?.status).toBe('connected'));
     const privateAttempts = nativeTransport.mock.calls.length;
     expect(
-      (
-        await probeServerConnection(
-          alternate,
-          undefined,
-          'environment-1',
-          new AbortController().signal,
-        )
-      ).ok,
-    ).toBe(false);
+      await probeServerConnection(
+        alternate,
+        undefined,
+        'environment-1',
+        new AbortController().signal,
+      ),
+    ).toMatchObject({ ok: false });
     expect(nativeTransport.mock.calls).toHaveLength(privateAttempts);
   });
 
