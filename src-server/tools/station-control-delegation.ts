@@ -5755,6 +5755,45 @@ export function isInboundDelegationPeer(
   return inboundDeviceKind === 'delegation';
 }
 
+function bindDelegationGrantSelection(
+  readGrants: () => readonly DelegationGrant[],
+  orchestration: OrchestrationService,
+  parent: VerifiedDelegationGrantParent,
+  project: string,
+  agent: string,
+  model: string,
+): () => DelegationGrant | undefined {
+  return () => {
+    if (!parent.credentialCurrent()) return undefined;
+    const grant = selectDelegationGrant(
+      readGrants(),
+      {
+        agent,
+        model,
+        project,
+        parentConversationId: parent.conversationId,
+        parentSessionActive: orchestration.delegationParentActive(
+          parent.sessionId,
+        ),
+      },
+      Date.now(),
+    );
+    if (grant?.scope.kind === 'project' && parent.projectSlug !== project)
+      return undefined;
+    return grant?.access === 'full-access' &&
+      !orchestration.delegationParentHasFullAccess(parent.sessionId)
+      ? undefined
+      : grant;
+  };
+}
+
+function bindDelegationGrantCurrent(
+  read: (() => DelegationGrant | undefined) | undefined,
+  id: string,
+): () => boolean {
+  return () => read?.()?.id === id;
+}
+
 export async function delegateTask(
   input: DelegateTaskInput,
   orchestrationService?: OrchestrationService,
@@ -6364,41 +6403,24 @@ export async function delegateTask(
     const create = async (sessionId: string): Promise<DelegatedTaskHandle> => {
       const workspace = resolved.workspace;
       const parent = input.delegationGrantParent;
-      const applicableGrant = () => {
-        if (
-          !readDelegationGrants ||
-          !parent?.credentialCurrent() ||
-          input.delegationProvenance !== 'caller-derived' ||
-          input.delegation?.depth !== 1 ||
-          input.delegation.parentSessionId !== parent.sessionId ||
-          workspace?.kind !== 'project' ||
-          !resolved.modelId
-        )
-          return undefined;
-        const grant = selectDelegationGrant(
-          readDelegationGrants(),
-          {
-            agent: resolved.agentId,
-            model: resolved.modelId,
-            project: workspace.projectSlug,
-            parentConversationId: parent.conversationId,
-            parentSessionActive: orchestrationService.delegationParentActive(
-              parent.sessionId,
-            ),
-          },
-          Date.now(),
-        );
-        if (
-          grant?.scope.kind === 'project' &&
-          parent.projectSlug !== workspace.projectSlug
-        )
-          return undefined;
-        return grant?.access === 'full-access' &&
-          !orchestrationService.delegationParentHasFullAccess(parent.sessionId)
-          ? undefined
-          : grant;
-      };
-      const selected = applicableGrant();
+      const applicableGrant =
+        readDelegationGrants &&
+        parent &&
+        input.delegationProvenance === 'caller-derived' &&
+        input.delegation?.depth === 1 &&
+        input.delegation.parentSessionId === parent.sessionId &&
+        workspace?.kind === 'project' &&
+        resolved.modelId
+          ? bindDelegationGrantSelection(
+              readDelegationGrants,
+              orchestrationService,
+              parent,
+              workspace.projectSlug,
+              resolved.agentId,
+              resolved.modelId,
+            )
+          : undefined;
+      const selected = applicableGrant?.();
       const grant =
         selected && (await operatorOnlyAgent?.(resolved.agentId))
           ? selected
@@ -6426,7 +6448,10 @@ export async function delegateTask(
                 workspace.cwd,
               );
               input.dispatchCwdAdmission?.recheck(workspace.cwd, 'session');
-              if (!delegationWorktrees || applicableGrant()?.id !== grant.id) {
+              if (
+                !delegationWorktrees ||
+                applicableGrant?.()?.id !== grant.id
+              ) {
                 throw new LocalStationRefusal(
                   'delegation_grant_workspace_unavailable',
                   'The grant or worktree service is no longer available to start this delegation.',
@@ -6475,7 +6500,7 @@ export async function delegateTask(
         grant && workspace?.kind === 'project'
           ? {
               grant,
-              current: () => applicableGrant()?.id === grant.id,
+              current: bindDelegationGrantCurrent(applicableGrant, grant.id),
               ...(grant.access === 'confined'
                 ? {
                     codexGit: worktree

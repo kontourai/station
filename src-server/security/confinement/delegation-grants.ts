@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseConfinedNetworkSetting } from '@kontourai/station-contracts/execution-confinement';
 import {
@@ -102,6 +103,7 @@ export type DelegationGrant = z.output<typeof storedGrant>;
 
 export class DelegationGrantStore {
   private readonly path: string;
+  private parsed?: { identity: string; grants: DelegationGrant[] };
   private readonly auditedExpirations = new Set<string>();
   private readonly io = { maxBytes: 256 * 1024, label: 'Delegation grants' };
 
@@ -119,10 +121,28 @@ export class DelegationGrantStore {
   readActive(): readonly DelegationGrant[] | undefined {
     let grants: DelegationGrant[];
     try {
-      grants = storedGrants.parse(
-        readJsonFile<unknown>(this.path, [], this.io),
-      );
+      const stat = statSync(this.path, { bigint: true, throwIfNoEntry: false });
+      if (!stat) {
+        this.parsed = undefined;
+        return [];
+      }
+      const identity = [
+        stat.dev,
+        stat.ino,
+        stat.size,
+        stat.mtimeNs,
+        stat.ctimeNs,
+      ].join(':');
+      if (this.parsed?.identity === identity) {
+        grants = this.parsed.grants;
+      } else {
+        grants = storedGrants.parse(
+          readJsonFile<unknown>(this.path, [], this.io),
+        );
+        this.parsed = { identity, grants };
+      }
     } catch {
+      this.parsed = undefined;
       this.logger.error(
         'Delegation grants could not be read. Standing grants are disabled.',
       );
