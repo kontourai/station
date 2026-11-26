@@ -1,0 +1,7 @@
+{
+  "revision": "72a416c8bf3e8118ced38f6cc820b4862611c6e0",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Verified the development-only Inbox entry through Vite and rendered the shared Task row at desktop and phone widths. Fixture acknowledgement, undo and reply opening were exercised in the browser.","inputs":["docs/guides/development.md"]}
+  ]
+}

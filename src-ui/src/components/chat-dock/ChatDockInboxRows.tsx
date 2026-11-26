@@ -633,6 +633,7 @@ function InboxRowProjectLine({
   compact = true,
   remoteProject = false,
   children,
+  showTaskPrefix = true,
 }: Pick<InboxRowProps, 'item' | 'projectIcon' | 'projectAccent' | 'compact'> & {
   statusId: string;
   contextLabel: string;
@@ -640,6 +641,7 @@ function InboxRowProjectLine({
   hasUnsentDraft?: boolean;
   remoteProject?: boolean;
   children?: ReactNode;
+  showTaskPrefix?: boolean;
 }) {
   return (
     <span
@@ -651,7 +653,7 @@ function InboxRowProjectLine({
           : undefined
       }
     >
-      {item.kind === 'task' && 'Task · '}
+      {showTaskPrefix && item.kind === 'task' && 'Task · '}
       {(!compact || item.projectSlug || item.projectLabel !== 'No project') && (
         <ProjectAccentSwatch
           size={compact ? 16 : 12}
@@ -1398,7 +1400,7 @@ export function InboxRow({
   );
 }
 
-function InboxTaskRow({
+export function InboxTaskRow({
   item,
   projectName,
   projectAccent,
@@ -1411,6 +1413,7 @@ function InboxTaskRow({
   onSnoozeWake,
   done,
   isSnoozed,
+  attention,
 }: Pick<
   InboxRowProps,
   | 'projectName'
@@ -1424,7 +1427,10 @@ function InboxTaskRow({
   | 'onSnoozeWake'
   | 'done'
   | 'isSnoozed'
-> & { onOpenTaskQuestions?: (item: HomeWorkItem) => void }) {
+> & {
+  onOpenTaskQuestions?: (item: HomeWorkItem) => void;
+  attention?: { reason: string; actions: ReactNode };
+}) {
   const id = useId();
   const status = useObservedWorkStatus(item, now, facts);
   const actions = inboxRowActions({
@@ -1446,7 +1452,7 @@ function InboxTaskRow({
   const questionCount = facts?.taskOpenQuestionCount ?? 0;
   return (
     <div
-      className={`chat-dock-inbox__row inbox-row inbox-row--card inbox-row--${chrome}${menu ? ' inbox-row--has-actions' : ''}`}
+      className={`chat-dock-inbox__row inbox-row inbox-row--card inbox-row--${chrome}${menu && !attention ? ' inbox-row--has-actions' : ''}${attention ? ' inbox-row--task-attention' : ''}`}
       data-row-key={item.id}
     >
       <button
@@ -1458,6 +1464,7 @@ function InboxTaskRow({
       >
         <InboxRowSummary item={item} now={now} status={status} statusId={id}>
           <InboxRowProjectLine
+            showTaskPrefix={!attention}
             item={item}
             statusId={id}
             contextLabel={projectName ?? item.projectLabel}
@@ -1465,6 +1472,7 @@ function InboxTaskRow({
             projectIcon={projectIcon}
             stationLabel={facts?.station?.label ?? item.environmentLabel}
           />
+          {attention && <span className="inbox-row__task-kind">Task</span>}
         </InboxRowSummary>
       </button>
       {onOpenTaskQuestions && questionCount > 0 && (
@@ -1476,14 +1484,23 @@ function InboxTaskRow({
           </Button>
         </div>
       )}
-      {menu && (
-        <div className="inbox-row__actions">
-          <RowMenu
-            items={inboxRowMenuItems(actions)}
-            label={`Actions for task ${item.title}`}
-            triggerClassName="chat-dock-inbox__row-action inbox-row__action"
-          />
+      {attention ? (
+        <div className="inbox-row__task-attention-details">
+          <p>{attention.reason}</p>
+          <div className="inbox-row__task-attention-actions">
+            {attention.actions}
+          </div>
         </div>
+      ) : (
+        menu && (
+          <div className="inbox-row__actions">
+            <RowMenu
+              items={inboxRowMenuItems(actions)}
+              label={`Actions for task ${item.title}`}
+              triggerClassName="chat-dock-inbox__row-action inbox-row__action"
+            />
+          </div>
+        )
       )}
     </div>
   );

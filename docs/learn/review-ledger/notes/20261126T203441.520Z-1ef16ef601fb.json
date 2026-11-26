@@ -1,0 +1,13 @@
+{
+  "revision": "e4512cb745c0624ade13231a5082326c626e8fce",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the developer-only Inbox storyboard inventory entry. It reuses Station's ActionRow and shared swipe hook, and the responsive surface and action cap checks pass.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the developer-only Inbox storyboard inventory entry. It reuses Station's ActionRow and shared swipe hook, and the responsive surface and action cap checks pass.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the developer-only Inbox storyboard inventory entry. It reuses Station's ActionRow and shared swipe hook, and the responsive surface and action cap checks pass.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the developer-only Inbox storyboard inventory entry. It reuses Station's ActionRow and shared swipe hook, and the responsive surface and action cap checks pass.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}
