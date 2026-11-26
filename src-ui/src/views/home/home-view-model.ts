@@ -50,6 +50,7 @@ import {
 } from './work-item-open-policy';
 
 export interface HomeWorkItem {
+  taskOpenQuestionCount?: number;
   receivedAgentMessage?: true;
   nextWakeUpAt?: string;
   id: string;
@@ -934,10 +935,12 @@ export const TASK_AWAITS_ANSWER_LABEL =
   `Task · ${SESSION_STATUS_WORDS.answer}` as const;
 
 function buildDurableTaskItem(task: TaskListRecord): HomeWorkItem {
+  const awaitsAnswer = taskAwaitsAnswer(task);
   return {
+    taskOpenQuestionCount: awaitsAnswer ? task.openQuestionCount : undefined,
     id: task.id,
     kind: 'task',
-    kindLabel: taskAwaitsAnswer(task)
+    kindLabel: awaitsAnswer
       ? TASK_AWAITS_ANSWER_LABEL
       : `Task · ${TASK_STATUS_LABELS[task.status]}`,
     title: task.title,

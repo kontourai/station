@@ -13,6 +13,7 @@ import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { LIFECYCLE_HOLD_MS } from '../components/chat-dock/useHeldLifecycles';
 import { snoozeChoices } from '../components/inbox-row/snooze-presets';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
+import { navigationStore } from '../contexts/navigation-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { migrateSnoozeKey, writeSnooze } from '../utils/activity-snooze-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
@@ -93,6 +94,35 @@ describe('ChatDockInboxPanel', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('opens a Task’s Plan from its question count only with the preview enabled', () => {
+    const navigate = vi
+      .spyOn(navigationStore, 'navigate')
+      .mockImplementation(() => {});
+    const task: HomeWorkItem = {
+      ...item('question-task', 'Needs attention', NOW - 60_000),
+      kind: 'task',
+      kindLabel: 'Task · Needs input',
+      taskOpenQuestionCount: 2,
+    };
+    const { props, rerender } = renderPanel({ items: [task] });
+    expect(
+      screen.queryByRole('button', { name: '2 open questions' }),
+    ).toBeNull();
+    rerender(<ChatDockInboxPanel {...props} taskQuestionsEnabled />);
+    fireEvent.click(screen.getByRole('button', { name: '2 open questions' }));
+    expect(navigate).toHaveBeenCalledWith(
+      '/tasks/question-task',
+      expect.objectContaining({ taskView: 'plan' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open task question-task title' }),
+    );
+    expect(navigate).toHaveBeenLastCalledWith(
+      '/tasks/question-task',
+      expect.objectContaining({ taskView: 'overview' }),
+    );
   });
 
   it('renders activity groups in order with their status words', () => {

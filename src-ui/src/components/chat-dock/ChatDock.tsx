@@ -2149,9 +2149,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const transcriptSnapshotRef = useRef<ConversationTranscriptSnapshot | null>(
     null,
   );
-  const continueInProjectEnabled = useSurfaceVisibilityFlags().has(
-    'continue-in-project',
-  );
+  const previewFlags = useSurfaceVisibilityFlags();
+  const continueInProjectEnabled = previewFlags.has('continue-in-project');
+  const taskQuestionsEnabled = previewFlags.has('inbox-task-questions');
   const turnIntoTask =
     hostConversation &&
     activeSession &&
@@ -4714,6 +4714,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             toolsHost: mobileInboxToolsHost,
                             onNewChat: openNewChatDirect,
                             tasks: taskItems,
+                            taskQuestionsEnabled,
                             authority: requestAuthority,
                             pending: taskItemsPending,
                             loadError: taskItemsFailed,
@@ -4764,6 +4765,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             componentProps={{
                               exiting: inboxPresence.exiting,
                               items: taskItems,
+                              taskQuestionsEnabled,
                               authority: requestAuthority,
                               agents,
                               gitLocationByThreadId,

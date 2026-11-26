@@ -33,6 +33,7 @@ export interface ChatDockInboxPanelProps {
   /** station#1297: rehydrates a session with no live tab into the chat
    *  overlay — mirrors `useChatDockActions`' `openConversation`. */
   authority?: InboxPanelControllerOptions['authority'];
+  taskQuestionsEnabled?: boolean;
   onOpenConversation: InboxPanelControllerOptions['onOpenConversation'];
   onOpenSession: (threadId: string) => void;
   /** See WorkItemOpenHandlers.agentsLoaded (station#3687). */
@@ -98,6 +99,7 @@ function ChatDockInboxPanelImpl({
   onOpenSession,
   agentsLoaded,
   authority,
+  taskQuestionsEnabled,
   onOpenFailed,
   onCloseChat,
   onAcknowledgeConversation,
@@ -135,6 +137,7 @@ function ChatDockInboxPanelImpl({
     items,
     open: !exiting,
     authority,
+    taskQuestionsEnabled,
     panelRef,
     openChatSessionIds,
     workFacts,
