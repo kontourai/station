@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { InboxTaskRow } from '../components/chat-dock/ChatDockInboxRows';
 import { useSwipeActions } from '../hooks/useSwipeActions';
@@ -76,26 +77,33 @@ function StoryRow({
   });
   const secondary =
     example.action === 'Retry' ? 'Mark reviewed' : example.action;
+  const failed = example.action === 'Retry';
+  const snooze = () => onAction(example, 'Snooze');
   const actions = (
-    <>
-      <Button
-        variant="primary"
-        onClick={() => onAction(example, example.action)}
-      >
-        {example.action}
-      </Button>
-      {example.action === 'Retry' && (
+    <ActionRow
+      primary={
+        <Button
+          variant="primary"
+          onClick={() => onAction(example, example.action)}
+        >
+          {example.action}
+        </Button>
+      }
+      secondary={
         <Button
           variant="ghost"
-          onClick={() => onAction(example, 'Mark reviewed')}
+          onClick={() =>
+            failed ? onAction(example, 'Mark reviewed') : snooze()
+          }
         >
-          Mark reviewed
+          {failed ? 'Mark reviewed' : 'Snooze'}
         </Button>
-      )}
-      <Button variant="ghost" onClick={() => onAction(example, 'Snooze')}>
-        Snooze
-      </Button>
-    </>
+      }
+      overflow={
+        failed ? [{ key: 'snooze', label: 'Snooze', onSelect: snooze }] : []
+      }
+      overflowLabel={`More actions for ${example.title}`}
+    />
   );
 
   return (
