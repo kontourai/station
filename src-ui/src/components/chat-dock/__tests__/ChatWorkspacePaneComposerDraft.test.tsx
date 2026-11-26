@@ -2542,3 +2542,27 @@ test('a Project-requested draft over the dock’s own draft dismisses as a reque
   await act(async () => {});
   expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
 });
+
+test('opening conversation history replaces the dock’s own draft', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  await screen.findByRole('region', { name: 'New chat picker' });
+
+  fireEvent.click(
+    within(screen.getByRole('complementary', { name: 'Chats' })).getByRole(
+      'button',
+      { name: 'Browse all conversations' },
+    ),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  // History holds the pane; the dock's own draft does not come back under it.
+  await act(async () => {});
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
+  expect(createChatSession).not.toHaveBeenCalled();
+});

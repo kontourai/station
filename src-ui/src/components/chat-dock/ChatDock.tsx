@@ -3276,6 +3276,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     openingChat === null &&
     !workingParentPending &&
     !isChildReaderOpen &&
+    !isHistoryOpen &&
     hasAgents;
   // Any other way the draft closes (it started, or a chat opened over it)
   // ends its resting role; a later empty pane opens a fresh one. Declared
@@ -3286,10 +3287,21 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // A chat someone picked that could not be opened owns the pane: its
   // recovery (Retry, and Start new chat only where the server allows one)
   // replaces the dock's own draft rather than sitting under it.
+  // So does conversation history opened from the Chats list: it renders in
+  // the same pane.
   useEffect(() => {
-    if (conversationOpenRecovery && restingDraft.current && showNewChatModal)
+    if (
+      (conversationOpenRecovery || isHistoryOpen) &&
+      restingDraft.current &&
+      showNewChatModal
+    )
       closeNewChatDraft();
-  }, [conversationOpenRecovery, showNewChatModal, closeNewChatDraft]);
+  }, [
+    conversationOpenRecovery,
+    isHistoryOpen,
+    showNewChatModal,
+    closeNewChatDraft,
+  ]);
   useEffect(() => {
     if (restingSuppressed.current) {
       if (!isPaneOpen) restingSuppressed.current = false;
