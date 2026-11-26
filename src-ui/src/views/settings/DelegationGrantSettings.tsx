@@ -7,6 +7,7 @@ import { Button } from '../../components/Button';
 import { PageSection } from '../../components/PageSection';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 const PATH = '/config/delegation-grants';
 const PREVIEW_ID = 'delegation-grants';
@@ -317,7 +318,7 @@ function GrantControls({ authority }: { authority: Authority }) {
       {save.isError && (
         <ErrorState
           title="Unable to save delegation grant"
-          description={save.error.message}
+          description={userFacingErrorMessage(save.error)}
         />
       )}
     </PageSection>

@@ -4,8 +4,10 @@ import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { z } from 'zod';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { createLogger } from '../../../utils/logger.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', () => {
@@ -73,6 +75,10 @@ test('runtime composition binds page reads to current session authority before r
   const isOperator = (credential: string) => credential === operator;
   let frameOrigin = 'http://sandbox-one.test';
   const context = deepStub({
+    featurePreviews: new FeaturePreviewRegistry(
+      home,
+      createLogger({ name: 'html-replies-test', level: 'error' }),
+    ),
     getMcpUiFrameOrigin: () => frameOrigin,
     projectMembership: undefined,
     projectSharedTasks: undefined,
