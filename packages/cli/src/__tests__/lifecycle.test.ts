@@ -9474,8 +9474,25 @@ describe('lifecycle build + restart ergonomics', () => {
           STATION_LOG_FILE: canonicalLogFile,
         }),
       );
-      expect(String(uiStdinEnd.mock.calls[0]?.[0])).toContain(
-        'listen(5274,"127.0.0.1")',
+      const { createRequire } = await import('node:module');
+      const { runInNewContext } = await import('node:vm');
+      const moduleRequire = createRequire(import.meta.url);
+      const uiServer = Object.assign(new EventEmitter(), { listen: vi.fn() });
+      await runInNewContext(String(uiStdinEnd.mock.calls[0]?.[0]), {
+        require: (id: string) =>
+          id === 'http' ? { createServer: () => uiServer } : moduleRequire(id),
+        process: {
+          platform: 'linux',
+          env: {},
+          connected: true,
+          once: vi.fn(),
+          on: vi.fn(),
+          exit: vi.fn(),
+        },
+      });
+      expect(uiServer.listen).toHaveBeenCalledExactlyOnceWith(
+        5274,
+        '127.0.0.1',
       );
       expect(fetchMock).toHaveBeenCalledWith(
         'http://127.0.0.1:3242/api/system/identity',
