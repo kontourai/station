@@ -8,20 +8,35 @@ import {
 } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
+import { activeChatsStore } from '../../contexts/active-chats-store';
+import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { toastStore } from '../../contexts/ToastContext';
-import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   dismissInboxItem,
+  dropInboxDismissals,
   hasInboxDismissal,
   inboxDismissalsVersion,
   isInboxDismissed,
+  readHostThirdPartyDismissals,
   readInboxDismissals,
   restoreInboxItems,
   subscribeInboxDismissals,
 } from '../../utils/inbox-dismissal-store';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
+import {
+  trackPendingUndo,
+  untrackPendingUndo,
+} from '../undo/UndoableActionShortcut';
+import {
+  inboxHideTarget,
+  isHostHidden,
+  useConversationWorkState,
+} from './useConversationWorkState';
 import { useHeldLifecycles } from './useHeldLifecycles';
+
+/** Migrations in flight, by namespace and host authority. */
+const migrating = new Set<string>();
 
 export function useInboxDismissals(
   items: HomeWorkItem[],
@@ -39,20 +54,39 @@ export function useInboxDismissals(
     [version, namespace],
   );
   const heldItems = useHeldLifecycles(items);
-  const { visible, dismissed, woken } = useMemo(() => {
+  const workState = useConversationWorkState();
+  const { hidden, hideSupported } = workState;
+  const { visible, dismissed, woken, adopted } = useMemo(() => {
     const visible: HomeWorkItem[] = [];
     const dismissed: HomeWorkItem[] = [];
     const woken: HomeWorkItem[] = [];
+    // Hidden on the host, but no longer a third-party Session here: it was
+    // adopted into Station, so its hidden record has served its purpose.
+    const adopted: string[] = [];
     for (const item of heldItems) {
-      if (isInboxDismissed(item, entries, facts?.get(item.id)))
+      const itemFacts = facts?.get(item.id);
+      if (
+        isHostHidden(item, hidden, itemFacts) ||
+        isInboxDismissed(item, entries, itemFacts)
+      )
         dismissed.push(item);
       else {
         visible.push(item);
         if (hasInboxDismissal(item, entries)) woken.push(item);
+        const threadId =
+          item.kind === 'orchestration' && !item.environmentId
+            ? (item.orchestrationThreadId ?? item.id)
+            : undefined;
+        if (
+          threadId &&
+          item.controlMode !== 'read-only-attached' &&
+          Object.hasOwn(hidden, threadId)
+        )
+          adopted.push(threadId);
       }
     }
-    return { visible, dismissed, woken };
-  }, [heldItems, entries, facts]);
+    return { visible, dismissed, woken, adopted };
+  }, [heldItems, entries, facts, hidden]);
   useEffect(() => {
     if (!woken.length) return;
     try {
@@ -61,6 +95,41 @@ export function useInboxDismissals(
       // Visibility follows the current observation even if storage is unavailable.
     }
   }, [woken, namespace]);
+  const unhideAdopted = workState.hide.mutate;
+  useEffect(() => {
+    for (const sessionId of adopted)
+      unhideAdopted({ sessionId, hidden: false });
+  }, [adopted, unhideAdopted]);
+  // Local third-party dismissals move to the host, then leave this browser;
+  // another Station's rows stay local. Moved entries are gone, so this runs
+  // again only when local dismissals or host support change.
+  const migrateHidden = useRef(workState.migrateHidden);
+  migrateHidden.current = workState.migrateHidden;
+  const { scopeKey } = workState;
+  useEffect(() => {
+    void version;
+    if (!hideSupported) return;
+    const marker = JSON.stringify([namespace, scopeKey]);
+    if (migrating.has(marker)) return;
+    let local: string[];
+    try {
+      local = readHostThirdPartyDismissals(namespace);
+    } catch {
+      return;
+    }
+    if (!local.length) return;
+    migrating.add(marker);
+    void migrateHidden
+      .current(local)
+      .then((done) => {
+        try {
+          dropInboxDismissals(done, namespace);
+        } catch {
+          // A later change retries what this one could not drop.
+        }
+      })
+      .finally(() => migrating.delete(marker));
+  }, [hideSupported, namespace, scopeKey, version]);
   return { visible, dismissed };
 }
 
@@ -75,8 +144,23 @@ export function useInboxDismissActions(
   // A toast can outlive the render where a local draft gained a durable ID.
   const currentItems = useRef(items);
   currentItems.current = items;
+  // An Undo toast outlives the render that hid the row; read the latest map.
+  const workState = useConversationWorkState();
+  const workStateRef = useRef(workState);
+  workStateRef.current = workState;
+  /** The host Session this row hides on, when the host keeps hidden Sessions. */
+  const hostTarget = (item: HomeWorkItem) =>
+    workStateRef.current.hideSupported
+      ? inboxHideTarget(item, facts?.get(item.id))
+      : null;
   const restore = (item: HomeWorkItem) => {
     if (currentNamespace.current !== namespace) return;
+    // Unhide on the host whenever the row has a host target, not only when
+    // this device's read already shows it hidden: a local dismissal moved to
+    // the host just now is hidden there before the next read says so.
+    const target = hostTarget(item);
+    if (target)
+      workStateRef.current.hide.mutate({ sessionId: target, hidden: false });
     try {
       const current =
         currentItems.current.find(
@@ -89,16 +173,30 @@ export function useInboxDismissActions(
               )),
         ) ?? item;
       restoreInboxItems([current], namespace);
-      if (lastDismissToast) toastStore.dismiss(lastDismissToast);
-      lastDismissToast = null;
-      undoLastDismiss = null;
+      dropInboxUndo();
       setError(null);
     } catch {
       setError('Could not restore this conversation. Try again.');
     }
   };
   return {
+    async dismissSelected(item: HomeWorkItem) {
+      if (currentNamespace.current !== namespace)
+        throw new Error('Station changed');
+      const target = hostTarget(item);
+      if (target) {
+        if (!workState.hide.mutateAsync) throw new Error('Hide unavailable');
+        await workState.hide.mutateAsync({ sessionId: target, hidden: true });
+      } else dismissInboxItem(item, facts?.get(item.id), namespace);
+    },
     dismiss: (item: HomeWorkItem) => {
+      const target = hostTarget(item);
+      if (target) {
+        workState.hide.mutate({ sessionId: target, hidden: true });
+        setError(null);
+        offerInboxUndo('Marked done', () => restore(item));
+        return;
+      }
       try {
         dismissInboxItem(item, facts?.get(item.id), namespace);
       } catch {
@@ -107,18 +205,34 @@ export function useInboxDismissActions(
       }
       // The dismissal is saved; a toast failure must not report otherwise,
       // and ⌘Z and Restore still reach it.
-      undoLastDismiss = () => restore(item);
       setError(null);
-      if (lastDismissToast) toastStore.dismiss(lastDismissToast);
-      lastDismissToast = null;
-      try {
-        lastDismissToast = toastStore.show(
-          'Conversation dismissed',
-          undefined,
-          8000,
-          [{ label: 'Undo', onClick: () => restore(item) }],
-        );
-      } catch {}
+      offerInboxUndo(localDoneNotice(item, workState.supported), () =>
+        restore(item),
+      );
+    },
+    /**
+     * Mark done where the person's settlement exists: synced across their
+     * devices, with Undo (and ⌘Z) reopening it. Reopen itself needs no Undo.
+     */
+    settle: (conversationId: string, settled: boolean) => {
+      const change = workStateRef.current.change;
+      dropInboxUndo();
+      // The notice follows the server's answer: a settle that failed shows
+      // only its error, never an Undo for something that did not happen.
+      if (!settled || !change.mutateAsync) {
+        change.mutate({ conversationId, settled });
+        return;
+      }
+      void change.mutateAsync({ conversationId, settled: true }).then(
+        () =>
+          offerInboxUndo('Marked done', () =>
+            workStateRef.current.change.mutate({
+              conversationId,
+              settled: false,
+            }),
+          ),
+        () => undefined,
+      );
     },
     restore,
     notice: error ? (
@@ -130,31 +244,95 @@ export function useInboxDismissActions(
 }
 
 let lastDismissToast: string | null = null;
-let undoLastDismiss: (() => void) | null = null;
-/** One registered Undo command for the latest dismissal across inbox hosts. */
+let dismissToastSequence = 0;
+
+/** Closes the latest inbox notice, so its Undo is no longer offered. */
+function dropInboxUndo() {
+  if (lastDismissToast) toastStore.dismiss(lastDismissToast);
+  lastDismissToast = null;
+}
+
+/**
+ * What Mark done says when it could only put the row away on this device
+ * while the person's settlement is on: the work is not done, so the notice
+ * says where it went and what it is still doing. It comes back when it
+ * next changes.
+ */
+function localDoneNotice(item: HomeWorkItem, settlementOn: boolean): string {
+  if (!settlementOn) return 'Marked done';
+  if (item.lifecycleLabel === 'Running')
+    return 'Hidden on this device. It is still running.';
+  if (item.lifecycleLabel === 'Needs attention')
+    return 'Hidden on this device. It still needs you.';
+  return 'Hidden on this device.';
+}
+
+/**
+ * Shows the Undo notice for an inbox action (Mark done, a bulk Mark done,
+ * Discard draft) and enters it in the app's undo stack, so Mod+Z reaches it
+ * through the one registered Undo command, in order with every other
+ * undoable action. It becomes the one latest inbox notice: the one before it
+ * closes, and changing Station closes it. Null when the notice could not be
+ * shown; the action itself is already saved, and Reopen still reaches it.
+ */
+export function offerInboxUndo(
+  message: string,
+  onUndo: () => void,
+): string | null {
+  dropInboxUndo();
+  dismissToastSequence += 1;
+  const id = `inbox-dismiss-${dismissToastSequence}`;
+  try {
+    toastStore.upsert({
+      id,
+      message,
+      tone: 'info',
+      duration: 8000,
+      actions: [{ label: 'Undo', onClick: onUndo }],
+      onDismiss: () => untrackPendingUndo(id),
+    });
+  } catch {
+    return null;
+  }
+  trackPendingUndo(id);
+  lastDismissToast = id;
+  return id;
+}
+
+/**
+ * Drops the latest dismissal's Undo notice when the Station or namespace it
+ * was made for changes, so an Undo for another authority is never offered.
+ */
 export function InboxDismissUndo({ children }: { children: ReactNode }) {
   const { apiBase } = useApiBase();
   const { namespace } = useAuthorityPersistence();
   useEffect(() => {
     void apiBase;
     void namespace;
-    undoLastDismiss = null;
+    dropInboxUndo();
   }, [apiBase, namespace]);
-  useKeyboardShortcut(
-    'inbox.undoDismiss',
-    'z',
-    ['cmd'],
-    'Undo inbox dismissal',
-    () => {
-      if (
-        document.activeElement?.closest(
-          'input, textarea, select, [contenteditable], [role="textbox"], .station-terminal',
-        )
-      )
-        return false;
-      if (!undoLastDismiss) return false;
-      undoLastDismiss();
-    },
-  );
   return children;
+}
+
+/**
+ * Discard draft for this device's unsent composer text: the text, its quotes
+ * and attachments go, and the notice's Undo (or ⌘Z) puts them back.
+ */
+export function discardUnsentDraft(sessionId: string) {
+  const text = chatDraftsStore.get(sessionId);
+  const quotes = chatDraftsStore.getQuotes(sessionId);
+  const chat = activeChatsStore.getSnapshot()[sessionId];
+  const input = chat?.input;
+  const attachments = chat?.attachments;
+  activeChatsStore.clearInput(sessionId);
+  chatDraftsStore.clear(sessionId);
+  offerInboxUndo('Draft discarded', () => {
+    chatDraftsStore.set(sessionId, text);
+    for (const quote of quotes) chatDraftsStore.addQuote(sessionId, quote);
+    if (chat && activeChatsStore.getSnapshot()[sessionId])
+      activeChatsStore.updateChat(sessionId, {
+        input: input ?? text,
+        attachments: attachments ?? [],
+      });
+  });
 }

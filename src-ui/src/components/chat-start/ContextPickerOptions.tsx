@@ -62,7 +62,7 @@ export function ContextPickerOptions({
         ref={filterRef}
         className="new-chat-modal__dropdown-search"
         type="text"
-        placeholder="Filter..."
+        placeholder="Filter…"
         value={contextSearch}
         onChange={(e) => onContextSearchChange(e.target.value)}
         onKeyDown={(e) => {
@@ -101,8 +101,15 @@ export function ContextPickerOptions({
                 <span>{opt.label}</span>
               </span>
               {opt.workingDirectory && (
-                <span className="new-chat-modal__dropdown-item-dir">
-                  <CwdBreadcrumb path={opt.workingDirectory} />
+                <span
+                  className="new-chat-modal__dropdown-item-dir"
+                  title={[opt.repositoryRemote, opt.workingDirectory]
+                    .filter(Boolean)
+                    .join(' · ')}
+                >
+                  {opt.repository ?? (
+                    <CwdBreadcrumb path={opt.workingDirectory} />
+                  )}
                 </span>
               )}
             </span>

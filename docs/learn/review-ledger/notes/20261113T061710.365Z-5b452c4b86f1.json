@@ -1,0 +1,7 @@
+{
+  "revision": "d53db948b6f7a11c705b6478947f25b2c850064b",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed inherited origin/main ledger JSON and generated Markdown, with no branch delta to either. Executed entry validation and renderLedgerMarkdown equality against the checked-in JSON. Projection matches. Historical workflow, publication and installed-artifact claims remain their recorded evidence and are not re-qualified by this display-identity work.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

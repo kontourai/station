@@ -1,0 +1,7 @@
+{
+  "revision": "addca25a1d54ffbf217f41e0caed3b7ddbff52f1",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Journeys still deferred under when-armed and run in merge-group statics; unchanged by the fix round.","inputs":["docs/testing/browser-smoke.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
+  ]
+}

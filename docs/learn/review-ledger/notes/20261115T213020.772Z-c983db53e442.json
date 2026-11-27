@@ -1,0 +1,7 @@
+{
+  "revision": "87070247881981cca52435c626f3a05eb074e0a5",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed the environment offer command row and selection/refusal paragraph against parseEnvironmentOfferInvocation, the actual host/mint/encoder callers and executable regression controls. Current client links admit Stable by default and Nightly explicitly; retired Beta refuses before local service creation/network effects in both formatted and payload-only modes. CLI help agrees. All106 focused tests passed with Chromium required; no installed client, native URL association, live provider or published release qualification renewed.","inputs":["docs/reference/cli.md"]}
+  ]
+}

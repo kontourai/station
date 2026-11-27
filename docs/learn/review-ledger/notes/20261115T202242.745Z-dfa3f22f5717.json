@@ -1,0 +1,7 @@
+{
+  "revision": "6df85c2bd2f7575feab090d62b17a6b70aa70f46",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Stated that the compile-cache root checks run before the prune rather than atomically with it, so a concurrent swap of cache or node-compile for a link by something that can write inside the private home is not prevented; checked against station-compile-cache.ts.","inputs":["docs/guides/desktop-build.md"]}
+  ]
+}

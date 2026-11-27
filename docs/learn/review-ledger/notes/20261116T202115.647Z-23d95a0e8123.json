@@ -1,0 +1,25 @@
+{
+  "revision": "ccb09967cb64605a835d285e8b3b7f917e17456a",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Fix round 1: the GET conversation read reports an unreadable owner's pull request with switches off and status off; by-pull-request last is the newest send about the observed head (absent otherwise); facts feedback fixing is per Task run. Checked against pull-request-feedback-ownership.ts, pull-request-feedback-task-fact.ts, task-pull-request-facts.ts and their tests.","inputs":["docs/reference/api.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Fix round 1: pullRequestFeedbackFor now also receives the Task's own run (TaskRecord.sessionId) so the facts read decides fixing per Task. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Fix round 1: pullRequestFeedbackFor now also receives the Task's own run (TaskRecord.sessionId) so the facts read decides fixing per Task. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix round 1: pullRequestFeedbackFor now also receives the Task's own run (TaskRecord.sessionId) so the facts read decides fixing per Task. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round 1: pullRequestFeedbackFor now also receives the Task's own run (TaskRecord.sessionId) so the facts read decides fixing per Task. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Fix round 1: pullRequestFeedbackFor now also receives the Task's own run (TaskRecord.sessionId) so the facts read decides fixing per Task. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Fix round 1: pullRequestFeedbackFor now also receives the Task's own run (TaskRecord.sessionId) so the facts read decides fixing per Task. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Fix round 1: pullRequestFeedbackFor now also receives the Task's own run (TaskRecord.sessionId) so the facts read decides fixing per Task. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Fix round 1: api.md's pull request feedback section now says a chat's read hides an unreadable owner's switches and status, that by-pull-request's last is the newest send about the observed head, and that fixing is per Task run; no claim this page cites from it changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Fix round 1: api.md's pull request feedback section now says a chat's read hides an unreadable owner's switches and status, that by-pull-request's last is the newest send about the observed head, and that fixing is per Task run; no claim this page cites from it changed.","inputs":["docs/reference/api.md"]}
+  ]
+}

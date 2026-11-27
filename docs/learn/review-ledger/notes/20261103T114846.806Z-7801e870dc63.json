@@ -1,7 +1,0 @@
-{
-  "revision": "6d33e8969d2bb9c086374201a43b09f9cf4c2d32",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Reviewed regenerated SessionCommandModule topic against the canonical module-map paragraph and start acknowledgement implementation. The shipped topic preserves the announced-versus-deferred boundary, five-second commit deadline and indeterminate cleanup; no broader runtime or provider claim changes.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-docs-content.ts"]}
-  ]
-}

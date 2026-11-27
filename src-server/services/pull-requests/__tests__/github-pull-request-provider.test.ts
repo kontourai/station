@@ -342,6 +342,244 @@ describe('GitHubPullRequestProvider', () => {
     expect(transport.mock.calls[0]?.[1]).not.toHaveProperty('workingDirectory');
   });
 
+  test('lists pull requests with summary fields and an explicit limit', async () => {
+    const transport = vi.fn().mockResolvedValue({ stdout: '[]' });
+    const provider = new GitHubPullRequestProvider(transport);
+
+    await expect(provider.listPullRequests(context, {})).resolves.toMatchObject(
+      {
+        available: true,
+        data: [],
+      },
+    );
+    const args = transport.mock.calls.find(([argv]) => argv[0] === 'pr')?.[0];
+    expect(args).toEqual(expect.arrayContaining(['list', '--limit', '30']));
+    expect(args?.[args.indexOf('--json') + 1].split(',').sort()).toEqual([
+      'additions',
+      'author',
+      'baseRefName',
+      'changedFiles',
+      'deletions',
+      'headRefName',
+      'headRefOid',
+      'isDraft',
+      'mergeable',
+      'number',
+      'reviewDecision',
+      'state',
+      'statusCheckRollup',
+      'title',
+      'updatedAt',
+      'url',
+    ]);
+  });
+
+  test('pages checkout summaries and only attributes checks to the observed head', async () => {
+    const headSha = 'a'.repeat(40);
+    const nextCursor = 'Y3Vyc29yOjE=';
+    const summary = {
+      number: 7,
+      url: 'https://github.com/kontourai/station/pull/7',
+      title: 'Title',
+      state: 'OPEN',
+      author: { login: 'casey', url: 'https://github.com/casey' },
+      headRefName: 'feature',
+      baseRefName: 'main',
+      headRefOid: headSha,
+      isDraft: true,
+      mergeable: 'CONFLICTING',
+      reviewDecision: 'REVIEW_REQUIRED',
+      updatedAt: '2026-11-25T20:00:00Z',
+      additions: 4,
+      deletions: 1,
+      changedFiles: 2,
+    };
+    const transport = vi.fn().mockImplementation(async (args: string[]) => {
+      if (args[0] === 'auth') return { stdout: '' };
+      const following = args.includes(`after=${nextCursor}`);
+      return {
+        stdout: JSON.stringify({
+          data: {
+            repository: {
+              pullRequests: {
+                nodes: [
+                  {
+                    ...summary,
+                    ...(following
+                      ? {
+                          number: 6,
+                          url: 'https://github.com/kontourai/station/pull/6',
+                        }
+                      : {}),
+                    headRef: null,
+                    commits: {
+                      nodes: [
+                        {
+                          commit: {
+                            oid: following ? 'b'.repeat(40) : headSha,
+                            statusCheckRollup: { state: 'PENDING' },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+                pageInfo: { hasNextPage: !following, endCursor: nextCursor },
+              },
+            },
+          },
+        }),
+      };
+    });
+    const provider = new GitHubPullRequestProvider(transport);
+
+    const first = await provider.listPullRequestPage(context, {
+      state: 'OPEN',
+    });
+    expect(first.data).toMatchObject({
+      nextCursor,
+      items: [
+        {
+          ref: '7',
+          draft: true,
+          mergeability: 'conflicting',
+          reviewDecision: 'review_required',
+          snapshot: {
+            checks: 'pending',
+            additions: 4,
+            deletions: 1,
+            changedFiles: 2,
+            updatedAt: '2026-11-25T20:00:00Z',
+          },
+        },
+      ],
+    });
+    const args = transport.mock.calls.find(([argv]) => argv[0] === 'api')?.[0];
+    expect(args).toEqual(
+      expect.arrayContaining(['graphql', 'states[]=OPEN', 'first=30']),
+    );
+    const query = args?.find((arg: string) => arg.startsWith('query='));
+    expect(query).toContain(
+      'commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } }',
+    );
+    expect(query).not.toMatch(/\b(body|reviews|comments|mergeStateStatus)\b/);
+
+    const following = await provider.listPullRequestPage(context, {
+      state: 'OPEN',
+      cursor: first.data?.nextCursor,
+    });
+    expect(following.data).toMatchObject({ items: [{ ref: '6' }] });
+    expect(following.data?.items[0]).not.toHaveProperty('snapshot.checks');
+    expect(following.data).not.toHaveProperty('nextCursor');
+  });
+
+  test.each(['checkout', 'identity'])(
+    'reads full pull request detail by %s',
+    async (target) => {
+      const identity = {
+        host: 'github.com',
+        repository: { owner: 'kontourai', name: 'station' },
+      };
+      const stdout = JSON.stringify({
+        number: 7,
+        url: 'https://github.com/kontourai/station/pull/7',
+        title: 'Title',
+        state: 'OPEN',
+        headRefName: 'feature',
+        baseRefName: 'main',
+        body: 'Description',
+        commits: [{ oid: 'a'.repeat(40) }],
+        reviews: [{ state: 'APPROVED' }],
+        comments: [{ body: 'Looks good' }],
+        isDraft: false,
+        reviewDecision: 'APPROVED',
+        mergeStateStatus: 'CLEAN',
+      });
+      const transport = vi.fn().mockResolvedValue({ stdout });
+      const provider = new GitHubPullRequestProvider(transport);
+      const result = await (target === 'checkout'
+        ? provider.getPullRequest(context, '7')
+        : provider.getPullRequestByIdentity(identity, '7'));
+      expect(result).toMatchObject({
+        available: true,
+        data: {
+          body: 'Description',
+          commits: 1,
+          reviewStatus: 'APPROVED',
+          comments: 1,
+          draft: false,
+          reviewDecision: 'approved',
+          mergeReadiness: 'clean',
+        },
+      });
+      const args = transport.mock.calls.find(([argv]) => argv[0] === 'pr')?.[0];
+      expect(args?.[args.indexOf('--json') + 1].split(',')).toEqual(
+        expect.arrayContaining([
+          'body',
+          'commits',
+          'reviews',
+          'comments',
+          'isDraft',
+          'reviewDecision',
+          'mergeStateStatus',
+        ]),
+      );
+    },
+  );
+
+  test.each([
+    ['CLEAN', 'clean'],
+    ['HAS_HOOKS', 'clean'],
+    ['BLOCKED', 'blocked'],
+    ['UNSTABLE', 'checks-not-passing'],
+    ['DIRTY', 'conflicting'],
+    ['BEHIND', 'behind'],
+    ['DRAFT', 'draft'],
+    ['UNKNOWN', 'unknown'],
+  ])(
+    'maps mergeStateStatus %s to readiness %s',
+    (mergeStateStatus, readiness) => {
+      expect(
+        normalizeGitHubPullRequest(
+          {
+            number: 7,
+            url: 'https://github.com/kontourai/station/pull/7',
+            title: 'Title',
+            state: 'OPEN',
+            headRefName: 'feature',
+            baseRefName: 'main',
+            mergeStateStatus,
+            isDraft: mergeStateStatus === 'DRAFT',
+            reviewDecision: 'CHANGES_REQUESTED',
+          },
+          'github.com',
+        ),
+      ).toMatchObject({
+        mergeReadiness: readiness,
+        draft: mergeStateStatus === 'DRAFT',
+        reviewDecision: 'changes_requested',
+      });
+    },
+  );
+
+  test('leaves draft, review decision and readiness absent when gh omits them', () => {
+    const normalized = normalizeGitHubPullRequest(
+      {
+        number: 7,
+        url: 'https://github.com/kontourai/station/pull/7',
+        title: 'Title',
+        state: 'OPEN',
+        headRefName: 'feature',
+        baseRefName: 'main',
+        reviewDecision: '',
+      },
+      'github.com',
+    );
+    expect(normalized).not.toHaveProperty('draft');
+    expect(normalized).not.toHaveProperty('reviewDecision');
+    expect(normalized).not.toHaveProperty('mergeReadiness');
+  });
+
   test('maps gh JSON into the normalized model', async () => {
     const transport = vi
       .fn()

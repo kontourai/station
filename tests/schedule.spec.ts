@@ -1,6 +1,9 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
-import type { SchedulerSchedule } from '@kontourai/station-contracts/scheduler';
+import {
+  type SchedulerSchedule,
+  schedulerJobSlugCandidates,
+} from '@kontourai/station-contracts/scheduler';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import { expect, type Page } from '@playwright/test';
 import { modelConnectionFixture } from './helpers/connection-fixtures';
@@ -8,6 +11,7 @@ import { test } from './helpers/fixture-audit';
 
 type ScheduleJobRecord = {
   name: string;
+  displayName?: string;
   provider: string;
   cron: string;
   // The server serves the discriminated object, not the legacy string:
@@ -57,6 +61,21 @@ async function seedScheduleCrudApi(page: Page) {
     ],
   ]);
   const runCalls: string[] = [];
+  /** Every create body the form sent, in order. */
+  const createBodies: Array<Record<string, unknown>> = [];
+
+  // The handshake is this Station's own, and it must advertise that the
+  // host picks a display name's slug: the duplicate step below proves that
+  // path, which the form takes only on this flag.
+  await page.route('**/.well-known/station/v1', async (route) => {
+    const response = await route.fetch();
+    const handshake = await response.json();
+    if (handshake.capabilities?.schedulerJobDisplayName !== true)
+      throw new Error(
+        'this Station does not advertise schedulerJobDisplayName',
+      );
+    await route.fulfill({ response, json: handshake });
+  });
 
   // archive#947: this suite mocks every scheduler endpoint but left `/api/system/status`
   // to the live instance, so whether the first-run setup launcher rendered was
@@ -163,27 +182,49 @@ async function seedScheduleCrudApi(page: Page) {
   await page.route('**/scheduler/jobs', async (route) => {
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON();
-      if (jobs.has(body.name)) {
+      createBodies.push(body);
+      // As the scheduler does: an explicit slug that is taken is refused; a
+      // create that names only a display name gets the first unused slug.
+      const name: string | undefined = body.name
+        ? jobs.has(body.name)
+          ? undefined
+          : body.name
+        : schedulerJobSlugCandidates(body.displayName).find(
+            (candidate) => !jobs.has(candidate),
+          );
+      if (!name) {
         await route.fulfill({
           status: 409,
           json: {
             success: false,
-            error: `Job '${body.name}' already exists`,
+            code: 'job_name_taken',
+            error: body.name
+              ? `Job '${body.name}' already exists`
+              : `Too many automations already have names like '${body.displayName}'. Choose a different name.`,
           },
         });
         return;
       }
       const job = makeJob({
-        name: body.name,
+        name,
+        ...(body.displayName ? { displayName: body.displayName } : {}),
         provider: body.provider ?? 'built-in',
         cron: body.cron ?? '* * * * *',
         prompt: body.prompt ?? '',
-        agent: body.agent ?? 'default',
+        // A job that runs in its own chat names its agent in `target`, as
+        // the server stores it; a made-up agent left the duplicate's Create
+        // disabled whenever the host answered the chat capability first.
+        agent: body.agent ?? body.target?.agent ?? 'station',
         retryCount: body.retryCount ?? 0,
         retryDelaySecs: body.retryDelaySecs ?? 60,
       });
       jobs.set(job.name, job);
-      await route.fulfill({ json: { success: true, data: job } });
+      await route.fulfill({
+        json: {
+          success: true,
+          data: { output: `Job '${job.name}' created`, name: job.name },
+        },
+      });
       return;
     }
     await route.fulfill({
@@ -243,7 +284,7 @@ async function seedScheduleCrudApi(page: Page) {
     route.fulfill({ json: { success: true, data: [] } }),
   );
 
-  return { runCalls };
+  return { runCalls, createBodies };
 }
 
 async function fillCron(
@@ -261,24 +302,53 @@ async function fillCron(
 }
 
 test.describe('Schedule Page', () => {
-  test('sortable headers expose native keyboard controls and aria-sort', async ({
+  test('lists active automations, then paused ones, each by the name people read, with what happens next', async ({
     page,
   }) => {
     await seedScheduleCrudApi(page);
+    const listed = [
+      makeJob({
+        name: 'aa-paused',
+        displayName: 'Alpha report',
+        enabled: false,
+        nextRun: undefined,
+      }),
+      makeJob({ name: 'b-active', displayName: 'Zulu report' }),
+      makeJob({
+        name: 'z-active',
+        displayName: 'Mike report',
+        nextRun: '2026-04-27T15:00:00.000Z',
+      }),
+    ];
+    // Registered after the seed, so it answers the list read first.
+    await page.route('**/scheduler/jobs', (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({ json: { success: true, data: listed } })
+        : route.fallback(),
+    );
     await page.goto('/automations');
 
-    const lastRun = page.getByRole('columnheader', { name: /last run/i });
-    await expect(lastRun).toHaveAttribute('aria-sort', 'descending');
-    await lastRun.getByRole('button').press('Enter');
-    await expect(lastRun).toHaveAttribute('aria-sort', 'ascending');
-    await lastRun.getByRole('button').press('Space');
-    await expect(lastRun).toHaveAttribute('aria-sort', 'descending');
-
-    // Only the sorted column carries aria-sort. Writing "none" on the others
-    // makes every header announce a sort state it does not have.
-    const name = page.getByRole('columnheader', { name: /^name/i });
-    await expect(name.getByRole('button')).toBeVisible();
-    await expect(name).not.toHaveAttribute('aria-sort', /.*/);
+    const list = page.getByRole('list', { name: 'All automations' });
+    await expect(list.getByRole('listitem').first()).toBeVisible();
+    await expect(list.locator('.automations-row__name')).toHaveText([
+      'Mike report',
+      'Zulu report',
+      'Alpha report',
+    ]);
+    // The slug is never what a row says.
+    await expect(list).not.toContainText('z-active');
+    const mike = page.getByTestId('job-row-z-active');
+    await expect(mike.locator('.automations-row__status')).toHaveText('Active');
+    await expect(mike).toContainText(/Every day at 9:00 AM/);
+    await expect(mike).toContainText(/Next: /);
+    const alpha = page.getByTestId('job-row-aa-paused');
+    await expect(alpha.locator('.automations-row__status')).toHaveText(
+      'Paused',
+    );
+    await expect(alpha).toContainText("Won't run while paused");
+    // No column headers or tabs: the rows say it all.
+    await expect(page.getByRole('columnheader')).toHaveCount(0);
+    await expect(page.getByRole('tab')).toHaveCount(0);
   });
 
   test('an empty agent catalog leads from scheduled jobs to the model-connection agent choice', async ({
@@ -293,9 +363,13 @@ test.describe('Schedule Page', () => {
       .getByRole('button', { name: 'New automation', exact: true })
       .click();
     const dialog = page.getByRole('dialog', { name: 'New automation' });
+    // This Station advertises chat automations, so the form settles on "Its
+    // own chat" once the handshake answers; asserting before that raced the
+    // Station-engine wording against it.
+    await expect(dialog.getByLabel('Run in')).toHaveValue('dedicated');
     await expect(
       dialog.getByText(
-        'Scheduled jobs need an agent using a model connection (Station engine). AI app agents cannot run scheduled jobs.',
+        'Scheduled jobs need an agent that is set up and ready.',
       ),
     ).toBeVisible();
     await expect(
@@ -428,52 +502,58 @@ test.describe('Schedule Page', () => {
     await expect(page.getByTestId('job-row-recovered-check')).toBeVisible();
   });
 
-  test('covers add, edit, duplicate, run, filter, toggle, and delete', async ({
+  test('covers add, edit, duplicate, run, pause, resume and delete from the row menu', async ({
     page,
   }) => {
-    const { runCalls } = await seedScheduleCrudApi(page);
+    const { runCalls, createBodies } = await seedScheduleCrudApi(page);
     await page.goto('/automations');
 
     await expect(
-      page.getByRole('heading', { name: 'Automations' }),
+      page.getByRole('heading', { name: 'Automations', exact: true, level: 1 }),
     ).toBeVisible();
-    await expect(page.getByTestId('job-row-daily-report')).toBeVisible();
-    await expect(
-      page.getByLabel('Scheduler statistics').getByText('100%'),
-    ).toBeVisible();
+    const daily = page.getByTestId('job-row-daily-report');
+    await expect(daily).toBeVisible();
+    await expect(daily.locator('.automations-row__status')).toHaveText(
+      'Active',
+    );
+    // One automation: no filter until there are more than 15.
+    await expect(page.getByPlaceholder('Filter automations…')).toHaveCount(0);
 
-    await page.getByPlaceholder('Filter automations…').fill('missing');
-    await expect(
-      page.getByText('Nothing in automations matches “missing”'),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Clear filter' }),
-    ).toBeVisible();
-    await page.reload();
-    await expect(page.getByTestId('job-row-daily-report')).toBeVisible();
+    const menu = async (label: string, item: string) => {
+      await page.getByRole('button', { name: `Actions for ${label}` }).click();
+      await page.getByRole('menuitem', { name: item, exact: true }).click();
+    };
 
-    await page.getByRole('button', { name: 'Duplicate daily-report' }).click();
+    await menu('daily-report', 'Duplicate');
     const duplicateDialog = page.getByRole('dialog', {
       name: 'New automation',
     });
     await expect(
       duplicateDialog.locator('.agent-picker__trigger'),
     ).toContainText('Codex');
-    await duplicateDialog
-      .getByPlaceholder('my-daily-briefing')
-      .fill('daily-report');
+    await expect(duplicateDialog.getByLabel('Name')).toHaveValue(
+      'daily-report copy',
+    );
+    // The same name as the job it copies: the copy gets its own hidden slug
+    // instead of a refusal the person cannot get past.
+    await duplicateDialog.getByLabel('Name').fill('daily-report');
     await duplicateDialog
       .getByRole('button', { name: 'Create automation', exact: true })
       .click();
-    await expect(duplicateDialog.getByRole('alert')).toHaveText(
-      "Job 'daily-report' already exists",
+    await expect(duplicateDialog).toBeHidden();
+    await expect(page.getByTestId('job-row-daily-report-2')).toContainText(
+      'daily-report',
     );
-    await duplicateDialog.getByRole('button', { name: 'Cancel' }).click();
+    // The host picked that slug: the form sent only the name people read.
+    expect(createBodies.at(-1)).toMatchObject({ displayName: 'daily-report' });
+    expect(createBodies.at(-1)).not.toHaveProperty('name');
+    await expect(daily).toBeVisible();
 
     await page
       .getByRole('button', { name: 'New automation', exact: true })
       .click();
-    await page.getByPlaceholder('my-daily-briefing').fill('weekly-brief');
+    // Plain words; the hidden slug `weekly-brief` is what routes and runs use.
+    await page.getByPlaceholder('Daily briefing').fill('Weekly brief');
     await page
       .getByPlaceholder('What should the agent do?')
       .fill('Summarize weekly work');
@@ -481,38 +561,23 @@ test.describe('Schedule Page', () => {
     await page
       .getByRole('button', { name: 'Create automation', exact: true })
       .click();
-    await expect(page.getByTestId('job-row-weekly-brief')).toBeVisible();
+    const weekly = page.getByTestId('job-row-weekly-brief');
+    await expect(weekly).toBeVisible();
 
-    await page.getByRole('button', { name: 'Edit weekly-brief' }).click();
+    await menu('Weekly brief', 'Edit');
     await page
       .getByPlaceholder('What should the agent do?')
       .fill('Summarize weekly work and risks');
     await expect(
       page
-        .getByRole('dialog', { name: 'Edit: weekly-brief' })
+        .getByRole('dialog', { name: 'Edit: Weekly brief' })
         .locator('.schedule__cron-time'),
     ).not.toHaveText('...');
-    // archive#947: this Enter-submit was lost in ~2 of every 20 standalone runs — the
-    // dialog just stayed open. Diagnosed rather than assumed: adding
-    // `expect(saveChanges).toBeFocused()` immediately before the press still
-    // failed at the same rate, and the failing run's trace shows *no*
-    // `PUT /scheduler/jobs/weekly-brief` was ever issued. So the button was
-    // focused and the keystroke still did not activate it — a re-render (the
-    // cron editor's 400ms `setCronInput` debounce in JobFormModal, still
-    // pending when this modal opens) lands between Enter's keydown and keyup
-    // and the activation is dropped. A tight 30x focus+press loop on an
-    // already-settled page never lost one, which matches that window.
-    //
-    // Retrying the keystroke rather than switching to `.click()` keeps the only
-    // keyboard-submit coverage in this file. The assertion is unchanged — the
-    // dialog must still close — and a repeat Enter after a successful save is a
-    // no-op because the dialog is already gone.
-    // `JobFormModal.tsx:191` titles it `Edit: <name>`. The old
-    // `Edit job: weekly-brief` matched nothing, and `toBeHidden()` on a
-    // zero-element locator passes — so this whole Enter-submit assertion was
-    // asserting nothing.
+    // archive#947: an Enter-submit landing during the cron editor's debounce
+    // re-render was dropped about 2 runs in 20, so the keystroke is retried;
+    // the dialog must still close, and a repeat Enter after a save is a no-op.
     const editDialog = page.getByRole('dialog', {
-      name: 'Edit: weekly-brief',
+      name: 'Edit: Weekly brief',
     });
     const saveChanges = page.getByRole('button', { name: 'Save Changes' });
     await expect(async () => {
@@ -520,42 +585,41 @@ test.describe('Schedule Page', () => {
       await expect(editDialog).toBeHidden({ timeout: 2_000 });
     }).toPass({ timeout: 15_000 });
     await expect(editDialog).toBeHidden();
-    await page.getByTestId('job-row-weekly-brief').click();
+    await weekly
+      .getByRole('button', { name: 'Weekly brief', exact: true })
+      .click();
     await expect(
-      page.getByText('Summarize weekly work and risks'),
+      weekly.getByText('Summarize weekly work and risks'),
     ).toBeVisible();
 
-    await page.getByRole('button', { name: 'Run weekly-brief' }).click();
+    await menu('Weekly brief', 'Run now');
     await expect.poll(() => runCalls).toEqual(['weekly-brief']);
 
-    await page.getByTestId('job-row-weekly-brief').locator('td').nth(2).click();
-    await expect(
-      page
-        .getByTestId('job-row-weekly-brief')
-        .getByText('off', { exact: true }),
-    ).toBeVisible();
-    await page.getByTestId('job-row-weekly-brief').locator('td').nth(2).click();
-    await expect(
-      page.getByTestId('job-row-weekly-brief').getByText('on', { exact: true }),
-    ).toBeVisible();
+    await menu('Weekly brief', 'Pause');
+    await expect(weekly.locator('.automations-row__status')).toHaveText(
+      'Paused',
+    );
+    await expect(weekly).toContainText("Won't run while paused");
+    await menu('Weekly brief', 'Resume');
+    await expect(weekly.locator('.automations-row__status')).toHaveText(
+      'Active',
+    );
 
-    await page.getByRole('button', { name: 'Duplicate weekly-brief' }).click();
-    await expect(page.getByPlaceholder('my-daily-briefing')).toHaveValue(
-      'weekly-brief-copy',
+    await menu('Weekly brief', 'Duplicate');
+    await expect(page.getByPlaceholder('Daily briefing')).toHaveValue(
+      'Weekly brief copy',
     );
     await page
       .getByRole('button', { name: 'Create automation', exact: true })
       .click();
     await expect(page.getByTestId('job-row-weekly-brief-copy')).toBeVisible();
 
-    await page
-      .getByRole('button', { name: 'Delete weekly-brief-copy' })
-      .click();
-    await expect(page.getByRole('dialog')).toContainText(
-      'Delete job "weekly-brief-copy"?',
+    await menu('Weekly brief copy', 'Delete');
+    await expect(page.getByRole('alertdialog')).toContainText(
+      "Delete 'Weekly brief copy'?",
     );
     await page
-      .getByRole('dialog')
+      .getByRole('alertdialog')
       .getByRole('button', { name: 'Delete', exact: true })
       .click();
     await expect(page.getByTestId('job-row-weekly-brief-copy')).toHaveCount(0);

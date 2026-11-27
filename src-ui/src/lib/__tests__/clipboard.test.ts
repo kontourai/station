@@ -1,18 +1,11 @@
-/**
- * @vitest-environment jsdom
- *
- * archive#3341 — the seam's whole contract is that `true` cannot be reached
- * without a `writeText` that itself resolved. All three arms are pinned here
- * because each one was a live defect at a real call site: the missing-clipboard
- * arm is the insecure-origin case the old `?.` shape reported as success, and
- * the rejection arm is the permission refusal the old `void` shape dropped.
- */
+/** @vitest-environment jsdom */
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { copyToClipboard } from '../clipboard';
 
 afterEach(() => {
   Object.assign(navigator, { clipboard: undefined });
+  Reflect.deleteProperty(document, 'execCommand');
 });
 
 describe('copyToClipboard', () => {
@@ -37,6 +30,43 @@ describe('copyToClipboard', () => {
     await expect(copyToClipboard('station-thread-1')).resolves.toBe(false);
     expect(writeText).toHaveBeenCalledWith('station-thread-1');
   });
+
+  test.each(['absent', 'refused'])(
+    'copies the selected text when the async clipboard API is %s',
+    async (availability) => {
+      if (availability === 'refused') {
+        Object.assign(navigator, {
+          clipboard: {
+            writeText: vi.fn().mockRejectedValue(new Error('denied')),
+          },
+        });
+      }
+      const dialog = document.createElement('dialog');
+      dialog.open = true;
+      const trigger = document.createElement('button');
+      dialog.append(trigger);
+      document.body.append(dialog);
+      trigger.focus();
+      Object.assign(document, {
+        execCommand: vi.fn((command: string) => {
+          const field = document.activeElement as HTMLTextAreaElement;
+          return (
+            command === 'copy' &&
+            dialog.contains(field) &&
+            field.value.slice(field.selectionStart, field.selectionEnd) ===
+              'Line 1\nLine 2'
+          );
+        }),
+      });
+      try {
+        await expect(copyToClipboard('Line 1\nLine 2')).resolves.toBe(true);
+        expect(document.activeElement).toBe(trigger);
+        expect(dialog.querySelector('textarea')).toBeNull();
+      } finally {
+        dialog.remove();
+      }
+    },
+  );
 
   test('a clipboard object without writeText is not a clipboard', async () => {
     Object.assign(navigator, { clipboard: {} });

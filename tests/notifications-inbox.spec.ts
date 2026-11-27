@@ -42,7 +42,7 @@ test.describe('Notifications hierarchy', () => {
           notificationSource: 'approval-inbox',
         },
         actions: [
-          { id: 'accept', label: 'Allow Once', variant: 'primary' },
+          { id: 'accept', label: 'Allow once', variant: 'primary' },
           { id: 'decline', label: 'Deny', variant: 'danger' },
         ],
       },
@@ -256,8 +256,7 @@ test.describe('Notifications hierarchy', () => {
       expect(box?.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
       expect(box?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     }
-    const viewport = page.viewportSize();
-    await page.mouse.click(2, (viewport?.height ?? 844) / 2);
+    await page.keyboard.press('Escape');
     await expect(compactNotifications).toBeHidden();
     await expect(
       page.getByText('Approval needed', { exact: true }),
@@ -267,10 +266,10 @@ test.describe('Notifications hierarchy', () => {
     ).toHaveCount(1);
     await expect(page.getByText('Job failed')).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Allow Once' }),
+      page.getByRole('button', { name: 'Allow once' }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Deny' })).toBeVisible();
-    await expect(page.getByLabel('Answer this session')).toBeVisible();
+    await expect(page.getByLabel('Answer this request')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Open session' })).toHaveCount(
       4,
     );
@@ -306,7 +305,7 @@ test.describe('Notifications hierarchy', () => {
     ).toHaveCount(1);
 
     await page
-      .getByLabel('Answer this session')
+      .getByLabel('Answer this request')
       .fill('Continue with the safe option.');
     const sendAnswer = page.getByRole('button', { name: 'Send answer' });
     await sendAnswer.evaluate((button) =>
@@ -517,7 +516,7 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
       expect(box?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     }
     for (const button of await page
-      .getByRole('button', { name: 'Dismiss' })
+      .getByRole('button', { name: 'Mark done' })
       .all()) {
       const box = await button.boundingBox();
       expect(box?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);

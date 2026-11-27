@@ -58,6 +58,14 @@ liveness_scale="$(node scripts/lib/liveness-scale-resolve.mjs)"
 export STATION_LIVENESS_SCALE="$liveness_scale"
 export STATION_LIVENESS_SCALE_RESOLVED=1
 
+# Instant, and a warning only. CI's "PR source admission" defers a pull
+# request that conflicts with main, and then no source check runs at all. Git
+# can see the same conflict here, offline, against the origin/main this
+# checkout last fetched (merge-tree touches neither index nor working tree).
+# That main may be stale, so this never refuses; it is silent when origin/main
+# is unknown or the merge is clean. scripts/prepush-main-conflict.mjs.
+printf '%s\n' "${push_ref_lines[@]}" | node scripts/prepush-main-conflict.mjs || true
+
 # Only seconds-scale checks belong here. `ci:fast` stays the bounded feedback
 # lane and `full:regression` stays the sole completion receipt; what runs here
 # is the subset that is cheap enough to run on every push and whose failure
@@ -90,6 +98,22 @@ npm run --silent proof:repo-governance
 # expensive lanes below are skipped for such a push. A conflict resolution, an
 # edit amended into the merge, a new non-merge commit, or any git failure is
 # not pure, and every lane runs. scripts/prepush-pure-merge.mjs owns the rule.
+# The push-range and freshness steps refuse only on a finding in the pushed
+# commit, which they report with exit 40 (PREPUSH_FINDING_EXIT in
+# scripts/lib/prepush-verdict.mjs). Any other non-zero status (a crash, a
+# module that will not load, a kill, a timeout) is not a verdict: say so and
+# continue, because --no-verify is not allowed and CI will judge it.
+prepush_step_verdict() {
+  local step_name="$1" status="$2"
+  if [[ "$status" -eq 0 ]]; then
+    return 0
+  fi
+  if [[ "$status" -eq 40 ]]; then
+    exit 1
+  fi
+  echo "[station pre-push] WARNING: $step_name did not reach a verdict (exit $status); that is not a finding in the pushed commit, so the push continues and CI will judge it."
+}
+
 pure_merge_of_main=0
 echo "[station pre-push] pure merge of main?"
 if printf '%s\n' "${push_ref_lines[@]}" | node scripts/prepush-pure-merge.mjs "${1:-}"; then
@@ -97,8 +121,41 @@ if printf '%s\n' "${push_ref_lines[@]}" | node scripts/prepush-pure-merge.mjs "$
 fi
 
 if [[ "$pure_merge_of_main" -eq 1 ]]; then
-  echo "[station pre-push] skipped for a pure merge of main: transfer budgets, static gates, SDK barrel"
+  echo "[station pre-push] skipped for a pure merge of main: push-range whitespace and test temp dirs, documentation review freshness, transfer budgets, static gates, SDK barrel"
 else
+# ~1-5s measured on a loaded host, no heavy-check slot. Three checks judged on the pushed commit itself,
+# never the working tree: the merge queue's `git diff --check`, the raw-mkdtemp
+# test ratchet (#2421), and a warning for a new export no other module names (the shape
+# of every unused-export blocker CI's code-health gate raised, 16 of 87 failed
+# pull-request runs from 2026-11-13 to 15). The full code-health gate is not
+# run here: a fallow audit costs 25-50s and queues for a host-wide slot, which
+# on a busy host turned a push into minutes. CI still runs it.
+# Whitespace and the ratchet refuse on a finding; the export check is a
+# heuristic and only warns (CI's code-health gate is the judge). When a check
+# cannot reach a verdict (no merge base, a crash, a timeout) it prints a
+# WARNING saying what it could not check, and the push continues.
+echo "[station pre-push] push range: whitespace, test temp dirs, new unnamed exports"
+set +e
+printf '%s\n' "${push_ref_lines[@]}" | node scripts/check-prepush-push-range.mjs
+step_status=${PIPESTATUS[1]}
+set -e
+prepush_step_verdict "push range" "$step_status"
+
+# ~5-8s measured on a loaded host. Recorded documentation reviews whose cited sources this branch
+# changed without a new note (docs:freshness:check, scoped against the merge
+# base with origin/main; it reads the working tree). It refuses only when the
+# pushed commit is checked out with no uncommitted change and no untracked
+# file under the review ledger, and the branch has started recording reviews: then a stale entry is a note
+# outdated by a later edit or a missed page, which CI's docs:truth:gate
+# refused at least 4 times in 3 days. Otherwise it warns and says why.
+# scripts/check-prepush-docs-freshness.mjs owns the rule.
+echo "[station pre-push] documentation review freshness"
+set +e
+printf '%s\n' "${push_ref_lines[@]}" | node scripts/check-prepush-docs-freshness.mjs
+step_status=${PIPESTATUS[1]}
+set -e
+prepush_step_verdict "documentation review freshness" "$step_status"
+
 echo "[station pre-push] orchestration transfer budgets"
 # The three gates below each run Vitest or source scans, so each queues for a
 # host-wide heavy-check slot (scripts/lib/heavy-check-slots.mjs) instead of

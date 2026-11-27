@@ -134,6 +134,10 @@ describe('#3284 an MCP prompt as a slash command', () => {
       content:
         '/fixture:summarize needs a value for <topic> — nothing was sent',
     });
+    // It did not run: the line stays in the composer to correct (#5491).
+    expect(mocks.updateChat).not.toHaveBeenCalledWith('session-1', {
+      input: '',
+    });
   });
 
   test('refuses to send a prompt from a Station that cannot carry its origin', async () => {
@@ -163,6 +167,10 @@ describe('#3284 an MCP prompt as a slash command', () => {
     expect(mocks.addEphemeralMessage).toHaveBeenCalledWith('session-1', {
       role: 'system',
       content: 'Could not run /fixture:summarize: Try again in a moment.',
+    });
+    // It did not run: the line stays in the composer to correct (#5491).
+    expect(mocks.updateChat).not.toHaveBeenCalledWith('session-1', {
+      input: '',
     });
   });
 

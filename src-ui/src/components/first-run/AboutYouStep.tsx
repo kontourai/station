@@ -165,11 +165,6 @@ export function AboutYouStep({
 
       <p className="first-run-about__reach">{USER_PROFILE_ENGINE_REACH_NOTE}</p>
 
-      <p className="first-run-chapter__lede">
-        Next, choose an Agent, Model, and workspace in New Chat. If anything
-        still needs setup, its next step appears there. Nothing is sent until
-        you write and send a message.
-      </p>
       {saving ? <p role="status">Saving your answers…</p> : null}
       {pairingLimit ? (
         <ManagedRemoteClientsNote
@@ -178,10 +173,8 @@ export function AboutYouStep({
           id="first-run-pairing-refusal"
         />
       ) : (
-        <p className="first-run-chapter__lede">
-          Want to use this Station on your phone too? Connect another device
-          with a QR invitation. Both devices use the same Station server. This
-          is optional—you can also do it later from Connections.
+        <p className="first-run-chapter__lede" id="first-run-devices-hint">
+          Optional. Also in Connections.
         </p>
       )}
       <ResponsiveSurfaceActions className="first-run-chapter__actions">
@@ -199,8 +192,10 @@ export function AboutYouStep({
               (destination === 'devices' && pairingLimit !== undefined)
             }
             aria-describedby={
-              destination === 'devices' && pairingLimit
-                ? 'first-run-pairing-refusal'
+              destination === 'devices'
+                ? pairingLimit
+                  ? 'first-run-pairing-refusal'
+                  : 'first-run-devices-hint'
                 : undefined
             }
             onClick={() => {

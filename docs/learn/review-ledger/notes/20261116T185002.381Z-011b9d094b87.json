@@ -1,0 +1,7 @@
+{
+  "revision": "d7c487980bba14870f7760207985425c5d562642",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Added Notification retention section (STATION_NOTIFICATION_RETENTION_DAYS, tombstones) checked against notification-service.ts mutate/partitionRetention/TombstoneSession.","inputs":["docs/reference/config.md"]}
+  ]
+}

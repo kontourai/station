@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, relative, sep } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
@@ -19,11 +18,20 @@ import {
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
+  AttachedSessionDiscoveryPage,
   AttachedSessionDiscoveryResult,
   AttachedSessionReadResult,
   AttachedSessionSource,
   AttachedSessionSourceOutcome,
 } from './attached-session-source.js';
+import { isSessionSourceAffinity } from './session-source-affinity.js';
+import {
+  asRecord,
+  boundedInteger,
+  digest,
+  isPlainRecord,
+  text,
+} from './session-source-values.js';
 import {
   deriveConfigHomeAffinity,
   readLeadingLine,
@@ -31,6 +39,8 @@ import {
   resolveConfigHomeAffinity,
 } from './transcript-file-io.js';
 
+const DEFAULT_MAX_HOMES = 16;
+const MAX_HOMES_CEILING = 32;
 const DEFAULT_MAX_CANDIDATES = 128;
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_LINE_BYTES = 128 * 1024;
@@ -39,6 +49,8 @@ const DEFAULT_MAX_TRAVERSAL_ENTRIES = 1024;
 const DEFAULT_MAX_DEPTH = 8;
 const DEFAULT_READ_YIELD_EVERY_LINES = 256;
 const MAX_CANDIDATES_CEILING = 512;
+/** Total rollouts one discovery reads across every Codex home. */
+const MAX_TOTAL_CANDIDATES = 512;
 const MAX_BYTES_CEILING = 2 * 1024 * 1024;
 const MAX_LINE_BYTES_CEILING = 128 * 1024;
 const MAX_EVENTS_CEILING = 512;
@@ -88,7 +100,17 @@ interface MappedRecord {
 interface CodexRolloutSessionSourceOptions {
   /** Codex config directory, not its sessions child. */
   homeDir?: string;
+  /**
+   * The other Codex homes Station itself points sessions at (a connection's
+   * `configHome`, the legacy app home, credential-profile homes), read once
+   * per discovery, after `homeDir`. Each home's rollouts keep that home's
+   * affinity and thread ids.
+   */
+  listConfiguredHomes?: () => Promise<readonly string[]>;
+  maxHomes?: number;
   maxCandidates?: number;
+  /** Total rollouts one discovery reads across every home (at most 512). */
+  maxTotalCandidates?: number;
   maxBytes?: number;
   maxLineBytes?: number;
   maxEvents?: number;
@@ -109,8 +131,18 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
   readonly kind = 'codex-rollout';
   readonly continuationBoundary = 'completed-turn';
   private readonly homeDir: string;
-  private readonly sessionsDir: string;
+  private readonly listConfiguredHomes?: () => Promise<readonly string[]>;
+  private readonly maxHomes: number;
+  /**
+   * The configured home paths the last discovery scanned, default first.
+   * `resolveSourceHome` answers only for these, so an affinity resolves to a
+   * home Station currently configures. Before the first discovery it is just
+   * the default home.
+   */
+  private knownHomes: readonly string[];
+  private homeRefresh?: Promise<void>;
   private readonly maxCandidates: number;
+  private readonly maxTotalCandidates: number;
   private readonly maxBytes: number;
   private readonly maxLineBytes: number;
   private readonly maxEvents: number;
@@ -126,11 +158,28 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
       process.env.STATION_EXTERNAL_CODEX_SOURCE_ROOT ??
       process.env.CODEX_HOME ??
       join(homedir(), '.codex');
-    this.sessionsDir = join(this.homeDir, 'sessions');
+    // An explicit history root is the only folder read: it isolates
+    // observation (tests, benchmarks) from every home Station configures.
+    this.listConfiguredHomes =
+      options.homeDir === undefined &&
+      process.env.STATION_EXTERNAL_CODEX_SOURCE_ROOT !== undefined
+        ? undefined
+        : options.listConfiguredHomes;
+    this.knownHomes = [this.homeDir];
+    this.maxHomes = boundedInteger(
+      'maxHomes',
+      options.maxHomes ?? DEFAULT_MAX_HOMES,
+      MAX_HOMES_CEILING,
+    );
     this.maxCandidates = boundedInteger(
       'maxCandidates',
       options.maxCandidates ?? DEFAULT_MAX_CANDIDATES,
       MAX_CANDIDATES_CEILING,
+    );
+    this.maxTotalCandidates = boundedInteger(
+      'maxTotalCandidates',
+      options.maxTotalCandidates ?? MAX_TOTAL_CANDIDATES,
+      MAX_TOTAL_CANDIDATES,
     );
     this.maxBytes = boundedInteger(
       'maxBytes',
@@ -171,22 +220,159 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
       (() => new Promise<void>((resolve) => setImmediate(resolve)));
   }
 
-  async discover(): Promise<AttachedSessionDiscoveryResult> {
-    const sourceHome = deriveConfigHomeAffinity(
-      SOURCE_HOME_NAMESPACE,
-      this.homeDir,
-    );
-    if (!sourceHome) return { outcome: 'missing_root', sessions: [] };
-    const root = this.canonicalSessionsRoot(sourceHome.canonicalRoot);
-    if (!root) return { outcome: 'missing_root', sessions: [] };
+  async discover(
+    page?: AttachedSessionDiscoveryPage,
+  ): Promise<AttachedSessionDiscoveryResult> {
+    const { homes, homeLimitSeen } = await this.resolveHomes();
+    if (homes.length === 0) return { outcome: 'missing_root', sessions: [] };
     this.handles.clear();
 
+    // Each home keeps its own newest `maxCandidates`, so a busy profile home
+    // cannot evict the default home's sessions. Homes are taken in order
+    // (default first) up to one total ceiling that bounds a poll's reads.
+    const candidates: Array<{
+      path: string;
+      modifiedAt: number;
+      home: number;
+    }> = [];
+    let candidateLimitSeen = homeLimitSeen;
+    let rejected = false;
+    const offset = page?.offset ?? 0;
+    const archiveEnd = offset + (page?.limit ?? 0);
+    const perHomeLimit = page ? archiveEnd + 1 : this.maxCandidates;
+    for (const [index, home] of homes.entries()) {
+      // Full: the remaining homes are not walked, and may hold more.
+      if (!page && candidates.length >= this.maxTotalCandidates) {
+        candidateLimitSeen = true;
+        break;
+      }
+      const scan = await this.scanHome(home.root, perHomeLimit);
+      candidateLimitSeen ||= scan.limitSeen;
+      rejected ||= scan.rejected;
+      for (const candidate of scan.candidates.sort(compareCandidates)) {
+        if (!page && candidates.length >= this.maxTotalCandidates) {
+          candidateLimitSeen = true;
+          break;
+        }
+        candidates.push({ ...candidate, home: index });
+      }
+    }
+
+    let outcome: AttachedSessionSourceOutcome = candidateLimitSeen
+      ? 'candidate_limit'
+      : rejected
+        ? 'rejected_candidate'
+        : 'ok';
+    // A native id found in two homes stays two threads, each bound to its own
+    // home. Station never copies rollouts between homes, so a shared id is a
+    // hand-made copy, and once both copies continue they have forked: picking
+    // one would hide the other's turns, and a winner that changed between
+    // polls would mint a new thread for the same conversation.
+    const sessions: AttachedSessionDescriptor[] = [];
+    const sorted = candidates.sort(compareCandidates);
+    for (const candidate of page ? sorted.slice(offset, archiveEnd) : sorted) {
+      const home = homes[candidate.home]!;
+      const result = this.discoverFile(
+        home.root,
+        home.identity,
+        candidate.path,
+        home.affinity,
+      );
+      if (!result.registration) {
+        outcome = mergeOutcome(outcome, result.outcome);
+        continue;
+      }
+      this.handles.set(
+        result.registration.descriptor.sourceHandle,
+        result.registration,
+      );
+      sessions.push({
+        ...result.registration.descriptor,
+        modifiedAtMs: candidate.modifiedAt,
+      });
+    }
+    return {
+      outcome,
+      sessions,
+      ...(page && sorted.length > archiveEnd ? { nextOffset: archiveEnd } : {}),
+    };
+  }
+
+  /**
+   * The configured homes that exist, default first, each once by canonical
+   * root. A home list that fails to load leaves only the default home: the
+   * extra homes are best-effort, the default home is not.
+   */
+  private async resolveHomes(): Promise<{
+    homes: Array<{
+      root: string;
+      identity: string;
+      affinity: ProviderSessionSourceAffinity;
+    }>;
+    homeLimitSeen: boolean;
+  }> {
+    let configured: readonly string[] = [];
+    if (this.listConfiguredHomes) {
+      try {
+        const listed = await this.listConfiguredHomes();
+        configured = Array.isArray(listed) ? listed : [];
+      } catch {
+        configured = [];
+      }
+    }
+    const requested = [
+      this.homeDir,
+      ...configured.filter(
+        (home): home is string =>
+          typeof home === 'string' && isAbsolute(home) && !home.includes('\0'),
+      ),
+    ];
+    const homes: Array<{
+      root: string;
+      identity: string;
+      affinity: ProviderSessionSourceAffinity;
+    }> = [];
+    const scanned: string[] = [];
+    const seen = new Set<string>();
+    let homeLimitSeen = false;
+    for (const home of requested) {
+      const sourceHome = deriveConfigHomeAffinity(SOURCE_HOME_NAMESPACE, home);
+      if (!sourceHome || seen.has(sourceHome.affinity.ref)) continue;
+      const root = this.canonicalSessionsRoot(sourceHome.canonicalRoot);
+      if (!root) continue;
+      if (homes.length >= this.maxHomes) {
+        homeLimitSeen = true;
+        break;
+      }
+      seen.add(sourceHome.affinity.ref);
+      scanned.push(home);
+      homes.push({
+        root,
+        identity: filesystemIdentity(root),
+        affinity: sourceHome.affinity,
+      });
+    }
+    this.knownHomes = scanned.includes(this.homeDir)
+      ? scanned
+      : [this.homeDir, ...scanned];
+    return { homes, homeLimitSeen };
+  }
+
+  /** Bounded, symlink-refusing walk of one home's `sessions` tree. */
+  private async scanHome(
+    root: string,
+    limit: number,
+  ): Promise<{
+    candidates: Array<{ path: string; modifiedAt: number }>;
+    limitSeen: boolean;
+    rejected: boolean;
+  }> {
     const candidates: Array<{ path: string; modifiedAt: number }> = [];
     let visitedEntries = 0;
     let candidateLimitSeen = false;
     let traversalExhausted = false;
     let rejected = false;
-    const visit = (directory: string, depth: number): void => {
+    const visit = async (directory: string, depth: number): Promise<void> => {
       if (traversalExhausted) return;
       if (depth > this.maxDepth) {
         candidateLimitSeen = true;
@@ -207,6 +393,9 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
             traversalExhausted = true;
             return;
           }
+          if (visitedEntries % 128 === 0) {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+          }
           const candidate = join(directory, entry.name);
           let stat: import('node:fs').Stats;
           try {
@@ -220,17 +409,12 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
             rejected = true;
           } else if (stat.isDirectory()) {
             const canonical = canonicalInside(root, candidate);
-            if (canonical) visit(canonical, depth + 1);
+            if (canonical) await visit(canonical, depth + 1);
             else rejected = true;
           } else if (stat.isFile() && entry.name.endsWith('.jsonl')) {
             const canonical = canonicalRegularFile(root, candidate);
             if (canonical) {
               candidates.push({ path: canonical, modifiedAt: stat.mtimeMs });
-              if (candidates.length > this.maxCandidates) {
-                candidates.sort(compareCandidates);
-                candidates.length = this.maxCandidates;
-                candidateLimitSeen = true;
-              }
             } else {
               rejected = true;
             }
@@ -241,34 +425,13 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
         directoryHandle.closeSync();
       }
     };
-    visit(root, 0);
-
-    const sourceIdentity = filesystemIdentity(root);
-    const sessions: AttachedSessionDescriptor[] = [];
-    let outcome: AttachedSessionSourceOutcome =
-      candidateLimitSeen || traversalExhausted
-        ? 'candidate_limit'
-        : rejected
-          ? 'rejected_candidate'
-          : 'ok';
-    for (const candidate of candidates.sort(compareCandidates)) {
-      const result = this.discoverFile(
-        root,
-        sourceIdentity,
-        candidate.path,
-        sourceHome.affinity,
-      );
-      if (!result.registration) {
-        outcome = mergeOutcome(outcome, result.outcome);
-        continue;
-      }
-      this.handles.set(
-        result.registration.descriptor.sourceHandle,
-        result.registration,
-      );
-      sessions.push(result.registration.descriptor);
-    }
-    return { outcome, sessions };
+    await visit(root, 0);
+    return {
+      candidates: candidates.sort(compareCandidates).slice(0, limit),
+      limitSeen:
+        candidateLimitSeen || traversalExhausted || candidates.length > limit,
+      rejected,
+    };
   }
 
   async read(
@@ -373,6 +536,9 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
         return {
           outcome: 'line_limit',
           events,
+          ...(cursor.offset + content.length < fileSize
+            ? { hasMore: true as const }
+            : {}),
           cursor: encodeCursor(cursor.offset + content.length, state),
         };
       }
@@ -445,6 +611,7 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
         return {
           outcome,
           events,
+          hasMore: true,
           cursor: encodeCursor(
             absoluteLineStart,
             beforeRecord,
@@ -460,26 +627,67 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
     return {
       outcome,
       events,
+      ...(cursor.offset + content.length < fileSize ||
+      (events.length === this.maxEvents && localOffset < content.length)
+        ? { hasMore: true as const }
+        : {}),
       cursor: encodeCursor(cursor.offset + localOffset, state),
     };
   }
 
+  /**
+   * The canonical home an affinity names, among the homes Station currently
+   * configures (the default home and the ones the last discovery listed), or
+   * `null`. Continuation runs Codex under this home, so a session discovered
+   * in a credential-profile home resumes there rather than in the default one.
+   */
   resolveSourceHome(
     affinity: ProviderSessionSourceAffinity | undefined,
   ): string | null {
-    return resolveConfigHomeAffinity(
-      SOURCE_HOME_NAMESPACE,
-      this.homeDir,
-      affinity,
-    );
+    if (!isCodexHomeAffinity(affinity)) return null;
+    for (const home of this.knownHomes) {
+      const resolved = resolveConfigHomeAffinity(
+        SOURCE_HOME_NAMESPACE,
+        home,
+        affinity,
+      );
+      if (resolved) return resolved;
+    }
+    return null;
+  }
+
+  /**
+   * {@link resolveSourceHome}, re-reading the configured home list once on a
+   * miss (no rollout scan), so a continuation right after a restart does not
+   * wait for the follower's first discovery. A home that is no longer
+   * configured still answers `null`.
+   */
+  async resolveSourceHomeWithRefresh(
+    affinity: ProviderSessionSourceAffinity | undefined,
+  ): Promise<string | null> {
+    if (!isCodexHomeAffinity(affinity)) return null;
+    const known = this.resolveSourceHome(affinity);
+    if (known) return known;
+    // Concurrent misses share one read of the configured home list. Known
+    // gap (accepted): a caller that joins a read already in flight can
+    // answer null for a home configured after that read began; the next
+    // miss or discovery reads the list again.
+    this.homeRefresh ??= this.resolveHomes()
+      .then(() => undefined)
+      .finally(() => {
+        this.homeRefresh = undefined;
+      });
+    await this.homeRefresh;
+    return this.resolveSourceHome(affinity);
   }
 
   private canonicalSessionsRoot(configRoot: string): string | null {
+    const sessionsDir = join(configRoot, 'sessions');
     try {
-      if (!existsSync(this.sessionsDir)) return null;
-      const stat = lstatSync(this.sessionsDir);
+      if (!existsSync(sessionsDir)) return null;
+      const stat = lstatSync(sessionsDir);
       if (!stat.isDirectory() || stat.isSymbolicLink()) return null;
-      const canonical = realpathSync(this.sessionsDir);
+      const canonical = realpathSync(sessionsDir);
       return canonical.startsWith(`${configRoot}${sep}`) ? canonical : null;
     } catch {
       return null;
@@ -1316,18 +1524,9 @@ function canonicalRegularFile(root: string, candidate: string): string | null {
   }
 }
 
-function isPlainRecord(value: Record<string, unknown>): boolean {
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
 function filesystemIdentity(path: string): string {
   const stat = lstatSync(path);
   return `${stat.dev}:${stat.ino}`;
-}
-
-function digest(parts: unknown[]): string {
-  return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 }
 
 function compareCandidates(
@@ -1336,6 +1535,17 @@ function compareCandidates(
 ): number {
   return (
     right.modifiedAt - left.modifiedAt || left.path.localeCompare(right.path)
+  );
+}
+
+/** A well-formed Codex config-home affinity: exact keys, digest reference. */
+function isCodexHomeAffinity(
+  affinity: ProviderSessionSourceAffinity | undefined,
+): affinity is ProviderSessionSourceAffinity {
+  return (
+    isSessionSourceAffinity(affinity) &&
+    affinity.kind === SOURCE_HOME_NAMESPACE &&
+    /^[a-f0-9]{64}$/u.test(affinity.ref)
   );
 }
 
@@ -1369,10 +1579,6 @@ function tokenFigure(value: unknown): number | undefined {
     : undefined;
 }
 
-function text(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined;
-}
-
 function boundedText(value: unknown): string | undefined {
   const valueText = text(value);
   return valueText && Buffer.byteLength(valueText) <= MAX_CURSOR_TEXT_BYTES
@@ -1387,19 +1593,6 @@ function boundedPathText(value: unknown): string | undefined {
     : undefined;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
 function isOffset(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
-}
-
-function boundedInteger(name: string, value: number, ceiling: number): number {
-  if (!Number.isSafeInteger(value) || value < 1 || value > ceiling) {
-    throw new RangeError(
-      `${name} must be an integer from 1 through ${ceiling}.`,
-    );
-  }
-  return value;
 }

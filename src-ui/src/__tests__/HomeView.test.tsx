@@ -1,5 +1,8 @@
 /** @vitest-environment jsdom */
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -22,7 +25,10 @@ import {
 } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { openChatsStore } from '../contexts/open-chats-store';
-import { resetStartChoicesForTests } from '../hooks/useStartSelection';
+import {
+  resetStartChoicesForTests,
+  seedHomeStartProjectForTests,
+} from '../hooks/useStartSelection';
 import { writeSnooze } from '../utils/activity-snooze-store';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
 import * as homeLanes from '../views/home/useHomeWorkLanes';
@@ -106,6 +112,7 @@ const fixtures = vi.hoisted(() => ({
   >,
   projectsLoading: false,
   sessions: [] as any[],
+  conversationInventory: Array.of<ConversationListItem>(),
   tasks: [] as any[],
   chats: {} as Record<string, any>,
   agents: [{ slug: 'codex-agent', name: 'Codex', model: 'gpt-5.3-codex' }],
@@ -143,6 +150,8 @@ const fixtures = vi.hoisted(() => ({
   })),
   tasksRefetch: vi.fn(),
   inventoryRefetch: vi.fn(),
+  remoteSessionsError: null as Error | null,
+  remoteSessionsRefetch: vi.fn(),
   remoteSessionsResult: undefined as
     | {
         environments: any[];
@@ -201,7 +210,6 @@ vi.mock('../contexts/open-chats-store', async () => {
       ),
     openChatsStore: {
       focus: vi.fn(),
-      openCollection: vi.fn(),
       registerNavigation: ({ focus }: any) => {
         openChatsStore.focus = focus;
         return vi.fn();
@@ -211,6 +219,10 @@ vi.mock('../contexts/open-chats-store', async () => {
 });
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useGitStatusQuery: () => ({ data: undefined, isLoading: false }),
+  useSessionInventoryQuery: () => ({ data: undefined, isLoading: false }),
+  // #4695: a live Session row reads its agent-reported plan; none here.
+  useOrchestrationSessionActivityQuery: () => ({ data: undefined }),
   // #4519: the connected Station has no managed policy.
   useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
   // Home's start composer reads Feature Previews (the visual-skills ⋯).
@@ -246,7 +258,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     },
   }),
   useConversationInventoryQuery: () => ({
-    data: [],
+    data: fixtures.conversationInventory,
     isError: false,
     isLoading: false,
     refetch: fixtures.inventoryRefetch,
@@ -289,7 +301,12 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   // archive#1097: pending by default (`data: undefined`) — proves the local
   // list above never waits on this.
-  useRemoteSessionsQuery: () => ({ data: fixtures.remoteSessionsResult }),
+  useRemoteSessionsQuery: () => ({
+    data: fixtures.remoteSessionsResult,
+    error: fixtures.remoteSessionsError,
+    isError: fixtures.remoteSessionsError !== null,
+    refetch: fixtures.remoteSessionsRefetch,
+  }),
   // Home mounts StarterWorkCard whenever first run is `completed`, which every
   // test here is. The card's own states belong to
   // `components/home/__tests__/StarterWorkCard.test.tsx`; here it is settled on
@@ -332,7 +349,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: vi.fn(),
   }),
 }));
-vi.mock('@kontourai/station-sdk/client', () => ({
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  StationHttpError: (
+    await importOriginal<typeof import('@kontourai/station-sdk/client')>()
+  ).StationHttpError,
   // U1: the layouts read Home makes before routing a row to its Coding layout.
   listProjectLayouts: (_apiBase: string, slug: string) => {
     fixtures.listProjectLayouts(slug);
@@ -391,6 +411,7 @@ vi.mock('../components/UsageTelemetryDisclosure', () => ({
     outstanding: false,
   }),
   UsageTelemetryDisclosureStep: () => null,
+  UsageTelemetryDisclosure: () => null,
   dismissUsageTelemetryDisclosure: vi.fn(),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
@@ -487,6 +508,73 @@ function continueRow(): HTMLElement {
 }
 
 describe('HomeView', () => {
+  test.each(['ready', 'closed'] as const)(
+    'shows an idle delegation with %s transport under Just finished until its result is read',
+    (transportStatus) => {
+      const endedAt = '2026-11-18T20:00:00Z';
+      vi.useFakeTimers({ now: new Date('2026-11-18T20:01:00Z') });
+      const conversationId = 'task:directory-delegation';
+      const title = 'Directory delegation proof';
+      fixtures.sessions = [
+        {
+          threadId: conversationId,
+          conversationId,
+          provider: 'codex',
+          assignedAgentSlug: 'codex-agent',
+          displayTitle: title,
+          status: transportStatus,
+          lifecycleState: 'idle',
+          hasActiveTurn: false,
+          createdAt: '2026-11-18T19:59:00Z',
+          updatedAt: endedAt,
+          lifecycleChangedAt: endedAt,
+          delegation: { taskId: conversationId },
+          isLoaded: true,
+          isPersisted: true,
+          answerability: { answerable: true },
+          eventCount: 4,
+        },
+      ];
+      const inventory: ConversationListItem = {
+        id: conversationId,
+        title,
+        source: 'runtime',
+        agentSlug: agentId('codex-agent'),
+        createdAt: '2026-11-18T19:59:00Z',
+        updatedAt: endedAt,
+        lifecycleState: 'idle',
+        lifecycleChangedAt: endedAt,
+        messageCount: 2,
+        mutable: false,
+        answerability: { answerable: true },
+        readState: { version: 19, seenVersion: 0, unread: true },
+      };
+      fixtures.conversationInventory = [inventory];
+      const props = { continuation: null, onNavigate: vi.fn() };
+      const first = renderHomeView(props);
+      expect(queryContinue()).toBeNull();
+      expect(
+        within(
+          screen.getByRole('region', { name: /^Just finished/ }),
+        ).getByText(title),
+      ).toBeTruthy();
+
+      first.unmount();
+      fixtures.conversationInventory = [
+        {
+          ...inventory,
+          acknowledgedAt: endedAt,
+          readState: { version: 19, seenVersion: 19, unread: false },
+        },
+      ];
+      renderHomeView(props);
+      expect(within(continueRow()).getByText(title)).toBeTruthy();
+      expect(
+        screen.queryByRole('region', { name: /^Just finished/ }),
+      ).toBeNull();
+    },
+  );
+
   test('real Home render errors keep Retry and Close without an initial recovery signal', async () => {
     const signal = vi.fn();
     const unsubscribe = subscribeRequiredSlotFailures(signal);
@@ -512,12 +600,10 @@ describe('HomeView', () => {
         within(failure).getByRole('button', { name: 'Close Home' }),
       ).toBeTruthy();
       expect(signal).not.toHaveBeenCalled();
-      fireEvent.click(
-        within(failure).getByRole('button', { name: 'Try again' }),
-      );
+      fireEvent.click(within(failure).getByRole('button', { name: 'Retry' }));
       await waitFor(() => expect(lanes.mock.calls.length).toBeGreaterThan(2));
       expect(signal).not.toHaveBeenCalled();
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       await waitFor(() =>
         expect(signal).toHaveBeenCalledExactlyOnceWith({
           slot: 'home',
@@ -557,6 +643,7 @@ describe('HomeView', () => {
     fixtures.selectedContextResolved = true;
     fixtures.selectionInputs = [];
     fixtures.sessions = [];
+    fixtures.conversationInventory = [];
     fixtures.tasks = [];
     fixtures.chats = {};
     fixtures.continueDecoy = false;
@@ -596,7 +683,7 @@ describe('HomeView', () => {
     );
     expect(alert?.textContent).not.toContain('DOCTYPE');
     fireEvent.click(
-      within(alert as HTMLElement).getByRole('button', { name: 'Try again' }),
+      within(alert as HTMLElement).getByRole('button', { name: 'Retry' }),
     );
     expect(fixtures.refreshSetup).toHaveBeenCalledTimes(1);
   });
@@ -614,14 +701,14 @@ describe('HomeView', () => {
         .getAllByRole('alert')
         .find((node) => node.classList.contains('start-composer__alert'));
     fireEvent.click(
-      within(alert() as HTMLElement).getByRole('button', { name: 'Try again' }),
+      within(alert() as HTMLElement).getByRole('button', { name: 'Retry' }),
     );
     await waitFor(() => expect(fixtures.refreshSetup).toHaveBeenCalledTimes(1));
     await Promise.resolve();
     await Promise.resolve();
     expect(alert()?.textContent).not.toContain('DOCTYPE');
     expect(
-      within(alert() as HTMLElement).getByRole('button', { name: 'Try again' }),
+      within(alert() as HTMLElement).getByRole('button', { name: 'Retry' }),
     ).toBeTruthy();
   });
 
@@ -641,7 +728,9 @@ describe('HomeView', () => {
     expect(screen.queryByText(/Default Model/i)).toBeNull();
     // The Agent chip names what Start sends, and Start sends exactly it.
     expect(
-      screen.getByRole('button', { name: 'Agent: Codex · gpt-5.3-codex' }),
+      screen.getByRole('button', {
+        name: /^Codex · gpt-5.3-codex/,
+      }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     expect(newChat).toHaveBeenCalledTimes(1);
@@ -712,7 +801,7 @@ describe('HomeView', () => {
     ).toBeNull();
   });
 
-  test('keeps inspection and Scheduler self-test cards off default Home and admits them only in developer mode', () => {
+  test('keeps retired starter cards off Home, including developer mode', () => {
     const defaultHome = renderHomeView({
       continuation: null,
       onNavigate: vi.fn(),
@@ -724,9 +813,10 @@ describe('HomeView', () => {
 
     fixtures.developerToolsEnabled = true;
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
-    expect(screen.getByText('Inspect an approval')).toBeTruthy();
-    expect(screen.getByText('Inspect review evidence')).toBeTruthy();
-    expect(screen.getByText('Run a scheduled readiness check')).toBeTruthy();
+    expect(screen.queryByText('Inspect an approval')).toBeNull();
+    expect(screen.queryByText('Inspect review evidence')).toBeNull();
+    expect(screen.queryByText('Run a scheduled readiness check')).toBeNull();
+    expect(screen.queryByText('Start your first task')).toBeNull();
   });
 
   test('degrades a still-pending recent-work lane to an actionable host-slow state', () => {
@@ -817,7 +907,6 @@ describe('HomeView', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
@@ -825,7 +914,7 @@ describe('HomeView', () => {
     const row = within(
       screen.getByRole('region', { name: 'Recent work' }),
     ).getByRole('button', {
-      name: 'Lives in Coding, station',
+      name: /^Lives in Coding\b/,
     });
     row.focus();
     fireEvent.click(row);
@@ -870,14 +959,13 @@ describe('HomeView', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
     fireEvent.click(
       within(screen.getByRole('region', { name: 'Recent work' })).getByRole(
         'button',
-        { name: 'Stays in the dock, station' },
+        { name: /^Stays in the dock\b/ },
       ),
     );
     expect(focus).toHaveBeenCalledTimes(1);
@@ -924,13 +1012,11 @@ describe('HomeView', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const continueButton = continueRow();
     expect(continueButton.textContent).toContain('Task-first home');
-    // The work row's own metadata: the agent and the project.
-    expect(continueButton.textContent).toContain('Codex · Station');
+    expect(continueButton.textContent).toMatch(/Station\s+Codex/);
     fireEvent.click(continueButton);
     expect(focus).toHaveBeenCalledTimes(1);
     expect(focus).toHaveBeenCalledWith({ sessionId: 'newest' });
@@ -940,7 +1026,7 @@ describe('HomeView', () => {
   // #3312: with work on the page the start composer is the compact one, and
   // its Agent chip names the Agent and Model Start will run on: the default
   // selection (`useNewChatSelectionModel`) for the context the start path
-  // opens in (`useNewChatStartContext`), so changing that selection changes
+  // opens in (Home's own project pick), so changing that selection changes
   // the chip.
   const workSession = () => ({
     threadId: 'work-thread',
@@ -954,18 +1040,27 @@ describe('HomeView', () => {
     eventCount: 3,
   });
   test.each([
-    ['gpt-5.3-codex', 'Agent: Codex · gpt-5.3-codex'],
-    ['gpt-5.4', 'Agent: Codex · gpt-5.4'],
-    ['Model not reported', 'Agent: Codex'],
+    ['gpt-5.3-codex', 'gpt-5.3-codex', 'Codex · gpt-5.3-codex'],
+    ['gpt-5.4', 'gpt-5.4', 'Codex · gpt-5.4'],
+    ['Model not reported', 'Codex', 'Codex'],
   ])(
-    'the compact start composer names the default selection (%s) on its Agent chip',
-    (modelLabel, expected) => {
+    'the compact start composer names the default selection (%s) on Run setup',
+    (modelLabel, expected, accessibleName) => {
       fixtures.defaultModelLabel = modelLabel;
       fixtures.sessions = [workSession()];
       renderHomeView({ continuation: null, onNavigate: vi.fn() });
       const form = screen.getByRole('form', { name: 'Start work' });
       expect(form.classList.contains('start-composer--compact')).toBe(true);
-      expect(within(form).getByRole('button', { name: expected })).toBeTruthy();
+      expect(
+        within(form)
+          .getByTestId('run-setup-trigger')
+          .querySelector('.composer-choice__value')?.textContent,
+      ).toBe(expected);
+      expect(
+        within(form)
+          .getByTestId('run-setup-trigger')
+          .getAttribute('aria-label'),
+      ).toContain(accessibleName);
     },
   );
 
@@ -975,12 +1070,9 @@ describe('HomeView', () => {
     fixtures.sessions = [workSession()];
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     expect(screen.queryByRole('region', { name: 'Recent work' })).toBeNull();
-    const region = screen.getByRole('region', { name: 'Continue' });
+    expect(screen.getByRole('region', { name: 'Continue' })).toBeTruthy();
     expect(continueRow().textContent).toContain(CODEX_SESSION_TITLE);
-    fireEvent.click(
-      within(region).getByRole('button', { name: 'View Activity' }),
-    );
-    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(screen.queryByRole('button', { name: 'View Activity' })).toBeNull();
   });
 
   test('with no Agent to offer the chip asks for one and Start still goes (first run)', () => {
@@ -991,7 +1083,9 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const form = screen.getByRole('form', { name: 'Start work' });
     expect(
-      within(form).getByRole('button', { name: 'Agent: Choose an agent' }),
+      within(form).getByRole('button', {
+        name: /^Choose agent/,
+      }),
     ).toBeTruthy();
     fireEvent.change(
       within(form).getByRole('textbox', { name: 'What would you like done?' }),
@@ -1004,17 +1098,30 @@ describe('HomeView', () => {
     });
   });
 
-  // #3312 review HIGH: Start runs in the dock's remembered project once the
-  // user has opened one, so Home resolves its identity in that context, not
-  // the route's (on `/` there is none). `revalidateSelection` matches the
-  // input `NewChatModal` passes for a `startWithDefault` request.
+  // #3312 review HIGH: Home resolves its identity in the context Start opens
+  // in. That is the project picked in Home's own chip, never the dock's
+  // remembered binding, which opening any project rebinds silently.
+  // `revalidateSelection` matches the input `NewChatModal` passes for a
+  // `startWithDefault` request.
   test.each([
-    ['a dock bound to a project with a directory', 'station', 'station'],
-    ['a dock bound to nothing', null, '__global__'],
-    ['a dock bound to a project that is gone', 'deleted', '__global__'],
+    ['a project picked on Home', 'station', null, 'station'],
+    ['nothing picked on Home', undefined, null, '__global__'],
+    [
+      'nothing picked on Home, the dock remembers a project',
+      undefined,
+      'station',
+      '__global__',
+    ],
+    ['a pick that is gone', 'deleted', null, '__global__'],
+    [
+      'a pick that differs from what the dock remembers',
+      '__global__',
+      'station',
+      '__global__',
+    ],
   ])(
     'Home resolves its start identity in the context Start opens in: %s',
-    (_name, binding, expected) => {
+    (_name, picked, binding, expected) => {
       fixtures.projects = [
         {
           id: 'p1',
@@ -1024,6 +1131,7 @@ describe('HomeView', () => {
         } as any,
       ];
       fixtures.chatDockProjectSlug = binding;
+      seedHomeStartProjectForTests(picked);
       renderHomeView({ continuation: null, onNavigate: vi.fn() });
       expect(fixtures.selectionInputs.length).toBeGreaterThan(0);
       for (const input of fixtures.selectionInputs) {
@@ -1075,7 +1183,7 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate });
     expect(screen.getAllByText('Agent not reported').length).toBeGreaterThan(0);
     fireEvent.click(continueRow());
-    expect(showSurface).toHaveBeenCalledWith('activity', {
+    expect(showSurface).toHaveBeenCalledWith('chat', {
       session: 'unmapped-thread',
     });
     expect(onNavigate).not.toHaveBeenCalled();
@@ -1116,7 +1224,7 @@ describe('HomeView', () => {
     ];
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     fireEvent.click(continueRow());
-    expect(showSurface).toHaveBeenCalledWith('activity', {
+    expect(showSurface).toHaveBeenCalledWith('chat', {
       session: 'worked-thread',
     });
   });
@@ -1251,11 +1359,17 @@ describe('HomeView', () => {
       }),
     ).toBeNull();
 
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     fireEvent.click(
       within(drafts).getByRole('button', {
         name: 'Discard draft Fresh draft title',
       }),
     );
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    vi.useRealTimers();
 
     await waitFor(() =>
       expect(invalidate).toHaveBeenCalledWith({
@@ -1263,7 +1377,7 @@ describe('HomeView', () => {
       }),
     );
     expect(fixtures.discardDraft).toHaveBeenCalledTimes(1);
-    expect(fixtures.discardDraft).toHaveBeenCalledWith({
+    expect(fixtures.discardDraft.mock.calls[0]?.[0]).toEqual({
       type: 'discardDraft',
       threadId: 'fresh-draft',
     });
@@ -1298,7 +1412,6 @@ describe('HomeView', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     renderHomeView({ continuation: null, onNavigate });
 
@@ -1342,7 +1455,7 @@ describe('HomeView', () => {
 
     fireEvent.click(continueRow());
 
-    expect(showSurface).toHaveBeenCalledWith('activity', {
+    expect(showSurface).toHaveBeenCalledWith('chat', {
       session: 'attached-thread',
     });
     expect(onNavigate).not.toHaveBeenCalled();
@@ -1358,14 +1471,13 @@ describe('HomeView', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     renderHomeView({ continuation: null, onNavigate });
 
     fireEvent.click(continueRow());
 
     expect(focus).not.toHaveBeenCalled();
-    expect(showSurface).toHaveBeenCalledWith('activity', {
+    expect(showSurface).toHaveBeenCalledWith('chat', {
       session: 'peer-delegation:abc',
     });
     expect(onNavigate).not.toHaveBeenCalled();
@@ -1546,8 +1658,8 @@ describe('HomeView', () => {
 
     expect(container.querySelector('.home-view__empty')).toBeNull();
     expect(screen.getByRole('alert')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Open Activity' }));
-    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(fixtures.sessionsRefetch).toHaveBeenCalled();
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
@@ -1577,8 +1689,7 @@ describe('HomeView', () => {
     expect(continueRow().textContent).toContain('Durable local work');
     expect(continueRow().textContent).toContain('Task · station');
     expect(continueRow().textContent).toContain('Task · To do');
-    fireEvent.click(screen.getByRole('button', { name: 'View Activity' }));
-    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(screen.queryByRole('button', { name: 'View Activity' })).toBeNull();
     expect(onNavigate).not.toHaveBeenCalled();
     onNavigate.mockClear();
     fireEvent.click(continueRow());
@@ -1691,15 +1802,16 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         name: `Details for ${ITEM_TITLE}`,
       }),
     ).toBeNull();
-    // The one row action is the snooze choice, in the hover slot.
-    const snooze = within(recent).getByRole('button', {
-      name: `Snooze ${ITEM_TITLE}`,
+    // The one row action is its ⋯ menu, which holds the snooze list, in the
+    // hover slot.
+    const actions = within(recent).getByRole('button', {
+      name: `Actions for ${ITEM_TITLE}`,
     });
-    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
-    expect(snooze.closest('.inbox-row__actions')).not.toBeNull();
+    expect(actions.getAttribute('aria-haspopup')).toBe('menu');
+    expect(actions.closest('.inbox-row__actions')).not.toBeNull();
   });
 
-  test('a coarse pointer keeps the 44px touch chrome with Details and one action', () => {
+  test('a coarse pointer opens Details and snooze choices from the row', async () => {
     fixtures.continueDecoy = true;
     const media = window.matchMedia as unknown as ReturnType<typeof vi.fn>;
     media.mockImplementation((query: string) => ({
@@ -1717,19 +1829,17 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       const recent = screen.getByRole('region', { name: 'Recent work' });
       const [row] = within(recent).getAllByTestId('inbox-row');
       expect(row.className).toContain('inbox-row--touch');
+      const open = within(row).getByRole('button', {
+        name: new RegExp('^' + ITEM_TITLE),
+      });
+      expect(within(row).getAllByRole('button')).toHaveLength(1);
+      fireEvent.contextMenu(open);
+      const details = await screen.findByRole('dialog', {
+        name: `Details for ${ITEM_TITLE}`,
+      });
       expect(
-        within(recent).getByRole('button', {
-          name: `Details for ${ITEM_TITLE}`,
-        }),
+        within(details).getByRole('button', { name: /^In 1 hour,/ }),
       ).toBeTruthy();
-      expect(
-        within(recent).getByRole('button', { name: `Snooze ${ITEM_TITLE}` }),
-      ).toBeTruthy();
-      expect(
-        within(row)
-          .queryAllByRole('button')
-          .filter((button) => button.closest('.inbox-row__actions')),
-      ).toHaveLength(2);
     } finally {
       media.mockImplementation(() => ({
         matches: false,
@@ -1750,18 +1860,24 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
     const recent = screen.getByRole('region', { name: 'Recent work' });
 
     fireEvent.click(
-      within(recent).getByRole('button', { name: `Snooze ${ITEM_TITLE}` }),
+      within(recent).getByRole('button', {
+        name: `Actions for ${ITEM_TITLE}`,
+      }),
     );
 
     const menu = await screen.findByRole('menu', {
-      name: `Snooze ${ITEM_TITLE}`,
+      name: `Actions for ${ITEM_TITLE}`,
     });
     const clickedAt = Date.now();
-    fireEvent.click(within(menu).getByRole('menuitem', { name: '1 hour' }));
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: /^In 1 hour,/ }),
+    );
 
     // The row left the active lane for the snoozed shelf.
     expect(
-      within(recent).queryByRole('button', { name: `Snooze ${ITEM_TITLE}` }),
+      within(recent).queryByRole('button', {
+        name: `Actions for ${ITEM_TITLE}`,
+      }),
     ).toBeNull();
     expect(
       within(recent).getByRole('button', { name: 'Snoozed · 1' }),
@@ -1836,7 +1952,9 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         vi.advanceTimersByTime(TERMINAL_LINGER_MS + 60_000);
       });
 
-      const earlier = screen.getByRole('region', { name: 'Earlier' });
+      const earlier = screen.getByRole('region', {
+        name: 'Earlier in Station',
+      });
       for (let index = 1; index <= 5; index += 1) {
         expect(within(earlier).getByText(`Completed ${index}`)).toBeTruthy();
       }
@@ -1857,7 +1975,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         within(earlier)
           .getAllByRole('heading')
           .map((heading) => heading.textContent),
-      ).toEqual(['Earlier']);
+      ).toEqual(['Earlier in Station']);
       expect(
         within(earlier)
           .getAllByText(/^Completed \d$/)
@@ -1891,7 +2009,9 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         vi.advanceTimersByTime(TERMINAL_LINGER_MS + 60_000);
       });
 
-      const earlier = screen.getByRole('region', { name: 'Earlier' });
+      const earlier = screen.getByRole('region', {
+        name: 'Earlier in Station',
+      });
       expect(
         within(earlier).getByText('Repair the settled failure'),
       ).toBeTruthy();
@@ -1933,6 +2053,8 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     fixtures.tasks = [];
     fixtures.chats = {};
     fixtures.continueDecoy = false;
+    fixtures.remoteSessionsError = null;
+    fixtures.remoteSessionsRefetch.mockClear();
     fixtures.remoteSessionsResult = undefined;
   });
 
@@ -1975,7 +2097,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     renderHomeView({ continuation: null, onNavigate });
     const recent = screen.getByRole('region', { name: 'Recent work' });
 
-    expect(within(recent).getByText('Home media')).toBeTruthy();
+    expect(within(recent).getByText('Station: Home media')).toBeTruthy();
     expect(within(recent).getByText('Office box')).toBeTruthy();
     // The local session's own row must still render, unmarked by any
     // machine: exactly two rows carry one.
@@ -1997,7 +2119,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     const continueButton = continueRow();
     expect(continueButton.textContent).toContain(CODEX_SESSION_TITLE);
     fireEvent.click(continueButton);
-    expect(showSurface).toHaveBeenCalledWith('activity', {
+    expect(showSurface).toHaveBeenCalledWith('chat', {
       session: 'local-thread',
     });
   });
@@ -2017,7 +2139,6 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     renderHomeView({ continuation: null, onNavigate });
     const recent = screen.getByRole('region', { name: 'Recent work' });
@@ -2083,6 +2204,50 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ).toBeNull();
   });
 
+  test.each([false, true])(
+    'explains denied remote inventory alongside local work when present (%s)',
+    (hasLocalWork) => {
+      fixtures.projects = [];
+      fixtures.continueDecoy = hasLocalWork;
+      if (hasLocalWork) fixtures.sessions = [REMOTE_SESSION];
+      fixtures.remoteSessionsError = new StationHttpError(403, undefined, {
+        code: 'insufficient_scope',
+      });
+      renderHomeView({ continuation: null, onNavigate: vi.fn() });
+
+      const recent = within(
+        screen.getByRole('region', { name: 'Recent work' }),
+      );
+      expect(recent.getByRole('alert').textContent).toContain(
+        'Ask the Station operator for access to remote work.',
+      );
+      expect(recent.queryByText('Nothing here yet')).toBeNull();
+      expect(
+        recent.queryByRole('button', { name: 'Retry remote work' }),
+      ).toBeNull();
+      expect(recent.queryAllByTestId('inbox-row')).toHaveLength(
+        hasLocalWork ? 1 : 0,
+      );
+      expect(
+        screen.queryAllByRole('heading', {
+          name: 'Start your first conversation',
+        }),
+      ).toHaveLength(hasLocalWork ? 0 : 1);
+    },
+  );
+
+  test('can retry a temporary remote-inventory failure on a fresh Station', () => {
+    fixtures.projects = [];
+    fixtures.remoteSessionsError = new StationHttpError(503);
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    expect(
+      screen.getByRole('heading', { name: 'Start your first conversation' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry remote work' }));
+    expect(fixtures.remoteSessionsRefetch).toHaveBeenCalledOnce();
+  });
+
   // a remote fetch failure (a connected environment the server could
   // not reach in time) still never blocks the local list, and degrades to
   // an unobtrusive note rather than an error state.
@@ -2118,7 +2283,8 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ).toBeTruthy();
   });
 
-  test('shows an actionable pairing note when a connected SSH tunnel lacks a usable peer bearer', () => {
+  test('shows a pairing note and first-conversation guidance on a fresh Station', () => {
+    fixtures.projects = [];
     fixtures.remoteSessionsResult = {
       environments: [],
       unavailable: [],
@@ -2139,6 +2305,10 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     expect(
       screen.getByText(/Add or replace its pairing credential/i),
     ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Start your first conversation' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
   });
 
   // the local-first invariant — omitting/defaulting remote data

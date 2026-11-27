@@ -2,7 +2,11 @@
 
 Use `station-control` to let an Agent inspect Station's project records, refine
 existing skills, and delegate a bounded task. Tool availability and approval
-policy determine which changes it can actually make.
+policy determine which changes it can actually make. The tools that change who
+or what holds authority (configuration, Agents, plugins, integrations, skills
+and SSH hosts) ask a person on every call, at full access too, with no session
+option; on Station's own engine an approval guardian you enabled may still
+allow one ([delivery boundary](../conformance/tool-policy-delivery.md#built-in-tools-that-change-authority)).
 
 ## Goal
 
@@ -18,10 +22,42 @@ It does not provide filesystem inspection, create a new skill, or change Project
 configuration by itself. Those require a separately authorized surface; the
 example does not grant one implicitly.
 
+## Help a person set up an engine
+
+With **Guided engine setup** enabled on a personal Station, Station Control's
+Integrations family includes `list_engine_setup` and `open_engine_setup`.
+These are discovery and UI handoff tools. The owner's Agent can inspect the
+bounded setup projection; other principals are refused. Installation and
+credential operations retain their person-only boundaries.
+
+When asked to install, connect or sign in an engine:
+
+1. Read `list_engine_setup` and use the built-in id and `setupPath` it returns.
+2. Call `open_engine_setup` for that id. Check its result. If no client accepted
+   navigation, give the person the returned internal setup link.
+3. Let the person review installation, complete sign-in, and choose **Add Station
+   tools** when the resulting Agent needs them. A saved alias is reused; the pane
+   can repair missing launch arguments without replacing its Agent or history.
+   Let the person return to this chat. Never ask
+   for authorization codes or tokens in ordinary messages, edit Station home
+   files, or run a shell login as a workaround.
+4. Re-read setup and `list_agents` before using the resulting Agent. A recorded
+   handshake or advertised HTTP channel does not establish an authenticated
+   turn or delivery of the Agent's Station tools.
+
+The server runs on the Station computer, which may differ from the device
+holding the chat. The [ACP guide](acp.md#set-up-an-engine-from-chat) describes
+this handoff and saved-connection recovery. If the preview is disabled, offer
+its returned Settings link; an Agent does not enable it for the person.
+With the separate **Station orchestration instructions** preview on, this
+workflow is included only when the Agent is actually offered these tools.
+
 ## Visual replies
 
 Attach `station-control` and select `html_preview` and `html_render` to let an
 Agent preview and publish a self-contained HTML reply in its own conversation.
+A session whose network Station restricts is not given them: they run in
+Station's Chromium, outside its sandbox.
 This works through the existing Claude, Codex and ACP MCP passthroughs when the
 connection supports tool servers. Preview starts Chromium and publishing stores a page. Both are bounded writes
 and respect the engine's approval policy. The [visual replies guide](../user/html-replies.md)
@@ -59,13 +95,15 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
 - `coordinator_picture_read` and `coordinator_picture_update` for the bound
-  designated coordinator, when the **Coordinator working picture** preview is
-  enabled. They keep short, person-scoped notes about readable conversations;
+  designated coordinator, when the **Coordinator chat** and **Coordinator
+  working picture** previews are enabled. They keep short, person-scoped notes about readable conversations;
   Station rechecks source access on reads and updates. Notes are the
   coordinator's account, not authoritative live status. See [Houston's
   working picture](../user/houston.md#working-picture).
 - `search_sessions` and `rename_session` for finding and naming conversations
-  (see [Searching and renaming conversations](#searching-and-renaming-conversations))
+  (see [Searching and renaming conversations](#searching-and-renaming-conversations)),
+  and `settle_conversation` for settling or reopening one in the person's
+  **Open and Settled inbox** when the person asks
 - `declare_pull_request` for an agent on any engine (Claude Code, Codex, ACP) to
   declare a pull request it opened, by `provider`, `host`, `repository`
   (`owner` and `name`) and `ref`: the identity shape the conversation link
@@ -150,6 +188,9 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`
   for an agent on any engine to check back in its own chat later, or to ask
   the person for a scheduled job ([Wake an agent later](#wake-an-agent-later))
+- `propose_automation_source`, `propose_automation_rule` and
+  `list_automation_proposals` to ask the person for a GitHub Automation source
+  or rule ([Propose an automation](#propose-an-automation))
 - `terminal_run` and `terminal_read` to run a shell command in a terminal in
   the chat's working directory and read its exit and output. The person sees
   the exact command and directory and approves or declines each run; no
@@ -209,6 +250,13 @@ bound operator caller is not limited to one owner's conversations, as with
 caller that is not bound also stays in its own Session's Project or the global
 space, as dispatch does.
 
+`settle_conversation` takes a `conversationId` and `settled` (`true` settles,
+`false` reopens) and writes the Session owner's own inbox record through the
+person's route, so it needs the **Open and Settled inbox** preview (refused with
+`feature_preview_disabled` otherwise) and a conversation the owner can read
+(another person's reads as not found). An agent settles only when the person
+asks. The person's next message, a question, a failure or a stop reopens it.
+
 ### Dispatch authority
 
 Station checks an Agent's dispatch against its verified Session caller:
@@ -219,6 +267,12 @@ Station checks an Agent's dispatch against its verified Session caller:
   with that owner's `execute` action in the target Project.
 - Other verified callers also stay within their calling Session's Project or
   global scope and cannot reach a conversation that runs unconfined (`host`).
+- A Session whose network Station restricts
+  ([`confinedNetwork`](../reference/config.md#optional-fields)) is not given
+  the dispatch tools at all, nor the device, HTML-preview and settings tools.
+  The server refuses it, with `station_control_network_restricted`, every
+  route owned only by withheld tools; a route a kept tool shares stays open
+  to the kept tool's calls (#4769).
 
 Here, `bound` describes verified caller assurance, not a selected approval mode.
 A plain folder target belongs to the deepest Project whose canonical working
@@ -273,7 +327,9 @@ another person owns, keeps `station_control_assurance_insufficient` (or
 it reads the same as a Session that does not exist. Reads keep their own
 answers: `read_conversation` answers `conversation_out_of_scope` or
 `conversation_not_found`, and `list_project_activity` and `get_session_digest`
-answer `session_not_found`. `station_control_assurance_insufficient` otherwise remains the code of the
+answer `session_not_found`. On `read_conversation`, `conversation_out_of_scope`
+carries the scope rule's `reason` when it has one, so a refusal for `host` does
+not read as another Project. `station_control_assurance_insufficient` otherwise remains the code of the
 assurance checks themselves, such as a tool that needs a bound caller or an
 approval command.
 
@@ -348,7 +404,7 @@ repeats the folder decision; tool approval does not bypass them.
 ### Reading a referenced conversation
 
 When a person references another conversation in a message (the composer's
-conversation picker, or a conversation dragged in from Activity or the inbox),
+conversation picker, or a conversation dragged in from the inbox),
 the message carries a link to it, its id, and a line telling the receiving
 Agent to read it with `read_conversation`. The read returns up to 50 messages
 per page, at most 64 KB serialized, oldest first, with a `nextCursor` for the
@@ -360,7 +416,8 @@ A station-control caller may read:
 
 - its own conversation;
 - a conversation the dispatch scope above admits, read with the owner's
-  Project `view` action;
+  Project `view` action. To a caller that is not bound, that excludes a
+  conversation that runs unconfined, even one in the caller's own Project;
 - a conversation a person referenced in a turn of the caller's conversation,
   by the conversation's id or one of its sessions' ids. Station decides this
   from the sender it recorded on that turn: the operator, or a paired device
@@ -377,11 +434,14 @@ For a caller that is not a bound operator, the transcript is read as the
 session's owner, so a reference never reaches another person's
 conversation, and another person's conversation reads as not found. A bound
 operator caller keeps the operator's reach (decision 2 of #2377) and can read
-any recorded conversation. Refusals name a reason:
-`conversation_out_of_scope` when the conversation is the owner's but outside
-the caller's scope, `conversation_deleted` when a referenced conversation no
-longer reads, and `conversation_not_found` otherwise, including an id Station
-has no record of. The
+any recorded conversation. Refusals name their cause.
+`conversation_out_of_scope` is answered when the conversation is the owner's
+but outside the caller's reach. It carries the scope rule's `reason` when the
+rule states one (`host` for a conversation that runs unconfined, `remote`,
+`other-project`, and so on), and its explanation matches that cause instead of
+naming another Project. `conversation_deleted` is answered when a referenced
+conversation no longer reads, and `conversation_not_found` otherwise,
+including an id Station has no record of. The
 [read route](../../src-server/routes/chat/conversation-reference-read.ts)
 defines the rule.
 
@@ -521,10 +581,10 @@ Session by its `sessionId`, without creating a task.
   `clientOrigin.sender` (`kind: 'agent-session'`, the sending `sessionId`, its
   title, Agent and engine as Station recorded them, and the call's `requestKey`)
   beside the unchanged `internal` actor. `read_conversation` and the Session
-  digest carry that provenance. Chat and Activity show the sender's own words
+  digest carry that provenance. Chat shows the sender's own words
   as that agent's message, with a link to the sending Session; the sender's transcript shows the call as
   "Sent to <Session>" with its outcome. Links open the exact sending call or
-  received input in Activity by its recorded request key. The transcript may
+  received input in Chat by its recorded request key. The transcript may
   read up to 20 older pages to establish a unique match, then focuses and
   announces it. A missing or repeated key is an explicit unavailable or
   ambiguous anchor; reaching the page limit selects nothing. The public
@@ -532,14 +592,14 @@ Session by its `sessionId`, without creating a task.
   carries a sent/received direction and a 1–128 character request key, with
   a 1–512 character Session id. The parser refuses a mismatched or absent
   Session and drops an invalid anchor without treating it as an exact target.
-  Activity takes the anchor through its ordinary one-shot surface intent;
+  Chat takes the anchor through its ordinary one-shot surface intent;
   remounting cannot replay it, while a new intent token can reveal it again.
   Sender accents use the canonical sending Session id, so a changed display
   name or engine does not recolor that Session.
   On phones, a muted cause row expands to the sender details, message and link.
   Engine-opened replies retain a provider cause on the assistant row after
   settlement and reload; origin is never inferred from prompt text.
-  Inbox and Activity mark the latest agent-delivered input without changing
+  The inbox and Chat mark the latest agent-delivered input without changing
   the status ladder. Settled delegated-result delivery remains dependent on
   #3158; a declared provenance kind alone does not deliver a result.
   The engine's own tool-call id is not visible to Station's tool server, so
@@ -588,8 +648,9 @@ messages have no search index, so discovery scans their existing owner-scoped
 readers. Each call scans metadata for at most 2,000 conversations after Project,
 Agent and read admission filters, and reads at most 32 file-backed conversations
 (including title hits, which still need a readable transcript). Each transcript
-read follows at most 64 Session segments. Indexed native hits remain eligible
-after the metadata scan budget is exhausted. A scan or file-read budget reached,
+read follows at most 64 Session segments. Indexed native hits with no file record remain eligible after the metadata
+scan budget is exhausted. A file record still uses the metadata and transcript
+read budgets even when it also has an indexed hit. A scan or file-read budget reached,
 or a file lineage too long to read, yields `state: partial` with an
 `incompleteSources` entry; the unreadable conversation is skipped. Other reader
 errors report search unavailable. These budgets bound matching and transcript
@@ -648,7 +709,8 @@ inputs: nothing names a Project, an owner, or a host.
   turn's last terminal event (`completed`, `failed` for a `runtime.error`,
   `interrupted` for an abort or a `cancelled` finish, or `open` when none is
   recorded), tool calls by name (`otherTools` counts the names beyond the first
-  eight), `files` (only a successful call whose engine reported an edit, delete
+  eight; a Station tool also has a plain-language `label`, such as "Wait for a
+  Session"), `files` (only a successful call whose engine reported an edit, delete
   or move kind and a path argument, and a path is never guessed from a tool's
   name), `filesReported: false` on a turn that called tools none of which carried
   an engine-reported tool kind (a missing `files` there means unknown, not none;
@@ -724,7 +786,13 @@ that could adopt it. See the
 3. Call `list_delegation_environments`, then `list_delegation_targets` to choose
    a ready worker with the capabilities the task needs, using a bound operator
    caller for saved-Environment discovery. Environment listing is
-   secret-free, read-only, and never reconnects; inspecting a selected saved SSH
+   secret-free, read-only, and never reconnects. It lists paired Stations
+   (`kind: "peer"`) beside SSH environments; a paired Station whose public
+   handshake is not `online`, or whose credential lacks
+   `orchestration:operate`, is `ready: false` with an `unavailableReason`.
+   Delegating to a paired Station that a fresh handshake probe finds
+   recovering, unreachable, or answering as a different Station fails at once
+   with that reason instead of timing out. Inspecting a selected saved SSH
    Station's targets may reconnect its verified binding, so only that second
    step remains approval-gated. Use `delegate_task` when the work needs a
    resumable task, lifecycle status, or explicit observation and interrupt
@@ -853,8 +921,9 @@ canceling in a loop. Settled check-backs older than an hour are pruned.
 
 A caller that is not bound, in a Session that runs unconfined (`host`), is
 not refused: the check-back is recorded `needs_approval` and the result says
-so. The person sees a card above the composer ("Check back at 4:12 PM?", with
-the agent's whole note) and approves or declines it with one click; the
+so. The person sees a card above the composer ("Approve check-back by 4:12 PM",
+with the agent's whole note) and approves or declines it with one click. If they
+try to approve it after the deadline, Station tells them the time has passed. The
 chat's Automations section lists it as "Needs your approval". Only a person may
 answer it, under the same gate as a job proposal: a request that may be an
 agent's is refused, and one from a person who may not send to the
@@ -897,7 +966,12 @@ propose the job instead:
 job that trusts every tool is never proposable (`station_control_person_only`).
 Station records the proposing chat as the job's `target`: once approved, each
 run is a turn in this chat, on its own engine, so a Claude Code or Codex chat
-can propose work for itself.
+can propose work for itself. With `projectId` (a Project's id) the proposal is
+a Project schedule instead: each run starts a new Task in that Project, and no
+`target` is recorded. That needs the chat to be able to start work in the
+Project itself (`job_proposal_project_out_of_scope`) and the
+`project-schedules` Feature Preview to be on
+(`job_proposal_project_unavailable`).
 The agent learns only the proposal's id and `open`. A conversation holds at
 most 3 open proposals (`job_proposal_limit_reached`).
 
@@ -921,10 +995,62 @@ has no scheduler to approve with, refuses proposals
 
 The refusal an agent gets from `add_job` names both tools.
 
+### Propose an automation
+
+An agent cannot create an Automation source or rule. It can ask for one
+([decision](../decisions/agent-proposed-automations.md)):
+
+- `propose_automation_source` proposes a `github-poll` source: a `name`, a
+  `repository` (`owner/repo`), an optional `pollIntervalMs`, and optional
+  `grants`. Each grant names a Project id, an Agent slug and
+  `["dispatch-task"]`.
+- `propose_automation_rule` proposes a rule on an existing `sourceId`, or on
+  the `sourceProposalId` of a source this chat proposed. It takes a `match`
+  on `github.workflow_run.completed` fields, an optional `episode`, a
+  `dispatch-task` `action` (Project id, Agent slug, instructions, budget) and
+  a `rateLimit`.
+
+Station answers with the proposal's id and the description the person will
+see. The person confirms or declines it on a card in this chat; nothing is
+created before they confirm. A confirmed source starts disabled and a
+confirmed rule starts observing, unless the person turns it on in the same
+step. A rule on a proposed source can be confirmed only after that source.
+`list_automation_proposals` shows what became of each proposal, including a
+confirmed source's id.
+
+A proposal is refused (`automation_proposal_exceeds_authority`) when it would
+grant more than this chat could do itself:
+
+- a Project or Agent outside the chat's dispatch scope;
+- an action other than `dispatch-task`;
+- `approvalMode: "auto"`;
+- `fullAccessGrant`, a credential, a secret, `enabled` or `mode`.
+
+Only a turn a person typed into Station's composer can propose
+(`automation_proposal_unattended`). A turn started by anything else cannot:
+an automation, a delegated child's result in the person's chat, a peer
+Station, the CLI, an MCP prompt, a Task dispatch or a check-back. Station
+infers which turn made the call from the Session's state. A known race lets
+a concurrent steer clear a delegated continuation's pending reservation, so
+an agent continuation can still create a proposal card. The person's
+confirmation is required either way and is the authority boundary. An
+invocationless legacy turn start can also leave the Session refusing
+proposals until it exits. A turn-bound credential will fix both
+([#4882](https://github.com/kontourai/station/issues/4882)). If this chat has read content written by
+others (#3483), when it proposes or at any time before the person answers,
+the card tells the person so. The card shows Station's own description, and
+apart from it, under "Written by the agent", the name, conditions, reason
+and complete instructions you gave. When the person confirms, Station checks
+again that this chat could still start work for each Agent named, and that
+each Agent is unchanged. A chat may have 3 proposals
+waiting and make 10 an hour.
+
 ### Scheduled jobs
 
 An agent acting for the operator on a bound credential can create a job
-directly with `add_job`. Its `target` may name only the agent's own
+directly with `add_job`, naming it with a slug `name`, a readable
+`displayName`, or both (with only `displayName`, Station picks an unused slug
+and returns it as `name`). Its `target` may name only the agent's own
 conversation (`{"kind": "conversation", "conversationId": "<own>"}`), so each
 run is a turn in this chat; any other conversation is refused
 `other-conversation`, and a targeted job takes no `retryCount`. `update_job`,
@@ -968,6 +1094,12 @@ reset time shows, in its banner, a choice for that stop alone: **Resume at
 **Resume after usage limits** setting, and survives a restart. Resume at
 <reset> also snoozes the chat in the inbox until the reset. Every check the
 automatic resume runs before it sends still applies.
+
+A Codex conversation whose connection has another enrolled credential profile
+also offers **Continue on <label>**, which continues the stopped turn on that
+account now; see
+[the connections guide](connections.md#continue-a-usage-limited-conversation-on-another-account).
+Claude Code offers no other account.
 
 OpenCode and other ACP engines do not get an automatic resume. An OpenCode
 plan-quota error can report a reset only as display text with no time zone
@@ -1015,13 +1147,71 @@ parent linkage. The result is the same resumable task exposed by
 confirmation to follow its existing session, approvals, output, and interrupt
 controls.
 
+## Orchestration instructions
+
+With the `station-orchestration-instructions` Feature Preview on (off by
+default; Settings, Advanced, Feature previews), a new Session whose Agent is
+offered `station-control` also receives Station-owned guidance on when to use
+those tools: delegating with `delegate_task`, waiting with `wait_session`, and
+the browser and device tools. The text is composed from the tools the Session
+is actually offered after the Agent's tool selection, disabled tools, and the
+engine's caller assurance, so it never names a tool the Session cannot call.
+This is guidance, not authority: access, approval and the delegation rules below
+are enforced regardless.
+
+Delivery depends on the engine:
+
+- Claude with an authored Agent prompt: appended after that prompt, as
+  `stationInstructions` on the resolved definition, with receipt channel
+  `system-prompt-append`. An Agent with no authored prompt is not given an
+  append, because that would switch Claude to its preset prompt; it uses the
+  first-turn channel instead.
+- Muse and any other engine without a Station Control caller assurance get
+  no instructions. Muse is never given `station-control`, so there is no tool to
+  describe, and Station composes nothing for it.
+- Codex and ACP: prepended to the Session's first message (receipt channel
+  `first-turn`), after the Agent prompt. Codex has no `additionalContext` channel
+  here; the existing first-message path is used.
+- A resumed engine thread is not re-sent the first-turn text, a Session's second
+  turn never repeats it, and it is withheld when `station-control` did not reach
+  the engine. When the engine is recovered just before the first turn, that
+  check reads the delivery report written by the recovery.
+- Codex gets device guidance only while the `codex-bound-browser-device-tools`
+  preview is on and the bound channel offers `device_open`. With that preview
+  on, a Codex Session whose Station Control is not coordinator-derived is told
+  the `bound` catalog its bound channel carries; otherwise the
+  `delegated-custody` subset.
+- Claude is told to load the tools it names with ToolSearch only when the
+  Agent's `tools.mcpLoading` is `on-demand`, which is when Station turns
+  Claude's tool search on. Under the harness default, Claude Code decides.
+- The tool-families line appears only for a new Codex Session admitted to tool
+  families: the `codex-tool-families` preview is on, Codex is 0.167.0 or later,
+  and its Station Control is on the header-token path. Claude, ACP engines and
+  Codex's bound catalog are served without family loading (see
+  [Admit Codex to tool families](agent-efficiency.md#admit-codex-to-tool-families)).
+
+Known limitations while this is a preview: the delivery check reads the event
+log, so a delivery report that has not yet been stored, or a recovery done by
+another caller, can leave the first turn deciding from the earlier report.
+Switching the bound-tools preview off between Session setup and engine start
+can likewise leave device guidance for tools the engine never received. In each
+case the effect is guidance that names a tool which then refuses, or guidance
+that is missing; access is never widened.
+
+The receipt is recorded under `stationInstructions` in the Session's capability
+delivery metadata (`sections`, `digest`, `channel`; `delivered` only for the
+Claude append, see [contracts](../reference/contracts.md#station-orchestration-instructions-receipt)). Toggling the preview applies
+to Sessions started afterwards.
+
 ## Example agent
 
 Use this as an attended Station-engine Agent after configuring a usable Model
 connection and default model in [Connections](connections.md). No engine binding
-is declared, so it uses Station's engine. Only the four listed reads are
-auto-approved; mutations and delegation remain subject to the normal approval
-and authority checks. Start with an existing writable skill and a ready worker.
+is declared, so it uses Station's engine. The example declares delegation in
+`tools.available`. Whether a Session can delegate depends on the caller's
+authority, recorded depth, and inherited tool policy. Only the four listed
+reads are auto-approved. Mutations and delegation still require approval.
+Start with an existing writable skill and a ready worker.
 
 Use the example `agent.json` as a starting point:
 
@@ -1094,14 +1284,20 @@ A child's delegation context (its depth, parent, root, and tool limits) is
 derived by Station from the delegating session's own records:
 its Agent, its conversation, and the context that session was started with
 ([`request-delegation.ts`](../../src-server/runtime/agents/request-delegation.ts)).
-The `_delegation` argument a model writes into `delegate_task` or
-`send_message` is ignored. A session already at the depth limit is refused
+`tools/list` does not offer the `_delegation` argument, and a value a model
+writes into `delegate_task` or `send_message` anyway is ignored. A session already at the depth limit is refused
 before any child starts, on every engine.
+
+A child can use `delegate_task` to start a tracked child in the same
+Project on this Station when its recorded depth and inherited tool policy
+allow it. Station derives the parent and root from the calling Session.
+`send_message` remains blocked for delegated children. See [tool-policy
+delivery](../conformance/tool-policy-delivery.md).
 
 The default policy is `maxDepth` 2, `denyApprovals`, and the built-in
 denials in `BUILTIN_DELEGATION_DENIALS`
 ([`agent.ts`](../../packages/contracts/src/agent.ts)): `send_message`,
-`delegate_task`, `run_job`, and every `add_*`, `create_*`, `update_*`,
+`run_job`, and every `add_*`, `create_*`, `update_*`,
 `delete_*`, `remove_*`, `connect_*` and `disconnect_*` station-control tool.
 
 **Behaviour change.** Before this, `POST /api/orchestration/delegations`
@@ -1109,11 +1305,12 @@ dropped any context, so every `delegate_task` child started as an unrestricted
 root, including children of Station's own engine and of the default Agents
 (`station`, `claude`, `codex`). A `send_message` child on another engine
 carried whatever context the model wrote, or none. Every such child now gets
-lineage and the default policy. Where Station's pre-tool policy is delivered,
-the built-in denials prevent a delegated child from:
+lineage and the default policy. Where Station's pre-tool policy is delivered
+(and, for dispatching or messaging further, at the server routes as described
+above), the built-in denials prevent a delegated child from:
 
 - calling the matching create, update, delete, add, or remove station-control tools;
-- starting a scheduled job with `run_job`, or delegating or messaging further;
+- starting a scheduled job with `run_job` or messaging further;
 - asking a person for tool approval when `denyApprovals` applies. A call already
   allowed by the applicable policy can still run; otherwise it is refused.
 
@@ -1122,11 +1319,11 @@ Give such work to a top-level conversation instead of a delegated child.
 ### Which requests can name a context
 
 - A station-control tool call with a verified per-session credential gets
-  the derived context.
-- Station's own engine's pooled tool child has no per-session credential. Its
-  context is kept only when Station's runtime attested it.
+  the derived context. That includes Station's own engine, which calls
+  station-control in-process as its session, as in-process Claude does.
 - Any other internal request that is neither verified nor attested starts a
-  root.
+  root. A station-control request with no verified caller is refused before
+  it reaches the route (`station_control_caller_required`).
 - A request from outside this Station's process, such as a peer Station, an
   operator credential, or a paired device, may send a `delegation` body on
   `POST /api/orchestration/delegations`, as on `/chat/delegated`. Its context

@@ -1,0 +1,7 @@
+{
+  "revision": "2de3c01fdfc38e1c752a60fbc739369dbac5370c",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"task-first-home: the phone journey is retitled (opens full, restores to where it was, keeps its snap after rotation), restores to the bar, drags to the new Tall level and opens the drawer from the app toolbar's Toggle menu. mobile-chat-composer: the drag journey collapses the dock by gesture, and the desktop geometry journey expects Restore to return the dragged height. The row names specs and scope only; no edit.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts","tests/task-first-home.spec.ts"]}
+  ]
+}

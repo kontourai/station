@@ -1,6 +1,11 @@
 import {
+  describeActivationDeadline,
+  type PluginLifecycleUnapplied,
+} from '@kontourai/station-contracts/plugin';
+import {
   isRejectedPlugin,
   type Plugin,
+  type PluginUpdateSummary,
   type PreviewData,
   type ReadyPlugin,
   type ReinstallFromSource,
@@ -28,7 +33,22 @@ export function filterPlugins(plugins: Plugin[], search: string) {
   });
 }
 
-export function buildPluginListItems(plugins: Plugin[]) {
+function readinessPrefix(plugin: {
+  installationReadiness?: { state: string };
+  activationInFlight?: true;
+}) {
+  const state = plugin.installationReadiness?.state;
+  if (state === 'pending')
+    return plugin.activationInFlight ? 'Activating… · ' : 'Needs recovery · ';
+  if (state === 'unavailable') return 'Unavailable · ';
+  return '';
+}
+
+export function buildPluginListItems(
+  plugins: Plugin[],
+  updates: readonly PluginUpdateSummary[] = [],
+) {
+  const available = new Set(updates.map((update) => update.name));
   return plugins.map((plugin) =>
     isRejectedPlugin(plugin)
       ? {
@@ -39,7 +59,7 @@ export function buildPluginListItems(plugins: Plugin[]) {
       : {
           id: pluginSelectionId(plugin),
           name: plugin.displayName || plugin.name,
-          subtitle: `${plugin.installationReadiness?.state === 'pending' ? 'Activation pending · ' : plugin.installationReadiness?.state === 'unavailable' ? 'Unavailable · ' : ''}v${plugin.version}${plugin.description ? ` · ${plugin.description}` : ''}`,
+          subtitle: `${readinessPrefix(plugin)}v${plugin.version}${available.has(plugin.name) ? ' · Update available' : ''}${plugin.description ? ` · ${plugin.description}` : ''}`,
         },
   );
 }
@@ -243,4 +263,62 @@ export function reinstallDelta(
     },
     code,
   };
+}
+
+/**
+ * An install or update the server saved but did not apply (its designed
+ * `202`). Not a failure, so no retry is offered: a second install would
+ * install the plugin again. What follows comes from the receipt's
+ * `recovery`, never its reason text: `required` means nothing resumes the
+ * activation and the person recovers it from its row; `none` means Station
+ * finishes on its own; `unknown` (an older server) defers to the row.
+ */
+export function unappliedMessage(
+  verb: 'installed' | 'updated',
+  pluginName: string,
+  unapplied: PluginLifecycleUnapplied,
+) {
+  if (unapplied.kind === 'projection')
+    return `${pluginName} was ${verb}, but Station had not finished listing it, so plugins are being reloaded to pick it up. Its code and data are kept.`;
+  if (unapplied.recovery === 'none')
+    return `${pluginName} was ${verb}. Station finishes applying it in the background.`;
+  if (unapplied.recovery === 'unknown')
+    return `${pluginName} was ${verb}, but Station did not say whether it is active. If its row reads Needs recovery, choose Recover plugin there.`;
+  const stopped = unapplied.deadlineMs
+    ? `its activation did not finish within ${describeActivationDeadline(unapplied.deadlineMs)}`
+    : 'its activation did not finish';
+  return `${pluginName} was ${verb}, but ${stopped}, so it is not active. Choose Recover plugin to activate it; trusted permissions are asked for after that.`;
+}
+
+/** Only a change Station finishes on its own reads as a success. */
+export function unappliedTone(
+  unapplied: PluginLifecycleUnapplied,
+): 'success' | 'warning' {
+  return unapplied.kind === 'activation' && unapplied.recovery === 'none'
+    ? 'success'
+    : 'warning';
+}
+
+/**
+ * A recovery that was stopped again. Recovery runs under the same deadline,
+ * so a retry may work, and Remove is the way out.
+ */
+export function recoveryStoppedNotice(unapplied: PluginLifecycleUnapplied) {
+  const stopped =
+    unapplied.kind === 'activation' && unapplied.deadlineMs
+      ? `its activation did not finish within ${describeActivationDeadline(unapplied.deadlineMs)}`
+      : 'its activation did not finish';
+  return `Recovery was saved, but the plugin is still not active: ${stopped}. Trying again may work; Remove plugin is the way out.`;
+}
+
+/** What a declined post-install (or post-recovery) approval left behind. */
+export function consentFailureMessage(
+  pluginName: string,
+  pending: Array<{ tier: string }>,
+) {
+  if (pending.some((permission) => permission.tier === 'trusted')) {
+    return `${pluginName} is active, but its server features stay off until you approve its trusted permissions. Review its request under Plugins.`;
+  }
+
+  return `${pluginName} was installed, but required permissions were not approved.`;
 }

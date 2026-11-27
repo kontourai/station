@@ -6,16 +6,19 @@ import type {
 import { Hono } from 'hono';
 import { afterEach, expect, vi } from 'vitest';
 import { trackTempDirs } from '../__test-utils__/temp-dirs.js';
+import type { IStorageAdapter } from '../domain/storage-adapter.js';
 import { createOutsideAgentMcpServer } from '../routes/outside-agent/mcp-routes.js';
 import { outsideAgentTokenAudience } from '../security/outside-agent-token-audience.js';
+import type { OutsideActiveWorkDeps } from '../services/outside-agent/active-work.js';
+import type { OutsideConversationSearchDeps } from '../services/outside-agent/conversation-search.js';
 import { OutsideAgentManagementService } from '../services/outside-agent/management-service.js';
 import { DAY } from '../services/outside-agent/oauth-records.js';
 import { pkceChallenge } from '../services/outside-agent/oauth-registration.js';
 
 const temp = trackTempDirs();
-const cleanup: (() => void)[] = [];
-afterEach(() => {
-  for (const close of cleanup.splice(0).reverse()) close();
+const cleanup: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const close of cleanup.splice(0).reverse()) await close();
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
@@ -23,7 +26,21 @@ export const issuer = 'http://127.0.0.1:43141';
 const resource = `${issuer}/mcp`;
 const redirectUri = 'http://127.0.0.1:43198/callback';
 export const protocols = ['2025-06-18', '2025-11-25'];
-export async function outsideMcpFixture() {
+type FixtureWorkDeps = OutsideActiveWorkDeps & {
+  transcripts?: OutsideConversationSearchDeps['transcripts'];
+};
+export async function outsideMcpFixture(
+  work?: (fixture: {
+    home: string;
+    clock: { now: number };
+    projects: ProjectConfig[];
+    cleanup: (close: () => void | Promise<void>) => void;
+  }) => FixtureWorkDeps | Promise<FixtureWorkDeps>,
+  setupLayouts?: (fixture: {
+    home: string;
+    projects: ProjectConfig[];
+  }) => Promise<Pick<IStorageAdapter, 'listLayouts' | 'projectRevision'>>,
+) {
   const home = temp('outside-r4a-');
   const clock = { now: 1_800_000_000_000 };
   const authority = { live: true };
@@ -66,10 +83,26 @@ export async function outsideMcpFixture() {
     },
   );
   const store = service.store;
+  const workDeps = await work?.({
+    home,
+    clock,
+    projects,
+    cleanup: (close) => cleanup.push(close),
+  });
   const server = await createOutsideAgentMcpServer({
     store,
     validateGrant: (g) => service.validateGrant(g),
     projects: source,
+    layoutStorage: await setupLayouts?.({ home, projects }),
+    activeWork: workDeps,
+    ...(workDeps?.transcripts
+      ? {
+          conversationSearch: {
+            ...workDeps,
+            transcripts: workDeps.transcripts,
+          },
+        }
+      : {}),
     exposure: { issuer, allowLoopbackHttp: true, hosted: false },
     checkServe: async () => 'clear',
   });

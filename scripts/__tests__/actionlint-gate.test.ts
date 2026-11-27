@@ -273,7 +273,15 @@ describe('persistent runner policy', () => {
   function primaryCiJobFixture(
     jobId: string,
     mutate: (job: Record<string, unknown>) => void,
-  ) {
+  ): [
+    {
+      file: string;
+      document: {
+        jobs: Record<string, Record<string, unknown>>;
+      };
+    },
+    ...ReturnType<typeof readWorkflowDocuments>,
+  ] {
     const workflow = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/ci.yml',
     );
@@ -943,6 +951,19 @@ describe('persistent runner policy', () => {
     },
   );
 
+  // #4748: the consumers verify the downloaded artifact's digest before `tar`.
+  // This moves the verification after the extraction, so the mutation is
+  // asserted to have changed the text before the gate is asked about it.
+  function extractBeforeVerifying(run: string) {
+    const verify =
+      'echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status\n';
+    const tail = 'echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"';
+    const reordered = run.replace(verify, '').replace(tail, `${verify}${tail}`);
+    if (!run.includes(verify) || !run.includes(tail) || reordered === run)
+      throw new Error('Expected the artifact consumer provision text.');
+    return reordered;
+  }
+
   test.each([
     [
       'reordered checksum',
@@ -952,10 +973,7 @@ describe('persistent runner policy', () => {
         );
         if (!step || typeof step.run !== 'string')
           throw new Error('Expected actionlint provision step.');
-        step.run = step.run.replace(
-          'curl --fail',
-          'echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status\ncurl --fail',
-        );
+        step.run = extractBeforeVerifying(step.run);
       },
     ],
     [
@@ -990,10 +1008,7 @@ describe('persistent runner policy', () => {
           );
           if (!step || typeof step.run !== 'string')
             throw new Error('Expected actionlint provision step.');
-          step.run = step.run.replace(
-            'curl --fail',
-            'echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status\ncurl --fail',
-          );
+          step.run = extractBeforeVerifying(step.run);
         },
         (job: Record<string, unknown>) => {
           const step = (job.steps as Array<Record<string, unknown>>).find(
@@ -1017,6 +1032,472 @@ describe('persistent runner policy', () => {
       }
     },
   );
+
+  describe('pinned actionlint artifact handoff (#4748)', () => {
+    const FILE = '.github/workflows/ci.yml';
+    const PRODUCER = 'actionlint-artifact';
+    const PRODUCER_MESSAGE =
+      'actionlint-artifact must retain its exact reviewed no-checkout producer: fixed pinned archive, digest check, run- and attempt-scoped upload';
+    const CONSUMERS: Array<[string, string, string, string]> = [
+      [
+        'fast-checks-shard',
+        'fast-checks-shard must provision pinned and checksummed actionlint before its tests',
+        'pr-admission, fast-checks-plan, actionlint-artifact',
+        'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
+      ],
+      [
+        'fast-checks-statics',
+        'fast-checks-statics must provision pinned and checksummed actionlint before fast CI execution',
+        'classify, pr-admission, actionlint-artifact',
+        'ci.yml fast-checks-statics must use the exact same-repository pull_request_target guard',
+      ],
+      [
+        'fork-smoke',
+        'fork-smoke must provision pinned and checksummed actionlint before smoke execution',
+        'actionlint-artifact',
+        'fork-smoke must use the exact fork-only pull_request_target guard',
+      ],
+    ];
+    type StepRecord = Record<string, any>;
+    const stepsOf = (job: Record<string, unknown>) => job.steps as StepRecord[];
+    const stepNamed = (job: Record<string, unknown>, name: string) => {
+      const step = stepsOf(job).find((candidate) => candidate.name === name);
+      if (!step) throw new Error(`Expected the "${name}" step.`);
+      return step;
+    };
+    const findingsFor = (
+      jobId: string,
+      mutate: (job: Record<string, unknown>) => void,
+    ) =>
+      persistentRunnerPolicyFindings(primaryCiJobFixture(jobId, mutate)).filter(
+        (finding) => finding.jobId === jobId,
+      );
+
+    test('the reviewed producer and all three consumers pass unchanged (false-positive control)', () => {
+      for (const [jobId] of [[PRODUCER], ...CONSUMERS]) {
+        const job = primaryCiJobFixture(jobId, () => {})[0].document.jobs[
+          jobId
+        ] as Record<string, unknown>;
+        // The job is really there and really is the handoff: a fixture that
+        // lost it would make the empty-findings assertion vacuous.
+        expect(job).toBeTruthy();
+        expect(findingsFor(jobId, () => {})).toEqual([]);
+      }
+      expect(
+        stepNamed(
+          primaryCiJobFixture(PRODUCER, () => {})[0].document.jobs[
+            PRODUCER
+          ] as Record<string, unknown>,
+          'Upload verified actionlint archive',
+        ).with.overwrite,
+      ).toBe(false);
+    });
+
+    test.each([
+      [
+        'a candidate checkout',
+        (job: Record<string, unknown>) => {
+          stepsOf(job).unshift({
+            uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+            with: { 'persist-credentials': false },
+          });
+        },
+      ],
+      [
+        'a secret reference',
+        (job: Record<string, unknown>) => {
+          job.env = { TOKEN: `\${{ secrets.NPM_TOKEN }}` };
+        },
+      ],
+      [
+        'write permission',
+        (job: Record<string, unknown>) => {
+          job.permissions = { contents: 'write' };
+        },
+      ],
+      [
+        'another archive URL',
+        (job: Record<string, unknown>) => {
+          stepNamed(
+            job,
+            'Download and verify pinned actionlint',
+          ).env.ACTIONLINT_URL = 'https://example.invalid/actionlint.tar.gz';
+        },
+      ],
+      [
+        'another expected digest',
+        (job: Record<string, unknown>) => {
+          stepNamed(
+            job,
+            'Download and verify pinned actionlint',
+          ).env.ACTIONLINT_SHA256 = '0'.repeat(64);
+        },
+      ],
+      [
+        'no digest check',
+        (job: Record<string, unknown>) => {
+          const step = stepNamed(job, 'Download and verify pinned actionlint');
+          const removed = step.run.replace(
+            'echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status\n',
+            '',
+          );
+          if (removed === step.run) throw new Error('Expected a digest check.');
+          step.run = removed;
+        },
+      ],
+      [
+        'a fifth download attempt',
+        (job: Record<string, unknown>) => {
+          const step = stepNamed(job, 'Download and verify pinned actionlint');
+          const widened = step.run.replace('-ge 4', '-ge 5');
+          if (widened === step.run) throw new Error('Expected four attempts.');
+          step.run = widened;
+        },
+      ],
+      [
+        'artifact overwrite enabled',
+        (job: Record<string, unknown>) => {
+          stepNamed(job, 'Upload verified actionlint archive').with.overwrite =
+            true;
+        },
+      ],
+      [
+        'an attempt-independent artifact name',
+        (job: Record<string, unknown>) => {
+          stepNamed(job, 'Upload verified actionlint archive').with.name =
+            `pinned-actionlint-\${{ github.run_id }}`;
+        },
+      ],
+      [
+        'a missing-file upload that does not fail',
+        (job: Record<string, unknown>) => {
+          stepNamed(job, 'Upload verified actionlint archive').with[
+            'if-no-files-found'
+          ] = 'ignore';
+        },
+      ],
+      [
+        'a widened admission',
+        (job: Record<string, unknown>) => {
+          job.if = `\${{ always() }}`;
+        },
+      ],
+      [
+        'a changed job dependency',
+        (job: Record<string, unknown>) => {
+          job.needs = ['classify'];
+        },
+      ],
+      [
+        'the upload id exposed without validation',
+        (job: Record<string, unknown>) => {
+          (job.outputs as Record<string, string>)['artifact-id'] =
+            `\${{ steps.upload.outputs.artifact-id }}`;
+        },
+      ],
+      [
+        'a removed id validation step',
+        (job: Record<string, unknown>) => {
+          job.steps = stepsOf(job).filter(
+            (step) => step.name !== 'Validate uploaded artifact id',
+          );
+        },
+      ],
+      [
+        'a validation that no longer rejects an empty id',
+        (job: Record<string, unknown>) => {
+          const step = stepNamed(job, 'Validate uploaded artifact id');
+          const weakened = step.run.replace('^[1-9][0-9]*$', '^[0-9]*$');
+          if (weakened === step.run) throw new Error('Expected the pattern.');
+          step.run = weakened;
+        },
+      ],
+    ])('rejects an actionlint artifact producer with %s', (_name, mutate) => {
+      expect(findingsFor(PRODUCER, mutate)).toContainEqual({
+        file: FILE,
+        jobId: PRODUCER,
+        message: PRODUCER_MESSAGE,
+      });
+    });
+
+    test('a removed producer fails closed on the router inventory', () => {
+      const fixture = primaryCiJobFixture('classify', () => {});
+      delete (fixture[0].document as { jobs: Record<string, unknown> }).jobs[
+        PRODUCER
+      ];
+      expect(persistentRunnerPolicyFindings(fixture)).toContainEqual({
+        file: FILE,
+        jobId: PRODUCER,
+        message: 'ci.yml pull_request_target router is missing a reviewed job',
+      });
+    });
+
+    describe.each(CONSUMERS)(
+      '%s consumes the artifact',
+      (jobId, provisionMessage, needsList, admissionMessage) => {
+        const provisionFinding = {
+          file: FILE,
+          jobId,
+          message: provisionMessage,
+        };
+
+        test.each([
+          [
+            'no download step',
+            (job: Record<string, unknown>) => {
+              job.steps = stepsOf(job).filter(
+                (step) => step.name !== 'Download pinned actionlint artifact',
+              );
+            },
+          ],
+          [
+            'a name-based download instead of the exact artifact id',
+            (job: Record<string, unknown>) => {
+              const download = stepNamed(
+                job,
+                'Download pinned actionlint artifact',
+              );
+              delete download.with['artifact-ids'];
+              download.with.name = 'pinned-actionlint';
+            },
+          ],
+          [
+            'an artifact id from another job',
+            (job: Record<string, unknown>) => {
+              stepNamed(job, 'Download pinned actionlint artifact').with[
+                'artifact-ids'
+              ] = `\${{ needs.fast-checks-plan.outputs.artifact-id }}`;
+            },
+          ],
+          [
+            'a caller-controlled run id',
+            (job: Record<string, unknown>) => {
+              stepNamed(job, 'Download pinned actionlint artifact').with[
+                'run-id'
+              ] = `\${{ github.event.pull_request.number }}`;
+            },
+          ],
+          [
+            'a changed download path',
+            (job: Record<string, unknown>) => {
+              stepNamed(job, 'Download pinned actionlint artifact').with.path =
+                `\${{ runner.temp }}/elsewhere`;
+            },
+          ],
+          [
+            'an unpinned download action',
+            (job: Record<string, unknown>) => {
+              stepNamed(job, 'Download pinned actionlint artifact').uses =
+                'actions/download-artifact@v8';
+            },
+          ],
+          [
+            'extraction before verification',
+            (job: Record<string, unknown>) => {
+              const install = stepNamed(job, 'Install pinned actionlint');
+              install.run = extractBeforeVerifying(install.run);
+            },
+          ],
+          [
+            'a network fallback appended to the install',
+            (job: Record<string, unknown>) => {
+              stepNamed(job, 'Install pinned actionlint').run +=
+                'curl --fail --location --output "$archive" https://example.invalid/actionlint.tar.gz\n';
+            },
+          ],
+          [
+            'an install before the download',
+            (job: Record<string, unknown>) => {
+              const steps = stepsOf(job);
+              const download = steps.findIndex(
+                (step) => step.name === 'Download pinned actionlint artifact',
+              );
+              const [removed] = steps.splice(download, 1);
+              steps.splice(
+                steps.findIndex(
+                  (step) => step.name === 'Install pinned actionlint',
+                ) + 1,
+                0,
+                removed,
+              );
+            },
+          ],
+        ])('rejects %s', (_name, mutate) => {
+          expect(findingsFor(jobId, mutate)).toContainEqual(provisionFinding);
+        });
+
+        test('rejects a missing dependency on the producer', () => {
+          expect(
+            findingsFor(jobId, (job) => {
+              job.needs = (
+                Array.isArray(job.needs) ? job.needs : [job.needs]
+              ).filter((need) => need !== PRODUCER);
+            }),
+          ).toContainEqual({
+            file: FILE,
+            jobId,
+            message: `${jobId} must need exactly ${needsList} so the pinned actionlint artifact is a declared dependency`,
+          });
+        });
+
+        test('rejects an admission that does not require the producer to have succeeded', () => {
+          const mutated = findingsFor(jobId, (job) => {
+            const without = String(job.if).replace(
+              `needs.${PRODUCER}.result == 'success' && `,
+              '',
+            );
+            if (without === job.if)
+              throw new Error('Expected an explicit producer-success clause.');
+            job.if = without;
+          });
+          expect(mutated).toContainEqual({
+            file: FILE,
+            jobId,
+            message: admissionMessage,
+          });
+        });
+      },
+    );
+
+    // The statics and fork-smoke jobs hold the reviewed download through a
+    // file- and job-scoped exception, not a download-artifact prefix, so an
+    // extra download is an unreviewed action (the shard keeps its separate,
+    // pre-existing plan download allowance and is not part of this contract).
+    describe.each(['fast-checks-statics', 'fork-smoke'])(
+      '%s admits only the exact reviewed download action',
+      (jobId) => {
+        const PINNED =
+          'actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333';
+        const DOWNLOAD_NAME = 'Download pinned actionlint artifact';
+        const unreviewed = {
+          file: FILE,
+          jobId,
+          message:
+            'pull_request_target router jobs must not add unreviewed custom actions',
+        };
+        const provision = {
+          file: FILE,
+          jobId,
+          message: CONSUMERS.find(([id]) => id === jobId)?.[1],
+        };
+
+        test('keeps the canonical download as a positive control', () => {
+          const job = primaryCiJobFixture(jobId, () => {})[0].document.jobs[
+            jobId
+          ] as Record<string, unknown>;
+          expect(
+            stepsOf(job).filter(
+              (step) => step.uses === PINNED && step.name === DOWNLOAD_NAME,
+            ),
+          ).toHaveLength(1);
+          expect(findingsFor(jobId, () => {})).toEqual([]);
+        });
+
+        test.each([
+          [
+            'a differently named same-run name download',
+            {
+              name: 'Download an unrelated same-run artifact',
+              uses: PINNED,
+              with: {
+                name: 'unrelated-same-run-artifact',
+                path: `\${{ runner.temp }}/extra`,
+              },
+            },
+          ],
+          [
+            'a differently named same-run pattern download',
+            {
+              name: 'Download every receipt',
+              uses: PINNED,
+              with: {
+                pattern: 'fast-checks-receipt-*',
+                path: `\${{ runner.temp }}/extra`,
+              },
+            },
+          ],
+          [
+            'a differently named cross-run repository download',
+            {
+              name: 'Download from another run',
+              uses: PINNED,
+              with: {
+                name: 'unrelated',
+                'run-id': '1',
+                repository: 'other/repo',
+                path: `\${{ runner.temp }}/extra`,
+              },
+            },
+          ],
+          [
+            'an unpinned download under the canonical name',
+            {
+              name: DOWNLOAD_NAME,
+              uses: 'actions/download-artifact@v8',
+              with: {
+                'artifact-ids': `\${{ needs.actionlint-artifact.outputs.artifact-id }}`,
+                path: `\${{ runner.temp }}/actionlint-artifact`,
+                'merge-multiple': true,
+              },
+            },
+          ],
+        ])('rejects %s as an unreviewed action', (_name, extra) => {
+          expect(
+            findingsFor(jobId, (job) => {
+              stepsOf(job).push(structuredClone(extra));
+            }),
+          ).toContainEqual(unreviewed);
+        });
+
+        test('rejects the canonical download carrying a cross-run route', () => {
+          const findings = findingsFor(jobId, (job) => {
+            const download = stepNamed(job, DOWNLOAD_NAME);
+            download.with['run-id'] = '1';
+            download.with.repository = 'other/repo';
+          });
+          expect(findings).toContainEqual(unreviewed);
+          expect(findings).toContainEqual(provision);
+        });
+
+        test('rejects a duplicate canonical download step', () => {
+          const findings = findingsFor(jobId, (job) => {
+            stepsOf(job).push(structuredClone(stepNamed(job, DOWNLOAD_NAME)));
+          });
+          expect(findings).toContainEqual(provision);
+          // Both copies are the exact reviewed step, so the duplicate is
+          // refused by the single-download rule, not by the action allowlist.
+          expect(findings).not.toContainEqual(unreviewed);
+        });
+      },
+    );
+
+    test('fork-smoke admits exactly the reviewed download and nothing else in the shared namespace', () => {
+      // False-positive control: the reviewed download is present and not refused.
+      expect(
+        findingsFor('fork-smoke', () => {}).map((finding) => finding.message),
+      ).not.toContain('fork-smoke must not use shared artifact namespaces');
+      // Any other download is refused, and so is any upload.
+      for (const extra of [
+        {
+          uses: 'actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333',
+          with: { name: 'ci-fast-verification' },
+        },
+        {
+          uses: 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9',
+          with: { name: 'ci-fast-verification' },
+        },
+      ])
+        expect(
+          findingsFor('fork-smoke', (job) => {
+            stepsOf(job).push(structuredClone(extra));
+          }),
+        ).toContainEqual({
+          file: FILE,
+          jobId: 'fork-smoke',
+          message: 'fork-smoke must not use shared artifact namespaces',
+        });
+    });
+  });
 
   test.each([
     'fast-checks',
@@ -1056,6 +1537,113 @@ describe('persistent runner policy', () => {
       }
     },
   );
+
+  describe('the classify job reads the token only in its push-only verdict step', () => {
+    const CREDENTIAL =
+      'ci.yml jobs must not reference secrets, the GitHub token, or the whole github context';
+    type Step = Record<string, unknown> & { env?: Record<string, string> };
+    const verdictStep = (job: Record<string, unknown>) => {
+      const step = (job.steps as Step[]).find(
+        (candidate) => candidate.id === 'merge-group-verdict',
+      );
+      if (!step) throw new Error('Expected the merge-group-verdict step.');
+      return step;
+    };
+    const classifyFindings = (mutate: (job: Record<string, unknown>) => void) =>
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('classify', mutate),
+      ).filter((finding: { jobId: string }) => finding.jobId === 'classify');
+
+    test('admits the exact checked-in step', () => {
+      expect(classifyFindings(() => {})).toEqual([]);
+    });
+
+    test.each([
+      [
+        'the step also runs on merge_group',
+        (job: Record<string, unknown>) => {
+          delete verdictStep(job).if;
+        },
+      ],
+      [
+        'the step stops failing open',
+        (job: Record<string, unknown>) => {
+          delete verdictStep(job)['continue-on-error'];
+        },
+      ],
+      [
+        'the step runs another command',
+        (job: Record<string, unknown>) => {
+          verdictStep(job).run = 'node scripts/classify-ci-change.mjs';
+        },
+      ],
+      [
+        'another classify step reads the token',
+        (job: Record<string, unknown>) => {
+          const classify = (job.steps as Step[]).find(
+            (candidate) => candidate.id === 'classify',
+          );
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          if (classify)
+            classify.env = { ...classify.env, GH_TOKEN: '${{ github.token }}' };
+        },
+      ],
+      [
+        'classify also runs on pull_request_target',
+        (job: Record<string, unknown>) => {
+          job.if = '${{ always() }}';
+        },
+      ],
+    ])('rejects the token when %s', (_name, mutate) => {
+      expect(classifyFindings(mutate)).toContainEqual({
+        file: '.github/workflows/ci.yml',
+        jobId: 'classify',
+        message: CREDENTIAL,
+      });
+    });
+
+    const OVERRIDE =
+      'base-controlled PR job permission overrides must declare only permissions: { contents: read }';
+
+    test('declares exactly contents: read and actions: read on the push-only job', () => {
+      const [{ document }] = primaryCiJobFixture('classify', () => {});
+      expect(document.jobs.classify.permissions).toEqual({
+        contents: 'read',
+        actions: 'read',
+      });
+    });
+
+    test.each([
+      [
+        'actions is writable',
+        (job: Record<string, unknown>) => {
+          job.permissions = { contents: 'read', actions: 'write' };
+        },
+      ],
+      [
+        'another scope is added',
+        (job: Record<string, unknown>) => {
+          job.permissions = {
+            contents: 'read',
+            actions: 'read',
+            statuses: 'write',
+          };
+        },
+      ],
+      [
+        'the job also runs on pull_request_target',
+        (job: Record<string, unknown>) => {
+          job.if = "${{ github.event_name != 'merge_group' }}";
+        },
+      ],
+    ])('rejects the actions grant when %s', (_name, mutate) => {
+      expect(classifyFindings(mutate)).toContainEqual({
+        file: '.github/workflows/ci.yml',
+        jobId: 'classify',
+        message: OVERRIDE,
+      });
+    });
+  });
 
   test('classifies credential expressions without flagging ordinary github reads', () => {
     for (const expression of [
@@ -1372,6 +1960,63 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test.each([
+    [
+      'a pull-request head checkout',
+      (job: Record<string, unknown> & { steps: unknown[] }) => {
+        job.steps.unshift({
+          uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+          with: {
+            'persist-credentials': false,
+            repository:
+              "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}",
+            ref: "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}",
+          },
+        });
+      },
+    ],
+    [
+      'a second shell step',
+      (job: Record<string, unknown> & { steps: unknown[] }) => {
+        job.steps.push({ run: 'node head/script.mjs' });
+      },
+    ],
+    [
+      'a wider permission',
+      (job: Record<string, unknown>) => {
+        job.permissions = { contents: 'read', 'pull-requests': 'write' };
+      },
+    ],
+    [
+      'a self-hosted runner',
+      (job: Record<string, unknown>) => {
+        job['runs-on'] = 'self-hosted';
+      },
+    ],
+  ])('refuses the agent context budget workflow with %s', (_label, mutate) => {
+    const file = '.github/workflows/agent-context-budget.yml';
+    const workflow = readWorkflowDocuments().find(
+      (candidate) => candidate.file === file,
+    );
+    if (!workflow)
+      throw new Error('Expected the agent context budget workflow.');
+
+    expect(persistentRunnerPolicyFindings([workflow])).toEqual([]);
+
+    const mutated = structuredClone(workflow.document) as {
+      jobs: { budget: Record<string, unknown> & { steps: unknown[] } };
+    };
+    mutate(mutated.jobs.budget);
+    expect(
+      persistentRunnerPolicyFindings([{ ...workflow, document: mutated }]),
+    ).toContainEqual({
+      file,
+      jobId: 'budget',
+      message:
+        'agent-context-budget must keep its exact no-checkout topology: one shell step, no actions, no secrets, contents: read, hosted ubuntu-22.04',
+    });
+  });
+
   test('admits only the exact read-only hosted PR: Secret scan pull_request workflow', () => {
     const workflow = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/secret-scan.yml',
@@ -1518,6 +2163,26 @@ describe('persistent runner policy', () => {
     }) => {
       document.jobs.reconcile.steps[0].with!.ref =
         '${{ github.event.merge_group.head_sha }}';
+    },
+    // Workflow-level concurrency lets a run whose job is skipped replace a
+    // pending publishing run for the same head.
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      const shape = document as unknown as {
+        concurrency?: unknown;
+        jobs: { reconcile: { concurrency?: unknown } };
+      };
+      shape.concurrency = shape.jobs.reconcile.concurrency;
+      delete shape.jobs.reconcile.concurrency;
     },
   ])('rejects widened source verification publication authority', (mutate) => {
     const workflow = readWorkflowDocuments().find(
@@ -1752,6 +2417,187 @@ describe('persistent runner policy', () => {
       });
     },
   );
+
+  // CodeQL analyses each landing once, in its merge group (the PR-event run
+  // repeated it on every push), plus on the PR when gate-change finds a
+  // .github/ change. Pinned literals, independent of the gate.
+  const SECURITY_FILE = '.github/workflows/security-analysis.yml';
+  const CODEQL_GUARD_MESSAGE =
+    'security-analysis CodeQL must keep its exact job guard: run in the merge group, on schedule and on dispatch, and on pull_request_target unless gate-change succeeded with analyse=false';
+  const GATE_CHANGE_MESSAGE =
+    'security-analysis gate-change must keep its exact base-controlled, git-only, fail-closed classification';
+  const CODEQL_GUARD =
+    "!cancelled() && (github.event_name != 'pull_request_target' || needs.gate-change.result != 'success' || needs.gate-change.outputs.analyse != 'false')";
+  const SECURITY_WORKFLOW_MESSAGE =
+    'security-analysis must retain the exact base-controlled workflow shape, triggers, permissions, and concurrency';
+  const ghExpr = (inner: string) => `\${{ ${inner} }}`;
+  const securityMessages = (
+    document: ReturnType<typeof securityAnalysisWorkflowDocument>,
+  ) =>
+    persistentRunnerPolicyFindings([{ file: SECURITY_FILE, document }])
+      .filter(({ file }: { file: string }) => file === SECURITY_FILE)
+      .map(({ message }: { message: string }) => message);
+
+  test('the checked-in security workflow gates PR-level CodeQL on gate-change and runs it daily on main (false-positive control)', () => {
+    const document = securityAnalysisWorkflowDocument();
+    expect(document.jobs.codeql.if).toBe(ghExpr(CODEQL_GUARD));
+    expect(document.jobs.codeql.needs).toBe('gate-change');
+    expect((document.on as Record<string, unknown>).schedule).toEqual([
+      { cron: '11 9 * * *' },
+    ]);
+    expect(securityMessages(document)).toEqual([]);
+  });
+
+  test.each([
+    ['dropped', undefined],
+    ['always()', ghExpr('always()')],
+    [
+      'the pre-gate-change PR skip',
+      ghExpr("github.event_name != 'pull_request_target'"),
+    ],
+    [
+      'blind to .github/ changes',
+      ghExpr(
+        "!cancelled() && (github.event_name != 'pull_request_target' || needs.gate-change.result != 'success')",
+      ),
+    ],
+    [
+      'skipping on a failed classifier',
+      ghExpr(
+        "!cancelled() && (github.event_name != 'pull_request_target' || needs.gate-change.outputs.analyse == 'true')",
+      ),
+    ],
+    [
+      'without a status function',
+      ghExpr(
+        "github.event_name != 'pull_request_target' || needs.gate-change.result != 'success' || needs.gate-change.outputs.analyse != 'false'",
+      ),
+    ],
+  ])('rejects a CodeQL job guard that is %s', (_name, guard) => {
+    const document = securityAnalysisWorkflowDocument();
+    if (guard === undefined) delete document.jobs.codeql.if;
+    else document.jobs.codeql.if = guard;
+    expect(securityMessages(document)).toContain(CODEQL_GUARD_MESSAGE);
+  });
+
+  test('rejects CodeQL without its gate-change dependency', () => {
+    const document = securityAnalysisWorkflowDocument();
+    delete document.jobs.codeql.needs;
+    expect(securityMessages(document)).toContain(
+      'security-analysis must retain the exact base-policy and candidate checkouts, pinned CodeQL actions, and sole base-policy shell',
+    );
+  });
+
+  test.each([
+    [
+      'a candidate checkout',
+      (job: Record<string, unknown>) => {
+        (job.steps as Array<Record<string, unknown>>).unshift({
+          uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+        });
+      },
+    ],
+    [
+      'a classification that answers false on error',
+      (job: Record<string, unknown>) => {
+        const [step] = job.steps as Array<Record<string, string>>;
+        step.run = step.run.replace('analyse=true\n', 'analyse=false\n');
+      },
+    ],
+    [
+      'a narrowed path set',
+      (job: Record<string, unknown>) => {
+        const [step] = job.steps as Array<Record<string, string>>;
+        step.run = step.run.replace(
+          '-- .github/\n',
+          '-- .github/workflows/security-analysis.yml\n',
+        );
+      },
+    ],
+    [
+      'a two-dot diff against the moving base',
+      (job: Record<string, unknown>) => {
+        const [step] = job.steps as Array<Record<string, string>>;
+        step.run = step.run.replace(
+          '"$merge_base" "$HEAD_SHA" -- .github/',
+          '"$BASE_SHA" "$HEAD_SHA" -- .github/',
+        );
+      },
+    ],
+    [
+      'a candidate-controlled head repository',
+      (job: Record<string, unknown>) => {
+        const [step] = job.steps as Array<
+          Record<string, Record<string, string>>
+        >;
+        step.env.REPOSITORY_URL = ghExpr(
+          'github.event.pull_request.head.repo.html_url',
+        );
+      },
+    ],
+    [
+      'a secret',
+      (job: Record<string, unknown>) => {
+        const [step] = job.steps as Array<
+          Record<string, Record<string, string>>
+        >;
+        step.env.TOKEN = ghExpr('secrets.GITHUB_TOKEN');
+      },
+    ],
+  ])('rejects a gate-change job with %s', (_name, mutate) => {
+    const document = securityAnalysisWorkflowDocument();
+    const job = document.jobs['gate-change'] as Record<string, unknown>;
+    // Non-vacuity: each mutation must actually change the job.
+    const before = JSON.stringify(job);
+    mutate(job);
+    expect(JSON.stringify(job)).not.toBe(before);
+    expect(securityMessages(document)).toContain(GATE_CHANGE_MESSAGE);
+  });
+
+  test('rejects security-analysis without its gate-change job', () => {
+    const document = securityAnalysisWorkflowDocument();
+    delete document.jobs['gate-change'];
+    expect(securityMessages(document)).toContain(
+      'security-analysis is missing a reviewed job',
+    );
+  });
+
+  test.each([
+    [
+      'the per-push main trigger restored',
+      (on: Record<string, unknown>) => {
+        on.push = { branches: ['main'] };
+      },
+    ],
+    [
+      'the daily schedule dropped',
+      (on: Record<string, unknown>) => {
+        delete on.schedule;
+      },
+    ],
+    [
+      'the schedule moved to every hour',
+      (on: Record<string, unknown>) => {
+        on.schedule = [{ cron: '11 * * * *' }];
+      },
+    ],
+    [
+      'a second schedule added',
+      (on: Record<string, unknown>) => {
+        on.schedule = [{ cron: '11 9 * * *' }, { cron: '11 21 * * *' }];
+      },
+    ],
+    [
+      'manual dispatch dropped',
+      (on: Record<string, unknown>) => {
+        delete on.workflow_dispatch;
+      },
+    ],
+  ])('rejects security-analysis triggers with %s', (_name, mutate) => {
+    const document = securityAnalysisWorkflowDocument();
+    mutate(document.on as Record<string, unknown>);
+    expect(securityMessages(document)).toContain(SECURITY_WORKFLOW_MESSAGE);
+  });
 
   test.each([
     [
@@ -2133,7 +2979,7 @@ describe('persistent runner policy', () => {
       file: '.github/workflows/ci.yml',
       jobId: 'fast-checks',
       message:
-        'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks-statics.',
+        'Required browser smoke must execute once whenever the heavy checks run, with its real exit status inside fast-checks-statics.',
     });
   });
 
@@ -3674,10 +4520,11 @@ describe('the real workflow corpus', () => {
     // contributing files are listed below so the next removal says which one.
     // 7 until #2416 moved CI Extended's coverage onto parallel hosted shards,
     // which dropped `ci-extended.yml#coverage` from the fleet.
-    expect(directCapacityJobs).toBe(6);
+    // Container smoke moved to an isolated GitHub-hosted VM when desktop-win's
+    // WSL listener retired.
+    expect(directCapacityJobs).toBe(5);
     expect(capacityFiles.sort()).toEqual([
       '.github/workflows/ci-extended.yml#playwright-full',
-      '.github/workflows/container-smoke.yml#smoke',
       '.github/workflows/interactive-workspace-performance.yml#one-hour-collaboration-reference',
       '.github/workflows/interactive-workspace-performance.yml#one-hour-work-board-reference',
       '.github/workflows/interactive-workspace-performance.yml#reference-performance',
@@ -5023,9 +5870,11 @@ describe('the org docs gate runs on pull requests through one exact reviewed cal
     const document = realDocsKitWorkflow();
     expect(DOCS_GATE_REUSABLE_WORKFLOW).toBe(REVIEWED_CALLEE);
     expect(Object.keys(document.on)).toEqual(
-      expect.arrayContaining(['pull_request_target', 'merge_group', 'push']),
+      expect.arrayContaining(['pull_request_target', 'merge_group']),
     );
     expect(document.on).not.toHaveProperty('pull_request');
+    // The queue's merge_group run already checked the SHA a push would.
+    expect(document.on).not.toHaveProperty('push');
     expect(document.jobs.gate.uses).toBe(REVIEWED_CALLEE);
     expect(document.jobs.gate.with.repository).toBe(HEAD_REPOSITORY);
     expect(document.jobs.gate.with.ref).toBe(HEAD_REF);

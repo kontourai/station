@@ -1,7 +1,0 @@
-{
-  "revision": "c3d5d242c7a742e1133a336e347ec863ef990e83",
-
-  "notes": [
-    {"path":"docs/user/settings.md","note":"docs/user/settings.md: added one sentence to Settings your organization manages: a managed value fixes the Station-wide setting only; Agent, per-conversation and own-account values (chat font size) still apply, per MANAGED_SETTING_NARROWER_SCOPES traced resolvers. Reviewed the section and its guide link.","inputs":["docs/user/settings.md"]}
-  ]
-}

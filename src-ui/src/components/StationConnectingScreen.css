@@ -1,0 +1,14 @@
+/* The surface and status line are `StationPreparingSurface`'s; these are the
+   ways out it offers once the wait runs long. */
+.station-connecting__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-2);
+}
+.station-connecting__error {
+  margin: 0;
+  color: var(--k-negative);
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,21 @@
+{
+  "revision": "b1ca7103dc43e42a169c6afde90125602220340f",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked that the connected-agent macro stays on the existing verification route. The guide edit leaves the canonical promotion receipt and separate Nightly evidence rule intact.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked that ordinary focused commands retain their reporting defaults and that the optional connected-agent reporter does not change the scope of diagnostic evidence.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","scripts/run-focused-tests.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Checked the focused and connected-agent entry points. The connected macro uses sequential invocations and preserves all seven files and the 10-second per-test limit.","inputs":["docs/guides/development.md","scripts/run-focused-tests.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the connected-agent section against the package entry, focused runner and reporter. The projection invocation completes first. Each phase uses one worker and a 10-second per-test timeout. A regular test failure still permits the other phase. The focused selection passed 43 tests. Restoring the base runners caused three expected contract failures. The full connected-agent suite was not exercised.","inputs":["docs/guides/testing.md","scripts/run-focused-tests.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked that the testing guide preserves the fixture-effectiveness route and the distinction between per-invocation and host-wide resource bounds.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked the linked testing guide. The connected-agent update leaves caller-boundary profiling and request batching guidance intact.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked the linked fixture-fidelity guidance. The server verification change leaves mounted UI performance and mutation guidance intact.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Checked the linked fixture-effectiveness guidance. The connected-agent macro uses the same resource manifest. Browser fixture guidance is unaffected.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

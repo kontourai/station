@@ -244,7 +244,10 @@ describe('ChatDockBody usage-limit banner (#3157)', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
-        requested.push(String(input instanceof Request ? input.url : input));
+        const url = String(input instanceof Request ? input.url : input);
+        // The rewind action's live-continuity read is the dock's own and is
+        // not what these tests are about.
+        if (!url.endsWith('/continuity')) requested.push(url);
         return new Response(
           JSON.stringify({ success: true, data: { recovery: PROJECTION } }),
           { status: 200, headers: { 'content-type': 'application/json' } },
@@ -286,8 +289,10 @@ describe('ChatDockBody usage-limit banner (#3157)', () => {
     const banner = await screen.findByTestId('usage-limit-banner');
     expect(banner.textContent).toContain('Usage limit reached · Resets');
     expect(banner.textContent).not.toContain('automatically');
+    // The banner reads its stop, and the accounts it may offer to continue on.
     expect(requested).toEqual([
       `http://localhost:3242/api/orchestration/sessions/${SESSION}/usage-limit`,
+      `http://localhost:3242/api/orchestration/sessions/${SESSION}/usage-limit/continue-on`,
     ]);
 
     act(() => {

@@ -1,0 +1,9 @@
+{
+  "revision": "0113fb364d39f2dac89335c8e7441964e350b27d",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Rechecked offline-outbound-queue and user concepts after removing an unused type re-export from the window hook: neither claims anything about the window's reload, and the reader-away keep rule is unchanged.","inputs":["src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Rechecked offline-outbound-queue and user concepts after removing an unused type re-export from the window hook: neither claims anything about the window's reload, and the reader-away keep rule is unchanged.","inputs":["src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}

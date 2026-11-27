@@ -35,6 +35,15 @@ export interface ProviderContinuityCapabilities {
   resumeIdentity?: 'require-match';
   /** Resume a prior Session only within its recorded engine-home/profile binding. */
   nativeReturn?: 'same-binding';
+  /**
+   * Opt-in: this adapter refuses a resume without the binding key its start
+   * recorded, so restart recovery and a credential retry that keeps its
+   * profile pass that key as `ProviderSessionStartInput.nativeResumeBindingKey`.
+   * Absent: recovery passes none and the adapter keeps its own resume rules
+   * (a recorded key can legitimately change with the engine home, a profile
+   * switch or an older key scheme).
+   */
+  recoveryBinding?: 'required';
 }
 
 /** Current delivery fidelity, not a promise that an interrupted effect is replayable. */
@@ -277,6 +286,21 @@ export const TASK_BRIEF_METADATA_KEY = 'stationTaskBrief';
  * brief's digest: that turn's own record of what it carried.
  */
 export const TASK_BRIEF_COMPOSED_METADATA_KEY = 'stationTaskBriefComposed';
+/**
+ * #5062/#5065: what a new Session in a Project starts from, the
+ * `ProjectSessionContext` (`project-session-context.ts`): the Project brief and
+ * memory index, read once when the Session starts. Stamped into start
+ * metadata by Station's start choke point after the reserved-key strip, and
+ * prepended to the first turn's ambient context on every engine, like the
+ * Task brief.
+ */
+export const PROJECT_SESSION_CONTEXT_METADATA_KEY = 'stationProjectContext';
+/**
+ * Stamped on the one turn that composed the Project context, with a
+ * `ProjectSessionContextComposed` receipt (digest and approximate tokens).
+ */
+export const PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY =
+  'stationProjectContextComposed';
 export const TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY =
   'stationLearningContextContributions';
 export const WORKSPACE_PANE_HOST_ACTION_METADATA_KEY =
@@ -368,6 +392,8 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   TASK_BRIEF_METADATA_KEY,
   TASK_BRIEF_COMPOSED_METADATA_KEY,
+  PROJECT_SESSION_CONTEXT_METADATA_KEY,
+  PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY,
   TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
@@ -609,6 +635,15 @@ export function modelLaunchTelemetryAttributes(
  */
 export type ApprovalMode = 'ask' | 'auto' | 'never' | 'connection-default';
 
+/** Who the provider reports it would use to review eligible escalations. */
+export type EngineApprovalReviewer = 'user' | 'automatic' | 'unknown';
+
+export function isEngineApprovalReviewer(
+  value: unknown,
+): value is EngineApprovalReviewer {
+  return value === 'user' || value === 'automatic' || value === 'unknown';
+}
+
 export const APPROVAL_MODES: readonly ApprovalMode[] = [
   'ask',
   'auto',
@@ -665,6 +700,34 @@ export function readApprovalMode(
 export const PROVIDER_ACP = 'acp';
 export const PROVIDER_OLLAMA = 'ollama';
 export const PROVIDER_MUSE = 'muse';
+/** GitHub Copilot through the Copilot SDK (Feature Preview `copilot-sdk-engine`). */
+export const PROVIDER_COPILOT_SDK = 'copilot-sdk';
+
+/**
+ * OpenCode as its own engine: it runs saved ACP connection records, over
+ * OpenCode 2's own server where verified and over ACP otherwise
+ * (`opencode-adapter.ts`). New chats get it only while the
+ * `opencode-native-engine` Feature Preview is on; a chat keeps the provider
+ * it started with.
+ */
+export const PROVIDER_OPENCODE = 'opencode';
+
+/**
+ * Engines that run saved ACP connection records: `acp` itself, and an
+ * engine that drives some of those records its own way (`opencode`). Read it
+ * where a behaviour belongs to the ACP connection a session runs on (its
+ * folder, its approval control, its agent scoping), never to tell the
+ * engines apart.
+ */
+export const ACP_FAMILY_ENGINE_IDS: readonly string[] = [
+  PROVIDER_ACP,
+  PROVIDER_OPENCODE,
+];
+
+/** Whether `engine` runs saved ACP connection records ({@link ACP_FAMILY_ENGINE_IDS}). */
+export function isAcpFamilyEngine(engine: string | undefined | null): boolean {
+  return typeof engine === 'string' && ACP_FAMILY_ENGINE_IDS.includes(engine);
+}
 
 /**
  * archive#978 — the per-provider `modelOptions` keys each adapter actually
@@ -696,6 +759,10 @@ export const PROVIDER_MUSE = 'muse';
  *   `session/request_permission` calls, and the server admits it there
  *   (`approvalKnobSupported`). Any other ACP engine decides which calls ask
  *   itself, so the option stays unsupported and the adapter refuses it too.
+ *   `modelOptions.effort` is applied through the session's config option
+ *   whose `category` is `thought_level`, and only when the fresh session
+ *   advertises one; a session without one (Kiro KAS 2.35 advertises none)
+ *   refuses it rather than dropping it.
  * - `ollama`/`bedrock`: read only `modelOptions.systemPrompt` — system-prompt
  *   passthrough is explicitly excluded from archive#978's scope, so it is
  *   NOT added to either provider's support list; a caller-supplied
@@ -723,7 +790,13 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
       'fastMode',
       'serviceTier',
     ],
-    [PROVIDER_ACP]: ['mode'],
+    [PROVIDER_ACP]: ['mode', 'effort'],
+    // `opencode-adapter.ts` reads `approvalMode` (OpenCode's approval rules
+    // are always Station's to set) and `mode` (the OpenCode agent), and over
+    // ACP hands `effort` to the inner ACP adapter, which applies it as above.
+    // A session with `effort` runs over ACP rather than natively, where it
+    // could not be honoured (`OPENCODE_NATIVE_UNSUPPORTED_SETTING`).
+    [PROVIDER_OPENCODE]: ['approvalMode', 'mode', 'effort'],
     [PROVIDER_OLLAMA]: [],
     [PROVIDER_BEDROCK]: [],
     // #2452: `muse-adapter.ts` reads `approvalMode` (`readApprovalMode`) at
@@ -731,9 +804,17 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
     // (`museServeApprovalPlan`: MSP approval mode + host sandbox posture). A
     // session on the `muse exec` fallback cannot: it runs `--approval-mode
     // never` in muse's sandbox, and reports `approvalMode: 'auto'` as what
-    // applied, beside a `muse-serve-unavailable` warning. Nothing else in
-    // `modelOptions` is read, so nothing else is listed.
-    [PROVIDER_MUSE]: ['approvalMode'],
+    // applied, beside a `muse-serve-unavailable` warning.
+    // `effort` is read by `readMuseReasoningEffort` at start and on every
+    // turn and sent as the turn's tier: `turn/start.reasoningEffort` on serve,
+    // `--reasoning-effort` on exec. Station's effort words are all Muse tiers
+    // (`none|minimal|low|medium|high|xhigh|max|ultra`), so it maps by
+    // identity; a value outside that set is refused, never coerced. Nothing
+    // else in `modelOptions` is read, so nothing else is listed.
+    [PROVIDER_MUSE]: ['approvalMode', 'effort'],
+    // `copilot-sdk-adapter.ts` reads `approvalMode` at session start and
+    // answers each permission request with it (`copilot-sdk-approval.ts`).
+    [PROVIDER_COPILOT_SDK]: ['approvalMode'],
   };
 
 /**
@@ -830,6 +911,93 @@ export const APPROVAL_ESCALATION_REQUIRES_RESTART_CODE =
  */
 export const ACP_APPROVAL_TAKEOVER_FAILED_CODE = 'acp-approval-takeover-failed';
 
+/**
+ * `RuntimeWarningEvent.code` an engine session publishes after it rewound
+ * its context in place to before a turn (`rewindSession`): those turns stay
+ * in the transcript but are hidden from the engine. `details.beforeTurnId`
+ * names the chosen turn, `details.hiddenTurnIds` every turn it hid (the
+ * chosen one included), and `details.affectedFileCount` how many files the
+ * engine said it restored, when it said.
+ */
+export const ACP_SESSION_REWOUND_CODE = 'acp.session-rewound';
+
+/**
+ * `RuntimeWarningEvent.code` an engine session publishes when a rewind that
+ * outlived its deadline was applied by the engine after a later turn started:
+ * the transcript cannot say which turns the engine now hides, so none is
+ * marked rewound. `details.beforeTurnId` names the rewind's chosen turn. (A
+ * late rewind with no turn since is published as `ACP_SESSION_REWOUND_CODE`.)
+ */
+export const ACP_SESSION_REWOUND_LATE_CODE = 'acp.session-rewound-late';
+
+/** Bound on the restored paths a rewind outcome carries; the count is exact. */
+export const SESSION_REWIND_AFFECTED_PATHS_MAX = 50;
+
+/**
+ * Why a rewind was refused before anything reached the engine.
+ * - `unsupported`: this session's engine declared no in-place rewind.
+ * - `not-live`: no engine process holds this session now.
+ * - `turn-running`: a turn is running; stop it first.
+ * - `send-preparing`: a message is being sent and its turn is not running
+ *   yet; try again once it is.
+ * - `rewind-pending`: an earlier rewind is still with the engine (on time,
+ *   or past its deadline and not yet answered).
+ * - `unknown-turn`: the engine never reported an id for that turn in this
+ *   process (an older turn, one from before a restart, one Station no
+ *   longer keeps, or one an earlier rewind already hid).
+ */
+export type SessionRewindRefusalReason =
+  | 'unsupported'
+  | 'not-live'
+  | 'turn-running'
+  | 'send-preparing'
+  | 'rewind-pending'
+  | 'unknown-turn';
+
+/**
+ * The outcome of rewinding a live session's engine context to before a
+ * turn. `rewound.affectedFiles` is present only when the engine reported
+ * which files it restored (`paths` is at most
+ * {@link SESSION_REWIND_AFFECTED_PATHS_MAX}; `count` is the engine's).
+ * `failed` is the engine's own refusal or error.
+ */
+export type SessionRewindOutcome =
+  | {
+      kind: 'rewound';
+      beforeTurnId: string;
+      hiddenTurnIds: string[];
+      affectedFiles?: { count: number; paths: string[] };
+    }
+  | { kind: 'refused'; reason: SessionRewindRefusalReason }
+  | { kind: 'failed'; message: string };
+
+/**
+ * A session's continuity as its live engine process declared it. `live:
+ * false` means no engine process holds the session, so nothing is offered.
+ */
+export interface SessionLiveContinuity {
+  live: boolean;
+  rewind: 'in-place' | 'none';
+  fork: 'native' | 'none';
+}
+
+/**
+ * `RuntimeWarningEvent.code` an ACP engine session publishes when the
+ * Station agent it was started for could not be applied to the engine, so
+ * the engine runs its own default agent instead.
+ */
+export const ACP_AGENT_PROJECTION_UNAPPLIED_CODE =
+  'acp.agent-projection-unapplied';
+
+/**
+ * `RuntimeWarningEvent.code` an ACP session publishes when the engine could
+ * not reload the stored conversation and Station started a new engine
+ * session in its place, deliberately and only where a reviewed engine row
+ * says the engine cannot reload it otherwise. The conversation's history
+ * stays in Station; the engine no longer has it.
+ */
+export const ACP_SESSION_STARTED_FRESH_CODE = 'acp.session-started-fresh';
+
 /** A provider explicitly disproved the exact native binding being resumed. */
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
 
@@ -891,6 +1059,16 @@ export function lastRuntimeError<T extends { readonly method?: unknown }>(
  * reports that command's own failure.
  */
 export const WORKLOAD_COMMAND_OOM_KILLED_CODE = 'workload-command-oom-killed';
+
+/**
+ * #5113: `runtime.warning` codes for an engine's own workload scope entering
+ * and leaving near-cap memory pressure. `details` carries
+ * `workingSetBytes`, `memoryMaxBytes` and `thresholdPercent`. The engine is
+ * told the same transition in its turn.
+ */
+export const WORKLOAD_MEMORY_PRESSURE_CODE = 'workload-memory-pressure';
+export const WORKLOAD_MEMORY_PRESSURE_CLEARED_CODE =
+  'workload-memory-pressure-cleared';
 
 /**
  * A provider reported a failed query/turn without disproving its native binding.
@@ -968,7 +1146,8 @@ export const MUSE_APPROVAL_DECIDE_FAILED_CODE = 'muse-approval-decide-failed';
 /**
  * #2452: `runtime.warning` code for a Muse session that runs on the `muse
  * exec` fallback because `muse serve` could not be used (no such subcommand,
- * a failed handshake, or a protocol schema this Station has not verified).
+ * a failed handshake, or a protocol schema that is neither verified nor
+ * shown, by the binary's own schema export, to declare what Station uses).
  * On that path no approval can reach Station: tools run under `--approval-mode
  * never`, whatever approval mode was requested.
  */
@@ -998,11 +1177,47 @@ export const MUSE_SERVE_HOST_EXITED_CODE = 'muse-serve-host-exited';
 export const MUSE_SERVE_STOP_UNCONFIRMED_CODE = 'muse-serve-stop-unconfirmed';
 
 /**
+ * `runtime.warning` code for a `muse serve` turn whose model call muse is
+ * retrying (`turn/retryScheduled`, `turn/modelRetryScheduled`): the attempt
+ * failed and muse scheduled another. The turn is still running; this is
+ * not its outcome. `details` carries the attempt numbers and the delay.
+ */
+export const MUSE_MODEL_RETRY_SCHEDULED_CODE = 'muse-model-retry-scheduled';
+
+/**
+ * `runtime.warning` code for a `muse serve` session whose standing model the
+ * provider muse now uses cannot serve (`session/modelRouteUnserved`). Muse
+ * keeps the selection; turns on it fail until another model is chosen.
+ */
+export const MUSE_MODEL_ROUTE_UNSERVED_CODE = 'muse-model-route-unserved';
+
+/**
+ * `runtime.warning` code for a `muse serve` session on a host that reports it
+ * cannot enforce its sandbox (`initialize.sandboxAvailability:
+ * 'unavailable'`). Postures that rely on that sandbox run tools uncontained;
+ * `details.reason` is muse's own reason when it sent one.
+ */
+export const MUSE_SANDBOX_UNAVAILABLE_CODE = 'muse-sandbox-unavailable';
+
+/**
+ * `runtime.warning` code, once per session, for a `muse serve` host whose MSP
+ * stable-schema fingerprint is not one Station was verified against, but
+ * whose own exported schema still declares every method, notification and
+ * member Station uses, so the session runs on serve. `details.fingerprint`
+ * names the schema and `details.museVersion` the host's version. Structure
+ * is checked, meaning is not.
+ */
+export const MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE =
+  'muse-serve-schema-unverified-compatible';
+
+/**
  * #2324: refusal code for a send that arrived while the engine is running a
  * turn it opened on its own (a provider-triggered turn, see
  * `PROVIDER_TURN_TRIGGER`). Accepting it would fold the message into a reply
  * the user did not ask for. Retryable: the same send succeeds once that turn
- * closes, so clients keep it queued and send it then.
+ * closes, so clients keep it queued and send it then. Also the code of a send
+ * refused while the engine rewinds its context in place (`rewindSession`):
+ * the same busy-until-it-ends refusal, with its own message.
  */
 export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 
@@ -1020,6 +1235,16 @@ export const PROVIDER_SESSION_STARTING_CODE = 'provider_session_starting';
  * Kind `auth`: not retryable until the user signs in with the engine.
  */
 export const ENGINE_SIGN_IN_REQUIRED_CODE = 'engine-sign-in-required';
+
+/**
+ * A start asked for a credential profile other than `default` on a connection
+ * whose engine sign-in Station owns (the Kiro bundle). Station keeps one
+ * sign-in per such connection, under its default profile, so the start is
+ * refused before anything is launched rather than answered with another
+ * profile's token.
+ */
+export const ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE =
+  'engine-credential-profile-unsupported';
 
 /**
  * Refusal code for a send whose session's engine start failed while the send
@@ -1114,6 +1339,12 @@ export interface AttachedSessionSourceMetadata {
   completedBoundary?: ProviderSessionContinuationBoundary;
   externalSessionId: string;
   revision?: string;
+  /**
+   * The newest write the source reported for this session (to the nearest
+   * 30 seconds), including writes that produce no event. Read by
+   * `attachedSourceActivity`.
+   */
+  lastWriteAt?: string;
 }
 
 // ── #895 wave A: per-agent capability delivery (agent-engine-unification.md §3.2/§5/§6.2) ──
@@ -1170,6 +1401,14 @@ export interface ResolvedAgentDefinition {
    * authored-empty-array rule for toolServers/skills.
    */
   systemPrompt?: string;
+  /**
+   * Station-owned orchestration instructions composed for this session from
+   * the station-control tools it is actually offered. Delivered alongside —
+   * never in place of — the authored `systemPrompt`, and reported under
+   * `SessionCapabilityDeliveryMetadata.stationInstructions`, so it never
+   * reads as Agent-authored text.
+   */
+  stationInstructions?: string;
   /**
    * Fix (external autoApprove parity): the agent's authored `tools.autoApprove` patterns
    * (`AgentTools.autoApprove`), carried through to external-engine adapters
@@ -1263,6 +1502,22 @@ export interface CapabilityDeliveryChannelReport {
 }
 
 /**
+ * Receipt for Station-owned orchestration instructions. `sections` lists the
+ * composed section ids; `digest` identifies the exact text. `channel` is how
+ * the text travels: appended to the engine system prompt, or prepended to the
+ * first turn (`firstTurnText`). `delivered` is set once the adapter confirms
+ * the channel-stage outcome; absent means not yet confirmed.
+ */
+export interface StationInstructionsReceipt {
+  version: 1;
+  sections: string[];
+  digest: string;
+  channel: 'system-prompt-append' | 'first-turn';
+  firstTurnText?: string;
+  delivered?: boolean;
+}
+
+/**
  * Session configuration receipt for capability delivery, carried in
  * `session.started`/`session.configured` event metadata under
  * `SESSION_CAPABILITY_DELIVERY_METADATA_KEY`. Server-owned: the orchestration
@@ -1273,6 +1528,8 @@ export interface SessionCapabilityDeliveryMetadata {
   toolServers?: CapabilityDeliveryChannelReport;
   skills?: CapabilityDeliveryChannelReport;
   systemPrompt?: CapabilityDeliveryChannelReport;
+  /** Receipt for Station-owned orchestration instructions (see `StationInstructionsReceipt`). */
+  stationInstructions?: StationInstructionsReceipt;
   /** Server-owned statement of the pre-tool seam actually reached by this session. */
   toolPolicy?: {
     coverage: 'partial';
@@ -1399,12 +1656,11 @@ export interface ProviderSendTurnInput {
    */
   displayInput?: string;
   /**
-   * Relay-only passthrough of the raw ambient context. `input` already
-   * carries the composed text, so adapters that talk to a model directly
-   * MUST ignore this. Only adapters that re-enter a server pipeline with
-   * its own composition choke point (station-agent → /chat) forward
-   * `displayInput` + this field instead of the pre-composed `input`, so the
-   * downstream pipeline persists typed text and composes exactly once.
+   * Raw ambient context already composed into `input`. Claude can use it
+   * with `displayInput` to preserve the text block boundary when the blocks
+   * reproduce `input` exactly. The station-agent relay forwards the separate
+   * fields so the downstream chat route composes them once and persists typed
+   * text.
    */
   ambientContext?: string;
   attachments?: ChatAttachmentInput[];
@@ -1479,6 +1735,14 @@ export interface ProviderSession {
   cwd?: string;
   workspaceIsolation?: WorkspaceIsolationMetadata;
   resumeCursor?: unknown;
+  /**
+   * Set on the session a start returns when the engine could not reload the
+   * conversation it was asked to resume and Station started a new engine
+   * session in its place (`ACP_SESSION_STARTED_FRESH_CODE`). The new engine
+   * holds none of what the conversation's first turn delivered, so
+   * orchestration delivers that first-turn context again on the next turn.
+   */
+  engineContextStartedFresh?: true;
   controlMode?: SessionControlMode;
   attachedSource?: AttachedSessionSourceMetadata;
   /** Opaque Station lineage for an adopted continuation. */
@@ -1493,6 +1757,11 @@ export interface ProviderSession {
   tenantExecutionContext?: TenantExecutionContext;
   createdAt: string;
   updatedAt: string;
+}
+
+/** An engine binding in one of these states cannot take a turn. */
+export function providerSessionBindingEnded(status: string): boolean {
+  return status === 'closed' || status === 'dead' || status === 'error';
 }
 
 export interface ProviderTurnStartResult {

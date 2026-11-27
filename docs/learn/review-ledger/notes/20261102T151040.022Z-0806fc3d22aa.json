@@ -1,7 +1,0 @@
-{
-  "revision": "61c01e632ffb5b2531f881fa3e410b210409e336",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Merged #4438 canonical live-surface H264/admission documentation with the bounded control changes. Reviewed the cascade process fixture correction: its health callback captures the actual maintenance promise and awaits that same promise before reporting child stop/ack; it never starts a second reconciliation. Process plus health suites passed 14/14 and the recovery browser recapture passed. Existing private-summary and projection qualification limits remain explicit.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/cascade-stop-delivery.process.test.ts"]}
-  ]
-}

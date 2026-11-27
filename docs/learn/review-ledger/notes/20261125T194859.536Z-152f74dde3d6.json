@@ -1,0 +1,7 @@
+{
+  "revision": "4056494f0b056255ed455df564a225be6b0530ce",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"useDockShellChrome.ts changed only how it builds the metrics it resolves a snap height from: one snapMetrics value (viewport, toolbar, bar height, and whether this is a phone) replaces three inline copies. No claim here depends on those heights; the maximize and page-seen restore paragraphs were re-read and still hold. No edit.","inputs":["docs/design/placement.md","src-ui/src/hooks/useDockShellChrome.ts"]}
+  ]
+}

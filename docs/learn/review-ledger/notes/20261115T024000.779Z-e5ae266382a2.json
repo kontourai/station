@@ -1,0 +1,7 @@
+{
+  "revision": "dad2814f5734e0ee0562eb5cc9bccded89bc8677",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Checked this page's receipt provenance and environment-identity claims against the lane's scripts/classify-ci-change.mjs edit: adding one file to the desktop-rust classification set changes no environment allowlist entry, no receipt hashing input and no reporting path this page documents.","inputs":["docs/reference/verification-receipts.md","scripts/classify-ci-change.mjs"]}
+  ]
+}

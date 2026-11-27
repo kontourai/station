@@ -1,0 +1,7 @@
+{
+  "revision": "4cb722a07cd862ea0d2d047ca538689f342dfe0f",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts was regenerated from the corrected API, SDK and module-map prose; this page's account of how that content is generated and served is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -588,6 +588,23 @@ describe('useOutboundQueueFlush', () => {
   );
 
   it('surfaces a durable-settlement outage without invoking transport', async () => {
+    // The chat the last successful read showed holding an outbox message.
+    activeChatsStore.updateChat('session-1', {
+      outboundQueuedTurns: [
+        {
+          clientTurnId: 'waiting-key',
+          content: 'waiting in the outbox',
+          createdAt: Date.now(),
+          status: 'pending',
+        },
+      ],
+    });
+    // A chat with nothing in the outbox has no delivery status to lose.
+    activeChatsStore.initChat('a-held-tab', {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Bystander',
+    });
     renderHook(() => useOutboundQueueFlush('http://api.test'));
 
     await waitFor(() =>
@@ -598,6 +615,12 @@ describe('useOutboundQueueFlush', () => {
     );
 
     expect(sendMessage).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()['a-held-tab']?.status).not.toBe(
+      'error',
+    );
+    expect(
+      activeChatsStore.getSnapshot()['a-held-tab']?.error ?? null,
+    ).toBeNull();
   });
 
   it('drops the unsent bubble of a message discarded in another window', async () => {
@@ -1237,6 +1260,83 @@ describe('useOutboundQueueFlush', () => {
     expect(sendMessage.mock.calls[0]?.[6]).toBe('waits-for-open');
   });
 
+  it('asks Station about a message released while a pass was still sending another, once that pass ends', async () => {
+    let stored: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    // A turn is running in a conversation Station knows, so the outbox
+    // message is handed to its inbox, and the chat never newly becomes
+    // sendable (the one other thing that starts a pass).
+    activeChatsStore.updateChat('session-1', {
+      conversationId: 'conversation-1',
+      status: 'sending',
+      orchestrationTurnOpen: true,
+    });
+    await outboundDispatch.enqueue({
+      clientTurnId: 'slow-handoff',
+      sessionId: 'session-1',
+      conversationId: 'conversation-1',
+      agentSlug: 'codex',
+      content: 'written offline',
+    });
+    let answerSend!: (result: { kind: 'queued' }) => void;
+    sendMessage.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answerSend = resolve;
+        }),
+    );
+    getTurnDelivery.mockImplementation(
+      async (_apiBase, conversationId, clientTurnId) => ({
+        outcome: 'started',
+        conversationId,
+        clientTurnId,
+        sessionId: 'session-1',
+        turnId: 'provider-turn-released',
+      }),
+    );
+    const view = renderHook(() => useOutboundQueueFlush('http://api.test'));
+    try {
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+      // While that send is out, a follow-up from the composer gets no answer
+      // and is released for the delivery lookup.
+      const live = await outboundDispatch.beginLive({
+        clientTurnId: 'released-mid-pass',
+        sessionId: 'session-1',
+        conversationId: 'conversation-1',
+        agentSlug: 'codex',
+        content: 'typed meanwhile',
+      });
+      await live.unanswered();
+      expect(getTurnDelivery).not.toHaveBeenCalled();
+      answerSend({ kind: 'queued' });
+      await waitFor(() =>
+        expect(getTurnDelivery).toHaveBeenCalledWith(
+          'http://api.test',
+          'conversation-1',
+          'released-mid-pass',
+          { requestScope: undefined },
+        ),
+      );
+      await waitFor(async () =>
+        expect(await outboundDispatch.snapshot()).toEqual([]),
+      );
+      // One extra pass for the one released message, not a loop.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(getTurnDelivery).toHaveBeenCalledTimes(1);
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+    } finally {
+      view.unmount();
+    }
+  });
+
   it("keeps a durable copy of each follow-up held in a chat's queue, and drops it when the queue no longer holds it", async () => {
     let stored: unknown;
     _setOutboundQueueStorage({
@@ -1580,6 +1680,78 @@ describe('useOutboundQueueFlush', () => {
           await settleImports();
           vi.restoreAllMocks();
           vi.useRealTimers();
+        }
+      },
+    );
+
+    it.each(['hidden', 'browser offline'] as const)(
+      'a lookup cut short because the window went %s is not one of the three failures that park the message',
+      async (pause) => {
+        let visibility: DocumentVisibilityState = 'visible';
+        let online = true;
+        vi.spyOn(document, 'visibilityState', 'get').mockImplementation(
+          () => visibility,
+        );
+        vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => online);
+        await orphanedLiveRow();
+        let failLookup!: (error: Error) => void;
+        let answerLookup = false;
+        getTurnDelivery.mockImplementation(
+          (_apiBase, conversationId, clientTurnId) =>
+            answerLookup
+              ? Promise.resolve({
+                  outcome: 'started',
+                  conversationId,
+                  clientTurnId,
+                  sessionId: 'session-1',
+                  turnId: 'provider-turn-orphan',
+                })
+              : new Promise((_resolve, reject) => {
+                  failLookup = reject;
+                }),
+        );
+        const view = renderHook(() => useOutboundQueueFlush('http://api.test'));
+        try {
+          for (let interruption = 1; interruption <= 3; interruption++) {
+            await waitFor(() =>
+              expect(getTurnDelivery).toHaveBeenCalledTimes(interruption),
+            );
+            // The window goes away while the lookup is out; its request then
+            // fails, as a request cut off that way does.
+            await act(async () => {
+              if (pause === 'hidden') {
+                visibility = 'hidden';
+                document.dispatchEvent(new Event('visibilitychange'));
+              } else {
+                online = false;
+                window.dispatchEvent(new Event('offline'));
+              }
+            });
+            failLookup(new TypeError('Failed to fetch'));
+            await settleImports();
+            if (interruption === 3) answerLookup = true;
+            await act(async () => {
+              if (pause === 'hidden') {
+                visibility = 'visible';
+                document.dispatchEvent(new Event('visibilitychange'));
+              } else {
+                online = true;
+                window.dispatchEvent(new Event('online'));
+              }
+            });
+            await settleImports();
+          }
+          // No lookup of Station's failed, so the message was still asked
+          // about, and Station's answer settled it.
+          await waitFor(async () =>
+            expect(await outboundDispatch.snapshot()).toEqual([]),
+          );
+          expect(getTurnDelivery).toHaveBeenCalledTimes(4);
+          expect(sendMessage).not.toHaveBeenCalled();
+        } finally {
+          view.unmount();
+          await settleImports();
+          vi.restoreAllMocks();
         }
       },
     );

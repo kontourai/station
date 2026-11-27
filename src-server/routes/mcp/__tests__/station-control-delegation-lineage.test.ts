@@ -69,6 +69,7 @@ import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
 } from '../../../runtime/mcp/station-control-mcp-token.js';
+import { bindStationControlRequestAuthority } from '../../../security/station-control-request-authority.js';
 import { AgentService } from '../../../services/agents/agent-service.js';
 import { isStationInternalRequest } from '../../../services/browser/browser-request-origin.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
@@ -192,7 +193,14 @@ const CONVERSATIONS: Record<string, string> = {
 const resolveRecord = createStationControlCallerRecordResolver(
   stationControlCallerRecordSources({
     orchestrationService: {
-      resolveSessionActingPrincipal: () => undefined,
+      resolveSessionActingPrincipal: (sessionId) =>
+        sessionId === 'session-child'
+          ? {
+              id: LOCAL_OPERATOR_PRINCIPAL_ID,
+              source: 'session-owner',
+              elevationEligible: true,
+            }
+          : undefined,
       firstStartedMetadataOfThread: (threadId) => STARTED[threadId],
     },
     eventStore: {
@@ -201,6 +209,7 @@ const resolveRecord = createStationControlCallerRecordResolver(
           ? { conversationId: CONVERSATIONS[sessionId] }
           : undefined,
     },
+    coordinatorEnabled: () => true,
     getProject: () => {
       throw new Error('no projects in this suite');
     },
@@ -484,6 +493,16 @@ beforeAll(async () => {
     '',
     createStationControlMcpRoutes({ port, resolveCallerRecord: resolveRecord }),
   );
+  app.use('/api/orchestration/delegations', async (c, next) => {
+    const caller = sources.resolveCaller(c.req.raw);
+    if (caller?.sessionId === 'session-child')
+      bindStationControlRequestAuthority(c.req.raw, {
+        kind: 'caller',
+        caller,
+        boundOperator: caller.assurance === 'bound',
+      });
+    await next();
+  });
   app.route(
     '/api/orchestration',
     createOrchestrationRoutes(
@@ -499,6 +518,16 @@ beforeAll(async () => {
         getUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
         delegateTask,
         executeForegroundMessage,
+        stationControlDispatchScope: {
+          conversationExists: () => true,
+          ownProjectSlug: () => undefined,
+          target: (ref: { ownerId: string; remote: boolean }) => ({
+            ownerId: ref.ownerId,
+            remote: ref.remote,
+            host: false,
+            scope: { kind: 'global' },
+          }),
+        },
         delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(home),
         resolveAgentDispatchActor:
           createAgentDispatchActorResolver(resolveRecord),
@@ -638,48 +667,33 @@ describe('#2601 delegate_task stamps lineage from the verified caller', () => {
       depth: 1,
       parentConversationId: 'conversation-root',
       rootConversationId: 'conversation-root',
-      blockedTools: expect.arrayContaining(['station-control_delegate_task']),
+      blockedTools: expect.arrayContaining(['station-control_send_message']),
     });
     expect(stampedProvenance(delegateTask)).toBe('caller-derived');
   });
 
-  test('a verified child session that omits _delegation starts a grandchild under the TRUE root', async () => {
-    const result = await callTool(
-      'session-child',
-      'delegate_task',
-      DELEGATE_ARGS,
-    );
-    expect(result.isError).toBe(false);
-    expect(stampedDelegation(delegateTask)).toMatchObject({
-      depth: 2,
-      parentAgentSlug: 'planner',
-      parentConversationId: 'conversation-child',
-      rootAgentSlug: 'planner',
-      rootConversationId: 'conversation-root',
-    });
-  });
-
-  test('a forged _delegation naming another tree is ignored', async () => {
+  test('a verified child starts a tracked grandchild under its actual root, ignoring a forged lineage', async () => {
     const result = await callTool('session-child', 'delegate_task', {
       ...DELEGATE_ARGS,
       _delegation: FORGED,
     });
-    expect(result.isError).toBe(false);
-    const stamped = stampedDelegation(delegateTask) as AgentDelegationContext;
-    expect(stamped.rootConversationId).toBe('conversation-root');
-    expect(stamped.parentConversationId).toBe('conversation-child');
-    expect(stamped.maxDepth).toBe(2);
-    expect(JSON.stringify(stamped)).not.toContain('victim');
+    expect(result.isError, result.text).toBe(false);
+    expect(stampedDelegation(delegateTask)).toMatchObject({
+      depth: 2,
+      parentConversationId: 'conversation-child',
+      parentSessionId: 'session-child',
+      rootConversationId: 'conversation-root',
+    });
+    expect(stampedProvenance(delegateTask)).toBe('caller-derived');
   });
 
-  test('a session already at its maxDepth is refused before any child starts', async () => {
+  test('refuses a child at maxDepth even if its request claims a shallow depth', async () => {
     const result = await callTool('session-deep', 'delegate_task', {
       ...DELEGATE_ARGS,
-      // A model claiming a shallow depth does not lift the limit.
       _delegation: { ...ROOT_CHILD, depth: 0 },
     });
     expect(result.isError).toBe(true);
-    expect(result.text).toContain('Delegation depth limit reached (2)');
+    expect(result.text).toContain('delegation_depth_exceeded');
     expect(delegateTask).not.toHaveBeenCalled();
   });
 
@@ -696,15 +710,14 @@ describe('#2601 delegate_task stamps lineage from the verified caller', () => {
 });
 
 describe('#2601 send_message stamps lineage from the verified caller', () => {
-  test('omitted _delegation: the child still names its true parent and root', async () => {
+  test('omitted _delegation: a delegated child is refused rather than starting a grandchild turn', async () => {
     const result = await callTool('session-child', 'send_message', SEND_ARGS);
-    expect(result.isError).toBe(false);
-    expect(stampedDelegation(executeForegroundMessage)).toMatchObject({
-      depth: 2,
-      parentConversationId: 'conversation-child',
-      rootConversationId: 'conversation-root',
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.text)).toMatchObject({
+      success: false,
+      code: 'delegated_tool_blocked',
     });
-    expect(stampedProvenance(executeForegroundMessage)).toBe('caller-derived');
+    expect(executeForegroundMessage).not.toHaveBeenCalled();
   });
 
   test('a forged _delegation (with a forged attestation) is ignored', async () => {
@@ -722,10 +735,11 @@ describe('#2601 send_message stamps lineage from the verified caller', () => {
     });
   });
 
-  test('beyond maxDepth is refused for an external engine', async () => {
+  test('beyond maxDepth is refused as a child for an external engine, before the depth limit is read', async () => {
     const result = await callTool('session-deep', 'send_message', SEND_ARGS);
     expect(result.isError).toBe(true);
-    expect(result.text).toContain('Delegation depth limit reached (2)');
+    expect(result.text).toContain('delegated_tool_blocked');
+    expect(result.text).not.toContain('Delegation depth limit reached');
     expect(executeForegroundMessage).not.toHaveBeenCalled();
   });
 });
@@ -768,6 +782,40 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
       'runtime-attested',
     );
   });
+
+  test.each([true, false])(
+    'inherited constraints refuse before foreground dispatch (matching attestation: %s)',
+    async (matchingAttestation) => {
+      const original = createChildDelegationContext({ agentSlug: 'planner' });
+      const delegation = { ...original, toolAllowlistConstraints: [[]] };
+      const response = await fetch(
+        `${baseUrl}/api/orchestration/chat/delegated`,
+        {
+          method: 'POST',
+          headers: internalHeaders(),
+          body: JSON.stringify(
+            keyedTurnRequest({
+              ...body,
+              delegation,
+              delegationAttestation: attestDelegationContext(
+                matchingAttestation ? delegation : original,
+              ),
+            }),
+          ),
+        },
+      );
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({
+        code: 'delegation_lineage_unavailable',
+        error: expect.stringContaining(
+          matchingAttestation
+            ? 'unavailable for execution'
+            : 'no matching runtime attestation',
+        ),
+      });
+      expect(executeForegroundMessage).not.toHaveBeenCalled();
+    },
+  );
 
   test('an unattested context, or one whose attestation vouches for a different context, is dropped: the session starts as a root', async () => {
     const genuine = createChildDelegationContext({
@@ -896,7 +944,7 @@ describe('#2601 registry default Agents delegate under the default policy', () =
 
 describe('#2601 send_message continuing a conversation', () => {
   test('a verified caller continuing an existing conversation still stamps the context derived from ITS session, not the model claim', async () => {
-    const result = await callTool('session-child', 'send_message', {
+    const result = await callTool('session-root', 'send_message', {
       ...SEND_ARGS,
       conversationId: 'conversation-existing',
       _delegation: FORGED,
@@ -906,10 +954,20 @@ describe('#2601 send_message continuing a conversation', () => {
       conversationId: 'conversation-existing',
     });
     expect(stampedDelegation(executeForegroundMessage)).toMatchObject({
-      depth: 2,
-      parentConversationId: 'conversation-child',
+      depth: 1,
+      parentConversationId: 'conversation-root',
       rootConversationId: 'conversation-root',
     });
+  });
+
+  test('a delegated child continuing an existing conversation is refused', async () => {
+    const result = await callTool('session-child', 'send_message', {
+      ...SEND_ARGS,
+      conversationId: 'conversation-existing',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('delegated_tool_blocked');
+    expect(executeForegroundMessage).not.toHaveBeenCalled();
   });
 });
 
@@ -917,7 +975,7 @@ describe('#2601 forwards to a saved Environment carry the derived context', () =
   const peerArgs = { environmentId: PEER_ENVIRONMENT_ID };
 
   test('delegate_task: the peer receives THIS Station’s derivation, not the forged claim, and no attestation', async () => {
-    const result = await callTool('session-child', 'delegate_task', {
+    const result = await callTool('session-root', 'delegate_task', {
       ...DELEGATE_ARGS,
       ...peerArgs,
       _delegation: FORGED,
@@ -933,8 +991,8 @@ describe('#2601 forwards to a saved Environment carry the derived context', () =
     expect(peerReceived).toHaveLength(1);
     expect(peerReceived[0]!.path).toBe('/api/orchestration/delegations');
     expect(peerReceived[0]!.body.delegation).toMatchObject({
-      depth: 2,
-      parentConversationId: 'conversation-child',
+      depth: 1,
+      parentConversationId: 'conversation-root',
       rootConversationId: 'conversation-root',
       maxDepth: 2,
     });
@@ -954,7 +1012,7 @@ describe('#2601 forwards to a saved Environment carry the derived context', () =
       // The calling session's own conversation, from the derived context the
       // route resolved, never the forged claim: the usage tree finds the
       // peer record by it.
-      parentConversationId: 'conversation-child',
+      parentConversationId: 'conversation-root',
       delegationProvenance: 'caller-derived',
     });
     expect((delegateTask.mock.calls[0]![0] as { userId?: string }).userId).toBe(
@@ -981,7 +1039,7 @@ describe('#2601 forwards to a saved Environment carry the derived context', () =
     });
   });
 
-  test('a caller at its depth limit is refused before anything reaches the peer, for both tools', async () => {
+  test('a delegated child is refused before anything reaches the peer, for both tools', async () => {
     for (const [name, args] of [
       ['delegate_task', DELEGATE_ARGS],
       ['send_message', SEND_ARGS],
@@ -992,7 +1050,11 @@ describe('#2601 forwards to a saved Environment carry the derived context', () =
         _delegation: { ...ROOT_CHILD, depth: 0 },
       });
       expect(result.isError).toBe(true);
-      expect(result.text).toContain('Delegation depth limit reached (2)');
+      expect(result.text).toContain(
+        name === 'delegate_task'
+          ? 'delegation_depth_exceeded'
+          : 'delegated_tool_blocked',
+      );
     }
     expect(peerReceived).toHaveLength(0);
   });
@@ -1104,7 +1166,7 @@ describe('#2377 C2b: the route owns the peer-hop timeout', () => {
     });
     expect(sent.isError).toBe(true);
     expect(sent.text).toContain(
-      'Foreground Agent message may have started. Do not retry automatically.',
+      'Foreground Agent message may have started. Do not retry automatically',
     );
     // Both requests reached the peer, and both answers came from the route's
     // bound, well before the peer would have answered.

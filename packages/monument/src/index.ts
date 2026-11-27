@@ -19,6 +19,7 @@ export {
   decideInboxSettle,
   decideInboxSubmit,
   inboxHead,
+  inboxInputIsRetired,
 } from './decisions/inbox.js';
 export { decideTurnBoundaryAcceptInvocation } from './decisions/invocation-terminal.js';
 export {
@@ -52,6 +53,7 @@ export {
   decideTurnDedupRelease,
   decideTurnDedupResolve,
   turnClaimIsReclaimable,
+  witnessedTurnInputDigest,
 } from './decisions/turn-dedup.js';
 export {
   type MemoryKernelStorageOptions,
@@ -66,6 +68,7 @@ export {
   ownerLivenessFromProbe,
   type ProcessIdentityObservation,
   type ProcessIdentityProbe,
+  parseOwnerIdentity,
 } from './owner.js';
 export {
   type CommitParticipant,

@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked: testing.md edits (supersession admission, whitespace static, runtime-environment selection, shard proxy) do not change any operations glossary term. No prose change.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
+  ]
+}

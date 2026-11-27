@@ -32,10 +32,10 @@ import type {
 } from '@kontourai/station-contracts/settings-registry';
 import { USER_FACING_APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import type { ReactNode, Ref } from 'react';
-import type {
-  SharingCounts,
-  SharingDisclosure,
-  TelemetryChoiceAuthority,
+import {
+  type SharingCounts,
+  type SharingDisclosure,
+  type TelemetryChoiceAuthority,
 } from '../../components/UsageSharingChoices';
 import type { AppConfig } from '../../types';
 import { renderSettingRow } from './registry-row';
@@ -43,6 +43,7 @@ import type { PendingOverrideChange } from './SettingInheritanceLayers';
 import { SettingsSection } from './SettingsSection';
 import type { SettingsSectionId } from './settings-catalog';
 import { TelemetryTierSettings } from './TelemetryTierSettings';
+import { UsageDisclosureRow } from './UsageDisclosureRow';
 
 /**
  * The Station-document keys each section renders, in render order.
@@ -102,6 +103,8 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
   ],
   // The Station default this device's chat-font-size slider falls back to.
   chat: ['defaultChatFontSize', 'titleModel'],
+  // Embedded in the My knowledge store card, after the personal store row.
+  knowledge: ['knowledgeStores'],
 } as const satisfies Partial<Record<SettingsSectionId, readonly string[]>>;
 
 export type StationSettingsSectionId =
@@ -255,7 +258,14 @@ export function StationConfigSection({
       ? projectOverride.values[overrideKey]
       : undefined;
     return renderSettingRow({
-      definition,
+      definition:
+        key === 'defaultMaxTurns' && config.runtime === 'strands'
+          ? {
+              ...definition,
+              description:
+                'The saved step limit is inactive with this Station configuration.',
+            }
+          : definition,
       value:
         overridable && overrideValue !== undefined
           ? overrideValue
@@ -299,28 +309,34 @@ export function StationConfigSection({
 
   const content =
     section === 'telemetry' ? (
-      <TelemetryTierSettings
-        config={config}
-        onChange={onChange}
-        publishers={telemetryPublishers}
-        disclosure={telemetryDisclosure}
-        choiceAuthority={telemetryChoiceAuthority}
-        onChoiceRetry={onTelemetryChoiceRetry}
-        counts={telemetryCounts}
-        noticeRef={telemetryNoticeRef}
-        noticeError={telemetryNoticeError}
-        onDetailedIntent={onTelemetryDetailedIntent}
-        savedChoices={savedTelemetryChoices}
-        statusError={telemetryStatusError}
-        onFeedback={onTelemetryFeedback}
-        showOutbox={showTelemetryOutbox}
-        advancedContent={
-          <>
-            {rows}
-            {telemetryAdvanced}
-          </>
-        }
-      />
+      <>
+        <UsageDisclosureRow
+          counts={telemetryCounts}
+          disclosure={telemetryDisclosure}
+        />
+        <TelemetryTierSettings
+          config={config}
+          onChange={onChange}
+          publishers={telemetryPublishers}
+          disclosure={telemetryDisclosure}
+          choiceAuthority={telemetryChoiceAuthority}
+          onChoiceRetry={onTelemetryChoiceRetry}
+          counts={telemetryCounts}
+          noticeRef={telemetryNoticeRef}
+          noticeError={telemetryNoticeError}
+          onDetailedIntent={onTelemetryDetailedIntent}
+          savedChoices={savedTelemetryChoices}
+          statusError={telemetryStatusError}
+          onFeedback={onTelemetryFeedback}
+          showOutbox={showTelemetryOutbox}
+          advancedContent={
+            <>
+              {rows}
+              {telemetryAdvanced}
+            </>
+          }
+        />
+      </>
     ) : (
       rows
     );

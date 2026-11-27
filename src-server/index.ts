@@ -14,9 +14,15 @@ import { fileURLToPath } from 'node:url';
 import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
 import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
-import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
+import {
+  CORE_STARTUP_REFUSED_EXIT_CODE,
+  HANDOFF_DEFAULTS,
+} from '@kontourai/station-supervisor/protocol';
 import { consumeHomeRestoreMarkerAtBoot } from './domain/home-restore-marker-boot.js';
-import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
+import {
+  ensureStationHomeSchemaSync,
+  StationHomeResetRequiredError,
+} from './domain/home-schema-gate.js';
 import { assertManagedSettingsValid } from './domain/managed-settings.js';
 import { writeBootRecord } from './routes/system/boot-history.js';
 import { captureBuildProvenance } from './routes/system/build-provenance.js';
@@ -39,6 +45,7 @@ import {
 import { createRuntimeProcessLifecycle } from './runtime/bootstrap/runtime-process-lifecycle.js';
 import type { SelfHostedBrokerStatus } from './runtime/bootstrap/self-hosted-broker-runtime.js';
 import { loadSelfHostedBrokerConnectorConfig } from './runtime/bootstrap/self-hosted-connector-config.js';
+import { scheduleStationCompileCachePrune } from './runtime/bootstrap/station-compile-cache.js';
 import { StationRuntime } from './runtime/bootstrap/station-runtime.js';
 import { armSupervisedParentWatchdog } from './runtime/bootstrap/supervised-parent-watchdog.js';
 import {
@@ -70,13 +77,18 @@ import {
   getInstalledServerLogSink,
   installServerLogSink,
 } from './services/infra/server-log-store.js';
+import { startStdoutLogFileRotation } from './services/infra/server-stdout-log-file.js';
 import {
   initializeWorkloadResources,
   stopWorkloadResources,
 } from './services/infra/workload-resources.js';
 import { readTelemetryCompanionSavedPorts } from './services/telemetry-companion-control.js';
 import { lifecycleService } from './telemetry/metrics.js';
-import { createLogger, resolveLogLevel } from './utils/logger.js';
+import {
+  createLogger,
+  flushLogRepeatSummaries,
+  resolveLogLevel,
+} from './utils/logger.js';
 import { resolveHomeDir } from './utils/paths.js';
 
 assertSupportedNodeVersion();
@@ -163,6 +175,8 @@ async function main() {
   // anything older than a day before doing anything else. Best-effort: a
   // failure here must never block boot.
   void sweepStationTempRoot().catch(() => {});
+  // Node never prunes its compile cache; bound this home's after startup.
+  void scheduleStationCompileCachePrune(resolveHomeDir());
   // archive#1863: an engine child spawned with `detached: true` outlives a
   // SIGKILLed/crashed Station, and none of that Station's in-process cleanup
   // ever runs. Reap orphaned engine processes a PREVIOUS Station on this host
@@ -223,7 +237,15 @@ async function main() {
   // particular, installing the durable log sink first creates logs/server in
   // an otherwise fresh home and makes that home look like incompatible
   // marker-less application data.
-  ensureStationHomeSchemaSync(projectHomeDir);
+  try {
+    ensureStationHomeSchemaSync(projectHomeDir);
+  } catch (error) {
+    if (!(error instanceof StationHomeResetRequiredError)) throw error;
+    processLifecycle.observeShutdown('startup_failure');
+    processLifecycle.observeExit(CORE_STARTUP_REFUSED_EXIT_CODE);
+    console.error(error.message);
+    process.exit(CORE_STARTUP_REFUSED_EXIT_CODE);
+  }
 
   // Root logger + durable NDJSON sink, wired as early as possible — before
   // the runtime (and every module-scope logger it transitively imports)
@@ -239,6 +261,11 @@ async function main() {
     name: 'station',
     level: resolveLogLevel(),
   });
+  // #4995: the launcher's stdout log file is held open by this process for
+  // its whole life, so only this process can keep it bounded.
+  if (process.env.STATION_LOG_FILE) {
+    startStdoutLogFileRotation({ path: process.env.STATION_LOG_FILE, logger });
+  }
 
   // The machine administrator's managed policy (#4515), loaded once, before
   // anything it may restrict is built. A policy this build cannot enforce
@@ -248,7 +275,7 @@ async function main() {
   let managedPolicy: LoadedManagedPolicy | null;
   const refuseStartup: (error: unknown) => never = (error) => {
     processLifecycle.observeShutdown('startup_failure');
-    processLifecycle.observeExit(1);
+    processLifecycle.observeExit(CORE_STARTUP_REFUSED_EXIT_CODE);
     // One line that starts with the marker: the desktop sidecar matches it
     // to stop retrying, and the CLI's failed-start report prints it.
     console.error(error instanceof Error ? error.message : String(error));
@@ -259,7 +286,7 @@ async function main() {
       flushLogSink,
       buildProvenanceSnapshot,
     );
-    return process.exit(1);
+    return process.exit(CORE_STARTUP_REFUSED_EXIT_CODE);
   };
   try {
     // The same load the OTel bootstrap read before `main()` (#4521).
@@ -431,7 +458,15 @@ async function main() {
         try {
           await runtime.shutdown();
         } finally {
-          await stopWorkloadResources();
+          try {
+            await stopWorkloadResources();
+          } finally {
+            // #5054: a repeat window still open at exit would otherwise lose
+            // its "Suppressed K repeats" line. Synchronous and never throws,
+            // so it cannot delay or fail the shutdown. The uncaughtException
+            // path reaches this too: its crash handler calls this function.
+            flushLogRepeatSummaries();
+          }
         }
         logger.info('Station shutdown complete', { signal, exitCode });
       } catch (error) {

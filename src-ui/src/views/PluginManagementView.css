@@ -1,5 +1,12 @@
 /* ═══ Plugins View ═══ */
 
+.plugins__update-check {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  padding: 0.75rem;
+}
+
 /* ── Install Bar ── */
 .plugins__install {
   display: flex;
@@ -158,6 +165,11 @@
   font-size: 0.8rem;
   border: 1px solid;
 }
+/* A message above a plugin's detail header aligns with the header's own
+   inset instead of running to the pane's right edge. */
+.detail-panel > .plugins__message {
+  margin: 0.75rem 1.5rem 0;
+}
 .plugins__message--success {
   background: var(--success-bg);
   border-color: var(--success-border);
@@ -315,15 +327,14 @@
   align-items: center;
   justify-content: center;
   z-index: var(--layer-dialog);
-  backdrop-filter: blur(2px);
 }
 .plugins__modal {
-  background: var(--bg-primary);
-  border-radius: 0.75rem;
+  background: var(--k-bg);
+  border-radius: var(--k-radius-overlay);
   max-width: 600px;
   width: 90%;
   max-height: 80vh;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--k-elevation-overlay);
   border: 1px solid var(--border-secondary);
   display: flex;
   flex-direction: column;

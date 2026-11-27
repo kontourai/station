@@ -14,6 +14,7 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   locateExecutable,
   standardFfmpegDirs,
@@ -326,7 +327,7 @@ export class MediaToolsAcquisition implements MediaToolsResolver {
           active.delete(key);
         })
         .catch((error: unknown) => {
-          job.failure = error instanceof Error ? error.message : String(error);
+          job.failure = errorMessage(error);
         });
       jobs.push(job.completion);
     }

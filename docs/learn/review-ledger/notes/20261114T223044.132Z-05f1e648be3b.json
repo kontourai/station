@@ -1,0 +1,17 @@
+{
+  "revision": "54cbb50e825668473fd4f0ea28cd213065999b05",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-checked after one clause was added to testing.md's PR Gallery excuse rules (empty errors never match): this page states nothing about that attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-checked after one clause was added to testing.md's PR Gallery excuse rules (empty errors never match): this page states nothing about that attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-checked after one clause was added to testing.md's PR Gallery excuse rules (empty errors never match): this page states nothing about that attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-checked after one clause was added to testing.md's PR Gallery excuse rules (empty errors never match): this page states nothing about that attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-checked after one clause was added to testing.md's PR Gallery excuse rules (empty errors never match): this page states nothing about that attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-checked after one clause was added to testing.md's PR Gallery excuse rules (empty errors never match): this page states nothing about that attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]}
+  ]
+}

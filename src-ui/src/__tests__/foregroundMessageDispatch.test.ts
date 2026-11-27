@@ -275,6 +275,17 @@ describe('dispatchForeground target', () => {
     expect(dispatchedTarget()).not.toHaveProperty('model');
   });
 
+  test('carries a requested ACP mode without overriding the selected model', async () => {
+    await dispatchForeground(
+      baseInput({
+        agentSlug: 'opencode',
+        requestedModel: null,
+        requestedProviderOptions: { mode: 'plan', effort: 'high' },
+      }),
+    );
+    expect(dispatchedTarget().model).toEqual({ options: { mode: 'plan' } });
+  });
+
   test('an explicit override is sent with its options', async () => {
     await dispatchForeground(
       baseInput({
@@ -341,6 +352,30 @@ describe('dispatchForeground target', () => {
         dispatchForeground(baseInput({ setApprovalMode: 'ask' })),
       ).rejects.toThrow(/decision it was based on/);
       expect(sendExecutionMessage).not.toHaveBeenCalled();
+    });
+
+    // The send path settles its outbox row by this: a failure before the
+    // request reached nothing, one after it proves nothing.
+    test('a send refused before the request never reports the request as made', async () => {
+      const onRequest = vi.fn();
+      await expect(
+        dispatchForeground(baseInput({ setApprovalMode: 'ask', onRequest })),
+      ).rejects.toThrow(/decision it was based on/);
+      expect(onRequest).not.toHaveBeenCalled();
+    });
+
+    test('the request is reported as made before it goes out, even when it then fails', async () => {
+      const order: string[] = [];
+      sendExecutionMessage.mockImplementationOnce(async () => {
+        order.push('request');
+        throw new SyntaxError('Unexpected token <');
+      });
+      await expect(
+        dispatchForeground(
+          baseInput({ onRequest: () => order.push('reported') }),
+        ),
+      ).rejects.toThrow(SyntaxError);
+      expect(order).toEqual(['reported', 'request']);
     });
 
     test('absent, the send carries no posture at all', async () => {

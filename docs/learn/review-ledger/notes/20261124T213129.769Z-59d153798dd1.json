@@ -1,0 +1,7 @@
+{
+  "revision": "0fac34fa335043dc518df29d20d8e3c61af737ac",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Checked the handoff route, authorization and immutable seed capture. The receiving provider gets a bounded record of recent recorded work and excludes tool arguments and tool output, with scripted handoff coverage.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts","src-server/services/orchestration/conversation-lineage.ts"]}
+  ]
+}

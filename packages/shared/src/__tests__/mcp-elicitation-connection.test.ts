@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
+import { z } from 'zod';
 import {
   connectMCP,
   type MCPConnection,
@@ -332,3 +333,22 @@ describe.each(['modern', 'legacy'] as const)(
     );
   },
 );
+
+test('modern event listing leaves a concurrent tool form with its own turn', async () => {
+  const connection = await connect('modern', {
+    STATION_MCP_FIXTURE_HOLD_LIST: '1',
+  });
+  const listing = settle(
+    connection.client.request(
+      { method: 'events/list', params: {} },
+      z.object({ events: z.array(z.unknown()) }),
+    ),
+  );
+  const own = recordingRoute({ name: 'Ada' });
+  expect(await askDetails(connection, own.route)).toEqual({
+    action: 'accept',
+    content: { name: 'Ada' },
+  });
+  expect(await listing).toEqual({ value: { events: [] } });
+  expect(own.forms).toHaveLength(1);
+});

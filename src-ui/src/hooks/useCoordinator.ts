@@ -11,11 +11,14 @@ import { getJson, mutateJson } from '@kontourai/station-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { COORDINATOR_PRODUCT_NAME } from '../lib/productNames';
+import { useSurfaceVisibilityFlags } from './useSurfaceVisibilityFlags';
 
 /**
  * #3628: the person's coordinator designation. An older host answers the
  * route 404 and a hosted one 503 (`coordinator_unavailable`); both read as
- * `unavailable`, never as an error the person can retry away.
+ * `unavailable`, never as an error the person can retry away. So does the
+ * `coordinator-session` preview being off: nothing is read and every surface
+ * built on this hook shows nothing.
  */
 export type CoordinatorState =
   | { readonly kind: 'loading' }
@@ -58,7 +61,9 @@ async function readBody<T>(
 export function useCoordinator() {
   const scope = useHostRequestAuthorityScope();
   const client = useQueryClient();
-  const enabled = Boolean(scope?.isCurrent());
+  const enabled =
+    useSurfaceVisibilityFlags().has('coordinator-session') &&
+    Boolean(scope?.isCurrent());
   const key = coordinatorKey(scope?.apiBase, scope?.authorityKey);
   const url = `${scope?.apiBase ?? ''}/api/orchestration/coordinator`;
   const options = () => ({
@@ -80,7 +85,7 @@ export function useCoordinator() {
       return body.data;
     },
   });
-  // No current host authority: nothing to read, so nothing to show.
+  // Preview off or no current host authority: nothing to read or show.
   const state: CoordinatorState = !enabled
     ? { kind: 'unavailable' }
     : query.isPending

@@ -1,0 +1,7 @@
+{
+  "revision": "dad2814f5734e0ee0562eb5cc9bccded89bc8677",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Checked this page's CodeQL gate-change and classifier claims against the lane's scripts/classify-ci-change.mjs edit: the change only adds src-ui/src/platform/native/htmlReplyCapability.js to the desktop-rust classification set; the gate-change job, scheduled analysis and classifier-scope semantics it documents are untouched.","inputs":["docs/guides/dependency-security.md","scripts/classify-ci-change.mjs"]}
+  ]
+}

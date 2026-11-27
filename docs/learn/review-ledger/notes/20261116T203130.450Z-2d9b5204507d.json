@@ -1,0 +1,7 @@
+{
+  "revision": "7467aa41b32c4505e5809a5aed5a7e5baec3fad6",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Documents that a read from past the end names the end; checked against both readers and the route test.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

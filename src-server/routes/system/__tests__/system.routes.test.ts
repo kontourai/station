@@ -25,6 +25,9 @@ vi.mock('../../../services/agents/skill-service.js', () => ({
 }));
 
 const { createSystemRoutes } = await import('../system.js');
+const { OpenCodeAdapter } = await import(
+  '../../../providers/adapters/opencode-adapter.js'
+);
 const { createConnectionRoutes } = await import(
   '../../connections/connections.js'
 );
@@ -246,6 +249,20 @@ describe('System Routes', () => {
       readiness.engines.filter((entry) => entry.engineId === 'kiro'),
     ).toMatchObject([{ reason: 'not_connected' }]);
   });
+  test('the OpenCode engine, which runs saved ACP connections, is never an engine of its own to be ready', async () => {
+    const openCode = new OpenCodeAdapter({
+      getConnections: async () => [],
+      nativeEnabled: () => true,
+    });
+    const readiness = await resolveExternalEngineReadiness(
+      [openCode as never],
+      undefined,
+      () => true,
+      () => undefined,
+    );
+    expect(readiness).toEqual({ ready: false, source: null, engines: [] });
+  });
+
   test('GET /boot-history returns bounded records without fabricating a cause', async () => {
     const getBootHistory = vi.fn().mockResolvedValue({
       currentUptimeSeconds: 43,

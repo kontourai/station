@@ -1,0 +1,15 @@
+{
+  "revision": "72cde1bf0407cf6c7412e18235d70ce19eccc673",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"This file links to the testing guide for the definitions of focused evidence and the full-regression promotion lane (L84, L117). The testing guide edit in this change is one sentence in the main-push paragraph listing which merge-queue verdict answers raise a warning; it changes no lane definition or evidence term this file relies on. No prose change needed.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked each linked testing-guide section (what-counts-as-tested, gallery-product-assertions, host-heavy-check-slots, host-pressure-liveness, pre-push-orchestration-transfer-gate) and the L182-187 description of what the merge queue runs: none is the main-push verdict paragraph edited here, and the queue's check list is unchanged by this change. No prose change needed.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Links only testing.md#fixture-fidelity-and-test-effectiveness; the testing-guide edit here is in the main-push verdict paragraph and leaves that section untouched. No prose change needed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Links only testing.md#fixture-fidelity-and-test-effectiveness; the testing-guide edit here is in the main-push verdict paragraph and leaves that section untouched. No prose change needed.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Links the testing guide generally and its fixture-fidelity section; the edit here is one sentence in the main-push verdict paragraph and changes no test-authoring rule this file routes to. No prose change needed.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

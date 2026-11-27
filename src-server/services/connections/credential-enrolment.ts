@@ -35,11 +35,20 @@
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import {
+  claudeAppHomeEnv,
+  codexAppHomeEnv,
+  museAppHomeEnv,
+} from '../../providers/app-home/app-home-profiles.js';
+import {
+  MUSE_UNATTENDED_LAUNCHER_ENV,
+  withoutAmbientMuseApiKey,
+} from '../../providers/auth/muse-auth.js';
 import { managedEngineRefusalFor } from '../../security/managed-engine-limits.js';
 
 const execFileAsync = promisify(execFile);
 
-export type EnrolmentEngine = 'claude' | 'codex';
+export type EnrolmentEngine = 'claude' | 'codex' | 'muse';
 
 /** What the caller must run, and in what environment, to sign this profile in. */
 export interface EnrolmentCommand {
@@ -87,17 +96,45 @@ export function defaultEnrolmentDeps(): EnrolmentDeps {
 
 const STATUS_TIMEOUT_MS = 15_000;
 
-/** The engine's config-home override — the same variable its sessions use. */
+/**
+ * The engine's config-home override — the same variable its sessions use
+ * (`claudeAppHomeEnv`/`codexAppHomeEnv`/`museAppHomeEnv`, one definition each).
+ */
 export function enrolmentHomeEnv(
   engine: EnrolmentEngine,
   profileDir: string,
 ): Record<string, string> {
   return engine === 'claude'
-    ? {
-        CLAUDE_CONFIG_DIR: profileDir,
-        CLAUDE_SECURESTORAGE_CONFIG_DIR: profileDir,
-      }
-    : { CODEX_HOME: profileDir };
+    ? claudeAppHomeEnv(profileDir)
+    : engine === 'codex'
+      ? codexAppHomeEnv(profileDir)
+      : museAppHomeEnv(profileDir);
+}
+
+/**
+ * Switches that keep an engine's own launcher from prompting or downloading
+ * while Station runs it unattended: never credentials, never a config home.
+ * Only Muse has any ({@link MUSE_UNATTENDED_LAUNCHER_ENV} says why).
+ */
+export function enrolmentLauncherEnv(
+  engine: EnrolmentEngine,
+): Record<string, string> {
+  return engine === 'muse' ? { ...MUSE_UNATTENDED_LAUNCHER_ENV } : {};
+}
+
+/**
+ * The environment an enrolment run (sign-in status, device login) starts
+ * from for a profile: `base` with the launcher switches and the profile's
+ * config home. Muse also loses its ambient API key, which would otherwise
+ * stand in for the profile's own sign-in (`withoutAmbientMuseApiKey`).
+ */
+export function enrolmentChildEnv(
+  engine: EnrolmentEngine,
+  base: NodeJS.ProcessEnv,
+  homeEnv: Record<string, string>,
+): NodeJS.ProcessEnv {
+  const env = { ...base, ...enrolmentLauncherEnv(engine), ...homeEnv };
+  return engine === 'muse' ? withoutAmbientMuseApiKey(env) : env;
 }
 
 /**
@@ -110,6 +147,7 @@ export function enrolmentHomeEnv(
  * runs this same command with that mechanism's flag.
  */
 export function enrolmentLoginArgs(engine: EnrolmentEngine): string[] {
+  // `muse login` is the device-code flow itself; it takes no mode flag.
   return engine === 'claude' ? ['auth', 'login'] : ['login'];
 }
 
@@ -117,21 +155,20 @@ export function enrolmentCommand(
   engine: EnrolmentEngine,
   profileDir: string,
 ): EnrolmentCommand {
-  return engine === 'claude'
-    ? {
-        command: 'claude',
-        args: enrolmentLoginArgs(engine),
-        env: enrolmentHomeEnv(engine, profileDir),
-        description:
-          "Signs in with Claude Code's own login, storing the account in this credential profile instead of your global Claude config.",
-      }
-    : {
-        command: 'codex',
-        args: enrolmentLoginArgs(engine),
-        env: enrolmentHomeEnv(engine, profileDir),
-        description:
-          "Signs in with Codex's own login, storing the account in this credential profile instead of your global Codex config.",
-      };
+  const name =
+    engine === 'claude'
+      ? 'Claude Code'
+      : engine === 'codex'
+        ? 'Codex'
+        : 'Muse Code';
+  const global =
+    engine === 'claude' ? 'Claude' : engine === 'codex' ? 'Codex' : 'Muse';
+  return {
+    command: engine,
+    args: enrolmentLoginArgs(engine),
+    env: enrolmentHomeEnv(engine, profileDir),
+    description: `Signs in with ${name}'s own login, storing the account in this credential profile instead of your global ${global} config.`,
+  };
 }
 
 /**
@@ -200,6 +237,32 @@ function readCodexStatus(stdout: string): EnrolmentVerification {
 }
 
 /**
+ * #1942: Muse has no login-status verb. `muse usage --json` is the read that
+ * answers it: it needs the account, prints its JSON envelope (a
+ * `schemaVersion` member) when one is signed in, and when none is, exits 1
+ * with `muse usage: not logged in: run \`muse login\` first` (captured live
+ * against Muse Code 1.4.18 with an empty `XDG_CONFIG_HOME`). Anything else
+ * — a network failure, an expired token's error — is `unknown`, never a
+ * guess in either direction.
+ */
+function readMuseStatus(stdout: string, stderr: string): EnrolmentVerification {
+  if (/\bnot logged in\b/i.test(`${stdout}\n${stderr}`)) {
+    return { state: 'unauthenticated' };
+  }
+  try {
+    const parsed = JSON.parse(stdout.trim()) as { schemaVersion?: unknown };
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof parsed.schemaVersion === 'number'
+    ) {
+      return { state: 'authenticated' };
+    }
+  } catch {}
+  return { state: 'unknown', detail: 'The engine did not report a status.' };
+}
+
+/**
  * Claude reports on STDOUT as JSON; Codex reports in prose and writes its
  * signed-out message to STDERR ("Not logged in") while writing the signed-in
  * one to stdout. Both were captured live. Reading only stdout made a
@@ -210,6 +273,7 @@ function readStatus(
   stdout: string,
   stderr: string,
 ): EnrolmentVerification {
+  if (engine === 'muse') return readMuseStatus(stdout, stderr);
   if (engine === 'claude') {
     const fromStdout = readClaudeStatus(stdout);
     return fromStdout.state === 'unknown'
@@ -241,13 +305,15 @@ export async function verifyEnrolment(
   const [command, args] =
     engine === 'claude'
       ? ['claude', ['auth', 'status']]
-      : ['codex', ['login', 'status']];
+      : engine === 'codex'
+        ? ['codex', ['login', 'status']]
+        : ['muse', ['usage', '--json']];
   try {
     const { stdout, stderr } = await deps.execFile(
       command as string,
       args as string[],
       {
-        env: { ...deps.env, ...homeEnv },
+        env: enrolmentChildEnv(engine, deps.env, homeEnv),
         timeout: STATUS_TIMEOUT_MS,
         windowsHide: true,
       },

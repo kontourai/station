@@ -34,6 +34,7 @@
  */
 
 import { execFile } from 'node:child_process';
+import { isRecord } from '../../utils/is-record.js';
 
 export interface TailscaleCliResult {
   readonly stdout: string;
@@ -141,10 +142,6 @@ interface ServeOriginCandidate {
    * foreground `serve` session overrides it.
    */
   readonly ownedByStation: boolean;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 /** Every `host:port` a foreground session configures or exposes through Funnel. */
@@ -304,9 +301,11 @@ interface PublicIngressOriginResolver {
    * fails, or one that outlasts `admissionTimeoutMs` refuses (fail closed).
    */
   isOwnedOrigin(origin: string): Promise<boolean>;
+  ownedOrigins(localPorts?: readonly number[]): Promise<readonly string[]>;
 }
 
 interface IngressLookup {
+  readonly serveJson?: string;
   readonly host?: string;
   readonly origins?: readonly string[];
   readonly ownedOrigins?: readonly string[];
@@ -358,6 +357,7 @@ export function createPublicIngressOriginResolver(input: {
       if (serve.exitCode !== 0) return { host };
       return {
         host,
+        serveJson: serve.stdout,
         origins: parseServePublicOrigins(serve.stdout, host, input.localPorts),
         ownedOrigins: parseServeOwnedOrigins(
           serve.stdout,
@@ -387,9 +387,9 @@ export function createPublicIngressOriginResolver(input: {
   // reconfiguring Serve or turning Funnel on stops admitting within about a
   // second instead of the suggestion cache's 30.
   let admittedAt = Number.NEGATIVE_INFINITY;
-  let admitted: readonly string[] = [];
-  let admissionInFlight: Promise<readonly string[]> | undefined;
-  const ownedForAdmission = async (): Promise<readonly string[]> => {
+  let admitted: IngressLookup = {};
+  let admissionInFlight: Promise<IngressLookup> | undefined;
+  const ownedForAdmission = async (): Promise<IngressLookup> => {
     if (within(admittedAt, admissionTtlMs)) return admitted;
     admissionInFlight ??= (async () => {
       // Trust is bounded from when the evidence was asked for, not when it
@@ -401,20 +401,20 @@ export function createPublicIngressOriginResolver(input: {
         timer = setTimeout(() => resolveDeadline({}), admissionTimeoutMs);
         timer.unref?.();
       });
-      let owned: readonly string[] = [];
+      let owned: IngressLookup = {};
       try {
         const fresh = await Promise.race([lookup(), deadline]);
         // A fresh read also refreshes endpoint suggestions.
         cached = fresh;
         cachedAt = now();
-        owned = fresh.ownedOrigins ?? [];
+        owned = fresh;
       } finally {
         clearTimeout(timer);
       }
       admittedAt = startedAt;
       // Evidence already older than the bound admits nothing (fail closed);
       // the next admission reads the daemon again.
-      admitted = within(startedAt, admissionTtlMs) ? owned : [];
+      admitted = within(startedAt, admissionTtlMs) ? owned : {};
       return admitted;
     })().finally(() => {
       admissionInFlight = undefined;
@@ -423,6 +423,12 @@ export function createPublicIngressOriginResolver(input: {
   };
 
   return {
+    async ownedOrigins(localPorts) {
+      const snapshot = await ownedForAdmission();
+      return localPorts && snapshot.host && snapshot.serveJson
+        ? parseServeOwnedOrigins(snapshot.serveJson, snapshot.host, localPorts)
+        : (snapshot.ownedOrigins ?? []);
+    },
     async resolve() {
       return (await read()).origins;
     },
@@ -443,7 +449,7 @@ export function createPublicIngressOriginResolver(input: {
       ) {
         return false;
       }
-      return (await ownedForAdmission()).includes(origin);
+      return ((await ownedForAdmission()).ownedOrigins ?? []).includes(origin);
     },
   };
 }

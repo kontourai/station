@@ -1,0 +1,7 @@
+{
+  "revision": "9e4336e1905da60cfb96d14491094ce9dba0d744",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Cites the Connections guide for connection ownership; the added sentence about a required server URL for OpenAI-compatible connections does not change any direction, authority or persistence claim here.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

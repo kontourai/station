@@ -1,6 +1,10 @@
 import type { Page } from '@playwright/test';
 import { getBlockingAccessibilityViolations } from './accessibility';
-import { HIT_TARGET_AUDIT, type HitTargetAudit } from './hit-target-audit';
+import {
+  HIT_TARGET_AUDIT,
+  type HitTargetAudit,
+  type OverlapDiagnostics,
+} from './hit-target-audit';
 import { STABLE_ANCHOR_SOURCE } from './stable-anchor';
 
 /**
@@ -15,6 +19,11 @@ import { STABLE_ANCHOR_SOURCE } from './stable-anchor';
 export interface GalleryUiFinding {
   identity: string;
   detail: string;
+  diagnostics?: OverlapDiagnostics & {
+    /** First occurrence only; later duplicates never replace its geometry. */
+    representativeOccurrence: 1;
+    occurrences: number;
+  };
 }
 
 /** The phone layout is the touch layout; the 44px rule applies there. */
@@ -143,6 +152,10 @@ interface HorizontalOverflowAudit {
 
 export interface GalleryUiAudit {
   findings: GalleryUiFinding[];
+  overlapDiagnostics: HitTargetAudit['overlapDiagnostics'] & {
+    representativesWithDiagnostics: number;
+    duplicateOccurrences: number;
+  };
   /** Raw counts, recorded whatever the policy, so the policy has evidence. */
   measured: {
     controls: number;
@@ -191,6 +204,15 @@ export async function auditGalleryScreen(
     findings.push({
       identity: `hit-target:overlap:${pair.firstAnchor} / ${pair.secondAnchor}`,
       detail: 'touch targets overlap',
+      ...(pair.diagnostics
+        ? {
+            diagnostics: {
+              ...pair.diagnostics,
+              representativeOccurrence: 1 as const,
+              occurrences: 1,
+            },
+          }
+        : {}),
     });
 
   const overflow = (await page.evaluate(
@@ -247,14 +269,29 @@ export async function auditGalleryScreen(
     if (existing) existing.seen += 1;
     else byIdentity.set(finding.identity, { ...finding, seen: 1 });
   }
+  const overlapRepresentatives = [...byIdentity.values()].filter((finding) =>
+    finding.identity.startsWith('hit-target:overlap:'),
+  );
   return {
     findings: [...byIdentity.values()]
-      .map(({ seen, ...finding }) =>
-        seen > 1
-          ? { ...finding, detail: `${finding.detail} (x${seen})` }
-          : finding,
-      )
+      .map(({ seen, ...finding }) => ({
+        ...finding,
+        ...(seen > 1 ? { detail: `${finding.detail} (x${seen})` } : {}),
+        ...(finding.diagnostics
+          ? { diagnostics: { ...finding.diagnostics, occurrences: seen } }
+          : {}),
+      }))
       .sort((a, b) => a.identity.localeCompare(b.identity)),
+    overlapDiagnostics: {
+      ...hits.overlapDiagnostics,
+      representativesWithDiagnostics: overlapRepresentatives.filter(
+        (finding) => finding.diagnostics !== undefined,
+      ).length,
+      duplicateOccurrences: overlapRepresentatives.reduce(
+        (total, finding) => total + finding.seen - 1,
+        0,
+      ),
+    },
     measured: {
       controls: hits.count,
       smallTargets: hits.smallTargets.length,

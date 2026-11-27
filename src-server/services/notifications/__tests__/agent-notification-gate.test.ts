@@ -12,6 +12,7 @@ import type { StationControlCaller } from '../../../tools/station-control-shared
 
 const metrics = vi.hoisted(() => ({
   notificationOps: { add: vi.fn() },
+  jsonFileStoreWriteBytes: { record: vi.fn() },
   agentNotificationOps: { add: vi.fn() },
 }));
 vi.mock('../../../telemetry/metrics.js', () => metrics);

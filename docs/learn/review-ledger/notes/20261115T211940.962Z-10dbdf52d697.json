@@ -1,0 +1,7 @@
+{
+  "revision": "75e3182afdd2087489e1735935dd9d5452cad6a6",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"#4995: regenerated shipped topic bundle only reflects the JsonFileMutationAuthority and monitoring prose additions; the station-docs reference's description of the bundle, its tools and digest handling is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

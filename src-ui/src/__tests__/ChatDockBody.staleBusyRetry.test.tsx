@@ -251,7 +251,6 @@ function buildSession(overrides: Partial<ChatSession> = {}): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -558,7 +557,7 @@ describe('ChatDockBody stale busy wait', () => {
     ).toBeTruthy();
   });
 
-  test('the live wait sends the draft into the open turn', async () => {
+  test('the live wait queues the draft for the next turn', async () => {
     realControlsMock.enabled = true;
     renderDock({
       session: buildSession({
@@ -567,9 +566,9 @@ describe('ChatDockBody stale busy wait', () => {
       }),
     });
     expect(
-      await screen.findByPlaceholderText('Queue a follow-up…'),
+      await screen.findByRole('textbox', { name: 'Message' }),
     ).toBeTruthy();
-    const send = screen.getByRole('button', { name: 'Send' });
+    const send = screen.getByRole('button', { name: 'Queue for next turn' });
     expect(send.hasAttribute('disabled')).toBe(false);
     await act(async () => {
       fireEvent.click(send);

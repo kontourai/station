@@ -36,6 +36,90 @@ describe('client origin propagation', () => {
     ).toEqual({ clientOrigin: origin });
   });
 
+  it('#4827 fix round 2: stamps a composer send as the person and drops an adapter-supplied mark', () => {
+    const propagation = new ClientOriginTurnPropagation();
+    const base = {
+      provider: 'test',
+      createdAt: '2026-11-12T00:00:00.000Z',
+      method: 'turn.started' as const,
+    };
+    propagation.begin(
+      'thread-a',
+      origin,
+      undefined,
+      undefined,
+      undefined,
+      'interactive',
+      undefined,
+      'person',
+    );
+    propagation.settle('thread-a', 'turn-a', origin);
+    const marked = propagation.apply({
+      ...base,
+      threadId: 'thread-a',
+      eventId: 'e-a',
+      turnId: 'turn-a',
+    });
+    expect(marked?.method === 'turn.started' && marked.authoredBy).toBe(
+      'person',
+    );
+
+    propagation.begin('thread-b', origin);
+    propagation.settle('thread-b', 'turn-b', origin);
+    const claimed = propagation.apply({
+      ...base,
+      threadId: 'thread-b',
+      eventId: 'e-b',
+      turnId: 'turn-b',
+      authoredBy: 'person',
+    });
+    expect(claimed && 'authoredBy' in claimed).toBe(false);
+  });
+
+  it('#4827: stamps an admitted MCP prompt as such and drops an adapter-supplied prompt source', () => {
+    const propagation = new ClientOriginTurnPropagation();
+    const base = {
+      provider: 'test',
+      createdAt: '2026-11-12T00:00:00.000Z',
+      method: 'turn.started' as const,
+    };
+    propagation.begin(
+      'thread-m',
+      origin,
+      undefined,
+      undefined,
+      undefined,
+      'interactive',
+      'mcp-prompt',
+    );
+    const settled = propagation.settle('thread-m', 'turn-m', origin);
+    expect(settled).toBeUndefined();
+    const stamped = propagation.apply({
+      ...base,
+      threadId: 'thread-m',
+      eventId: 'e-m',
+      turnId: 'turn-m',
+    });
+    expect(stamped?.method === 'turn.started' && stamped.promptSource).toBe(
+      'mcp-prompt',
+    );
+
+    // An ordinary send gets none, and an adapter cannot claim one.
+    propagation.begin('thread-p', origin);
+    propagation.settle('thread-p', 'turn-p', origin);
+    const plain = propagation.apply({
+      ...base,
+      threadId: 'thread-p',
+      eventId: 'e-p',
+      turnId: 'turn-p',
+      promptSource: 'mcp-prompt',
+    });
+    expect(plain?.method === 'turn.started' && plain.clientOrigin).toEqual(
+      origin,
+    );
+    expect(plain && 'promptSource' in plain).toBe(false);
+  });
+
   it('#4512: stamps a classified dispatch origin, holding an early start of a send with no client origin', () => {
     const propagation = new ClientOriginTurnPropagation();
     const base = {
@@ -444,4 +528,54 @@ it('keeps old and untagged starts away from a pending invocation without rewriti
     clientTurnId: 'B-key',
     clientOrigin: origin,
   });
+});
+
+describe('server-owned engine admission classification', () => {
+  it.each([true, false])(
+    'keeps automatic policy separate from interactive attribution (early event: %s)',
+    (early) => {
+      const propagation = new ClientOriginTurnPropagation();
+      const event = {
+        eventId: 'policy-source',
+        provider: 'test',
+        threadId: 'thread-policy',
+        createdAt: '2026-11-06T00:00:00.000Z',
+        method: 'turn.started' as const,
+        turnId: 'turn-policy',
+        dispatchOrigin: 'interactive' as const,
+        resourceAdmissionIntent: 'interactive_user' as const,
+      };
+      propagation.begin(
+        'thread-policy',
+        origin,
+        undefined,
+        undefined,
+        'submission-B',
+        'interactive',
+        undefined,
+        undefined,
+        'queued_background',
+      );
+      const held = early ? propagation.apply(event) : undefined;
+      if (early) expect(held).toBeUndefined();
+      const settled = propagation.settle(
+        'thread-policy',
+        'turn-policy',
+        origin,
+        undefined,
+        undefined,
+        'submission-B',
+        undefined,
+        'interactive',
+        'queued_background',
+      );
+      const attributed = early ? settled : propagation.apply(event);
+      expect(attributed).toMatchObject({
+        method: 'turn.started',
+        clientTurnId: 'submission-B',
+        dispatchOrigin: 'interactive',
+        resourceAdmissionIntent: 'queued_background',
+      });
+    },
+  );
 });

@@ -2,7 +2,7 @@ import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { jsonSchema } from 'ai';
 import { Hono, type MiddlewareHandler } from 'hono';
-import { DEFAULT_MAX_STEPS } from '../../constants.js';
+import { DEFAULT_MAX_STEPS, resolveMaxSteps } from '../../constants.js';
 import { createAgentHooks } from '../../runtime/agents/agent-hooks.js';
 import {
   captureRuntimeConfigurationLease,
@@ -170,7 +170,7 @@ export function createInvokeRoutes(
           prompt,
           model,
           tools: toolNames,
-          maxSteps = DEFAULT_MAX_STEPS,
+          maxSteps: requestedMaxSteps,
           schema: schemaJson,
         } = getBody(c);
         chatRequests.add(1, { op: 'invoke_stream' });
@@ -182,8 +182,18 @@ export function createInvokeRoutes(
         if (!agent)
           return c.json({ success: false, error: 'Agent not found' }, 404);
 
+        const authoredCap = ctx.agentSpecs.get(runtimeSlug)?.maxSteps;
+        const maxSteps =
+          appConfig.runtime === 'strands'
+            ? undefined
+            : requestedMaxSteps === undefined
+              ? resolveMaxSteps({
+                  specMaxSteps: authoredCap,
+                  defaultMaxTurns: appConfig.defaultMaxTurns,
+                })
+              : Math.min(requestedMaxSteps, authoredCap ?? requestedMaxSteps);
         const options: Record<string, unknown> & {
-          maxSteps: number;
+          maxSteps?: number;
           maxOutputTokens: number;
         } = { maxSteps, maxOutputTokens: 2000 };
         if (model) {

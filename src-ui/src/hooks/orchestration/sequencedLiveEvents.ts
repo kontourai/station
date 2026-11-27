@@ -4,6 +4,8 @@ type SequencedLiveEvent = { sequence: number; event: CanonicalRuntimeEvent };
 type Partition = {
   events: readonly SequencedLiveEvent[];
   truncatedThrough: number;
+  /** Cursor of the newest stream snapshot: nothing at or below it came live. */
+  liveFloor: number;
   listeners: Set<() => void>;
 };
 
@@ -11,16 +13,57 @@ const EMPTY: readonly SequencedLiveEvent[] = [];
 const MAX_EVENTS_PER_STATION = 2_048;
 const partitions = new Map<string, Partition>();
 
+function partitionFor(apiBase: string): Partition {
+  let partition = partitions.get(apiBase);
+  if (!partition) {
+    partition = {
+      events: EMPTY,
+      truncatedThrough: 0,
+      liveFloor: 0,
+      listeners: new Set(),
+    };
+    partitions.set(apiBase, partition);
+  }
+  return partition;
+}
+
 export function clearSequencedLiveEvents(apiBase: string): void {
   const partition = partitions.get(apiBase);
   if (!partition) return;
   partition.events = EMPTY;
   partition.truncatedThrough = 0;
+  partition.liveFloor = 0;
   for (const listener of partition.listeners) listener();
 }
 
 export function readSequencedLiveTruncation(apiBase: string): number {
   return partitions.get(apiBase)?.truncatedThrough ?? 0;
+}
+
+export function readSequencedLiveFloor(apiBase: string): number {
+  return partitions.get(apiBase)?.liveFloor ?? 0;
+}
+
+/**
+ * A stream snapshot delivers no events: only what follows its cursor arrives
+ * live, and everything at or below it is left to a window read. Record that
+ * cursor so a reader can tell a window served before it (see
+ * `useActiveChatTranscript`).
+ *
+ * This is the Station's head, not a conversation's, so it is deliberately not
+ * folded into `truncatedThrough`: a window's watermark is its own
+ * conversation's newest event, which for a conversation at rest stays below
+ * this value for good.
+ */
+export function raiseSequencedLiveFloor(
+  apiBase: string,
+  sequence: number | undefined,
+): void {
+  if (sequence === undefined) return;
+  const partition = partitionFor(apiBase);
+  if (sequence <= partition.liveFloor) return;
+  partition.liveFloor = sequence;
+  for (const listener of partition.listeners) listener();
 }
 
 /** Test isolation for separate document lifetimes in one module process. */
@@ -38,13 +81,9 @@ export function subscribeSequencedLiveEvents(
   apiBase: string,
   listener: () => void,
 ): () => void {
-  let partition = partitions.get(apiBase);
-  if (!partition) {
-    partition = { events: EMPTY, truncatedThrough: 0, listeners: new Set() };
-    partitions.set(apiBase, partition);
-  }
+  const partition = partitionFor(apiBase);
   partition.listeners.add(listener);
-  return () => partition?.listeners.delete(listener);
+  return () => partition.listeners.delete(listener);
 }
 
 /** Retain canonical frames until a window read can stitch them by sequence. */
@@ -54,11 +93,7 @@ export function recordSequencedLiveEvent(
   sequence: number | undefined,
 ): void {
   if (sequence === undefined || !event.eventId) return;
-  let partition = partitions.get(apiBase);
-  if (!partition) {
-    partition = { events: EMPTY, truncatedThrough: 0, listeners: new Set() };
-    partitions.set(apiBase, partition);
-  }
+  const partition = partitionFor(apiBase);
   if (sequence <= partition.truncatedThrough) return;
   const last = partition.events.at(-1);
   if (last?.sequence === sequence) return;

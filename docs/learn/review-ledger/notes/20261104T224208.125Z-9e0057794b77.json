@@ -1,7 +1,0 @@
-{
-  "revision": "3114c734e52526593611b43ac13482e7fbb9d455",
-
-  "notes": [
-    {"path":"deployment/telemetry/README.md","note":"Merged the tunnel product-ingress paragraph (compose.tunnel.yaml now defines product-ingress; checked against that file) with this PR's Worker pointer. Source wording now says a source maps to one publisher and its allowed channels, checked against lite-core.ts parseLiteSource and admitLiteObservation and migration 10 in lite-store.ts.","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/README.md","packages/telemetry-broker/src/store.ts"]}
-  ]
-}

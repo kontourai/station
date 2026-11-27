@@ -1,7 +1,6 @@
 import { createHash, createHmac, randomBytes } from 'node:crypto';
-import {
-  type AuthenticationResponseJSON,
-  generateAuthenticationOptions,
+import type {
+  AuthenticationResponseJSON,
   verifyAuthenticationResponse,
 } from '@simplewebauthn/server';
 import type { Logger } from '../../utils/logger.js';
@@ -30,6 +29,7 @@ export class OperatorSignInError extends Error {
   }
 }
 interface Ceremony {
+  origin: string;
   binding: string;
   deviceId: string;
   epoch: string;
@@ -91,6 +91,7 @@ export class OperatorSessionService {
     this.#budgets.set(key, budget);
     const nonce = randomBytes(32).toString('base64url');
     this.#ceremonies.set(digest(nonce), {
+      origin: this.deps.origin!,
       binding: digest(credential),
       deviceId: device.id,
       epoch: this.deps.epoch(),
@@ -107,6 +108,7 @@ export class OperatorSessionService {
     if (
       !this.signInUrl ||
       !ceremony ||
+      ceremony.origin !== this.deps.origin ||
       ceremony.expiresAt <= this.#now() ||
       ceremony.binding !== digest(credential) ||
       ceremony.deviceId !== this.#device(credential).id ||
@@ -125,6 +127,9 @@ export class OperatorSessionService {
     const registry = this.deps.registry.existing();
     const ids = registry?.activeCredentialIds() ?? [];
     if (ids.length === 0) throw new OperatorSignInError('sign_in_unavailable');
+    const { generateAuthenticationOptions } = await import(
+      '@simplewebauthn/server'
+    );
     const options = await generateAuthenticationOptions({
       rpID: new URL(this.deps.origin!).hostname,
       userVerification: 'required',
@@ -158,6 +163,9 @@ export class OperatorSessionService {
       throw new OperatorSignInError('verification_failed');
     let verified: Awaited<ReturnType<typeof verifyAuthenticationResponse>>;
     try {
+      const { verifyAuthenticationResponse } = await import(
+        '@simplewebauthn/server'
+      );
       verified = await verifyAuthenticationResponse({
         response,
         expectedChallenge: ceremony.challenge,
@@ -274,6 +282,9 @@ export class OperatorSessionService {
       throw new OperatorSignInError('verification_failed');
     let verified: Awaited<ReturnType<typeof verifyAuthenticationResponse>>;
     try {
+      const { verifyAuthenticationResponse } = await import(
+        '@simplewebauthn/server'
+      );
       verified = await verifyAuthenticationResponse({
         response,
         expectedChallenge: challenge,

@@ -12,15 +12,22 @@
 
 import {
   type ConnectionStatusResult,
+  ConnectionStore,
+  RejectingCredentialStorage,
   useConnectionStatus,
   useConnections,
 } from '@kontourai/station-connect';
 import type { StationProfileStore } from '@kontourai/station-contracts';
 import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
+import {
   authenticatedFetch,
   setClientCredentialResolver,
 } from '@kontourai/station-sdk';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, waitFor } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkServerHealth,
@@ -31,25 +38,57 @@ import { NativeStationProfileStorage } from '../../platform/native/stationProfil
 const nativeTransport = vi.hoisted(() => vi.fn<typeof fetch>());
 const native = vi.hoisted(() => ({
   repository: null as NativeStationProfileStorage | null,
+  store: null as ConnectionStore | null,
+  epoch: 0,
 }));
 
-vi.mock('../../platform/PlatformProfileContext', () => ({
-  nativeProfileRepository: () => {
-    if (!native.repository) throw new Error('native fixture is not ready');
-    return native.repository;
-  },
-  useNativeProfileSelection: () => async () => {},
-  useNativeProfileStoreEpoch: () => 0,
-  usePlatformProfile: () => ({
-    isTauri: true,
-    target: 'android',
-    isMobile: true,
-    isDesktop: false,
-    supervisesBundledServer: false,
-    isDevBuild: false,
-    channel: 'nightly',
-  }),
-}));
+vi.mock('@kontourai/station-connect', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@kontourai/station-connect')>();
+  const { createElement } = await import('react');
+  return {
+    ...actual,
+    ConnectionsProvider: (
+      props: ComponentProps<typeof actual.ConnectionsProvider>,
+    ) => {
+      if (!native.store)
+        throw new Error('native connection store is not ready');
+      return createElement(actual.ConnectionsProvider, {
+        ...props,
+        store: native.store,
+      });
+    },
+  };
+});
+
+vi.mock('../../platform/PlatformProfileContext', async () => {
+  const { useSyncExternalStore } = await import('react');
+  return {
+    nativeProfileRepository: () => {
+      if (!native.repository) throw new Error('native fixture is not ready');
+      return native.repository;
+    },
+    useNativeProfileSelection: () => async () => {},
+    useNativeProfileStoreEpoch: () =>
+      useSyncExternalStore(
+        (listener) =>
+          native.repository!.subscribeRelayRouteProfiles(() => {
+            native.epoch += 1;
+            listener();
+          }),
+        () => native.epoch,
+      ),
+    usePlatformProfile: () => ({
+      isTauri: true,
+      target: 'android',
+      isMobile: true,
+      isDesktop: false,
+      supervisesBundledServer: false,
+      isDevBuild: false,
+      channel: 'nightly',
+    }),
+  };
+});
 
 vi.mock('../../platform/useBundledServerStatus', () => ({
   useBundledServerStatus: () => null,
@@ -92,6 +131,11 @@ const PROFILE_STORE: StationProfileStore = {
   ],
 };
 
+const stationIdentityHeaders = {
+  'Content-Type': 'application/json',
+  [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+};
+
 const HANDSHAKE = {
   schemaVersion: 1,
   environmentId: 'environment-1',
@@ -107,6 +151,9 @@ const HANDSHAKE = {
 let connections: ReturnType<typeof useConnections> | undefined;
 let health: ConnectionStatusResult | undefined;
 let bindingId = '11111111-1111-4111-8111-111111111111';
+let profileStore: StationProfileStore;
+let authorizedOrigins: string[];
+let routeRefreshError: Error | undefined;
 
 function NativeHealthProbe() {
   connections = useConnections();
@@ -138,13 +185,17 @@ function markCurrentFailure() {
 describe('ApiBaseContext native health integration', () => {
   beforeEach(async () => {
     bindingId = '11111111-1111-4111-8111-111111111111';
-    const profileStore = structuredClone(PROFILE_STORE);
+    native.epoch = 0;
+    authorizedOrigins = [];
+    routeRefreshError = undefined;
+    profileStore = structuredClone(PROFILE_STORE);
     native.repository = new NativeStationProfileStorage({
       async invoke<T>(
         command: string,
         args?: Record<string, unknown>,
       ): Promise<T> {
-        if (command === 'station_profile_store_read') return profileStore as T;
+        if (command === 'station_profile_store_read')
+          return structuredClone(profileStore) as T;
         if (command === 'station_profile_authorize_active') {
           return {
             bindingId,
@@ -153,14 +204,29 @@ describe('ApiBaseContext native health integration', () => {
             )?.endpoint,
           } as T;
         }
+        if (command === 'station_profile_refresh_routes') {
+          expect(args).toEqual({ bindingId });
+          if (routeRefreshError) throw routeRefreshError;
+          return {
+            bindingId,
+            exactOrigin: profileStore.profiles[0].endpoint,
+            authorizedOrigins,
+            expiresAtMs: Date.now() + 600_000,
+          } as T;
+        }
         throw new Error(`unexpected native command: ${command}`);
       },
     });
     await native.repository.hydrate();
     await native.repository.authorizeDefaultProfile();
+    native.store = new ConnectionStore({
+      storage: native.repository,
+      credentialStorage: new RejectingCredentialStorage(),
+      locks: null,
+    });
     nativeTransport.mockReset();
     nativeTransport.mockImplementation(async () =>
-      Response.json({ bootId: 'boot-1' }),
+      Response.json({ bootId: 'boot-1' }, { headers: stationIdentityHeaders }),
     );
     vi.stubGlobal(
       'fetch',
@@ -176,9 +242,11 @@ describe('ApiBaseContext native health integration', () => {
   });
 
   afterEach(() => {
+    cleanup();
     connections = undefined;
     health = undefined;
     native.repository = null;
+    native.store = null;
     setClientCredentialResolver(undefined);
     vi.unstubAllGlobals();
   });
@@ -271,7 +339,12 @@ describe('ApiBaseContext native health integration', () => {
     expect(currentConnection().credentialState).toBe('required');
     expect(currentConnection().lastError?.reason).toBe('unreachable');
     await act(async () =>
-      releaseDeferredIdentity?.(Response.json({ bootId: 'boot-2' })),
+      releaseDeferredIdentity?.(
+        Response.json(
+          { bootId: 'boot-2' },
+          { headers: stationIdentityHeaders },
+        ),
+      ),
     );
     await waitFor(() =>
       expect(currentConnection().credentialState).toBe('saved'),
@@ -293,7 +366,12 @@ describe('ApiBaseContext native health integration', () => {
     await waitFor(() => expect(releaseStaleIdentity).toBeDefined());
     await act(async () => markCurrentFailure());
     await act(async () => {
-      releaseStaleIdentity?.(Response.json({ bootId: 'old-boot' }));
+      releaseStaleIdentity?.(
+        Response.json(
+          { bootId: 'old-boot' },
+          { headers: stationIdentityHeaders },
+        ),
+      );
       await staleRequest.catch(() => undefined);
     });
     expect(currentConnection().credentialState).toBe('required');
@@ -315,7 +393,12 @@ describe('ApiBaseContext native health integration', () => {
     bindingId = '22222222-2222-4222-8222-222222222222';
     await native.repository?.authorizeActiveConnection(currentConnection().id);
     await act(async () => {
-      releaseOldBinding?.(Response.json({ bootId: 'old-binding-boot' }));
+      releaseOldBinding?.(
+        Response.json(
+          { bootId: 'old-binding-boot' },
+          { headers: stationIdentityHeaders },
+        ),
+      );
       await expect(oldBindingRequest).rejects.toMatchObject({
         name: 'StationRequestAuthorityError',
       });
@@ -324,6 +407,199 @@ describe('ApiBaseContext native health integration', () => {
       credentialState: 'required',
       lastError: { reason: 'unreachable' },
     });
+  });
+
+  it('selects host-authorized HTTPS through health and the SDK while retaining local HTTP recovery', async () => {
+    const anchor = 'http://127.0.0.1:3774';
+    const alternate = 'https://kontour.example.test';
+    profileStore.profiles[0].endpoint = anchor;
+    profileStore.revision += 1;
+    await native.repository!.refresh();
+    await native.repository!.authorizeDefaultProfile();
+    render(
+      <ApiBaseProvider>
+        <NativeHealthProbe />
+      </ApiBaseProvider>,
+    );
+    await waitFor(() => expect(health?.status).toBe('connected'));
+    expect(currentConnection().url).toBe(anchor);
+    authorizedOrigins = [alternate];
+    await act(async () =>
+      native.repository!.refreshNativeRoutes(currentConnection().id),
+    );
+    await waitFor(() => expect(currentConnection().url).toBe(alternate));
+    const candidateIdentity = nativeTransport.mock.calls.find(
+      ([url]) => String(url) === `${alternate}/api/system/identity`,
+    );
+    expect(candidateIdentity).toBeDefined();
+    expect(candidateIdentity?.[1]).toMatchObject({
+      expectedBindingId: bindingId,
+      livenessProbe: true,
+      authorityGuard: expect.any(Function),
+    });
+    await authenticatedFetch(`${alternate}/api/system/status`);
+    expect(nativeTransport.mock.calls.at(-1)?.[0]).toBe(
+      `${alternate}/api/system/status`,
+    );
+    expect(
+      new Headers(nativeTransport.mock.calls.at(-1)?.[1]?.headers).has(
+        'Authorization',
+      ),
+    ).toBe(false);
+    expect(profileStore.profiles[0].endpoint).toBe(anchor);
+    expect(
+      currentConnection().endpoints.map((endpoint) => endpoint.url),
+    ).toContain(anchor);
+
+    const unknown = 'https://not-approved.example.test';
+    const publicAttempts = vi.mocked(fetch).mock.calls.length;
+    const privateAttempts = nativeTransport.mock.calls.length;
+    expect(
+      await probeServerConnection(
+        unknown,
+        undefined,
+        'environment-1',
+        new AbortController().signal,
+      ),
+    ).toMatchObject({ ok: false });
+    expect(vi.mocked(fetch).mock.calls).toHaveLength(publicAttempts);
+    expect(nativeTransport.mock.calls).toHaveLength(privateAttempts);
+
+    nativeTransport.mockImplementation(async (input) => {
+      if (new URL(String(input)).origin === alternate)
+        throw new Error('offline');
+      return Response.json(
+        { bootId: 'local-recovery' },
+        { headers: stationIdentityHeaders },
+      );
+    });
+    await act(async () => health?.recheck());
+    await waitFor(() => expect(currentConnection().url).toBe(anchor));
+    expect(health?.status).toBe('connected');
+    expect(profileStore.profiles[0].endpoint).toBe(anchor);
+  });
+
+  it('withdraws HTTPS receipts immediately after host refresh fails and recovers canonical health', async () => {
+    render(
+      <ApiBaseProvider>
+        <NativeHealthProbe />
+      </ApiBaseProvider>,
+    );
+    await waitFor(() => expect(health?.status).toBe('connected'));
+    const anchor = currentConnection().url;
+    const connectionId = currentConnection().id;
+    const alternate = 'https://kontour.example.test';
+    authorizedOrigins = [alternate];
+    await act(async () => native.repository!.refreshNativeRoutes(connectionId));
+    await waitFor(() => expect(currentConnection().url).toBe(alternate));
+    routeRefreshError = new Error('anchor proof unavailable');
+    await act(async () => {
+      await expect(
+        native.repository!.refreshNativeRoutes(connectionId),
+      ).rejects.toThrow('anchor proof unavailable');
+      expect(
+        native.repository!.captureNativeRequestBinding(connectionId, alternate),
+      ).toBeNull();
+      expect(
+        native.repository!.captureNativeRequestBinding(connectionId, anchor),
+      ).not.toBeNull();
+    });
+    await waitFor(() => expect(currentConnection().url).toBe(anchor));
+    expect(
+      currentConnection().endpoints.map((endpoint) => endpoint.url),
+    ).toEqual([anchor]);
+    await act(async () => health?.recheck());
+    await waitFor(() => expect(health?.status).toBe('connected'));
+    const privateAttempts = nativeTransport.mock.calls.length;
+    expect(
+      await probeServerConnection(
+        alternate,
+        undefined,
+        'environment-1',
+        new AbortController().signal,
+      ),
+    ).toMatchObject({ ok: false });
+    expect(nativeTransport.mock.calls).toHaveLength(privateAttempts);
+  });
+
+  it('does not send a native credential to an admitted route reporting another Station identity', async () => {
+    render(
+      <ApiBaseProvider>
+        <NativeHealthProbe />
+      </ApiBaseProvider>,
+    );
+    await waitFor(() => expect(health?.status).toBe('connected'));
+    const anchor = currentConnection().url;
+    const alternate = 'https://kontour.example.test';
+    vi.mocked(fetch).mockImplementation(async (input) =>
+      Response.json({
+        ...HANDSHAKE,
+        environmentId:
+          new URL(String(input)).origin === alternate
+            ? 'foreign-station'
+            : HANDSHAKE.environmentId,
+      }),
+    );
+    authorizedOrigins = [alternate];
+    await act(async () =>
+      native.repository!.refreshNativeRoutes(currentConnection().id),
+    );
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.some(([url]) => String(url).startsWith(alternate)),
+      ).toBe(true),
+    );
+    await waitFor(() => expect(health?.checking).toBe(false));
+    expect(currentConnection().url).toBe(anchor);
+    expect(
+      nativeTransport.mock.calls.some(([url]) =>
+        String(url).startsWith(alternate),
+      ),
+    ).toBe(false);
+  });
+
+  it('ignores an alternate health body after its host binding is retired', async () => {
+    render(
+      <ApiBaseProvider>
+        <NativeHealthProbe />
+      </ApiBaseProvider>,
+    );
+    await waitFor(() => expect(health?.status).toBe('connected'));
+    const anchor = currentConnection().url;
+    const alternate = 'https://kontour.example.test';
+    let releaseBody: (() => void) | undefined;
+    nativeTransport.mockImplementation(async (input) => {
+      if (new URL(String(input)).origin !== alternate)
+        return Response.json(
+          { bootId: 'canonical' },
+          { headers: stationIdentityHeaders },
+        );
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            releaseBody = () => {
+              controller.enqueue(
+                new TextEncoder().encode('{"bootId":"retired-alternate"}'),
+              );
+              controller.close();
+            };
+          },
+        }),
+        { headers: stationIdentityHeaders },
+      );
+    });
+    authorizedOrigins = [alternate];
+    await act(async () =>
+      native.repository!.refreshNativeRoutes(currentConnection().id),
+    );
+    await waitFor(() => expect(releaseBody).toBeDefined());
+    await native.repository!.authorizeDefaultProfile();
+    await act(async () => releaseBody?.());
+    await waitFor(() => expect(health?.checking).toBe(false));
+    expect(currentConnection().url).toBe(anchor);
+    expect(currentConnection().lastBootId).not.toBe('retired-alternate');
   });
 
   it('does not let a retired native binding body reach canonical health success', async () => {
@@ -350,7 +626,7 @@ describe('ApiBaseContext native health integration', () => {
         },
       });
       return new Response(body, {
-        headers: { 'Content-Type': 'application/json' },
+        headers: stationIdentityHeaders,
       });
     });
 

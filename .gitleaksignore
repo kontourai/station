@@ -154,3 +154,26 @@ c8c2b8917321681700ff0e07c948ed0c5b2ab407:src-server/providers/__tests__/codex-ad
 # repeated 'A1b2C3d4E5' pattern, not an issued credential). The file no longer
 # holds that literal; it builds the value at runtime.
 2d86f2a487009120ede353d3c6e98e13ab16d540:src-ui/src/__tests__/ChatDockBody.terminalSessionMarker.test.tsx:github-pat:499
+
+# #5133: idempotency-key test fixtures (fixed UUIDs) in the adopted
+# continuation dock route test, read by `generic-api-key` as `const key = '<id>'`.
+# They are request keys the test sends, not credentials. Pinned per line.
+bfe5439f0080d4a4ef048cca5fcceef8babf9948:src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts:generic-api-key:1490
+bfe5439f0080d4a4ef048cca5fcceef8babf9948:src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts:generic-api-key:1590
+bfe5439f0080d4a4ef048cca5fcceef8babf9948:src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts:generic-api-key:1638
+
+# #5446: turn request ids (random UUIDs) in the transcript markers fixture, an
+# event window recorded from a scripted test model in an isolated Station home.
+# `generic-api-key` reads the field name as a credential. They are request ids
+# the recorded turns carried, not credentials. Pinned per line.
+fa783b0f21acb553ec5ab4da0280d099238a86e4:src-ui/src/__tests__/fixtures/transcript-markers-window.json:generic-api-key:25
+edbdf00d787d5dfa2fbf63d242d32b19a9ad0d26:src-ui/src/__tests__/fixtures/transcript-markers-window.json:generic-api-key:31
+edbdf00d787d5dfa2fbf63d242d32b19a9ad0d26:src-ui/src/__tests__/fixtures/transcript-markers-window.json:generic-api-key:1352
+edbdf00d787d5dfa2fbf63d242d32b19a9ad0d26:src-ui/src/__tests__/fixtures/transcript-markers-window.json:generic-api-key:2924
+# The same three request ids as they exist on main: #5536 was squash-merged, so
+# the commit that carries them is the squash commit, not the branch commits
+# pinned above. Without these, every pull request that merges main fails the
+# scan on a commit it did not write.
+9b2ecff55f3d5106c7d3eb27123d0e2080e499f2:src-ui/src/__tests__/fixtures/transcript-markers-window.json:generic-api-key:31
+9b2ecff55f3d5106c7d3eb27123d0e2080e499f2:src-ui/src/__tests__/fixtures/transcript-markers-window.json:generic-api-key:1352
+9b2ecff55f3d5106c7d3eb27123d0e2080e499f2:src-ui/src/__tests__/fixtures/transcript-markers-window.json:generic-api-key:2924

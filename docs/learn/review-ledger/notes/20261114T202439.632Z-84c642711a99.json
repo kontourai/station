@@ -1,0 +1,11 @@
+{
+  "revision": "a2a228ec1bdd6760fef7250fc23b0139e9e48611",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Changed source was docs/reference/cli.md's approvals --agent provider-resolution paragraph only (an OpenCode connection's projected engine; acp and opencode chats both listed). This document makes no claim about approvals, connection provider resolution or OpenCode, so it stays accurate.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Changed source was docs/reference/cli.md's approvals --agent provider-resolution paragraph only (an OpenCode connection's projected engine; acp and opencode chats both listed). This document makes no claim about approvals, connection provider resolution or OpenCode, so it stays accurate.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Changed source was docs/reference/cli.md's approvals --agent provider-resolution paragraph only (an OpenCode connection's projected engine; acp and opencode chats both listed). This document makes no claim about approvals, connection provider resolution or OpenCode, so it stays accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]}
+  ]
+}

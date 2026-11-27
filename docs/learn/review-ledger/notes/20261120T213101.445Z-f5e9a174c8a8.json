@@ -1,0 +1,7 @@
+{
+  "revision": "f25d2a3dd1e02ae38c95f67ef2afc498c57e4c70",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the test fixture change for PR #5359 against the three documentation tools and the shipped bundle. Search, list and get now exercise a real in-memory MCP connection in the ranking suite. Ranking, snippets, source coordinates and the offline fetch sentinel pass without a production change. The source envelope and shipped-content limits remain accurate. Four focused suites passed (63 tests). Forcing the production search reply to return no hits failed 23 search cases before byte-for-byte restoration. This covers local MCP behavior and the built docs bundle, with no new hosted or provider qualification.","inputs":["docs/reference/station-docs.md","src-server/tools/__tests__/station-docs-mcp-server.test.ts"]}
+  ]
+}

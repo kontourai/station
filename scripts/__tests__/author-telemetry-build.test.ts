@@ -33,7 +33,7 @@ function guard(script: string, args: string[] = []) {
 }
 
 describe('official author telemetry build boundary', () => {
-  it('checks desktop and portable preview channel expressions, stamps representative server bundles as beta, and refuses invalid endpoints and non-official builds', () => {
+  it('checks desktop and portable release-candidate channel expressions, stamps representative server bundles as stable, and refuses retired preview tags, invalid endpoints and non-official builds', () => {
     const result = guard('check-author-telemetry-build.mjs');
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('Author telemetry build guard: PASS');
@@ -85,6 +85,39 @@ describe('official author telemetry build boundary', () => {
       );
       writeFileSync(file, original);
     }
+    const macStore = join(
+      fixture,
+      '.github/workflows/macos-store-delivery.yml',
+    );
+    const macStoreOriginal = readFileSync(macStore, 'utf8');
+    for (const mutation of [
+      (env: Record<string, string>) => {
+        delete env.STATION_AUTHOR_TELEMETRY_ENDPOINT;
+      },
+      (env: Record<string, string>) => {
+        env.STATION_AUTHOR_TELEMETRY_ENDPOINT =
+          env.STATION_AUTHOR_TELEMETRY_ENDPOINT.replace(
+            " && github.workflow_ref == format('kontourai/station/.github/workflows/release.yml@{0}', github.ref)",
+            '',
+          );
+      },
+    ]) {
+      const workflow = load(macStoreOriginal) as Workflow;
+      const build = workflow.jobs['macos-testflight'].steps?.find(
+        (step) =>
+          step.name === 'Build the Stable Mac bundle without a desktop updater',
+      );
+      if (!build?.env)
+        throw new Error('Missing Mac Store producer environment');
+      mutation(build.env);
+      writeFileSync(macStore, dump(workflow));
+      const rejected = guard('check-author-telemetry-workflows.mjs', [fixture]);
+      expect(rejected.status, rejected.stderr).toBe(1);
+      expect(rejected.stderr).toContain(
+        'macos-testflight/Build the Stable Mac bundle',
+      );
+    }
+    writeFileSync(macStore, macStoreOriginal);
     const portable = join(
       fixture,
       '.github/workflows/portable-server-archives.yml',

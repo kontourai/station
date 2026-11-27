@@ -1,0 +1,39 @@
+{
+  "revision": "e279d03a2623ed8ca21d0b61a2caf547c9c07276",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"This round renames the dock list controls to Chat list, leads inbox-page row menus with Mark done, counts only shown rows in the Needs attention heading, words the phone bulk notice by outcome and drops the row menu window Escape listener. I checked this page for claims about those; none changed.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"This round renames the dock list controls to Chat list, leads inbox-page row menus with Mark done, counts only shown rows in the Needs attention heading, words the phone bulk notice by outcome and drops the row menu window Escape listener. I checked this page for claims about those; none changed.","inputs":["CONTEXT.md","docs/glossary.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The desktop header toggle reads Hide chat list / Show chat list; the row menu no longer takes Escape from other surfaces (its own keydown closes it). Other claims unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/design/placement.md","note":"The crumb, phone back button, toggle and Chat actions entry now read Chat list; the list heading stays Chats. Checked against CodingWorkbench, ChatDockMobileHeader and inbox-toggle-label.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/useInboxGroups.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked the Mark done entry: the page write waits for the notice to close, and is lost on reload, tab close or Station switch; the dock list toggle now reads Show/Hide chat list.","inputs":["docs/glossary.md","src-ui/src/__tests__/session-state-word-consistency.test.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"This round renames the dock list controls to Chat list, leads inbox-page row menus with Mark done, counts only shown rows in the Needs attention heading, words the phone bulk notice by outcome and drops the row menu window Escape listener. I checked this page for claims about those; none changed.","inputs":["docs/guides/agent-configuration.md","src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"This round renames the dock list controls to Chat list, leads inbox-page row menus with Mark done, counts only shown rows in the Needs attention heading, words the phone bulk notice by outcome and drops the row menu window Escape listener. I checked this page for claims about those; none changed.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"This round renames the dock list controls to Chat list, leads inbox-page row menus with Mark done, counts only shown rows in the Needs attention heading, words the phone bulk notice by outcome and drops the row menu window Escape listener. I checked this page for claims about those; none changed.","inputs":["docs/guides/plugins.md","src-ui/src/app-shell/__tests__/ProjectLayoutRenderer.test.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Chat actions item and collapsed bar now read Chat list; bulk Mark done notice now says how many were hidden on this device. Checked against MobileInboxSelection and ChatDockMobileHeader.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"This round renames the dock list controls to Chat list, leads inbox-page row menus with Mark done, counts only shown rows in the Needs attention heading, words the phone bulk notice by outcome and drops the row menu window Escape listener. I checked this page for claims about those; none changed.","inputs":["docs/guides/starter-work.md","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/guides/ui-copy.md","note":"The noun gate also scans inbox-toggle-label.ts and retires Show/Hide chats; the copy rules here still hold.","inputs":["docs/guides/ui-copy.md","scripts/noun-consistency-gate.mjs"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"This round renames the dock list controls to Chat list, leads inbox-page row menus with Mark done, counts only shown rows in the Needs attention heading, words the phone bulk notice by outcome and drops the row menu window Escape listener. I checked this page for claims about those; none changed.","inputs":["docs/learn/walkthroughs.md","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"This round renames the dock list controls to Chat list, leads inbox-page row menus with Mark done, counts only shown rows in the Needs attention heading, words the phone bulk notice by outcome and drops the row menu window Escape listener. I checked this page for claims about those; none changed.","inputs":["docs/reference/session-api.md","src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"The drill-down row names the phone back button Chat list; selectors in cross-runtime and mobile specs follow.","inputs":["docs/testing/browser-smoke.md","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Added that a page Mark done not yet written is lost on reload, tab close or a Station switch; controls naming the list now read Chat list (back button, collapsed bar, Chat actions item); the list itself stays Chats.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts","src-ui/src/pages/NotificationsPage.tsx","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"This round renames the dock list controls to Chat list, leads inbox-page row menus with Mark done, counts only shown rows in the Needs attention heading, words the phone bulk notice by outcome and drops the row menu window Escape listener. I checked this page for claims about those; none changed.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"This round renames the dock list controls to Chat list, leads inbox-page row menus with Mark done, counts only shown rows in the Needs attention heading, words the phone bulk notice by outcome and drops the row menu window Escape listener. I checked this page for claims about those; none changed.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/pages/NotificationsPage.tsx"]}
+  ]
+}

@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -20,6 +21,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
+  check,
   describeFailure,
   INERT_INSTALL_TIMEOUT_ENV,
   inertInstallTimeout,
@@ -37,6 +39,7 @@ import {
   REPOSITORY_LIFECYCLE_SOURCES,
 } from '../dependency-lifecycle-workflow-gate.mjs';
 import { installGitIntegration } from '../install-git-hooks.mjs';
+import { DEPENDENCY_INSTALL_GUARD } from '../lib/dependency-install-retirement.mjs';
 import {
   allowlistDigest,
   assertNodePtyPrebuildConsistency,
@@ -314,6 +317,47 @@ function executeCapturedPtyChild({
 }
 
 describe('dependency lifecycle policy', () => {
+  it.each([false, true])(
+    'warns from the bootstrap check within 14 UTC days (GitHub Actions: %s)',
+    (githubActions) => {
+      const allowlist = structuredClone(policy);
+      for (const entry of allowlist.entries) entry.expiresAt = '2030-02-01';
+      const [lastDay, boundary, outside] = allowlist.entries;
+      lastDay.expiresAt = '2030-01-01';
+      boundary.expiresAt = '2030-01-15';
+      outside.expiresAt = '2030-01-16';
+
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2030-01-01T23:59:59.000Z'));
+      vi.stubEnv('GITHUB_ACTIONS', githubActions ? 'true' : undefined);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const prefix = githubActions
+        ? '::warning title=Dependency lifecycle approval expiring::'
+        : '[dependency-lifecycle] WARN: ';
+      try {
+        expect(check({ cwd: root, bootstrap: true, allowlist })).toBe(
+          allowlist,
+        );
+        expect(warn.mock.calls).toEqual(
+          [lastDay, boundary].map(({ path, purl, owner, expiresAt }) => [
+            `${prefix}${path} (${purl}, owner: ${owner}) is approved through ${expiresAt} UTC. Review this approval before it expires.`,
+          ]),
+        );
+
+        vi.setSystemTime(new Date('2030-01-02T00:00:00.000Z'));
+        warn.mockClear();
+        expect(() => check({ cwd: root, bootstrap: true, allowlist })).toThrow(
+          'approval has expired',
+        );
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+        vi.unstubAllEnvs();
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it('requires the PTY marker and a natural zero exit', () => {
     expect(() => assertPtyHandshakeOutcome('')).toThrow('no parseable outcome');
     expect(() =>
@@ -2286,6 +2330,101 @@ describe('dependency lifecycle policy', () => {
       expect(() =>
         inertInstallTimeout('linux', { [INERT_INSTALL_TIMEOUT_ENV]: value }),
       ).toThrow(INERT_INSTALL_TIMEOUT_ENV);
+    }
+  });
+
+  it('reports the real inert timeout and refuses a retry until the failed install is isolated', () => {
+    const fixture = makeTempDir('station-inert-timeout-');
+    const checkout = join(fixture, 'checkout');
+    const shim = join(fixture, 'pnpm.cjs');
+    mkdirSync(checkout);
+    writeFileSync(
+      join(checkout, 'package.json'),
+      JSON.stringify({ packageManager: 'pnpm@11.8.0' }),
+    );
+    writeFileSync(
+      shim,
+      `const fs = require('node:fs');
+if (process.argv[2] === '--version') { console.log('11.8.0'); process.exit(0); }
+if (process.argv[2] !== 'install' || !process.argv.includes('--frozen-lockfile')) process.exit(3);
+fs.appendFileSync('attempts', 'install\\n');
+fs.mkdirSync('node_modules');
+if (!fs.existsSync('previous-attempt')) {
+  fs.writeFileSync('node_modules/partial', 'incomplete');
+  setInterval(() => {}, 1000);
+} else {
+  fs.writeFileSync('node_modules/complete', 'installed');
+}`,
+    );
+    const verify = vi.fn(() => {
+      expect(
+        readFileSync(join(checkout, 'node_modules/complete'), 'utf8'),
+      ).toBe('installed');
+      return { allowlist: {}, purls: [] };
+    });
+    const run = () =>
+      install(
+        {},
+        {
+          root: checkout,
+          nodePath: process.execPath,
+          pnpmInvocation: (options) =>
+            pnpmInvocation({ ...options, env: { npm_execpath: shim } }),
+          command: () => {},
+          check: () => ({ entries: [] }),
+          pnpmCommand,
+          stageLifecyclePrebuilds: () => {},
+          runApprovedHooks: () => {},
+          stationOwnedHooks: () => {},
+          verify,
+          generateBuildInputs: () => {},
+        },
+      );
+    vi.stubEnv(INERT_INSTALL_TIMEOUT_ENV, '1000');
+    try {
+      let failure: unknown;
+      try {
+        run();
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(Error);
+      const log = vi.fn();
+      expect(reportCliFailure(failure, { log })).toBe(1);
+      expect(log).toHaveBeenCalledWith(
+        expect.stringMatching(/1000 ms.*STATION_DEPENDENCY_INSTALL_TIMEOUT_MS/),
+      );
+      const guard = join(checkout, DEPENDENCY_INSTALL_GUARD);
+      expect(
+        JSON.parse(readFileSync(join(guard, 'receipt.json'), 'utf8')),
+      ).toMatchObject({
+        phase: 'failed',
+      });
+      expect(existsSync(join(checkout, 'node_modules/partial'))).toBe(true);
+      expect(verify).not.toHaveBeenCalled();
+      expect(run).toThrow(/installer guard already exists/);
+      expect(readFileSync(join(checkout, 'attempts'), 'utf8')).toBe(
+        'install\n',
+      );
+
+      // This disposable shim creates no descendants, and the synchronous
+      // subprocess already exited. Preserve the failed receipt and tree.
+      const evidence = join(checkout, 'previous-attempt');
+      mkdirSync(evidence);
+      renameSync(
+        join(checkout, 'node_modules'),
+        join(evidence, 'node_modules'),
+      );
+      renameSync(guard, join(evidence, DEPENDENCY_INSTALL_GUARD));
+      run();
+      expect(verify).toHaveBeenCalledOnce();
+      expect(readFileSync(join(checkout, 'attempts'), 'utf8')).toBe(
+        'install\ninstall\n',
+      );
+      expect(existsSync(join(evidence, 'node_modules/partial'))).toBe(true);
+      expect(existsSync(guard)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 

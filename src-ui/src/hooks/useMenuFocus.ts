@@ -3,9 +3,7 @@ import {
   captureReturnFocus,
 } from '@kontourai/station-shared/return-focus';
 import { type RefObject, useEffect, useRef } from 'react';
-
-const FOCUSABLE =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+import { FOCUSABLE_SELECTOR } from '../utils/focusable';
 
 /**
  * Keeps a portalled menu reachable from the keyboard.
@@ -73,7 +71,8 @@ export function useMenuFocus<T extends HTMLElement>(
     // Fall back to the container when the menu has nothing focusable in it —
     // an empty notification popover, or one whose items have not arrived yet.
     // Leaving focus on the trigger would let Tab move behind the open popover.
-    let target = container?.querySelector<HTMLElement>(FOCUSABLE) ?? container;
+    let target =
+      container?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ?? container;
     target?.focus();
 
     // An item that loads after the menu opened (a lazily loaded "Add to
@@ -89,7 +88,8 @@ export function useMenuFocus<T extends HTMLElement>(
       container && typeof MutationObserver !== 'undefined'
         ? new MutationObserver(() => {
             if (settled) return;
-            const first = container.querySelector<HTMLElement>(FOCUSABLE);
+            const first =
+              container.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
             if (!first || first === target) return;
             if (
               document.activeElement !== target &&
@@ -192,7 +192,7 @@ export function useMenuFocus<T extends HTMLElement>(
       // `data-roving-skip` marks a secondary control beside a row (a remove
       // button) that the row's own keys reach, so arrows step row to row.
       const items = [
-        ...container.querySelectorAll<HTMLElement>(FOCUSABLE),
+        ...container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
       ].filter((item) => !item.hasAttribute('data-roving-skip'));
       if (items.length === 0) return;
       event.preventDefault();

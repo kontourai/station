@@ -4,6 +4,10 @@ import {
 } from './agent-identity.js';
 import type { ContributionConfig } from './contribution.js';
 import type { DistributionProfileSelection } from './distribution.js';
+import {
+  type ConfinedNetworkSetting,
+  parseConfinedNetworkSetting,
+} from './execution-confinement.js';
 import type { FleetContributionConfig } from './fleet-contribution.js';
 import type { TelemetryTierChoices } from './product-telemetry.js';
 import type { ApprovalMode } from './provider.js';
@@ -113,6 +117,7 @@ export interface AppConfig {
   telemetryTier?: TelemetryTierChoices;
   /** Opt-in local DNS-SD publication; absent is disabled. */
   lanDiscoveryEnabled?: boolean;
+  trustedConsentOrigin?: string;
   /** Operator classification of public catalog source keys; absent means none. */
   publicTelemetryRegistries?: string[];
   /** Lower publisher defaults only; never grants Full or replaces user choice. */
@@ -167,6 +172,15 @@ export interface AppConfig {
   mobileDeviceHubUrl?: string;
   disableDefaultSkillRegistries?: boolean;
   approvalGuardian?: ApprovalGuardianConfig;
+  /**
+   * #4769: the network a confined session may reach. Absent or `full`: open,
+   * as before. `restricted`: every start that requires confinement reaches
+   * only Station's loopback egress broker, which admits the engine's own
+   * model endpoint and `allowedHosts`. A start whose mechanism cannot
+   * restrict the network is refused. The operator's own `host` sessions are
+   * not confined and are unaffected. A managed policy can lock it.
+   */
+  confinedNetwork?: ConfinedNetworkSetting;
   /**
    * Render resolved MCP tool UIs in a sandboxed iframe (MCP Apps host).
    * **Default on** — set `false` to opt out, which makes a successfully-resolved
@@ -433,6 +447,58 @@ export interface TemplateVariable {
   format?: string;
 }
 
+const templateDateTimeStringOptions = new Set([
+  'calendar',
+  'dateStyle',
+  'day',
+  'dayPeriod',
+  'era',
+  'formatMatcher',
+  'hour',
+  'hourCycle',
+  'localeMatcher',
+  'minute',
+  'month',
+  'numberingSystem',
+  'second',
+  'timeStyle',
+  'timeZone',
+  'timeZoneName',
+  'weekday',
+  'year',
+]);
+
+/** Parse authored Intl options without coercing JSON values or ignoring typos. */
+export function parseTemplateDateTimeFormat(
+  type: 'date' | 'time' | 'datetime',
+  format: unknown,
+  name: string,
+): Intl.DateTimeFormatOptions | undefined {
+  if (format === undefined || format === '') return undefined;
+  try {
+    if (typeof format !== 'string') throw new TypeError();
+    const options: unknown = JSON.parse(format);
+    if (!options || typeof options !== 'object' || Array.isArray(options))
+      throw new TypeError();
+    for (const [key, value] of Object.entries(options)) {
+      const valid =
+        (key === 'hour12' && typeof value === 'boolean') ||
+        (key === 'fractionalSecondDigits' && Number.isInteger(value)) ||
+        (templateDateTimeStringOptions.has(key) && typeof value === 'string');
+      if (!valid) throw new TypeError();
+    }
+    const date = new Date(0);
+    if (type === 'date') date.toLocaleDateString('en-US', options);
+    else if (type === 'time') date.toLocaleTimeString('en-US', options);
+    else date.toLocaleString('en-US', options);
+    return options;
+  } catch {
+    throw new Error(
+      `Format for "${name}" must be a JSON object with valid ${type} Intl.DateTimeFormat options.`,
+    );
+  }
+}
+
 /** Validate the JSON date/time options used by template-variable consumers. */
 export function templateVariableFormatError(
   variables: unknown,
@@ -441,23 +507,17 @@ export function templateVariableFormatError(
   for (const value of variables) {
     if (!value || typeof value !== 'object') continue;
     const variable = value as Record<string, unknown>;
-    const type = variable.type;
+    const { type, format, key } = variable;
     if (type !== 'date' && type !== 'time' && type !== 'datetime') continue;
-    if (variable.format === undefined || variable.format === '') continue;
     try {
-      if (typeof variable.format !== 'string')
-        throw new Error('invalid format');
-      const options: unknown = JSON.parse(variable.format);
-      if (!options || typeof options !== 'object' || Array.isArray(options))
-        throw new Error('invalid options');
-      const date = new Date(0);
-      if (type === 'date') date.toLocaleDateString(undefined, options);
-      else if (type === 'time') date.toLocaleTimeString(undefined, options);
-      else date.toLocaleString(undefined, options);
-    } catch {
-      const name =
-        typeof variable.key === 'string' ? variable.key : 'template variable';
-      return `Format for "${name}" must be a JSON object with valid ${type} options.`;
+      parseTemplateDateTimeFormat(
+        type,
+        format,
+        typeof key === 'string' ? key : 'template variable',
+      );
+    } catch (error) {
+      if (error instanceof Error) return error.message;
+      throw error;
     }
   }
   return undefined;
@@ -650,8 +710,15 @@ export function hasAppConfigStationDecision(
  */
 export function appConfigSemanticError(config: unknown): string | undefined {
   if (!config || typeof config !== 'object') return undefined;
-  const { templateVariables, builtinAgentEngineConnectionId } =
+  const { templateVariables, builtinAgentEngineConnectionId, confinedNetwork } =
     config as Partial<AppConfig>;
+  // #4769: every allowed host as the broker reads it, so a value that would
+  // refuse every confined start is refused when it is written.
+  if (
+    confinedNetwork !== undefined &&
+    !parseConfinedNetworkSetting(confinedNetwork)
+  )
+    return 'confinedNetwork: each allowedHosts entry must be host, host:port, *.domain or an IP literal (IPv6 in brackets), with an optional port.';
   const formatError = templateVariableFormatError(templateVariables);
   if (formatError) return `templateVariables: ${formatError}`;
   if (

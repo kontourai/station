@@ -1,7 +1,0 @@
-{
-  "revision": "98520aafa2458027dc089267132969e10425267e",
-
-  "notes": [
-    {"path":"docs/reference/cli.md","note":"Rechecked after renaming the telemetry status test cases (labels only; same arguments and assertions). The cli.md telemetry claims (anonymous alias for built-in publishers, plugin lite unchanged, JSON unchanged) still match packages/cli/src/commands/telemetry.ts.","inputs":["docs/reference/cli.md","packages/cli/src/__tests__/telemetry-command.test.ts"]}
-  ]
-}

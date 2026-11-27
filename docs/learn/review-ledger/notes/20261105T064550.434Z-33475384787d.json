@@ -1,7 +1,0 @@
-{
-  "revision": "837761e7c3c38f014640da0b5849d18d8fc43c2a",
-
-  "notes": [
-    {"path":"docs/guides/acp.md","note":"#4515 fix round 2: acp-adapter.ts getPrerequisites now answers a managed refusal (status error, the organization's sentence) before running anything when the policy does not allow ACP engines; engine-auth-status and the OpenCode agent reader no longer run the program then. Read this doc's availability-probe and launchEnv passages (lines 129, 579): the periodic probe already does not start a disallowed engine (round 1) and nothing here claims a disallowed engine is probed; consistent.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/acp/opencode-approval-verify.ts"]}
-  ]
-}

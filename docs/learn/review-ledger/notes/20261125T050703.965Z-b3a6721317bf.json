@@ -1,0 +1,9 @@
+{
+  "revision": "8126402168f8c220092ed24a029e0ccf4a408d11",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed BrowserSessionService caller and lifecycle claims. The phone case checks full viewport layout, decoded frames from the controlled fixture and focus restoration with inline activity off. It uses a fixture for frame production.","inputs":["tests/inline-browser-activity.spec.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed BrowserSessionService caller and lifecycle claims. The phone case checks full viewport layout, decoded frames from the controlled fixture and focus restoration with inline activity off. It uses a fixture for frame production.","inputs":["tests/inline-browser-activity.spec.ts"]}
+  ]
+}

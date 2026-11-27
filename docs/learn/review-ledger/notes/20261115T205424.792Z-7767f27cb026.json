@@ -1,0 +1,7 @@
+{
+  "revision": "56920ae9d20b419b879ed1828ae140fa97ac0832",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"system-status row still covers workload budget shapes; WorkloadScopeCleanup* types are additive optional fields on WorkloadBudgetStatus.","inputs":["docs/reference/contracts.md","packages/contracts/src/system-status.ts"]}
+  ]
+}

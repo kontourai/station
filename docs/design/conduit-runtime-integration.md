@@ -36,12 +36,22 @@ event. Invocation completion is an approximated `stop` projection for both
 frameworks. These are capability classifications for this hook seam, not proof
 of every provider's execution or cancellation behavior.
 
+Station builds this adapter with Conduit's `createInProcessHostAdapter`, which
+applies Station's narrower capabilities after the framework adapter's own
+projection. An unavailable phase projects to `observe`, and a `modelContext` is
+dropped on every phase. Building it with a Conduit factory, not by hand, is what
+lets Conduit 0.8's probe use its inert install path. That path records the
+install receipt without registering anything. A hand-built adapter is refused
+with `UnsafeConformanceProbeError` (`no-inert-install`).
+
 The committed [JSON evidence](../conformance/station-runtime-conformance.json)
 and [generated matrix](../conformance/station-runtime-conformance.md) are
 labelled host-bound to exact framework versions in `pnpm-lock.yaml`. These
 portable probes exercise the Station projection and record the lockfile's host
 identities; they do not connect a model provider or execute an entire framework
-invocation. The
+invocation. The report uses Conduit's schema version 3: each entry carries
+`installEvidence: "inert"` and the `probe.install-io=not-exercised` limitation,
+because Station supplies no install I/O for the probe to run. The
 [generator](../../scripts/generate-runtime-conformance.mjs) reads the root
 importer's locked versions. Run
 `npm run conduit:conformance:generate` after changing Conduit or a framework.

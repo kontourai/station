@@ -130,7 +130,6 @@ function extractBearerToken(header: string | undefined): string | undefined {
 }
 
 interface StationControlMcpRouteOptions {
-  progressiveToolsEnabled?: () => boolean;
   serverId?: BuiltinStationApiMcpId;
   /** THIS running instance's actually-bound HTTP port — never read from
    * `process.env.PORT`/`STATION_PORT` (see this module's header comment
@@ -273,12 +272,8 @@ export function createStationControlMcpRoutes(
               undefined,
               serverId,
               listableFor,
-              options.progressiveToolsEnabled?.() && candidate
-                ? stationControlDisclosureForToken(
-                    candidate,
-                    options.progressiveToolsEnabled,
-                  )
-                : undefined,
+              // Only a credential minted with `toolFamilies` has one.
+              stationControlDisclosureForToken(candidate!),
             ),
       { legacy: 'stateless', responseMode: 'auto' },
     );

@@ -1,7 +1,16 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
-import { existsSync, realpathSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
@@ -72,12 +81,12 @@ export function resolveFocusedTestFiles(args, root = SCRIPT_ROOT) {
 /**
  * @param {readonly string[]} args
  * @param {string} [root]
- * @param {{ testTimeoutMs?: number }} [options]
+ * @param {{ testTimeoutMs?: number, reportProgress?: boolean }} [options]
  */
 export function buildFocusedVitestInvocation(
   args,
   root = SCRIPT_ROOT,
-  { testTimeoutMs } = {},
+  { testTimeoutMs, reportProgress = false } = {},
 ) {
   if (
     testTimeoutMs !== undefined &&
@@ -88,7 +97,25 @@ export function buildFocusedVitestInvocation(
     throw new Error('testTimeoutMs must be a positive timer-range integer');
   }
   const realRoot = realpathSync(root);
-  const tests = resolveFocusedTestFiles(args, realRoot);
+  const files = [];
+  const testNames = [];
+  for (const argument of args) {
+    if (!argument.startsWith('--test-name=')) {
+      files.push(argument);
+      continue;
+    }
+    const name = argument.slice('--test-name='.length);
+    if (!name || name.trim() !== name || /[\r\n\0]/.test(name)) {
+      throw new Error(
+        '--test-name requires a nonempty fully qualified literal name',
+      );
+    }
+    if (testNames.includes(name)) {
+      throw new Error(`duplicate --test-name: ${name}`);
+    }
+    testNames.push(name);
+  }
+  const tests = resolveFocusedTestFiles(files, realRoot);
   const vitestPath = path.join(
     realRoot,
     'node_modules',
@@ -103,6 +130,7 @@ export function buildFocusedVitestInvocation(
   return {
     root: realRoot,
     tests,
+    testNames,
     command: process.execPath,
     args: [
       vitestPath,
@@ -112,9 +140,21 @@ export function buildFocusedVitestInvocation(
       ...tests,
       '--maxWorkers=1',
       '--no-file-parallelism',
+      ...(testNames.length
+        ? [
+            '--testNamePattern',
+            `^(?:${testNames.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`,
+          ]
+        : []),
       ...(testTimeoutMs === undefined
         ? []
         : [`--testTimeout=${testTimeoutMs}`]),
+      ...(reportProgress
+        ? [
+            '--reporter=default',
+            `--reporter=${path.join(realRoot, 'scripts', 'vitest-inflight-reporter.mjs')}`,
+          ]
+        : []),
     ],
   };
 }
@@ -140,7 +180,29 @@ export function inspectFocusedVitestOutput(output, expectedRoot) {
   };
 }
 
-export function focusedVitestVerdict({ inspection, invocation, exitCode }) {
+/**
+ * @param {{
+ *   inspection: ReturnType<typeof inspectFocusedVitestOutput>,
+ *   invocation: ReturnType<typeof buildFocusedVitestInvocation>,
+ *   exitCode: number | null,
+ *   signal?: NodeJS.Signals | null,
+ *   selectionReport?: Pick<import('vitest/reporters').JsonTestResults,
+ *     'success' | 'numFailedTests' | 'numFailedTestSuites' | 'numPassedTests' | 'testResults'> | null,
+ * }} options
+ */
+export function focusedVitestVerdict({
+  inspection,
+  invocation,
+  exitCode,
+  signal = null,
+  selectionReport = null,
+}) {
+  if (exitCode === null) {
+    return {
+      exitCode: 2,
+      diagnostic: `Vitest did not complete${signal ? ` (signal ${signal})` : ''}: missing exit code`,
+    };
+  }
   if (inspection.runRoot !== inspection.expectedRoot) {
     return {
       exitCode: 2,
@@ -153,12 +215,34 @@ export function focusedVitestVerdict({ inspection, invocation, exitCode }) {
       diagnostic: `existing focused test files collected zero tests under ${invocation.root}: ${invocation.tests.join(', ')}`,
     };
   }
+  if (exitCode === 0 && invocation.testNames.length) {
+    const assertions = selectionReport?.testResults?.flatMap(
+      (suite) => suite.assertionResults,
+    );
+    const passed = assertions?.filter((test) => test.status === 'passed');
+    if (
+      selectionReport?.success !== true ||
+      selectionReport.numFailedTests !== 0 ||
+      selectionReport.numFailedTestSuites !== 0 ||
+      selectionReport.numPassedTests !== invocation.testNames.length ||
+      passed?.length !== invocation.testNames.length ||
+      invocation.testNames.some((name) => {
+        const matching = assertions.filter((test) => test.fullName === name);
+        return matching.length !== 1 || matching[0].status !== 'passed';
+      })
+    ) {
+      return {
+        exitCode: 2,
+        diagnostic: `selected tests did not all pass exactly once: expected ${invocation.testNames.length} named cases, observed ${passed?.length ?? 0} passed`,
+      };
+    }
+  }
   return { exitCode, diagnostic: null };
 }
 
 /**
  * @param {readonly string[]} args
- * @param {{ root?: string, spawnProcess?: typeof spawn, assertDependencyProvenance?: typeof assertWorkspacePackageProvenance, testTimeoutMs?: number }} [options]
+ * @param {{ root?: string, spawnProcess?: typeof spawn, assertDependencyProvenance?: typeof assertWorkspacePackageProvenance, testTimeoutMs?: number, reportProgress?: boolean }} [options]
  */
 export async function runFocusedTests(
   args,
@@ -167,58 +251,91 @@ export async function runFocusedTests(
     spawnProcess = spawn,
     assertDependencyProvenance = assertWorkspacePackageProvenance,
     testTimeoutMs,
+    reportProgress = false,
   } = {},
 ) {
   assertDependencyProvenance({ cwd: root });
   const invocation = buildFocusedVitestInvocation(args, root, {
     testTimeoutMs,
+    reportProgress,
   });
   process.stdout.write(
     `[test:focused] root=${invocation.root}; files=${invocation.tests.length}\n`,
   );
 
-  let evidence = '';
-  let spawnError = null;
-  const child = spawnProcess(invocation.command, invocation.args, {
-    cwd: invocation.root,
-    stdio: ['inherit', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
-
-  for (const [stream, destination] of [
-    [child.stdout, process.stdout],
-    [child.stderr, process.stderr],
-  ]) {
-    stream?.on('data', (chunk) => {
-      const text = chunk.toString();
-      evidence = retainEvidence(evidence, text);
-      destination.write(chunk);
-    });
-  }
-  child.on('error', (error) => {
-    spawnError = error;
-  });
-
-  const result = await new Promise((resolve) => {
-    child.on('close', (exitCode, signal) => resolve({ exitCode, signal }));
-  });
-  if (spawnError || result.exitCode === null) {
-    process.stderr.write(
-      `[test:focused] Vitest did not complete${result.signal ? ` (signal ${result.signal})` : ''}: ${spawnError?.message ?? 'missing exit code'}\n`,
+  let reportDirectory;
+  let reportPath;
+  if (invocation.testNames.length) {
+    const reportsRoot =
+      process.env.STATION_TEMP_ROOT || path.join(tmpdir(), 'station');
+    mkdirSync(reportsRoot, { recursive: true });
+    reportDirectory = mkdtempSync(path.join(reportsRoot, 'focused-selection-'));
+    reportPath = path.join(reportDirectory, 'result.json');
+    invocation.args.push(
+      ...(!reportProgress ? ['--reporter=default'] : []),
+      '--reporter=json',
+      `--outputFile.json=${reportPath}`,
     );
-    return 2;
   }
 
-  const inspection = inspectFocusedVitestOutput(evidence, invocation.root);
-  const verdict = focusedVitestVerdict({
-    inspection,
-    invocation,
-    exitCode: result.exitCode,
-  });
-  if (verdict.diagnostic) {
-    process.stderr.write(`[test:focused] ${verdict.diagnostic}\n`);
+  try {
+    let evidence = '';
+    let spawnError = null;
+    const child = spawnProcess(invocation.command, invocation.args, {
+      cwd: invocation.root,
+      stdio: ['inherit', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+
+    for (const [stream, destination] of [
+      [child.stdout, process.stdout],
+      [child.stderr, process.stderr],
+    ]) {
+      stream?.on('data', (chunk) => {
+        const text = chunk.toString();
+        evidence = retainEvidence(evidence, text);
+        destination.write(chunk);
+      });
+    }
+    child.on('error', (error) => {
+      spawnError = error;
+    });
+
+    const result = await new Promise((resolve) => {
+      child.on('close', (exitCode, signal) => resolve({ exitCode, signal }));
+    });
+    if (spawnError) {
+      process.stderr.write(
+        `[test:focused] Vitest did not complete${result.signal ? ` (signal ${result.signal})` : ''}: ${spawnError?.message ?? 'missing exit code'}\n`,
+      );
+      return 2;
+    }
+
+    const inspection = inspectFocusedVitestOutput(evidence, invocation.root);
+    const selectionReport =
+      reportPath && result.exitCode === 0
+        ? JSON.parse(readFileSync(reportPath, 'utf8'))
+        : null;
+    const verdict = focusedVitestVerdict({
+      inspection,
+      invocation,
+      exitCode: result.exitCode,
+      signal: result.signal,
+      selectionReport,
+    });
+    if (verdict.diagnostic) {
+      process.stderr.write(`[test:focused] ${verdict.diagnostic}\n`);
+    }
+    if (verdict.exitCode === 0 && invocation.testNames.length) {
+      process.stdout.write(
+        `[test:focused] selected named cases passed: ${JSON.stringify(invocation.testNames)}\n`,
+      );
+    }
+    return verdict.exitCode;
+  } finally {
+    if (reportDirectory)
+      rmSync(reportDirectory, { recursive: true, force: true });
   }
-  return verdict.exitCode;
 }
 
 async function main() {

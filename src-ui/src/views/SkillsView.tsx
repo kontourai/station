@@ -107,9 +107,33 @@ function skillWriteRefusalNote(refusal: SkillWriteRefusal): string {
   const remedy = Object.hasOwn(SKILL_WRITE_REMEDY, refusal.reason)
     ? SKILL_WRITE_REMEDY[refusal.reason]
     : undefined;
-  return remedy
-    ? `Read-only. ${refusal.detail} ${remedy}`
-    : `Read-only. ${refusal.detail}`;
+  return remedy ? `${refusal.detail} ${remedy}` : refusal.detail;
+}
+
+function skillMutationRefusal(error: unknown): SkillWriteRefusal | undefined {
+  if (
+    !(error instanceof Error) ||
+    !('code' in error) ||
+    error.code !== 'skill-not-owned' ||
+    !('details' in error)
+  )
+    return;
+  const details = error.details;
+  if (
+    !details ||
+    typeof details !== 'object' ||
+    !('reason' in details) ||
+    typeof details.reason !== 'string' ||
+    !('packageDirectory' in details) ||
+    typeof details.packageDirectory !== 'string' ||
+    !Object.hasOwn(SKILL_WRITE_REMEDY, details.reason)
+  )
+    return;
+  return {
+    reason: details.reason as SkillWriteRefusalReason,
+    detail: 'The skill package was read-only when Station checked.',
+    packageDirectory: details.packageDirectory,
+  };
 }
 
 export function SkillsView({
@@ -135,6 +159,11 @@ export function SkillsView({
   >(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [writeFailure, setWriteFailure] = useState<{
+    selection: string | null;
+    authorityKey: string | undefined;
+    refusal: SkillWriteRefusal;
+  }>();
   const splitPaneSelectedId = isCreating ? '__new__' : selectedId;
   const [form, setForm] = useState<SkillForm>(EMPTY_SKILL_FORM);
   const formRef = useRef(form);
@@ -145,6 +174,11 @@ export function SkillsView({
   const { showToast } = useToast();
   const { apiBase } = useApiBase();
   const requestAuthorityScope = useHostRequestAuthorityScope();
+  const mutationRefusal =
+    writeFailure?.selection === rawSelectedId &&
+    writeFailure?.authorityKey === requestAuthorityScope?.authorityKey
+      ? writeFailure?.refusal
+      : undefined;
   const select = useCallback(
     (id: string) =>
       navigate(
@@ -254,6 +288,9 @@ export function SkillsView({
     () => filterSkills(skills, '', filter === 'commands'),
     [skills, filter],
   );
+  // No skill at all (not merely none on the Commands tab): the list's empty
+  // state carries the two ways to add one, so the header link is dropped.
+  const librarySettledEmpty = !isLoading && !skillsError && skills.length === 0;
 
   const selected = skills.find((skill) => skill.name === selectedId);
   const selectedSkillName =
@@ -332,7 +369,22 @@ export function SkillsView({
           applyReturnFocus([search]);
         });
       },
-      onError: () => showToast('Failed to remove skill'),
+      onError: (error) => {
+        const refusal = skillMutationRefusal(error);
+        if (
+          refusal &&
+          removalAttemptRef.current === attempt &&
+          removalScopeRef.current === scope &&
+          authority?.isCurrent() !== false
+        ) {
+          setWriteFailure({
+            selection: rawSelectedId,
+            authorityKey: authority?.authorityKey,
+            refusal,
+          });
+        }
+        showToast('The skill could not be removed.');
+      },
     });
   }
   // This view already owns the exact active Station origin. Passing it into
@@ -359,6 +411,7 @@ export function SkillsView({
   useEffect(() => {
     setIsCreating(rawSelectedId === 'new');
     setIsEditing(false);
+    setWriteFailure(undefined);
   }, [rawSelectedId]);
 
   useEffect(() => {
@@ -399,6 +452,8 @@ export function SkillsView({
     const payload = buildSkillPayload(form);
     const submittedForm = form;
     const submittedSelection = rawSelectedId;
+    const authority = requestAuthorityScope;
+    setWriteFailure(undefined);
     try {
       if (isCreating) {
         await createLocalMutation.mutateAsync(payload);
@@ -414,10 +469,28 @@ export function SkillsView({
       if (isCreating) setPendingCreatedSkill(payload.name);
       setDirty(false);
     } catch (error) {
+      const refusal = skillMutationRefusal(error);
+      if (
+        refusal &&
+        !isCreating &&
+        selectionRef.current === submittedSelection &&
+        authority?.isCurrent() !== false
+      ) {
+        setWriteFailure({
+          selection: submittedSelection,
+          authorityKey: authority?.authorityKey,
+          refusal,
+        });
+      }
       showToast(
-        error instanceof Error
+        isCreating ||
+          (error instanceof Error &&
+            'status' in error &&
+            error.status === 400 &&
+            'details' in error &&
+            error.details !== undefined)
           ? userFacingErrorMessage(error)
-          : 'Failed to save skill',
+          : 'The changes could not be saved.',
       );
     }
   }
@@ -547,6 +620,7 @@ export function SkillsView({
   const sourceLabel = selected
     ? skillSourceLabel(selected.origin)
     : 'Source unrecorded';
+  const writeRefusal = mutationRefusal ?? selected?.writeRefusal;
   const statsSummary = selected ? formatSkillStatsSummary(selected) : null;
   const showEditor = isCreating || isEditing;
   const variables = formVariables(form);
@@ -573,51 +647,60 @@ export function SkillsView({
         searchInputRef={searchInputRef}
         listFilteredEmptyNoun="skills"
         collectionEmpty={tabFiltered.length === 0}
-        searchPlaceholder="Search skills..."
+        searchPlaceholder="Search skills…"
         onAdd={handleAddSkill}
         addLabel="New skill"
         listEmptyTitle={
-          filter === 'commands'
-            ? 'No skills are commands yet'
-            : 'No installed skills yet'
+          filter === 'commands' ? 'No skills are commands yet' : 'No skills yet'
         }
         listEmptyDescription={
           filter === 'commands'
             ? 'Open a skill and turn on "Runnable as a slash command" to give it a /command.'
-            : 'Create a workspace skill here, or browse Registry to discover skills to install.'
+            : 'Reusable instructions an agent can follow.'
         }
         headerActions={
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => navigate('/registry/skills')}
-          >
-            Browse Registry Skills
-          </Button>
+          librarySettledEmpty ? undefined : (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => navigate('/registry/skills')}
+            >
+              Browse Registry Skills
+            </Button>
+          )
         }
         emptyIcon={<EngineGlyph />}
+        emptyTitle="Select a skill to see what it does"
+        emptyDescription="Choose a skill to see what it does and use it in a new chat."
         listIntro={
           <>
-            <p className="skill-library__intro">
-              Select a skill to see what it does and use it in a new chat.
-            </p>
             {/* List chrome sits above the rows, not in a footer: a footer over
                 a scrolling list shares its place with the rows a scroll
                 reaches. */}
             <div className="skill-library__list-actions">
-              <button
-                type="button"
-                className="split-pane__add-btn split-pane__add-btn--secondary"
-                aria-pressed={filter === 'commands'}
-                onClick={() =>
-                  navigate(basePath, {
-                    tab: 'skills',
-                    filter: filter === 'commands' ? null : 'commands',
-                  })
-                }
-              >
-                Commands only
-              </button>
+              {librarySettledEmpty ? (
+                <button
+                  type="button"
+                  className="split-pane__add-btn"
+                  onClick={() => navigate('/registry/skills')}
+                >
+                  Browse Registry
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="split-pane__add-btn split-pane__add-btn--secondary"
+                  aria-pressed={filter === 'commands'}
+                  onClick={() =>
+                    navigate(basePath, {
+                      tab: 'skills',
+                      filter: filter === 'commands' ? null : 'commands',
+                    })
+                  }
+                >
+                  Commands only
+                </button>
+              )}
               <button
                 type="button"
                 className="split-pane__add-btn split-pane__add-btn--secondary"
@@ -632,53 +715,14 @@ export function SkillsView({
             </div>
           </>
         }
-        emptyContent={
-          <div className="skill-library__welcome">
-            <EngineGlyph />
-            <h3>Good instructions, ready to reuse</h3>
-            <p>
-              Skills give an agent a repeatable way to approach a task. Choose
-              one from your library, review its instructions, and start a chat.
-            </p>
-            <div className="skill-library__next">
-              <h3>Find your next skill</h3>
-              <p>Browse the skill catalogs available through Registry.</p>
-              <Button onClick={() => navigate('/registry/skills')}>
-                Find skills in Registry
-              </Button>
-            </div>
-            <div className="skill-library__next">
-              <h3>Bring your own instructions</h3>
-              <p>
-                Import standalone Markdown skill files, or write a skill here.
-                Plugin packages are loaded through Registry.
-              </p>
-              <div className="skill-library__actions">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setImportResults(null);
-                    setImportError(null);
-                    setShowImportModal(true);
-                  }}
-                >
-                  Import skill files
-                </Button>
-                <Button variant="secondary" onClick={handleAddSkill}>
-                  Create a skill
-                </Button>
-              </div>
-            </div>
-          </div>
-        }
       >
         {(editableLocal || selected) && (
           <div className="skill-detail">
             <DetailHeader
               title={
                 isCreating
-                  ? 'New Skill'
-                  : form.name || selected?.name || 'Edit Skill'
+                  ? 'New skill'
+                  : form.name || selected?.name || 'Edit skill'
               }
               badge={
                 dirty
@@ -802,11 +846,11 @@ export function SkillsView({
                         advice that cannot be followed. The fallback covers a
                         server that stated no decision: Save is still withheld,
                         and saying so without a reason beats inventing one. */}
-                    {!editableLocal && (
+                    {(!editableLocal || mutationRefusal) && (
                       <>
                         <p className="skill-detail__source-note">
-                          {selected?.writeRefusal
-                            ? skillWriteRefusalNote(selected.writeRefusal)
+                          {writeRefusal
+                            ? `${mutationRefusal ? '' : 'Read-only. '}${skillWriteRefusalNote(writeRefusal)}`
                             : 'This skill is read-only here. Browse Registry to discover or install skills; create a new workspace skill to author one.'}
                         </p>
                         {/* The path is AUTHOR-CONTROLLED — a plugin names its
@@ -818,14 +862,12 @@ export function SkillsView({
                             read as a session-expiry notice pointing the reader
                             at another domain (#1655 review low). React escapes
                             markup; framing was the whole attack. */}
-                        {selected?.writeRefusal?.packageDirectory && (
+                        {writeRefusal?.packageDirectory && (
                           <p className="skill-detail__source-path">
                             <span className="skill-detail__source-path-label">
                               Package directory
                             </span>
-                            <code>
-                              {selected.writeRefusal.packageDirectory}
-                            </code>
+                            <code>{writeRefusal.packageDirectory}</code>
                           </p>
                         )}
                       </>

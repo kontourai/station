@@ -1,0 +1,7 @@
+{
+  "revision": "2e444bd3e2999656e486dc03acfad0913f786d73",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Reviewed bounded import recovery: a rejected loader while connected retries once; repeated rejection retains the existing repair notice, outage failures remain quiet until reconnect, and ordinary health transitions preserve loaded component identity. Mounted boundary suite11PASS including transient/persistent/outage/no-remount controls; original single-rejection regression failed before repair. Consent, plugin inventory, origin/capability authority, and core-shell failure behavior are unchanged.","inputs":["src-ui/src/components/DeferredCapabilityBoundary.tsx"]}
+  ]
+}

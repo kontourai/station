@@ -231,11 +231,30 @@ export function sessionAttentionKind(
     | 'pendingReview'
     | 'terminalAttribution'
     | 'transitionReason'
-  >,
+  > &
+    Partial<
+      Pick<
+        OrchestrationSessionSummary,
+        'blockingOpenRequestIds' | 'openRequestKinds'
+      >
+    >,
+  answeredRequestIds: readonly string[] = [],
 ): 'approval' | 'answer' | 'interrupted' | 'blocked' | 'waiting' {
   const disposition = sessionAttentionDisposition(session);
   if (disposition.state !== 'awaiting') return 'waiting';
-  if (disposition.via === 'review_pending') return 'approval';
+  if (disposition.via === 'review_pending') {
+    // Runtime retains review_pending (and pendingReview) for forms. Refine
+    // presentation only, per blocking request; unknown kinds stay approval.
+    const blocking = session.blockingOpenRequestIds?.filter(
+      (id) => !answeredRequestIds.includes(id),
+    );
+    if (
+      blocking?.length &&
+      blocking.every((id) => session.openRequestKinds?.[id] === 'input')
+    )
+      return 'answer';
+    return 'approval';
+  }
   if (disposition.via === 'blocked') return 'blocked';
   if (session.transitionReason === 'input_requested') return 'answer';
   if (session.transitionReason === 'runtime_exit') return 'interrupted';
@@ -250,18 +269,20 @@ export function sessionAttentionKind(
  */
 export const SESSION_STATUS_WORDS = {
   approval: 'Needs approval',
-  answer: 'Needs answer',
+  answer: 'Needs input',
   waiting: 'Waiting on you',
   queued: 'Queued to send',
-  'delivery-unconfirmed': 'Delivery unconfirmed',
   blocked: 'Blocked',
   interrupted: 'Interrupted',
   failed: 'Failed',
   stopped: 'Stopped',
   elsewhere: 'Read only',
   running: 'Running',
+  scheduled: 'Waiting',
   draft: 'Draft',
   done: 'Done',
+  /** A completed turn whose reply stopped at the engine's output limit. */
+  cutOff: 'Cut off',
   idle: 'Idle',
 } as const;
 
@@ -336,7 +357,9 @@ export function sessionLadderWord(
     case 'Draft':
       return SESSION_STATUS_WORDS.draft;
     case 'Completed':
-      return SESSION_STATUS_WORDS.done;
+      return session.lastTurnCutOff
+        ? SESSION_STATUS_WORDS.cutOff
+        : SESSION_STATUS_WORDS.done;
     case 'Ready':
       return SESSION_STATUS_WORDS.idle;
   }

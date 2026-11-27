@@ -1,0 +1,35 @@
+{
+  "path": "docs/reference/station-weight.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed the whole page against the bench owners: run steps and environment, the metric table against the ids runStationWeight writes, the settle rule (5% tolerance, 30-300 s), the budget table against STATION_WEIGHT_BUDGETS, kill-eligibility rules A-C against owned-process and the control-child cleanup (SIGTERM then SIGKILL after 5 s), command-line truncation (1,000 characters), exit status, recording, output path and flags against the CLI parser, and the report-only delegated-run section against measureDelegatedRun (three delegated tasks, released then warm follow-ups through /delegations/:taskId/continue, rounds, medians).",
+
+  "limits": "Source review plus report-only runs of the bench on one darwin-arm64 host with the stub model; no Linux or Windows run, no real model. The hosted cadence of the end-to-end test (full-regression on ubuntu-24.04 from main qualification) was checked only as far as the workflow's runner and the test's resource-manifest entry; the trigger schedule was not re-verified. Ready-time and host-load figures are the original author's recorded observations, not re-measured. Report-only delegated-run figures are not budgets.",
+
+  "sources": [
+    "scripts/bench/station-weight.mjs",
+
+    "scripts/bench/station-weight-budgets.mjs",
+
+    "scripts/bench/station-weight-request.mjs",
+
+    "scripts/bench/station-weight-stub.mjs",
+
+    "scripts/lib/owned-process.mjs",
+
+    "scripts/__tests__/helpers/station-weight-daemon.ts",
+
+    "scripts/__tests__/station-weight.test.ts",
+
+    "scripts/__tests__/station-weight.end-to-end.process.test.ts",
+
+    "scripts/bench/station-weight-wakeups.mjs"
+  ],
+
+  "checks": [
+    "npm run perf:station-weight -- --report-only --delegated-run on darwin-arm64 (stub model); scripts/__tests__/station-weight.test.ts focused run."
+  ]
+}

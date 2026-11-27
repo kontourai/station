@@ -1,0 +1,23 @@
+{
+  "revision": "2fb350a386662f00ce2606cd02e3d08bba3d1fbb",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked: the dock now preloads the revalidator and controller chunks at idle and provides the inbox prefetch target; no layout, placement, copy, config or API claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Checked: the dock now preloads the revalidator and controller chunks at idle and provides the inbox prefetch target; no layout, placement, copy, config or API claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked: the dock now preloads the revalidator and controller chunks at idle and provides the inbox prefetch target; no layout, placement, copy, config or API claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked: the dock now preloads the revalidator and controller chunks at idle and provides the inbox prefetch target; no layout, placement, copy, config or API claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Checked: the dock now preloads the revalidator and controller chunks at idle and provides the inbox prefetch target; no layout, placement, copy, config or API claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Checked: the dock now preloads the revalidator and controller chunks at idle and provides the inbox prefetch target; no layout, placement, copy, config or API claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked: the dock now preloads the revalidator and controller chunks at idle and provides the inbox prefetch target; no layout, placement, copy, config or API claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked: the dock now preloads the revalidator and controller chunks at idle and provides the inbox prefetch target; no layout, placement, copy, config or API claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Checked: the dock now preloads the revalidator and controller chunks at idle and provides the inbox prefetch target; no layout, placement, copy, config or API claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "86a601bb95062539dfad0a4176fc4ea1e6aa3085",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Added the version-PR currency probe paragraph; checked against scripts/version-pr-current.mjs and the publish-packages.yml probe, clean-checkout and action conditions; 29/36 figure is the 2026-11-16 replay.","inputs":["docs/guides/releasing.md",".github/workflows/publish-packages.yml"]}
+  ]
+}

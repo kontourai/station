@@ -14,8 +14,10 @@ import {
   readDocumentationImpact,
 } from '../documentation-impact.mjs';
 import {
+  LEGACY_REVIEW_LEDGER,
   listReviewLedgerFiles,
   parseRecordFile,
+  REVIEW_LEDGER_DIR,
   REVIEW_LEDGER_INDEX,
   readReviewStateAt,
   recordFile,
@@ -25,6 +27,40 @@ import { forbidAmbientFreshnessMode } from './helpers/freshness-env.js';
 import { writeReviewLedger } from './helpers/review-ledger-fixture.js';
 
 const makeTempDir = trackTempDirs();
+
+it('uses Corpus relationships to route changed product files to portable external content targets', () => {
+  const { root } = fixture();
+  writeFileSync(
+    join(root, 'corpus-content.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      repository: 'example/product',
+      relationships: [
+        {
+          id: 'privacy',
+          covers: ['src-server/**'],
+          targets: [
+            'https://github.com/example/website/blob/main/privacy.astro',
+          ],
+        },
+      ],
+    }),
+  );
+  const report = readDocumentationImpact({
+    root,
+    changedPaths: ['src-server/new-data-flow.ts'],
+  });
+  expect(report.externalSurfaces).toEqual([
+    {
+      id: 'privacy',
+      targets: ['https://github.com/example/website/blob/main/privacy.astro'],
+      changedBy: ['src-server/new-data-flow.ts'],
+    },
+  ]);
+  expect(formatDocumentationImpact(report)).toContain(
+    'External content (privacy)',
+  );
+});
 // Impact and catch-up must not depend on the freshness mode (#2934).
 forbidAmbientFreshnessMode();
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
@@ -222,11 +258,19 @@ function generatedFixture() {
   return { ...f, generated, markdownPath, dataPath, owners, update };
 }
 
-function catchUpCli(root: string) {
+function catchUpCli(root: string, traceFile?: string) {
   return spawnSync(
     process.execPath,
     [resolve('scripts/documentation-impact.mjs'), '--catch-up', '--json'],
-    { cwd: root, env: cleanEnv, encoding: 'utf8', windowsHide: true },
+    {
+      cwd: root,
+      env: {
+        ...cleanEnv,
+        ...(traceFile ? { GIT_TRACE2_EVENT: traceFile } : {}),
+      },
+      encoding: 'utf8',
+      windowsHide: true,
+    },
   );
 }
 
@@ -349,32 +393,47 @@ describe('documentation impact', () => {
       { path: 'guide.md', recordRemoved: false, sourcesRemoved: ['code.ts'] },
     ]);
   });
-  it.each(['canonical', 'reformatted'] as const)(
+  it.each(['canonical', 'reformatted', 'legacy'] as const)(
     'keeps removed %s historical dependencies through the real CLI without relaxing current records',
     (layout) => {
       const { root, records, base, write } = fixture();
+      const history = [base, git(root, ['rev-parse', 'HEAD']).trim()];
+      const commit = (message: string) => {
+        git(root, ['add', '.']);
+        git(root, ['-c', 'core.hooksPath=/dev/null', 'commit', '-qm', message]);
+        const revision = git(root, ['rev-parse', 'HEAD']).trim();
+        history.push(revision);
+        return revision;
+      };
       if (layout === 'reformatted') {
         const file = recordFile('guide.md');
         write(
           file,
-          `${JSON.stringify(
-            JSON.parse(readFileSync(join(root, file), 'utf8')),
-            null,
-            2,
-          )}\n`,
+          `${JSON.stringify(JSON.parse(readFileSync(join(root, file), 'utf8')), null, 2)}\n`,
         );
-        git(root, ['add', '.']);
-        git(root, [
-          '-c',
-          'core.hooksPath=/dev/null',
-          'commit',
-          '-qm',
-          'reformat historical record',
-        ]);
-        const revision = git(root, ['rev-parse', 'HEAD']).trim();
+        const revision = commit('reformat historical record');
         expect(() => readReviewStateAt(root, revision)).toThrow(
           'canonical layout',
         );
+      } else if (layout === 'legacy') {
+        rmSync(join(root, REVIEW_LEDGER_DIR), { recursive: true });
+        write(
+          LEGACY_REVIEW_LEDGER,
+          JSON.stringify({
+            version: 1,
+            records: [
+              {
+                ...records[0],
+                sourceRevision: base,
+                sources: [{ path: 'legacy-only.ts', digest: hash('legacy') }],
+              },
+            ],
+          }),
+        );
+        write('legacy-only.ts', 'legacy');
+        commit('retain a dependency in the legacy ledger');
+        rmSync(join(root, LEGACY_REVIEW_LEDGER));
+        write('legacy-only.ts', 'changed after review');
       }
       write('code.ts', 'changed after review');
       writeReviewLedger(
@@ -382,26 +441,41 @@ describe('documentation impact', () => {
         [{ ...records[0], state: 'classified', sources: [] }],
         { coverageBaseline: base },
       );
-      git(root, ['add', '.']);
-      git(root, [
-        '-c',
-        'core.hooksPath=/dev/null',
-        'commit',
-        '-qm',
-        'drop recorded dependency',
-      ]);
-      const run = spawnSync(
-        process.execPath,
-        [resolve('scripts/documentation-impact.mjs'), '--catch-up', '--json'],
-        { cwd: root, env: cleanEnv, encoding: 'utf8', windowsHide: true },
+      commit('drop recorded dependency');
+      const traceFile = join(
+        makeTempDir('station-doc-impact-trace-'),
+        'git.jsonl',
       );
-      expect(run.status).toBe(0);
+      const run = catchUpCli(root, traceFile);
+      expect(run.status, run.stderr).toBe(0);
       const report: Awaited<ReturnType<typeof documentationCatchUp>> =
         JSON.parse(run.stdout);
+      const sourcesRemoved =
+        layout === 'legacy' ? ['code.ts', 'legacy-only.ts'] : ['code.ts'];
       expect(report.catchUp.removedDependencies).toEqual([
-        { path: 'guide.md', recordRemoved: false, sourcesRemoved: ['code.ts'] },
+        { path: 'guide.md', recordRemoved: false, sourcesRemoved },
       ]);
-      expect(report.documents.map((doc) => doc.path)).toContain('guide.md');
+      expect(report.documents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: 'guide.md',
+            changedBy: sourcesRemoved,
+            reviewState: 'classified',
+          }),
+        ]),
+      );
+      const refs = readFileSync(traceFile, 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+        .filter(
+          ({ event, argv }) =>
+            event === 'start' &&
+            argv?.[1] === 'ls-tree' &&
+            argv.at(-1) === REVIEW_LEDGER_DIR,
+        )
+        .map(({ argv }) => argv[4]);
+      expect(refs).toEqual([...history, 'HEAD']);
       const before = ledgerFiles(root);
       const file = recordFile('guide.md');
       write(
@@ -491,6 +565,20 @@ describe('documentation impact', () => {
     expect(() =>
       readDocumentationImpact({ root, changedPaths: ['code.ts'] }),
     ).toThrow();
+  });
+  it('maps topics without reading corpus.json, yet still asks to regenerate the bundle when corpus.json changes', () => {
+    // #4831: corpus.json feeds the shipped bundle's identity and synonyms,
+    // not its topics. This fixture has no corpus.json, as most repositories
+    // impact runs on do not need one.
+    const { root } = fixture();
+    const regenerate =
+      'Regenerate shipped MCP topics with npm run docs:mcp:generate after reviewing the canonical inputs.';
+    expect(
+      readDocumentationImpact({ root, changedPaths: ['corpus.json'] }).actions,
+    ).toContain(regenerate);
+    expect(
+      readDocumentationImpact({ root, changedPaths: ['code.ts'] }).actions,
+    ).not.toContain(regenerate);
   });
   it('runs the real CLI catch-up against changed code without editing evidence', () => {
     const { root, write } = fixture();

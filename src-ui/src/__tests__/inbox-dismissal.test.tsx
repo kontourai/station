@@ -12,18 +12,34 @@ import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { InboxDismissUndo } from '../components/chat-dock/inbox-dismissals';
 import { useInboxNeedsYouCount } from '../components/chat-dock/useInboxGroups';
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
+import { UndoableActionShortcut } from '../components/undo/UndoableActionShortcut';
+import {
+  offerUndoableAction,
+  resetUndoableActionsForTest,
+} from '../components/undo/undoable-actions';
+import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { ActiveChatsStore } from '../contexts/active-chats-store';
-import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import {
+  findShortcutConflicts,
+  KeyboardShortcutsProvider,
+  useShortcutRegistry,
+} from '../contexts/KeyboardShortcutsContext';
 import { ToastProvider, toastStore } from '../contexts/ToastContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import type { WorkFactsById } from '../views/home/work-facts';
 
+const station = vi.hoisted(() => ({ apiBase: 'http://localhost' }));
 vi.mock('../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({ apiBase: 'http://localhost' }),
+  useApiBase: () => ({ apiBase: station.apiBase }),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigationActions: () => ({ navigate: vi.fn() }),
+}));
+
+// This panel fixture supplies the scope catalogue without connection queries.
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
 }));
 
 const NOW = Date.parse('2026-10-28T18:00:00Z');
@@ -40,6 +56,15 @@ const thread: HomeWorkItem = {
   updatedAt: NOW - 1000,
 };
 
+let registeredShortcuts: ReturnType<
+  ReturnType<typeof useShortcutRegistry>['getAllShortcuts']
+> = [];
+
+function RegistryProbe() {
+  registeredShortcuts = useShortcutRegistry().getAllShortcuts();
+  return null;
+}
+
 function Harness({
   items,
   facts,
@@ -47,38 +72,51 @@ function Harness({
   items: HomeWorkItem[];
   facts?: WorkFactsById;
 }) {
-  const count = useInboxNeedsYouCount(items, NOW);
+  const count = useInboxNeedsYouCount(items, NOW, facts);
   return (
     <ToastProvider>
       <KeyboardShortcutsProvider>
         <InboxDismissUndo>
-          <output aria-label="Needs you count">{count}</output>
-          <ChatDockInboxPanel
-            items={items}
-            workFacts={facts}
-            now={NOW}
-            activeChatSessionId={null}
-            openChatSessionIds={[]}
-            onFocusChat={vi.fn()}
-            onOpenConversation={vi.fn()}
-            onOpenSession={vi.fn()}
-            onCloseChat={vi.fn()}
-            onOpenHistory={vi.fn()}
-          />
-          <NotificationContainer />
+          <UndoableActionShortcut>
+            <RegistryProbe />
+            <output aria-label="Needs you count">{count}</output>
+            <ChatDockInboxPanel
+              items={items}
+              workFacts={facts}
+              now={NOW}
+              activeChatSessionId={null}
+              openChatSessionIds={[]}
+              onFocusChat={vi.fn()}
+              onOpenConversation={vi.fn()}
+              onOpenSession={vi.fn()}
+              onCloseChat={vi.fn()}
+              onOpenHistory={vi.fn()}
+            />
+            <NotificationContainer />
+          </UndoableActionShortcut>
         </InboxDismissUndo>
       </KeyboardShortcutsProvider>
     </ToastProvider>
   );
 }
 
+/** Whether the dismissal's notice is live (a closing card lingers, inert, until its exit animation ends). */
+function dismissNoticeShown() {
+  return toastStore
+    .getSnapshot()
+    .some((toast) => toast.message === 'Marked done');
+}
+
+/** Mark done from the row's ⋯ menu. */
 function dismiss() {
   fireEvent.click(
-    screen.getByRole('button', { name: 'Dismiss Review the inbox from inbox' }),
+    screen.getByRole('button', { name: 'Actions for Review the inbox' }),
   );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Mark done' }));
 }
 
 beforeEach(() => {
+  station.apiBase = 'http://localhost';
   toastStore.clear();
   toastStore.clearHistory();
   localStorage.clear();
@@ -94,12 +132,12 @@ describe('inbox dismissal through the rendered panel', () => {
     editor.focus();
     fireEvent.keyDown(editor, { key: 'z', ctrlKey: true, metaKey: true });
     expect(
-      screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();
     editor.remove();
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
     expect(
-      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      screen.getByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeTruthy();
   });
   it.each([
@@ -113,12 +151,12 @@ describe('inbox dismissal through the rendered panel', () => {
       render(<Harness items={[item]} />);
       dismiss();
       expect(
-        screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+        screen.queryByRole('button', { name: /^Review the inbox\b/ }),
       ).toBeNull();
-      expect(screen.getByText('Conversation dismissed')).toBeTruthy();
+      expect(screen.getByText('Marked done')).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
       expect(
-        screen.getByRole('button', { name: 'Review the inbox, Station' }),
+        screen.getByRole('button', { name: /^Review the inbox\b/ }),
       ).toBeTruthy();
     },
   );
@@ -129,22 +167,23 @@ describe('inbox dismissal through the rendered panel', () => {
     view.unmount();
     render(<Harness items={[thread]} />);
     expect(
-      screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();
-    expect(screen.queryByRole('region', { name: /Dismissed/ })).toBeNull();
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+    expect(screen.queryByRole('region', { name: /Marked done/ })).toBeNull();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search chats' }), {
       target: { value: 'Review' },
     });
-    const section = screen.getByRole('region', { name: /Dismissed/ });
+    const section = screen.getByRole('region', { name: /Marked done/ });
     fireEvent.click(
       within(section).getByRole('button', {
-        name: 'Restore Review the inbox to inbox',
+        name: 'Actions for Review the inbox',
       }),
     );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reopen' }));
     expect(
       within(screen.getByRole('region', { name: 'Working' })).getByRole(
         'button',
-        { name: 'Review the inbox, Station' },
+        { name: /^Review the inbox\b/ },
       ),
     ).toBeTruthy();
   });
@@ -163,13 +202,13 @@ describe('inbox dismissal through the rendered panel', () => {
         ]}
       />,
     );
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search chats' }), {
       target: { value: 'Review' },
     });
     await waitFor(() =>
-      expect(screen.getByRole('region', { name: /Dismissed/ })).toBeTruthy(),
+      expect(screen.getByRole('region', { name: /Marked done/ })).toBeTruthy(),
     );
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search chats' }), {
       target: { value: '' },
     });
     expect(screen.queryByText('Review the inbox')).toBeNull();
@@ -178,7 +217,7 @@ describe('inbox dismissal through the rendered panel', () => {
     );
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Review the inbox, Station' }),
+        screen.getByRole('button', { name: /^Review the inbox\b/ }),
       ).toBeTruthy(),
     );
   });
@@ -188,7 +227,7 @@ describe('inbox dismissal through the rendered panel', () => {
     dismiss();
     view.rerender(<Harness items={[{ ...thread, updatedAt: NOW + 1000 }]} />);
     expect(
-      screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();
     view.rerender(
       <Harness
@@ -200,14 +239,81 @@ describe('inbox dismissal through the rendered panel', () => {
     await waitFor(
       () =>
         expect(
-          screen.getByRole('button', { name: 'Review the inbox, Station' }),
+          screen.getByRole('button', { name: /^Review the inbox\b/ }),
         ).toBeTruthy(),
       { timeout: 3000 },
     );
     view.rerender(<Harness items={[{ ...thread, updatedAt: NOW + 3000 }]} />);
     expect(
-      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      screen.getByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeTruthy();
+  });
+
+  it('stays dismissed through a turn the engine opened on its own, until it fails', async () => {
+    const ready: HomeWorkItem = { ...thread, lifecycleLabel: 'Ready' };
+    const row = () =>
+      screen.queryByRole('button', { name: /^Review the inbox\b/ });
+    const engineOpened = new Map([
+      [thread.id, { engineOpenedTurn: true as const }],
+    ]);
+    const view = render(<Harness items={[ready]} />);
+    dismiss();
+    expect(row()).toBeNull();
+    // Background work finished and the engine answered it: running, then done.
+    view.rerender(
+      <Harness
+        items={[
+          {
+            ...ready,
+            lifecycleLabel: 'Running',
+            updatedAt: NOW + 1000,
+          },
+        ]}
+        facts={engineOpened}
+      />,
+    );
+    expect(row()).toBeNull();
+    view.rerender(
+      <Harness
+        items={[
+          {
+            ...ready,
+            lifecycleLabel: 'Ready',
+            updatedAt: NOW + 2000,
+          },
+        ]}
+        facts={engineOpened}
+      />,
+    );
+    expect(row()).toBeNull();
+    // An engine-opened turn that fails still needs the person.
+    view.rerender(
+      <Harness
+        items={[
+          {
+            ...ready,
+            lifecycleLabel: 'Failed',
+            updatedAt: NOW + 3000,
+          },
+        ]}
+        facts={engineOpened}
+      />,
+    );
+    await waitFor(() => expect(row()).toBeTruthy(), { timeout: 3000 });
+  });
+
+  it('a turn the person sent still brings a dismissed conversation back', async () => {
+    const ready: HomeWorkItem = { ...thread, lifecycleLabel: 'Ready' };
+    const view = render(<Harness items={[ready]} />);
+    dismiss();
+    view.rerender(<Harness items={[{ ...ready, updatedAt: NOW + 2000 }]} />);
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole('button', { name: /^Review the inbox\b/ }),
+        ).toBeTruthy(),
+      { timeout: 3000 },
+    );
   });
 
   it('keeps Needs-you counts in step with dismissal and a new attention request', () => {
@@ -224,7 +330,7 @@ describe('inbox dismissal through the rendered panel', () => {
     );
     expect(screen.getByLabelText('Needs you count').textContent).toBe('1');
     expect(
-      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      screen.getByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeTruthy();
   });
 
@@ -241,7 +347,7 @@ describe('inbox dismissal through the rendered panel', () => {
     );
     dismiss();
     expect(
-      screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();
     expect(screen.getByLabelText('Needs you count').textContent).toBe('0');
     view.rerender(
@@ -251,7 +357,7 @@ describe('inbox dismissal through the rendered panel', () => {
       />,
     );
     expect(
-      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      screen.getByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeTruthy();
   });
 
@@ -286,11 +392,11 @@ describe('inbox dismissal through the rendered panel', () => {
       />,
     );
     expect(
-      screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(
-      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      screen.getByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeTruthy();
   });
 
@@ -302,7 +408,7 @@ describe('inbox dismissal through the rendered panel', () => {
       window.dispatchEvent(new StorageEvent('storage', { key: null }));
     });
     expect(
-      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      screen.getByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeTruthy();
   });
 
@@ -316,7 +422,7 @@ describe('inbox dismissal through the rendered panel', () => {
     try {
       dismiss();
       expect(
-        screen.getByRole('button', { name: 'Review the inbox, Station' }),
+        screen.getByRole('button', { name: /^Review the inbox\b/ }),
       ).toBeTruthy();
       expect(
         screen.getByText('Could not save dismissal. Try again.'),
@@ -329,24 +435,160 @@ describe('inbox dismissal through the rendered panel', () => {
 
   it('a toast that cannot show does not report a saved dismissal as failed', () => {
     render(<Harness items={[thread]} />);
-    const show = vi.spyOn(toastStore, 'show').mockImplementation(() => {
+    const upsert = vi.spyOn(toastStore, 'upsert').mockImplementation(() => {
       throw new TypeError('crypto.randomUUID is not a function');
     });
     try {
       dismiss();
       expect(
-        screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+        screen.queryByRole('button', { name: /^Review the inbox\b/ }),
       ).toBeNull();
       expect(
         screen.queryByText('Could not save dismissal. Try again.'),
       ).toBeNull();
-      // Undo stays reachable without the toast.
-      fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
-      expect(
-        screen.getByRole('button', { name: 'Review the inbox, Station' }),
-      ).toBeTruthy();
     } finally {
-      show.mockRestore();
+      upsert.mockRestore();
     }
+  });
+
+  it('registers Cmd+Z once: the dismissal shares the app undo command instead of binding its own', () => {
+    render(<Harness items={[thread]} />);
+    const undoChord = registeredShortcuts.filter(
+      (shortcut) =>
+        shortcut.key.toLowerCase() === 'z' &&
+        [...shortcut.modifiers].join('+') === 'cmd',
+    );
+    expect(undoChord.map((shortcut) => shortcut.id)).toEqual([
+      'app.undoLastAction',
+    ]);
+    expect(findShortcutConflicts(registeredShortcuts)).toEqual([]);
+  });
+
+  it('Cmd+Z restores the dismissal while its notice is shown, and does nothing once the notice has gone', () => {
+    render(<Harness items={[thread]} />);
+    const row = () =>
+      screen.queryByRole('button', { name: /^Review the inbox\b/ });
+    dismiss();
+    expect(row()).toBeNull();
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(row()).toBeTruthy();
+    expect(dismissNoticeShown()).toBe(false);
+
+    dismiss();
+    expect(row()).toBeNull();
+    act(() => toastStore.clear());
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(row()).toBeNull();
+  });
+
+  it('a key still saved for the removed inbox Undo command is harmless: Cmd+Z restores, the stale key does nothing', () => {
+    localStorage.setItem(
+      'station-device-settings-v1',
+      JSON.stringify({
+        version: 2,
+        values: {
+          shortcutOverrides: {
+            'inbox.undoDismiss': { key: 'u', modifiers: ['cmd'] },
+          },
+        },
+      }),
+    );
+    deviceSettingsStore.reloadFromStorage();
+    render(<Harness items={[thread]} />);
+    const undo = registeredShortcuts.find(
+      (shortcut) => shortcut.id === 'app.undoLastAction',
+    );
+    expect(undo && { key: undo.key, modifiers: [...undo.modifiers] }).toEqual({
+      key: 'z',
+      modifiers: ['cmd'],
+    });
+    const row = () =>
+      screen.queryByRole('button', { name: /^Review the inbox\b/ });
+
+    dismiss();
+    fireEvent.keyDown(window, { key: 'u', ctrlKey: true });
+    expect(row()).toBeNull();
+    expect(dismissNoticeShown()).toBe(true);
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(row()).toBeTruthy();
+  });
+
+  it('a dismissal notice that closed without Undo leaves the undo stack, so Cmd+Z reaches the earlier action still on screen', () => {
+    resetUndoableActionsForTest();
+    try {
+      render(<Harness items={[thread]} />);
+      const commit = vi.fn(() => Promise.resolve());
+      const onUndo = vi.fn();
+      // An earlier undoable action from another surface, through the same
+      // owner a Board delete uses.
+      act(() =>
+        offerUndoableAction({
+          key: 'board:daily-brief',
+          message: 'Board deleted',
+          restoredMessage: 'Restored Daily brief',
+          commit,
+          failureMessage: 'Could not delete the Board.',
+          onUndo,
+        }),
+      );
+      dismiss();
+      const notice = toastStore
+        .getSnapshot()
+        .find((toast) => toast.message === 'Marked done');
+      expect(notice).toBeTruthy();
+      // The dismissal's notice goes away without Undo; the Board's stays.
+      act(() => toastStore.dismiss(notice!.id));
+
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+
+      expect(
+        onUndo,
+        'Cmd+Z should undo the Board delete still on screen',
+      ).toHaveBeenCalledTimes(1);
+      expect(commit).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole('button', { name: /^Review the inbox\b/ }),
+      ).toBeNull();
+    } finally {
+      resetUndoableActionsForTest();
+    }
+  });
+
+  it('changing Station closes the dismissal notice, and Cmd+Z then restores nothing', () => {
+    const view = render(<Harness items={[thread]} />);
+    dismiss();
+    expect(dismissNoticeShown()).toBe(true);
+
+    station.apiBase = 'http://other-station';
+    view.rerender(<Harness items={[thread]} />);
+
+    expect(dismissNoticeShown()).toBe(false);
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
+    ).toBeNull();
+  });
+
+  it('changing namespace closes the dismissal notice, and Cmd+Z then restores nothing', () => {
+    const inNamespace = (namespace: string) => (
+      <AuthorityPersistenceContext.Provider
+        value={{ status: 'verified', namespace, observation: null }}
+      >
+        <Harness items={[thread]} />
+      </AuthorityPersistenceContext.Provider>
+    );
+    const view = render(inNamespace('station-a'));
+    dismiss();
+    expect(dismissNoticeShown()).toBe(true);
+
+    view.rerender(inNamespace('station-b'));
+    expect(dismissNoticeShown()).toBe(false);
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+
+    // Back in the namespace the dismissal was made in, it still stands.
+    view.rerender(inNamespace('station-a'));
+    expect(
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
+    ).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 /**
  * THE one time format for the work surfaces (Home, the inboxes, Activity,
- * the hover card and Details sheet): relative, compact, no "ago". `now`
+ * the hover card and Details sheet). The default compact form uses `now`
  * under a minute, then `2m`, `41m`, `1h`, `2d`, and a short date (`Sep 12`)
  * once a week has passed, because "9d" stops being a duration anyone reads.
  * The absolute instant belongs in a tooltip (`absoluteTime`), never in body
@@ -17,10 +17,23 @@
  * string here is ever allowed to read as a plausible multi-year duration
  * derived from the absence of data.
  */
+import { parseEpochMs } from './parseEpochMs';
+
 const DAY_MS = 24 * 60 * 60_000;
 const SHORT_DATE_AFTER_MS = 7 * DAY_MS;
 
-export function relativeTime(updatedAt: number, now: number): string {
+export function relativeTime(
+  updatedAt: number,
+  now: number,
+  form: 'compact' | 'explicit' = 'compact',
+): string {
+  const compact = compactRelativeTime(updatedAt, now);
+  if (form === 'compact') return compact;
+  if (compact === 'now') return 'just now';
+  return /^\d+[mhd]$/.test(compact) ? `${compact} ago` : `on ${compact}`;
+}
+
+function compactRelativeTime(updatedAt: number, now: number): string {
   if (!Number.isFinite(updatedAt) || updatedAt <= 0) return 'now';
   const elapsed = Math.max(0, now - updatedAt);
   const minutes = Math.floor(elapsed / 60_000);
@@ -60,6 +73,20 @@ export function absoluteTime(at: number): string {
 }
 
 /**
+ * The absolute date and time (`absoluteTime`'s format) for an ISO stamp or an
+ * epoch-ms value, for detail text that states when something happened.
+ * `fallback` (nothing, by default) stands in for a stamp that is absent or
+ * unparseable, so no surface prints "Invalid Date".
+ */
+export function formatDateTime(
+  value: string | number | null | undefined,
+  fallback = '',
+): string {
+  const at = typeof value === 'number' ? value : parseEpochMs(value);
+  return (at === undefined ? '' : absoluteTime(at)) || fallback;
+}
+
+/**
  * A future instant as a wall-clock time, for a sentence that says when
  * something will happen ("Resets 11:00 PM"): the local time, with the short
  * weekday when it is not on `now`'s day ("Mon 11:00 PM"). Not a row time:
@@ -74,6 +101,28 @@ export function clockTime(at: number, now: number): string {
   return date.toDateString() === new Date(now).toDateString()
     ? time
     : `${date.toLocaleDateString(undefined, { weekday: 'short' })} ${time}`;
+}
+
+/**
+ * When a snooze ends, so each choice tells days apart: the local time today
+ * ("6:00 PM"), "tomorrow 9:00 AM", the short weekday within six days
+ * ("Mon 9:00 AM"), and the short date after that ("Nov 30 9:00 AM"). Days are
+ * counted on the calendar, so a daylight-saving change does not shift them.
+ */
+export function wakeTime(at: number, now: number): string {
+  const date = new Date(at);
+  const time = date.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const day = (value: Date) =>
+    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const days = Math.round((day(date) - day(new Date(now))) / 86_400_000);
+  if (days <= 0) return time;
+  if (days === 1) return `tomorrow ${time}`;
+  if (days < 7)
+    return `${date.toLocaleDateString(undefined, { weekday: 'short' })} ${time}`;
+  return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${time}`;
 }
 
 /**
@@ -96,32 +145,63 @@ export function messageTime(at: number, now: number): string {
 
 /**
  * "2m ago" / "just now": the sentence form, for prose that needs a clause
- * ("checked just now"). Never on a row, a card or a status line — those use
- * `relativeTime`; the vocabulary test pins that none of them says "ago".
+ * ("checked just now"). The compact work row also uses this wording
+ * to distinguish recency from its elapsed and scheduled clocks.
  */
 export function relativeTimeAgo(updatedAt: number, now: number): string {
-  const compact = relativeTime(updatedAt, now);
-  if (compact === 'now') return 'just now';
-  return /^\d+[mhd]$/.test(compact) ? `${compact} ago` : `on ${compact}`;
+  return relativeTime(updatedAt, now, 'explicit');
 }
 
 /**
- * THE one elapsed-duration format, the coarse sibling of `relativeTime`:
- * `12s` under a minute, then `4m`, then `1h 4m` (`2h` on the hour). How long
+ * `relativeTime` for an ISO stamp, so a surface holding a wire timestamp does
+ * not write its own parse-and-bucket copy. `fallback` (nothing, by default)
+ * stands in for a stamp that is absent or unparseable.
+ */
+export function relativeTimeFromIso(
+  iso: string | null | undefined,
+  now: number = Date.now(),
+  fallback = '',
+): string {
+  const at = parseEpochMs(iso);
+  return at === undefined ? fallback : relativeTime(at, now);
+}
+
+/** `relativeTimeAgo` for an ISO stamp; see `relativeTimeFromIso`. */
+export function relativeTimeAgoFromIso(
+  iso: string | null | undefined,
+  now: number = Date.now(),
+  fallback = '',
+): string {
+  const at = parseEpochMs(iso);
+  return at === undefined ? fallback : relativeTimeAgo(at, now);
+}
+
+/**
+ * The one elapsed-duration format, distinct from relative timestamps:
+ * `12s` under a minute, then `4m 10s`, then `1h 4m` (`2h` on the hour). How long
  * a turn has run, how long a run has been quiet — every row, card, strip and
  * sentence that says how long something has lasted reads it here, so the
  * same item never reads "4m 10s" on one surface and "4m" on another.
- * Seconds stop at the first minute: past it, a number that changes every
- * second is noise, not news. A stopwatch (`m:ss`, a clock face) is a
- * different thing and keeps its own format.
+ * Live clocks retain seconds under an hour.
  */
-export function formatDuration(elapsedMs: number): string {
+export function formatDuration(
+  elapsedMs: number,
+  mode: 'live' | 'coarse' = 'live',
+): string {
   const seconds = Number.isFinite(elapsedMs)
     ? Math.max(0, Math.floor(elapsedMs / 1000))
     : 0;
+  if (mode === 'coarse') {
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 1) return 'under a minute';
+    if (minutes < 60)
+      return `about ${minutes} minute${minutes === 1 ? '' : 's'}`;
+    const hours = Math.round(minutes / 60);
+    return `about ${hours} hour${hours === 1 ? '' : 's'}`;
+  }
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;

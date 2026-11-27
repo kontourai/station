@@ -6,6 +6,7 @@ import {
   useNotificationsQuery,
 } from '@kontourai/station-sdk';
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { nextTabIndex } from '../../utils/tab-navigation';
 
 /** How long a dismissed row stays undoable before it commits. */
 const UNDO_WINDOW_MS = 4000;
@@ -19,6 +20,7 @@ const UNDO_WINDOW_MS = 4000;
 const SECTION_ROW_LIMIT = 5;
 
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { toastStore } from '../../contexts/ToastContext';
 import { useNotificationAnswerability } from '../../hooks/useNotificationAnswerability';
 import {
   attentionCountLabel,
@@ -28,7 +30,9 @@ import {
 import { sortNotifications } from '../../utils/notifications';
 import { AttentionHistoryItem } from '../attention/AttentionHistoryItem';
 import { Button } from '../Button';
+import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
+import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
 import { DecisionError } from './DecisionError';
 import { useInboxContext } from './inboxContext';
 import { NotificationHistoryItem } from './NotificationHistoryItem';
@@ -55,7 +59,7 @@ export function NotificationHistory({
   onViewAll,
 }: NotificationHistoryProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { apiBase } = useApiBase();
+  const { apiBase, connectionId } = useApiBase();
   // The same live set the OS-alert hook watches, from the shared constant:
   // an equal set spelled in a different order is a DIFFERENT React Query key,
   // which means two cache entries and two authenticated fetches for one fact.
@@ -88,23 +92,30 @@ export function NotificationHistory({
    */
   const listsLoading = notificationsLoading || attentionLoading;
   const dismissMutation = useDismissNotificationMutation();
-  const [pendingDismiss, setPendingDismiss] = useState<string[]>([]);
-  const dismissTimers = useRef(new Map<string, number>());
+  const holdFocus = () => dropdownRef.current?.focus({ preventScroll: true });
+  const [dismissals, setDismissals] = useState<
+    Record<string, 'undoable' | 'saving' | 'saved'>
+  >({});
+  const dismissTimers = useRef(
+    new Map<string, { timer: number; commit: () => void }>(),
+  );
+  const scope = JSON.stringify([connectionId, apiBase]);
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
 
-  // A pending dismiss must still land if the popover closes or unmounts —
-  // otherwise closing the panel would silently cancel what the user asked for.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-scoped flush
   useEffect(() => {
+    void scope;
+    setDismissals({});
     const timers = dismissTimers.current;
     return () => {
-      for (const [id, timer] of timers) {
+      for (const { timer, commit } of timers.values()) {
         window.clearTimeout(timer);
-        dismissMutation.mutate(id);
+        commit();
       }
       timers.clear();
     };
-    // Intentionally mount-scoped: this is an unmount flush, not a subscription.
-  }, []);
+  }, [scope]);
+
   const actionMutation = useNotificationActionMutation();
   // archive#1780: the row the attention projection correctly dropped lands
   // in "Recent activity" below. It is annotated here, never filtered again.
@@ -127,8 +138,10 @@ export function NotificationHistory({
             : notifications,
         ),
         attention?.items ?? [],
-      ).slice(0, SECTION_ROW_LIMIT),
-    [attention?.items, notifications, snooze.enabled],
+      )
+        .filter((item) => dismissals[item.id] !== 'saved')
+        .slice(0, SECTION_ROW_LIMIT),
+    [attention?.items, dismissals, notifications, snooze.enabled],
   );
   /**
    * archive#3222 / archive#3227 A5. `AttentionProjection.items` keeps
@@ -149,9 +162,16 @@ export function NotificationHistory({
    * announcing itself, and also the only way a server/client disagreement
    * about "pending" could ever become visible instead of being clamped away.
    */
-  const pendingItems = pendingAttentionItems(attention?.items ?? []);
+  const observedPending = pendingAttentionItems(attention?.items ?? []);
+  const pendingItems = observedPending.filter(
+    (item) =>
+      item.kind !== 'approval' ||
+      dismissals[item.source.notificationId] !== 'saved',
+  );
   const attentionItems = pendingItems.slice(0, SECTION_ROW_LIMIT);
-  const pendingTotal = attention?.pendingCount ?? 0;
+  const pendingTotal =
+    (attention?.pendingCount ?? 0) -
+    (observedPending.length - pendingItems.length);
   const attentionCount = attentionCountLabel({
     narrowed: attentionItems.length !== pendingTotal,
     pendingTotal,
@@ -171,10 +191,29 @@ export function NotificationHistory({
   // #4404 (A43): a phone gets a bottom sheet over a dimmed page, exposed as
   // a dialog, instead of a cramped popover over the page's own controls.
   const isSheet = useIsMobile();
-  useClickOutside(isOpen, dropdownRef, onClose);
+  const sheetGestures = useSheetGesturesPreview();
+  useClickOutside(isOpen && !isSheet, dropdownRef, onClose);
   // Portalled to the document, so the popover is no longer next to its trigger
   // in tab order; move focus in on open and hand it back on close.
-  useMenuFocus(isOpen, onClose, dropdownRef);
+  useMenuFocus(isOpen && !isSheet, onClose, dropdownRef);
+  useEffect(() => {
+    void dismissals;
+    setDismissals((current) => {
+      const tracked = Object.entries(current);
+      const remaining = tracked.filter(
+        ([id, phase]) =>
+          phase !== 'saved' ||
+          notifications.some((item) => item.id === id) ||
+          pendingAttentionItems(attention?.items ?? []).some(
+            (item) =>
+              item.kind === 'approval' && item.source.notificationId === id,
+          ),
+      );
+      return remaining.length === tracked.length
+        ? current
+        : Object.fromEntries(remaining);
+    });
+  }, [attention?.items, dismissals, notifications]);
   if (!isOpen) return null;
 
   const itemCount = attentionItems.length + recentNotifications.length;
@@ -241,26 +280,63 @@ export function NotificationHistory({
    * destructive action with no way back is worse on a phone, where it is easy
    * to hit the wrong row.
    */
-  const dismiss = (notificationId: string) => {
-    setPendingDismiss((current) =>
-      current.includes(notificationId) ? current : [...current, notificationId],
-    );
-    const timer = window.setTimeout(() => {
-      dismissTimers.current.delete(notificationId);
-      setPendingDismiss((current) =>
-        current.filter((id) => id !== notificationId),
+  const clearDismissal = (id: string) =>
+    setDismissals(({ [id]: _removed, ...current }) => current);
+
+  const dismiss = (id: string) => {
+    if (dismissTimers.current.has(id)) return;
+    // The row menu restored focus to its trigger. Move it into the popover
+    // before replacing that trigger with Undo, so focusout keeps it open.
+    holdFocus();
+    setDismissals((current) => ({ ...current, [id]: 'undoable' }));
+    const commit = () => {
+      if (currentScope.current !== scope) return;
+      if (
+        document.activeElement
+          ?.closest('[data-dismissal-id]')
+          ?.getAttribute('data-dismissal-id') === id
+      )
+        holdFocus();
+      setDismissals((current) => ({ ...current, [id]: 'saving' }));
+      void dismissMutation.mutateAsync(id).then(
+        () => {
+          if (currentScope.current === scope)
+            setDismissals((current) => ({ ...current, [id]: 'saved' }));
+        },
+        () => {
+          if (currentScope.current !== scope) return;
+          clearDismissal(id);
+          toastStore.show('Could not dismiss the notification. Try again.');
+        },
       );
-      dismissMutation.mutate(notificationId);
+    };
+    const timer = window.setTimeout(() => {
+      dismissTimers.current.delete(id);
+      commit();
     }, UNDO_WINDOW_MS);
-    dismissTimers.current.set(notificationId, timer);
+    dismissTimers.current.set(id, { timer, commit });
   };
 
-  const undoDismiss = (notificationId: string) => {
-    const timer = dismissTimers.current.get(notificationId);
-    if (timer !== undefined) window.clearTimeout(timer);
-    dismissTimers.current.delete(notificationId);
-    setPendingDismiss((current) =>
-      current.filter((id) => id !== notificationId),
+  const undoDismiss = (id: string) => {
+    const pending = dismissTimers.current.get(id);
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    dismissTimers.current.delete(id);
+    holdFocus();
+    clearDismissal(id);
+  };
+
+  const dismissalFor = (id: string) => {
+    const phase = dismissals[id];
+    return (
+      phase && (
+        <DismissedRow
+          key={id}
+          id={id}
+          activity={recentNotifications.some((row) => row.id === id)}
+          onUndo={phase === 'undoable' ? () => undoDismiss(id) : undefined}
+        />
+      )
     );
   };
 
@@ -283,46 +359,35 @@ export function NotificationHistory({
         /* empty-state action: notifications require no user setup */
         <Empty variant="compact" label="Nothing needs you right now" />
       ) : (
-        attentionItems.map((item) =>
-          // An approval's dismissal is held under its notification id.
-          pendingDismiss.includes(
-            item.kind === 'approval' ? item.source.notificationId : item.id,
-          ) ? (
-            <DismissedRow
-              key={item.id}
-              onUndo={() =>
-                undoDismiss(
+        attentionItems.map(
+          (item) =>
+            (item.kind === 'approval' &&
+              dismissalFor(item.source.notificationId)) || (
+              <AttentionHistoryItem
+                key={item.id}
+                item={item}
+                isPending={actionMutation.isPending}
+                isDismissPending={false}
+                onAction={act}
+                onClose={onClose}
+                onDismiss={dismiss}
+                onManagementStart={holdFocus}
+                context={contextFor.forAttention(item)}
+                menuItems={
+                  snooze.enabled
+                    ? snoozeMenuItems(
+                        (until) => snooze.attention(item, until),
+                        snooze.pending,
+                      )
+                    : undefined
+                }
+                feedback={
                   item.kind === 'approval'
-                    ? item.source.notificationId
-                    : item.id,
-                )
-              }
-            />
-          ) : (
-            <AttentionHistoryItem
-              key={item.id}
-              item={item}
-              isPending={actionMutation.isPending}
-              isDismissPending={dismissMutation.isPending}
-              onAction={act}
-              onClose={onClose}
-              onDismiss={dismiss}
-              context={contextFor.forAttention(item)}
-              menuItems={
-                snooze.enabled
-                  ? snoozeMenuItems(
-                      (until) => snooze.attention(item, until),
-                      snooze.pending,
-                    )
-                  : undefined
-              }
-              feedback={
-                item.kind === 'approval'
-                  ? feedbackFor(item.source.notificationId)
-                  : undefined
-              }
-            />
-          ),
+                    ? feedbackFor(item.source.notificationId)
+                    : undefined
+                }
+              />
+            ),
         )
       )}
       {/* archive#3222: the moment the row budget bites, say so — the reader
@@ -346,122 +411,125 @@ export function NotificationHistory({
       /* empty-state action: notifications require no user setup */
       <Empty variant="compact" label="No recent activity" />
     ) : (
-      recentNotifications.map((notification) =>
-        pendingDismiss.includes(notification.id) ? (
-          <DismissedRow
-            key={notification.id}
-            onUndo={() => undoDismiss(notification.id)}
-          />
-        ) : (
-          <NotificationHistoryItem
-            key={notification.id}
-            notification={notification}
-            answerability={answerabilityFor(notification)}
-            isActionPending={actionMutation.isPending}
-            isDismissPending={dismissMutation.isPending}
-            onAction={act}
-            onDismiss={dismiss}
-            context={contextFor.forNotification(notification)}
-            menuItems={
-              snooze.enabled
-                ? snoozeMenuItems(
-                    (until) => snooze.notification(notification, until),
-                    snooze.pending,
-                  )
-                : undefined
-            }
-            feedback={feedbackFor(notification.id)}
-          />
-        ),
+      recentNotifications.map(
+        (notification) =>
+          dismissalFor(notification.id) || (
+            <NotificationHistoryItem
+              key={notification.id}
+              onOpen={onClose}
+              onManagementStart={holdFocus}
+              notification={notification}
+              answerability={answerabilityFor(notification)}
+              isActionPending={actionMutation.isPending}
+              isDismissPending={false}
+              onAction={act}
+              onDismiss={dismiss}
+              context={contextFor.forNotification(notification)}
+              menuItems={
+                snooze.enabled
+                  ? snoozeMenuItems(
+                      (until) => snooze.notification(notification, until),
+                      snooze.pending,
+                    )
+                  : undefined
+              }
+              feedback={feedbackFor(notification.id)}
+            />
+          ),
       )
     );
 
-  // Portalled out of the header: the mobile toolbar is a stacking context at
-  // z-index 200, so this popover's z-index could never lift it above the fixed
-  // coding tabs and dock while it rendered inside.
-  return createPortal(
+  const content = (
     <>
-      {isSheet ? (
-        <div
-          className="notification-history-backdrop"
-          aria-hidden="true"
-          data-testid="notification-history-backdrop"
-        />
-      ) : null}
-      <div
-        ref={dropdownRef}
-        className={`notification-history${isSheet ? ' notification-history--sheet' : ''}`}
-        tabIndex={-1}
-        {...(isSheet
-          ? { role: 'dialog', 'aria-labelledby': 'notification-history-title' }
-          : {})}
-      >
-        <div className="notification-history__header">
-          <h2
-            id="notification-history-title"
-            className="notification-history__title"
+      <div className="notification-history__header">
+        <h2
+          id="notification-history-title"
+          className="notification-history__title"
+        >
+          Notifications
+        </h2>
+        <div className="notification-history__header-actions">
+          <button
+            type="button"
+            className="notification-history__link"
+            onClick={viewAll}
           >
-            Notifications
-          </h2>
-          <div className="notification-history__header-actions">
-            <button
-              type="button"
-              className="notification-history__link"
-              onClick={viewAll}
-            >
-              View all notifications
-            </button>
-          </div>
+            View all notifications
+          </button>
         </div>
-        {itemCount === 0 ? (
-          <div className="notification-history__content">
-            {listsLoading ? (
-              <SkeletonList count={3} label="Loading notifications" />
-            ) : listsError ? (
-              <ErrorState
-                variant="compact"
-                title="Unable to load notifications"
-                description={describeReadFailure(listsError)}
-                action={
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      void refetchNotifications();
-                      void refetchAttention();
-                    }}
-                  >
-                    Retry
-                  </Button>
-                }
-              />
-            ) : (
-              /* empty-state action: notifications require no user setup */
-              <Empty
-                variant="compact"
-                label="All caught up"
-                description="Approvals, failures, and finished work show up here."
-              />
-            )}
-          </div>
-        ) : (
-          <>
-            <InboxTabs
-              tab={tab}
-              onChange={setChosenTab}
-              attentionBadge={attentionCount}
-            />
-            <div
-              className="notification-history__content"
-              role="tabpanel"
-              id={`notification-history-panel-${tab}`}
-              aria-labelledby={`notification-history-tab-${tab}`}
-            >
-              {tab === 'attention' ? attentionPanel : activityPanel}
-            </div>
-          </>
-        )}
       </div>
-    </>,
+      {itemCount === 0 ? (
+        <div className="notification-history__content">
+          {listsLoading ? (
+            <SkeletonList count={3} label="Loading notifications" />
+          ) : listsError ? (
+            <ErrorState
+              variant="compact"
+              title="Unable to load notifications"
+              description={describeReadFailure(listsError)}
+              action={
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    void refetchNotifications();
+                    void refetchAttention();
+                  }}
+                >
+                  Retry
+                </Button>
+              }
+            />
+          ) : (
+            /* empty-state action: notifications require no user setup */
+            <Empty
+              variant="compact"
+              label="All caught up"
+              description="Approvals, failures, and finished work show up here."
+            />
+          )}
+        </div>
+      ) : (
+        <>
+          <InboxTabs
+            tab={tab}
+            onChange={setChosenTab}
+            attentionBadge={attentionCount}
+          />
+          <div
+            className="notification-history__content"
+            role="tabpanel"
+            id={`notification-history-panel-${tab}`}
+            aria-labelledby={`notification-history-tab-${tab}`}
+          >
+            {tab === 'attention' ? attentionPanel : activityPanel}
+          </div>
+        </>
+      )}
+    </>
+  );
+  if (isSheet) {
+    return (
+      <ResponsiveDialogSurface
+        onClose={onClose}
+        ariaLabelledBy="notification-history-title"
+        layer="dialog"
+        overlayClassName="notification-history-overlay"
+        panelClassName={`notification-history notification-history--sheet${sheetGestures ? ' notification-history--with-handle' : ''}`}
+      >
+        <div
+          className="notification-history__sheet-content"
+          ref={dropdownRef}
+          tabIndex={-1}
+        >
+          {content}
+        </div>
+      </ResponsiveDialogSurface>
+    );
+  }
+  return createPortal(
+    <div ref={dropdownRef} className="notification-history" tabIndex={-1}>
+      {content}
+    </div>,
     document.body,
   );
 }
@@ -494,7 +562,7 @@ function InboxTabs({
       role="tablist"
       aria-label="Notification lists"
     >
-      {INBOX_TABS.map(({ id, label }) => {
+      {INBOX_TABS.map(({ id, label }, index) => {
         const selected = id === tab;
         return (
           <button
@@ -508,12 +576,14 @@ function InboxTabs({
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(id)}
             onKeyDown={(event) => {
-              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
-                return;
-              }
+              const nextIndex = nextTabIndex(
+                index,
+                INBOX_TABS.length,
+                event.key,
+              );
+              if (nextIndex === null) return;
               event.preventDefault();
-              const next = INBOX_TABS.find((candidate) => candidate.id !== id);
-              if (!next) return;
+              const next = INBOX_TABS[nextIndex];
               onChange(next.id);
               document
                 .getElementById(`notification-history-tab-${next.id}`)
@@ -562,17 +632,38 @@ function useClickOutside(
  * rather than vanishing: the list must not jump under the user's finger while
  * they are still triaging it.
  */
-function DismissedRow({ onUndo }: { onUndo: () => void }) {
+function DismissedRow({
+  id,
+  activity,
+  onUndo,
+}: {
+  id: string;
+  activity: boolean;
+  onUndo?: () => void;
+}) {
+  const message = activity
+    ? onUndo
+      ? 'Notification dismissed'
+      : 'Dismissing notification…'
+    : onUndo
+      ? 'Marked done'
+      : 'Marking done…';
   return (
-    <div className="notification-history__dismissed" role="status">
-      <span className="notification-history__dismissed-label">Dismissed</span>
-      <button
-        type="button"
-        className="notification-history__undo"
-        onClick={onUndo}
-      >
-        Undo
-      </button>
+    <div
+      className="notification-history__dismissed"
+      role="status"
+      data-dismissal-id={id}
+    >
+      <span className="notification-history__dismissed-label">{message}</span>
+      {onUndo && (
+        <button
+          type="button"
+          className="notification-history__undo"
+          onClick={onUndo}
+        >
+          Undo
+        </button>
+      )}
     </div>
   );
 }

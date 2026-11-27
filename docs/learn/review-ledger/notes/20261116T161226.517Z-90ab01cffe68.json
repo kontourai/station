@@ -1,0 +1,7 @@
+{
+  "revision": "acef3efc2b6b5faad35c0fc425e53ce32bc3f8cb",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#2376 slice 2: docs/guides/self-configuring-agent.md changed only its Codex bound-channel sentence (Station Control rides the bound dynamicTools channel when the preview is on). Checked this page for claims about Codex station-control custody or that preview; none conflict.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

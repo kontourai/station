@@ -220,35 +220,6 @@ export function shouldRenderSetupLauncher({
   );
 }
 
-/**
- * Whether the STANDALONE usage-telemetry disclosure modal may mount.
- *
- * Same rule as the launcher above, applied to the third overlay that reaches
- * the first screen: at most one at a time. `OnboardingGate` renders it after
- * its children, so it lands on top of whatever else is up — on a fresh home
- * that was the first-run chapter, two modals deep, with the one underneath
- * unreadable (reproduced live). Two things follow:
- *
- * - On a `pending` home the disclosure is the first STEP of the first-run
- *   chapter (`UsageTelemetryDisclosureStep`), so this modal must not exist at
- *   all; mounting it would be the same interruption by another route.
- * - Everywhere else — an upgraded home, a deferred one, a completed one — the
- *   modal is exactly what shipped, except that it waits for the launcher and
- *   for a chapter opened from Home's card to be out of the way first.
- */
-export function shouldRenderUsageTelemetryDisclosure({
-  firstRunStatus,
-  setupLauncherVisible,
-  firstRunChapterOpen,
-}: {
-  firstRunStatus: string | undefined;
-  setupLauncherVisible: boolean;
-  firstRunChapterOpen: boolean;
-}): boolean {
-  if (firstRunStatus === 'pending') return false;
-  return !setupLauncherVisible && !firstRunChapterOpen;
-}
-
 export function useOnboardingSetupState(): OnboardingSetupState {
   const { data: status } = useSystemStatus();
   const dismissed = useSyncExternalStore(

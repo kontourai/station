@@ -1,0 +1,9 @@
+{
+  "revision": "505a21e936ff29a7e8d1326928ccfb9514a6c472",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Rechecked the merged connections quota/profile claims and development private Codex workspace claims after integrating main. The change only isolates transport fixture provenance; real scanner and adapter refusal coverage remains in the dedicated keeper, whose 28 tests passed with two filesystem-specific probes skipped. Production confinement, quota and managed workspace behavior is unchanged.","inputs":["src-server/providers/__tests__/codex-adapter.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Rechecked the merged connections quota/profile claims and development private Codex workspace claims after integrating main. The change only isolates transport fixture provenance; real scanner and adapter refusal coverage remains in the dedicated keeper, whose 28 tests passed with two filesystem-specific probes skipped. Production confinement, quota and managed workspace behavior is unchanged.","inputs":["src-server/providers/__tests__/codex-adapter.test.ts"]}
+  ]
+}

@@ -3,6 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { chmodSync, lstatSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { spawnSyncBounded } from './bounded-capture.mjs';
+
+const GUARD_COMPILER_TIMEOUT_MS = 10_000;
 
 function assertRegularPrivateFile(path) {
   let info;
@@ -22,7 +25,11 @@ function assertRegularPrivateFile(path) {
 
 function compilerDiagnostic(compiled) {
   return [
+    compiled.error?.code === 'ETIMEDOUT'
+      ? `compiler timed out after ${GUARD_COMPILER_TIMEOUT_MS}ms`
+      : undefined,
     compiled.error?.message,
+    `compiler pid ${compiled.pid ?? 'unavailable'}; status ${compiled.status ?? 'null'}; signal ${compiled.signal ?? 'none'}`,
     compiled.stdout?.trim(),
     compiled.stderr?.trim(),
     compiled.status == null ? undefined : `exit ${compiled.status}`,
@@ -31,7 +38,22 @@ function compilerDiagnostic(compiled) {
     .join('\n');
 }
 
-/** Build a per-owner guard; never trust a predictable shared executable. */
+/**
+ * Build a per-owner guard; never trust a predictable shared executable.
+ * @param {{
+ *   source?: string,
+ *   spawnProcess?: (command: string, args: string[], options: import('node:child_process').SpawnSyncOptionsWithStringEncoding) => {
+ *     status: number | null,
+ *     pid?: number,
+ *     signal?: NodeJS.Signals | null,
+ *     error?: Error,
+ *     stdout?: string,
+ *     stderr?: string,
+ *   },
+ *   tempDirectory?: string,
+ *   windir?: string,
+ * }} [options]
+ */
 export function buildWindowsOwnedGuard({
   source = resolve(import.meta.dirname, '../windows-owned-guard.cs'),
   spawnProcess = spawnSync,
@@ -45,22 +67,37 @@ export function buildWindowsOwnedGuard({
     ? join(windir, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe')
     : 'csc.exe';
   try {
-    const compiled = spawnProcess(
+    const compiled = spawnSyncBounded(
       compiler,
       ['/nologo', '/target:exe', `/out:${staged}`, source],
-      { encoding: 'utf8', windowsHide: true },
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: GUARD_COMPILER_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      },
+      { run: spawnProcess },
     );
     if (compiled.error || compiled.status !== 0) {
       const diagnostic = compilerDiagnostic(compiled);
       throw new Error(
         `Windows Job guard compilation failed: ${diagnostic || 'unknown compiler failure'}`,
+        { cause: compiled.error },
       );
     }
     assertRegularPrivateFile(staged);
     renameSync(staged, output);
     assertRegularPrivateFile(output);
   } catch (error) {
-    rmSync(directory, { recursive: true, force: true });
+    try {
+      rmSync(directory, { recursive: true, force: true });
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `${error.message}\nWindows Job guard cleanup failed for ${directory}: ${cleanupError.message}`,
+        { cause: error },
+      );
+    }
     throw error;
   }
   return {

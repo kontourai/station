@@ -1,0 +1,9 @@
+{
+  "revision": "3e8a14f3998eac6663c379252dc9adf1b5218f0c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Refactor only: the POST/PUT validator is named once (validateWrite) with the connection_address_required refusal; behavior unchanged from the reviewed revision. api.md Save a Connection and module-map ownership claims remain accurate.","inputs":["src-server/routes/connections/connections.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Refactor only: the POST/PUT validator is named once (validateWrite) with the connection_address_required refusal; behavior unchanged from the reviewed revision. api.md Save a Connection and module-map ownership claims remain accurate.","inputs":["src-server/routes/connections/connections.ts"]}
+  ]
+}

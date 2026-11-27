@@ -198,7 +198,6 @@ export function LayoutView({
       return await slashCommandHandler(sessionId, content, {
         autocomplete: {
           openModel: () => {},
-          openNewChat: () => {},
           closeCommand: () => {},
           closeAll: () => {},
         },
@@ -268,8 +267,8 @@ export function LayoutView({
         prompt.label,
         projectSlug,
       );
+      setActiveChat(sessionId);
       setDockState(true);
-      setActiveChat(null); // New chat, no conversation yet
 
       await sendMessage(sessionId, targetAgent.slug, undefined, promptText);
     },
@@ -352,7 +351,7 @@ export function LayoutView({
               pending={layoutFailure.retrying}
               onClick={() => void refetchLayout()}
             >
-              Try again
+              Retry
             </Button>
             {backToProject}
           </ResponsiveSurfaceActions>
@@ -383,7 +382,7 @@ export function LayoutView({
         action={
           <ResponsiveSurfaceActions>
             <Button variant="primary" onClick={() => void refetchLayout()}>
-              Try again
+              Retry
             </Button>
             {backToProject}
           </ResponsiveSurfaceActions>

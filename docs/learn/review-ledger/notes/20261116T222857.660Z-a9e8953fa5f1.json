@@ -1,0 +1,7 @@
+{
+  "revision": "98fdc8d5773501eee7ede3273b9741fd02932169",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the action-surface inventory change (ComposerAttachmentStrip row replaces AttachmentPreviewMenu, 44px thumbnail/Remove measured in tests/mobile-chat-composer.spec.ts) against this guide's inventory rules; prose unchanged. the action-surface inventory swaps the removed AttachmentPreviewMenu row for ComposerAttachmentStrip and notes the wait line action; ChatDock adds startSendWaitsForUploads (Start's held first send) threaded to the composer and reuses hasUploadsInFlight; the pendingGoalSend flow is otherwise unchanged; chat.css adds the attachment thumbnail-button and upload-wait line styles; index.css only drops the dead .attachment-menu popover rules (base and mobile).","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}

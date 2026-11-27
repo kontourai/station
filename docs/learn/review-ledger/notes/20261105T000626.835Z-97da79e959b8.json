@@ -1,7 +1,0 @@
-{
-  "revision": "ca3eb22d2ecfd75315d54c3ea5ba50f4284db857",
-
-  "notes": [
-    {"path":"docs/user/concepts.md","note":"Rechecked after the privacy-policy adoption wording change: this document only links to the data-flow inventory and public policy and makes no claim about daily token counting or Codex adoption, so it remains accurate.","inputs":["docs/user/concepts.md","docs/privacy-policy.md"]}
-  ]
-}

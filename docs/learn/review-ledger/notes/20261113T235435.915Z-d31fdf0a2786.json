@@ -1,0 +1,7 @@
+{
+  "revision": "9508901e176a71703673bbdb16c68fc6110dab98",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Re-checked after the contracts.md schema-check sentence edit: the glossary states nothing about Muse schema verification or version checks; no edit needed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]}
+  ]
+}

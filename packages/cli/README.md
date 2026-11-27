@@ -205,9 +205,13 @@ SDK-backed requests give up after 30 seconds. Override with
 orchestration and approval events and live monitoring — have no overall
 deadline. Chat sends a bounded JSON acceptance request, then observes the turn
 on a separate event stream. Knowledge reindexing and migration also opt out of
-the request deadline. The current checkpoint-restore and Operate event-stream
-paths bypass the shared credential client and cannot authenticate to a protected
-Station; see the reference.
+the request deadline. Operate uses the selected Station’s credential for its
+session reads and live event stream.
+
+Use `station checkpoints restore --thread=<id> --turn=<id> --station=<name>`
+to inspect the affected paths. To restore, repeat the target and IDs and add
+`--confirm`, `--preview-id=<id>`, and `--expected-current-tree-sha=<sha>` from
+that preview. Both calls use the shared Station credential and request deadline.
 
 ## What this CLI does not do
 
@@ -307,6 +311,15 @@ station --version
 detail. Unknown commands and actions fail with a diagnostic. Flag validation
 belongs to each command; use the documented spelling, including
 `--model-option=key=value` rather than a space-separated value.
+
+New chats on the current environment at an IP-literal loopback Station use the
+invocation directory by default. Use `--cwd=<path>` to choose a directory, or
+`--project=<slug>` to use the Project's configured workspace. Other targets
+choose their own default workspace unless you specify one. Continuations retain
+their workspace and reject workspace flags.
+
+Chat JSON reports an opening notice as `lastObservedRequest`. A legacy
+`pendingRequest` with a responder command requires confirmation from Station.
 
 The prose reference and availability table ship with the Station repository as
 `docs/reference/cli.md`. Its implementation links and stated limits distinguish

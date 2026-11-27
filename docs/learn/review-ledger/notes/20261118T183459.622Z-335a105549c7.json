@@ -1,0 +1,9 @@
+{
+  "revision": "0da9253e6168306ec146eeb084e8c6cc16f2e6de",
+
+  "notes": [
+    {"path":"docs/user/work-board.md","note":"Checked the Project overview's Open workspace disclosure and Add pane button against the Project view and product browser. The browser opened Work Board after expanding the disclosure. The fuller browser case reached the compact Canvas and stopped at the Remove hit-test.","inputs":["docs/user/work-board.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Followed the Work Board link to the route documented in the user guide. A Project's Add pane action is inside Open workspace.","inputs":["docs/user/getting-started.md","docs/user/work-board.md"]}
+  ]
+}

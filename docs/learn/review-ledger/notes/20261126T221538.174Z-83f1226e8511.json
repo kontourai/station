@@ -1,0 +1,7 @@
+{
+  "revision": "1e2598b9578eab7632164edcbe75a89afd03c88a",
+
+  "notes": [
+    {"path":"packages/basis-pane/README.md","note":"Reviewed the portable Session inventory App against its server tool owner. The MCP listing now advertises an object with operation-specific field guidance and still validates the same open/page, scope, and version combinations. Existing App calls, continuation authority, and envelope behavior are unchanged.","inputs":["packages/basis-pane/README.md","src-server/tools/station-control-session-inventory-tools.ts"]}
+  ]
+}

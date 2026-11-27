@@ -1,7 +1,0 @@
-{
-  "revision": "643c674436b0486c3e599b2f178549915ab0b280",
-
-  "notes": [
-    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Rechecked the Coding terminal row against e2e-manifest.test.ts expected smoke-live entry for terminal-mobile-keyboard.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/__tests__/e2e-manifest.test.ts"]}
-  ]
-}

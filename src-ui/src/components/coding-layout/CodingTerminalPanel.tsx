@@ -2,6 +2,7 @@ import { Badge, type SemanticTone } from '@kontourai/ui/react';
 import { type ReactNode, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import { nextTabIndex } from '../../utils/tab-navigation';
 import { usePaneHeadSlots } from '../../workspace-panes/PaneHeadSlots';
 import { ACPChatPanel } from '../acp-connections/ACPChatPanel';
 import { AgentGlyph, MessageGlyph, PlayGlyph } from '../icons/Glyph';
@@ -108,17 +109,7 @@ export function CodingTerminalPanel({
         .closest('[role="tablist"]')
         ?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [],
     );
-    if (items.length === 0) return;
-    let nextIndex: number | null = null;
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-      nextIndex = index === items.length - 1 ? 0 : index + 1;
-    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      nextIndex = index === 0 ? items.length - 1 : index - 1;
-    } else if (event.key === 'Home') {
-      nextIndex = 0;
-    } else if (event.key === 'End') {
-      nextIndex = items.length - 1;
-    }
+    const nextIndex = nextTabIndex(index, items.length, event.key);
     if (nextIndex === null) return;
     event.preventDefault();
     const next = items[nextIndex]!;

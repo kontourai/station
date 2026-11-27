@@ -88,6 +88,13 @@ A Station instance becomes the supervisor and its core server generations.
 The instance registry records the supervisor's pid. The topology vocabulary
 in [station-topology.md](station-topology.md) is updated when this lands.
 
+For a supervised `station start`, the launcher verifies the supervisor's
+active serving generation and reads the expected HTTP identity on a fresh
+connection while that generation remains active. An API listener belonging
+to a generation ordered to drain can already answer the same boot identity.
+The launcher waits for an admitted replacement within the existing startup
+budget before it prints the server URL.
+
 ### Supervisor responsibilities
 
 The supervisor is deliberately thin. It makes no authorization, routing, or
@@ -152,8 +159,9 @@ product decisions.
   `STATION_SUPERVISOR_IPC=1` parks before its temp and orphan sweeps, the
   home schema gate, and its log sink, which touch the home or the live
   generation's processes. Telemetry registers at import as usual, but its
-  home writes (schema gate, installation identity) wait for promotion. Its three listeners (API,
-  voice, consent) bind through one link: adopted handles when the
+  home writes (schema gate, installation identity) wait for promotion. Its API,
+  voice and consent listeners, and a same-port loopback API socket when the
+  public bind does not cover IPv4 loopback, bind through one link: adopted handles when the
   supervisor holds them, otherwise a normal bind reported with
   `listener.bound`. A later generation takes its base port from the held API
   socket, so `PORT=0` keeps one block across generations. `ready` carries a
@@ -176,6 +184,15 @@ product decisions.
   home-writer lease that hands the home from one generation to the next. That
   is a later phase; the `parked` and `promote` steps exist so the protocol
   does not have to change for it.
+
+  A core that refuses startup because its machine policy cannot be enforced
+  or its home requires reset exits with the reserved code `78`. During boot
+  or rollback the supervisor logs that terminal refusal, retains the core's
+  stderr diagnostic, and gives up after one attempt. A terminal rollback
+  returns a refusal result before the control channel closes; a non-reading
+  requester is bounded by the existing one-second reply-close deadline.
+  It does not interpret marker text as authority. The CLI checks policy before requesting a restart,
+  so an already-invalid policy does not drain the serving generation.
 
   A crash of the active generation, outside a drain, restarts it with
   exponential backoff: 1s doubling to a 30s cap, reset after 60s of stable
@@ -480,6 +497,10 @@ work is running, the user chooses between waiting for it and stopping it.
   with binary framing. Engine JSON-RPC lines and terminal bytes pass through
   as bytes, never re-encoded.
 - **Journaling:** a ring buffer plus appends. Nothing rewrites a whole file.
+- **Core memory:** each core generation is forked with the supervisor's own
+  Node flags dropped and `--max-semi-space-size=16` added. That flag bounds a young
+  generation V8 would otherwise size from host memory and keep at rest
+  ([measurement](../reference/station-weight.md#server-memory-at-rest)).
 - **Budget:** the added hop must stay under 1 ms at p99 on a local machine,
   measured before and after the engine phase. If it does not, the transport is
   fixed before engines move.
@@ -506,14 +527,24 @@ On startup, before interrupted turns are consumed, the core server:
 
 Only turns whose engine is gone take the interrupted path.
 
-As a safety net for every engine, an interrupted turn can be resumed
-automatically from its `resumeCursor`, with a bounded retry. This is the
-"bounded auto-resume" slice already anticipated in
-[`interrupted-turn-recovery.ts`](../../src-server/services/orchestration/interrupted-turn-recovery.ts).
-In-process engines (Ollama, Bedrock, station-agent) rely on it, since they
-live in the core server.
+As a safety net for every engine, an interrupted turn would be resumed
+automatically from its `resumeCursor`, with a bounded retry. This "bounded
+auto-resume" slice is not built:
+[`interrupted-turn-recovery.ts`](../../src-server/services/orchestration/interrupted-turn-recovery.ts)
+only names it as a future reader of the facts it records. In-process engines
+(Ollama, Bedrock, station-agent) would rely on it, since they live in the
+core server.
 
-For external engines, which can only be resumed by a new turn, unattended work
+Implemented today: no interrupted turn is resumed on any engine. At boot,
+interrupted-turn recovery closes each dead turn, expires the requests it was
+waiting on and writes the **Turn interrupted** notice. A turn it could not
+settle is retried within the boot (four attempts over about 1.75 seconds),
+then once a minute until it settles or Station stops; until it settles, its
+boundary row stays for the next boot. The conversation goes on only through a new
+turn: the person's **Continue** (preview `continue-interrupted-turn`), their
+next message, or the unattended continuation below.
+
+Since an engine can only be resumed by a new turn, unattended work
 gets one such turn behind the `continue-unattended-after-restart` preview
 (#4512). After boot, [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
 takes the turns interrupted-turn recovery settled this boot
@@ -530,7 +561,9 @@ this Station's own turn boundaries, so Sessions mirrored from another Station
 never qualify. The continuation's own turn shows as **Continued after
 restart**. A crash between a boundary's resolution and the queued entry loses
 that continuation (the banner and the person's Continue remain): the path is at
-most once.
+most once. A turn recovery settles only on its later once-a-minute retry is not
+among the turns settled this boot, so it gets the banner and the person's
+Continue but no automatic continuation.
 
 ### Launch modes and the tray
 
@@ -621,6 +654,8 @@ Every path becomes a generation handoff:
        them, and holds what it accepts, unread.
     2. The draining generation closes its listeners only once no connection
        has reached them for 50 ms, and at most 1 s after the drain began.
+       The initial quiet interval starts with the drain; earlier idle time
+       does not satisfy it.
     3. The first generation to report a listener listening
        (`listener.listening`) gets what was held for it, with
        `connection.adopt`, as the backlog would have handed it to the first
@@ -631,7 +666,9 @@ Every path becomes a generation handoff:
        set.
     4. The supervisor closes the spares once none has accepted for 50 ms,
        and at most 1 s later: the new generation's accepts are newer, but
-       one still booting can be slow to post its next. If that generation
+       one still booting can be slow to post its next. The initial quiet
+       interval starts when release begins, even if no spare has accepted.
+       If that generation
        exits or is being ended as a failed trial by then, the supervisor
        keeps holding for the generation that follows.
 
@@ -670,10 +707,10 @@ Every path becomes a generation handoff:
 
 | Failure | Outcome |
 | --- | --- |
-| Core server crash | Supervisor restarts it; workloads keep running and reattach. |
+| Core server crash | Supervisor restarts it. Terminals that run as supervisor workloads keep running and the new generation reattaches them. Agent engines are not workloads yet (phase 3): they end with the core, boot ends any left running, and their turns are marked interrupted. |
 | Trial generation fails to park | The old generation was never drained and keeps serving; the handoff is reported as rolled back. |
 | Trial generation fails readiness | The old generation has already exited in phase 1, so its entry is started again as a new generation. Connections wait in the backlog; the handoff is reported as rolled back. |
-| Supervisor crash | Workloads end, because their stdio and PTYs die with it. Boot behaves as today: interrupt, then auto-resume. Keeping the supervisor small keeps this rare. |
+| Supervisor crash | Workloads end, because their stdio and PTYs die with it. Boot behaves as today: running turns are marked interrupted (auto-resume is not built). Keeping the supervisor small keeps this rare. |
 | Disk journal full | Oldest closed segments are trimmed; a running workload's tail is never dropped silently. The trim is reported. |
 
 ### Later: remote workloads
@@ -807,9 +844,16 @@ verification, and fault injection.
   the serving generation's process identity in its run lease. Teardown
   stops through the control channel (`station stop`), and the lease is
   released only once the supervisor, the UI listener and that generation
-  are all gone. These are covered by unit tests of the classification,
-  health and e2e helpers. Neither a dogfood reconcile nor the e2e suite was
-  run against a supervised instance for this change.
+  are all gone. The helper tests cover classification, health, and cleanup.
+  The isolated E2E browser suite also exercised a supervised launch and
+  teardown. A separate dogfood run used the real reconciler to install, build,
+  and promote a CI-qualified detached release through fixture-local HTTPS.
+  After `station restart`, the same supervisor served a new core generation.
+  The next reconcile reported `current` with zero recoveries. The same
+  terminal Session kept its shell PID and state and accepted another command.
+  The existing Agent transcript remained readable, and a follow-up turn
+  continued its conversation in a successor Session. Operator tailnet routing
+  and live deployment need their own evidence.
 - **Phase 2 evidence (terminal workloads).** The package's real-process
   tests
   ([`workloads.test.ts`](../../packages/supervisor/src/__tests__/workloads.test.ts))
@@ -833,3 +877,20 @@ verification, and fault injection.
   marker appears exactly once. Stopping the supervisor ends the shell. The
   journey does not boot the whole core server or its authenticated
   terminal routes.
+
+## Bounded setup commands (protocol 1.4)
+
+A reviewed engine installer is a server-owned terminal workload with a finite
+`maxRuntimeMs`. `SupervisorShellHost` asks the workload host's `capabilities`
+operation before starting it; an older supervisor or host refuses before the
+installer command is invoked. The process-owning host enforces the deadline
+while a core is absent, so a core restart does not reset the installation's
+lifetime. Existing interactive terminals without that field retain their prior
+behavior. `TerminalSessions` persists the attempt's operation id and lifetime;
+response-loss retries attach to that record instead of starting a duplicate.
+
+The real-PTY supervisor-shell-host regression detaches the core and requires
+the bounded workload to end with no core attached, then reopens its saved
+outcome. A separate negative control requires an unsupported host to receive
+only capability negotiation, never spawn. This is one-host process evidence,
+not a vendor-installer or native-device qualification.

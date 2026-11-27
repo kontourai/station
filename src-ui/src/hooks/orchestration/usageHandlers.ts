@@ -32,7 +32,35 @@ export function handleTokenUsageUpdatedEvent(
     event.contextTokens,
     event.contextWindowTokens,
   );
-  if (!hasTokenUsage && !hasContextObservation) return;
+  const contextPercent =
+    typeof event.contextPercent === 'number' &&
+    Number.isFinite(event.contextPercent) &&
+    event.contextPercent >= 0 &&
+    event.contextPercent <= 100
+      ? event.contextPercent
+      : undefined;
+  const reportedCost =
+    event.reportedCost &&
+    typeof event.reportedCost.amount === 'number' &&
+    Number.isFinite(event.reportedCost.amount) &&
+    event.reportedCost.amount >= 0 &&
+    typeof event.reportedCost.unit === 'string' &&
+    event.reportedCost.unit &&
+    (event.reportedCost.scope === 'turn' ||
+      event.reportedCost.scope === 'session')
+      ? {
+          amount: event.reportedCost.amount,
+          unit: event.reportedCost.unit,
+          scope: event.reportedCost.scope,
+        }
+      : undefined;
+  if (
+    !hasTokenUsage &&
+    !hasContextObservation &&
+    contextPercent === undefined &&
+    !reportedCost
+  )
+    return;
 
   const mergedUsage = {
     ...chat.liveUsage,
@@ -73,6 +101,8 @@ export function handleTokenUsageUpdatedEvent(
             contextWindowTokens: event.contextWindowTokens,
           }
         : {}),
+      ...(contextPercent !== undefined ? { contextPercent } : {}),
+      ...(reportedCost ? { reportedCost } : {}),
     },
   });
 }

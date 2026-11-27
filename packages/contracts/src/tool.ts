@@ -375,6 +375,68 @@ export interface ToolCredentialOwnership {
   allowInstanceFallback?: boolean;
 }
 
+export type ToolServerEventDelivery = 'poll' | 'push' | 'webhook';
+
+export interface ToolServerEventDescriptor {
+  name: string;
+  title?: string;
+  description?: string;
+  delivery?: ToolServerEventDelivery[];
+  inputSchema?: Record<string, unknown>;
+  payloadSchema?: Record<string, unknown>;
+}
+
+export type ToolServerEventCatalog =
+  | { supported: false }
+  | { supported: true; events: ToolServerEventDescriptor[]; truncated?: true };
+
+export interface ToolServerEventPollInput {
+  name: string;
+  cursor: string | null;
+  arguments?: Record<string, unknown>;
+  maxEvents?: number;
+  maxAgeMs?: number;
+}
+
+export type ToolServerEventPollPage =
+  | { supported: false }
+  | {
+      supported: true;
+      cursor: string | null;
+      hasMore: boolean;
+      truncated: boolean;
+      nextPollMs?: number;
+      events: Array<{
+        name?: string;
+        eventId: string;
+        timestamp: string;
+        data: unknown;
+      }>;
+    };
+
+export type ToolServerEventStreamInput = Omit<
+  ToolServerEventPollInput,
+  'maxEvents'
+> & { heartbeatMs?: number };
+
+export type ToolServerEventStreamFrame =
+  | {
+      type: 'active';
+      cursor: string | null;
+      truncated: boolean;
+      heartbeatMs: number;
+    }
+  | {
+      type: 'event';
+      cursor: string | null;
+      eventId: string;
+      timestamp: string;
+      data: unknown;
+    }
+  | { type: 'heartbeat'; cursor: string | null }
+  | { type: 'warning' }
+  | { type: 'ended'; reason: 'complete' | 'unavailable' };
+
 export interface ToolServerProbeResult {
   ok: boolean;
   error?: string;
@@ -448,6 +510,23 @@ export interface ToolMetadata {
 export interface IntegrationEngineCoverage {
   engine: 'claude' | 'codex' | 'acp';
   coverage: 'station-gated' | 'engine-direct' | 'not-delivered';
+}
+
+/**
+ * #4828: whether Station marks a conversation as having read untrusted
+ * content when an engine reads the web with its own built-in tools.
+ * - `covered`: each of the engine's web-reading tools marks it;
+ * - `partial`: only what the engine itself labels as a web read marks it;
+ * - `uncovered`: nothing marks it. Never read as safe.
+ * A shell command that downloads is not recognised on any engine.
+ */
+export interface NativeWebReadCoverage {
+  engine: 'station' | 'claude' | 'codex' | 'acp' | 'muse';
+  coverage: 'covered' | 'partial' | 'uncovered';
+  /** What Station marks from, in the engine's own names. */
+  signals: string[];
+  /** Why the coverage is what it is. */
+  reason: string;
 }
 
 /**
@@ -578,10 +657,33 @@ export interface ModelOptionCapabilities {
   imageInput?: boolean;
 }
 
+export interface CatalogModelRoute {
+  providerId: string;
+  modelId: string;
+  displayName?: string;
+}
+
+export function readCatalogModelRoute(
+  value: unknown,
+): CatalogModelRoute | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const { providerId, modelId, displayName } = value as Record<string, unknown>;
+  const valid = (field: unknown): field is string =>
+    typeof field === 'string' && field.trim().length > 0 && field.length <= 512;
+  if (!valid(providerId) || !valid(modelId)) return undefined;
+  return {
+    providerId,
+    modelId,
+    ...(valid(displayName) ? { displayName } : {}),
+  };
+}
+
 export interface ModelOption {
   id: string;
   name: string;
   originalId: string;
+  /** Structured engine catalog fields for display. The selector remains `id`. */
+  catalogRoute?: CatalogModelRoute;
   /**
    * For alias/default entries, the concrete model id the engine reports this
    * entry currently resolves to (e.g. Claude's 'default' → 'claude-opus-5[1m]').
@@ -882,6 +984,14 @@ export interface AgentConnectionView extends ConnectionConfig {
   modelExecution?: ModelInventoryExecutionIdentity;
   /** Adapter-declared continuity; absent older/plugin rows mean no native capability. */
   continuity?: import('./provider.js').ProviderContinuityCapabilities;
+  /**
+   * #2266: the adapter's declared model-launch capability: whether an
+   * explicit model selector is applied at each lifecycle point. Independent
+   * of `runtimeCatalog`: an engine can apply a selector it cannot enumerate,
+   * so an empty catalog never means selection is unsupported. Absent (an
+   * older host, or an adapter that declares none) is unknown.
+   */
+  modelLaunch?: import('./provider.js').ModelLaunchCapabilities;
   runtimeCatalog?: RuntimeCatalogStatus;
   /** Live ACP provider-routing evidence; absent on non-ACP connections. */
   providerRouting?: ACPProviderRoutingStatus;

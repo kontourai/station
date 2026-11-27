@@ -1,0 +1,7 @@
+{
+  "revision": "cd5f59d514e5225de8712bb41baa731640c7e124",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Guidance on child-process classification and fail-closed gates still matches; test-impact-incidents stays process-heavy.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

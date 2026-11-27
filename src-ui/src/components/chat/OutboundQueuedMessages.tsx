@@ -142,7 +142,7 @@ export function OutboundQueuedMessages({
       setEditing((current) => (current === editing ? null : current));
     } catch (error) {
       onError(
-        `Could not edit the durable offline turn: ${describeStationFailure(error).body}`,
+        `Couldn't edit the offline message: ${describeStationFailure(error).body}`,
       );
     } finally {
       saveInFlight.current = false;
@@ -382,7 +382,7 @@ export function OutboundQueuedMessages({
                       })
                       .catch((error) =>
                         onError(
-                          `Could not discard the durable offline turn: ${describeStationFailure(error).body}`,
+                          `Couldn't discard the offline message: ${describeStationFailure(error).body}`,
                         ),
                       )
                   }

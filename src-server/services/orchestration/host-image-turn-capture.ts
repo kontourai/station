@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { errorMessage } from '../../utils/error-message.js';
 import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import {
   removeLaunchedRoot,
@@ -28,14 +29,14 @@ export function hostImageAgentInstruction(where: {
 }): string | undefined {
   const place =
     where.workingFolder && where.tmpdir
-      ? 'inside the working directory or $TMPDIR'
+      ? 'the working directory or $TMPDIR'
       : where.workingFolder
-        ? 'inside the working directory'
+        ? 'the working directory'
         : where.tmpdir
-          ? 'inside $TMPDIR'
+          ? '$TMPDIR'
           : undefined;
   return place
-    ? `[Station chat images: to show the person an image, save it as PNG, JPEG, GIF or WebP (at most 512 KiB) ${place} and reference it as ![alt](/absolute/path). Images at other paths will not render.]`
+    ? `[Station chat images: save PNG, JPEG, GIF or WebP (max 512 KiB) in ${place}. Embed with ![alt](/absolute/path). Other paths will not render.]`
     : undefined;
 }
 
@@ -158,7 +159,7 @@ export class HostImageTurnCapture {
       .catch((error: unknown) =>
         this.deps.logger.warn('Host image capture failed', {
           threadId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         }),
       );
     this.inflight.set(threadId, run);

@@ -1,3 +1,4 @@
+import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import type { STTState } from '@kontourai/station-sdk';
 import {
@@ -10,6 +11,7 @@ import {
 } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
+import { useOptionalPreview } from '../../contexts/PreviewContext';
 import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
 import { useFileAttachment } from '../../hooks/useFileAttachment';
 import { useDockSlotDevice } from '../../hooks/useIsMobile';
@@ -23,6 +25,8 @@ import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ComposerChoice } from '../ComposerChoice';
+import { ComposerRunControl } from '../ComposerRunControl';
+import { InfoTip } from '../InfoTip';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
@@ -43,21 +47,42 @@ export interface StartComposerFiles {
   onRemove: (index: number) => void;
 }
 
+/** An image file's thumbnail; it opens the transcript's previewer. */
 function StartFileThumbnail({ file }: { file: File }) {
   const [preview, setPreview] = useState<string>();
+  const previewer = useOptionalPreview();
   useEffect(() => {
     if (!file.type.startsWith('image/')) return;
     const url = URL.createObjectURL(file);
     setPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
-  return preview ? (
+  if (!preview) return null;
+  const image = (
     <img
       className="start-composer__file-thumbnail"
       src={preview}
-      alt={file.name}
+      alt={previewer ? '' : file.name}
     />
-  ) : null;
+  );
+  if (!previewer) return image;
+  return (
+    <button
+      type="button"
+      className="start-composer__file-preview"
+      aria-label={`Preview ${file.name}`}
+      title={`Preview ${file.name}`}
+      onClick={() =>
+        previewer.openPreview({
+          url: preview,
+          mediaType: file.type,
+          name: file.name,
+        })
+      }
+    >
+      {image}
+    </button>
+  );
 }
 
 /** Dictation into the prompt; the same control the chat composer offers. */
@@ -129,7 +154,11 @@ export type StartAgentChip =
        * gap, not a Model: the chip then names the Agent alone.
        */
       modelLabel?: string;
+      /** The reasoning effort this start requests; absent for the engine default. */
+      effortLabel?: string;
       executionAgentId?: string;
+      /** Catalog entry for the selected execution engine, including overrides. */
+      executionAgent?: AgentData;
       environmentId?: string;
       /** The Agent shown needs setup before Start can use it. */
       needsSetup: boolean;
@@ -141,6 +170,9 @@ export type StartAgentChip =
       approvalProjectDefaultUnavailable?: boolean;
       /** This start's own approval pick, if one was made. */
       approvalPick?: ApprovalMode;
+      approvalConnections?: Parameters<
+        typeof StartApprovalSummary
+      >[0]['acpConnections'];
       /** Present: the Permissions chip is a picker for `approvalPick`. */
       onApprovalPick?: (mode: ApprovalMode) => void;
     };
@@ -158,6 +190,8 @@ export type StartProjectChip =
       isGlobal: boolean;
       /** The folder the chat runs in, as the project menu also states. */
       folder?: string;
+      folderTitle?: string;
+      folderIsHelp?: boolean;
     };
 
 export interface StartContextItem {
@@ -170,7 +204,7 @@ export interface StartContextItem {
 /** Visible text of the Agent chip: "Agent · Model". */
 function startAgentChipText(chip: StartAgentChip): string {
   if (chip.status === 'loading') return '';
-  if (!chip.agent) return 'Choose an agent';
+  if (!chip.agent) return 'Choose agent';
   return chip.modelLabel && chip.modelLabel !== MODEL_NOT_REPORTED
     ? `${chip.agent.name} · ${chip.modelLabel}`
     : chip.agent.name;
@@ -244,6 +278,7 @@ export function StartComposer({
   compact = false,
   layout = 'hero',
   heading,
+  headingLevel = 2,
   agent,
   onOpenAgents,
   onOpenModel,
@@ -276,6 +311,7 @@ export function StartComposer({
    */
   layout?: 'hero' | 'draft';
   heading?: string;
+  headingLevel?: 1 | 2;
   agent: StartAgentChip;
   onOpenAgents: (trigger: HTMLElement) => void;
   onOpenModel?: (trigger: HTMLElement) => void;
@@ -334,9 +370,10 @@ export function StartComposer({
   }, [compact, prompt]);
   const agentText =
     onOpenModel && agent.status === 'ready'
-      ? (agent.agent?.name ?? 'Choose an agent')
+      ? (agent.agent?.name ?? 'Choose agent')
       : startAgentChipText(agent);
   const draft = layout === 'draft';
+  const Heading = headingLevel === 1 ? 'h1' : 'h2';
   const projectControl = (
     <>
       {project.status === 'ready' && (
@@ -390,23 +427,23 @@ export function StartComposer({
       }}
     >
       <div className="start-composer__destination">
-        <h2>
-          {heading ?? (compact ? 'Start work' : 'What would you like to do')}
-          {!compact && (
+        <Heading>
+          {heading ?? 'What would you like to do'}
+          {!heading && (
             <>
               {project.status === 'ready' && !project.isGlobal && (
                 <> in {projectControl}</>
               )}
-              {!heading && '?'}
+              ?
             </>
           )}
-        </h2>
-        {compact ||
+        </Heading>
+        {heading ||
         project.status === 'loading' ||
         (project.status === 'ready' && project.isGlobal)
           ? projectControl
           : null}
-        {!compact &&
+        {!heading &&
           !projectFixed &&
           project.status === 'ready' &&
           !project.isGlobal &&
@@ -455,6 +492,11 @@ export function StartComposer({
         )}
         <textarea
           ref={fieldRef}
+          data-native-image-paste={
+            files && !pending
+              ? JSON.stringify([project, agent.status])
+              : undefined
+          }
           className="editor-textarea start-composer__input"
           aria-label="What would you like done?"
           placeholder={placeholder}
@@ -512,83 +554,6 @@ export function StartComposer({
           </p>
         )}
         <div className="start-composer__bar">
-          <fieldset
-            className="composer-choices start-composer__chips"
-            aria-label="Chat setup"
-          >
-            {agent.status === 'loading' ? (
-              <span
-                className="start-composer__chip start-composer__chip--loading"
-                role="status"
-                aria-label="Checking which Agent will start"
-              >
-                <Skeleton variant="line" width="9rem" />
-              </span>
-            ) : (
-              <ComposerChoice
-                className={`start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
-                aria-haspopup="dialog"
-                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}`}
-                title={
-                  !onOpenModel && agent.status === 'ready'
-                    ? agent.modelNote
-                    : undefined
-                }
-                onClick={(event) => onOpenAgents(event.currentTarget)}
-                caption="Agent"
-                value={agentText}
-                icon={
-                  agent.agent && <AgentIcon agent={agent.agent} size="small" />
-                }
-              />
-            )}
-            {onOpenModel && agent.status === 'ready' && (
-              <ComposerChoice
-                className="start-composer__chip start-composer__chip--model"
-                aria-haspopup="dialog"
-                aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
-                title={agent.modelNote}
-                disabled={!agent.agent}
-                onClick={(event) => onOpenModel(event.currentTarget)}
-                caption="Model"
-                valueClassName="chat-input__model-name"
-                value={
-                  agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED
-                    ? agent.modelLabel
-                    : 'Model'
-                }
-              />
-            )}
-            {agent.status === 'ready' &&
-              (!agent.environmentId || agent.environmentId === 'current') &&
-              agent.agent && (
-                <StartApprovalSummary
-                  agent={agent.agent}
-                  executionAgentId={agent.executionAgentId}
-                  projectDefault={agent.approvalProjectDefault}
-                  projectDefaultUnavailable={
-                    agent.approvalProjectDefaultUnavailable
-                  }
-                  pick={agent.approvalPick}
-                  onPick={agent.onApprovalPick}
-                />
-              )}
-            {skill && (
-              <span className="start-composer__chip start-composer__chip--skill">
-                <span className="start-composer__chip-text">{skill.title}</span>
-                <button
-                  type="button"
-                  className="start-composer__chip-remove"
-                  aria-label={`Remove visual skill ${skill.title}`}
-                  onClick={skill.onRemove}
-                >
-                  <CloseGlyph />
-                </button>
-              </span>
-            )}
-          </fieldset>
-          {/* The rarer options sit with Start, apart from the chips: on a
-            phone the chips keep row one and this pair takes row two. */}
           <div className="start-composer__actions">
             <span className="start-composer__tools">
               {files && <StartAttachButton onAdd={files.onAdd} />}
@@ -609,6 +574,126 @@ export function StartComposer({
                 />
               )}
             </span>
+            <fieldset
+              className="composer-choices start-composer__chips"
+              aria-label="Chat setup"
+            >
+              <ComposerRunControl
+                loadingLabel={
+                  agent.status === 'loading'
+                    ? 'Checking which Agent will start'
+                    : undefined
+                }
+                label={[
+                  agentText || 'Choose agent',
+                  onOpenModel &&
+                  agent.status === 'ready' &&
+                  agent.modelLabel &&
+                  agent.modelLabel !== MODEL_NOT_REPORTED
+                    ? agent.modelLabel
+                    : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                effort={
+                  agent.status === 'ready' ? agent.effortLabel : undefined
+                }
+                icon={
+                  agent.status === 'ready' && agent.agent ? (
+                    <AgentIcon agent={agent.agent} size="small" />
+                  ) : null
+                }
+                engineId={
+                  agent.status === 'ready'
+                    ? parseEngineId(
+                        (agent.executionAgent ?? agent.agent)?.engineId,
+                      )
+                    : undefined
+                }
+              >
+                {agent.status === 'loading' ? (
+                  <span
+                    className="start-composer__chip start-composer__chip--loading"
+                    role="status"
+                    aria-label="Checking which Agent will start"
+                  >
+                    <Skeleton variant="line" width="9rem" />
+                  </span>
+                ) : (
+                  <ComposerChoice
+                    className={`start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
+                    aria-haspopup="dialog"
+                    aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                    title={
+                      !onOpenModel && agent.status === 'ready'
+                        ? agent.modelNote
+                        : undefined
+                    }
+                    onClick={(event) => onOpenAgents(event.currentTarget)}
+                    changedForConversation={Boolean(
+                      agent.status === 'ready' && agent.executionAgentId,
+                    )}
+                    caption="Agent"
+                    value={agentText}
+                    icon={
+                      agent.agent && (
+                        <AgentIcon agent={agent.agent} size="small" />
+                      )
+                    }
+                  />
+                )}
+                {onOpenModel && agent.status === 'ready' && (
+                  <ComposerChoice
+                    className="start-composer__chip start-composer__chip--model"
+                    aria-haspopup="dialog"
+                    aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? `${agent.modelLabel}${agent.effortLabel ? ` · ${agent.effortLabel}` : ''}` : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                    title={agent.modelNote}
+                    disabled={!agent.agent}
+                    onClick={(event) => onOpenModel(event.currentTarget)}
+                    caption="Model"
+                    valueClassName="chat-input__model-name"
+                    value={
+                      agent.modelLabel &&
+                      agent.modelLabel !== MODEL_NOT_REPORTED
+                        ? [agent.modelLabel, agent.effortLabel]
+                            .filter(Boolean)
+                            .join(' · ')
+                        : 'Model'
+                    }
+                  />
+                )}
+                {agent.status === 'ready' &&
+                  (!agent.environmentId || agent.environmentId === 'current') &&
+                  agent.agent && (
+                    <StartApprovalSummary
+                      agent={agent.agent}
+                      executionAgentId={agent.executionAgentId}
+                      acpConnections={agent.approvalConnections}
+                      projectDefault={agent.approvalProjectDefault}
+                      projectDefaultUnavailable={
+                        agent.approvalProjectDefaultUnavailable
+                      }
+                      pick={agent.approvalPick}
+                      onPick={agent.onApprovalPick}
+                    />
+                  )}
+              </ComposerRunControl>
+              {skill && (
+                <span className="start-composer__chip start-composer__chip--skill">
+                  <span className="start-composer__chip-text">
+                    {skill.title}
+                  </span>
+                  <button
+                    type="button"
+                    className="start-composer__chip-remove"
+                    aria-label={`Remove visual skill ${skill.title}`}
+                    onClick={skill.onRemove}
+                  >
+                    <CloseGlyph />
+                  </button>
+                </span>
+              )}
+            </fieldset>
             <Button
               type="submit"
               variant="primary"
@@ -624,11 +709,18 @@ export function StartComposer({
       </div>
       <div className="start-composer__location">
         {stationControl}
-        {project.status === 'ready' && project.folder && (
-          <span className="start-composer__folder" title={project.folder}>
-            {project.folder}
-          </span>
-        )}
+        {project.status === 'ready' &&
+          project.folder &&
+          (project.folderIsHelp ? (
+            <InfoTip label="this chat’s folder">{project.folder}</InfoTip>
+          ) : (
+            <span
+              className="start-composer__folder"
+              title={project.folderTitle ?? project.folder}
+            >
+              {project.folder}
+            </span>
+          ))}
       </div>
       {note && <p className="start-composer__note">{note}</p>}
       {children}

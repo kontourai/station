@@ -82,6 +82,17 @@ function canonicalHost(host: string): string {
   return host.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
 }
 
+export function isConfiguredGitLabHost(host: string): boolean {
+  const canonical = canonicalHost(host);
+  return (
+    canonical === 'gitlab.com' ||
+    (process.env.STATION_GITLAB_HOSTS ?? '').split(',').some((entry) => {
+      const configured = entry.trim().toLowerCase();
+      return /^[a-z0-9.-]+$/.test(configured) && configured === canonical;
+    })
+  );
+}
+
 function listStateArgs(state?: string): string[] {
   switch (state) {
     case undefined:
@@ -106,6 +117,61 @@ function normalizeState(state: string): string {
   return state === 'opened' ? 'OPEN' : state.toUpperCase();
 }
 
+/**
+ * GitLab's `detailed_merge_status` in the board's vocabulary. Statuses this
+ * does not name (a pipeline still running, an approval rule it cannot read)
+ * are `unknown`, which never reads as ready. Absent when GitLab sent none.
+ */
+function gitLabMergeReadiness(
+  status: unknown,
+): Pick<PullRequest, 'mergeReadiness' | 'reviewDecision'> {
+  if (typeof status !== 'string' || !status) return {};
+  switch (status) {
+    case 'mergeable':
+      return { mergeReadiness: 'clean' };
+    case 'conflict':
+      return { mergeReadiness: 'conflicting' };
+    case 'need_rebase':
+      return { mergeReadiness: 'behind' };
+    case 'draft_status':
+      return { mergeReadiness: 'draft' };
+    case 'not_approved':
+      return { mergeReadiness: 'blocked', reviewDecision: 'review_required' };
+    case 'requested_changes':
+      return { mergeReadiness: 'blocked', reviewDecision: 'changes_requested' };
+    case 'ci_must_pass':
+      return { mergeReadiness: 'blocked' };
+    default:
+      return { mergeReadiness: 'unknown' };
+  }
+}
+
+function gitLabChecks(
+  value: any,
+): NonNullable<PullRequest['snapshot']>['checks'] {
+  const pipeline = value.head_pipeline;
+  if (!pipeline || typeof value.sha !== 'string' || pipeline.sha !== value.sha)
+    return undefined;
+  switch (pipeline.status) {
+    case 'success':
+      return 'passing';
+    case 'failed':
+    case 'canceled':
+      return 'failing';
+    case 'manual':
+      return 'awaiting-approval';
+    case 'created':
+    case 'pending':
+    case 'preparing':
+    case 'running':
+    case 'waiting_for_resource':
+    case 'scheduled':
+      return 'pending';
+    default:
+      return undefined;
+  }
+}
+
 export function normalizeGitLabMergeRequest(
   value: any,
   host: string,
@@ -120,7 +186,19 @@ export function normalizeGitLabMergeRequest(
   ) {
     throw new Error('GitLab CLI returned an incomplete merge request');
   }
+  const checks = gitLabChecks(value);
+  const snapshot = {
+    ...(checks ? { checks } : {}),
+    ...Object.fromEntries(
+      [
+        ['updatedAt', value.updated_at],
+        ['mergedAt', value.merged_at],
+        ['closedAt', value.closed_at],
+      ].filter(([, date]) => typeof date === 'string'),
+    ),
+  };
   return {
+    ...(Object.keys(snapshot).length ? { snapshot } : {}),
     provider: 'gitlab',
     host,
     ref: String(value.iid),
@@ -152,6 +230,12 @@ export function normalizeGitLabMergeRequest(
           )
         ? 'conflicting'
         : 'unknown',
+    ...(typeof value.draft === 'boolean'
+      ? { draft: value.draft }
+      : value.detailed_merge_status === 'draft_status'
+        ? { draft: true }
+        : {}),
+    ...gitLabMergeReadiness(value.detailed_merge_status),
   };
 }
 
@@ -162,9 +246,8 @@ export class GitLabPullRequestProvider implements IPullRequestProvider {
   readonly offeredCapabilities = offeredCapabilities;
   readonly offeredMergeMethods = offeredMergeMethods;
 
-  /** v1 intentionally does not auto-claim self-managed GitLab hosts. */
   canServeHost(host: string): boolean {
-    return canonicalHost(host) === 'gitlab.com';
+    return isConfiguredGitLabHost(host);
   }
 
   constructor(

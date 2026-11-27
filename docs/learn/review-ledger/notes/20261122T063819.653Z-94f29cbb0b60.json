@@ -1,0 +1,7 @@
+{
+  "revision": "1d0abda341fd30eacb6b6328bc5b454465fd79ba",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Delta: the pause detail is now bounded and sanitised by the shared boundedText (C1 and bidirectional override removal, code-point cut). Checked the citing pages: no described automation behavior changes.","inputs":["src-server/runtime/automation-actions-runtime.ts"]}
+  ]
+}

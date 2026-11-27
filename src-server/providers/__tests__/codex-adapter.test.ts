@@ -90,6 +90,10 @@ vi.mock('../../telemetry/metrics.js', async (importOriginal) => ({
   },
 }));
 
+vi.mock('../adapters/codex-project-config-provenance.js', () => ({
+  findUnaccountedCodexConfig: vi.fn().mockResolvedValue(undefined),
+}));
+
 class FakeWritable extends Writable {
   readonly lines: string[] = [];
 
@@ -199,6 +203,21 @@ function writeServerMessage(
   const transport = (adapter as any).transport;
   const record = transport.requireSession(threadId);
   transport.handleStdoutLine(record, JSON.stringify(message));
+}
+
+function completeServerTurn(
+  adapter: CodexAdapter,
+  threadId: string,
+  codexThreadId: string,
+  turnId: string,
+): void {
+  writeServerMessage(adapter, threadId, {
+    method: 'turn/completed',
+    params: {
+      threadId: codexThreadId,
+      turn: { id: turnId, status: 'completed' },
+    },
+  });
 }
 
 async function respondToQuotaRead(
@@ -2551,6 +2570,12 @@ describe('CodexAdapter', () => {
     // Confirms the premise: interruptTurn has not resolved (its RPC is
     // still pending), so it has not touched activeTurnId yet.
     expect(record.activeTurnId).toBe('turn-1');
+    completeServerTurn(
+      adapter,
+      'thread-cross-turn',
+      'codex-thread-cross-turn',
+      'turn-1',
+    );
     const sendTurnTwoPromise = adapter.sendTurn({
       threadId: 'thread-cross-turn',
       input: 'second turn',
@@ -2597,6 +2622,8 @@ describe('CodexAdapter', () => {
 
     test('child steer targets only the owned active child and refuses stale or unknown targets', async () => {
       processHandle = new FakeCodexProcess();
+      const screenshot =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAI0lEQVR4nGOUq/BmIAUwkaSaYVQDcYCJSHVwMKqBGEByKAEA408BAa+t6k4AAAAASUVORK5CYII=';
       const adapter = new CodexAdapter({
         processFactory: () => processHandle!,
       });
@@ -2624,6 +2651,15 @@ describe('CodexAdapter', () => {
         CHILD_ID,
         CHILD_TURN_ID,
         'hello child',
+        [
+          {
+            kind: 'image',
+            name: 'sample.png',
+            mimeType: 'image/png',
+            size: 92,
+            dataUrl: screenshot,
+          },
+        ],
       );
       await respondToLatestPendingRequest(adapter, threadId, {
         turnId: CHILD_TURN_ID,
@@ -2639,7 +2675,10 @@ describe('CodexAdapter', () => {
         params: {
           threadId: CHILD_ID,
           expectedTurnId: CHILD_TURN_ID,
-          input: [{ type: 'text', text: 'hello child', text_elements: [] }],
+          input: [
+            { type: 'text', text: 'hello child', text_elements: [] },
+            { type: 'image', url: screenshot },
+          ],
         },
       });
       await adapter.stopAll();
@@ -3066,8 +3105,14 @@ describe('CodexAdapter', () => {
       const interruptPromise = adapter.interruptTurn(threadId);
       await flushIo();
 
-      // WHILE the cascade is still in flight, a NEW turn starts on the same
-      // record (mirrors a user sending another message mid-Stop).
+      // The parent settles while the child's interrupt is still in flight.
+      // A successor can start before the old interrupt finishes unwinding.
+      completeServerTurn(
+        adapter,
+        threadId,
+        record.codexThreadId,
+        PARENT_TURN_ID,
+      );
       const sendTurnPromise = adapter.sendTurn({
         threadId,
         input: 'a second message, sent while Stop is still cascading',
@@ -3376,6 +3421,17 @@ describe('CodexAdapter', () => {
         id: String(4 + index),
         result: { turn: { id: turnId } },
       });
+      await withTimeout(send, 'reused sendTurn');
+      const requestCount = processHandle.stdin.lines.length;
+      const refusal = adapter
+        .sendTurn({ threadId: 'thread-ambient', input: 'Overlapping send' })
+        .catch((error: unknown) => error);
+      await flushIo();
+      expect(processHandle.stdin.lines).toHaveLength(requestCount);
+      await expect(refusal).resolves.toMatchObject({
+        name: 'SendTurnRefusedError',
+        kind: 'busy',
+      });
       writeServerMessage(adapter, 'thread-ambient', {
         method: 'turn/completed',
         params: {
@@ -3383,7 +3439,6 @@ describe('CodexAdapter', () => {
           turn: { id: turnId, status: 'completed' },
         },
       });
-      await withTimeout(send, 'reused sendTurn');
       expect(await nextEvent(iterator, 'turn.started')).toMatchObject({
         turnId,
         invocationId,
@@ -4396,6 +4451,7 @@ describe('CodexAdapter', () => {
             {
               model: 'gpt-5.5',
               displayName: 'GPT-5.5',
+              inputModalities: ['text'],
             },
             {
               model: 'legacy-speed',
@@ -4436,6 +4492,7 @@ describe('CodexAdapter', () => {
         id: 'gpt-5.5',
         name: 'GPT-5.5',
         originalId: 'gpt-5.5',
+        capabilities: { imageInput: false },
       },
       {
         id: 'legacy-speed',
@@ -5536,6 +5593,12 @@ describe('CodexAdapter', () => {
       result: { turn: { id: 'turn-approval-1' } },
     });
     await withTimeout(firstTurnPromise, 'sendTurn 1');
+    completeServerTurn(
+      adapter,
+      'thread-approval',
+      'codex-thread-approval',
+      'turn-approval-1',
+    );
     await flushIo();
 
     // Second turn carries an explicit override — the override reaches the
@@ -5988,13 +6051,15 @@ describe('CodexAdapter', () => {
           ...(turn.confinement ? { confinement: turn.confinement } : {}),
         });
         await flushIo();
+        const turnId = `turn-${threadId}-${id}`;
         writeServerMessage(adapter, threadId, {
           id: String(id),
-          result: { turn: { id: `turn-${threadId}-${id}` } },
+          result: { turn: { id: turnId } },
         });
         id += 1;
         await withTimeout(sent, `sendTurn ${threadId}`);
         metadata.push((await nextOf(iterator, 'turn.started')).metadata);
+        completeServerTurn(adapter, threadId, `codex-${threadId}`, turnId);
       }
       const params = processHandle.stdin.lines
         .map(parseLine)

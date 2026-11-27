@@ -1,0 +1,48 @@
+.component-catalog {
+  height: 100dvh;
+  overflow: auto;
+  padding: var(--k-space-4);
+}
+
+.component-catalog > * {
+  max-width: 900px;
+  margin-inline: auto;
+}
+
+.catalog-examples--phone {
+  max-width: 390px;
+}
+
+.catalog-examples section {
+  margin-block: var(--k-space-3);
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+}
+
+.catalog-controls {
+  display: flex;
+  gap: var(--k-space-2);
+  flex-wrap: wrap;
+}
+
+.catalog-inventory {
+  display: grid;
+  padding: 0;
+  list-style: none;
+}
+
+.catalog-inventory li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  border-bottom: 1px solid var(--k-line);
+  padding-block: var(--k-space-2);
+  overflow-wrap: anywhere;
+}
+
+.component-catalog label {
+  display: block;
+  margin-block: var(--k-space-2);
+}

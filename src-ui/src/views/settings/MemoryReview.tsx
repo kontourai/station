@@ -20,6 +20,7 @@ import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import './MemoryReview.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 const LABEL: Record<
   MemoryRecallEntry['review']['label'],
@@ -77,6 +78,7 @@ function QueueCard({
   onOpen: () => void;
   onDecide: (outcome: MemoryDecisionOutcome, correctedValue?: string) => void;
 }) {
+  useDecisionSurface('memory-review');
   const [open, setOpen] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const [value, setValue] = useState('');
@@ -268,7 +270,7 @@ export function MemoryReview() {
   );
   return (
     <section aria-label="Review memory" className="memory-review">
-      <h3>What Station remembers about you</h3>
+      <h3>Your saved memories</h3>
       {support.data === 'unsupported' && (
         <Empty
           label="This Station can’t review memory yet"

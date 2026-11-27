@@ -1,11 +1,6 @@
 import { WORKSPACE_BASIS_PANE_RENDERER_NAME } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { WORKSPACE_BOARD_PANE_RENDERER_NAME } from '@kontourai/station-board-pane/workspace-board-pane';
 import type { ConversationPullRequestLinkObservation } from '@kontourai/station-contracts/conversation-pull-request-links';
-import { WORKSPACE_ACTIVITY_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-activity-pane';
-import {
-  isCanonicalWorkspaceActivityReviewPaneInstance,
-  WORKSPACE_ACTIVITY_REVIEW_PANE_RENDERER_NAME,
-} from '@kontourai/station-contracts/workspace-activity-review-pane';
 import { WORKSPACE_AGENTS_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -135,6 +130,7 @@ import { TaskRoomEditorPane } from './TaskRoomEditorPane';
 import { useWorkspacePaneBoundIdentity } from './useWorkspacePaneBoundIdentity';
 import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailable';
 import { useWorkspacePaneHostOpenAction } from './WorkspacePaneHostOpenContext';
+import { describeWorkspacePaneOpenRefusal } from './workspacePaneHostOpenOutcome';
 
 export {
   isCanonicalBuiltinBrowserPreviewDescriptor,
@@ -149,7 +145,10 @@ export {
 } from './builtinWorkspacePaneCanonical';
 
 import type { ChatSession } from '../types';
-import { requestsWaitingOnUser } from '../utils/waiting-approvals';
+import {
+  chatWaitsOnUser,
+  requestsWaitingOnUser,
+} from '../utils/waiting-approvals';
 
 const LazyFilePreviewPane = lazy(() =>
   import('./FilePreviewPane').then(({ FilePreviewPane }) => ({
@@ -447,18 +446,7 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
         projectId,
       );
       if (!preview) return;
-      // #1596 names three click paths; this is not one of them, and its
-      // outcome is deliberately still unsurfaced: the row selection and the
-      // navigation intent above are what the reader sees, and they happen
-      // whether or not the preview occurrence is admitted. Reporting a
-      // refusal here needs a place in this pane's own chrome to put it.
-      // In a DOCK region (#2047) the refusal is certain, not incidental: File
-      // Preview is no region surface, so the region host's admission refuses
-      // it and there is no `setLayout` to fall back on — a file click in a
-      // docked Files pane selects the row and opens nothing until #2049
-      // gives regions instance-keyed panes. `docs/design/placement.md` says
-      // so in the #2047 paragraph.
-      paneHostOpen.open(
+      const outcome = paneHostOpen.open(
         preview,
         createFilePreviewPaneStatePreparation(
           window.localStorage,
@@ -472,6 +460,8 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
           },
         ),
       );
+      if (!outcome.ok)
+        toastStore.show(describeWorkspacePaneOpenRefusal(outcome.reason));
     },
     [
       layoutSlug,
@@ -665,17 +655,21 @@ function CodingTerminalWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
 
 /**
  * What the plan panel shows of its chat's runtime: the status word and how
- * many approval requests still wait on the USER (a request already answered
+ * many requests of each kind still wait on the USER (a request already answered
  * from the queue stays open on the server but no longer waits on them).
  */
 export function workflowPlanRuntimeState(
   planSession: ChatSession | null | undefined,
 ) {
+  const waiting = planSession ? requestsWaitingOnUser(planSession) : [];
+  const pendingInputs = waiting.filter(
+    (id) => planSession?.pendingRequestKinds?.[id] === 'input',
+  ).length;
   return {
     status: planSession?.orchestrationStatus ?? planSession?.status ?? null,
-    pendingApprovals: planSession
-      ? requestsWaitingOnUser(planSession).length
-      : 0,
+    pendingApprovals: waiting.length - pendingInputs,
+    pendingInputs,
+    waitingOnUser: planSession ? chatWaitsOnUser(planSession) : false,
     isProcessingStep: planSession?.isProcessingStep ?? false,
   };
 }
@@ -958,14 +952,6 @@ const LazyHomeWorkspacePane = lazy(() =>
   })),
 );
 
-const LazyActivityWorkspacePane = lazy(() =>
-  import('../views/activity/ActivityWorkspacePane').then(
-    ({ ActivityWorkspacePane }) => ({
-      default: ActivityWorkspacePane,
-    }),
-  ),
-);
-
 const LazyBoardWorkspacePane = lazy(() =>
   import('../views/board/BoardWorkspacePane').then(
     ({ BoardWorkspacePane }) => ({
@@ -1057,19 +1043,6 @@ function HomeWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
   );
 }
 
-// Activity binds no Project either (its list aggregates every host session),
-// so it never consults `useWorkspacePaneBoundIdentity`; its own renderer
-// still refuses a non-canonical occurrence. Lazy for the same reason Home
-// is: the sessions surface is Activity's own chunk, and a host
-// that never mounts Activity should not download it to have it in the table.
-function ActivityWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
-  return (
-    <Suspense fallback={<SkeletonBlock count={3} label="Loading Activity" />}>
-      <LazyActivityWorkspacePane {...props} />
-    </Suspense>
-  );
-}
-
 // The Console Board (archive#4142): the component lives in
 // `@kontourai/station-board-pane`, and this lazy entry — via the wrapper
 // that supplies its shell affordances — is core's ONE import of that
@@ -1082,31 +1055,6 @@ function BoardWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
     <Suspense fallback={<SkeletonBlock count={3} label="Loading the Board" />}>
       <LazyBoardWorkspacePane {...props} />
     </Suspense>
-  );
-}
-
-const LazyActivityReview = lazy(() =>
-  import('./RegionActivityReviewPane').then((m) => ({
-    default: m.RegionActivityReviewPane,
-  })),
-);
-function ActivityReviewWorkspacePaneEntry({
-  instance,
-}: BuiltinWorkspacePaneProps) {
-  if (!isCanonicalWorkspaceActivityReviewPaneInstance(instance))
-    return (
-      <WorkspacePaneBindingUnavailable
-        identity={{ state: 'pane-instance-invalid' }}
-      />
-    );
-  return (
-    <UnsavedGuardOwnerContext.Provider value={String(instance.instanceId)}>
-      <Suspense
-        fallback={<SkeletonBlock count={3} label="Loading Activity review" />}
-      >
-        <LazyActivityReview instance={instance} />
-      </Suspense>
-    </UnsavedGuardOwnerContext.Provider>
   );
 }
 
@@ -1135,8 +1083,6 @@ const builtinWorkspacePaneRegistry: Record<
   BuiltinWorkspacePaneRendererName,
   BuiltinWorkspacePaneComponent
 > = {
-  [WORKSPACE_ACTIVITY_REVIEW_PANE_RENDERER_NAME]:
-    ActivityReviewWorkspacePaneEntry,
   'flow-run-console': FlowRunConsolePane,
   [WORKSPACE_CHAT_PANE_RENDERER_NAME]: ChatPane,
   [WORKSPACE_TASK_ROOM_EDITOR_RENDERER_NAME]: TaskRoomEditor,
@@ -1153,7 +1099,6 @@ const builtinWorkspacePaneRegistry: Record<
   [WORKSPACE_PULL_REQUEST_PANE_RENDERER_NAME]: PullRequestWorkspacePane,
   [WORKSPACE_LAYOUT_PANE_RENDERER_NAME]: LayoutWorkspacePaneEntry,
   [WORKSPACE_HOME_PANE_RENDERER_NAME]: HomeWorkspacePaneEntry,
-  [WORKSPACE_ACTIVITY_PANE_RENDERER_NAME]: ActivityWorkspacePaneEntry,
   [WORKSPACE_AGENTS_PANE_RENDERER_NAME]: AgentsWorkspacePaneEntry,
   [WORKSPACE_DEVICE_PANE_RENDERER_NAME]: DeviceWorkspacePaneEntry,
   [WORKSPACE_TERMINAL_PANE_RENDERER_NAME]: TerminalSessionWorkspacePaneEntry,

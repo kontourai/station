@@ -132,10 +132,12 @@ docker compose up -d
 Use a comma-separated list only when the same Station is deliberately reachable
 through multiple exact origins. Do not use wildcard origins.
 
-Stable publication targets `ghcr.io/kontourai/station:latest`; preview
-publication targets `:preview`. The release pipeline also defines exact
-`vX.Y.Z`, semver-without-`v`, and immutable `sha-<40-character-SHA>` tags.
-Check the registry and release record for availability before selecting a tag;
+Stable publication promotes the recorded image digest to
+`ghcr.io/kontourai/station:latest`, `:vX.Y.Z`, `:X.Y.Z` and
+`:sha-<40-character-SHA>` aliases. An RC stages under its own immutable
+`:staging-vX.Y.Z-rc.N` name; RC publication moves no Stable alias. Pin the
+`image@sha256:...` digest from the validated release inventory when deploying.
+Check the registry and release record for availability before selecting an image;
 use the source-build path below when the selected artifact is not published. Inspect the
 runtime identity through the public same-origin endpoint:
 
@@ -153,13 +155,13 @@ the container smoke build:
 
 ```bash
 export STATION_RELEASE_SHA="$(git rev-parse HEAD)"
-export STATION_RELEASE_REF=v0.0.0-preview.1
+export STATION_RELEASE_REF=v0.0.0-rc.1
 export STATION_RELEASE_CREATED_AT="$(git show -s --format=%cI HEAD | xargs -I{} node -e 'process.stdout.write(new Date(process.argv[1]).toISOString())' '{}')"
-docker build --pull --tag station-local:preview \
+docker build --pull --tag station-local:rc \
   --build-arg "STATION_RELEASE_SHA=$STATION_RELEASE_SHA" \
   --build-arg "STATION_RELEASE_REF=$STATION_RELEASE_REF" \
   --build-arg "STATION_RELEASE_CREATED_AT=$STATION_RELEASE_CREATED_AT" .
-export STATION_IMAGE=station-local:preview
+export STATION_IMAGE=station-local:rc
 docker compose up -d
 ```
 
@@ -506,8 +508,8 @@ Whole-store authenticated integrity with key authority outside that writer is
 follow-up scope.
 
 The GitHub automation observation preview is not offered in hosted mode, and
-`/automations/deliveries` refuses hosted reads because its shared ledger has no
-tenant binding.
+every `/automations` route answers 404 there (reads and operator changes alike)
+because its configuration and shared ledger have no tenant binding.
 
 Until their storage gains a durable tenant binding, hosted mode suppresses the
 entire `/scheduler` API (including its reads, SSE, webhook, and mutations) and
@@ -583,7 +585,9 @@ fresh home. The [schema gate](../../packages/shared/src/station-home-schema.ts)
 runs in both the CLI lifecycle and server entry before application migrations.
 It refuses those directories instead of treating their contents as disposable
 bootstrap scaffolding. Copying a Project is neither a schema migration nor a
-Project membership grant.
+Project membership grant. When a registered migration runs, the gate stages
+a sibling copy and preserves the home’s POSIX directory and file permission
+bits before calling the migration.
 
 After schema admission, the Project/layout portion of
 [runStartupMigrations](../../src-server/domain/migration.ts) returns when
@@ -696,25 +700,22 @@ remain separate qualification steps.
 
 ## Private tailnet dogfood on macOS
 
-The legacy dogfood supervisor below is separate from the desktop channel
-service and ordinary `station service` commands. Its staged dependency install
-still uses `npm ci`; the current checkout uses managed pnpm and has no root npm
-lockfile. Treat current-revision promotion as unqualified until that mismatch
-is corrected and exercised. The retained rollback description is not a claim
-that this audit installed or recovered a live service.
+The dogfood supervisor manages a dedicated checkout-based instance.
+Desktop channel services and ordinary `station service` commands have their
+own installation and recovery procedures.
 
 ### Channel desktop apps: ports, homes, and targeting
 
-The macOS desktop ships as up to three coexisting channel apps — `Station.app`
-(stable), `Station Beta.app`, `Station Nightly.app`. Each channel has a
-default server port — stable `18141`, beta `28141`, nightly `38141` — carried
+The macOS desktop has two coexisting release-channel apps: `Station.app`
+(Stable) and `Station Nightly.app`. Each channel has a default server port —
+Stable `18141` and Nightly `38141` — carried
 in the app's **persisted service manifest** (`src-desktop/src/service_state.rs`
 reconciles `manifest.server_port` against local state), so the port is stable
 across restarts and self-updates in practice, but it is configuration, not a
 compile-time constant: trust the manifest/live process, not the number.
 
 Default homes are channel-qualified under `STATION_ROOT/instances/` (for
-example `stable`, `beta`, `nightly`); an explicitly configured home or persisted
+example `stable` and `nightly`); an explicitly configured home or persisted
 service manifest can choose another admitted path. The old `~/.station-nightly`
 example described one deployment, not the current universal Nightly home.
 Inspect the owning service manifest and instance status rather than guessing
@@ -779,7 +780,8 @@ curl --silent --show-error https://<device-fqdn>:<public-port>/api/system/status
 
 Consent decisions are served by a separate listener (`API + 3`, or
 `STATION_CONSENT_PORT`) so a decision page is a different browser origin from
-the app. By default its review URLs are plain `http://<host>:<consent port>`,
+the app. With **Dynamic HTTPS routes** off (the default), its review URLs are
+plain `http://<host>:<consent port>` unless the legacy environment override is set,
 which a remote browser on the tailnet cannot use as a secure context. To issue
 an HTTPS review URL, add a second Tailscale Serve mapping from an HTTPS name to
 the **consent** port (not the UI port), and tell Station the exact origin:
@@ -800,8 +802,65 @@ This is in addition to the existing port-pinned
 `http://<host>:<consent port>` path, which keeps working. The HTTPS consent
 name must be the same hostname as the app's (with Tailscale, both are the device
 FQDN): the consent session cookie is host-scoped and is not sent across
-hostnames, so a different name fails closed with `unauthenticated`. Unset, the
-behavior is unchanged. The origin is never added to `ALLOWED_ORIGINS`.
+hostnames, so a different name fails closed with `unauthenticated`. With the
+preview off and the environment value unset, the HTTP fallback is unchanged.
+The origin is never added to `ALLOWED_ORIGINS`.
+
+For live publication, opt into the Station-wide **Dynamic HTTPS routes** preview
+(`dynamic-route-publications`, **off by default**) under Settings → Advanced →
+Feature previews. Station reads existing Tailscale Serve mappings separately:
+app/API mappings are connection routes, while the separate consent-listener
+mapping is an approval origin, never an app route. Automatic approval selection
+requires exactly one compatible mapping on the same hostname as an app origin.
+Missing or ambiguous mappings leave HTTPS approval unavailable; this preview
+does not substitute a request host or an HTTP review URL.
+
+The local operator can save **Approval HTTPS origin** in the Routes settings
+(`trustedConsentOrigin`, persisted in Station configuration) without restarting.
+It has the same exact HTTPS DNS-origin requirements as the environment value.
+An absent setting falls back to `STATION_TRUSTED_CONSENT_ORIGIN`; an explicitly
+saved empty setting selects automatic discovery instead of that fallback.
+An origin discovered as an app mapping is refused for the approval role.
+Disabling the preview restores the legacy startup environment/HTTP behavior.
+Publication status reports discovery/configuration, not proof of reachability.
+
+Create or repair Serve mappings on the Station host: the browser neither
+provisions Tailscale Serve nor installs/signs in to Tailscale. Saving an origin
+does not create a proxy mapping, TLS certificate, or permission grant. Keep the
+app and approval mappings distinct and preserve other applications' listeners.
+
+With LAN publication enabled, the preview can advertise a single discovered
+HTTPS app origin as Nearby Stations TXT `appOrigin`. Native discovery treats it
+only as an untrusted address hint after validating the resolved private LAN
+endpoint; rejected hints retain the legacy LAN URL. It grants no trust or
+consent and does not bypass Request Access or the identity handshake. Physical
+Android/iOS validation is still needed for multicast visibility, OS permissions,
+TLS, lifecycle and pairing; unit tests do not qualify those journeys or native
+multi-route failover. See the [route design](../design/station-routes.md#dynamic-https-publications-preview).
+
+Native alternate HTTPS admission is an **in-progress** extension, not qualified
+installed-device failover. The native host fetches authenticated routes through
+the saved profile's already-authorized canonical anchor. Candidates must be
+owned published HTTPS `appOrigins` also present in that route list. The host
+compares fresh public nonce proofs from the anchor and candidate before sending
+any saved bearer to the candidate. Proof requests carry no bearer or cookies
+and must not follow redirects. Approval origins and Nearby hints confer no
+authority. The public HMAC proof can be relayed: the authenticated anchor's
+exact HTTPS origin advertisement is the authority, not a matching public
+environment ID or proof alone. No cloud account is needed.
+
+Admission stays in native host memory for at most ten minutes, scoped to the
+binding epoch, profile revision, canonical origin, and environment. Only an
+unexpired admitted origin may receive the saved credential during failover;
+the UI cannot authorize one itself. Restart or a changed binding/profile needs
+fresh admission. An unreachable canonical anchor cannot renew it, so this is
+not indefinite offline recovery. Existing pairing and permissions still apply.
+The desktop's owned loopback HTTP endpoint and local lifecycle remain canonical;
+this does not authorize LAN HTTP alternates, replace the profile endpoint,
+persist alternate credentials, or provision Serve from the browser. Native
+shell execution, physical Android/iOS behavior, and end-to-end failover remain
+**NOT_VERIFIED** until separately exercised. See the
+[native admission threat model](../design/station-routes.md#native-host-authorized-alternate-origins).
 
 With this origin set, a paired browser can enroll an operator passkey and sign
 in; see [Operator passkeys](operator-passkeys.md). The host-scoped session
@@ -824,17 +883,27 @@ commits. No passkey ceremony runs on the app origin.
 
 The repository-owned dogfood supervisor keeps one named Station instance on
 the exact `origin/main` commit whose GitHub Actions `PR: CI` **push** run completed
-successfully. Its staging code creates a detached release and currently calls
-legacy `npm ci` plus `./station build` before stopping the active release.
-That dependency command is not the repository's managed pinned-pnpm setup path;
-the current root has no npm lockfile. This supervisor's successful staging on a
-current revision needs qualification/correction before use, not a claim inferred
-from its older fixtures. [#2776](https://github.com/kontourai/station/issues/2776)
-tracks that correction. Promotion binds the configured API, terminal, voice,
-consent and UI listeners to `127.0.0.1`, verifies the exact build SHA locally and through
-Tailscale Serve HTTPS, and only then commits `active`/`previous` state. A build
-failure leaves the active process alone; a post-stop failure restarts and
+successfully. It creates a clean detached release and runs that candidate's
+`npm run dependencies:ci` before `./station build`. Missing or failed
+dependency setup leaves the active release serving and records an install
+failure. The managed installer uses the candidate's pinned pnpm and lockfile.
+Promotion binds the configured API, voice, consent and UI listeners to
+`127.0.0.1`, verifies the exact running build locally and through Tailscale
+Serve HTTPS, and then commits `active`/`previous` state. A build failure
+leaves the active process running. A post-stop failure restarts and
 health-checks the previous built release.
+
+The API identity probe can authenticate to the owned loopback listener with
+the credential from the recorded Station home after it verifies process and
+listener ownership. The credential stays on the local API request. The HTTPS
+probes read the public identity and readiness routes.
+
+A disposable macOS run exercised managed staging, promotion, and reconcile
+after a supervisor generation handoff. Its terminal Session retained the
+same shell and accepted input after restart. The run used a fixture-local
+HTTPS endpoint and a test-only CA. The live recipe's Tailnet Serve routing
+requires its own verification. See the
+[supervisor verification record](../design/process-supervisor.md#verification).
 
 This recipe is private-tailnet only. It refuses an existing conflicting HTTPS
 root handler or Funnel, never enables Funnel, never runs `tailscale serve

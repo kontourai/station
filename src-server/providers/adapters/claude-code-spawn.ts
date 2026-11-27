@@ -4,7 +4,13 @@ import type {
   SpawnedProcess,
   SpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk';
-import { spawnChildWorkload } from '@kontourai/station-shared/child-workload';
+import {
+  type ChildWorkloadNotice,
+  type ChildWorkloadOutcome,
+  childWorkloadOutcome,
+  spawnChildWorkload,
+  watchChildWorkloadNotices,
+} from '@kontourai/station-shared/child-workload';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
   assertEngineAllowedByManagedPolicy,
@@ -68,7 +74,28 @@ export type ClaudeEngineProcess = {
    * spawned with, as passed to the spawn call; `undefined` before one.
    */
   spawned: () => { command: string; args: readonly string[] } | undefined;
+  /**
+   * Observe each engine process's own exit, with its workload outcome when
+   * it ran in a managed scope. Returns the unsubscribe.
+   */
+  onExit: (listener: (exit: ClaudeEngineExit) => void) => () => void;
+  /**
+   * #5113: observe the running engine process's workload notices (its own
+   * scope's memory transitions). Each spawned process is watched until it
+   * exits. Returns the unsubscribe.
+   */
+  onWorkloadNotice: (
+    listener: (notice: ChildWorkloadNotice) => void,
+  ) => () => void;
 };
+
+/** One engine process's observed exit. */
+export interface ClaudeEngineExit {
+  readonly code: number | null;
+  readonly signal: NodeJS.Signals | null;
+  /** The scope's outcome; undefined when the engine had no managed scope. */
+  readonly workloadOutcome?: Promise<ChildWorkloadOutcome | undefined>;
+}
 
 function tailOf(text: string): string {
   if (text.length <= STDERR_TAIL_LENGTH) return text;
@@ -147,6 +174,8 @@ export function createClaudeEngineProcess(
   let retired = false;
   let spawned: { command: string; args: readonly string[] } | undefined;
   const children = new Set<ChildProcess>();
+  const exitListeners = new Set<(exit: ClaudeEngineExit) => void>();
+  const noticeListeners = new Set<(notice: ChildWorkloadNotice) => void>();
 
   const spawn = (options: SpawnOptions): SpawnedProcess => {
     if (retired)
@@ -165,7 +194,20 @@ export function createClaudeEngineProcess(
       windowsHide: true,
     });
     children.add(child);
-    child.once('exit', () => children.delete(child));
+    const workloadOutcome = childWorkloadOutcome(child);
+    const stopWatchingNotices = watchChildWorkloadNotices(child, (notice) => {
+      for (const listener of [...noticeListeners]) listener(notice);
+    });
+    child.once('exit', (code, signal) => {
+      stopWatchingNotices?.();
+      children.delete(child);
+      const exit: ClaudeEngineExit = {
+        code,
+        signal,
+        ...(workloadOutcome ? { workloadOutcome } : {}),
+      };
+      for (const listener of [...exitListeners]) listener(exit);
+    });
     const { stdin, stdout, stderr } = child;
     if (!stdin || !stdout || !stderr)
       throw new Error('Claude Code process was spawned without piped stdio.');
@@ -252,6 +294,14 @@ export function createClaudeEngineProcess(
     stderrTail: () => tailOf(redactSecrets(stderrTail)).trim(),
     spawned: () => spawned,
     exited: () => spawned !== undefined && children.size === 0,
+    onExit(listener) {
+      exitListeners.add(listener);
+      return () => exitListeners.delete(listener);
+    },
+    onWorkloadNotice(listener) {
+      noticeListeners.add(listener);
+      return () => noticeListeners.delete(listener);
+    },
     async terminate() {
       retired = true;
       await Promise.all(

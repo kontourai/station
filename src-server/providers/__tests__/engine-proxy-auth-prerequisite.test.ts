@@ -19,7 +19,7 @@ function authCell(
 const CLI_CELL: Prerequisite = {
   id: 'codex-cli',
   name: 'Codex CLI',
-  description: 'Required to launch the Codex runtime.',
+  description: 'Required to launch the Codex engine.',
   status: 'installed',
   category: 'required',
 };

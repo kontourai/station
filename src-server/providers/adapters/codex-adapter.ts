@@ -42,13 +42,17 @@ import type {
   StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { codexDynamicTools } from '../../runtime/mcp/codex-dynamic-tools.js';
 import type { InvocationContext } from '../../runtime/types.js';
 import {
   assertRequiredConfinementObserved,
   ConfinementRefusedError,
   observedConfinementRecord,
 } from '../../security/confinement/confinement-provider.js';
-import { managedEnginePrerequisites } from '../../security/managed-engine-limits.js';
+import {
+  managedEngineBinaryPath,
+  managedEnginePrerequisites,
+} from '../../security/managed-engine-limits.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { prepareManagedEngineWorkspace } from '../../services/infra/managed-engine-workspace.js';
@@ -69,6 +73,10 @@ import {
   connectionQuotaReads,
   providerOps,
 } from '../../telemetry/metrics.js';
+import {
+  restrictedNetworkStationControlTools,
+  stationControlToolPolicy,
+} from '../../tools/station-control-policy.js';
 import {
   abortError,
   awaitSettlementWithin,
@@ -93,6 +101,7 @@ import {
   type ProviderTaskStopResult,
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
+  SendTurnRefusedError,
 } from '../adapter-shape.js';
 import {
   CredentialProfileEnvironmentError,
@@ -103,6 +112,7 @@ import {
   buildCliRuntimePrerequisites,
   type CliAuthState,
   type CliCommandResult,
+  findCliBinary,
   parseCliAuthState,
   runCliCommand,
 } from '../auth/cli-auth.js';
@@ -134,6 +144,7 @@ import {
   codexChildSteerTarget,
   codexRunningChildTurnId,
   codexRunningChildTurns,
+  refreshCodexChildSteerControls,
   requestStop as requestCodexChildStop,
 } from './codex-adapter-child-work.js';
 import {
@@ -161,6 +172,7 @@ import {
 import { CODEX_APPROVAL_ACKNOWLEDGEMENT } from './codex-approval-delivery.js';
 import {
   codexSandboxModeOfPolicy,
+  mapCodexApprovalReviewer,
   mapCodexKnobsToApprovalMode,
   planCodexTurnSandbox,
   readCodexSandboxPolicy,
@@ -185,6 +197,10 @@ import {
 import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 import { findUnaccountedCodexConfig } from './codex-project-config-provenance.js';
+import {
+  CODEX_TOOL_LIST_CHANGED_FEATURE,
+  CodexToolFamilyQualification,
+} from './codex-tool-families.js';
 import { applyEngineProxyAuthPrerequisite } from './engine-proxy-auth-prerequisite.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { codexAnswers, codexInputRequest } from './harness-questions.js';
@@ -199,6 +215,12 @@ type CodexExecutionKnobs = NonNullable<
 >;
 
 interface CodexAdapterOptions {
+  /**
+   * #2376 slice 3: the `codex-tool-families` Feature Preview. On, a Codex
+   * whose version qualified gets Station Control as tool families on the
+   * header-token path (`toolFamiliesAdmitted`). Absent means off.
+   */
+  toolFamiliesEnabled?: () => boolean;
   boundToolsEnabled?: () => boolean;
   boundToolsEpoch?: () => number | undefined;
   resolveBoundToolPolicy?: (
@@ -209,6 +231,8 @@ interface CodexAdapterOptions {
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext;
     includeBrowser: boolean;
     includeDevices: boolean;
+    /** The whole station-control catalog, at `bound` (#2376 slice 2). */
+    stationControl?: { allowedTools?: readonly string[] };
     isCurrent: () => boolean;
   }) => Promise<
     import('../../runtime/mcp/station-control-in-process.js').CodexBoundToolServer
@@ -265,7 +289,16 @@ interface CodexAdapterOptions {
   /** Resolve only a source-owned affinity registered by runtime composition. */
   resolveSourceHome?: (
     affinity: ProviderSessionSourceAffinity,
-  ) => string | null;
+  ) => string | null | Promise<string | null>;
+  /**
+   * The env overlay a resolved source home requires: a credential profile's
+   * routing overlay when the home is that profile's, else undefined. A
+   * rejection refuses the continuation; it never falls back to the bare home,
+   * which would pair the profile's credentials with another endpoint.
+   */
+  resolveSourceHomeEnv?: (
+    sourceHome: string,
+  ) => Promise<Record<string, string> | undefined>;
   /**
    * archive#1195: mints a per-session, short-lived, station-control-scoped
    * bearer credential delivered only through private thread configuration — called ONLY when the resolved agent's
@@ -281,6 +314,8 @@ interface CodexAdapterOptions {
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
     coordinatorGeneration?: number,
+    /** #2376 slice 3: the credential starts at the tool-family index. */
+    toolFamilies?: true,
   ) => CodexStationMcpAuth | undefined;
   mintStationKnowledgeMcpAuth?: (
     threadId: string,
@@ -300,6 +335,45 @@ interface CodexAdapterOptions {
   /** Test-only cache controls; production cache is 30 seconds and 64 entries. */
   quotaCacheTtlMs?: number;
   quotaCacheMaxEntries?: number;
+}
+
+/** The Agent's canonical built-in station-control entry, if it has one. */
+function canonicalStationControl(input: ProviderSessionStartInput) {
+  const candidate = input.agent?.toolServers?.find(
+    (server) => server.id === 'station-control',
+  );
+  return candidate &&
+    builtinStationApiServerId(candidate.id, toPassthroughToolDef(candidate)) ===
+      'station-control'
+    ? candidate
+    : undefined;
+}
+
+/** `(allowedTools ?? toolNames ?? []) − disabledTools`, or `allowedTools`. */
+function selectedStationControlTools(
+  control: NonNullable<ReturnType<typeof canonicalStationControl>>,
+): readonly string[] | undefined {
+  return control.disabledTools?.length
+    ? (control.allowedTools ?? control.toolNames ?? []).filter(
+        (name) => !control.disabledTools!.includes(name),
+      )
+    : control.allowedTools;
+}
+
+/**
+ * The largest arguments Codex may hand a bound tool, by tool. Browser and
+ * device tools take small inputs, and their whole input lands in a durable
+ * approval event, so they keep 40,000 bytes in every Session. The rest of
+ * the station-control catalog accepts what its HTTP route accepts
+ * (`html_render` takes up to 256 KiB of HTML).
+ */
+const BOUND_TOOL_ARGUMENT_MAX_BYTES = 40_000;
+const BOUND_CATALOG_ARGUMENT_MAX_BYTES = 1_048_576;
+
+function boundToolArgumentMaxBytes(name: string, catalog: boolean): number {
+  return catalog && !name.startsWith('browser_') && !name.startsWith('device_')
+    ? BOUND_CATALOG_ARGUMENT_MAX_BYTES
+    : BOUND_TOOL_ARGUMENT_MAX_BYTES;
 }
 
 function codexBoundToolResult(value: unknown) {
@@ -328,6 +402,18 @@ function codexBoundToolResult(value: unknown) {
       };
     throw new Error('bound-tool-executed-result-withheld');
   });
+  // An MCP-app tool (basis, session inventory) puts its data here and only a
+  // summary in `content`; Codex's MCP client shows it to the model, so the
+  // dynamic-tool reply does too.
+  if (
+    'structuredContent' in value &&
+    value.structuredContent &&
+    typeof value.structuredContent === 'object'
+  )
+    items.push({
+      type: 'inputText',
+      text: JSON.stringify(value.structuredContent),
+    });
   const refused = items.some((item) => {
     if (item.type !== 'inputText' || typeof item.text !== 'string')
       return false;
@@ -469,9 +555,19 @@ function mapCodexModelCatalogEntry(model: any): {
   const supportsFastMode = serviceTiers.some(
     (tier) => tier.id === 'fast' || tier.id === 'priority',
   );
+  const modalities = model.inputModalities;
+  const imageInput =
+    Array.isArray(modalities) &&
+    modalities.length &&
+    modalities.every((entry: unknown) => typeof entry === 'string')
+      ? modalities.includes('image')
+      : undefined;
   const capabilities: ModelOptionCapabilities | undefined =
-    supportedEffortLevels.length > 0 || serviceTiers.length > 0
+    supportedEffortLevels.length > 0 ||
+    serviceTiers.length > 0 ||
+    imageInput !== undefined
       ? {
+          ...(imageInput !== undefined ? { imageInput } : {}),
           ...(supportedEffortLevels.length > 0
             ? {
                 supportsEffort: true,
@@ -506,6 +602,9 @@ type CodexModelListResult = {
 
 /** The executable name this adapter probes and spawns. */
 const CODEX_CLI_COMMAND = 'codex';
+/** How long a resolver's admission answer waits for its Session start. */
+const TOOL_FAMILY_ADMISSION_HOLD_MS = 5 * 60_000;
+const TOOL_FAMILY_ADMISSIONS_MAX = 256;
 
 const CODEX_MODEL_MAX_ENTRIES = 1000;
 const CODEX_MODEL_MAX_PAGES = 32;
@@ -905,6 +1004,26 @@ export function projectCodexQuotaSnapshot(
   return snapshot ? { ...snapshot, baselineAt: snapshot.observedAt } : null;
 }
 
+function codexMessageInput(
+  text: string | undefined,
+  images: ReturnType<typeof decodeChatAttachments>,
+) {
+  return [
+    ...(text ? [{ type: 'text', text, text_elements: [] }] : []),
+    ...images.map(({ attachment }) => ({
+      type: 'image',
+      url: attachment.dataUrl,
+    })),
+  ];
+}
+
+/** A bound-tool refusal whose reason the model is given as the result. */
+class CodexBoundToolReasonedRefusal extends Error {
+  constructor(readonly reason: string) {
+    super('bound-tool-refused');
+  }
+}
+
 export class CodexAdapter implements ProviderAdapterShape {
   readonly adoptionLifecycle = 'reported' as const;
   readonly provider = 'codex' as const;
@@ -1003,8 +1122,22 @@ export class CodexAdapter implements ProviderAdapterShape {
     { snapshot: ConnectionQuotaSnapshot; cachedAt: number }
   >();
   private quotaSnapshotGeneration = 0;
+  private readonly toolFamilyQualification: CodexToolFamilyQualification;
+  /** One admission answer per Session start, shared by resolver and start. */
+  private readonly toolFamilyAdmissions = new Map<
+    string,
+    { admitted: Promise<boolean>; at: number }
+  >();
 
   constructor(private readonly options: CodexAdapterOptions = {}) {
+    // The binary a session spawn resolves (`spawnCodexProcess`).
+    this.toolFamilyQualification = new CodexToolFamilyQualification(
+      () =>
+        managedEngineBinaryPath('codex') ??
+        (options.findBinary ?? findCliBinary)(CODEX_CLI_COMMAND),
+      (command, args) => (options.runCommand ?? runCliCommand)(command, args),
+      () => this.now().getTime(),
+    );
     if (options.nativeSessionOwnership)
       this.continuity.nativeReturn = 'same-binding';
     this.processFactory =
@@ -1029,6 +1162,63 @@ export class CodexAdapter implements ProviderAdapterShape {
         ),
     );
     this.goals = new CodexGoals(this.transport);
+  }
+
+  /**
+   * #2376 slice 3: whether Codex may get Station Control as tool families:
+   * the preview is on and the installed Codex is at least the qualified
+   * version. The session resolver asks for a new Session's `threadId` when
+   * it composes the instructions' families line; that start then takes the
+   * same answer (`takeToolFamilyAdmission`), so the line and the credential
+   * cannot disagree and one start probes the version at most once.
+   * `startWithReservation` narrows the answer to the header-token path.
+   */
+  toolFamiliesAdmitted(threadId?: string, eligible = true): Promise<boolean> {
+    const now = this.now().getTime();
+    const enabled = this.options.toolFamiliesEnabled?.() === true;
+    const held = threadId ? this.toolFamilyAdmissions.get(threadId) : undefined;
+    // The resolver composed this start without a families line for another
+    // reason (its station-control was bound): hold a no, so a preview that
+    // flips before the start cannot admit an index credential the
+    // instructions never explain.
+    if (threadId && !eligible) {
+      this.holdToolFamilyAdmission(threadId, Promise.resolve(false), now);
+      return Promise.resolve(false);
+    }
+    // A held answer can only narrow: the preview switched off since then
+    // withdraws it, and one that said no never turns into yes (its
+    // instructions carry no families line).
+    if (held && now - held.at < TOOL_FAMILY_ADMISSION_HOLD_MS)
+      return enabled ? held.admitted : Promise.resolve(false);
+    const admitted = enabled
+      ? this.toolFamilyQualification.admitted()
+      : Promise.resolve(false);
+    if (threadId) this.holdToolFamilyAdmission(threadId, admitted, now);
+    return admitted;
+  }
+
+  private holdToolFamilyAdmission(
+    threadId: string,
+    admitted: Promise<boolean>,
+    now: number,
+  ): void {
+    // An answer nobody took (the start failed or never came) is dropped
+    // once it is older than the hold, and the map stays bounded.
+    for (const [key, entry] of this.toolFamilyAdmissions)
+      if (now - entry.at >= TOOL_FAMILY_ADMISSION_HOLD_MS)
+        this.toolFamilyAdmissions.delete(key);
+    if (this.toolFamilyAdmissions.size >= TOOL_FAMILY_ADMISSIONS_MAX)
+      this.toolFamilyAdmissions.delete(
+        this.toolFamilyAdmissions.keys().next().value!,
+      );
+    this.toolFamilyAdmissions.set(threadId, { admitted, at: now });
+  }
+
+  /** The answer the resolver got for this start, or a fresh one; used once. */
+  private takeToolFamilyAdmission(threadId: string): Promise<boolean> {
+    const admitted = this.toolFamiliesAdmitted(threadId);
+    this.toolFamilyAdmissions.delete(threadId);
+    return admitted;
   }
 
   async getPrerequisites(options?: {
@@ -1401,6 +1591,14 @@ export class CodexAdapter implements ProviderAdapterShape {
             value: catalog,
             observedAt: this.now().getTime(),
           };
+          for (const record of this.transport.listSessions()) {
+            if (record.childWork)
+              refreshCodexChildSteerControls({
+                record,
+                nowIso: () => this.now().toISOString(),
+                publish: (event) => this.transport.publish(event),
+              });
+          }
           return catalog;
         })
         .finally(() => {
@@ -1838,10 +2036,11 @@ export class CodexAdapter implements ProviderAdapterShape {
       sourceHome: string;
     }) => Promise<T>,
   ): Promise<T> {
-    const sourceHome = this.options.resolveSourceHome?.(affinity);
+    const sourceHome = await this.options.resolveSourceHome?.(affinity);
     if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
       throw new Error('Codex source-home affinity is no longer available.');
     }
+    const sourceHomeEnv = await this.options.resolveSourceHomeEnv?.(sourceHome);
     const transport = new CodexAdapterTransport(this.now);
     const externalThreadId = `codex-maintenance:${crypto.randomUUID()}`;
     // station#2072: routing keys ride this maintenance child; the source
@@ -1851,6 +2050,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       externalThreadId,
       process: this.processFactory({
         ...connectionEnvForMaintenance,
+        ...sourceHomeEnv,
         CODEX_HOME: sourceHome,
       }),
       provider: this.provider,
@@ -2101,11 +2301,15 @@ export class CodexAdapter implements ProviderAdapterShape {
     let appHome: 'profile' | 'global' | 'source';
     let resolvedHome: ResolvedAppHome | undefined;
     if (sourceAffinity) {
-      const sourceHome = this.options.resolveSourceHome?.(sourceAffinity);
+      const sourceHome = await this.options.resolveSourceHome?.(sourceAffinity);
       if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
         throw new Error('Codex source-home affinity is no longer available.');
       }
-      appHomeEnv = { CODEX_HOME: sourceHome };
+      // Same precedence as a profile spawn: overlay, then the home key.
+      appHomeEnv = {
+        ...(await this.options.resolveSourceHomeEnv?.(sourceHome)),
+        CODEX_HOME: sourceHome,
+      };
       appHome = 'source';
     } else {
       resolvedHome = await this.resolveAppHomeEnv(input.credentialProfileRef);
@@ -2113,7 +2317,60 @@ export class CodexAdapter implements ProviderAdapterShape {
       appHome = appHomeEnv ? 'profile' : 'global';
     }
     const quotaConnectionId = string(input.metadata?.connectionId);
-    const toolServers = await this.resolveAgentToolServers(input);
+    // #2376 slice 2: with the bound channel on, station-control travels as
+    // `dynamicTools` at `bound` and no header token is minted. Codex keeps a
+    // thread's `dynamicTools` from `thread/start` across `thread/resume` and
+    // `thread/fork` and accepts no new ones there, so a continuation takes
+    // the catalog only when its own thread started with it (the cursor's
+    // `boundCatalog`); any other continuation keeps the header-token server.
+    const boundControl = canonicalStationControl(input);
+    const catalogEligible =
+      this.options.boundToolsEnabled?.() === true &&
+      !!this.options.createBoundTools &&
+      !!boundControl &&
+      !boundControl.coordinatorDerived &&
+      !adoption;
+    const boundCatalog =
+      catalogEligible &&
+      (resumeCursor ? resumeCursor.boundCatalog === true : true);
+    // An adopted lineage forks a source thread Station holds no cursor for;
+    // if it started with the catalog, the fork kept those `dynamicTools`.
+    // Serve them on the bound channel beside the header-token server rather
+    // than leave persisted copies the model would call and see fail.
+    const servesCatalog =
+      boundCatalog || (catalogEligible && !!resumeCursor?.sourceAffinity);
+    // A thread that holds the catalog but may not use it now (preview off,
+    // or its control server became coordinator-derived) gets the header
+    // server, and its persisted copies are refused with a pointer to it.
+    const catalogWithdrawn =
+      resumeCursor?.boundCatalog === true && !servesCatalog;
+    // #2376 slice 3: station-control as tool families, only on the
+    // header-token path (never the bound catalog, whose channel has no
+    // disclosure) and never for an adopted fork, whose source thread Station
+    // did not start. A coordinator-derived server is on that path too and is
+    // admitted: its credential is per-session and re-minted like any other.
+    // Codex persists a thread's history but not its tool list, and every
+    // start mints a credential that begins at the index, so a continuation
+    // gets families only when its thread started with them (the cursor's
+    // `toolFamilies`): a thread told nothing about families keeps the whole
+    // catalog it has been using.
+    // `servesCatalog` covers `boundCatalog` and also a source-affinity
+    // continuation that serves the catalog beside the header server.
+    const toolFamiliesEligible =
+      !!boundControl &&
+      !servesCatalog &&
+      !adoption &&
+      (resumeCursor ? resumeCursor.toolFamilies === true : true);
+    let toolFamiliesAdmitted = false;
+    if (toolFamiliesEligible)
+      toolFamiliesAdmitted = await this.takeToolFamilyAdmission(input.threadId);
+    else this.toolFamilyAdmissions.delete(input.threadId);
+    const toolServers = await this.resolveAgentToolServers(
+      input,
+      boundCatalog,
+      toolFamiliesAdmitted,
+    );
+    const toolFamilies = toolServers.toolFamilies === true;
     // station#2072: the connection env layer merges UNDER the app-home
     // home key — a source-affinity or credential-profile home always owns
     // CODEX_HOME (an adopted session must run where its rollout lives),
@@ -2195,6 +2452,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       resumeCursor: input.resumeCursor,
       nowIso: () => this.now().toISOString(),
     });
+    record.childModelAcceptsImages = (modelId) =>
+      this.modelCatalogCache?.value.models.find((model) => model.id === modelId)
+        ?.capabilities?.imageInput !== false;
     record.preparedResumeBindingKey = resumeBindingKey;
     // Where Codex writes this session's thread rollouts, children included:
     // a child's transcript ref names it, never a file path.
@@ -2234,17 +2494,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     this.transport.handleProcess(record);
 
     try {
-      const controlCandidate = input.agent?.toolServers?.find(
-        (server) => server.id === 'station-control',
-      );
-      const control =
-        controlCandidate &&
-        builtinStationApiServerId(
-          controlCandidate.id,
-          toPassthroughToolDef(controlCandidate),
-        ) === 'station-control'
-          ? controlCandidate
-          : undefined;
+      const control = boundControl;
       const includeBrowser =
         !!input.agent && input.agent.browserTools !== false;
       const includeDevices = !!control && !control.coordinatorDerived;
@@ -2265,36 +2515,64 @@ export class CodexAdapter implements ProviderAdapterShape {
         retired = true;
         return false;
       };
+      // The Agent's selection, reduced for a restricted network as Claude's
+      // in-process server is (#4769).
+      const selectedControl = control
+        ? selectedStationControlTools(control)
+        : undefined;
+      const boundControlTools = input.confinementPlan?.network
+        ? restrictedNetworkStationControlTools(selectedControl)
+        : selectedControl;
       const boundTools =
-        this.options.boundToolsEnabled?.() &&
-        this.options.createBoundTools &&
-        (includeBrowser || includeDevices)
-          ? await this.options.createBoundTools({
+        servesCatalog ||
+        (this.options.boundToolsEnabled?.() &&
+          this.options.createBoundTools &&
+          (includeBrowser || includeDevices))
+          ? await this.options.createBoundTools!({
               sessionId: input.threadId,
               tenantExecutionContext: input.tenantExecutionContext,
               includeBrowser,
               includeDevices,
+              ...(servesCatalog
+                ? {
+                    stationControl:
+                      boundControlTools === undefined
+                        ? {}
+                        : { allowedTools: boundControlTools },
+                  }
+                : {}),
               isCurrent: bindingCurrent,
             })
           : undefined;
       record.closeBoundTools = boundTools?.close;
       record.boundChannelCurrent = boundTools ? bindingCurrent : undefined;
       let boundPolicy: StagedPreToolPolicyEvaluator | undefined;
-      if (boundTools && this.options.resolveBoundToolPolicy) {
+      // Resolved for every Agent session, bound tools or not, and kept on the
+      // record: holding it keeps the session's launch binding, so a change to
+      // its Agent or integrations restarts it at the next turn. Only bound
+      // tools are decided by it.
+      if (input.agent && this.options.resolveBoundToolPolicy) {
         try {
-          boundPolicy = await this.options.resolveBoundToolPolicy(input);
+          record.launchPolicy =
+            await this.options.resolveBoundToolPolicy(input);
         } catch {
-          boundPolicy = undefined;
+          record.launchPolicy = undefined;
         }
+        if (boundTools)
+          boundPolicy = record.launchPolicy as
+            | StagedPreToolPolicyEvaluator
+            | undefined;
       }
+      // Every station-control tool (devices included) is held to the
+      // Agent's selection again here; browser tools follow `browserTools`.
       const offeredTools =
         boundTools?.tools.filter((tool) => {
-          if (!tool.name.startsWith('device_')) return true;
+          if (tool.name.startsWith('browser_')) return true;
           if (control?.disabledTools?.includes(tool.name)) return false;
-          return (
-            control?.allowedTools === undefined ||
-            control.allowedTools.includes(tool.name)
-          );
+          const selection = servesCatalog
+            ? boundControlTools
+            : control?.allowedTools;
+          return selection === undefined || selection.includes(tool.name);
         }) ?? [];
       assertExecutionOverrideDelivery(
         input.metadata,
@@ -2314,7 +2592,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       const authoredSelection = await this.authoredMcpConfig(
         record,
         input,
-        toolServers.report?.delivered ?? [],
+        toolServers.mcpDelivered ?? [],
       );
       const authoredMcpConfig =
         toolServers.privateConfig || authoredSelection
@@ -2377,12 +2655,7 @@ export class CodexAdapter implements ProviderAdapterShape {
               experimentalRawEvents: false,
               ...(boundTools
                 ? {
-                    dynamicTools: offeredTools.map((tool) => ({
-                      type: 'function',
-                      name: tool.name,
-                      description: tool.description ?? tool.name,
-                      inputSchema: tool.inputSchema,
-                    })),
+                    dynamicTools: codexDynamicTools(offeredTools),
                   }
                 : {}),
               persistExtendedHistory: false,
@@ -2395,11 +2668,35 @@ export class CodexAdapter implements ProviderAdapterShape {
         );
       }
 
+      const reportedReviewer = mapCodexApprovalReviewer(
+        extractStringField(result, 'approvalsReviewer'),
+      );
+      if (input.confinement === 'workspace' && reportedReviewer === 'automatic')
+        throw new ConfinementRefusedError(
+          'confinement_not_observed',
+          'Codex reported automatic approval review, but this workspace session requires a person to review escalations. Check the Codex approval reviewer requirements before restarting the session.',
+        );
+
       const codexThread = extractThread(result);
+      const offeredNames = new Set(offeredTools.map((tool) => tool.name));
+      if (!boundTools && catalogWithdrawn)
+        record.boundToolHandler = async (params) => {
+          // Point only a station-control name at its MCP twin; a saved
+          // browser or device copy has no twin on the header server.
+          const tool =
+            params && typeof params === 'object' && !Array.isArray(params)
+              ? (params as Record<string, unknown>).tool
+              : undefined;
+          throw new Error(
+            typeof tool === 'string' && stationControlToolPolicy(tool)
+              ? 'bound-catalog-withdrawn'
+              : 'bound-tool-refused',
+          );
+        };
       if (boundTools) {
         const channel = new CodexBoundToolChannel(
           codexThread.id,
-          new Set(offeredTools.map((tool) => tool.name)),
+          offeredNames,
           () =>
             record.activeTurnId &&
             !record.cancelledBoundTurns?.has(record.activeTurnId)
@@ -2420,8 +2717,20 @@ export class CodexAdapter implements ProviderAdapterShape {
             payload.callId.length > 256 ||
             typeof payload.tool !== 'string' ||
             payload.tool.length > 256 ||
-            payload.namespace != null ||
-            Buffer.byteLength(JSON.stringify(payload.arguments) ?? '') > 40_000
+            payload.namespace != null
+          )
+            throw new Error('bound-tool-refused');
+          // Before the size check: a withdrawn catalog name gets its pointer
+          // whatever it carries, and never reaches the cap or approval.
+          if (
+            catalogWithdrawn &&
+            !offeredNames.has(payload.tool) &&
+            stationControlToolPolicy(payload.tool)
+          )
+            throw new Error('bound-catalog-withdrawn');
+          if (
+            Buffer.byteLength(JSON.stringify(payload.arguments) ?? '') >
+            boundToolArgumentMaxBytes(payload.tool, servesCatalog)
           )
             throw new Error('bound-tool-refused');
           const call = {
@@ -2430,7 +2739,7 @@ export class CodexAdapter implements ProviderAdapterShape {
             callId: payload.callId,
             name: payload.tool,
           };
-          return channel.invoke(
+          const invoked = channel.invoke(
             call,
             (current) => {
               if (boundTools.expired())
@@ -2460,6 +2769,17 @@ export class CodexAdapter implements ProviderAdapterShape {
             },
             () => !record.cancelledBoundRequests?.has(rpcKey),
           );
+          // A replaced-configuration refusal reaches the model as the tool's
+          // result: a JSON-RPC error reaches it only as a bare failure, with
+          // nothing it can act on.
+          return invoked.catch((error: unknown) => {
+            if (error instanceof CodexBoundToolReasonedRefusal)
+              return {
+                success: false,
+                contentItems: [{ type: 'inputText', text: error.reason }],
+              };
+            throw error;
+          });
         };
         const close = record.closeBoundTools;
         record.closeBoundTools = async () => {
@@ -2545,6 +2865,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           this.provider,
           describeCodexSandboxGap(sandboxEvidence),
         );
+      record.reportedApprovalReviewer = reportedReviewer;
       this.transport.setCodexThreadId(record, codexThread.id);
       this.options.nativeSessionOwnership?.claim(
         nativeSessionIdentityKey(
@@ -2556,6 +2877,20 @@ export class CodexAdapter implements ProviderAdapterShape {
       );
       const nativeResumeCursor = {
         codexThreadId: codexThread.id,
+        // What Codex persisted with the thread, not this start's mode: a
+        // thread that started with the catalog keeps it on every resume.
+        ...((boundCatalog && !resumeCursor) ||
+        (resumeCursor?.boundCatalog &&
+          resumeCursor.codexThreadId === codexThread.id)
+          ? { boundCatalog: true as const }
+          : {}),
+        // Likewise for tool families: the thread started with them, so its
+        // history may name family tools a later credential must reload.
+        ...((toolFamilies && !resumeCursor) ||
+        (resumeCursor?.toolFamilies &&
+          resumeCursor.codexThreadId === codexThread.id)
+          ? { toolFamilies: true as const }
+          : {}),
         ...(sourceAffinity
           ? {
               sourceAffinity: snapshotSessionSourceAffinity(sourceAffinity),
@@ -2610,6 +2945,7 @@ export class CodexAdapter implements ProviderAdapterShape {
             ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
             : undefined,
           codexThreadId: codexThread.id,
+          reportedApprovalReviewer: reportedReviewer,
           ...(confinementRecord
             ? { [STATION_CONFINEMENT_RECORD_METADATA_KEY]: confinementRecord }
             : {}),
@@ -2943,13 +3279,30 @@ export class CodexAdapter implements ProviderAdapterShape {
    */
   private async resolveAgentToolServers(
     input: ProviderSessionStartInput,
+    /**
+     * #2376 slice 2: station-control goes over the bound channel instead, so
+     * no header token is minted and Codex gets no station-control MCP entry.
+     */
+    boundCatalog = false,
+    /** #2376 slice 3: mint station-control at the family index. */
+    toolFamilies = false,
   ): Promise<{
     configArgs?: string[];
     privateConfig?: Record<string, unknown>;
     report?: CapabilityDeliveryChannelReport;
+    /** Ids Codex's own MCP configuration carries (`authoredMcpConfig`). */
+    mcpDelivered?: string[];
+    /** Station Control was delivered at the family index. */
+    toolFamilies?: true;
   }> {
-    const toolServers = input.agent?.toolServers;
-    if (toolServers === undefined) return {};
+    const authoredServers = input.agent?.toolServers;
+    if (authoredServers === undefined) return {};
+    const boundControl = boundCatalog
+      ? canonicalStationControl(input)
+      : undefined;
+    const toolServers = boundControl
+      ? authoredServers.filter((server) => server !== boundControl)
+      : authoredServers;
     if (
       toolServers.some(
         (server) =>
@@ -2981,25 +3334,35 @@ export class CodexAdapter implements ProviderAdapterShape {
         )
       : control?.allowedTools;
     const stationControlMcpUrl = hasBuiltinStationControl
-      ? control?.coordinatorDerived
+      ? toolFamilies
         ? this.options.mintStationControlMcpAuth?.(
             input.threadId,
             input.tenantExecutionContext,
             selectedControlTools,
-            control.coordinatorGeneration,
+            control?.coordinatorDerived
+              ? control.coordinatorGeneration
+              : undefined,
+            true,
           )
-        : selectedControlTools !== undefined
+        : control?.coordinatorDerived
           ? this.options.mintStationControlMcpAuth?.(
               input.threadId,
               input.tenantExecutionContext,
               selectedControlTools,
+              control.coordinatorGeneration,
             )
-          : input.tenantExecutionContext
+          : selectedControlTools !== undefined
             ? this.options.mintStationControlMcpAuth?.(
                 input.threadId,
                 input.tenantExecutionContext,
+                selectedControlTools,
               )
-            : this.options.mintStationControlMcpAuth?.(input.threadId)
+            : input.tenantExecutionContext
+              ? this.options.mintStationControlMcpAuth?.(
+                  input.threadId,
+                  input.tenantExecutionContext,
+                )
+              : this.options.mintStationControlMcpAuth?.(input.threadId)
       : undefined;
 
     const knowledge = toolServers.find(
@@ -3029,6 +3392,15 @@ export class CodexAdapter implements ProviderAdapterShape {
         stationKnowledgeMcpUrl,
         oauthTokens,
       );
+    // Codex re-lists a server's tools after `load_tool_family` only with this
+    // feature on (`npm run qualify:tool-disclosure`). It rides the same
+    // private thread configuration as the credential, on start and resume.
+    const familiesDelivered =
+      toolFamilies &&
+      stationControlMcpUrl !== undefined &&
+      deliveredIds.includes('station-control');
+    if (familiesDelivered)
+      privateConfig[CODEX_TOOL_LIST_CHANGED_FEATURE] = true;
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: CodexToolServerSkip) => ({
         capability: 'toolServers',
@@ -3057,10 +3429,19 @@ export class CodexAdapter implements ProviderAdapterShape {
         : undefined,
       report: {
         source: 'agent',
-        requested: toolServers.map((server) => server.id),
-        delivered: deliveredIds,
+        requested: authoredServers.map((server) => server.id),
+        delivered: boundControl
+          ? authoredServers
+              .filter(
+                (server) =>
+                  server === boundControl || deliveredIds.includes(server.id),
+              )
+              .map((server) => server.id)
+          : deliveredIds,
         undelivered,
       },
+      mcpDelivered: deliveredIds,
+      ...(familiesDelivered ? { toolFamilies: true as const } : {}),
     };
   }
 
@@ -3125,6 +3506,14 @@ export class CodexAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.transport.requireSession(input.threadId);
+    if (
+      record.activeTurnId &&
+      record.terminalPublishedForTurnId !== record.activeTurnId
+    )
+      throw new SendTurnRefusedError(
+        'Codex already has an active turn.',
+        'busy',
+      );
     const turnStartedAt = Date.now();
     const invocationId = input.invocationId;
     const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
@@ -3198,6 +3587,13 @@ export class CodexAdapter implements ProviderAdapterShape {
         updatedAt: this.now().toISOString(),
         model: input.modelId ?? record.session.model,
       };
+      // The mode this turn really runs at: Station's own bound-tool approvals
+      // read it, so full access asks nothing there either.
+      if (postured)
+        record.appliedApprovalMode = mapCodexKnobsToApprovalMode({
+          approvalPolicy: postured.knobs.approvalPolicy,
+          sandbox: postured.plan.applied,
+        });
 
       this.transport.publish({
         eventId: crypto.randomUUID(),
@@ -3267,6 +3663,8 @@ export class CodexAdapter implements ProviderAdapterShape {
         ),
       };
     };
+    // #5113: workload notices that arrived while no turn ran.
+    const workloadNotices = record.workloadNotices?.take();
     let result: ProviderTurnStartResult;
     try {
       result = await this.transport.sendRequest(
@@ -3275,19 +3673,16 @@ export class CodexAdapter implements ProviderAdapterShape {
         {
           threadId: record.codexThreadId,
           input: [
-            ...(input.input
+            ...(workloadNotices
               ? [
                   {
                     type: 'text',
-                    text: input.input,
+                    text: workloadNotices.text,
                     text_elements: [],
                   },
                 ]
               : []),
-            ...decodedAttachments.map(({ attachment }) => ({
-              type: 'image',
-              url: attachment.dataUrl,
-            })),
+            ...codexMessageInput(input.input, decodedAttachments),
           ],
           model: input.modelId,
           effort: mapReasoningEffort(modelOptions),
@@ -3302,6 +3697,8 @@ export class CodexAdapter implements ProviderAdapterShape {
         },
         { mapResult: acceptTurn },
       );
+      if (workloadNotices)
+        record.workloadNotices?.delivered(workloadNotices, 'turn-start');
       // Applies to this turn and every later one (TurnStartParams), and
       // replaces a permission profile (#3800).
       if (sandboxPolicy) {
@@ -3314,6 +3711,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         model_options: hasModelOptions ? 'applied' : 'none',
       });
     } catch (error) {
+      if (workloadNotices) record.workloadNotices?.restore(workloadNotices);
       if (hasModelOptions) {
         providerOps.add(1, {
           operation: 'adapter-model-options',
@@ -3368,21 +3766,31 @@ export class CodexAdapter implements ProviderAdapterShape {
     });
   }
 
+  readonly childSteerImages = true;
+
   async steerChildWork(
     threadId: string,
     childId: string,
     turnId: string,
     input: string,
+    images?: import('@kontourai/station-contracts/chat-attachment').ChatAttachmentInput[],
   ): Promise<ProviderChildSteerResult> {
     const record = this.transport.requireSession(threadId);
-    const target = codexChildSteerTarget(record, childId, turnId);
+    const target = codexChildSteerTarget(
+      record,
+      childId,
+      turnId,
+      !!images?.length,
+    );
     if (target !== 'ready') return { outcome: target };
     const text = input.trim();
-    if (!text) throw new Error('Steer input is empty.');
+    const decoded = decodeChatAttachments(images);
+    rejectFileAttachments('Codex', decoded);
+    if (!text && !decoded.length) throw new Error('Steer input is empty.');
     try {
       const result = await this.transport.sendRequest(record, 'turn/steer', {
         threadId: childId,
-        input: [{ type: 'text', text, text_elements: [] }],
+        input: codexMessageInput(text, decoded),
         expectedTurnId: turnId,
       });
       if (extractStringField(result, 'turnId') !== turnId)
@@ -3405,6 +3813,16 @@ export class CodexAdapter implements ProviderAdapterShape {
     return { outcome: 'steered', turnId };
   }
 
+  private rememberCancelledTurn(record: CodexSessionRecord, turnId: string) {
+    const cancelledTurns = (record.cancelledBoundTurns ??= new Set());
+    cancelledTurns.delete(turnId);
+    cancelledTurns.add(turnId);
+    for (const oldest of cancelledTurns) {
+      if (cancelledTurns.size <= 32) break;
+      cancelledTurns.delete(oldest);
+    }
+  }
+
   async interruptTurn(threadId: string, turnId?: string) {
     const record = this.transport.requireSession(threadId);
     const activeTurnId = record.activeTurnId;
@@ -3423,12 +3841,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     if (turnId && turnId !== activeTurnId) {
       return { outcome: 'target-mismatch', activeTurnId } as const;
     }
-    record.cancelledBoundTurns ??= new Set();
-    record.cancelledBoundTurns.add(activeTurnId);
-    while (record.cancelledBoundTurns.size > 32) {
-      const oldest = record.cancelledBoundTurns.values().next().value;
-      if (oldest !== undefined) record.cancelledBoundTurns.delete(oldest);
-    }
+    this.rememberCancelledTurn(record, activeTurnId);
     this.cancelBoundToolApprovals(record, activeTurnId);
     const targetTurnId = turnId ?? activeTurnId;
 
@@ -3520,6 +3933,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     threadId: string,
     targetTurnId: string,
   ) {
+    this.rememberCancelledTurn(record, targetTurnId);
     try {
       await this.transport.sendRequest(
         record,
@@ -3546,6 +3960,9 @@ export class CodexAdapter implements ProviderAdapterShape {
     // (it completed normally while this RPC was still out), that terminal
     // stands: a second, contradictory `turn.aborted` must not follow it.
     if (!codexTurnAlreadyTerminal(record, targetTurnId)) {
+      markCodexTurnTerminal(record, targetTurnId);
+      record.turnOutput.delete(targetTurnId);
+      record.turnOutputItemId?.delete(targetTurnId);
       this.transport.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -3559,12 +3976,10 @@ export class CodexAdapter implements ProviderAdapterShape {
     // #2486 review: the SESSION-level bookkeeping is a different claim — "is
     // THIS still the turn Station is tracking" — and must only change for
     // the turn actually interrupted. The RPC round-trip above can outlive a
-    // NEW turn starting (`sendTurn` always overwrites `activeTurnId`
-    // unconditionally); clearing here regardless would clobber that newer
-    // turn's own tracking for an interrupt that was never about it.
+    // successor starting after the old turn's terminal. Clearing here
+    // regardless would clobber the successor's tracking.
     if (record.activeTurnId === targetTurnId) {
       record.activeTurnId = undefined;
-      markCodexTurnTerminal(record, targetTurnId);
     }
     return { outcome: 'cancelled', turnId: targetTurnId } as const;
   }
@@ -3696,6 +4111,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       : 'station-control';
     const name = `mcp__${server}__${tool}`;
     if (!policy || !input.agent || !current()) return false;
+    const fullAccess = record.appliedApprovalMode === 'never';
     const rawDelegation = input.metadata?.delegation;
     const delegation =
       rawDelegation && typeof rawDelegation === 'object'
@@ -3714,6 +4130,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           {
             interaction: 'external',
             identity: externalPreToolPolicyIdentity(name),
+            ...(fullAccess ? { fullAccess } : {}),
           },
         ),
         AbortSignal.timeout(5_000),
@@ -3721,9 +4138,19 @@ export class CodexAdapter implements ProviderAdapterShape {
     } catch {
       return false;
     }
-    if (!current() || decision.behavior === 'deny') return false;
+    if (!current()) return false;
+    if (decision.behavior === 'deny') {
+      if (decision.staleGeneration || decision.generationSettling)
+        throw new CodexBoundToolReasonedRefusal(decision.denial.reason);
+      return false;
+    }
     if (decision.behavior === 'allow') return true;
-    if (decision.behavior === 'defer' && record.approvedTools.has(name))
+    // Full access answers what Station's policy leaves open (`defer`); a
+    // required ask (a tool that changes authority) still reaches a person.
+    if (
+      decision.behavior === 'defer' &&
+      (fullAccess || record.approvedTools.has(name))
+    )
       return true;
     if (delegation?.denyApprovals) return false;
     record.boundToolApprovals ??= new Map();
@@ -3743,6 +4170,9 @@ export class CodexAdapter implements ProviderAdapterShape {
         method: 'request.opened',
         requestType: 'approval',
         title: `Allow ${tool}`,
+        ...(decision.behavior === 'ask' && decision.guardianReason
+          ? { guardianReason: decision.guardianReason }
+          : {}),
         payload: { toolName: name, toolInput: args },
       });
     });
@@ -3895,8 +4325,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     const record = this.transport.getSession(threadId);
     if (record) {
       if (record.activeTurnId) {
-        record.cancelledBoundTurns ??= new Set();
-        record.cancelledBoundTurns.add(record.activeTurnId);
+        this.rememberCancelledTurn(record, record.activeTurnId);
       }
       this.cancelBoundToolApprovals(record);
     }

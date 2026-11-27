@@ -1,0 +1,9 @@
+{
+  "revision": "7a98309500c1ba45e598b1e32f84d9fed47174cf",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Checked pages citing api.md (terminal design, integrating guide): the edit only adds the fork turn-ownership rule; none of their cited claims concern forks.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked pages citing api.md (terminal design, integrating guide): the edit only adds the fork turn-ownership rule; none of their cited claims concern forks.","inputs":["docs/reference/api.md"]}
+  ]
+}

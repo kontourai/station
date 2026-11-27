@@ -1,7 +1,0 @@
-{
-  "revision": "751143758362625bfedda7d1e910a487884983f5",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Reviewed merged node-pty beta.18 pin and managed public-kill patch, bounded positive-PID admission, startup pause/first-consumer resume, cached/cancellable exit replay, reentrant workload cleanup and at-most-once native/pipe release. Mac and Linux owner batches passed; Windows follow-up corrected outputIncomplete expectations while preserving release/replay/deadline assertions and passed 22 tests with 14 platform skips. Source-only independent review found no blocker; installed-shell, ARM64 and release behavior remain unverified.","inputs":["docs/design/terminal.md","src-server/adapters/__tests__/node-pty-adapter.test.ts"]}
-  ]
-}

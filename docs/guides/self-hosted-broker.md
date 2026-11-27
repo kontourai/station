@@ -116,6 +116,9 @@ receive public routing and signing-trust facts, validate recipient setup against
 that exact Station/enrollment, approve or revoke exact native surfaces, issue
 single-use installation-bound invitations, and approve or deny pending Device
 requests. The WebView and SDK never receive the connector issuer credential.
+A Station without a connector mounts only the capability probe,
+`/api/relay-management/capabilities` (GET and HEAD), which answers
+`configured: false`; the panel then shows nothing.
 
 The [Connections panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
 shows **Devices** and **Invite device** for current operators and explicitly promoted
@@ -553,10 +556,12 @@ separate v3 tables, connection offers in v4, consumed request proofs in v5,
 and grant-renewal receipts in v6. Schema v7 adds a separate bounded invitation-request replay table; it does not reinterpret grant IDs as invitation IDs. Existing browser v1 wire records, Origin
 checks, owner tables, and signaling behavior are unchanged. A native surface is
 discriminated as `station-native` and binds the app identifier, one of the
-actual `dev`, `stable`, `beta`, or `nightly` channels, a client instance UUID,
+actual `dev`, `stable`, or `nightly` channels, a client instance UUID,
 and a P-256 proof-key thumbprint. The operator must choose that thumbprint from
 an independently approved native install key. The descriptive app/channel
 fields are bound as metadata; this exchange does not provide OS app attestation.
+Retired Beta surfaces are rejected by active proof, key and enrollment owners;
+retained records are not remapped to an active channel.
 
 `POST /broker/v1/native/grants/redeem` accepts only a v2 invitation and an
 ES256 compact JWS proof from its bound key. The signed payload uses UTF-8 JSON
@@ -842,6 +847,8 @@ origin policy, Device grants and account-provider configuration must separately
 admit the browser. No CORS, membership or authentication permission is added by
 the connector. `maxPeers` and `maxPeerLifetimeMs` are independently optional with
 the defaults shown; heartbeat, renewal and offer polling use 5s, 10s and 1s.
+At `maxPeers` live browser peers the connector leaves further browser offers
+unanswered until a peer ends; reaching the limit does not fail the connector.
 
 An operator may additionally opt in one exact native v2 client surface by adding
 this field to the connector file:

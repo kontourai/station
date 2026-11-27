@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked stationFailure-related claims: the probe failure description now also translates engine-update-required with Station-composed text; composer steering statements (ACP not steered from the composer) unchanged and confirmed by a live run. No claim changed.","inputs":["docs/design/chat-composer.md","src-ui/src/utils/stationFailure.ts"]}
+  ]
+}

@@ -15,11 +15,9 @@ class FakeWebPushError extends Error {
 }
 
 vi.mock('web-push', () => ({
-  default: {
-    setVapidDetails: vi.fn(),
-    sendNotification: (...args: unknown[]) => sendNotification(...args),
-    WebPushError: FakeWebPushError,
-  },
+  setVapidDetails: vi.fn(),
+  sendNotification: (...args: unknown[]) => sendNotification(...args),
+  WebPushError: FakeWebPushError,
 }));
 
 const subscription = {

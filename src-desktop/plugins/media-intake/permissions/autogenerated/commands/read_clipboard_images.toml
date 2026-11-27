@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-read-clipboard-images"
+description = "Enables the read_clipboard_images command without any pre-configured scope."
+commands.allow = ["read_clipboard_images"]
+
+[[permission]]
+identifier = "deny-read-clipboard-images"
+description = "Denies the read_clipboard_images command without any pre-configured scope."
+commands.deny = ["read_clipboard_images"]

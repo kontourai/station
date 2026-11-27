@@ -17,6 +17,8 @@ import {
   assertNightlyVersionRelationship,
   finalPlatformStates,
   ghAttestationArgs,
+  observeGithubDesktopRelease,
+  observeGooglePlayAdapter,
   parseAndroidManifestIdentity,
   parseGithubReleaseObservation,
   parseGithubTagReference,
@@ -418,6 +420,121 @@ test('verifies archive listings beyond the child-process default buffer without 
   ).toThrow(/unsafe/);
 });
 
+describe('rolling desktop release query', () => {
+  const version = identity.desktop.version;
+  const published = (name: string) =>
+    name === 'latest.json'
+      ? name
+      : name.replace('station-nightly-desktop-', `station-${version}-`);
+  const release = {
+    id: 9,
+    url: 'https://api.github.test/releases/9',
+    tag_name: 'nightly-desktop',
+    target_commitish: 'main',
+    draft: false,
+    prerelease: true,
+    published_at: '2026-08-30T00:00:00.000Z',
+    assets: macRecords.map((record, index) => ({
+      id: index + 1,
+      name: published(record.name),
+      size: record.size,
+      digest: `sha256:${record.sha256}`,
+      url: `https://api.github.test/assets/${index + 1}`,
+      browser_download_url: `https://github.test/${published(record.name)}`,
+    })),
+  };
+  // Stands in for `gh api`: answers the tag query, or prints the release
+  // with `older` earlier versioned assets ahead of the cohort's, each with
+  // the fields GitHub returns for a release asset.
+  const fakeGh = `
+    const [endpoint, release, older, sourceSha] = process.argv.slice(1);
+    const api = 'https://api.github.test/';
+    const bot = api + 'users/github-actions%5Bbot%5D';
+    const uploader = {
+      login: 'github-actions[bot]', id: 1, node_id: 'MDM6Qm90MQ==',
+      avatar_url: 'https://avatars.github.test/in/1?v=4', gravatar_id: '',
+      url: bot, html_url: 'https://github.test/apps/github-actions',
+      followers_url: bot + '/followers',
+      following_url: bot + '/following{/other_user}',
+      gists_url: bot + '/gists{/gist_id}',
+      starred_url: bot + '/starred{/owner}{/repo}',
+      subscriptions_url: bot + '/subscriptions',
+      organizations_url: bot + '/orgs', repos_url: bot + '/repos',
+      events_url: bot + '/events{/privacy}',
+      received_events_url: bot + '/received_events',
+      type: 'Bot', user_view_type: 'public', site_admin: false,
+    };
+    if (endpoint.includes('/git/ref/tags/')) {
+      process.stdout.write(JSON.stringify({
+        ref: 'refs/tags/nightly-desktop',
+        object: { type: 'commit', sha: sourceSha },
+      }));
+    } else {
+      const body = JSON.parse(release);
+      const earlier = Array.from({ length: Number(older) }, (_, index) => {
+        const name = 'station-0.1.2-nightly.' + (20260101 + index) + '-macos-aarch64.app.tar.gz';
+        return {
+          url: api + 'repos/kontourai/station/releases/assets/' + (1000 + index),
+          id: 1000 + index, node_id: 'RA_' + String(index).padStart(16, '0'),
+          name, label: '', uploader, content_type: 'application/gzip',
+          state: 'uploaded', size: 1, digest: 'sha256:' + '0'.repeat(64),
+          download_count: 0, created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+          browser_download_url: 'https://github.test/kontourai/station/releases/download/nightly-desktop/' + name,
+        };
+      });
+      body.assets = [...earlier, ...body.assets];
+      process.stdout.write(JSON.stringify(body));
+    }
+  `;
+  const realChild = (older: number) => {
+    const sizes: number[] = [];
+    const run = ((command: string, args: string[], options: object) => {
+      expect(command).toBe('gh');
+      const result = spawnSync(
+        process.execPath,
+        [
+          '-e',
+          fakeGh,
+          args[1],
+          JSON.stringify(release),
+          String(older),
+          sourceSha,
+        ],
+        options,
+      );
+      sizes.push(Buffer.byteLength(String(result.stdout ?? '')));
+      return result;
+    }) as unknown as typeof spawnSync;
+    return { run, sizes };
+  };
+  const observe = (run: typeof spawnSync) =>
+    observeGithubDesktopRelease(
+      { ...identity.desktop, sourceSha, windows: true },
+      macRecords,
+      { run, now: () => new Date('2026-08-30T00:01:00.000Z') },
+    );
+
+  test('reads a release whose response is larger than the child-process default buffer', () => {
+    const { run, sizes } = realChild(800);
+    const observation = observe(run);
+    // The release response, as the real child wrote it, is past 1 MiB.
+    expect(Math.max(...sizes)).toBeGreaterThan(1024 * 1024);
+    expect(observation.observed.assets.map((asset) => asset.name)).toEqual(
+      macRecords.map((record) => published(record.name)),
+    );
+    expect(observation.observed.tagReference.sourceSha).toBe(sourceSha);
+  });
+
+  test('refuses a response past the capture bound instead of parsing part of it', () => {
+    // 45,000 earlier assets is about 70 MiB, past the 64 MiB bound.
+    const { run } = realChild(45_000);
+    expect(() => observe(run)).toThrow(
+      /gh api release query could not start: gh api .* wrote more than 67108864 bytes/,
+    );
+  });
+});
+
 // Archive safety (zip-slip): the verifier lists the archive and reads the one
 // Info.plist to stdout; it never extracts to disk.
 test('reads the macOS updater archive only by listing and stdout extraction', () => {
@@ -704,5 +821,43 @@ describe('protected verifier verifies only the platforms that published (#1774)'
     expect(() =>
       requiredArtifactPaths(macosOnly, unadmitted, ['macos']),
     ).toThrow('unadmitted platform ios');
+  });
+});
+
+describe('Google Play adapter run under the verifier limit', () => {
+  const android = {
+    packageName: 'io.kontourai.station.nightly',
+    versionCode: 242800,
+    versionName: '0.1.3-nightly.2428',
+  };
+
+  test('a child that outlives the limit is reported as unfinished with its stderr lines', () => {
+    const retryLine =
+      'Google Play cohort verification failed: read-track local deadline elapsed (attempt 1 of 3); retrying in 2000 ms from a new edit';
+    const code = `process.stderr.write(${JSON.stringify(`${retryLine}\n`)}); setTimeout(() => {}, 30000);`;
+    const run = ((command: string, _args: string[], options: object) =>
+      spawnSync(command, ['-e', code], options)) as unknown as typeof spawnSync;
+    let message = '';
+    try {
+      observeGooglePlayAdapter(android, run, { limitMs: 1_500 });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain(
+      'Google Play observation adapter did not finish within 1500 ms',
+    );
+    expect(message).toContain(retryLine);
+    expect(message).not.toContain('could not start');
+  });
+
+  test('a child that cannot start keeps the could-not-start message', () => {
+    const run = (() => ({
+      error: new Error('spawn node ENOENT'),
+      status: null,
+      stderr: 'ignored',
+    })) as unknown as typeof spawnSync;
+    expect(() => observeGooglePlayAdapter(android, run)).toThrow(
+      'release cohort verification failed: Google Play observation adapter could not start: spawn node ENOENT',
+    );
   });
 });

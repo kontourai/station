@@ -46,6 +46,9 @@ export const RestoreGlyph = /* @__PURE__ */ glyph(
 );
 export const ArrowLeftGlyph = /* @__PURE__ */ glyph('M10.5 3 5.5 8l5 5');
 export const ArrowRightGlyph = /* @__PURE__ */ glyph('M5.5 3l5 5-5 5');
+export const SendGlyph = /* @__PURE__ */ glyph(
+  'M8 12.67V3.33M3.33 8 8 3.33 12.67 8',
+);
 export const ArrowUpGlyph = /* @__PURE__ */ glyph('M3 10l5-5 5 5');
 export const AttachmentGlyph = /* @__PURE__ */ glyph(
   'm6 8.5 3.8-3.8a2 2 0 1 1 2.8 2.8L7.4 12.7a3 3 0 0 1-4.2-4.2l5-5',
@@ -83,6 +86,9 @@ export const ChartGlyph = /* @__PURE__ */ glyph(
   'M3 13V8m5 5V3m5 10V6M2 13.5h12',
 );
 export const CheckGlyph = /* @__PURE__ */ glyph('m3 8 3.2 3.2L13 4.5');
+export const TrashGlyph = /* @__PURE__ */ glyph(
+  'M2 4h12M6 4V2h4v2M3.33 4l.67 10h8l.67-10M6.67 6.67v4.66M9.33 6.67v4.66',
+);
 export const CloseGlyph = /* @__PURE__ */ glyph('M3.5 3.5l9 9m0-9-9 9');
 /** Angle brackets and slash — the Coding pane tile. */
 export const CodeGlyph = /* @__PURE__ */ glyph(
@@ -178,6 +184,10 @@ export const NewChatGlyph = /* @__PURE__ */ glyph(
 export const OutboxGlyph = /* @__PURE__ */ glyph(
   'M3 3h10v10H3V3Zm0 6h3l1 1.5h2L10 9h3M8 8V2m-2 2 2-2 2 2',
 );
+/** A clipboard: paste from the system clipboard (room composer's Paste image). */
+export const PasteGlyph = /* @__PURE__ */ glyph(
+  'M10.5 3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h1M6 2h4v2H6Z',
+);
 export const PauseGlyph = /* @__PURE__ */ glyph('M5.5 3.5v9m5-9v9');
 /**
  * Two overlapping people — the panel footer's presence slot (#2059). Distinct
@@ -213,6 +223,22 @@ export const MoreGlyph = /* @__PURE__ */ glyph('M3.5 8h.01M8 8h.01M12.5 8h.01');
 export const PlusGlyph = /* @__PURE__ */ glyph('M8 3v10M3 8h10');
 export const PlugGlyph = /* @__PURE__ */ glyph(
   'M5 2v4m6-4v4M4 6h8v1.5a4 4 0 0 1-8 0V6Zm4 5.5V14',
+);
+/** Two git nodes feeding a third: an open pull request. */
+export const PullRequestGlyph = /* @__PURE__ */ glyph(
+  'M4.5 5.5v5M3 4a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M3 12a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M10 12a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M11.5 10.5V6.5a2 2 0 0 0-2-2H8M9.5 3 8 4.5 9.5 6',
+);
+/** A pull request whose head is still a draft: the link is dotted. */
+export const PullRequestDraftGlyph = /* @__PURE__ */ glyph(
+  'M4.5 5.5v5M3 4a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M3 12a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M10 12a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M11.5 8.5v.01M11.5 5.5v.01',
+);
+/** A branch joined back into its base: a merged pull request. */
+export const PullRequestMergedGlyph = /* @__PURE__ */ glyph(
+  'M4.5 5.5v8M3 4a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M10 10a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M4.5 5.5a4.5 4.5 0 0 0 4.5 4.5h1',
+);
+/** A pull request closed without merging. */
+export const PullRequestClosedGlyph = /* @__PURE__ */ glyph(
+  'M4.5 5.5v5M3 4a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M3 12a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M10 12a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M10 3l3 3m0-3-3 3',
 );
 export const QuestionGlyph = /* @__PURE__ */ glyph(
   'M5.7 5.5A2.5 2.5 0 1 1 9 7.9c-.8.3-1 .8-1 1.6M8 12.5h.01',

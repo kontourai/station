@@ -196,20 +196,6 @@
   font-size: 12px;
 }
 
-/* Sheet-host count badge beside a group label (kontourai/station#3312). */
-/**
- * Compact chrome (kontourai/station#3314): the project sidebar's Open chats
- * mini-inbox — same row anatomy, tighter geometry for a rail.
- */
-.chat-dock-inbox--compact .inbox-row {
-  --inbox-row-pad-block: var(--space-1);
-  --inbox-row-pad-inline: var(--space-3);
-}
-
-.chat-dock-inbox--compact .chat-dock-inbox__item {
-  min-height: 44px;
-}
-
 .chat-dock-inbox__show-more {
   min-height: 44px;
   width: 100%;
@@ -231,39 +217,77 @@
   min-width: 0;
   min-height: 44px;
 }
-.chat-dock-inbox__scope > button {
+.chat-dock-inbox__scope > .chat-dock-inbox__hidden-attention {
   min-height: 44px;
   color: var(--k-action);
 }
 
-.chat-dock-inbox__toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--k-space-1);
-  padding: var(--k-space-2);
-  border-bottom: 1px solid var(--k-line);
+/* In the toolbar, beside search: a compact picker that yields to search. */
+.chat-dock-inbox__scope--inline {
+  flex: 0 1 auto;
+  max-width: 38%;
+  padding: 0;
+  border: 0;
 }
-.chat-dock-inbox__search {
-  display: flex;
-  flex: 1;
-  min-width: 0;
+.chat-dock-inbox__scope--inline select {
+  width: 100%;
+  text-overflow: ellipsis;
+}
+
+/* On the scope picker: work the scope hides that needs the person. */
+.chat-dock-inbox__scope--inline {
+  position: relative;
+}
+.chat-dock-inbox__scope-badge {
+  position: absolute;
+  top: calc(var(--k-space-1) * -1);
+  right: calc(var(--k-space-1) * -1);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--k-space-1);
+  border: 0;
+  border-radius: var(--k-radius-pill, 999px);
+  background: var(--k-action);
+  color: var(--k-action-contrast);
+  font: inherit;
+  font-size: var(--k-text-sm);
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  cursor: pointer;
+}
+/* The badge is small to draw, not to press: its target is 44px. */
+.chat-dock-inbox__scope-badge::after {
+  position: absolute;
+  inset: -13px;
+  content: "";
+}
+
+/* The way to every conversation, at the end of the list. */
+.chat-dock-inbox__browse {
+  display: inline-flex;
   align-items: center;
+  align-self: flex-start;
+  margin-block-start: var(--k-space-3);
   gap: var(--k-space-2);
   color: var(--k-text-muted);
 }
-.chat-dock-inbox__search input {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  border: 0;
-  background: transparent;
-  color: var(--k-text);
-  font: inherit;
+.chat-dock-inbox__browse svg {
+  inline-size: 14px;
+  block-size: 14px;
 }
-.chat-dock-inbox__search input:focus-visible {
-  outline: var(--k-border-thick) solid var(--k-focus);
-  outline-offset: calc(-1 * var(--k-border-thick));
+
+.chat-dock-inbox__toolbar {
+  padding: var(--k-space-3);
+  border-bottom: 1px solid var(--k-line);
 }
+.chat-dock-inbox__toolbar:has(> .chat-dock-inbox__pr-filter) {
+  flex-wrap: wrap;
+}
+.chat-dock-inbox__toolbar > .chat-dock-inbox__pr-filter {
+  flex: 1 0 100%;
+  min-block-size: var(--touch-target-min, 0px);
+}
+
 .chat-dock-inbox__group.chat-dock-inbox__group--shelf-start {
   margin-block-start: auto;
 }
@@ -272,10 +296,6 @@
 }
 .chat-dock-inbox__group--collapsed + .chat-dock-inbox__group--collapsed {
   margin-block-start: 0;
-}
-.chat-dock-inbox__toolbar svg {
-  inline-size: 16px;
-  block-size: 16px;
 }
 .chat-dock-inbox__toolbar > button {
   min-inline-size: 44px;
@@ -323,4 +343,34 @@
   min-width: 0;
   max-width: none;
   margin-right: var(--fold-split-gap);
+}
+
+.inbox-row__pull-request {
+  position: absolute;
+  inset-inline-end: var(--inbox-row-pad-inline);
+  inset-block-end: var(--k-space-1);
+}
+
+.inbox-row__pull-request .inbox-row__chip {
+  border: 0;
+  cursor: pointer;
+  min-block-size: var(--touch-target-min, 0px);
+}
+
+.inbox-row:has(> .inbox-row__pull-request) > .inbox-row__open {
+  padding-inline-end: calc(12ch + var(--inbox-row-pad-inline));
+}
+
+.inbox-row__pull-request[data-checks="failing"] .inbox-row__chip {
+  color: var(--k-negative);
+}
+.inbox-row__pull-request[data-checks="passing"] .inbox-row__chip {
+  color: var(--k-positive);
+}
+
+.inbox-row__diff-stat {
+  position: absolute;
+  inset-inline-end: var(--inbox-row-pad-inline);
+  inset-block-start: var(--k-space-1);
+  pointer-events: none;
 }

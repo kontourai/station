@@ -1,5 +1,4 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
-import { SpanStatusCode } from '@opentelemetry/api';
 import { STATION_ENGINE_PROVIDER } from '../../../src-shared/monitoring-keys.js';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../runtime/conversation/chat-error-marker.js';
 import { resolveManagedModelIdentity } from '../../runtime/plugins/runtime-provider-resolution.js';
@@ -124,7 +123,7 @@ export async function finalizeChatRequest({
   accumulatedText: string;
   reasoningText: string;
   artifacts: Array<{ type: string; name?: string; content?: unknown }>;
-  result: {
+  result?: {
     usage?: Promise<{
       promptTokens?: number;
       completionTokens?: number;
@@ -169,8 +168,6 @@ export async function finalizeChatRequest({
   chatStartMs: number;
   chatSpan: {
     setAttribute: (key: string, value: string | number) => void;
-    setStatus?: (status: { code: SpanStatusCode; message?: string }) => void;
-    end: () => void;
   };
   /**
    * The outward-safe failure text from `streamPrimaryAgentChat`'s outer
@@ -317,7 +314,7 @@ export async function finalizeChatRequest({
       }
     | undefined;
   try {
-    usage = await result.usage;
+    usage = await result?.usage;
   } catch {
     usage = undefined;
   }
@@ -332,7 +329,10 @@ export async function finalizeChatRequest({
       traceId: operationContext.traceId,
       reason: completionReason,
       steps: 0,
-      maxSteps: ctx.agentSpecs.get(slug)?.guardrails?.maxSteps,
+      maxSteps:
+        ctx.appConfig?.runtime === 'strands'
+          ? undefined
+          : (ctx.agentSpecs.get(slug)?.maxSteps ?? undefined),
       inputChars:
         typeof input === 'string'
           ? input.length
@@ -465,8 +465,6 @@ export async function finalizeChatRequest({
   if (outputTokenCount !== undefined) {
     chatSpan.setAttribute('station.tokens.output', outputTokenCount);
   }
-  chatSpan.setStatus?.({ code: SpanStatusCode.OK });
-  chatSpan.end();
 }
 
 /**

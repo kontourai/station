@@ -8,6 +8,7 @@ import { jsonSchema } from 'ai';
 import { createRuntimeFrameworkModel } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { SESSION_SUMMARY_SERVICE_PRINCIPAL } from '../../services/identity/service-principals.js';
+import { errorMessage } from '../../utils/error-message.js';
 
 const SESSION_SUMMARY_TIMEOUT_MS = 10_000;
 export const SESSION_SUMMARY_TRANSCRIPT_MAX_CHARS = 12_000;
@@ -412,7 +413,7 @@ export async function generateSessionSummary({
     return {
       failed: true,
       kind: 'error',
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage(error),
     };
   } finally {
     clearTimeout(timer);

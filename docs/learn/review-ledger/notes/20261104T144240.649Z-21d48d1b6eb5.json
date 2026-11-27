@@ -1,7 +1,0 @@
-{
-  "revision": "70c98e39854a7e804ddc181cc1cd0e8300729944",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Reviewed only the SkillsView.test.tsx fixture-contract correction committed at 70c98e39854a7e804ddc181cc1cd0e8300729944 against the existing Use a skill explanation. The missing useHostRequestAuthorityScope mock export now returns a typed stable capture; two import/open and new-skill assertions target the actual public navigate calls. Skill reading, import/open, edit, unsaved-work and read-only/refusal prose remains accurate; no prose or source-edge change is justified. ONE focused run at fe22bd1f5342bdd83fe4c835bfee4a79477d9852 plus exact test bytes9da7f3b965d330b1793db46aec90f6610ce7bfe29d5077ec2505b6a57aea0690 passed49/49 in27.16s. The SDK/read/mutation mocks and static isCurrent true are fixed-current renderer preconditions, not credential revocation, real removal, provider or persistence proof. Existing15 navigation-owner and accepted live desktop/readonly visual evidence remain separate and were not rerun or requalified. Historical hosted49 missing-export render failures and formatting failure remain retained.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/SkillsView.test.tsx"]}
-  ]
-}

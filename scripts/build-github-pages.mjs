@@ -39,6 +39,34 @@ const EXPLICIT_PUBLIC_REFERENCE_SOURCES = new Set([
 const BARE_RELATIVE_HREF = /^[\w-][\w./-]*(?:#[\w-]*)?$/;
 const PUBLIC_SOURCE = /^(?:user|guides)\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
 
+/**
+ * Product images on the Pages home come from the committed screenshot-gallery
+ * baseline (`tests/screenshots.baseline/`), so they change when the gallery
+ * baseline is regenerated instead of drifting as one-off captures. Each is
+ * published at `media/<name>.png`; a renamed or dropped screen fails the build.
+ */
+// The home page swaps light and dark captures with the reader's theme, and
+// phone captures for desktop ones at narrow widths, so it names both of each.
+export const PAGES_GALLERY_SCREENS = Object.freeze([
+  'room-long-light-desktop',
+  'room-long-dark-desktop',
+  'room-long-light-mobile',
+  'room-long-dark-mobile',
+  'channel-nav-list-light-mobile',
+  'channel-nav-list-dark-mobile',
+  'channel-nav-thread-light-mobile',
+  'channel-nav-thread-dark-mobile',
+  'task-capabilities-light-desktop',
+  'task-capabilities-dark-desktop',
+  'task-capabilities-light-mobile',
+  'task-capabilities-dark-mobile',
+]);
+const galleryBaselineRoot = path.join(
+  repoRoot,
+  'tests',
+  'screenshots.baseline',
+);
+
 export function isAllowedPublicDocSource(source) {
   const root = source.split('/', 1)[0];
   if (!RESTRICTED_PUBLIC_DOC_ROOTS.has(root)) return true;
@@ -61,6 +89,7 @@ async function main() {
   await rm(distRoot, { force: true, recursive: true });
   await mkdir(distRoot, { recursive: true });
   await copyPagesAssets();
+  await copyGalleryScreens();
   const publicDocs = await loadPublicDocs();
 
   const docs = [];
@@ -107,6 +136,16 @@ async function copyPagesAssets() {
     await copyFile(
       path.join(pagesRoot, entry.name),
       path.join(distRoot, entry.name),
+    );
+  }
+}
+
+async function copyGalleryScreens() {
+  await mkdir(path.join(distRoot, 'media'), { recursive: true });
+  for (const screen of PAGES_GALLERY_SCREENS) {
+    await copyFile(
+      path.join(galleryBaselineRoot, `${screen}.png`),
+      path.join(distRoot, 'media', `${screen}.png`),
     );
   }
 }
@@ -483,7 +522,7 @@ async function writeDocPage(outputPath, title, body, sourcePath) {
       cssPath,
       docsHref: docsIndexPath,
       homeHref: homePath,
-      platformHref: `${homePath}#platform`,
+      howHref: `${homePath}#how`,
       title: `${title} | Station Docs`,
     }),
     'utf8',
@@ -536,14 +575,14 @@ async function writeDocsIndex(docs) {
       cssPath: '../styles.css',
       docsHref: './index.html',
       homeHref: '../index.html',
-      platformHref: '../index.html#platform',
+      howHref: '../index.html#how',
       title: 'Station Documentation',
     }),
     'utf8',
   );
 }
 
-function pageShell({ body, cssPath, docsHref, homeHref, platformHref, title }) {
+function pageShell({ body, cssPath, docsHref, homeHref, howHref, title }) {
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -556,7 +595,7 @@ function pageShell({ body, cssPath, docsHref, homeHref, platformHref, title }) {
     <header class="site-header">
       <a class="brand" href="${escapeAttribute(homeHref)}">Station</a>
       <nav aria-label="Primary">
-        <a href="${escapeAttribute(platformHref)}">Platform</a>
+        <a href="${escapeAttribute(howHref)}">How it works</a>
         <a href="${escapeAttribute(docsHref)}">Docs</a>
         <a href="${escapeAttribute(repositoryUrl)}">GitHub</a>
       </nav>

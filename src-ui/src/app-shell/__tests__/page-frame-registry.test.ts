@@ -112,6 +112,7 @@ describe('page-frame registry', () => {
       const stated = new Set([
         'connections',
         'connections-knowledge',
+        'connections-engine-new',
         'registry',
         'schedule',
         'settings',
@@ -141,7 +142,6 @@ describe('page-frame registry', () => {
       'agents',
       'connections-models',
       'connections-engines',
-      'connections-engine-new',
       'connections-tools',
       'plugins',
       'guidance',
@@ -153,6 +153,18 @@ describe('page-frame registry', () => {
         flush: true,
       });
     }
+  });
+
+  it('gives Add engine a focused flow rather than an unrelated configured-engine rail', () => {
+    expect(
+      resolvePageFrame({
+        type: 'connections-engine-new',
+        providerId: 'antigravity',
+      }),
+    ).toMatchObject({ width: 'narrow', body: 'flow', title: 'Add engine' });
+    expect(
+      resolvePageFrame({ type: 'connections-engine-edit', id: 'new' }),
+    ).toMatchObject({ width: 'narrow', body: 'flow', title: 'Add engine' });
   });
 
   it('uses the same origin for narrow routes as full ones', () => {

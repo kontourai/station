@@ -37,6 +37,7 @@ function emptyStartContextStore(): Pick<
   | 'conversationContextBoundaryForSuccessor'
   | 'conversationForSession'
   | 'readSessionInventoryHighWater'
+  | 'readTurnDigestFacts'
   | 'reserveConversationStartContext'
   | 'isCoordinatorToolsRestart'
 > {
@@ -50,6 +51,7 @@ function emptyStartContextStore(): Pick<
       createdAt: '2026-08-29T00:00:00.000Z',
     }),
     readSessionInventoryHighWater: () => 0,
+    readTurnDigestFacts: () => ({ turns: [], hasMore: false, totalTurns: 0 }),
     reserveConversationStartContext: (_sessionId, pin) => pin,
     isCoordinatorToolsRestart: () => false,
   };

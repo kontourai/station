@@ -202,6 +202,17 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({
+    data: [
+      {
+        id: 'apps-library',
+        label: 'Apps library',
+        description:
+          'Browse, search and personalize your Boards in an app launcher.',
+        enabled: false,
+      },
+    ],
+  }),
   // The phone overflow's Live work row reads the session inventory.
   useOrchestrationSessionsQuery: () => ({ data: [], isError: false }),
   useProjectLayoutsQuery: () => ({
@@ -329,8 +340,8 @@ const MENUS: readonly {
     // class, so the surface this shape has always measured is still measured.
     name: 'the header’s folded Regions menu',
     selector: '.app-toolbar__region-menu',
-    // Chat (held by `bottom`) and Activity (unplaced): the folded rows.
-    rowCount: 2,
+    // Chat (held by `bottom`) and Agents (unplaced): the folded rows.
+    rowCount: 1,
     open: () => {
       // The folded branch, which is the only one that renders this control.
       harness.bottomOnly = true;
@@ -343,7 +354,7 @@ const MENUS: readonly {
     name: 'the header’s ⋯ overflow menu',
     selector: '.app-toolbar__overflow-menu:not(.app-toolbar__region-menu)',
     // Connections, Profile, Help, Live work and the region rows.
-    rowCount: 6,
+    rowCount: 5,
     open: () => {
       // The coarse branch, so the region rows render inside it too — that
       // `fieldset` is the group whose leading hairline D4 replaced with a gap.
@@ -453,11 +464,11 @@ const MENUS: readonly {
   {
     // #2143: a tab's move menu, one more folded menu in the region bar. Opened
     // from the REAL strip's tab so the rows measured are the ones
-    // `RegionTabMoveMenu` renders. Activity declares every region, so from
+    // `RegionTabMoveMenu` renders. Agents declares every region, so from
     // `bottom` it is offered Left, Right and Main.
     name: 'a tab’s move menu',
     selector: '.region-tabs__move-menu',
-    rowCount: 3,
+    rowCount: 2,
     open: () => {
       render(
         <RegionChromeBar
@@ -466,12 +477,12 @@ const MENUS: readonly {
           tabs={[
             { surfaceId: 'chat', instanceId: 'workspace-chat', title: 'Chat' },
             {
-              surfaceId: 'activity',
-              instanceId: 'workspace-activity',
-              title: 'Activity',
+              surfaceId: 'workspace-agents',
+              instanceId: 'workspace-agents',
+              title: 'Agents',
             },
           ]}
-          selectedSurfaceId="activity"
+          selectedSurfaceId="workspace-agents"
           onSelectTab={() => {}}
           onCloseTab={undefined}
           onReorderTab={() => {}}
@@ -480,7 +491,7 @@ const MENUS: readonly {
           trailingSlotRef={() => {}}
         />,
       );
-      fireEvent.contextMenu(screen.getByRole('tab', { name: 'Activity' }));
+      fireEvent.contextMenu(screen.getByRole('tab', { name: 'Agents' }));
     },
   },
   ...boardMenuEntries(),
@@ -497,10 +508,6 @@ function moveMenuChrome(): DockShellChrome {
     dockWidth: 400,
     setDockHeight: noop,
     setDockWidth: noop,
-    previousDockHeight: 320,
-    setPreviousDockHeight: noop,
-    previousDockOpen: true,
-    setPreviousDockOpen: noop,
     isDragging: false,
     setIsDragging: noop,
     dockSnap: 'half',
@@ -514,12 +521,14 @@ function moveMenuChrome(): DockShellChrome {
     availableDockSlotPlacements: ['left', 'bottom', 'right'],
     effectiveDockSlotPlacement: 'bottom',
     surfaceShortcutId: 'dock.toggle',
-    surfaceTitle: 'Activity',
+    surfaceTitle: 'Agents',
     canMaximize: true,
     regionPanes: [],
     selectRegionPane: noop,
     ownsMaximizeShortcut: true,
     applyDockSnap: noop,
+    toggleDockMaximize: noop,
+    restoreDockFromMaximized: noop,
     setRegionOpen: noop,
     commitDesktopBottomHeight: noop,
     commitDockPlacement: noop,

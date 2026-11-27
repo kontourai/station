@@ -1,0 +1,7 @@
+{
+  "revision": "70659bd2ae0c0e2e09f10722eea772e2d5b3db5c",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Cites api.md for the S3 source section and as a general reference; neither is touched by the conversation stats wording change.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

@@ -48,6 +48,13 @@ const snoozePreviews: { id: string; enabled: boolean }[] = [];
 const snoozeAttention = vi.fn();
 const unsnoozeAttention = vi.fn();
 const snoozeNotification = vi.fn();
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => [],
+}));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({ data: notifications, isLoading: false }),
@@ -67,7 +74,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
   }),
   useOrchestrationSessionsQuery: () => ({ data: [], isSuccess: true }),
-  useDismissNotificationMutation: () => ({ isPending: false, mutate: dismiss }),
+  useDismissNotificationMutation: () => ({
+    isPending: false,
+    mutateAsync: async (id: string) => dismiss(id),
+  }),
   useNotificationActionMutation: () => ({ isPending: false, mutate: vi.fn() }),
 }));
 

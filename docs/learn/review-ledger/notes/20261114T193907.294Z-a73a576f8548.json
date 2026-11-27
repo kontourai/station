@@ -1,0 +1,7 @@
+{
+  "revision": "b1e62cc105903cf03db81840488cce164052d8c5",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Rechecked: runtime.ts change adds the configured MCP server state to the contracts fold; nothing here describes those states.","inputs":["docs/reference/shared.md","packages/contracts/src/provider.ts","packages/contracts/src/runtime.ts","packages/shared/src/usage-fold.ts","src-server/services/plugins/plugin-install-transaction.ts"]}
+  ]
+}

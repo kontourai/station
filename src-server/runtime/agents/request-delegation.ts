@@ -24,10 +24,12 @@
  *    this derivation then names THAT session's lineage, which is the most a
  *    copied credential can claim. Treating such callers as unverified would
  *    let every Codex model omit its lineage again.
- *  - Any other Station-internal request (Station's pooled engine child, or
- *    any holder of the internal token) keeps a body context only when
+ *  - Any other Station-internal request keeps a body context only when
  *    Station's runtime attested it (`delegation-attestation.ts`). Otherwise
- *    it claims no lineage: the session it starts is a root.
+ *    it claims no lineage: the session it starts is a root. Since #2377
+ *    slice D Station's own engine calls with a verified caller (above), so
+ *    no runtime path mints an attestation any more, and a caller-less
+ *    station-control request never reaches a dispatch route.
  *  - A request from outside this Station's process passes its context
  *    through unchanged: a peer Station forwarding its own child, or an
  *    operator, paired-device or hosted-user credential. None of those is
@@ -44,7 +46,11 @@ import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import type { DelegationProvenance } from '@kontourai/station-contracts/provider';
 import { isAgentConfigNotFound } from '../../domain/config-loader-agents.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
-import { createChildDelegationContext } from './delegation.js';
+import {
+  createChildDelegationContext,
+  DEFAULT_CHILD_BLOCKED_TOOLS,
+  isDelegatedToolAllowed,
+} from './delegation.js';
 import { verifyDelegationContextAttestation } from './delegation-attestation.js';
 
 /**
@@ -62,6 +68,20 @@ class DelegationLineageUnavailableError extends Error {
     this.name = 'DelegationLineageUnavailableError';
   }
 }
+
+/** A child tried to call a dispatch tool outside its inherited tool policy. */
+class DelegatedToolBlockedError extends Error {
+  readonly code = 'delegated_tool_blocked' as const;
+  constructor(tool: string) {
+    super(
+      `'${tool}' is not allowed in a delegated child session. Do the work yourself and return the result in your reply.`,
+    );
+    this.name = 'DelegatedToolBlockedError';
+  }
+}
+
+/** The station-control tools whose routes derive a child delegation. */
+export type DelegationFanOutTool = 'delegate_task' | 'send_message';
 
 export interface RequestDelegationSources {
   /** True only for Station's own internal principal. */
@@ -85,6 +105,11 @@ export interface RequestDelegationSources {
 }
 
 export interface ClaimedRequestDelegation {
+  /**
+   * The station-control tool the route serves. Set by the route, never read
+   * from the body, and required so a new caller of the resolver cannot omit it.
+   */
+  readonly tool: DelegationFanOutTool;
   readonly delegation?: AgentDelegationContext;
   readonly attestation?: string;
 }
@@ -115,6 +140,25 @@ function optionalStrings(value: unknown): string[] | undefined | false {
     : false;
 }
 
+function optionalToolConstraints(
+  value: unknown,
+): string[][] | undefined | false {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 64) return false;
+  const groups: string[][] = [];
+  for (const group of value) {
+    const parsed = optionalStrings(group);
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length > 256 ||
+      parsed.some((pattern) => pattern.length > 256)
+    )
+      return false;
+    groups.push(parsed);
+  }
+  return groups;
+}
+
 /**
  * The context the calling session was started with, read back from its own
  * record. `undefined` for a root session; `false` for a record that is not a
@@ -130,6 +174,9 @@ function recordedDelegation(
   const rootAgentSlug = nonEmptyString(record.rootAgentSlug);
   const allowedTools = optionalStrings(record.allowedTools);
   const blockedTools = optionalStrings(record.blockedTools);
+  const toolAllowlistConstraints = optionalToolConstraints(
+    record.toolAllowlistConstraints,
+  );
   if (
     record.mode !== 'isolated-child' ||
     !Number.isInteger(record.depth) ||
@@ -139,7 +186,8 @@ function recordedDelegation(
     !parentAgentSlug ||
     !rootAgentSlug ||
     allowedTools === false ||
-    blockedTools === false
+    blockedTools === false ||
+    toolAllowlistConstraints === false
   )
     return false;
   const parentConversationId = nonEmptyString(record.parentConversationId);
@@ -155,6 +203,7 @@ function recordedDelegation(
     ...(rootConversationId ? { rootConversationId } : {}),
     ...(allowedTools ? { allowedTools } : {}),
     ...(blockedTools ? { blockedTools } : {}),
+    ...(toolAllowlistConstraints ? { toolAllowlistConstraints } : {}),
     ...(record.denyApprovals === true ? { denyApprovals: true } : {}),
   };
 }
@@ -237,6 +286,7 @@ async function callerIdentity(
  */
 async function deriveCallerChildDelegation(
   caller: StationControlCaller,
+  tool: DelegationFanOutTool,
   sources: Pick<
     RequestDelegationSources,
     | 'startedMetadata'
@@ -251,6 +301,25 @@ async function deriveCallerChildDelegation(
     throw new DelegationLineageUnavailableError(
       'the session recorded a malformed delegation context.',
     );
+  // The caller's own recorded context decides, before the depth limit. The
+  // built-in denials are applied here as well as read from the record, so a
+  // context recorded without them (or with an `allowedTools` that names the
+  // tool) cannot re-allow a built-in denial: `blockedTools` always wins.
+  if (
+    current &&
+    !isDelegatedToolAllowed({
+      toolName: `station-control_${tool}`,
+      delegation: {
+        ...current,
+        blockedTools: [
+          ...DEFAULT_CHILD_BLOCKED_TOOLS,
+          ...(current.blockedTools ?? []),
+        ],
+      },
+      toolNameMapping: new Map(),
+    })
+  )
+    throw new DelegatedToolBlockedError(tool);
   const { agentSlug, spec } = await callerIdentity(
     caller.sessionId,
     metadata,
@@ -279,15 +348,25 @@ export function createRequestDelegationResolver(
     const caller = sources.resolveCaller(request);
     if (caller)
       return {
-        context: await deriveCallerChildDelegation(caller, sources),
+        context: await deriveCallerChildDelegation(
+          caller,
+          claimed.tool,
+          sources,
+        ),
         provenance: 'caller-derived',
       };
-    return claimed.delegation &&
+    if (
+      claimed.delegation &&
       verifyDelegationContextAttestation(
         claimed.delegation,
         claimed.attestation,
       )
-      ? { context: claimed.delegation, provenance: 'runtime-attested' }
-      : undefined;
+    )
+      return { context: claimed.delegation, provenance: 'runtime-attested' };
+    if (claimed.delegation?.toolAllowlistConstraints?.length)
+      throw new DelegationLineageUnavailableError(
+        'the inherited tool restrictions have no matching runtime attestation.',
+      );
+    return undefined;
   };
 }

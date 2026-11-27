@@ -1,0 +1,7 @@
+{
+  "revision": "90a3554215b96ab8480f9aae602aec10df076f21",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the maintenance guide references to the canonical ledger guide. Scoped checks, coverage baseline admission, and append-only review notes keep their existing behavior. The ledger guide now explains the batched generated-release reads and bounded Git history lookups; the maintenance steps remain accurate.","inputs":["docs/guides/documentation-review-ledger.md"]}
+  ]
+}

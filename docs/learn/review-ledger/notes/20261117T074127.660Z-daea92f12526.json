@@ -1,0 +1,7 @@
+{
+  "revision": "5b1bc9fb9bf680ba851930e630133ec3e801d3f5",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-checked the host-heavy-check-slots stdio bullet after slot-holder-exec.mjs gained windowsHide on its POSIX-only no-op reset child; the claim (blocking stdio restored before execve on macOS/Linux, also used by run-biome.mjs) is unchanged.","inputs":["docs/guides/testing.md","scripts/lib/slot-holder-exec.mjs"]}
+  ]
+}

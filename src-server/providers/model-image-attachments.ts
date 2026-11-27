@@ -1,6 +1,6 @@
 import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
-import { basename, isAbsolute, resolve, sep } from 'node:path';
+import { basename, isAbsolute, resolve } from 'node:path';
 import {
   CHAT_ATTACHMENT_MAX_BYTES,
   CHAT_ATTACHMENT_MAX_COUNT,
@@ -11,6 +11,7 @@ import {
   sniffChatImageMimeType,
   validateChatAttachment,
 } from '@kontourai/station-contracts/chat-attachment';
+import { isCanonicalPathWithin } from '../utils/path-containment.js';
 
 /**
  * Images a model or its tools produced — a `Read` of a PNG, an MCP
@@ -369,12 +370,6 @@ export interface HostImageReadScope {
   deadlineMs?: number;
 }
 
-function isInside(path: string, root: string): boolean {
-  return (
-    path === root || path.startsWith(root.endsWith(sep) ? root : root + sep)
-  );
-}
-
 /**
  * Read an image an engine reports having viewed on this host, asynchronously,
  * within a deadline, and bounded:
@@ -464,7 +459,7 @@ async function readWorkspaceImage(
     // server can read, so this is not "nothing the writer couldn't already
     // read". The image-type and size checks still apply to whatever is read,
     // so only an image-typed file of at most 5 MB can come back.
-    if (!realRoots.some((root) => isInside(real, root))) {
+    if (!realRoots.some((root) => isCanonicalPathWithin(root, real))) {
       return omitted('the viewed file is outside the session workspace');
     }
     const checked = await lstat(real);

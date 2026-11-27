@@ -93,7 +93,6 @@ const baseSession = {
   attachments: [],
   queuedMessages: [],
   inputHistory: [],
-  hasUnread: false,
   createdAt: 1,
   updatedAt: 1,
   source: 'manual' as const,

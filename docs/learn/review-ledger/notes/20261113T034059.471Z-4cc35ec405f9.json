@@ -1,0 +1,7 @@
+{
+  "revision": "82eaf4451f239ca9ec819cd57c08ac2368563ecb",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Removed the deleted Home scheduled-check card citation. Starter endpoints remain available for saved-binding compatibility; reviewed their retained route and registry ownership.","inputs":["docs/reference/api.md","src-server/domain/file-storage-adapter.ts","src-server/routes/projects/projects.ts","src-server/services/starter-work/starter-registry.ts","src-ui/src/components/home/StarterScheduledCheckCard.tsx"]}
+  ]
+}

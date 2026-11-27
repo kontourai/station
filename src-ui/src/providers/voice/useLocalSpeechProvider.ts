@@ -2,7 +2,6 @@ import { voiceRegistry } from '@kontourai/station-sdk';
 import { useEffect } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
-import { LocalSpeechSTTProvider } from './LocalSpeechSTTProvider';
 
 /** Reconcile the registration with live server previews and the selected Station. */
 export function useLocalSpeechProvider(): void {
@@ -12,11 +11,25 @@ export function useLocalSpeechProvider(): void {
   // biome-ignore lint/correctness/useExhaustiveDependencies: A profile switch must discard audio even when both profiles use the same API base.
   useEffect(() => {
     if (!enabled) return;
-    const provider = new LocalSpeechSTTProvider(apiBase);
-    const unregister = voiceRegistry.registerSTT(provider);
+    let current = true;
+    let dispose: (() => void) | undefined;
+    void import('./LocalSpeechSTTProvider')
+      .then(({ LocalSpeechSTTProvider }) => {
+        if (!current) return;
+        const provider = new LocalSpeechSTTProvider(apiBase);
+        const unregister = voiceRegistry.registerSTT(provider);
+        dispose = () => {
+          provider.destroy();
+          unregister();
+        };
+      })
+      .catch((error: unknown) => {
+        if (current)
+          console.warn('Station local speech could not load.', error);
+      });
     return () => {
-      provider.destroy();
-      unregister();
+      current = false;
+      dispose?.();
     };
   }, [enabled, apiBase, connectionId]);
 }

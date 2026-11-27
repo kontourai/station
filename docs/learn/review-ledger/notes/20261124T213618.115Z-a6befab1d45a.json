@@ -1,0 +1,7 @@
+{
+  "revision": "a6b2d9cbdaed5f76cad51198fe37927f053bbc12",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"The changed handoff seed section does not affect the historical ADR claim about managed-chat identity and persistence.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

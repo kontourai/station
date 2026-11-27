@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Checked the hosted fast-checks description (zero to four planned shards, statics running ci:fast with readiness): still accurate after the shard proxy and the added whitespace static. No prose change.","inputs":[".veritas/README.md","scripts/__tests__/run-ci-fast.test.ts","scripts/lib/fast-checks-shards.mjs","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]}
+  ]
+}

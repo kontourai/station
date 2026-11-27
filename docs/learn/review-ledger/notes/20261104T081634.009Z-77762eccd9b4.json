@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"#4517 managed settings. Changed: config-loader-app.ts: observeAppConfigFile applies the managed overlay; file-storage-adapter.ts: getProject/listProjects hide locked override fields; projects.ts: project mutations map ManagedSettingLockedError to 403; station-runtime.ts: StationRuntime installs the loaded managed policy settings before config loads; workspace-pane-host-admission.ts: the isolation read hides a locked project override; index.ts: startup checks managed setting values against the settings schema inside the existing fail-closed policy load. observeAppConfigFile is still observation without initialization or migration; it now also applies managed values, recorded in the managed policy decision record rather than here. No module entry describes config writes or provenance sources.","inputs":["docs/architecture/module-map.md","src-server/domain/config-loader-app.ts","src-server/domain/file-storage-adapter.ts","src-server/index.ts","src-server/routes/projects/projects.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/plugins/workspace-pane-host-admission.ts"]}
-  ]
-}

@@ -1,0 +1,9 @@
+{
+  "revision": "fedc67922b313f9aad9c2b2c0ce8b4412277f3a1",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the catalog control and walkthrough against the updated retry state. Errors use the shared Station read-failure formatter and expose a Retry action. Catalog, sign-in ordering and capture layout are unchanged.","inputs":["src-ui/src/views/integrations/IntegrationEventsSection.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the catalog control and walkthrough against the updated retry state. Errors use the shared Station read-failure formatter and expose a Retry action. Catalog, sign-in ordering and capture layout are unchanged.","inputs":["src-ui/src/views/integrations/IntegrationEventsSection.tsx"]}
+  ]
+}

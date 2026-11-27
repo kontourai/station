@@ -1,13 +1,17 @@
 import { Button } from '../../components/Button';
 import { GitBadge } from '../../components/badges/GitBadge';
-import { SettingsGlyph } from '../../components/icons/Glyph';
+import { PeopleGlyph, SettingsGlyph } from '../../components/icons/Glyph';
 import { ProjectIcon } from '../../components/icons/ProjectIcon';
 
 export function ProjectPageHeader({
   project,
+  goal,
   gitStatus,
   navigateToSettings,
+  invitePeople,
 }: {
+  /** #5062: the Project's one-line goal, shown above its Overview. */
+  goal?: string;
   project: {
     icon?: string;
     name: string;
@@ -19,9 +23,10 @@ export function ProjectPageHeader({
     | null
     | undefined;
   navigateToSettings: () => void;
+  invitePeople?: () => void;
 }) {
   return (
-    <div className="project-page__header">
+    <div className="project-page__header project-page__header--operator">
       <div className="project-page__identity">
         <ProjectIcon project={project} size={48} fallback="initials" />
         <div className="project-page__identity-info">
@@ -29,20 +34,36 @@ export function ProjectPageHeader({
           {gitStatus?.isRepo && (
             <GitBadge git={gitStatus} className="project-page__git-badge" />
           )}
+          {goal && (
+            <p className="project-page__goal">
+              <span className="project-page__goal-label">Goal</span> {goal}
+            </p>
+          )}
           {project.description && (
             <p className="project-page__desc">{project.description}</p>
           )}
         </div>
       </div>
-      <button
-        type="button"
-        className="project-page__settings-btn"
+      <Button
+        className="project-page__header-action"
         aria-label="Project settings"
         onClick={navigateToSettings}
       >
         <SettingsGlyph />
-        <span className="project-page__settings-label">Settings</span>
-      </button>
+        <span className="project-page__header-action-label">Settings</span>
+      </Button>
+      {invitePeople && (
+        <Button
+          className="project-page__header-action"
+          aria-label="Invite people"
+          onClick={invitePeople}
+        >
+          <PeopleGlyph />
+          <span className="project-page__header-action-label">
+            Invite people
+          </span>
+        </Button>
+      )}
     </div>
   );
 }

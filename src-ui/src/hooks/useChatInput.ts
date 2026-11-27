@@ -1,5 +1,5 @@
 import {
-  ACP_MODEL_OVERRIDE_PER_TURN,
+  ENGINE_CAPABILITY_MATRICES,
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
@@ -58,6 +58,7 @@ import {
 import { sanitizeChatInput } from '../utils/sanitizeChatInput';
 import { describeStationFailure } from '../utils/stationFailure';
 import { clearLastChosenModel } from './lastChosenModel';
+import { readPendingEngineStart } from './orchestration/engineStartWaits';
 import { describeStopTurnOutcome } from './useActiveChatSessionMessaging';
 import { useCancelMessage, useSendMessage } from './useActiveChatSessions';
 import { useAutocompleteState } from './useAutocompleteState';
@@ -189,6 +190,13 @@ interface UseChatInputOptions {
   mentionAuthority?: string | null;
 }
 
+/** A composer draft as a send carries it (see `prepareOutgoingText`). */
+export interface PreparedOutgoingText {
+  text: string;
+  draft: string;
+  quotes: readonly DraftQuote[];
+}
+
 export function useChatInput({
   apiBase,
   sessionId,
@@ -248,6 +256,27 @@ export function useChatInput({
   const currentAgent = connection ? undefined : hostAgent;
   const cancelMessage = useCancelMessage(apiBase, connection);
 
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDraftRef = useRef<{ sessionId: string; text: string } | null>(
+    null,
+  );
+  /**
+   * Empties the TEXT of `sid`'s saved draft, including a keystroke of that
+   * chat not yet saved. Its quotes stay: they are the person's, not the
+   * command's. Another chat's pending save is left to land.
+   */
+  const dropSavedDraftText = useCallback(
+    (sid: string) => {
+      if (pendingDraftRef.current?.sessionId === sid) {
+        pendingDraftRef.current = null;
+        if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+      }
+      setDraft(sid, '');
+    },
+    [setDraft],
+  );
+
   // Slash commands
   const { commands: slashCommands } = useSlashCommands(
     agentSlug,
@@ -260,7 +289,7 @@ export function useChatInput({
   const slashCommandHandler = useCallback(
     async (sid: string, command: string) => {
       if (connection && connection.routeKind !== 'host') return false;
-      return handleSlashCommand(sid, command, {
+      const result = await handleSlashCommand(sid, command, {
         onInputCleared,
         availableModels,
         bindingStatus:
@@ -277,14 +306,25 @@ export function useChatInput({
           }),
         autocomplete: {
           openModel,
-          openNewChat: onOpenNewChat || (() => {}),
+          openNewChat: onOpenNewChat,
           closeCommand,
           closeAll,
         },
       });
+      // A command that ran here empties the composer: its line is not unsent
+      // text, so the saved draft keeps none of it. One that did not run
+      // (unknown, refused, unreadable) leaves its line in the composer to be
+      // corrected, and saved with it.
+      if (
+        (result === true || result === 'CLEAR') &&
+        !activeChatsStore.getSnapshot()[sid]?.input
+      )
+        dropSavedDraftText(sid);
+      return result;
     },
     [
       handleSlashCommand,
+      dropSavedDraftText,
       connection,
       openModel,
       onOpenNewChat,
@@ -401,21 +441,24 @@ export function useChatInput({
       ? { engineId: 'station' }
       : (runtimeConnection ?? { type: activeChatState?.provider }),
   ).modelSelection;
-  // ACP applies a model only at session start. The server honours a changed
+  // ACP applies a model only at session start. OpenCode can switch its
+  // native session model before the next prompt. The server honours a changed
   // model on the next send by starting a successor session with it
   // (`conversation-lineage.ts` `needsModelRestart`), which is free for a
   // conversation that never ran a turn — nothing to carry over — so only a
   // conversation with engine history keeps the picker closed.
+  const continuationModelSelection =
+    ENGINE_CAPABILITY_MATRICES[activeChatState?.provider ?? '']
+      ?.modelSelection ?? engineModelSelection;
   const continuationOverrideUnsupported =
     Boolean(conversationId) &&
-    activeChatState?.provider === 'acp' &&
-    !ACP_MODEL_OVERRIDE_PER_TURN &&
+    continuationModelSelection.overridePerTurn === false &&
     !conversationAwaitsFirstTurn(
       orchestrationSession,
       activeChatState?.turnInFlight ?? false,
     );
   const modelSelectionReason = continuationOverrideUnsupported
-    ? 'This engine can choose a model for a new chat, but cannot change it in an existing conversation.'
+    ? 'Choose a model and any advertised thinking effort when starting a new chat with this engine.'
     : engineModelSelection.state === 'unsupported'
       ? 'This engine does not support model selection for a chat session.'
       : availableModels.length === 0
@@ -435,10 +478,6 @@ export function useChatInput({
       support.model_selection ||
       runtimeHasSessionOptions);
 
-  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingDraftRef = useRef<{ sessionId: string; text: string } | null>(
-    null,
-  );
   const flushDraft = useCallback(() => {
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     draftTimerRef.current = null;
@@ -450,10 +489,9 @@ export function useChatInput({
   useEffect(() => {
     if (!sessionId) return;
     const restored = getDraft(sessionId);
-    if (
-      restored &&
-      activeChatsStore.getSnapshot()[sessionId]?.input !== restored
-    ) {
+    // Only into an empty composer. What the composer already holds is the
+    // newer text, and can be longer than its saved copy, which is capped.
+    if (restored && !activeChatsStore.getSnapshot()[sessionId]?.input) {
       updateChat(sessionId, { input: restored });
     }
   }, [sessionId, getDraft, updateChat]);
@@ -488,35 +526,30 @@ export function useChatInput({
     (files: readonly FileAttachment[]) => Promise<boolean>
   >(async () => false);
 
-  const handleSend = useCallback(
+  /**
+   * The text a send carries, from the composer draft (or `overrideText`):
+   * mentions expanded, quotes composed in, the size limit and the quote's
+   * Station checked. A refusal comes back as `{ refused }` with its reason,
+   * for the caller to show where the person is looking; `null` means the
+   * draft changed while mentions were being read. Every send path that
+   * leaves this composer uses it, so none skips a check.
+   */
+  const prepareOutgoingText = useCallback(
     async (
       overrideText?: string,
-      overrideAttachments?: FileAttachment[],
-      options?: {
-        /**
-         * Ambient, model-facing context (timezone, geolocation, …) delivered
-         * out-of-band (archive#685) — never spliced into the sent/persisted text.
-         */
-        ambientContext?: string;
-        /** Hold this as a follow-up even when the engine can steer. */
-        queueOnBusy?: boolean;
-      },
-    ) => {
-      if (!sessionId || !agentSlug) return;
+    ): Promise<PreparedOutgoingText | { refused: string } | null> => {
+      if (!sessionId) return null;
       // An override lets callers (e.g. context-composing send) supply the exact
       // text to send synchronously, avoiding a stale-closure read of `input`
       // after a just-issued handleInputChange.
       // Explicit overrides bypass the persisted composer value, so sanitize at
       // the shared send boundary as well as on ordinary input updates.
-      const submittedExperienceDraft = activeChatState?.skillExperienceDraft;
       const submittedQuotes = chatDraftsStore.getQuotes(sessionId);
-      if (submittedQuotes.some((quote) => quote.origin !== apiBase)) {
-        showToast(
-          'A quote belongs to another Station. Remove it or return to that Station before sending.',
-          'error',
-        );
-        return;
-      }
+      if (submittedQuotes.some((quote) => quote.origin !== apiBase))
+        return {
+          refused:
+            'A quote belongs to another Station. Remove it or return to that Station before sending.',
+        };
       const canonicalDraft = sanitizeChatInput(
         overrideText !== undefined ? overrideText : input,
       );
@@ -534,27 +567,60 @@ export function useChatInput({
           (overrideText === undefined &&
             activeChatsStore.getSnapshot()[sessionId]?.input !== input)
         )
-          return;
+          return null;
         expanded = expandComposerMentions(
           canonicalDraft,
           workingDirectory,
           mentionAuthority,
         );
       }
-      if (expanded.error) {
-        showToast(expanded.error, 'error');
-        return;
-      }
+      if (expanded.error) return { refused: expanded.error };
       const text = sanitizeChatInput(
         composeQuotedReply(expanded.text ?? canonicalDraft, submittedQuotes),
       );
-      if (text.length > CHAT_INPUT_MAX_CHARS) {
-        showToast(
-          'The reply and quoted context exceed the message limit. Shorten the reply or remove a quote.',
-          'error',
-        );
+      if (text.length > CHAT_INPUT_MAX_CHARS)
+        return {
+          refused:
+            'The reply and quoted context exceed the message limit. Shorten the reply or remove a quote.',
+        };
+      return { text, draft: canonicalDraft, quotes: submittedQuotes };
+    },
+    [
+      sessionId,
+      apiBase,
+      input,
+      workingDirectory,
+      mentionRequestScope,
+      mentionAuthority,
+    ],
+  );
+
+  const handleSend = useCallback(
+    async (
+      overrideText?: string,
+      overrideAttachments?: FileAttachment[],
+      options?: {
+        /**
+         * Ambient, model-facing context (timezone, geolocation, …) delivered
+         * out-of-band (archive#685) — never spliced into the sent/persisted text.
+         */
+        ambientContext?: string;
+        /** Hold this as a follow-up even when the engine can steer. */
+        queueOnBusy?: boolean;
+        requireSteer?: boolean;
+        /** The host holds a queued follow-up's files (`followUpAttachments`). */
+        queueFilesOnBusy?: boolean;
+      },
+    ) => {
+      if (!sessionId || !agentSlug) return;
+      const submittedExperienceDraft = activeChatState?.skillExperienceDraft;
+      const prepared = await prepareOutgoingText(overrideText);
+      if (!prepared) return;
+      if ('refused' in prepared) {
+        showToast(prepared.refused, 'error');
         return;
       }
+      const { text, draft: canonicalDraft, quotes: submittedQuotes } = prepared;
       let selectedAttachments = overrideAttachments ?? attachments;
       if (
         !text.trim() &&
@@ -660,6 +726,10 @@ export function useChatInput({
               }
             : {}),
           ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
+          ...(options?.requireSteer ? { requireSteer: true } : {}),
+          ...(options?.queueOnBusy && options.queueFilesOnBusy
+            ? { queueFilesOnBusy: true }
+            : {}),
           connection,
           onDurable: handOffDraft,
         },
@@ -701,7 +771,7 @@ export function useChatInput({
     },
     [
       sessionId,
-      apiBase,
+      mentionRequestScope,
       agentSlug,
       conversationId,
       input,
@@ -715,9 +785,7 @@ export function useChatInput({
       clearDraft,
       setDraft,
       showToast,
-      workingDirectory,
-      mentionRequestScope,
-      mentionAuthority,
+      prepareOutgoingText,
     ],
   );
 
@@ -751,7 +819,12 @@ export function useChatInput({
     // Until the authorized conversation window identifies that child, Stop
     // must remain unavailable rather than guessing the legacy/root id and
     // supervising the wrong execution context.
-    if (currentChat?.conversationId && !currentChat.currentSessionId) {
+    // An owned pending first start supplies its own authorized Stop target.
+    if (
+      currentChat?.conversationId &&
+      !currentChat.currentSessionId &&
+      !readPendingEngineStart(apiBase, currentChat.conversationId)
+    ) {
       showToast(
         'Restoring this conversation before Stop is available.',
         'info',
@@ -774,7 +847,7 @@ export function useChatInput({
       role: 'system',
       content: describeStopTurnOutcome(outcome),
     });
-  }, [sessionId, cancelMessage, addEphemeralMessage, showToast]);
+  }, [sessionId, apiBase, cancelMessage, addEphemeralMessage, showToast]);
 
   const handleClearInput = useCallback(() => {
     if (!sessionId) return;
@@ -966,7 +1039,7 @@ export function useChatInput({
       if (!isAlreadyActive) {
         addEphemeralMessage(sessionId, {
           role: 'system',
-          content: `Model changed to **${model.providerName ? `${model.providerName} · ` : ''}${model.name}**`,
+          content: `Model selected: **${model.providerName ? `${model.providerName} · ` : ''}${model.name}**`,
         });
       }
       closeModel();
@@ -1101,32 +1174,18 @@ export function useChatInput({
   const handleAcpSessionModeChange = useCallback(
     (modeId: string) => {
       if (!sessionId) return;
-      const previousMode =
-        activeChatState?.requestedProviderOptions?.mode ??
-        activeChatState?.currentModeId;
-      if (previousMode === modeId) return;
+      const current = activeChatsStore.getSnapshot()[sessionId];
+      const requested = current?.requestedProviderOptions;
+      if ((requested?.mode ?? current?.currentModeId) === modeId) return;
       updateChat(sessionId, {
-        currentModeId: modeId,
-        requestedProviderOptions: {
-          ...(activeChatState?.requestedProviderOptions ??
-            activeChatState?.providerOptions ??
-            {}),
-          mode: modeId,
-        },
-      });
-      addEphemeralMessage(sessionId, {
-        role: 'system',
-        content: `Session mode changed to **${modeId}**`,
+        requestedProviderOptions: updateModelRuntimeOption(
+          requested ?? current?.providerOptions ?? {},
+          'mode',
+          modeId,
+        ),
       });
     },
-    [
-      activeChatState?.currentModeId,
-      activeChatState?.providerOptions,
-      activeChatState?.requestedProviderOptions,
-      sessionId,
-      updateChat,
-      addEphemeralMessage,
-    ],
+    [sessionId, updateChat],
   );
 
   const handleModelReset = useCallback(() => {
@@ -1285,6 +1344,7 @@ export function useChatInput({
       // Handlers
       handleInputChange,
       handleSend,
+      prepareOutgoingText,
       sendComposedMessage,
       handleCancel,
       handleClearInput,
@@ -1334,6 +1394,7 @@ export function useChatInput({
       slashCommands,
       handleInputChange,
       handleSend,
+      prepareOutgoingText,
       sendComposedMessage,
       handleCancel,
       handleClearInput,

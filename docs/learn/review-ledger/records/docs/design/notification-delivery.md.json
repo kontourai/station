@@ -100,7 +100,17 @@
 
     "src-ui/src/lib/notification-envelope-toast.ts",
 
-    "src-ui/src/__tests__/toast-lifecycle.test.tsx"
+    "src-ui/src/__tests__/toast-lifecycle.test.tsx",
+
+    "src-server/services/orchestration/finished-alert-episodes.ts",
+
+    "src-ui/src/components/notifications/NotificationStationOpener.tsx",
+
+    "src-ui/src/lib/notificationStationOpen.ts",
+
+    "src-ui/src/components/notifications/NotificationHistoryRow.tsx",
+
+    "src-ui/src/components/notifications/inboxContext.tsx"
   ],
 
   "checks": [

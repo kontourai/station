@@ -29,6 +29,7 @@
  */
 
 import {
+  type AgentDelegationContext,
   type AgentSpec,
   BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
 } from '@kontourai/station-contracts/agent';
@@ -49,6 +50,7 @@ import type {
   SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
 import {
+  isAcpFamilyEngine,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
@@ -58,11 +60,20 @@ import {
   originalMcpToolName,
   selectedMcpTools,
 } from '@kontourai/station-shared/mcp-tool-selection';
+import { stationEnablesClaudeToolSearch } from '../../runtime/agents/claude-tool-search.js';
+import { isDelegatedToolAllowed } from '../../runtime/agents/delegation.js';
 import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from '../../runtime/agents/station-capability-discovery.js';
+import {
+  composeStationInstructions,
+  effectiveStationControlTools,
+  stationControlAssuranceFor,
+  wrapFirstTurnStationInstructions,
+} from '../../runtime/agents/station-orchestration-instructions.js';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { SC_AUTO_APPROVED_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
+import { markCanonicalStationDocsDelivery } from '../../tools/station-docs-binding.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
 import { agentDefinitionFingerprint } from '../agents/agent-definition-fingerprint.js';
 import { ToolLibraryRefusal } from '../plugins/tool-library-service.js';
@@ -93,6 +104,26 @@ interface SessionAgentResolverOptions {
    */
   isCoordinatorSession?: (threadId: string) => boolean;
   coordinatorGenerationForSession?: (threadId: string) => number;
+  /**
+   * The `station-orchestration-instructions` Feature Preview. Read at each
+   * resolution, never cached: off (or absent) stamps no receipt and attaches
+   * no `stationInstructions`.
+   */
+  stationInstructionsEnabled?: () => boolean;
+  /**
+   * #2376 slice 3: `CodexAdapter.toolFamiliesAdmitted` (the
+   * `codex-tool-families` preview and a qualified Codex version). Asked only
+   * for a new Codex Session on the header-token path; when it answers true
+   * the adapter mints that Session's credential at the family index, and the
+   * instructions carry the family-loading line. Claude and ACP engines never
+   * get families.
+   */
+  codexToolFamiliesAdmitted?: (
+    threadId: string,
+    eligible?: boolean,
+  ) => Promise<boolean>;
+  /** The `codex-bound-browser-device-tools` preview (Codex browser/device tools). */
+  codexBoundToolsEnabled?: () => boolean;
 }
 
 type ResolveSessionAgent = (
@@ -281,6 +312,126 @@ async function resolveCapability<T>(
 
 class ToolApprovalDeliveryError extends Error {}
 
+/**
+ * Station-owned orchestration instructions for this session, composed from
+ * the station-control tools it is actually offered. Preview-gated, and only
+ * when station-control resolved onto the definition.
+ *
+ * Channel: Claude with an authored prompt appends after it
+ * (`definition.stationInstructions`); setting an append with no authored
+ * prompt would flip Claude to the preset prompt, so Claude without one, and
+ * every engine whose matrix names `instructionsInFirstTurn`, receipts the
+ * first turn instead. A resumed engine thread gets NO first-turn stamp (it
+ * would duplicate into the thread). Claude's append is per-process, so it is
+ * re-attached on resume.
+ */
+async function resolveStationInstructions(args: {
+  options: SessionAgentResolverOptions;
+  input: ProviderSessionStartInput;
+  definition: ResolvedAgentDefinition;
+  report: SessionCapabilityDeliveryMetadata;
+  authoredPrompt: string | undefined;
+  spec: AgentSpec;
+}): Promise<void> {
+  const { options, input, definition, report, authoredPrompt, spec } = args;
+  if (options.stationInstructionsEnabled?.() !== true) return;
+  const control = definition.toolServers?.find(
+    (server) => server.id === 'station-control',
+  );
+  if (!control) return;
+  const provider = input.provider;
+  const boundChannel =
+    provider === 'codex' && options.codexBoundToolsEnabled?.() === true;
+  // #2376 slice 2: with the bound channel on, a new Codex thread gets the
+  // whole station-control catalog there, at `bound` (`CodexAdapter`'s
+  // `boundCatalog`), unless its control server is coordinator-derived. Only
+  // a new thread is told anything (a resumed one returns below), so the
+  // resume fallback never reaches this.
+  const codexBoundCatalog = boundChannel && !control.coordinatorDerived;
+  const assurance = stationControlAssuranceFor(provider, codexBoundCatalog);
+  if (!assurance) return;
+  const catalog = stationControlToolCatalog().map((tool) => tool.name);
+  const controlTools = effectiveStationControlTools(
+    control,
+    catalog,
+    assurance,
+  );
+  const browserAllowed = definition.browserTools !== false;
+  // An engine running saved ACP connections (`opencode`) is told what an
+  // ACP engine is told.
+  const harness = isAcpFamilyEngine(provider)
+    ? 'acp'
+    : provider === 'claude' || provider === 'codex' || provider === 'muse'
+      ? provider
+      : 'other';
+  // Device tools are bound-only, so they are in `controlTools` exactly when
+  // the session's station-control is `bound` (Claude, or Codex's bound
+  // catalog), narrowed by the same allow/disable lists.
+  const delegation = input.metadata?.delegation as
+    | AgentDelegationContext
+    | undefined;
+  const composed = composeStationInstructions({
+    controlTools,
+    browser: browserAllowed && (provider === 'claude' || boundChannel),
+    devices: controlTools.has('device_open'),
+    delegated: Boolean(delegation),
+    canDelegateFromChild:
+      delegation?.mode === 'isolated-child' &&
+      delegation.depth < delegation.maxDepth &&
+      isDelegatedToolAllowed({
+        delegation,
+        toolName: 'station-control_delegate_task',
+        toolNameMapping: new Map(),
+      }),
+    harness,
+    // Only when Station itself turns tool search on: under the harness
+    // default, Claude Code decides and names the tools it defers.
+    toolSearch:
+      provider === 'claude' &&
+      stationEnablesClaudeToolSearch(spec.tools?.mcpLoading),
+    // Family loading exists only for Codex on HTTP station-control, as the
+    // adapter admits it. A `bound` session (Claude's in-process server,
+    // Codex's bound catalog) is served without disclosure, and a resumed
+    // thread is told nothing here (it returns below before any stamp).
+    // A bound Codex start still asks, as ineligible, so the adapter holds a
+    // no for it whatever the previews do before the start.
+    progressiveFamilies:
+      provider === 'codex' &&
+      input.resumeCursor === undefined &&
+      (await options.codexToolFamiliesAdmitted?.(
+        input.threadId,
+        assurance !== 'bound',
+      )) === true &&
+      assurance !== 'bound',
+  });
+  if (!composed) return;
+  const base = {
+    version: 1 as const,
+    sections: composed.sections.map((section) => section.id),
+    digest: composed.digest,
+  };
+  if (
+    provider === 'claude' &&
+    authoredPrompt !== undefined &&
+    definition.systemPrompt !== undefined
+  ) {
+    definition.stationInstructions = composed.text;
+    report.stationInstructions = { ...base, channel: 'system-prompt-append' };
+    return;
+  }
+  if (input.resumeCursor !== undefined) return;
+  const firstTurnChannel =
+    provider === 'claude' ||
+    ENGINE_CAPABILITY_MATRICES[provider]?.instructionsInFirstTurn?.state ===
+      'session';
+  if (!firstTurnChannel) return;
+  report.stationInstructions = {
+    ...base,
+    channel: 'first-turn',
+    firstTurnText: wrapFirstTurnStationInstructions(composed.text),
+  };
+}
+
 export function createSessionAgentResolver(
   options: SessionAgentResolverOptions,
 ): ResolveSessionAgent {
@@ -307,7 +458,7 @@ export function createSessionAgentResolver(
       if (
         expectedFingerprint !== undefined &&
         (!authored ||
-          agentDefinitionFingerprint(authored) !== expectedFingerprint)
+          agentDefinitionFingerprint(authored, slug) !== expectedFingerprint)
       ) {
         throw new Error(
           'The selected Agent definition changed before execution; select it again',
@@ -495,7 +646,7 @@ export function createSessionAgentResolver(
                   disabled.push(originalMcpToolName(id, name));
               }
               if (
-                input.provider === 'acp' &&
+                isAcpFamilyEngine(input.provider) &&
                 (selected !== undefined || disabled.length)
               )
                 return { ok: false, reason: 'engine-unsupported' };
@@ -507,6 +658,14 @@ export function createSessionAgentResolver(
                 if (!exemptBuiltinStationControl) {
                   return { ok: false, reason: 'secret-boundary-env' };
                 }
+              }
+              if (
+                !captured &&
+                input.provider === 'claude' &&
+                authoredToolServers.length ===
+                  BUILTIN_STATION_AGENT_MCP_SERVER_IDS.length
+              ) {
+                markCanonicalStationDocsDelivery(definition, toolDef, authored);
               }
               return {
                 ok: true,
@@ -666,6 +825,15 @@ export function createSessionAgentResolver(
           };
         }
       }
+
+      await resolveStationInstructions({
+        options,
+        input,
+        definition,
+        report,
+        authoredPrompt,
+        spec,
+      });
 
       // Agent settings augment slice B: the model-field footgun.
       // `AgentSpec.model` is the Station-engine field — read only for an

@@ -1,7 +1,0 @@
-{
-  "revision": "0136977b1b60297195b2284ebc6442fbe3f24d56",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Inspected regenerated station-docs-content.ts delta: only SessionCommandModule consumer exclusivity, store-close/failed-initialize revocation and immediate indeterminate settlement prose plus its generated digest changed. Canonical module-map text is the source; the shipped-document contract and topic tree are unchanged. Learning-reader build and metric declaration check pass; no runtime qualification claimed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

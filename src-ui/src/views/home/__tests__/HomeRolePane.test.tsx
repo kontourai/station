@@ -187,7 +187,7 @@ describe('recovery: a granted Home that throws (station#3122 constraint 3)', () 
     expect(screen.getByTestId('builtin-home')).toBeTruthy();
     expect(notice.textContent).toContain('Third-party Home');
     expect(notice.textContent).toContain('exploded during mount');
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Keep the built-in Home' }),
     ).toBeTruthy();
@@ -243,7 +243,7 @@ describe('recovery: a granted Home that throws (station#3122 constraint 3)', () 
 
     // The failure was transient: retry re-mounts the granted Pane.
     throwNow = false;
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(screen.getByTestId('plugin-home')).toBeTruthy();
     expect(screen.queryByRole('status')).toBeNull();
   });
@@ -262,7 +262,7 @@ describe('recovery: a granted Home that throws (station#3122 constraint 3)', () 
         onRevoke={() => undefined}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     consoleError.mockRestore();
     expect(screen.getByTestId('builtin-home')).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('still broken');
@@ -454,7 +454,7 @@ describe('recovery covers selection and resolution, not just the granted render 
     expect(screen.getByRole('status').textContent).toContain(
       'selection exploded on a bad catalog record',
     );
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test('a throw during trusted-layout RESOLUTION lands the same way', () => {

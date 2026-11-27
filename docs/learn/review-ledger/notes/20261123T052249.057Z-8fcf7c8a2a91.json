@@ -1,0 +1,7 @@
+{
+  "revision": "436b4ca4dbab9500c5051b403e99a9d236715639",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Automation subpath row names interrupted among the closed delivery outcomes and the intent state.","inputs":["docs/reference/contracts.md","packages/contracts/src/runtime-events.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

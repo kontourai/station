@@ -94,6 +94,27 @@ test.each([false, true])(
 );
 
 describe('useDerivedSessions — ChatDock identity stability (station#726)', () => {
+  test('the dock sees a requested mode separately from the confirmed session mode', () => {
+    const { result } = renderHook(() => useDerivedSessions('', null));
+    act(() => {
+      activeChatsStore.updateChat(SESSION_A, { currentModeId: 'build' });
+    });
+    const opened = result.current.find((session) => session.id === SESSION_A);
+    expect(opened?.requestedProviderOptions).toBeUndefined();
+
+    act(() => {
+      activeChatsStore.updateChat(SESSION_A, {
+        requestedProviderOptions: { mode: 'plan' },
+      });
+    });
+    expect(
+      result.current.find((session) => session.id === SESSION_A),
+    ).toMatchObject({
+      currentModeId: 'build',
+      requestedProviderOptions: { mode: 'plan' },
+    });
+  });
+
   test('the mounted session adapter carries retained receiver text into the dock', () => {
     const station = conversationConnection('relay');
     const copy = retainChatTranscript(
@@ -389,7 +410,7 @@ describe('useDerivedSessions — ChatDock identity stability (station#726)', () 
     expect(sessionBAfter).toBe(sessionBBefore);
   });
 
-  test("#2304: the open turn's server start reaches the derived session the chat list renders", () => {
+  test("#2304: the open turn's server start reaches the derived session Chats renders", () => {
     const { result } = renderHook(() => useDerivedSessions('', null, null));
     const serverStart = Date.parse('2026-09-22T12:00:00.000Z');
 

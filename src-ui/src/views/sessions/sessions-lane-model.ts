@@ -143,6 +143,7 @@ export function partitionSessionLanes({
   const items = buildOrchestrationItems([...sessions], agents);
   const partition = partitionHomeWorkItems({
     items: withStableIds(items, new Map()),
+    workFacts: buildWorkFacts({ items, sessions }),
     now,
     snoozedUntil: NO_SNOOZE,
   });

@@ -1,0 +1,11 @@
+{
+  "revision": "0a9afa4339c583fb09b5909cfec69d1e4564b594",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"The spec change is one assertion string in the channel-navigation thread scene (the new neutral reply text from room-gallery-fixtures.ts). Reduced-motion screens, usage-sharing scenes, targeted capture, CSS freezing and the screenshot project configuration that these pages describe are unchanged.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"The spec change is one assertion string in the channel-navigation thread scene (the new neutral reply text from room-gallery-fixtures.ts). Reduced-motion screens, usage-sharing scenes, targeted capture, CSS freezing and the screenshot project configuration that these pages describe are unchanged.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The spec change is one assertion string in the channel-navigation thread scene (the new neutral reply text from room-gallery-fixtures.ts). Reduced-motion screens, usage-sharing scenes, targeted capture, CSS freezing and the screenshot project configuration that these pages describe are unchanged.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

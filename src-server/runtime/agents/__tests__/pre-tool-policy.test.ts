@@ -1,10 +1,23 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  createGuardianConversationReader,
+  GUARDIAN_ESCALATE_AFTER_CONSECUTIVE,
+  GUARDIAN_ESCALATE_AFTER_TOTAL,
+  GuardianDenialLedger,
+  NO_PERSON_INTENT,
+} from '../../../services/approvals/guardian-conversation.js';
+import {
+  gateMediatedMcpCall,
+  resetPersonApprovedCalls,
+} from '../../../services/plugins/mediated-untrusted-content-gate.js';
 import { builtinStationControlServerPath } from '../../bootstrap/station-control-runtime-env.js';
 import { isAutoApprovedExternalTool } from '../../tools/tool-executor.js';
+import { createChildDelegationContext } from '../delegation.js';
 import { createStagedPreToolPolicyEvaluator } from '../pre-tool-policy.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
+  approvalGuardianOps: { add: vi.fn() },
   toolDenials: { add: vi.fn() },
 }));
 
@@ -70,6 +83,140 @@ describe('createStagedPreToolPolicyEvaluator', () => {
     ).resolves.toEqual({ behavior: 'ask' });
   });
 
+  // Owner decision (2026-11-16): full access means no prompts. A browser
+  // snapshot marked the turn untrusted, and every later browser call asked
+  // through the hook even though the engine ran at bypassPermissions.
+  test('full access does not raise the untrusted-content ask; a refusal still applies', async () => {
+    const browserTool = {
+      toolName: 'mcp__station-browser__browser_evaluate',
+      toolCallId: 'tool-2',
+      toolArgs: { expression: '1' },
+    };
+    const asking = createEvaluator({
+      untrustedContentPermission: vi.fn(async () => 'ask' as const),
+    });
+    await expect(
+      asking(browserTool, invocation, { interaction: 'external' }),
+    ).resolves.toEqual({ behavior: 'ask', required: true });
+    // Without full access the seam would refuse the call: nobody approved it.
+    const sendTool = {
+      toolName: 'mcp__station-control__send_message',
+      toolCallId: 'tool-3',
+      toolArgs: {},
+    };
+    const seam = () =>
+      gateMediatedMcpCall({
+        conversationIds: [invocation.conversationId],
+        serverId: 'station-control',
+        toolNames: ['send_message'],
+        definition: async () => undefined,
+        ledger: {
+          conversationHasRead: async () => true,
+        } as never,
+      });
+    expect((await seam()).allowed).toBe(false);
+    await expect(
+      asking(browserTool, invocation, {
+        interaction: 'external',
+        fullAccess: true,
+      }),
+    ).resolves.toEqual({ behavior: 'defer' });
+    // Full access is the person's answer, so the seam carrying the call
+    // passes it rather than turning the skipped prompt into a refusal.
+    await asking(sendTool, invocation, {
+      interaction: 'external',
+      fullAccess: true,
+    });
+    expect((await seam()).allowed).toBe(true);
+    resetPersonApprovedCalls();
+
+    const refusing = createEvaluator({
+      untrustedContentPermission: vi.fn(async () => 'deny' as const),
+    });
+    await expect(
+      refusing(browserTool, invocation, {
+        interaction: 'external',
+        fullAccess: true,
+      }),
+    ).resolves.toMatchObject({ behavior: 'deny' });
+  });
+
+  // Owner decision (2026-11-16): full access trusts an agent with the work,
+  // never with widening its own trust.
+  test('a tool that changes authority asks a person even under full access and a matching grant', async () => {
+    const evaluator = createEvaluator({ isGranted: () => true });
+    for (const toolName of [
+      'mcp__station-control__update_config',
+      'mcp__station-control__update_agent',
+    ])
+      await expect(
+        evaluator({ ...tool, toolName }, invocation, {
+          interaction: 'external',
+          fullAccess: true,
+        }),
+      ).resolves.toEqual({ behavior: 'ask', required: true });
+    // The Station engine's runtime name is matched through its provenance.
+    await expect(
+      createEvaluator({
+        isGranted: () => true,
+        toolNameMapping: new Map([
+          [
+            'sc_cfg',
+            {
+              provenance: {
+                integrationId: 'station-control',
+                originalToolName: 'update_config',
+              },
+            },
+          ],
+        ]),
+      })({ ...tool, toolName: 'sc_cfg' }, invocation, {
+        interaction: 'managed',
+        hasInteractiveApproval: true,
+      }),
+    ).resolves.toEqual({ behavior: 'ask', required: true });
+    // An ordinary station-control tool is untouched.
+    await expect(
+      evaluator(tool, invocation, {
+        interaction: 'external',
+        fullAccess: true,
+      }),
+    ).resolves.toEqual({ behavior: 'allow', toolGrant: true });
+  });
+
+  // archive#2016: an operator-enabled guardian approves mutations the same way
+  // on every Station-engine surface; on an external engine a person is still
+  // asked, since a guardian allow there would run unasked at full access.
+  test('an authority tool takes a guardian allow on Station’s engine, never on an external one', async () => {
+    const guardian = {
+      isEnabled: vi.fn(() => true),
+      getMode: vi.fn(() => 'review'),
+      readConversation: () => NO_PERSON_INTENT,
+      reviewToolCall: vi
+        .fn()
+        .mockResolvedValue({ decision: 'allow', reason: 'Scoped.' }),
+    };
+    const evaluator = createEvaluator({ approvalGuardian: guardian });
+    const update = {
+      ...tool,
+      toolName: 'mcp__station-control__update_config',
+    };
+    await expect(
+      evaluator(update, invocation, {
+        interaction: 'managed',
+        hasInteractiveApproval: false,
+      }),
+    ).resolves.toEqual({ behavior: 'allow' });
+    await expect(
+      evaluator(update, invocation, {
+        interaction: 'external',
+        fullAccess: true,
+      }),
+    ).resolves.toEqual({ behavior: 'ask', required: true });
+    // One review per call: the required ask reuses it.
+    expect(guardian.reviewToolCall).toHaveBeenCalledTimes(2);
+  });
+
   test('explicit Ask me takes precedence over automatic, guardian and unattended allows', async () => {
     const evaluator = createEvaluator({
       spec: { name: 'Reviewer', tools: { askBeforeUse: ['repo_write'] } },
@@ -77,6 +224,7 @@ describe('createStagedPreToolPolicyEvaluator', () => {
       isUnattendedGranted: () => true,
       approvalGuardian: {
         isEnabled: () => true,
+        readConversation: () => NO_PERSON_INTENT,
         reviewToolCall: async () => ({ decision: 'allow' }),
       },
     });
@@ -126,6 +274,7 @@ describe('createStagedPreToolPolicyEvaluator', () => {
       approvalGuardian: {
         isEnabled: () => true,
         getMode: () => 'enforce',
+        readConversation: () => NO_PERSON_INTENT,
         isEnforcing: () => true,
         reviewToolCall: async () => ({
           decision: 'deny',
@@ -139,6 +288,40 @@ describe('createStagedPreToolPolicyEvaluator', () => {
         hasInteractiveApproval: true,
       }),
     ).resolves.toMatchObject({ behavior: 'deny' });
+  });
+
+  test('an inherited allowlist refuses the real pre-tool grant path', async () => {
+    const isGranted = vi.fn(() => true);
+    const evaluator = createEvaluator({ isGranted });
+    const delegation = createChildDelegationContext({
+      agentSlug: 'parent',
+      current: {
+        mode: 'isolated-child',
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: agentId('ancestor'),
+        rootAgentSlug: agentId('root'),
+        allowedTools: ['github_*'],
+        toolAllowlistConstraints: [['station-control_*']],
+      },
+    });
+    await expect(
+      evaluator(
+        tool,
+        { ...invocation, delegation },
+        {
+          interaction: 'external',
+          identity: {
+            delegationToolName: 'station-control_list_agents',
+            configProtectionToolName: 'list_agents',
+          },
+        },
+      ),
+    ).resolves.toMatchObject({
+      behavior: 'deny',
+      denial: { reason: expect.stringContaining('delegated child session') },
+    });
+    expect(isGranted).not.toHaveBeenCalled();
   });
 
   test('matches a raw MCP name against delegated-tool restrictions', async () => {
@@ -371,6 +554,7 @@ describe('station#3210: denial text a user can trust', () => {
       approvalGuardian: {
         isEnabled: () => true,
         getMode: () => 'enforce',
+        readConversation: () => NO_PERSON_INTENT,
         reviewToolCall: async () => ({
           decision: 'deny',
           reason: guardianReason,
@@ -511,6 +695,7 @@ describe('station#3210: denial text a user can trust', () => {
       approvalGuardian: {
         isEnabled: () => true,
         getMode: () => 'enforce',
+        readConversation: () => NO_PERSON_INTENT,
         reviewToolCall: async () => ({ decision: 'deny', reason: 'no.' }),
       },
     });
@@ -562,5 +747,229 @@ describe('station#3210: denial text a user can trust', () => {
     expect(decision.denial.policyDenied).toBe(true);
     // …and archive#3210's separate authorship marker is what licenses the text.
     expect(decision.denial.stationComposedReason).toBe(true);
+  });
+});
+
+/**
+ * #4827: a guardian that keeps refusing hands the next refusal to the person
+ * through the ordinary approval path, and never where nobody can answer.
+ */
+describe('approval guardian escalation (#4827)', () => {
+  type Verdict = 'allow' | 'deny' | 'defer';
+
+  function escalationHarness(options: {
+    verdicts?: Verdict[];
+    mode?: 'enforce' | 'review';
+    currentTurnInteractive?: boolean;
+  }) {
+    const verdicts = [...(options.verdicts ?? [])];
+    const reviewToolCall = vi.fn(async () => {
+      const decision = verdicts.length ? verdicts.shift()! : 'deny';
+      return { decision, reason: `guardian says ${decision}` };
+    });
+    const evaluator = createEvaluator({
+      approvalGuardian: {
+        isEnabled: () => true,
+        getMode: () => options.mode ?? 'enforce',
+        readConversation: () => ({
+          ...NO_PERSON_INTENT,
+          currentTurnInteractive: options.currentTurnInteractive ?? false,
+        }),
+        reviewToolCall,
+      },
+      guardianDenialLedger: new GuardianDenialLedger(),
+    });
+    return { evaluator, reviewToolCall };
+  }
+
+  test.each([
+    'interactive',
+    'task-dispatch',
+    'delegation',
+    'automation',
+    'unknown',
+  ] as const)(
+    'routes an enforce guardian defer according to the admitted %s turn',
+    async (origin) => {
+      const latestTurnDispatchOrigin = vi.fn(() => origin);
+      const evaluator = createEvaluator({
+        approvalGuardian: {
+          isEnabled: () => true,
+          getMode: () => 'enforce',
+          readConversation: createGuardianConversationReader({
+            conversationLineageForThreads: () => new Map(),
+            personAuthoredTurnPrompts: () => [],
+            latestTurnDispatchOrigin,
+          }),
+          reviewToolCall: async () => ({
+            decision: 'defer',
+            reason: 'No confident verdict.',
+          }),
+        },
+      });
+      const decision = await evaluator(tool, invocation, {
+        interaction: 'external',
+      });
+      expect(latestTurnDispatchOrigin).toHaveBeenCalledWith(
+        invocation.conversationId,
+      );
+      if (origin === 'interactive') {
+        expect(decision).toEqual({ behavior: 'defer' });
+      } else {
+        expect(decision).toMatchObject({
+          behavior: 'deny',
+          denial: {
+            policyDenied: true,
+            reason: expect.stringContaining('nobody is present to decide'),
+          },
+        });
+      }
+    },
+  );
+
+  const attended = {
+    interaction: 'managed' as const,
+    hasInteractiveApproval: true,
+  };
+  const call = { ...tool, toolName: 'repo_write' };
+
+  test('the call after three consecutive denials asks the person; the run then restarts', async () => {
+    expect(GUARDIAN_ESCALATE_AFTER_CONSECUTIVE).toBe(3);
+    const { evaluator } = escalationHarness({});
+    const outcomes = [];
+    for (let index = 0; index < 8; index += 1)
+      outcomes.push((await evaluator(call, invocation, attended)).behavior);
+    expect(outcomes).toEqual([
+      'deny',
+      'deny',
+      'deny',
+      'ask',
+      'deny',
+      'deny',
+      'deny',
+      'ask',
+    ]);
+    await expect(
+      escalationHarness({ verdicts: ['deny', 'deny', 'deny'] }).evaluator(
+        call,
+        invocation,
+        attended,
+      ),
+    ).resolves.toMatchObject({ behavior: 'deny' });
+  });
+
+  test('the escalation is a required question, the same one an authored ask produces', async () => {
+    const { evaluator } = escalationHarness({});
+    for (let index = 0; index < 3; index += 1)
+      await evaluator(call, invocation, attended);
+    await expect(evaluator(call, invocation, attended)).resolves.toEqual({
+      behavior: 'ask',
+      required: true,
+      guardianReason: 'guardian says deny',
+    });
+  });
+
+  test('an allow breaks the run; denials in other conversations do not count', async () => {
+    const { evaluator } = escalationHarness({
+      verdicts: ['deny', 'deny', 'allow', 'deny', 'deny', 'deny', 'deny'],
+    });
+    const other = { ...invocation, conversationId: 'thread-other' };
+    const outcomes = [];
+    for (const [index] of Array.from({ length: 7 }).entries())
+      outcomes.push(
+        (await evaluator(call, index === 1 ? other : invocation, attended))
+          .behavior,
+      );
+    // deny(t1) deny(other) allow(t1) deny deny deny(t1: 3 in a row) → ask
+    expect(outcomes).toEqual([
+      'deny',
+      'deny',
+      'allow',
+      'deny',
+      'deny',
+      'deny',
+      'ask',
+    ]);
+  });
+
+  test('after twenty denials in a conversation, every further denial asks', async () => {
+    expect(GUARDIAN_ESCALATE_AFTER_TOTAL).toBe(20);
+    // Never three in a row: deny, deny, allow, repeated.
+    const verdicts: Verdict[] = [];
+    for (let index = 0; index < 10; index += 1)
+      verdicts.push('deny', 'deny', 'allow');
+    verdicts.push('deny', 'deny');
+    const { evaluator } = escalationHarness({ verdicts });
+    const outcomes = [];
+    for (let index = 0; index < verdicts.length; index += 1)
+      outcomes.push((await evaluator(call, invocation, attended)).behavior);
+    expect(outcomes.slice(0, 30)).not.toContain('ask');
+    expect(outcomes.slice(30)).toEqual(['ask', 'ask']);
+  });
+
+  test.each([
+    [
+      'a managed run with no requester',
+      { interaction: 'managed' as const, hasInteractiveApproval: false },
+      invocation,
+      true,
+    ],
+    [
+      'a delegated child that may not grant approvals',
+      attended,
+      {
+        ...invocation,
+        delegation: { denyApprovals: true } as any,
+      },
+      true,
+    ],
+    [
+      'an external engine whose current turn no person sent',
+      { interaction: 'external' as const },
+      invocation,
+      false,
+    ],
+  ])(
+    '%s keeps denying instead of waiting on nobody',
+    async (_label, options, inv, interactive) => {
+      const { evaluator } = escalationHarness({
+        currentTurnInteractive: interactive,
+      });
+      for (let index = 0; index < 5; index += 1) {
+        const decision = await evaluator(call, inv, options);
+        expect(decision.behavior).toBe('deny');
+        if (decision.behavior === 'deny' && index < 3)
+          expect(decision.denial.reason).toContain('approval guardian');
+      }
+    },
+  );
+
+  test('an external engine whose current turn a person sent asks that person', async () => {
+    const { evaluator } = escalationHarness({ currentTurnInteractive: true });
+    const outcomes = [];
+    for (let index = 0; index < 4; index += 1)
+      outcomes.push(
+        (await evaluator(call, invocation, { interaction: 'external' }))
+          .behavior,
+      );
+    expect(outcomes).toEqual(['deny', 'deny', 'deny', 'ask']);
+  });
+
+  test('no verdict is never an allow and is not counted as a denial', async () => {
+    const { evaluator } = escalationHarness({
+      verdicts: ['defer', 'defer', 'defer', 'defer', 'deny'],
+    });
+    const outcomes = [];
+    for (let index = 0; index < 5; index += 1)
+      outcomes.push((await evaluator(call, invocation, attended)).behavior);
+    expect(outcomes).toEqual(['ask', 'ask', 'ask', 'ask', 'deny']);
+  });
+
+  test('review mode never escalates: its deny is advisory', async () => {
+    const { evaluator } = escalationHarness({ mode: 'review' });
+    for (let index = 0; index < 5; index += 1)
+      await expect(evaluator(call, invocation, attended)).resolves.toEqual({
+        behavior: 'ask',
+      });
   });
 });

@@ -81,7 +81,6 @@ const view: RelayManagementView = {
   keyId: 'K'.repeat(43),
   setupLinks: {
     stable: 'station-relay-stable://setup',
-    beta: 'station-relay-beta://setup',
     nightly: 'station-relay-nightly://setup',
   },
   approvals: [],
@@ -150,10 +149,10 @@ test('a caller without the server-reported IAM permission sees no operator contr
 test('the invite dialog copies the chosen app link, then approves pasted setup info before creating the one-time invitation with the chosen expiry', async () => {
   mount();
   const dialog = await openInvite();
-  fireEvent.click(dialog.getByRole('button', { name: 'Beta' }));
+  fireEvent.click(dialog.getByRole('button', { name: 'Nightly' }));
   fireEvent.click(dialog.getByRole('button', { name: 'Copy link' }));
   await waitFor(() =>
-    expect(state.copy).toHaveBeenCalledWith(view.setupLinks.beta),
+    expect(state.copy).toHaveBeenCalledWith(view.setupLinks.nightly),
   );
   fireEvent.click(dialog.getByRole('button', { name: 'Next' }));
   const approve = dialog.getByRole('button', { name: 'Approve and invite' });
@@ -349,7 +348,9 @@ test('a waiting device is approved from its own row, and removal of an approved 
   fireEvent.click(approved.getByRole('button', { name: 'Remove' }));
   expect(state.revoke).not.toHaveBeenCalled();
   fireEvent.click(
-    within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }),
+    within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Remove',
+    }),
   );
   await waitFor(() => expect(state.revoke.mock.calls[0]?.[1]).toBe(approval));
 });

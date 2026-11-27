@@ -1,0 +1,7 @@
+{
+  "revision": "e45df7f69c69e21a584b6973720a79c3a779cbc3",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"telemetry-response.ts now keeps ERROR_DETAIL_MAX_LENGTH module-private; its value (200) and use are unchanged. Checked the lastFailure.detail paragraph: at most 200 characters, sanitized fields, masking and never logged still match the code.","inputs":["docs/reference/usage-telemetry.md","src-server/services/telemetry-response.ts"]}
+  ]
+}

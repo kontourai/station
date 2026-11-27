@@ -2,19 +2,33 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { createBrowserAgentRoutes } from '../../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../../routes/device-agent.js';
+import { createStationControlMcpRoutes } from '../../../routes/mcp/station-control-mcp-route.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
+import { createStationControlAuthorityGuard } from '../../../security/station-control-authority-guard.js';
 import { createBrowserPrincipalAuthorizer } from '../../../services/browser/browser-agent-authority.js';
-import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
+import {
+  createSelectedStationControlMcpServer,
+  stationControlToolCatalog,
+} from '../../../tools/station-control-mcp-server.js';
+import { STATION_CONTROL_OPERATOR_PRINCIPAL_ID } from '../../../tools/station-control-policy.js';
+import {
+  STATION_CONTROL_CALLER_TOKEN_HEADER,
+  setRuntimeControlApiBase,
+} from '../../../tools/station-control-shared.js';
+import { effectiveStationControlTools } from '../../agents/station-orchestration-instructions.js';
 import { bindCodexToolRequest } from '../codex-bound-request.js';
 import { resolveStationControlCallerForRequest } from '../station-control-caller.js';
 import { createCodexBoundToolServer } from '../station-control-in-process.js';
 import {
+  mintStationControlMcpHeaderAuth,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
+  verifyStationControlMcpToken,
 } from '../station-control-mcp-token.js';
 
 test('a copied request cannot use a Codex tool caller at the browser route', async () => {
@@ -563,5 +577,248 @@ test('bound catalog dispatches device logs and Task recording through their auth
     expect(recordToTask).toHaveBeenCalledOnce();
   } finally {
     await server.close();
+  }
+});
+
+test('the Codex bound channel registers every device tool the orchestration text may name', async () => {
+  const channel = await createCodexBoundToolServer({
+    sessionId: 'bound-device-names',
+    includeBrowser: false,
+    includeDevices: true,
+    dispatch: async () => new Response('{}'),
+    isCurrent: () => true,
+  });
+  try {
+    const offered = new Set(channel.tools.map((tool) => tool.name));
+    const nameable = [
+      ...effectiveStationControlTools(
+        {},
+        stationControlToolCatalog().map((tool) => tool.name),
+        'bound',
+      ),
+    ].filter((name) => name.startsWith('device_'));
+    expect(nameable).toContain('device_open');
+    for (const name of nameable) expect(offered.has(name)).toBe(true);
+  } finally {
+    await channel.close();
+  }
+});
+
+/**
+ * #2376 slice 2: a station-control tool on Codex's bound channel reaches a
+ * real loopback route through the real authority guard as a `bound` caller,
+ * so a bound-only route (`get_usage`) runs. The header channel's
+ * `delegated-custody` caller would be refused there.
+ */
+test('the Codex bound catalog and header server coexist through rotation and close', async () => {
+  const resolveRecord = () => ({
+    principal: {
+      id: STATION_CONTROL_OPERATOR_PRINCIPAL_ID,
+      source: 'session-owner' as const,
+    },
+    localProjectId: 'project',
+    projectIdSource: 'session-record' as const,
+  });
+  const reached: { assurance?: string; sessionId?: string }[] = [];
+  const app = new Hono();
+  app.use('*', async (c, next) => {
+    // What the runtime boundary stamps on Station's own loopback hop.
+    setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+      kind: 'internal',
+      credential: 'internal-token',
+      authority: undefined,
+      source: 'bearer',
+    });
+    await next();
+  });
+  app.use(
+    '*',
+    createStationControlAuthorityGuard({
+      resolveCaller: (request) =>
+        resolveStationControlCallerForRequest(request, resolveRecord),
+      isOperatorPrincipal: (id) => id === STATION_CONTROL_OPERATOR_PRINCIPAL_ID,
+    }),
+  );
+  app.get('/agents', (c) => {
+    const caller = resolveStationControlCallerForRequest(
+      c.req.raw,
+      resolveRecord,
+    );
+    reached.push({
+      assurance: caller?.assurance,
+      sessionId: caller?.sessionId,
+    });
+    return c.json({ success: true, data: [] });
+  });
+  app.get('/api/analytics/usage', (c) => {
+    const caller = resolveStationControlCallerForRequest(
+      c.req.raw,
+      resolveRecord,
+    );
+    reached.push({
+      assurance: caller?.assurance,
+      sessionId: caller?.sessionId,
+    });
+    return c.json({ success: true, data: { days: [] } });
+  });
+  const listener = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
+  if (!listener.listening) await once(listener, 'listening');
+  setRuntimeControlApiBase((listener.address() as AddressInfo).port);
+  const header = mintStationControlMcpHeaderAuth(12345, 'bound-catalog-guard');
+  const headerRoutes = createStationControlMcpRoutes({
+    port: (listener.address() as AddressInfo).port,
+    resolveCallerRecord: resolveRecord,
+  });
+  const callHeader = (token: string) =>
+    headerRoutes.request(
+      '/mcp/station-control',
+      {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'list_agents', arguments: {} },
+        }),
+      },
+      { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
+    );
+  const server = await createCodexBoundToolServer({
+    sessionId: 'bound-catalog-guard',
+    resolveRecord,
+    includeBrowser: true,
+    includeDevices: true,
+    stationControl: {},
+    dispatch: async () => {
+      throw new Error('station-control calls are not request-proof calls');
+    },
+    isCurrent: () => true,
+  });
+  const headerPayload = async (response: Response) => {
+    const data = (await response.text())
+      .split('\n')
+      .find((line) => line.startsWith('data: '));
+    if (!data) throw new Error('Missing MCP response');
+    const message = JSON.parse(data.slice(6));
+    expect(message.result.isError).not.toBe(true);
+    return JSON.parse(message.result.content[0].text);
+  };
+  try {
+    const result = (await server.call('get_usage', {}, () => true)) as {
+      content: { text: string }[];
+    };
+    expect(reached).toEqual([
+      { assurance: 'bound', sessionId: 'bound-catalog-guard' },
+    ]);
+    expect(JSON.parse(result.content[0]!.text)).toMatchObject({
+      success: true,
+    });
+    const headerResult = await callHeader(header.token);
+    expect(headerResult.status).toBe(200);
+    expect(await headerPayload(headerResult)).toEqual({
+      success: true,
+      data: [],
+    });
+    expect(reached.at(-1)).toEqual({
+      assurance: 'delegated-custody',
+      sessionId: 'bound-catalog-guard',
+    });
+    const rotatedHeader = mintStationControlMcpHeaderAuth(
+      12345,
+      'bound-catalog-guard',
+    );
+    expect((await callHeader(header.token)).status).toBe(401);
+    await server.call('get_usage', {}, () => true);
+    expect(reached.at(-1)?.assurance).toBe('bound');
+    const successor = await createCodexBoundToolServer({
+      sessionId: 'bound-catalog-guard',
+      resolveRecord,
+      includeBrowser: false,
+      includeDevices: false,
+      stationControl: {},
+      dispatch: async () => {
+        throw new Error('unexpected direct dispatch');
+      },
+      isCurrent: () => true,
+    });
+    try {
+      await expect(server.call('get_usage', {}, () => true)).rejects.toThrow();
+      await server.close();
+      await successor.call('get_usage', {}, () => true);
+      expect(reached.at(-1)?.assurance).toBe('bound');
+    } finally {
+      await successor.close();
+    }
+    const survivingHeader = await callHeader(rotatedHeader.token);
+    expect(survivingHeader.status).toBe(200);
+    expect(await headerPayload(survivingHeader)).toEqual({
+      success: true,
+      data: [],
+    });
+    revokeStationControlMcpToken('bound-catalog-guard');
+    expect(verifyStationControlMcpToken(rotatedHeader.token)).toBeUndefined();
+    expect((await callHeader(rotatedHeader.token)).status).toBe(401);
+  } finally {
+    await server.close();
+    setRuntimeControlApiBase(undefined);
+    await new Promise<void>((resolve) => listener.close(() => resolve()));
+    revokeStationControlMcpToken('bound-catalog-guard');
+  }
+});
+
+test('the Codex bound catalog lists what Claude in-process lists, narrowed by selection', async () => {
+  const claude = createSelectedStationControlMcpServer(
+    undefined,
+    undefined,
+    'station-control',
+    'bound',
+  );
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  await claude.connect(serverTransport);
+  const client = new Client({ name: 'bound-catalog-test', version: '1' });
+  await client.connect(clientTransport);
+  const claudeNames = (await client.listTools()).tools.map((tool) => tool.name);
+  await client.close();
+  await claude.close();
+  const full = await createCodexBoundToolServer({
+    sessionId: 'bound-catalog-full',
+    includeBrowser: false,
+    includeDevices: true,
+    stationControl: {},
+    dispatch: async () => new Response('{}'),
+    isCurrent: () => true,
+  });
+  const narrowed = await createCodexBoundToolServer({
+    sessionId: 'bound-catalog-narrow',
+    includeBrowser: true,
+    includeDevices: true,
+    stationControl: { allowedTools: ['list_agents', 'device_list'] },
+    dispatch: async () => new Response('{}'),
+    isCurrent: () => true,
+  });
+  try {
+    // Bound-only tools (agent edits, usage) are offered, as for Claude.
+    expect(claudeNames).toContain('get_usage');
+    expect(full.tools.map((tool) => tool.name).sort()).toEqual(
+      [...claudeNames].sort(),
+    );
+    const narrowNames = narrowed.tools.map((tool) => tool.name);
+    expect(narrowNames).toEqual(
+      expect.arrayContaining(['list_agents', 'device_list', 'browser_status']),
+    );
+    expect(
+      narrowNames.filter((name) => !name.startsWith('browser_')).sort(),
+    ).toEqual(['device_list', 'list_agents']);
+  } finally {
+    await full.close();
+    await narrowed.close();
+    revokeStationControlMcpToken('bound-catalog-full');
+    revokeStationControlMcpToken('bound-catalog-narrow');
   }
 });

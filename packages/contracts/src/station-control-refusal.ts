@@ -1,3 +1,5 @@
+import { stationToolOf } from './station-tool-identity.js';
+
 /**
  * A station-control refusal as a reader shows it: the code an agent acts on
  * and the sentence written for a person. The server writes it as the tool's
@@ -32,12 +34,8 @@ export interface StationControlRefusalView {
 export function stationControlToolName(
   toolName: string | undefined,
 ): string | undefined {
-  if (typeof toolName !== 'string') return undefined;
-  const match =
-    /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)([A-Za-z0-9_-]+)$/.exec(
-      toolName,
-    );
-  return match?.[1];
+  const identity = stationToolOf(toolName);
+  return identity?.server === 'station-control' ? identity.tool : undefined;
 }
 
 /**

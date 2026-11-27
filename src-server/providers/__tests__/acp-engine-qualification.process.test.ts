@@ -163,10 +163,17 @@ describe.skipIf(process.platform === 'win32')(
             };
             return { method: `${namespace}/${type}`, params: payload };
           });
+        // A `"$sessionId"` param arrives as the session's own id: one naming
+        // another session is not this session's and is dropped.
         expect(notifications).toEqual(
           (profile.vendorNotifications ?? []).map(({ method, params }) => ({
             method,
-            params: params ?? {},
+            params: Object.fromEntries(
+              Object.entries(params ?? {}).map(([key, value]) => [
+                key,
+                value === '$sessionId' ? expect.any(String) : value,
+              ]),
+            ),
           })),
         );
 

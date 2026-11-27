@@ -1,9 +1,16 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import type {
+  ExternalSessionHistoryEntry,
+  ExternalSessionHistoryImport,
+  ExternalSessionHistoryPage,
+  ExternalSessionTranscriptPage,
+} from '@kontourai/station-contracts/orchestration';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import {
+  ATTACHED_SESSION_CONTINUATION_REFRESH,
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
@@ -15,6 +22,7 @@ import {
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
+  AttachedSessionDiscoveryPage,
   AttachedSessionDiscoveryResult,
   AttachedSessionReadResult,
   AttachedSessionSource,
@@ -23,6 +31,7 @@ import {
   isSessionSourceAffinity,
   snapshotSessionSourceAffinity,
 } from '../../providers/sessions/session-source-affinity.js';
+import { truncateJsonString } from '../../providers/tool-output-projection.js';
 import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import {
@@ -31,6 +40,8 @@ import {
   attachedSessionProjectAttribution,
   attachedSessionScanDuration,
 } from '../../telemetry/metrics.js';
+import { mapWithConcurrency } from '../../utils/bounded-async.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { AdoptionLedger } from './adoption-ledger.js';
@@ -45,12 +56,42 @@ import {
   isWithinRepositoryPath,
   type RepositoryLookup,
 } from './attached-session-repository.js';
+import { ATTACHED_SOURCE_CLOCK_SKEW_MS } from './attached-source-activity.js';
 import type { EventBus } from './event-bus.js';
 import type { EventStore } from './event-store.js';
 import { EventStoreIngressError } from './event-store.js';
 import { readCompletedSourceBoundary } from './external-session-continuation-context.js';
 
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
+const IDLE_POLL_INTERVAL_MS = 12_000;
+const BACKGROUND_SESSIONS_PER_SOURCE = 4;
+const BACKGROUND_WORK_BUDGET_MS = 500;
+const BACKGROUND_RECENCY_MS = 30 * 60_000;
+const DISCOVERY_SNAPSHOT_MS = 15_000;
+const ARCHIVE_PAGE_SIZE = 24;
+const ARCHIVE_MAX_OFFSET = 4096;
+const ARCHIVE_SELECTION_LIMIT = 512;
+const ARCHIVE_PAGE_CACHE_LIMIT = 32;
+const ARCHIVE_READ_CURSORS = 64;
+const ARCHIVE_IMPORT_PAGES_PER_REQUEST = 2;
+const ARCHIVE_PREVIEW_MAX_MESSAGES = 80;
+const ARCHIVE_PREVIEW_MAX_TEXT_BYTES = 256 * 1024;
+const ARCHIVE_PREVIEW_MAX_MESSAGE_BYTES = 24 * 1024;
+
+interface DiscoverySnapshot extends AttachedSessionDiscoveryResult {
+  at: number;
+}
+
+export class ExternalSessionHistoryUnavailable extends Error {
+  constructor(
+    readonly status: 404 | 409,
+    readonly publicMessage: string,
+    readonly code = 'external_history_unavailable',
+  ) {
+    super(publicMessage);
+  }
+}
+
 const MIN_POLL_INTERVAL_MS = 250;
 const MAX_POLL_INTERVAL_MS = 60_000;
 const MAX_TRACKED_THREADS = 256;
@@ -70,10 +111,12 @@ interface FollowState {
    *
    * It is also the PREDECESSOR half of the envelope id (archive#3495): the
    * id addresses the transition `storedAttribution -> fingerprint`, so this
-   * field is the only thing the id needs beyond the new value. See
+   * field determines ordinary transition identity. See
    * {@link envelopeEventId}.
    */
   storedAttribution?: string;
+  /** A full window without a claim leaves the prior attribution unknown. */
+  unresolvedAttributionAnchor?: string;
   /**
    * createdAt of the newest event known for this thread. A correction is
    * dated no earlier than this, so `lastEventAt` (which the home list reads
@@ -197,25 +240,15 @@ export async function resolveAttachedProjectRoots(
   ) => string | undefined | Promise<string | undefined>,
   concurrency = DEFAULT_ROOT_RESOLUTION_CONCURRENCY,
 ): Promise<AttachedProjectRoot[]> {
-  const limit = Math.max(1, Math.floor(concurrency));
-  const resolved = new Array<AttachedProjectRoot>(projects.length);
-  let next = 0;
-  async function worker(): Promise<void> {
-    for (;;) {
-      const index = next++;
-      if (index >= projects.length) return;
-      const project = projects[index];
-      resolved[index] = {
-        slug: project.slug,
-        workingDirectory:
-          (await resolvePath(project.slug)) ?? project.workingDirectory,
-      };
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(limit, projects.length) }, worker),
+  return mapWithConcurrency(
+    projects,
+    Math.max(1, Math.floor(concurrency)),
+    async (project) => ({
+      slug: project.slug,
+      workingDirectory:
+        (await resolvePath(project.slug)) ?? project.workingDirectory,
+    }),
   );
-  return resolved;
 }
 
 interface AttachedSessionFollowServiceOptions {
@@ -317,7 +350,50 @@ export class AttachedSessionFollowService {
   /** Threads whose refused write was already logged; cleared on success. */
   private readonly staleWriteLogged = new Set<string>();
   private timer: NodeJS.Timeout | undefined;
-  private activePoll: Promise<void> | undefined;
+  private activePoll: Promise<boolean> | undefined;
+  private backgroundRun: AbortController | undefined;
+  private stopped = false;
+  private nextBackgroundSource = 0;
+  private archiveWork: Promise<unknown> | undefined;
+  private activeArchiveImport?: {
+    id: string;
+    operationId: string;
+    controller: AbortController;
+    work: Promise<ExternalSessionHistoryImport>;
+  };
+  private readonly canceledArchiveImports = new Map<string, number>();
+  private readonly discoveries = new Map<
+    AttachedSessionSource,
+    DiscoverySnapshot
+  >();
+  private readonly archivePages = new Map<string, DiscoverySnapshot>();
+  private recentArchiveCatalog?: {
+    scope: string;
+    entries: ExternalSessionHistoryEntry[];
+    partial: boolean;
+    at: number;
+  };
+  private readonly archiveLocations = new Map<
+    string,
+    { source: AttachedSessionSource; offset: number }
+  >();
+  private readonly registeredArchivePages = new Map<
+    AttachedSessionSource,
+    number
+  >();
+  private readonly archiveCursors = new Map<
+    string,
+    {
+      id: string;
+      cursor: AttachedSessionCursor;
+      startsNearEnd: boolean;
+      expires: number;
+    }
+  >();
+  private readonly pendingDiscovery = new Map<
+    AttachedSessionSource,
+    { sessions: AttachedSessionDescriptor[]; next: number; recentOnly: boolean }
+  >();
   private readonly adoptionLedger: AdoptionLedger;
   private readonly followUnattributed: boolean;
 
@@ -342,29 +418,57 @@ export class AttachedSessionFollowService {
         : MAX_SEEN_EVENT_IDS;
   }
 
-  start(): void {
-    if (this.timer) return;
-    void this.pollSafely();
-    this.timer = setInterval(() => void this.pollSafely(), this.pollIntervalMs);
-    this.timer.unref?.();
+  start(initialDelayMs = 0): void {
+    if (this.backgroundRun) return;
+    this.stopped = false;
+    const run = new AbortController();
+    this.backgroundRun = run;
+    let delay = this.pollIntervalMs;
+    const schedule = (nextDelay: number) => {
+      this.timer = setTimeout(async () => {
+        this.timer = undefined;
+        let progressed = false;
+        try {
+          progressed = await this.runPoll(run.signal);
+        } catch (error) {
+          this.options.logger?.warn('Attached-session poll failed', {
+            error: errorMessage(error),
+          });
+        }
+        if (run.signal.aborted) return;
+        delay = progressed
+          ? this.pollIntervalMs
+          : Math.max(
+              this.pollIntervalMs,
+              Math.min(IDLE_POLL_INTERVAL_MS, delay * 2),
+            );
+        schedule(delay);
+      }, nextDelay);
+      this.timer.unref?.();
+    };
+    schedule(initialDelayMs);
   }
 
   async stop(): Promise<void> {
+    this.stopped = true;
+    this.backgroundRun?.abort();
+    this.activeArchiveImport?.controller.abort();
+    this.backgroundRun = undefined;
+    this.pendingDiscovery.clear();
     if (this.timer) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = undefined;
     }
     // A poll in flight could open a source's store handle after it closed;
     // let it finish first (its own failures are not the stop's), but only
     // for a bounded time: a hung source call must not block shutdown.
-    const poll = this.activePoll;
-    if (poll) {
+    const inFlight = [this.activePoll, this.archiveWork].filter(
+      (work) => work !== undefined,
+    );
+    if (inFlight.length > 0) {
       let timer: NodeJS.Timeout | undefined;
       const settled = await Promise.race([
-        poll.then(
-          () => 'settled' as const,
-          () => 'settled' as const,
-        ),
+        Promise.allSettled(inFlight).then(() => 'settled' as const),
         new Promise<'timed-out'>((resolve) => {
           timer = setTimeout(() => resolve('timed-out'), this.stopPollWaitMs);
           timer.unref?.();
@@ -378,6 +482,12 @@ export class AttachedSessionFollowService {
         );
       }
     }
+    this.discoveries.clear();
+    this.archiveCursors.clear();
+    this.archivePages.clear();
+    this.recentArchiveCatalog = undefined;
+    this.archiveLocations.clear();
+    this.registeredArchivePages.clear();
     // A source may hold store handles (OpenCode's SQLite connections) between
     // polls; none should outlive following.
     for (const source of this.options.sources) {
@@ -386,30 +496,20 @@ export class AttachedSessionFollowService {
       } catch (error) {
         this.options.logger?.warn('Attached-session source failed to close', {
           source: sourceLabel(source),
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     }
   }
 
-  /**
-   * station#2210: `pollNow` runs fire-and-forget. A rejection that escaped
-   * used to surface as an unhandled process rejection — the same oversized
-   * event logged ~42k unhandled rejections in one day — while the poll
-   * cursor stayed put, so the failure repeated forever. Every escape is now
-   * a logged, identified poll failure instead.
-   */
-  private pollSafely(): Promise<void> {
-    return this.pollNow().catch((error: unknown) => {
-      this.options.logger?.warn('Attached-session poll failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
+  async pollNow(): Promise<void> {
+    await this.runPoll();
   }
 
-  pollNow(): Promise<void> {
+  private runPoll(background?: AbortSignal): Promise<boolean> {
     if (this.activePoll) return this.activePoll;
-    const poll = this.poll().finally(() => {
+    if (this.archiveWork) return Promise.resolve(false);
+    const poll = this.poll(background).finally(() => {
       if (this.activePoll === poll) this.activePoll = undefined;
     });
     this.activePoll = poll;
@@ -432,10 +532,8 @@ export class AttachedSessionFollowService {
     return this.options.listProjects();
   }
 
-  private async poll(): Promise<void> {
+  private async preparePollProjects() {
     const projectRoots = await this.projectRoots();
-    // #3406: every folder this poll matches is read in the probe's child
-    // process, never synchronously here, so a hung mount cannot stall it.
     const paths = (
       this.options.pathProbe ?? sharedAttachedPathProbe()
     ).forPoll();
@@ -446,6 +544,46 @@ export class AttachedSessionFollowService {
       ? createPollRepositoryLookup(this.options.locateRepository)
       : paths.repository;
     const projectSlugs = new Set(projectRoots.map((project) => project.slug));
+    return { projectRoots, paths, repositories, projectSlugs };
+  }
+
+  private async discover(
+    source: AttachedSessionSource,
+    page?: AttachedSessionDiscoveryPage,
+  ) {
+    const startedAt = performance.now();
+    let discovered: AttachedSessionDiscoveryResult;
+    try {
+      discovered = await source.discover(page);
+    } catch {
+      discovered = { outcome: 'unknown_source', sessions: [] };
+    }
+    attachedSessionDiscovery.add(1, {
+      source: sourceLabel(source),
+      outcome: discovered.outcome,
+    });
+    attachedSessionScanDuration.record(performance.now() - startedAt, {
+      source: sourceLabel(source),
+      outcome: discovered.outcome,
+    });
+    const snapshot = { ...discovered, at: Date.now() };
+    if (page) {
+      this.registeredArchivePages.set(source, page.offset);
+      this.discoveries.delete(source);
+    } else {
+      this.registeredArchivePages.delete(source);
+      this.discoveries.set(source, snapshot);
+    }
+    return snapshot;
+  }
+
+  private async poll(background?: AbortSignal): Promise<boolean> {
+    const recentOnly = Boolean(background);
+    const now = Date.now();
+    let context:
+      | Awaited<ReturnType<AttachedSessionFollowService['preparePollProjects']>>
+      | undefined;
+    let progressed = false;
     // Read only when a poll finds a session outside every project.
     let outsideProjects: Promise<boolean> | undefined;
     const followOutsideProjects = () =>
@@ -458,39 +596,57 @@ export class AttachedSessionFollowService {
       (snapshot ??= new PollSessionSnapshot(
         this.options.eventStore.readSessions(),
       ));
-    for (const source of this.options.sources) {
-      const startedAt = performance.now();
-      let discovered: AttachedSessionDiscoveryResult;
-      try {
-        discovered = await source.discover();
-      } catch {
-        attachedSessionDiscovery.add(1, {
-          source: sourceLabel(source),
-          outcome: 'unknown_source',
-        });
-        attachedSessionScanDuration.record(performance.now() - startedAt, {
-          source: sourceLabel(source),
-          outcome: 'unknown_source',
-        });
+    const startedAt = performance.now();
+    const sources = this.options.sources;
+    const spentBudget = () =>
+      Boolean(
+        background &&
+          performance.now() - startedAt >= BACKGROUND_WORK_BUDGET_MS,
+      );
+    for (let index = 0; index < sources.length; index++) {
+      if (background?.aborted) break;
+      if (index > 0 && spentBudget()) return true;
+      const sourceIndex = background ? this.nextBackgroundSource : index;
+      const source = sources[sourceIndex]!;
+      if (background)
+        this.nextBackgroundSource = (sourceIndex + 1) % sources.length;
+      if (
+        !background ||
+        this.pendingDiscovery.get(source)?.recentOnly !== recentOnly
+      ) {
+        this.pendingDiscovery.delete(source);
+      }
+      const pending = this.pendingDiscovery.get(source) ?? {
+        sessions: (await this.discover(source)).sessions.filter(
+          ({ modifiedAtMs }) =>
+            !recentOnly ||
+            modifiedAtMs === undefined ||
+            !Number.isFinite(modifiedAtMs) ||
+            (modifiedAtMs >= now - BACKGROUND_RECENCY_MS &&
+              modifiedAtMs <= now + ATTACHED_SOURCE_CLOCK_SKEW_MS),
+        ),
+        next: 0,
+        recentOnly,
+      };
+      if (background?.aborted) break;
+      const end = background
+        ? pending.next + BACKGROUND_SESSIONS_PER_SOURCE
+        : pending.sessions.length;
+      const batch = pending.sessions.slice(pending.next, end);
+      if (batch.length === 0) {
+        this.pendingDiscovery.delete(source);
         continue;
       }
-      attachedSessionDiscovery.add(1, {
-        source: sourceLabel(source),
-        outcome: discovered.outcome,
-      });
-      attachedSessionScanDuration.record(performance.now() - startedAt, {
-        source: sourceLabel(source),
-        outcome: discovered.outcome,
-      });
-      await prepareSessionFolders(
-        paths,
-        repositories,
-        discovered.sessions,
-        projectRoots,
-      );
+      context ??= await this.preparePollProjects();
+      const { projectRoots, paths, repositories, projectSlugs } = context;
+      await prepareSessionFolders(paths, repositories, batch, projectRoots);
       let followedSessions = 0;
+      let position = pending.next;
       let lastFollowYieldAt = performance.now();
-      for (const observed of discovered.sessions) {
+      for (const observed of batch) {
+        if (background?.aborted || (position > pending.next && spentBudget()))
+          break;
+        position++;
         if (
           observed.provider !== source.provider ||
           (observed.affinity !== undefined &&
@@ -541,7 +697,7 @@ export class AttachedSessionFollowService {
             continue;
           onlyWithStoredProject = true;
         }
-        await this.follow(
+        const changed = await this.follow(
           source,
           session,
           attribution,
@@ -549,6 +705,7 @@ export class AttachedSessionFollowService {
           projectSlugs,
           onlyWithStoredProject,
         );
+        progressed ||= changed === true;
         followedSessions += 1;
         // `follow()` performs synchronous EventStore reads and writes. Its
         // source calls can resolve immediately, which otherwise chains every
@@ -562,7 +719,416 @@ export class AttachedSessionFollowService {
           lastFollowYieldAt = performance.now();
         }
       }
+      if (!background?.aborted && position < pending.sessions.length) {
+        this.pendingDiscovery.set(source, {
+          sessions: pending.sessions,
+          next: position,
+          recentOnly,
+        });
+        progressed = true;
+      } else {
+        this.pendingDiscovery.delete(source);
+      }
     }
+    return progressed;
+  }
+
+  listArchive(
+    input: { offset: number; search: string; provider?: string },
+    assertCurrent: () => void,
+  ): Promise<ExternalSessionHistoryPage> {
+    return this.withArchive(assertCurrent, async () => {
+      const snapshot = new PollSessionSnapshot(
+        this.options.eventStore.readSessions(),
+      );
+      const matches: ExternalSessionHistoryEntry[] = [];
+      let nextSourceOffset: number | undefined;
+      const sources = input.provider
+        ? this.options.sources.filter(
+            ({ provider }) => provider === input.provider,
+          )
+        : this.options.sources;
+      const pagedSource =
+        input.provider && sources.length === 1 && !sources[0]?.metadataOnly;
+      const searchTerm = input.search.toLowerCase();
+      const catalogScope = JSON.stringify([input.provider, searchTerm]);
+      const recent = this.recentArchiveCatalog;
+      if (
+        !pagedSource &&
+        input.offset > 0 &&
+        recent?.scope === catalogScope &&
+        Date.now() - recent.at < DISCOVERY_SNAPSHOT_MS
+      ) {
+        return recentArchivePage(recent.entries, recent.partial, input.offset);
+      }
+
+      const reservations = this.adoptionLedger.reservations();
+      let partial = false;
+      for (const source of sources) {
+        const found = pagedSource
+          ? await this.archiveSourcePage(source, input.offset)
+          : await this.archiveDiscovery(source);
+        nextSourceOffset = found.nextOffset;
+        assertCurrent();
+        partial ||= found.outcome !== 'ok' && found.outcome !== 'missing_root';
+        for (const descriptor of found.sessions) {
+          if (!this.canBrowse(source, descriptor, snapshot, reservations))
+            continue;
+          const search =
+            `${descriptor.cwd} ${descriptor.provider} ${descriptor.sessionId}`.toLowerCase();
+          if (!search.includes(searchTerm)) continue;
+          const id = archiveId(source, descriptor);
+          if (pagedSource) {
+            this.archiveLocations.delete(id);
+            this.archiveLocations.set(id, { source, offset: input.offset });
+            if (this.archiveLocations.size > ARCHIVE_SELECTION_LIMIT) {
+              const oldest = this.archiveLocations.keys().next().value;
+              if (oldest) this.archiveLocations.delete(oldest);
+            }
+          }
+          matches.push({
+            id,
+            provider: descriptor.provider,
+            cwd: descriptor.cwd,
+            updatedAt:
+              Number.isFinite(descriptor.modifiedAtMs) &&
+              Math.abs(descriptor.modifiedAtMs!) <= 8.64e15
+                ? new Date(descriptor.modifiedAtMs!).toISOString()
+                : descriptor.createdAt,
+            hasTranscript: !source.metadataOnly,
+          });
+        }
+        await yieldEventLoop();
+      }
+      assertCurrent();
+      matches.sort(
+        (a, b) =>
+          b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id),
+      );
+      if (pagedSource) {
+        if (
+          nextSourceOffset !== undefined &&
+          nextSourceOffset > ARCHIVE_MAX_OFFSET
+        ) {
+          partial = true;
+          nextSourceOffset = undefined;
+        }
+        return {
+          sessions: matches,
+          nextOffset: nextSourceOffset ?? null,
+          partial,
+        };
+      }
+      this.recentArchiveCatalog = {
+        scope: catalogScope,
+        entries: matches,
+        partial,
+        at: Date.now(),
+      };
+      return recentArchivePage(matches, partial, input.offset);
+    });
+  }
+
+  readArchive(
+    id: string,
+    cursorToken: string | undefined,
+    fromStart: boolean,
+    assertCurrent: () => void,
+  ): Promise<ExternalSessionTranscriptPage> {
+    return this.withArchive(assertCurrent, async () => {
+      const { source, descriptor } = await this.archiveSession(
+        id,
+        assertCurrent,
+      );
+      const previous = cursorToken
+        ? this.archiveCursors.get(cursorToken)
+        : undefined;
+      if (
+        cursorToken &&
+        (!previous || previous.id !== id || previous.expires < Date.now())
+      ) {
+        throw new ExternalSessionHistoryUnavailable(
+          409,
+          'Reopen the conversation to refresh its transcript.',
+        );
+      }
+      const cursor =
+        previous?.cursor ??
+        (source.initialCursor
+          ? fromStart
+            ? { offset: 0 }
+            : await source.initialCursor(descriptor)
+          : 0);
+      if (cursor === undefined) {
+        throw new ExternalSessionHistoryUnavailable(
+          409,
+          'This transcript changed. Reopen the conversation.',
+        );
+      }
+      const startsNearEnd =
+        previous?.startsNearEnd ??
+        (typeof cursor !== 'number' && cursor.offset > 0);
+      assertCurrent();
+      const read = await source.read(descriptor, cursor);
+      assertCurrent();
+      if (
+        read.outcome === 'unknown_source' ||
+        read.outcome === 'rejected_candidate' ||
+        !validAttachedSessionCursor(read.cursor) ||
+        read.events.some(
+          (event) =>
+            event.provider !== source.provider ||
+            event.threadId !== descriptor.threadId,
+        )
+      ) {
+        throw new ExternalSessionHistoryUnavailable(
+          409,
+          'This transcript changed. Reopen the conversation.',
+        );
+      }
+      let nextCursor: string | null = null;
+      if (read.hasMore && !sameBoundedPersistedValues(cursor, read.cursor)) {
+        nextCursor = randomUUID();
+        this.archiveCursors.set(nextCursor, {
+          id,
+          cursor: read.cursor,
+          startsNearEnd,
+          expires: Date.now() + 300_000,
+        });
+        if (this.archiveCursors.size > ARCHIVE_READ_CURSORS) {
+          const oldest = this.archiveCursors.keys().next().value;
+          if (oldest) this.archiveCursors.delete(oldest);
+        }
+      }
+      return { ...archiveText(read.events), nextCursor, startsNearEnd };
+    });
+  }
+
+  async importArchive(
+    id: string,
+    operationId: string,
+    assertAdmission: () => void,
+    requestSignal: AbortSignal,
+  ): Promise<ExternalSessionHistoryImport> {
+    const controller = new AbortController();
+    const signal = AbortSignal.any([requestSignal, controller.signal]);
+    const assertCurrent = () => {
+      assertAdmission();
+      if (
+        (this.canceledArchiveImports.get(`${id}:${operationId}`) ?? 0) >
+        Date.now()
+      ) {
+        throw new ExternalSessionHistoryUnavailable(409, 'Import canceled.');
+      }
+      if (signal.aborted) {
+        throw new ExternalSessionHistoryUnavailable(409, 'Import canceled.');
+      }
+    };
+    const work = this.withArchive(assertCurrent, async () => {
+      const { source, descriptor, snapshot } = await this.archiveSession(
+        id,
+        assertCurrent,
+      );
+      const { projectRoots, paths, repositories, projectSlugs } =
+        await this.preparePollProjects();
+      assertCurrent();
+      await prepareSessionFolders(
+        paths,
+        repositories,
+        [descriptor],
+        projectRoots,
+      );
+      const attribution = await resolveAttachedSessionProject(
+        descriptor.cwd,
+        projectRoots,
+        repositories,
+        paths.canonical,
+      );
+      assertCurrent();
+      let more = false;
+      for (let page = 0; page < ARCHIVE_IMPORT_PAGES_PER_REQUEST; page++) {
+        more =
+          (await this.follow(
+            source,
+            descriptor,
+            attribution,
+            snapshot,
+            projectSlugs,
+            false,
+            { assertCurrent, signal },
+          )) === true;
+        if (!more) break;
+        await yieldEventLoop();
+      }
+      assertCurrent();
+      const persisted = this.options.eventStore.readSessionByThread(
+        descriptor.threadId,
+      );
+      if (
+        persisted?.controlMode !== 'read-only-attached' ||
+        !sameAttachedSourceSubject(persisted, source, descriptor)
+      ) {
+        throw new ExternalSessionHistoryUnavailable(
+          409,
+          'This conversation could not be saved.',
+        );
+      }
+      return { threadId: persisted.threadId, more };
+    });
+    const operation = { id, operationId, controller, work };
+    this.activeArchiveImport = operation;
+    try {
+      return await work;
+    } finally {
+      if (this.activeArchiveImport === operation)
+        this.activeArchiveImport = undefined;
+    }
+  }
+
+  async cancelArchiveImport(id: string, operationId: string): Promise<void> {
+    const key = `${id}:${operationId}`;
+    this.canceledArchiveImports.delete(key);
+    this.canceledArchiveImports.set(key, Date.now() + 300_000);
+    if (this.canceledArchiveImports.size > ARCHIVE_READ_CURSORS) {
+      const oldest = this.canceledArchiveImports.keys().next().value;
+      if (oldest) this.canceledArchiveImports.delete(oldest);
+    }
+    const active = this.activeArchiveImport;
+    if (active?.id === id && active.operationId === operationId) {
+      active.controller.abort(
+        new ExternalSessionHistoryUnavailable(409, 'Import canceled.'),
+      );
+      await active.work.catch(() => undefined);
+    }
+  }
+
+  private withArchive<T>(
+    assertCurrent: () => void,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    assertCurrent();
+    if (this.stopped)
+      throw new ExternalSessionHistoryUnavailable(
+        409,
+        'Station is shutting down.',
+      );
+    if (this.archiveWork) {
+      throw new ExternalSessionHistoryUnavailable(
+        409,
+        'Another conversation request is in progress. Try again.',
+        'external_history_busy',
+      );
+    }
+    const activePoll = this.activePoll;
+    const work = Promise.resolve()
+      .then(async () => {
+        // Discovery replaces each provider's handle registry.
+        await activePoll?.catch(() => undefined);
+        assertCurrent();
+        return operation();
+      })
+      .finally(() => {
+        if (this.archiveWork === work) this.archiveWork = undefined;
+      });
+    this.archiveWork = work;
+    return work;
+  }
+
+  private async archiveDiscovery(
+    source: AttachedSessionSource,
+  ): Promise<DiscoverySnapshot> {
+    const cached = this.discoveries.get(source);
+    if (cached && Date.now() - cached.at < DISCOVERY_SNAPSHOT_MS) return cached;
+    this.pendingDiscovery.delete(source);
+    return this.discover(source);
+  }
+
+  private async archiveSourcePage(
+    source: AttachedSessionSource,
+    offset: number,
+  ) {
+    const key = `${source.kind}:${offset}`;
+    const cached = this.archivePages.get(key);
+    if (cached && Date.now() - cached.at < DISCOVERY_SNAPSHOT_MS) return cached;
+    this.pendingDiscovery.delete(source);
+    const result = await this.discover(source, {
+      offset,
+      limit: ARCHIVE_PAGE_SIZE,
+    });
+    this.archivePages.delete(key);
+    this.archivePages.set(key, result);
+    if (this.archivePages.size > ARCHIVE_PAGE_CACHE_LIMIT) {
+      const oldest = this.archivePages.keys().next().value;
+      if (oldest) this.archivePages.delete(oldest);
+    }
+    return result;
+  }
+
+  private canBrowse(
+    source: AttachedSessionSource,
+    descriptor: AttachedSessionDescriptor,
+    snapshot: PollSessionSnapshot,
+    reservations?: ReturnType<AdoptionLedger['reservations']>,
+  ): boolean {
+    const stored = snapshot.get(descriptor.threadId);
+    return (
+      descriptor.provider === source.provider &&
+      (descriptor.affinity === undefined ||
+        isSessionSourceAffinity(descriptor.affinity)) &&
+      (!stored ||
+        (stored.controlMode === 'read-only-attached' &&
+          !stored.tenantExecutionContext)) &&
+      !attachedSessionAffinityConflicts(stored, descriptor) &&
+      !this.isStationOwnedProviderCursor(
+        source,
+        descriptor,
+        snapshot,
+        reservations,
+      )
+    );
+  }
+
+  private async archiveSession(id: string, assertCurrent: () => void) {
+    const snapshot = new PollSessionSnapshot(
+      this.options.eventStore.readSessions(),
+    );
+    const location = this.archiveLocations.get(id);
+    if (location) {
+      const { source, offset } = location;
+      const key = `${source.kind}:${offset}`;
+      const found =
+        this.registeredArchivePages.get(source) === offset
+          ? this.archivePages.get(key)
+          : undefined;
+      if (!found) this.archivePages.delete(key);
+      const page = found ?? (await this.archiveSourcePage(source, offset));
+      assertCurrent();
+      const descriptor = page.sessions.find(
+        (item) => archiveId(source, item) === id,
+      );
+      if (descriptor && this.canBrowse(source, descriptor, snapshot)) {
+        return { source, descriptor, snapshot };
+      }
+    }
+    for (const source of this.options.sources) {
+      assertCurrent();
+      if (source.metadataOnly) continue;
+      const cached = this.discoveries.get(source);
+      if (!cached?.sessions.some((item) => archiveId(source, item) === id))
+        continue;
+      const found = await this.archiveDiscovery(source);
+      const descriptor = found.sessions.find(
+        (item) => archiveId(source, item) === id,
+      );
+      assertCurrent();
+      if (descriptor && this.canBrowse(source, descriptor, snapshot)) {
+        return { source, descriptor, snapshot };
+      }
+    }
+    throw new ExternalSessionHistoryUnavailable(
+      404,
+      'Reopen third-party history to refresh this conversation.',
+    );
   }
 
   private async follow(
@@ -572,7 +1138,9 @@ export class AttachedSessionFollowService {
     snapshot: PollSessionSnapshot,
     projectSlugs: ReadonlySet<string>,
     onlyWithStoredProject = false,
-  ): Promise<void> {
+    manual?: { assertCurrent: () => void; signal: AbortSignal },
+  ): Promise<boolean | undefined> {
+    manual?.assertCurrent();
     const persisted = snapshot.get(descriptor.threadId);
     if (persisted && persisted.controlMode !== 'read-only-attached') {
       this.rejectFollow(source, descriptor);
@@ -600,6 +1168,11 @@ export class AttachedSessionFollowService {
       return;
     }
     const state = await this.followState(source, descriptor, snapshot);
+    manual?.assertCurrent();
+    const stillAdmitted = () => {
+      manual?.assertCurrent();
+      return this.admitAttachedSubject(source, descriptor, persisted);
+    };
     // archive#1997: one persisted-sessions snapshot for both the ownership
     // check and the alias lookup. Every scan is synchronous sqlite + JSON
     // parsing on the main thread, so the snapshot is passed into followState
@@ -635,7 +1208,14 @@ export class AttachedSessionFollowService {
     )
       return;
     let publicationAttempted = false;
-    if (state.storedAttribution !== fingerprint && !keepsStoredAttribution) {
+    if (
+      state.storedAttribution !== fingerprint &&
+      !keepsStoredAttribution &&
+      !(
+        attribution.state === 'unattributed' &&
+        state.unresolvedAttributionAnchor
+      )
+    ) {
       let envelopeWrites = 0;
       let lastEnvelopeYieldAt = performance.now();
       for (const event of attachedSessionEnvelope(
@@ -643,15 +1223,27 @@ export class AttachedSessionFollowService {
         attribution,
         fingerprint,
         state.latestEventAt,
-        state.storedAttribution,
+        state.storedAttribution ?? state.unresolvedAttributionAnchor,
       )) {
         if (!state.seen.has(event.eventId)) {
-          if (!this.admitAttachedSubject(source, descriptor, persisted)) {
+          if (!stillAdmitted()) {
             this.rejectFollow(source, descriptor);
             return;
           }
           publicationAttempted = true;
-          await this.appendIngestibleEvent(state, event);
+          const committed = await this.appendIngestibleEvent(
+            state,
+            event,
+            stillAdmitted,
+          );
+          if (committed === 'stale') {
+            this.rejectFollow(source, descriptor);
+            return;
+          }
+          if (committed && event.method === 'session.configured') {
+            state.storedAttribution = fingerprint;
+            state.unresolvedAttributionAnchor = undefined;
+          }
           envelopeWrites += 1;
           if (
             envelopeWrites % APPEND_YIELD_EVERY === 0 ||
@@ -662,7 +1254,6 @@ export class AttachedSessionFollowService {
           }
         }
       }
-      state.storedAttribution = fingerprint;
     }
     if (!state.ownerRecorded) {
       // Every envelope event carries the owner, so a fresh envelope usually
@@ -671,7 +1262,7 @@ export class AttachedSessionFollowService {
         this.options.eventStore.findSessionOwnerUserId(descriptor.threadId) ===
         undefined
       ) {
-        if (!this.admitAttachedSubject(source, descriptor, persisted)) {
+        if (!stillAdmitted()) {
           this.rejectFollow(source, descriptor);
           return;
         }
@@ -680,17 +1271,21 @@ export class AttachedSessionFollowService {
           descriptor,
           state.latestEventAt,
         );
-        await this.appendAndPublish(record, (error) => {
-          // Retried every poll (below), but a deterministic refusal is
-          // logged once per thread, not once per poll.
-          if (!state.ownerRecordRefusalLogged) {
-            state.ownerRecordRefusalLogged = true;
-            this.options.logger?.warn(
-              'Attached-session owner record cannot be persisted; the session stays unreadable until it can',
-              { threadId: record.threadId, error: error.message },
-            );
-          }
-        });
+        await this.appendAndPublish(
+          record,
+          (error) => {
+            // Retried every poll (below), but a deterministic refusal is
+            // logged once per thread, not once per poll.
+            if (!state.ownerRecordRefusalLogged) {
+              state.ownerRecordRefusalLogged = true;
+              this.options.logger?.warn(
+                'Attached-session owner record cannot be persisted; the session stays unreadable until it can',
+                { threadId: record.threadId, error: error.message },
+              );
+            }
+          },
+          manual ? stillAdmitted : undefined,
+        );
       }
       // Marked only once the log actually holds an owner: a write the store
       // refused (a skipped ingress error) is retried on the next poll.
@@ -715,44 +1310,47 @@ export class AttachedSessionFollowService {
       source.initialCursor &&
       (reusableCursor === undefined || reusableCursor === 0)
     ) {
-      const anchor = await source.initialCursor(descriptor);
-      if (anchor === undefined) return;
-      if (!validAttachedSessionCursor(anchor)) {
-        throw new Error(
-          'Attached session source returned an invalid initial cursor.',
-        );
-      }
-      // #3708: no observable page may depend on a moving cold-read window.
-      // A legacy row gains affinity only after a successful read. Its migration
-      // anchor stays in memory until then; other rows pin it before read().
-      const migratingLegacyAffinity =
-        persisted?.controlMode === 'read-only-attached' &&
-        !persisted.attachedSource?.affinity &&
-        descriptor.affinity !== undefined;
-      if (!migratingLegacyAffinity) {
-        if (
-          !(await this.persistAttachedSession(
-            source,
-            descriptor,
-            snapshot,
-            anchor,
-          ))
-        ) {
-          this.rejectFollow(source, descriptor);
-          return;
+      if (manual) reusableCursor = { offset: 0 };
+      else {
+        const anchor = await source.initialCursor(descriptor);
+        if (anchor === undefined) return;
+        if (!validAttachedSessionCursor(anchor)) {
+          throw new Error(
+            'Attached session source returned an invalid initial cursor.',
+          );
         }
-        anchorPersisted = true;
+        // #3708: no observable page may depend on a moving cold-read window.
+        // A legacy row gains affinity only after a successful read. Its migration
+        // anchor stays in memory until then; other rows pin it before read().
+        const migratingLegacyAffinity =
+          persisted?.controlMode === 'read-only-attached' &&
+          !persisted.attachedSource?.affinity &&
+          descriptor.affinity !== undefined;
+        if (!migratingLegacyAffinity) {
+          if (
+            !(await this.persistAttachedSession(
+              source,
+              descriptor,
+              snapshot,
+              anchor,
+            ))
+          ) {
+            this.rejectFollow(source, descriptor);
+            return;
+          }
+          anchorPersisted = true;
+        }
+        reusableCursor = anchor;
+        state.cursors.set(sourceCursorKey(source), {
+          provider: source.provider,
+          sourceKind: source.kind,
+          sourceHandle: descriptor.sourceHandle,
+          ...(descriptor.affinity
+            ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
+            : {}),
+          cursor: anchor,
+        });
       }
-      reusableCursor = anchor;
-      state.cursors.set(sourceCursorKey(source), {
-        provider: source.provider,
-        sourceKind: source.kind,
-        sourceHandle: descriptor.sourceHandle,
-        ...(descriptor.affinity
-          ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
-          : {}),
-        cursor: anchor,
-      });
     }
     let read: AttachedSessionReadResult;
     try {
@@ -772,6 +1370,11 @@ export class AttachedSessionFollowService {
         );
       }
     } catch {
+      if (manual)
+        throw new ExternalSessionHistoryUnavailable(
+          409,
+          'The transcript could not be read. Try the import again.',
+        );
       // Preserve an already durable cursor even when this observation fails.
       // A later successful poll can continue without replaying the source.
       // In particular, do not grant a legacy attachment a newly discovered
@@ -790,6 +1393,17 @@ export class AttachedSessionFollowService {
       });
       return;
     }
+    manual?.assertCurrent();
+    if (
+      manual &&
+      (read.outcome === 'unknown_source' ||
+        read.outcome === 'rejected_candidate')
+    ) {
+      throw new ExternalSessionHistoryUnavailable(
+        409,
+        'This transcript changed. Reopen the conversation.',
+      );
+    }
     const persistedEventIds = this.options.eventStore.existingEventIds(
       read.events.map((event) => event.eventId),
     );
@@ -806,6 +1420,8 @@ export class AttachedSessionFollowService {
         snapshot,
         reusableCursor,
         hasNewEvents,
+        undefined,
+        manual?.assertCurrent,
       ))
     ) {
       this.rejectFollow(source, descriptor);
@@ -836,11 +1452,15 @@ export class AttachedSessionFollowService {
           descriptor.threadId,
         );
     }
-    const attachmentUnchanged = () =>
-      attachmentFingerprint !== undefined &&
-      this.options.eventStore.sessionAttachmentFingerprint(
-        descriptor.threadId,
-      ) === attachmentFingerprint;
+    const attachmentUnchanged = () => {
+      manual?.assertCurrent();
+      return (
+        attachmentFingerprint !== undefined &&
+        this.options.eventStore.sessionAttachmentFingerprint(
+          descriptor.threadId,
+        ) === attachmentFingerprint
+      );
+    };
     let appendOperations = 0;
     let lastAppendYieldAt = performance.now();
     for (const event of read.events) {
@@ -851,6 +1471,7 @@ export class AttachedSessionFollowService {
       ) {
         continue;
       }
+      manual?.signal.throwIfAborted();
       const appended = await this.appendIngestibleEvent(
         state,
         event,
@@ -880,12 +1501,16 @@ export class AttachedSessionFollowService {
         lastAppendYieldAt = performance.now();
       }
     }
+    manual?.assertCurrent();
     if (
       !(await this.persistAttachedSession(
         source,
         descriptor,
         snapshot,
         read.cursor,
+        false,
+        read.sourceWriteAt,
+        manual?.assertCurrent,
       ))
     ) {
       this.rejectFollow(source, descriptor);
@@ -900,6 +1525,18 @@ export class AttachedSessionFollowService {
         : {}),
       cursor: read.cursor,
     });
+    if (manual)
+      return (
+        read.hasMore && !sameBoundedPersistedValues(reusableCursor, read.cursor)
+      );
+    return (
+      !persisted ||
+      publicationAttempted ||
+      hasNewEvents ||
+      !sameBoundedPersistedValues(reusableCursor, read.cursor) ||
+      persisted.attachedSource?.lastWriteAt !==
+        snapshot.get(descriptor.threadId)?.attachedSource?.lastWriteAt
+    );
   }
 
   private async followState(
@@ -983,6 +1620,7 @@ export class AttachedSessionFollowService {
     source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
     snapshot: PollSessionSnapshot,
+    reservations = this.adoptionLedger.reservations(),
   ): boolean {
     const adapter = this.options.adapterRegistry?.get(descriptor.provider);
     const matchesDescriptor = (resumeCursor: unknown) =>
@@ -992,13 +1630,11 @@ export class AttachedSessionFollowService {
         descriptor.affinity,
       );
     return (
-      this.adoptionLedger
-        .reservations()
-        .some(
-          (reservation) =>
-            reservation.provider === descriptor.provider &&
-            matchesDescriptor(reservation.providerResumeCursor),
-        ) ||
+      reservations.some(
+        (reservation) =>
+          reservation.provider === descriptor.provider &&
+          matchesDescriptor(reservation.providerResumeCursor),
+      ) ||
       snapshot.ownsNativeSession(descriptor, adapter) ||
       snapshot.ownedThroughSource(source, descriptor)
     );
@@ -1041,6 +1677,8 @@ export class AttachedSessionFollowService {
     snapshot: PollSessionSnapshot,
     cursor?: AttachedSessionCursor,
     hasNewEvents = false,
+    sourceWriteAt?: string,
+    assertCurrent?: () => void,
   ): Promise<boolean> {
     const completedBoundary =
       source.continuationBoundary === 'completed-turn'
@@ -1050,17 +1688,29 @@ export class AttachedSessionFollowService {
             descriptor.threadId,
           )
         : undefined;
-    const attached = {
-      kind: source.kind,
-      ...(completedBoundary ? { completedBoundary } : {}),
-      externalSessionId: descriptor.sessionId,
-      ...(descriptor.affinity
-        ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
-        : {}),
+    const observedAt = Date.now();
+    const attachedFor = (previous: ProviderSession | undefined) => {
+      const lastWriteAt = nextSourceWriteAt(
+        sameAttachedSourceSubject(previous, source, descriptor)
+          ? previous?.attachedSource?.lastWriteAt
+          : undefined,
+        sourceWriteAt,
+        observedAt,
+      );
+      return {
+        kind: source.kind,
+        ...(completedBoundary ? { completedBoundary } : {}),
+        externalSessionId: descriptor.sessionId,
+        ...(descriptor.affinity
+          ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
+          : {}),
+        ...(lastWriteAt ? { lastWriteAt } : {}),
+      };
     };
     const candidateFor = (
       previous: ProviderSession | undefined,
     ): ProviderSession => {
+      const attached = attachedFor(previous);
       const sameSourceSubject = sameAttachedSourceSubject(
         previous,
         source,
@@ -1121,6 +1771,7 @@ export class AttachedSessionFollowService {
     const outcome = await this.options.eventStore.upsertSessionInBackgroundIf(
       descriptor.threadId,
       () => {
+        assertCurrent?.();
         const current = this.options.eventStore.readSessionByThread(
           descriptor.threadId,
         );
@@ -1172,6 +1823,22 @@ export class AttachedSessionFollowService {
     this.staleWriteLogged.delete(descriptor.threadId);
     if (outcome === true) return true;
     snapshot.set(outcome);
+    if (
+      !sameBoundedPersistedValues(
+        observed?.attachedSource?.completedBoundary,
+        outcome.attachedSource?.completedBoundary,
+      )
+    ) {
+      // The terminal transcript event can reach readers before this commit.
+      // Wake the authorized summary reader once the completed boundary lands.
+      this.options.eventBus.emit(
+        SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
+        {
+          threadId: descriptor.threadId,
+          reason: ATTACHED_SESSION_CONTINUATION_REFRESH,
+        },
+      );
+    }
     return true;
   }
 
@@ -1476,6 +2143,101 @@ function attachedSessionPersistenceFields(session: ProviderSession): unknown[] {
     session.tenantExecutionContext,
     session.createdAt,
   ];
+}
+
+/** A source write within this of the recorded one is not worth a row write. */
+const SOURCE_WRITE_STEP_MS = 30_000;
+
+function recentArchivePage(
+  entries: ExternalSessionHistoryEntry[],
+  partial: boolean,
+  offset: number,
+): ExternalSessionHistoryPage {
+  const sessions = entries.slice(offset, offset + ARCHIVE_PAGE_SIZE);
+  const end = offset + sessions.length;
+  return { sessions, nextOffset: end < entries.length ? end : null, partial };
+}
+
+function archiveId(
+  source: AttachedSessionSource,
+  descriptor: AttachedSessionDescriptor,
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        source.kind,
+        descriptor.threadId,
+        descriptor.sourceHandle,
+      ]),
+    )
+    .digest('hex');
+}
+
+function archiveText(
+  events: readonly CanonicalRuntimeEvent[],
+): Pick<ExternalSessionTranscriptPage, 'messages' | 'truncated'> {
+  const messages: ExternalSessionTranscriptPage['messages'] = [];
+  let previousItem: string | undefined;
+  for (const event of events) {
+    if (
+      event.method === 'turn.started' &&
+      typeof event.prompt === 'string' &&
+      event.prompt
+    ) {
+      messages.push({ id: event.eventId, role: 'user', text: event.prompt });
+      previousItem = undefined;
+    } else if (event.method === 'content.text-delta' && event.delta) {
+      const text = event.delta;
+      const last = messages.at(-1);
+      if (event.itemId === previousItem && last?.role === 'assistant')
+        last.text += text;
+      else messages.push({ id: event.eventId, role: 'assistant', text });
+      previousItem = event.itemId;
+    }
+  }
+  let remaining = ARCHIVE_PREVIEW_MAX_TEXT_BYTES;
+  let truncated = messages.length > ARCHIVE_PREVIEW_MAX_MESSAGES;
+  const preview: typeof messages = [];
+  for (const message of messages.slice(0, ARCHIVE_PREVIEW_MAX_MESSAGES)) {
+    if (remaining < 8) {
+      truncated = true;
+      break;
+    }
+    const text = truncateJsonString(
+      message.text,
+      Math.min(remaining, ARCHIVE_PREVIEW_MAX_MESSAGE_BYTES),
+    );
+    remaining -= Buffer.byteLength(JSON.stringify(text.value));
+    truncated ||= text.omittedBytes > 0;
+    preview.push({ ...message, text: text.value });
+  }
+  return { messages: preview, ...(truncated && { truncated }) };
+}
+
+/**
+ * The attachment's recorded last source write after this read: the source's
+ * report when it is at least {@link SOURCE_WRITE_STEP_MS} newer than the
+ * recorded one, else the recorded one. A report dated past the read (beyond
+ * the clock-skew allowance) is not evidence and is not recorded.
+ */
+function nextSourceWriteAt(
+  recorded: string | undefined,
+  reported: string | undefined,
+  observedAt: number,
+): string | undefined {
+  const reportedMs = reported === undefined ? NaN : Date.parse(reported);
+  if (
+    !Number.isFinite(reportedMs) ||
+    reportedMs > observedAt + ATTACHED_SOURCE_CLOCK_SKEW_MS
+  )
+    return recorded;
+  const recordedMs = recorded === undefined ? NaN : Date.parse(recorded);
+  if (
+    Number.isFinite(recordedMs) &&
+    reportedMs - recordedMs < SOURCE_WRITE_STEP_MS
+  )
+    return recorded;
+  return new Date(reportedMs).toISOString();
 }
 
 function sameAttachedSessionPersistence(
@@ -2004,8 +2766,8 @@ function attachedSessionEnvelope(
   attribution: AttachedProjectAttribution,
   fingerprint: string,
   latestEventAt: string | undefined,
-  /** The attribution the persisted log already expresses — see {@link envelopeEventId}. */
-  previousFingerprint: string | undefined,
+  /** The last known attribution or the observed configuration anchoring recovery. */
+  previousAttributionKey: string | undefined,
 ): CanonicalRuntimeEvent[] {
   const base = {
     provider: session.provider,
@@ -2038,7 +2800,7 @@ function attachedSessionEnvelope(
       eventId: envelopeEventId(
         session.sessionId,
         'started',
-        previousFingerprint,
+        previousAttributionKey,
         fingerprint,
       ),
       method: 'session.started',
@@ -2056,7 +2818,7 @@ function attachedSessionEnvelope(
       eventId: envelopeEventId(
         session.sessionId,
         'configured',
-        previousFingerprint,
+        previousAttributionKey,
         fingerprint,
       ),
       method: 'session.configured',
@@ -2113,17 +2875,20 @@ function attachedSessionOwnerRecord(
  * archive#3495: it used to also COUNT every attributed configured event on the
  * thread, which is why it needed every one of them. The count is gone (see
  * {@link envelopeEventId}), so this stops at the first match and its input is
- * a bounded window.
+ * a bounded window. A full window with no claim leaves the predecessor
+ * unknown. Its newest durable row anchors a recovery write without claiming
+ * that the session never had an attribution.
  */
 function persistedEnvelopeFacts(
   /**
    * `session.configured` events only, newest-first and BOUNDED — matching
    * {@link EventStore.listRecentConfiguredEventsByThread}.
    */
-  configuredEventsNewestFirst: { payload: unknown }[],
+  configuredEventsNewestFirst: { id: string; payload: unknown }[],
   extras: { latestEventAt?: string } = {},
 ): {
   storedAttribution?: string;
+  unresolvedAttributionAnchor?: string;
   latestEventAt?: string;
 } {
   let storedAttribution: string | undefined;
@@ -2137,10 +2902,14 @@ function persistedEnvelopeFacts(
     storedAttribution = stored;
     break;
   }
-  return {
-    ...(storedAttribution ? { storedAttribution } : {}),
-    ...(extras.latestEventAt ? { latestEventAt: extras.latestEventAt } : {}),
-  };
+  const newestConfiguration = configuredEventsNewestFirst[0];
+  const unresolvedAttributionAnchor =
+    !storedAttribution &&
+    newestConfiguration &&
+    configuredEventsNewestFirst.length === ATTRIBUTION_LOOKBACK_EVENTS
+      ? `unresolved-configured:${JSON.stringify(newestConfiguration.id)}`
+      : undefined;
+  return { storedAttribution, unresolvedAttributionAnchor, ...extras };
 }
 
 /**
@@ -2306,6 +3075,9 @@ function attributionFingerprint(
  * transition, so a cycle over k attributions costs at most k² pairs however
  * long it runs, and a steady attribution still costs nothing (that one is
  * `follow()`'s guard, not this id).
+ * If the bounded configuration window supplies no prior claim, a distinct
+ * recovery key includes its newest observed configuration ID. A repeated
+ * recovery against the same window and destination addresses the same pair.
  *
  * **Deliberately traded away, and the trade is PERMANENT for a flapping
  * thread, not a delay:** a transition this thread has already made — same
@@ -2350,12 +3122,12 @@ function attributionFingerprint(
 function envelopeEventId(
   sessionId: string,
   kind: string,
-  previousFingerprint: string | undefined,
+  previousAttributionKey: string | undefined,
   fingerprint: string,
 ): string {
   return `attached:session:${createHash('sha256')
     .update(
-      `${sessionId}\u0000${kind}\u0000${previousFingerprint ?? ''}\u0000${fingerprint}`,
+      `${sessionId}\u0000${kind}\u0000${previousAttributionKey ?? ''}\u0000${fingerprint}`,
     )
     .digest('hex')}`;
 }

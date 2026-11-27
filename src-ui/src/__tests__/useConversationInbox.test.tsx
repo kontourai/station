@@ -15,13 +15,19 @@ import {
   waitFor,
 } from '@testing-library/react';
 
+import { useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ConversationInboxMessages } from '../components/chat/ConversationInboxMessages';
 import type { PendingMessageMetadata } from '../contexts/active-chats-state';
 import {
   INBOX_ACTIVE_POLL_MS,
   INBOX_IDLE_POLL_MS,
+  useConversationInbox,
 } from '../hooks/useConversationInbox';
+import {
+  inboxQueryKey,
+  useConversationInboxSnapshot,
+} from '../hooks/useConversationInboxSnapshot';
 import { shouldPersistQuery } from '../lib/queryPersistence';
 
 function expand() {
@@ -214,7 +220,11 @@ test('shows display notes, discloses a lost read and recovers without counting n
   expect(screen.queryByText(/pending/)).toBeNull();
   fetcher.mockRejectedValue(new Error('offline'));
   await act(() => client.refetchQueries({ queryKey: ['conversation-inbox'] }));
-  expect(await screen.findByText('Couldn’t load inbox entries.')).toBeTruthy();
+  expect(
+    await screen.findByText('Couldn’t load inbox entries.', undefined, {
+      timeout: 3_000,
+    }),
+  ).toBeTruthy();
   fetcher.mockImplementation(async () => read());
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(await screen.findByText('visible note')).toBeTruthy();
@@ -263,6 +273,58 @@ test('an unknown steer offers explicit review and resend without automatically s
   ).toBe(false);
 });
 
+test('only your ended-turn steer can be restored after the composer accepts the text', async () => {
+  const missedSteer: ConversationInboxEntry = {
+    ...entry('refused', 'missed-steer'),
+    kind: 'steer',
+    ownedByCaller: true,
+    reasonCode: 'steer_turn_ended',
+    message: 'check the queue first',
+  };
+  let dismissed = false;
+  const fetcher = vi.fn(async (_url: unknown, options?: RequestInit) => {
+    if (options?.method === 'DELETE') {
+      dismissed = true;
+      return Response.json({
+        success: true,
+        data: { ...missedSteer, state: 'cancelled' },
+      });
+    }
+    return response([
+      ...(dismissed ? [] : [missedSteer]),
+      {
+        ...missedSteer,
+        clientTurnId: 'someone-elses-steer',
+        message: 'another sender',
+        ownedByCaller: false,
+      },
+    ]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const restore = vi.fn(() => false);
+  mount({ messages: [] }, restore);
+  await screen.findByText('2 pending');
+  expand();
+
+  const restoreButton = screen.getByRole('button', {
+    name: 'Restore to draft',
+  });
+  fireEvent.click(restoreButton);
+  expect(restore).toHaveBeenCalledExactlyOnceWith('check the queue first');
+  expect(
+    fetcher.mock.calls.every(
+      ([, options]) => !options?.method || options.method === 'GET',
+    ),
+  ).toBe(true);
+
+  restore.mockReturnValue(true);
+  fireEvent.click(restoreButton);
+  await waitFor(() => expect(dismissed).toBe(true));
+  expect(
+    fetcher.mock.calls.some(([, options]) => options?.method === 'POST'),
+  ).toBe(false);
+});
+
 test('a failed refresh makes a previously available count unavailable, never zero', async () => {
   let failed = false;
   vi.stubGlobal(
@@ -280,13 +342,64 @@ test('a failed refresh makes a previously available count unavailable, never zer
   await screen.findByText('1 pending');
   failed = true;
   await act(() => client.refetchQueries({ queryKey: ['conversation-inbox'] }));
-  await screen.findByText('Couldn’t load inbox entries.');
+  await screen.findByText('Couldn’t load inbox entries.', undefined, {
+    timeout: 3_000,
+  });
   expect(screen.queryByText(/0 pending/)).toBeNull();
   // The last-read rows are not shown as if current; they collapse away.
   await waitFor(() => expect(screen.queryByText('own')).toBeNull());
   expect(
     screen.queryByRole('button', { name: /Remove held message/ }),
   ).toBeNull();
+});
+
+test('one missed read keeps the pending rows instead of flickering to unavailable', async () => {
+  let failures = 0;
+  const fetcher = vi.fn(async () => {
+    if (failures > 0) {
+      failures -= 1;
+      throw new TypeError('Failed to fetch');
+    }
+    return response([entry('queued', 'own')]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const { client } = mount();
+  await screen.findByText('1 pending');
+  const before = fetcher.mock.calls.length;
+  failures = 1;
+  const seen: string[] = [];
+  const observer = new MutationObserver(() => {
+    if (screen.queryByText('Couldn’t load inbox entries.')) seen.push('lost');
+    if (!screen.queryByText('1 pending')) seen.push('gone');
+  });
+  observer.observe(document.body, { subtree: true, childList: true });
+  await act(() => client.refetchQueries({ queryKey: ['conversation-inbox'] }));
+  await waitFor(() =>
+    expect(fetcher.mock.calls.length).toBeGreaterThanOrEqual(before + 2),
+  );
+  observer.disconnect();
+  expect(seen).toEqual([]);
+  expect(screen.getByText('1 pending')).toBeTruthy();
+});
+
+test('an authority refusal is final and is not retried', async () => {
+  let refused = false;
+  const fetcher = vi.fn(async () =>
+    refused
+      ? new Response(JSON.stringify({ success: false, error: 'forbidden' }), {
+          status: 403,
+        })
+      : response([entry('queued', 'own')]),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const { client } = mount();
+  await screen.findByText('1 pending');
+  refused = true;
+  const before = fetcher.mock.calls.length;
+  await act(() => client.refetchQueries({ queryKey: ['conversation-inbox'] }));
+  await screen.findByText('Couldn’t load inbox entries.');
+  await new Promise((resolve) => setTimeout(resolve, 1_000));
+  expect(fetcher.mock.calls.length).toBe(before + 1);
 });
 
 test('retired authority cannot publish a late answer into the next authority view', async () => {
@@ -739,12 +852,17 @@ test('reads every 2s while anything is held, and slowly while nothing is', async
   const { client } = mount();
   await waitFor(() => expect(client.isFetching()).toBe(0));
   const interval = () => {
-    const query = client.getQueryCache().getAll()[0];
-    // The observer's options land on the query at runtime; QueryOptions'
-    // type omits the observer-only `refetchInterval`.
-    const option = (query.options as { refetchInterval?: unknown })
-      .refetchInterval as (q: typeof query) => unknown;
-    return option(query);
+    const query = client.getQueryCache().find({
+      queryKey: inboxQueryKey(authority.current, 'conversation'),
+      exact: true,
+    });
+    if (!query) throw new Error('The conversation inbox query did not mount.');
+    // QueryOptions omits the observer-only refetchInterval.
+    const interval = (query.options as { refetchInterval?: unknown })
+      .refetchInterval;
+    if (typeof interval !== 'function')
+      throw new Error('The conversation inbox did not configure polling.');
+    return interval(query);
   };
   expect(interval()).toBe(INBOX_IDLE_POLL_MS);
   answer = [entry('queued', 'own')];
@@ -752,4 +870,193 @@ test('reads every 2s while anything is held, and slowly while nothing is', async
   expect(interval()).toBe(INBOX_ACTIVE_POLL_MS);
   expect(INBOX_ACTIVE_POLL_MS).toBe(2_000);
   expect(INBOX_IDLE_POLL_MS).toBe(15_000);
+});
+
+test('a held message lists the files it carries by name, never their bytes', async () => {
+  const file = (name: string) => ({
+    kind: 'file' as const,
+    name,
+    mimeType: 'text/plain' as const,
+    size: 2,
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      response([
+        { ...entry('queued', 'one'), attachments: [file('notes.txt')] },
+        {
+          ...entry('queued', 'two'),
+          attachments: [file('a.txt'), file('b.txt')],
+        },
+      ]),
+    ),
+  );
+  mount();
+  await screen.findByText('2 pending');
+  expand();
+  expect(screen.getByText('notes.txt')).toBeTruthy();
+  expect(screen.getByText('2 files').getAttribute('title')).toBe(
+    'a.txt, b.txt',
+  );
+});
+
+const SCOPE_PREFIX = ['conversation-inbox', 'http://station.test', 'device-a'];
+
+// The reader's own re-render registers its options last: the query keeps the
+// options of whichever observer set them most recently.
+const readerRerender = { run: () => {} };
+
+function SnapshotProbe() {
+  const [, setTick] = useState(0);
+  readerRerender.run = () => setTick((tick) => tick + 1);
+  const entries = useConversationInboxSnapshot('conversation');
+  return (
+    <output data-testid="snapshot">
+      {entries.map((e) => e.message).join('|')}
+    </output>
+  );
+}
+
+function Owner() {
+  const query = useConversationInbox('conversation');
+  return <output data-testid="owner">{query.availability}</output>;
+}
+
+function mountPair(readerFirst: boolean) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  setClientCredentialResolver(() => ({
+    origin: authority.current.apiBase,
+    requestAuthority: authority.current,
+  }));
+  render(
+    <QueryClientProvider client={client}>
+      {readerFirst && <SnapshotProbe />}
+      <ConversationInboxMessages
+        conversationId="conversation"
+        sessionId="session"
+        messages={[]}
+      />
+      <Owner />
+      {!readerFirst && <SnapshotProbe />}
+    </QueryClientProvider>,
+  );
+  return client;
+}
+
+for (const readerFirst of [false, true]) {
+  test(`an event-stream invalidation refetches through the list's own read with a snapshot reader mounted ${readerFirst ? 'before' : 'after'} it`, async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response([entry('queued', `call-${++calls}`)])),
+    );
+    // The library reports a missing or skipped query function through
+    // console.error, and the browser journeys fail on any console error.
+    const consoleError = vi.spyOn(console, 'error');
+    const client = mountPair(readerFirst);
+    await waitFor(() =>
+      expect(screen.getByTestId('snapshot').textContent).toBe('call-1'),
+    );
+    const before = calls;
+    act(() => readerRerender.run());
+    // The list's query must never pass through an error state: the notice
+    // above the composer renders from the first one.
+    const errors: unknown[] = [];
+    const unsubscribe = client.getQueryCache().subscribe((event) => {
+      if (event.query.state.error) errors.push(event.query.state.error);
+    });
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: SCOPE_PREFIX });
+    });
+    unsubscribe();
+    expect(errors).toEqual([]);
+    expect(calls).toBe(before + 1);
+    expect(screen.queryByText(/load inbox entries/)).toBeNull();
+    const query = client
+      .getQueryCache()
+      .find({ queryKey: [...SCOPE_PREFIX, 'conversation'], exact: true });
+    expect(query?.state.error).toBeNull();
+    expect(query?.state.status).toBe('success');
+    await waitFor(() =>
+      expect(screen.getByTestId('snapshot').textContent).toBe(`call-${calls}`),
+    );
+    expect(screen.queryByText(/load inbox entries/)).toBeNull();
+    expect(screen.getByTestId('owner').textContent).toBe('available');
+    expect(
+      consoleError.mock.calls.filter((call) =>
+        /queryFn/i.test(String(call[0])),
+      ),
+    ).toEqual([]);
+    consoleError.mockRestore();
+  });
+}
+
+test('a snapshot reader mounted alone neither fetches nor errors on invalidation', async () => {
+  const fetchMock = vi.fn(async () => response([entry('queued', 'x')]));
+  vi.stubGlobal('fetch', fetchMock);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  const consoleError = vi.spyOn(console, 'error');
+  render(
+    <QueryClientProvider client={client}>
+      <SnapshotProbe />
+    </QueryClientProvider>,
+  );
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: SCOPE_PREFIX });
+  });
+  expect(fetchMock).not.toHaveBeenCalled();
+  // The reader registers nothing: with no list mounted there is no query.
+  expect(
+    client
+      .getQueryCache()
+      .find({ queryKey: [...SCOPE_PREFIX, 'conversation'], exact: true }),
+  ).toBeUndefined();
+  expect(screen.getByTestId('snapshot').textContent).toBe('');
+  expect(
+    consoleError.mock.calls.filter((call) => /queryFn/i.test(String(call[0]))),
+  ).toEqual([]);
+  consoleError.mockRestore();
+});
+
+test("a snapshot reader shows the list's entries only while the list is mounted", async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => response([entry('queued', 'held')])),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  setClientCredentialResolver(() => ({
+    origin: authority.current.apiBase,
+    requestAuthority: authority.current,
+  }));
+  function Pair({ list }: { list: boolean }) {
+    return (
+      <QueryClientProvider client={client}>
+        <SnapshotProbe />
+        {list && <Owner />}
+      </QueryClientProvider>
+    );
+  }
+  const view = render(<Pair list />);
+  await waitFor(() =>
+    expect(screen.getByTestId('snapshot').textContent).toBe('held'),
+  );
+  // The list's read is the only one keeping these entries current, so the
+  // reader does not go on showing them once it is gone.
+  view.rerender(<Pair list={false} />);
+  await waitFor(() =>
+    expect(screen.getByTestId('snapshot').textContent).toBe(''),
+  );
+  view.rerender(<Pair list />);
+  await waitFor(() =>
+    expect(screen.getByTestId('snapshot').textContent).toBe('held'),
+  );
 });

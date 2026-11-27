@@ -29,10 +29,9 @@ import {
   randomInt,
   timingSafeEqual,
 } from 'node:crypto';
-import {
-  generateRegistrationOptions,
-  type PublicKeyCredentialCreationOptionsJSON,
-  type RegistrationResponseJSON,
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  RegistrationResponseJSON,
   verifyRegistrationResponse,
 } from '@simplewebauthn/server';
 import { operatorPasskeyEnrollmentOps } from '../../telemetry/metrics.js';
@@ -148,6 +147,7 @@ export type EnrollmentRequestState =
   | 'expired';
 
 interface EnrollmentRequest {
+  readonly origin: string;
   readonly id: string;
   readonly code: string;
   /** SHA-256 of the requesting browser's credential; never the credential. */
@@ -232,8 +232,7 @@ function equalDigests(left: Buffer, right: Buffer): boolean {
 
 export class OperatorPasskeyEnrollmentService {
   readonly #registry: LazyOperatorPasskeyRegistry;
-  readonly #origin: string | null;
-  readonly #rpId: string | null;
+  readonly #options: OperatorPasskeyEnrollmentOptions;
   readonly #now: () => number;
   readonly #logger: Logger | undefined;
   readonly #resolveDevice: OperatorPasskeyEnrollmentOptions['resolveDevice'];
@@ -245,12 +244,7 @@ export class OperatorPasskeyEnrollmentService {
       options.registry instanceof OperatorPasskeyRegistry
         ? LazyOperatorPasskeyRegistry.of(options.registry)
         : options.registry;
-    this.#origin = options.origin;
-    // The RP ID derives from the CONFIGURED origin's host, never from a
-    // request's Host header, so a request cannot choose which domain a
-    // passkey is scoped to.
-    this.#rpId =
-      options.origin === null ? null : new URL(options.origin).hostname;
+    this.#options = options;
     this.#now = options.now ?? Date.now;
     this.#logger = options.logger;
     this.#resolveDevice = options.resolveDevice;
@@ -270,6 +264,15 @@ export class OperatorPasskeyEnrollmentService {
   /** The configured RP ID, for display. Null when enrollment is unavailable. */
   get rpId(): string | null {
     return this.#rpId;
+  }
+
+  get #origin(): string | null {
+    return this.#options.origin;
+  }
+
+  get #rpId(): string | null {
+    const origin = this.#origin;
+    return origin === null ? null : new URL(origin).hostname;
   }
 
   // ---- browser side -------------------------------------------------------
@@ -323,6 +326,7 @@ export class OperatorPasskeyEnrollmentService {
         .padStart(ENROLLMENT_CODE_DIGITS, '0');
     } while (live.some((request) => request.code === code));
     const request: EnrollmentRequest = {
+      origin: this.#origin!,
       id: randomBytes(32).toString('base64url'),
       code,
       binding,
@@ -375,6 +379,9 @@ export class OperatorPasskeyEnrollmentService {
     const registry = this.#openRegistry();
     // A new challenge replaces any earlier one: only the latest is valid.
     request.challenge = null;
+    const { generateRegistrationOptions } = await import(
+      '@simplewebauthn/server'
+    );
     const options = await generateRegistrationOptions({
       rpName: 'Station operator',
       rpID: rpId,
@@ -442,6 +449,9 @@ export class OperatorPasskeyEnrollmentService {
       if (hasCrossOriginClientData(response)) {
         throw new Error('cross-origin ceremony');
       }
+      const { verifyRegistrationResponse } = await import(
+        '@simplewebauthn/server'
+      );
       verification = await verifyRegistrationResponse({
         response,
         expectedChallenge: challenge.value,
@@ -500,7 +510,10 @@ export class OperatorPasskeyEnrollmentService {
     this.#sweep();
     const rpId = this.#rpId ?? '';
     return [...this.#requests.values()]
-      .filter((request) => request.state === 'pending')
+      .filter(
+        (request) =>
+          request.state === 'pending' && request.origin === this.#origin,
+      )
       .map((request) => ({
         reference: referenceOf(request),
         deviceLabel: request.deviceLabel,
@@ -706,7 +719,12 @@ export class OperatorPasskeyEnrollmentService {
     let matched: EnrollmentRequest | null = null;
     for (const request of this.#requests.values()) {
       const equal = equalDigests(candidate, digest(request.code));
-      if (equal && wellFormed && states.includes(request.state)) {
+      if (
+        equal &&
+        wellFormed &&
+        states.includes(request.state) &&
+        request.origin === this.#origin
+      ) {
         matched = request;
       }
     }
@@ -730,7 +748,11 @@ export class OperatorPasskeyEnrollmentService {
       typeof requestId === 'string' ? this.#requests.get(requestId) : undefined;
     // Same answer for "unknown" and "someone else's": the id is a bearer
     // capability and its existence is not information to give away.
-    if (!request || !equalDigests(request.binding, digest(credential))) {
+    if (
+      !request ||
+      request.origin !== this.#origin ||
+      !equalDigests(request.binding, digest(credential))
+    ) {
       throw refuse('request_not_found', 'No such enrollment request.');
     }
     return request;

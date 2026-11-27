@@ -21,9 +21,15 @@ import {
   type ConversationInboxQueuedReceipt,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
+  type StagedConversationHandoff,
   type TurnDeliveryInspection,
 } from '@kontourai/station-contracts/orchestration';
-import { parsePeerChatTargetRefusal } from '@kontourai/station-contracts/peer-chat';
+import {
+  type PeerConversationHandoffReceiptV1,
+  type PeerConversationHandoffRequestV1,
+  parsePeerChatTargetRefusal,
+  parsePeerConversationHandoffReceipt,
+} from '@kontourai/station-contracts/peer-chat';
 import type {
   SkillExperienceInventoryV1,
   SkillExperienceStartInputV1,
@@ -502,7 +508,10 @@ export async function queueExecutionMessage(
 export async function listConversationInbox(
   apiBase: string,
   conversationId: string,
-  opts?: ClientRequestOptions & { onHead?: (head: string) => void },
+  opts?: ClientRequestOptions & {
+    onHead?: (head: string) => void;
+    onQueueControls?: (supported: boolean, steerTarget?: string) => void;
+  },
 ): Promise<ConversationInboxEntry[]> {
   const response = await getJson(
     `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`,
@@ -510,7 +519,12 @@ export async function listConversationInbox(
   );
   const result = (await readExecutionBody(response)) as {
     success?: boolean;
-    data?: { entries?: ConversationInboxEntry[]; currentHead?: unknown };
+    data?: {
+      entries?: ConversationInboxEntry[];
+      currentHead?: unknown;
+      queueControls?: unknown;
+      queueSteerTarget?: unknown;
+    };
     error?: string;
     code?: string;
   };
@@ -527,6 +541,13 @@ export async function listConversationInbox(
     result.data.currentHead.length <= 4096
   )
     opts?.onHead?.(result.data.currentHead);
+  const target = result.data.queueSteerTarget;
+  opts?.onQueueControls?.(
+    result.data.queueControls === true,
+    typeof target === 'string' && target.length > 0 && target.length <= 4096
+      ? target
+      : undefined,
+  );
   return result.data.entries;
 }
 
@@ -559,6 +580,38 @@ export async function readConversationInboxHead(
       { apiBase, opts },
     );
   return head;
+}
+
+export type ConversationQueueAction =
+  | { kind: 'edit'; key: string; previous: string; message: string }
+  | { kind: 'move'; key: string; neighbor: string; direction: 'up' | 'down' }
+  | {
+      kind: 'promote';
+      key: string;
+      source: string;
+      message: string;
+      expectedTurn: string;
+    };
+
+export async function updateConversationQueue(
+  apiBase: string,
+  conversationId: string,
+  action: ConversationQueueAction,
+  opts?: ClientRequestOptions,
+): Promise<void> {
+  opts = snapshotExecutionOptions(opts);
+  const url = `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`;
+  const response = await mutateJson(url, 'POST', opts, action);
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    error?: string;
+    code?: string;
+  };
+  if (!response.ok || !result.success)
+    throw chatRefusal(response, result, 'Could not update the queue.', {
+      apiBase,
+      opts,
+    });
 }
 
 /** Submit a steer against the original observed head. */
@@ -694,6 +747,7 @@ export async function handoffExecutionMessage(
   input: Omit<ForegroundMessageFields, 'conversationId'> &
     ApprovalPickCarry & {
       idempotencyKey: string;
+      stagedHandoff?: StagedConversationHandoff;
     },
   opts?: ClientRequestOptions,
 ): Promise<ForegroundMessageReceipt & { handoff: ConversationHandoffReceipt }> {
@@ -701,8 +755,9 @@ export async function handoffExecutionMessage(
     throw new Error(
       'Visual skill starts use the canonical foreground chat route.',
     );
+  const route = input.stagedHandoff ? 'staged-handoff' : 'handoff';
   const response = await mutateJson(
-    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
+    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/${route}`,
     'POST',
     opts,
     input,
@@ -717,6 +772,47 @@ export async function handoffExecutionMessage(
   return receipt as ForegroundMessageReceipt & {
     handoff: ConversationHandoffReceipt;
   };
+}
+
+/**
+ * Continue a conversation on a paired Station. Its own Station sends the
+ * conversation's bounded text history there, and the paired Station saves it
+ * as a new conversation for the same Agent. No turn is sent: the caller sends
+ * the first one through that Station's connection to the returned
+ * conversation. A same-key retry returns the same conversation.
+ */
+export async function handoffConversationToStation(
+  apiBase: string,
+  environmentId: string,
+  input: PeerConversationHandoffRequestV1,
+  opts?: ClientRequestOptions,
+): Promise<PeerConversationHandoffReceiptV1> {
+  const response = await mutateJson(
+    `${apiBase}/api/environments/peers/${encodeURIComponent(environmentId)}/conversation-handoffs`,
+    'POST',
+    opts,
+    input,
+  );
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    data?: unknown;
+  };
+  if (!response.ok || result?.success !== true)
+    throw chatRefusal(
+      response,
+      result,
+      'The paired Station did not take this chat.',
+      { apiBase, opts },
+    );
+  const receipt = parsePeerConversationHandoffReceipt(result.data, {
+    environmentId,
+  });
+  // A success this client cannot read may still have created the chat there.
+  if (!receipt)
+    throw providerTurnIdentityUnavailable(
+      "The paired Station didn't confirm the handoff. Retrying won't create a second chat.",
+    );
+  return receipt;
 }
 
 /** Observe durable handoff effect truth without replaying mutable target setup. */
@@ -745,6 +841,30 @@ export async function getConversationHandoffStatus(
     );
   }
   return result.data;
+}
+
+/** Durably withdraw a request that has no handoff reservation. */
+export async function withdrawUnreservedConversationHandoff(
+  apiBase: string,
+  conversationId: string,
+  idempotencyKey: string,
+  opts?: ClientRequestOptions,
+): Promise<void> {
+  const response = await mutateJson(
+    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoffs/${encodeURIComponent(idempotencyKey)}`,
+    'DELETE',
+    opts,
+  );
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    data?: { outcome?: string };
+    error?: string;
+  };
+  if (!response.ok || !result.success || result.data?.outcome !== 'withdrawn')
+    throw chatRefusal(response, result, 'Station did not confirm withdrawal.', {
+      apiBase,
+      opts,
+    });
 }
 
 /**

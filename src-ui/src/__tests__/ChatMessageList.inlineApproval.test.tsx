@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * #2316: the inline approval card (Allow Once / Always Allow / Deny) must
+ * #2316: the inline approval card (Allow once / Always Allow / Deny) must
  * answer an orchestration session's request through orchestration
  * `respondToRequest` — on the session that opened the request — and must say
  * so when the answer does not land.
@@ -44,7 +44,11 @@ vi.mock('../components/chat/AttachAnswerToTaskButton', () => ({
   ConnectedAttachUserInputToTaskButton: () => null,
 }));
 vi.mock('../components/chat/StreamingMessage', () => ({
-  StreamingMessage: () => <div data-testid="streaming-message">Streaming</div>,
+  StreamingMessage: ({ statusLabel }: { statusLabel?: string }) => (
+    <div data-testid="streaming-message" data-status-label={statusLabel}>
+      Streaming
+    </div>
+  ),
 }));
 vi.mock('../components/chat/SessionSummaryCard', () => ({
   SessionSummaryCard: () => null,
@@ -84,6 +88,7 @@ import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { ActiveChatsProvider } from '../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { forgetApprovalAnswer } from '../hooks/orchestration/answerRequest';
+import { forgetSettledRequests } from '../hooks/orchestration/heldDuringCatchUp';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import type { ChatSession } from '../types';
 
@@ -109,7 +114,6 @@ function chatSession(overrides: Partial<ChatSession> = {}): ChatSession {
     error: null,
     createdAt: 0,
     updatedAt: 0,
-    hasUnread: false,
     orchestrationSessionStarted: true,
     orchestrationHistoryRevision: 0,
     ...overrides,
@@ -208,7 +212,7 @@ function stubFetch(
   return calls;
 }
 
-const MORE = 'More ways to allow this request';
+const MORE = 'Allow for this session';
 
 /**
  * The session choices live behind the row's overflow menu (#3045): opens the
@@ -265,6 +269,9 @@ describe('#2316 inline approval card', () => {
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
     });
     forgetApprovalAnswer('claude-child-b', 'req-claude-b');
+    // A decision sent in one test must not read as in flight in the next:
+    // the chosen button now carries that state ("Denying…").
+    forgetApprovalAnswer('claude-child-b', 'req-subagent');
     // What the mounted `ApiBaseProvider` does in the app; the registry route
     // resolves its base from here.
     _setApiBase(API_BASE);
@@ -281,6 +288,27 @@ describe('#2316 inline approval card', () => {
     windowEvents.settled = true;
     vi.unstubAllGlobals();
     _setApiBase('');
+    forgetSettledRequests();
+  });
+
+  test('the fallback live row receives the known input kind before coarse process status', async () => {
+    windowEvents.current = [];
+    stubFetch(() => Response.json({ success: true, data: [] }));
+    renderCard(
+      chatSession({
+        status: 'sending',
+        orchestrationStatus: 'running',
+        orchestrationTurnOpen: true,
+        isThinking: true,
+        pendingApprovals: ['question'],
+        pendingRequestKinds: { question: 'input' },
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('streaming-message').dataset.statusLabel).toBe(
+        'Needs input',
+      ),
+    );
   });
 
   test('remounting an accepted decision keeps it locked until the request resolves', async () => {
@@ -302,24 +330,24 @@ describe('#2316 inline approval card', () => {
       }),
     );
     const first = renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
-    await screen.findByText('Decision sent. Waiting for the tool to continue.');
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }));
+    // The chosen button carries the in-flight state; no sentence repeats it.
+    await screen.findByRole('button', { name: 'Check status' });
+    expect(screen.getByRole('button', { name: 'Allowing…' })).toBeTruthy();
     first.unmount();
     const second = renderCard(
       chatSession({ answeredApprovals: ['req-claude-b'] }),
     );
     expect(
-      (await screen.findByRole('button', { name: 'Allow Once' })).hasAttribute(
+      (await screen.findByRole('button', { name: 'Allowing…' })).hasAttribute(
         'disabled',
       ),
     ).toBe(true);
-    expect(
-      screen.getByText('Decision sent. Waiting for the tool to continue.'),
-    ).toBeTruthy();
+    expect(screen.queryByText(/Decision sent/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
     expect(calls.filter((call) => call.method === 'POST')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
-    await screen.findByText('This request is no longer open.');
+    await screen.findByText('Already answered.');
     expect(calls.filter((call) => call.method === 'GET')).toEqual([
       {
         url: `${API_BASE}/api/orchestration/sessions/claude-child-b/requests/req-claude-b?eventId=evt-3`,
@@ -337,7 +365,7 @@ describe('#2316 inline approval card', () => {
     ];
     second.rerender();
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull(),
+      expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull(),
     );
   });
 
@@ -359,12 +387,12 @@ describe('#2316 inline approval card', () => {
           }),
     );
     const first = renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }));
     await screen.findByText(/Delivery is not confirmed/);
     first.unmount();
     renderCard();
     expect(
-      (await screen.findByRole('button', { name: 'Allow Once' })).hasAttribute(
+      (await screen.findByRole('button', { name: 'Allow once' })).hasAttribute(
         'disabled',
       ),
     ).toBe(true);
@@ -376,10 +404,10 @@ describe('#2316 inline approval card', () => {
   });
 
   test.each([
-    ['Allow Once', 'accept'],
+    ['Allow once', 'accept'],
     // #2316 review: the same words as the toast for the same grant — every
     // later Bash call in this session, not "always".
-    ['Allow Bash for this session', 'acceptForSession'],
+    ['Allow all Bash commands for this session', 'acceptForSession'],
     ['Deny', 'decline'],
   ] as const)(
     '%s answers the Claude session’s request through orchestration respondToRequest (%s)',
@@ -405,12 +433,13 @@ describe('#2316 inline approval card', () => {
           decision,
         },
       });
-      // A decision that landed is not offered again.
+      // A decision that landed is not offered again; the chosen button says
+      // it is in flight until the request resolves.
       await waitFor(() =>
         expect(
           (
             screen.getByRole('button', {
-              name: label.endsWith('for this session') ? 'Allow Once' : label,
+              name: decision === 'decline' ? 'Denying…' : 'Allowing…',
             }) as HTMLButtonElement
           ).disabled,
         ).toBe(true),
@@ -441,7 +470,7 @@ describe('#2316 inline approval card', () => {
     stubFetch(failure);
     renderCard();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }));
 
     // The card's own alert (the transcript may carry unrelated ones, e.g.
     // a lazy Task action that did not load in this environment).
@@ -454,7 +483,7 @@ describe('#2316 inline approval card', () => {
     if (_case !== 'the network fails')
       expect(alert.closest('[role="alert"]')?.textContent).toMatch(reason);
     // The request is still open: the card must not pretend it is settled.
-    for (const name of ['Allow Once', 'Deny']) {
+    for (const name of ['Allow once', 'Deny']) {
       expect(
         (screen.getByRole('button', { name }) as HTMLButtonElement).disabled,
       ).toBe(_case === 'the network fails');
@@ -463,7 +492,9 @@ describe('#2316 inline approval card', () => {
       await openGrantMenu();
       expect(
         screen
-          .getByRole('menuitem', { name: 'Allow Bash for this session' })
+          .getByRole('menuitem', {
+            name: 'Allow all Bash commands for this session',
+          })
           .hasAttribute('disabled'),
       ).toBe(false);
     }
@@ -510,7 +541,7 @@ describe('#2316 inline approval card', () => {
       </QueryClientProvider>,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }));
 
     const alert = await screen.findByText(/Your decision was not delivered/);
     expect(alert.closest('[role="alert"]')).not.toBeNull();
@@ -528,7 +559,9 @@ describe('#2316 inline approval card', () => {
   test('the session grant is labelled with its tool and its session scope, never "Always Allow"', async () => {
     stubFetch(() => Response.json({ success: true, data: {} }));
     renderCard();
-    expect(await grantLabels()).toEqual(['Allow Bash for this session']);
+    expect(await grantLabels()).toEqual([
+      'Allow all Bash commands for this session',
+    ]);
     expect(screen.queryByRole('button', { name: /Always Allow/ })).toBeNull();
   });
 
@@ -546,14 +579,25 @@ describe('#2316 inline approval card', () => {
       ],
       'Allow reading this folder for this session',
     ],
-    ['Read', 'nothing can be forwarded (an ask rule)', undefined, undefined],
+    [
+      'Read',
+      'nothing can be forwarded (an ask rule)',
+      undefined,
+      // Owner decision (2026-11-16): offered on every tool approval.
+      'Allow all Read calls for this session',
+    ],
     [
       'Edit',
       'the engine suggests acceptEdits',
       [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
       'Auto-accept file edits for this session',
     ],
-    ['Edit', 'a sensitive file is asked for in acceptEdits', [], undefined],
+    [
+      'Edit',
+      'a sensitive file is asked for in acceptEdits',
+      [],
+      'Allow all Edit calls for this session',
+    ],
   ])(
     '#2915: a %s card when %s',
     async (toolName, _case, suggestions, label) => {
@@ -588,10 +632,117 @@ describe('#2316 inline approval card', () => {
         return entry;
       });
       renderCard();
-      await screen.findByRole('button', { name: 'Allow Once' });
+      await screen.findByRole('button', { name: 'Allow once' });
       expect((await grantLabels())[0]).toBe(label);
     },
   );
+
+  describe('the command-prefix grant (Claude Bash)', () => {
+    const WHOLE = 'Allow all Bash commands for this session';
+    const PREFIX = 'Allow "npm ls *" for this session';
+    /** A Claude Bash ask as the adapter publishes it, with its suggestions. */
+    function withClaudeBash(suggestions: unknown[]) {
+      windowEvents.current = claudeBashAwaitingApproval().map((entry) => {
+        const event = entry.event as Record<string, unknown>;
+        if (event.method !== 'request.opened') return entry;
+        return {
+          ...entry,
+          event: {
+            ...event,
+            payload: {
+              ...(event.payload as Record<string, unknown>),
+              toolInput: { command: 'npm ls react' },
+              decisionReason: 'This command requires approval',
+              claudeAsk: { decisionReasonType: 'other' },
+              suggestions,
+            },
+          },
+        };
+      });
+    }
+    const rule = (ruleContent: string) => ({
+      type: 'addRules',
+      rules: [{ toolName: 'Bash', ruleContent }],
+      behavior: 'allow',
+      destination: 'localSettings',
+    });
+
+    test('a suggested prefix offers both choices, and the prefix one sends the rule scope', async () => {
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      withClaudeBash([rule('npm ls *')]);
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow once' });
+      expect(await grantLabels()).toEqual([PREFIX, WHOLE]);
+      await pickGrant(PREFIX);
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).toMatchObject({
+        type: 'respondToRequest',
+        requestId: 'req-claude-b',
+        decision: 'acceptForSession',
+        sessionGrantScope: 'rule',
+      });
+    });
+
+    test('chat-14: Allow once and Deny are the only labelled buttons, and the grants sit in one menu', async () => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      withClaudeBash([rule('npm ls *')]);
+      renderCard();
+      const allow = await screen.findByRole('button', { name: 'Allow once' });
+      const row = allow.closest<HTMLElement>('.approval-decision-row');
+      if (!row) throw new Error('no approval row');
+      const labelled = within(row)
+        .getAllByRole('button')
+        .filter((button) => button.getAttribute('aria-haspopup') !== 'menu')
+        .map((button) => button.textContent);
+      expect(labelled).toEqual(['Deny', 'Allow once']);
+      expect(within(row).getByRole('button', { name: MORE })).toBeTruthy();
+      expect(await grantLabels()).toEqual([PREFIX, WHOLE]);
+    });
+
+    test('the whole-tool choice sends no scope', async () => {
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      withClaudeBash([rule('npm ls *')]);
+      renderCard();
+      await pickGrant(WHOLE);
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).toMatchObject({ decision: 'acceptForSession' });
+      expect(calls[0].body).not.toHaveProperty('sessionGrantScope');
+    });
+
+    test.each([
+      ['an exact-command suggestion', [rule('npm --version')]],
+      ['no suggestion', []],
+    ])('%s offers only the whole tool', async (_label, suggestions) => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      withClaudeBash(suggestions);
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow once' });
+      expect(await grantLabels()).toEqual([WHOLE]);
+    });
+
+    test('a Bash command-analysis warning offers the whole tool', async () => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      withClaudeBash([]);
+      windowEvents.current = windowEvents.current.map((entry) => {
+        const event = entry.event as Record<string, unknown>;
+        if (event.method !== 'request.opened') return entry;
+        return {
+          ...entry,
+          event: {
+            ...event,
+            payload: {
+              ...(event.payload as Record<string, unknown>),
+              decisionReason:
+                "A variable in this command can't be checked before it runs",
+            },
+          },
+        };
+      });
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow once' });
+      expect(await grantLabels()).toEqual([WHOLE]);
+    });
+  });
 
   describe('the Station browser server grant', () => {
     const LABEL = 'Allow the Station browser for this session';
@@ -636,7 +787,7 @@ describe('#2316 inline approval card', () => {
 
       const labels = (await openGrantMenu()).map((item) => item.textContent);
       expect(labels).toEqual([
-        'Allow station-browser.browser_click for this session',
+        'Allow all station-browser.browser_click calls for this session',
         LABEL,
       ]);
       fireEvent.click(await screen.findByRole('menuitem', { name: LABEL }));
@@ -658,7 +809,9 @@ describe('#2316 inline approval card', () => {
       useBrowserCall(true);
       renderCard();
 
-      await pickGrant('Allow station-browser.browser_click for this session');
+      await pickGrant(
+        'Allow all station-browser.browser_click calls for this session',
+      );
       await waitFor(() => expect(calls).toHaveLength(1));
       expect(calls[0].body).toMatchObject({ decision: 'acceptForSession' });
       expect(calls[0].body).not.toHaveProperty('sessionGrantScope');
@@ -668,9 +821,9 @@ describe('#2316 inline approval card', () => {
       stubFetch(() => Response.json({ success: true, data: {} }));
       useBrowserCall(false);
       renderCard();
-      await screen.findByRole('button', { name: 'Allow Once' });
+      await screen.findByRole('button', { name: 'Allow once' });
       expect(await grantLabels()).toEqual([
-        'Allow station-browser.browser_click for this session',
+        'Allow all station-browser.browser_click calls for this session',
       ]);
       expect(screen.queryByText(LABEL)).toBeNull();
     });
@@ -678,8 +831,60 @@ describe('#2316 inline approval card', () => {
     test('an ordinary tool card never shows it', async () => {
       stubFetch(() => Response.json({ success: true, data: {} }));
       renderCard();
-      await screen.findByRole('button', { name: 'Allow Once' });
-      expect(await grantLabels()).toEqual(['Allow Bash for this session']);
+      await screen.findByRole('button', { name: 'Allow once' });
+      expect(await grantLabels()).toEqual([
+        'Allow all Bash commands for this session',
+      ]);
+      expect(screen.queryByText(LABEL)).toBeNull();
+    });
+  });
+
+  describe('the session-wide grant', () => {
+    const LABEL = 'Allow everything for this session';
+
+    /** The Bash card, with its request marked the way an adapter that honours `all` marks it. */
+    function useMarkedRequest(marked: boolean) {
+      windowEvents.current = claudeBashAwaitingApproval().map((entry) => {
+        const event = entry.event as Record<string, unknown>;
+        if (event.method !== 'request.opened') return entry;
+        return {
+          ...entry,
+          event: {
+            ...event,
+            payload: {
+              ...(event.payload as Record<string, unknown>),
+              ...(marked ? { sessionGrantAll: true } : {}),
+            },
+          },
+        };
+      });
+    }
+
+    test('a marked request offers it last, and choosing it sends the typed scope', async () => {
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      useMarkedRequest(true);
+      renderCard();
+      expect(await grantLabels()).toEqual([
+        'Allow all Bash commands for this session',
+        LABEL,
+      ]);
+      await pickGrant(LABEL);
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).toMatchObject({
+        type: 'respondToRequest',
+        decision: 'acceptForSession',
+        sessionGrantScope: 'all',
+      });
+    });
+
+    test('an unmarked request does not offer it', async () => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      useMarkedRequest(false);
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow once' });
+      expect(await grantLabels()).toEqual([
+        'Allow all Bash commands for this session',
+      ]);
       expect(screen.queryByText(LABEL)).toBeNull();
     });
   });
@@ -715,7 +920,7 @@ describe('#2316 inline approval card', () => {
       return entry;
     });
     renderCard();
-    await screen.findByRole('button', { name: 'Allow Once' });
+    await screen.findByRole('button', { name: 'Allow once' });
     expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: MORE })).toBeNull();
   });
@@ -753,10 +958,10 @@ describe('#2316 inline approval card', () => {
       renderCard();
 
       fireEvent.click(
-        await screen.findByRole('button', { name: 'Allow Once' }),
+        await screen.findByRole('button', { name: 'Allow once' }),
       );
 
-      const status = await screen.findByText('This request is no longer open.');
+      const status = await screen.findByText('Already answered.');
       expect(status.getAttribute('role')).toBe('status');
       expect(screen.queryByText(/Your decision was not delivered/)).toBeNull();
       // Settledness is read from the exact request, not guessed from the
@@ -787,12 +992,12 @@ describe('#2316 inline approval card', () => {
       renderCard();
 
       fireEvent.click(
-        await screen.findByRole('button', { name: 'Allow Once' }),
+        await screen.findByRole('button', { name: 'Allow once' }),
       );
 
       const alert = await screen.findByText(/Your decision was not delivered/);
       expect(alert.closest('[role="alert"]')).not.toBeNull();
-      expect(screen.queryByText('This request is no longer open.')).toBeNull();
+      expect(screen.queryByText('Already answered.')).toBeNull();
     });
 
     test('stays a loud failure when the request cannot be verified', async () => {
@@ -815,12 +1020,12 @@ describe('#2316 inline approval card', () => {
       renderCard();
 
       fireEvent.click(
-        await screen.findByRole('button', { name: 'Allow Once' }),
+        await screen.findByRole('button', { name: 'Allow once' }),
       );
 
       const alert = await screen.findByText(/Your decision was not delivered/);
       expect(alert.closest('[role="alert"]')).not.toBeNull();
-      expect(screen.queryByText('This request is no longer open.')).toBeNull();
+      expect(screen.queryByText('Already answered.')).toBeNull();
     });
 
     test('a refused session grant on an already-answered request grants nothing locally', async () => {
@@ -848,9 +1053,9 @@ describe('#2316 inline approval card', () => {
         );
         renderCard();
 
-        await pickGrant('Allow Bash for this session');
+        await pickGrant('Allow all Bash commands for this session');
 
-        await screen.findByText('This request is no longer open.');
+        await screen.findByText('Already answered.');
         // Which decision settled it is not ours to claim: no local grant.
         expect(
           activeChatsStore.getSnapshot()['chat-tab']?.sessionAutoApprove ?? [],
@@ -892,11 +1097,11 @@ describe('#2316 inline approval card', () => {
       name: 'Approvals waiting on you',
     });
     // Exactly one card offers buttons: the strip's.
-    expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(
+    expect(screen.getAllByRole('button', { name: 'Allow once' })).toHaveLength(
       1,
     );
     expect(
-      within(strip).getByRole('button', { name: 'Allow Once' }),
+      within(strip).getByRole('button', { name: 'Allow once' }),
     ).toBeTruthy();
   });
 
@@ -979,7 +1184,7 @@ describe('#2316 inline approval card', () => {
         stubFetch(() => Response.json({ success: true, data: {} }));
         renderCard();
         await screen.findByText(/Review the plugin with a subagent/);
-        expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
         expect(
           screen.queryByRole('region', { name: 'Approvals waiting on you' }),
         ).toBeNull();
@@ -1045,7 +1250,7 @@ describe('#2316 inline approval card', () => {
         name: 'Approvals waiting on you',
       });
       expect(
-        within(strip).getByRole('button', { name: 'Allow Once' }),
+        within(strip).getByRole('button', { name: 'Allow once' }),
       ).toBeTruthy();
       // Not a message row: no message anchor holds it, and no transcript row
       // was invented for it.
@@ -1271,7 +1476,11 @@ describe('#2316 inline approval card', () => {
         within(strip),
         0,
       );
-      await pickGrant('Allow Bash for this session', within(strip), 1);
+      await pickGrant(
+        'Allow all Bash commands for this session',
+        within(strip),
+        1,
+      );
       await waitFor(() => expect(calls).toHaveLength(2));
       expect(calls.map((call) => call.body)).toEqual([
         expect.objectContaining({
@@ -1307,7 +1516,7 @@ describe('#2316 inline approval card', () => {
     expect(
       screen.queryByRole('region', { name: 'Approvals waiting on you' }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Allow once' }));
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]?.body).toMatchObject({
       requestId: 'req-claude-b',
@@ -1345,7 +1554,7 @@ describe('#2316 inline approval card', () => {
       renderCard();
 
       await screen.findByText('Later work');
-      expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
       expect(
         screen.queryByRole('region', { name: 'Approvals waiting on you' }),
       ).toBeNull();
@@ -1369,7 +1578,7 @@ describe('#2316 inline approval card', () => {
     renderCard();
     expect(await screen.findByText('Cancelled')).toBeTruthy();
     expect(screen.queryByText('No result recorded')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
   });
 
   test('a request on the turn the live streaming shell holds is answerable from the strip', async () => {
@@ -1387,7 +1596,7 @@ describe('#2316 inline approval card', () => {
     const strip = await screen.findByRole('region', {
       name: 'Approvals waiting on you',
     });
-    fireEvent.click(within(strip).getByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(within(strip).getByRole('button', { name: 'Allow once' }));
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]?.body).toMatchObject({
       threadId: 'claude-child-b',

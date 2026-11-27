@@ -1,0 +1,7 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"propose_job's projectId path and its two refusal codes; documented in self-configuring-agent.md. Proposals without projectId unchanged.","inputs":["src-server/routes/orchestration/agent-schedule.ts"]}
+  ]
+}

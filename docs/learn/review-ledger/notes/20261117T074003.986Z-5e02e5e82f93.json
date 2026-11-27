@@ -1,0 +1,11 @@
+{
+  "revision": "0865ceae9ea9811e40c61767568bd2029904c06a",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Gallery spec change since the last note only routes the projectLibrary handshake capability for the Library screens and restores it in cleanup; the eight new screens are registered in tests/gallery-screen-sources.json. No existing screen, mock, volatile-chrome rule or capture behaviour these pages describe changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Gallery spec change since the last note only routes the projectLibrary handshake capability for the Library screens and restores it in cleanup; the eight new screens are registered in tests/gallery-screen-sources.json. No existing screen, mock, volatile-chrome rule or capture behaviour these pages describe changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Gallery spec change since the last note only routes the projectLibrary handshake capability for the Library screens and restores it in cleanup; the eight new screens are registered in tests/gallery-screen-sources.json. No existing screen, mock, volatile-chrome rule or capture behaviour these pages describe changed.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

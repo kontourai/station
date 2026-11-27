@@ -94,6 +94,7 @@ function renderHistoryItem(notification = agentNotification()) {
       isDismissPending={false}
       onAction={vi.fn()}
       onDismiss={vi.fn()}
+      onOpen={vi.fn()}
     />,
     { wrapper },
   );
@@ -107,11 +108,11 @@ describe('inbox rows for enveloped notifications (#2587)', () => {
     navigate.mockClear();
   });
 
-  test('attributes an agent notification to its agent and session', async () => {
+  test('attributes a notification to its agent when no chat title is available', async () => {
     preferencesRoute(false);
     renderHistoryItem();
     expect(screen.getByTestId('notification-attribution').textContent).toBe(
-      'from builder · session 6f1c2d3e',
+      'from builder',
     );
   });
 
@@ -148,7 +149,7 @@ describe('inbox rows for enveloped notifications (#2587)', () => {
     expect(screen.queryByRole('button', { name: /Mute/ })).toBeNull();
   });
 
-  test('Open goes to the calling session and marks the notification read', async () => {
+  test('following the title opens the session and marks the notification read', async () => {
     preferencesRoute(false);
     render(
       <NotificationCard
@@ -159,7 +160,9 @@ describe('inbox rows for enveloped notifications (#2587)', () => {
         wrapper,
       },
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    fireEvent.click(
+      screen.getByRole('link', { name: 'Need approval to run migration' }),
+    );
     await waitFor(() =>
       expect(markNotificationRead).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'n-1' }),
@@ -171,7 +174,7 @@ describe('inbox rows for enveloped notifications (#2587)', () => {
     });
   });
 
-  test('an unknown source kind gets Open but no attribution or Mute', async () => {
+  test('an unknown source with a target has a title link', async () => {
     preferencesRoute(true);
     const newer = agentNotification();
     newer.metadata = {
@@ -182,17 +185,19 @@ describe('inbox rows for enveloped notifications (#2587)', () => {
       },
     };
     renderHistoryItem(newer);
-    expect(screen.getByRole('button', { name: 'Open' })).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'Need approval to run migration' }),
+    ).toBeTruthy();
     expect(screen.queryByTestId('notification-attribution')).toBeNull();
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.queryByRole('button', { name: /Mute/ })).toBeNull();
   });
 
-  test('a legacy record renders neither attribution nor Open', () => {
+  test('a legacy record renders its title as plain text', () => {
     const legacy = agentNotification();
     legacy.metadata = {};
     renderHistoryItem(legacy);
     expect(screen.queryByTestId('notification-envelope-controls')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 });

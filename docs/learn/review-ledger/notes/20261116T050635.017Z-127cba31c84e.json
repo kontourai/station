@@ -1,0 +1,7 @@
+{
+  "revision": "e5cd14d944e9287e2b65a7357e507fcc0661f5a8",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Re-read against scripts/verify-release-cohort.mjs after the tag and release queries moved into observeGithubDesktopRelease with a bounded capture: what the protected verifier observes, the order, and what the receipt derives are unchanged; no claim here depends on the capture size.","inputs":["docs/guides/nightly.md","scripts/__tests__/verify-release-cohort.test.ts","scripts/verify-release-cohort.mjs"]}
+  ]
+}

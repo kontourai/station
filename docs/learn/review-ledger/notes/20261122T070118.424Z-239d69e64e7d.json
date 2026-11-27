@@ -1,0 +1,15 @@
+{
+  "revision": "5b60cfe86e8f2b93211f95b05b11e352489095a8",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"listModels now refuses with a plain sentence when the connection has no server URL instead of fetching undefined/models; only reachable for records saved before saves required an address. No citing page describes that request or its error text, and none claims a URL parse error.","inputs":["src-server/providers/llm/openai-compat-provider.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"listModels now refuses with a plain sentence when the connection has no server URL instead of fetching undefined/models; only reachable for records saved before saves required an address. No citing page describes that request or its error text, and none claims a URL parse error.","inputs":["src-server/providers/llm/openai-compat-provider.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"listModels now refuses with a plain sentence when the connection has no server URL instead of fetching undefined/models; only reachable for records saved before saves required an address. No citing page describes that request or its error text, and none claims a URL parse error.","inputs":["src-server/providers/llm/openai-compat-provider.ts"]},
+
+    {"path":"docs/reference/config.md","note":"listModels now refuses with a plain sentence when the connection has no server URL instead of fetching undefined/models; only reachable for records saved before saves required an address. No citing page describes that request or its error text, and none claims a URL parse error.","inputs":["src-server/providers/llm/openai-compat-provider.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"listModels now refuses with a plain sentence when the connection has no server URL instead of fetching undefined/models; only reachable for records saved before saves required an address. No citing page describes that request or its error text, and none claims a URL parse error.","inputs":["src-server/providers/llm/openai-compat-provider.ts"]}
+  ]
+}

@@ -241,7 +241,7 @@ describe('Browser access read outcomes', () => {
         "You can't change Browser settings for this Project.",
       ),
     ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   test('a failed access read offers Try again, which brings the switch back', async () => {
@@ -253,7 +253,7 @@ describe('Browser access read outcomes', () => {
         ok({ browserEvaluate: false }),
     });
     mount();
-    const retry = await screen.findByRole('button', { name: 'Try again' });
+    const retry = await screen.findByRole('button', { name: 'Retry' });
     expect(
       screen.queryByText("You can't change Browser settings for this Project."),
     ).toBeNull();

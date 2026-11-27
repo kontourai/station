@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * The phone transcript's one-work-row shape for a SETTLED assistant turn,
+ * The transcript's one-work-row shape for a SETTLED assistant turn,
  * through the real client seam: canonical runtime events → the shared
  * transcript projection (`useActiveChatTranscript`) → `ChatMessageList` →
  * `MessageBubble` → `MessageContent` (`foldWork`) → `ToolCallBatch` and its
@@ -38,7 +38,8 @@ vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
   useAgentsLoaded: () => true,
 }));
-vi.mock('../contexts/ApiBaseContext', () => ({
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
   useApiBase: () => ({ apiBase: 'http://localhost:3242' }),
 }));
 vi.mock('../contexts/ToastContext', () => ({
@@ -102,7 +103,6 @@ function chatSession(overrides: Partial<ChatSession> = {}): ChatSession {
     error: null,
     createdAt: 0,
     updatedAt: 0,
-    hasUnread: false,
     orchestrationSessionStarted: true,
     orchestrationHistoryRevision: 0,
     ...overrides,
@@ -213,7 +213,7 @@ function answerRow(): HTMLElement {
   return row;
 }
 
-describe('phone transcript: one work row per settled turn', () => {
+describe('transcript: one work row per settled turn', () => {
   beforeEach(async () => {
     _setApiBase(API_BASE);
     sequence = 0;
@@ -306,6 +306,60 @@ describe('phone transcript: one work row per settled turn', () => {
     expect(within(row).getByText('Read useVisualViewport.ts')).toBeTruthy();
   });
 
+  test('an OpenCode child card stays between folded activity and the answer', async () => {
+    mobile.current = false;
+    windowEvents.current = [
+      runtimeEvent({ method: 'turn.started', turnId: 't1', prompt: 'Fix it' }),
+      ...call('t1', 'read-before', 'read', { path: 'src/first.ts' }),
+      say('t1', 'Looking at the caller.'),
+      ...call('t1', 'read-after', 'read', { path: 'src/second.ts' }),
+      ...call('t1', 'spawn', 'subagent', {}),
+      runtimeEvent({
+        method: 'child-work.updated',
+        provider: 'opencode',
+        delta: {
+          kind: 'snapshot',
+          producer: 'engine-subagent',
+          reporterThreadId: THREAD,
+          running: [
+            {
+              producer: 'engine-subagent',
+              reporterThreadId: THREAD,
+              childId: 'child',
+              status: 'running',
+              kind: 'subagent',
+              title: 'Review the change',
+              parent: { toolCallId: 'spawn', turnId: 't1' },
+            },
+          ],
+        },
+      }),
+      say('t1', 'OUTCOME: Fixed the caller.'),
+      runtimeEvent({
+        method: 'turn.completed',
+        turnId: 't1',
+        finishReason: 'stop',
+      }),
+    ].map((entry) => ({
+      ...entry,
+      event: { ...entry.event, provider: 'opencode' },
+    }));
+    renderTranscript();
+
+    const child = await screen.findByText('Review the change');
+    const row = answerRow();
+    const summary = row.querySelector('.tool-call-batch__summary')!;
+    expect(summary).toBeTruthy();
+    expect(
+      summary.compareDocumentPosition(child) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(within(row).queryByText('Looking at the caller.')).toBeNull();
+    fireEvent.click(summary);
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByText('Looking at the caller.')).toBeTruthy();
+    expect(within(sheet).queryByText('Review the change')).toBeNull();
+  });
+
   test('the open turn keeps its streamed shape until it settles', async () => {
     windowEvents.current = workedTurn({ settled: false });
     renderTranscript(
@@ -389,7 +443,7 @@ describe('phone transcript: one work row per settled turn', () => {
     expect(approval?.getAttribute('data-approval-id')).toBe('req-1');
     fireEvent.click(within(pending).getByRole('button', { name: 'Answer' }));
     const sheet = await screen.findByRole('dialog', { name: 'Needs approval' });
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Allow once' }));
     await waitFor(() =>
       expect(answers).toEqual([
         {

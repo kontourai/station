@@ -1,0 +1,9 @@
+{
+  "revision": "8d0e4dc3932c3f218a8e946f17af99097c40a6a1",
+
+  "notes": [
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Browser guide JS bullet now says an agent's JavaScript is refused on a blank tab and why (Chrome 158 abort). Checked against browser-automation.ts evaluate guard and the real-browser test; no other guide claim changed.","inputs":["docs/guides/browser-workspace.md"]},
+
+    {"path":"docs/design/verified-action-replay.md","note":"Browser guide JS bullet now says an agent's JavaScript is refused on a blank tab and why (Chrome 158 abort). Checked against browser-automation.ts evaluate guard and the real-browser test; no other guide claim changed.","inputs":["docs/guides/browser-workspace.md"]}
+  ]
+}

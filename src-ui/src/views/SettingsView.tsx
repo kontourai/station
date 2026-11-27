@@ -4,6 +4,7 @@ import type {
   TelemetryTierChoices,
 } from '@kontourai/station-contracts/product-telemetry';
 import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
+import { useStationRoutesPreview } from '../components/connections/useStationRoutes';
 import { SectionNavigation } from '../components/SectionNavigation';
 import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useTelemetryNotice } from '../hooks/useTelemetryNotice';
@@ -77,6 +78,7 @@ import { AboutSection } from './settings/AboutSection';
 import { AccountSharingSection } from './settings/AccountSharingSection';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
+import { AutomationsSection } from './settings/AutomationsSection';
 import { BrowserDevicesSection } from './settings/BrowserDevicesSection';
 import { DeviceHostsSection } from './settings/DeviceHostsSection';
 import { downloadDiagnosticsBundle } from './settings/diagnostics-download';
@@ -85,10 +87,11 @@ import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
+import { ModelPickerPreferencesRow } from './settings/ModelPickerPreferencesRow';
 import { OfflineReadingSection } from './settings/OfflineReadingSection';
 import { OpenAppearanceButton } from './settings/OpenAppearanceButton';
 import { PairingSection } from './settings/PairingSection';
-import { PeopleSection } from './settings/PeopleSection';
+import { PeopleReadRefusal, PeopleSection } from './settings/PeopleSection';
 import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
 import {
   buildProjectOverrideUpdate,
@@ -264,6 +267,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const { setDeviceSetting, resetDeviceSetting } = useDeviceSettingsActions();
   const { isMobile, isDesktop } = usePlatformProfile();
   const developerFeatures = useDeveloperFeatures();
+  const stationRoutesEnabled = useStationRoutesPreview();
   // #2144 slice 6 item D. The same query the disclosure card reads; React
   // Query dedupes on its key so there is one request, not two answers.
   const telemetryDisclosure = useUsageTelemetryDisclosureState();
@@ -404,7 +408,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           isOperator,
           developerToolsEnabled,
           experimentalTrustEnabled: developerFeatures.trust,
-          experimentalStationRoutesEnabled: developerFeatures.stationRoutes,
+          experimentalStationRoutesEnabled: stationRoutesEnabled,
         }).map((entry) => entry.section)
       : activeSection === 'overview'
         ? ALL_LEAF_SECTION_IDS.filter(operatorMayView)
@@ -412,6 +416,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   );
   const sectionVisible = (section: string) =>
     visibleSections.has(section as never);
+  const peopleSelected = activeSection === 'people' && !searchQuery.trim();
+  const peopleDeniedByEntryGate =
+    peopleSelected &&
+    !sectionVisible('people') &&
+    isPluginVisibilityForbidden(pluginVisibilityDirectory.error);
   /** Whether the current view selects any section in this scope group. */
   const groupVisible = (group: SettingsNavGroup) =>
     SETTINGS_SECTIONS.some(
@@ -458,7 +467,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       (entry.conditional === 'experimental-trust' &&
         !developerFeatures.trust) ||
       (entry.conditional === 'experimental-station-routes' &&
-        !developerFeatures.stationRoutes)
+        !stationRoutesEnabled)
     ) {
       setHighlightAnnouncement(
         'This experimental tool is off. Enable it in Advanced → Developer tools.',
@@ -601,7 +610,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     locale,
     developerToolsEnabled,
     developerFeatures.trust,
-    developerFeatures.stationRoutes,
+    stationRoutesEnabled,
   ]);
 
   // Reconciling the server snapshot with the form is a question about *time*,
@@ -768,6 +777,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   throw new SharingDetailsChangedError();
                 const author = data.authorDisclosure;
                 if (
+                  telemetryConsentPublishers.includes('kontour') &&
+                  telemetryTier?.kontour === 'full' &&
+                  dntAtSave?.kontour?.reason !== 'DNT' &&
                   telemetryStatus.data?.authorEndpoint &&
                   (!author ||
                     author.inventoryRevision !== telemetryConsentRevision ||
@@ -1196,7 +1208,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             )}
 
             {/* ── Station scope ── */}
-            {groupVisible('this-station') && (
+            {(groupVisible('this-station') || peopleDeniedByEntryGate) && (
               <section
                 aria-label="This Station settings"
                 className="settings__scope-group"
@@ -1218,12 +1230,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       provenance={stationProvenance}
                     />
                     <ExistingSetupImportStepper />
-                    {/* #2182: who may sign in to this Station. It has no
-                  catalog row of its own (giving it one is out of scope —
-                  see the epic), so it had to be placed by hand when the card
-                  it used to sit in was dissolved. System is where this page
-                  already keeps Station administration: updates, log level,
-                  export and import, and the two resets. */}
                     {/* #4305: whether this Station shares Projects with local
                   accounts at all; the account list below manages them. */}
                     <AccountSharingSection />
@@ -1242,6 +1248,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               of it sees the same list. */}
                 {sectionVisible('answer-shares') && <AnswerSharesSection />}
 
+                {/* #4513: GitHub automation sources, rules, open episodes and
+              deliveries; each count is the length of the list it heads. */}
+                {sectionVisible('github-automations') && <AutomationsSection />}
+
                 {/* #2067: per-principal plugin visibility. Station scope — the
               grants live on this Station — and the section renders nothing
               for a caller the route refuses as a non-operator. */}
@@ -1252,10 +1262,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 {/* #1973: SSH device hosts. Operator-only (the same gate as
               plugin visibility); the panel itself is lazy-loaded. */}
                 {sectionVisible('device-hosts') && <DeviceHostsSection />}
-                {/* #3557: people, their Station group and their tokens.
-              Operator-only (the same gate as device hosts); the section
-              renders nothing for a caller the route refuses. */}
-                {sectionVisible('people') && <PeopleSection />}
+                {peopleDeniedByEntryGate && <PeopleReadRefusal />}
+                {sectionVisible('people') && (
+                  <PeopleSection showReadRefusal={peopleSelected} />
+                )}
                 {sectionVisible('host-runtime') && (
                   <EnvironmentStatus apiBase={currentApiBase}>
                     {/* #2182: three settings whose subject is the machine,
@@ -1272,8 +1282,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       projectOverride={projectOverride}
                     />
                     <TerminalHistoryUsage />
-                    {/* Behind the workload-budget-settings Feature Preview;
-                  renders nothing while it is off. */}
+                    {/* The budget editor is behind the
+                  workload-budget-settings Feature Preview; workloads Station
+                  couldn't stop show either way. */}
                     <WorkloadBudgetSettings />
                   </EnvironmentStatus>
                 )}
@@ -1663,6 +1674,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       containerScope="device"
                       projectOverride={projectOverride}
                     />
+                    <ModelPickerPreferencesRow />
                     {/* #585: one control names all device-local delivery
                   outcomes. The in-chat gear panel renders the same options
                   from the same mapping module. */}
@@ -1879,7 +1891,17 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 <div className="settings__scope-caption">
                   <SettingsScopeBadge scope="station" />
                 </div>
-                <KnowledgeStoreSection />
+                <KnowledgeStoreSection>
+                  <StationConfigSection
+                    section="knowledge"
+                    embedded
+                    config={config}
+                    provenance={provenance}
+                    onChange={setConfig}
+                    containerScope="station"
+                    projectOverride={projectOverride}
+                  />
+                </KnowledgeStoreSection>
               </section>
             )}
           </div>
@@ -1921,8 +1943,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         title="Reset Station settings"
         message={
           resetPlan.keys.length === 0
-            ? 'No Station setting currently has a stored value, so there is nothing to reset. Settings on this device are not affected.'
-            : `This clears ${resetPlan.keys.length} stored Station setting${resetPlan.keys.length === 1 ? '' : 's'} and lets Station use its default again: ${resetPlan.labels.join(', ')}. The required model settings (Default model, Invoke model, Structure model) and the built-in agent engine choice are kept. Usage telemetry is not changed by a reset. Settings on this device are not affected. This cannot be undone.`
+            ? 'Nothing to reset. The settings a reset can clear already use their defaults.'
+            : `This clears ${resetPlan.keys.length} stored Station setting${resetPlan.keys.length === 1 ? '' : 's'} and lets Station use its default again: ${resetPlan.labels.join(', ')}. The required model settings (Default model, Invoke model, Structure model) and the engine choice for Station's agent are kept. Usage telemetry is not changed by a reset. Settings on this device are not affected. This cannot be undone.`
         }
         confirmLabel="Reset"
         confirmDisabled={resetPlan.keys.length === 0}

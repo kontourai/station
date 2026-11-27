@@ -1,0 +1,9 @@
+{
+  "revision": "560cdd4dcd89a81913bad068be5d0b6345c1f3e1",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked against this change: the adapter shape gains an optional refusesTurnsAfterFailure declaration (a Session in error takes no more turns), read only by the replaced-configuration check. No route, contract or documented adapter behavior changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapter-shape.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked against this change: the adapter shape gains an optional refusesTurnsAfterFailure declaration (a Session in error takes no more turns), read only by the replaced-configuration check. No route, contract or documented adapter behavior changed; this page's claims about this source remain accurate.","inputs":["src-server/providers/adapter-shape.ts"]}
+  ]
+}

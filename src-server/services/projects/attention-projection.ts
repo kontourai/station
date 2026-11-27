@@ -10,13 +10,17 @@ import {
   isStandingAttentionKind,
   type PluginLifecycleProposalAttentionItem,
   type ProposedChangeAttentionItem,
+  type PullRequestFeedbackAttentionItem,
   parseAttentionSnoozeUntil,
   type SessionFailedAttentionItem,
   type SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
 import type { DevicePairingRequest } from '@kontourai/station-contracts/environment-security';
 import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
-import type { Notification } from '@kontourai/station-contracts/notification';
+import {
+  type Notification,
+  notificationSessionHref,
+} from '@kontourai/station-contracts/notification';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { pluginProposalHref } from '@kontourai/station-contracts/plugin';
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
@@ -71,6 +75,13 @@ import {
   resolvePluginProposalSource,
 } from '../plugins/plugin-lifecycle-proposals.js';
 import { ToolLibraryService } from '../plugins/tool-library-service.js';
+import {
+  PULL_REQUEST_FEEDBACK_NOTIFICATION_SOURCE,
+  type PullRequestFeedbackAttentionSource,
+  pullRequestFeedbackAttentionCopy,
+  pullRequestFeedbackAttentionId,
+  pullRequestFeedbackNoticeTag,
+} from '../pull-requests/pull-request-feedback-attention.js';
 import { DEVICE_PAIRING_NOTIFICATION_SOURCE } from '../ssh/device-pairing-notifications.js';
 import type { FileAttentionSnoozeStore } from './attention-snooze-store.js';
 import type { ProposedChangeService } from './proposed-change-service.js';
@@ -292,6 +303,15 @@ export class AttentionProjectionService {
       preview: FeaturePreviewSelector;
       now?: () => number;
     },
+    private readonly sources: {
+      /**
+       * Pull request agent feedback that needs a person: paused, or waiting
+       * on a stopped agent. Absent (hosted, or not composed) projects none.
+       */
+      pullRequestFeedback?: {
+        attentionSources(): readonly PullRequestFeedbackAttentionSource[];
+      };
+    } = {},
   ) {}
 
   /**
@@ -338,6 +358,13 @@ export class AttentionProjectionService {
         taskId: string,
         requestType: string | undefined,
       ) => boolean;
+      /**
+       * Whether the caller could Send again or turn feedback off for this
+       * chat's pull request feedback, evaluated at the HTTP seam with the
+       * feedback routes' own writer rule. Absent means unknown: no item
+       * claims the caller can change it.
+       */
+      mayChangePullRequestFeedback?: (conversationId: string) => boolean;
     },
   ): Promise<AttentionProjection> {
     const readAuthority = authority ?? this.defaultReadAuthority();
@@ -345,8 +372,10 @@ export class AttentionProjectionService {
     // Fetched once up front (archive#1284) so the past-resuming filter below
     // can check an orchestration-kind approval notification's backing
     // session without a second listSessionReadModel() round-trip.
-    const sessions =
-      await this.orchestrationService.listSessionReadModel(readAuthority);
+    const sessions = await this.orchestrationService.listSessionReadModel(
+      readAuthority,
+      { purpose: 'attention' },
+    );
     const sessionsById = new Map(
       sessions.map((session) => [session.threadId, session]),
     );
@@ -390,7 +419,7 @@ export class AttentionProjectionService {
       );
     const approvals = await Promise.all(
       approvalNotifications.map((notification) =>
-        this.projectApproval(notification, readAuthority),
+        this.projectApproval(notification, readAuthority, sessionsById),
       ),
     );
     const approvalSessions = new Set(
@@ -433,6 +462,12 @@ export class AttentionProjectionService {
     );
 
     const setupItems = await this.projectSetupRequirement(readAuthority);
+    const pullRequestFeedbackItems = this.projectPullRequestFeedback(
+      readAuthority,
+      sessionsById,
+      activeNotifications,
+      viewer?.mayChangePullRequestFeedback,
+    );
 
     const proposedChangeItems = this.projectProposedChanges(readAuthority);
     const pluginProposalItems = viewer?.isOperator
@@ -468,6 +503,7 @@ export class AttentionProjectionService {
         : []),
       ...gateReviews.items,
       ...pairingItems,
+      ...pullRequestFeedbackItems,
       ...setupItems,
     ];
     // The inventory's key (`conversationAcknowledgementKey`), so a person's
@@ -1051,6 +1087,7 @@ export class AttentionProjectionService {
   private async projectApproval(
     notification: Notification,
     authority: SessionReadAuthority,
+    sessionsById: ReadonlyMap<string, OrchestrationSessionSummary>,
   ): Promise<AttentionItem> {
     const metadata = notification.metadata ?? {};
     const sessionId =
@@ -1070,17 +1107,30 @@ export class AttentionProjectionService {
       ? presentOpenRequest(openRequest)
       : storedApprovalPresentation(notification);
 
+    const guardianReason =
+      notification.source === 'approval-inbox' &&
+      metadata.requestKind === 'registry'
+        ? stringValue(metadata.guardianReason)
+        : undefined;
+
+    // Bind the count to the Session the caller may read and its live request.
+    const session = openRequest
+      ? sessionsById.get(openRequest.threadId)
+      : undefined;
+    const projectSlug = session && sessionProjectSlug(session);
     const requestReference = openRequest
       ? attentionRequestReference(openRequest, stringValue(metadata.threadId))
       : undefined;
     return {
       id: `approval:${notification.id}`,
       kind: 'approval',
+      ...(guardianReason ? { guardianReason } : {}),
       title: presentation.title,
       ...(presentation.body ? { body: presentation.body } : {}),
       createdAt: notification.createdAt,
       updatedAt: notification.updatedAt,
       ...(sessionId ? { sessionId } : {}),
+      ...(projectSlug ? { projectSlug } : {}),
       ...(openHref ? { openHref } : {}),
       source: {
         notificationId: notification.id,
@@ -1404,6 +1454,71 @@ export class AttentionProjectionService {
   }
 
   /**
+   * Pull request feedback that needs a person, one item per pull request,
+   * only for a Session in `sessionsById` (already filtered by the reader's
+   * authority), named after that Session's Project. `updatedAt` is the
+   * source's own `at`, so acknowledging holds until the next pause.
+   */
+  private projectPullRequestFeedback(
+    authority: SessionReadAuthority,
+    sessionsById: ReadonlyMap<string, OrchestrationSessionSummary>,
+    activeNotifications: Notification[],
+    mayChange: ((conversationId: string) => boolean) | undefined,
+  ): PullRequestFeedbackAttentionItem[] {
+    if (isHostedSessionReadAuthority(authority)) return [];
+    let sources: readonly PullRequestFeedbackAttentionSource[];
+    try {
+      sources = this.sources.pullRequestFeedback?.attentionSources() ?? [];
+    } catch {
+      // A store that cannot be read is not a reason to fail the inbox.
+      return [];
+    }
+    return sources.flatMap((source) => {
+      const session = sessionsById.get(source.sessionId);
+      if (!session) return [];
+      const tag = pullRequestFeedbackNoticeTag(
+        source.prKey,
+        source.reason,
+        source.at,
+      );
+      const notificationId = activeNotifications.find(
+        (notification) =>
+          notification.source === PULL_REQUEST_FEEDBACK_NOTIFICATION_SOURCE &&
+          notification.metadata?.dedupeTag === tag,
+      )?.id;
+      const projectSlug = sessionProjectSlug(session);
+      const waiting = source.waiting?.reduce(
+        (total, entry) => total + entry.count,
+        0,
+      );
+      return [
+        {
+          id: pullRequestFeedbackAttentionId(source.prKey),
+          kind: 'pull-request-feedback' as const,
+          ...pullRequestFeedbackAttentionCopy(source),
+          createdAt: source.at,
+          updatedAt: source.at,
+          sessionId: source.sessionId,
+          ...(projectSlug ? { projectSlug } : {}),
+          source: {
+            conversationId: source.conversationId,
+            identity: source.identity,
+            ...(notificationId ? { notificationId } : {}),
+          },
+          reason: source.reason,
+          ...(source.cap ? { cap: source.cap } : {}),
+          headSha: source.headSha,
+          ...(source.failing?.length ? { failing: source.failing } : {}),
+          ...(waiting ? { waiting } : {}),
+          ...(source.url ? { pullRequestUrl: source.url } : {}),
+          openHref: sessionOpenHref(session),
+          viewerMayChange: mayChange?.(source.conversationId) ?? false,
+        },
+      ];
+    });
+  }
+
+  /**
    * Liveness oracle for registry-backed approval-request notifications.
    * `ApprovalRegistry` is intentionally in-memory only (never persisted,
    * unlike `NotificationService`'s JsonFileStore) — a process restart while
@@ -1680,30 +1795,11 @@ export function buildSessionFailedItem(
     ...(sessionProjectSlug(session)
       ? { projectSlug: sessionProjectSlug(session) }
       : {}),
-    openHref: failedSessionOpenHref(session),
+    openHref: sessionOpenHref(session),
     source: { threadId: session.threadId },
     engine: session.provider,
     ...(agent ? { agent } : {}),
   };
-}
-
-/**
- * archive#3203: a failed session's "Open session" must land on the one
- * sub-view that renders the failure. `sessionOpenHref`'s project branch opens
- * the CHAT DOCK (`?chat=…&dock=open`), and the dock has no failure surface at
- * all — `failureText` is derived in `useMutableSessionDetailState` and
- * rendered only by `SessionDetailErrors` inside the session detail pane. That
- * mismatch is the reported "it brings me somewhere.. but I don't see an error
- * message".
- *
- * Only this kind is redirected. The dock is the right target for
- * `needs_input`/`review_pending`, which ask the user to answer — that is what
- * the dock's composer is for. A failed session has nothing to answer, so it
- * goes to the same Activity surface deep link project-less sessions already
- * use, where the reason renders in an `role="alert"` banner on arrival.
- */
-function failedSessionOpenHref(session: OrchestrationSessionSummary): string {
-  return activityDeepLink({ sessionId: session.threadId });
 }
 
 /**
@@ -1721,15 +1817,17 @@ function sessionProjectSlug(
 
 function sessionOpenHref(session: OrchestrationSessionSummary): string {
   const projectSlug = sessionProjectSlug(session);
-  if (projectSlug) {
-    // archive#1284 (AC4): `dock=open` so the deep link actually opens the
-    // chat dock instead of landing on the project layout with the dock
-    // still closed (navigation-store.ts's `isDockOpen` reads this param).
-    // The Activity surface deep link below is not a dock target and carries
-    // no `dock=open`.
-    return `/projects/${encodeURIComponent(projectSlug)}?chat=${encodeURIComponent(session.threadId)}&dock=open`;
-  }
-  return activityDeepLink({ sessionId: session.threadId });
+  // The href the session's notifications open (`notificationSessionHref`): the
+  // chat dock on that session, inside its Project when it has one, so a row and
+  // its alert land in the same place.
+  //
+  // A failure takes it too. archive#3203 sent one to the session reader
+  // because the dock rendered none; archive#3213 gave the dock its failure
+  // banner.
+  return notificationSessionHref({
+    sessionId: session.threadId,
+    ...(projectSlug ? { projectSlug } : {}),
+  });
 }
 
 function stringValue(value: unknown): string | undefined {

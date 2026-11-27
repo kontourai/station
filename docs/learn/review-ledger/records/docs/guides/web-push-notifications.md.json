@@ -82,7 +82,13 @@
 
     "src-ui/src/contexts/PushNotificationsContext.tsx",
 
-    "src-ui/src/App.tsx"
+    "src-ui/src/App.tsx",
+
+    "src-ui/src/views/settings/BrowserPushStatus.tsx",
+
+    "src-ui/src/hooks/web-push-browser-registration.ts",
+
+    "src-ui/src/__tests__/browser-push-settings.browser.test.tsx"
   ],
 
   "checks": [

@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execGit } from '../../../utils/git-exec.js';
 import { ReviewLensRouter } from '../review-lens-router.js';
 
@@ -104,6 +104,11 @@ async function fixture() {
     'src-server/services/orchestration/orchestration-service.ts',
     '// trusted orchestration policy',
   );
+  await write(
+    root,
+    'src-server/runtime/routes/runtime-routes.ts',
+    '// runtime routes',
+  );
   await write(root, 'src-server/base.ts', 'export const base = true;\n');
   await write(root, 'package.json', '{"name":"fixture"}\n');
   await execGit(['-C', root, 'add', '.']);
@@ -198,6 +203,37 @@ describe('ReviewLensRouter', () => {
     });
   });
 
+  it('names a failed Veritas engine load apart from a failed classification', async () => {
+    // The engine is loaded on first plan (scripts/lib/server-static-imports.mjs);
+    // a fresh router module sees an engine that cannot load.
+    vi.resetModules();
+    vi.doMock('@kontourai/veritas/engine', () => {
+      throw new Error('veritas engine unavailable');
+    });
+    try {
+      const { ReviewLensRouter: FreshRouter } = await import(
+        '../review-lens-router.js'
+      );
+      const repo = await fixture();
+      await write(repo.root, 'src-server/changed.ts', 'export {}\n');
+      const head = await commit(repo.root, 'server change');
+      await expect(
+        new FreshRouter(repo.base).plan({
+          repositoryRoot: repo.root,
+          baseSha: repo.base,
+          headSha: head,
+        }),
+      ).resolves.toMatchObject({
+        kind: 'human-review-required',
+        reason:
+          'The Veritas engine that classifies the change could not be loaded.',
+      });
+    } finally {
+      vi.doUnmock('@kontourai/veritas/engine');
+      vi.resetModules();
+    }
+  });
+
   it('requires human coverage for unknown paths and candidate policy changes', async () => {
     const repo = await fixture();
     await write(repo.root, 'unmapped/file.txt', 'unknown\n');
@@ -225,6 +261,30 @@ describe('ReviewLensRouter', () => {
     ).resolves.toMatchObject({ kind: 'human-review-required' });
   });
 
+  it('routes changes to runtime wiring and engine adapters with the trusted Repo Map', async () => {
+    const repo = await fixture();
+    for (const path of [
+      'src-server/runtime/routes/runtime-routes.ts',
+      'src-server/providers/adapters/codex-adapter.ts',
+      'src-server/services/orchestration/orchestration-service.ts',
+    ]) {
+      await write(repo.root, path, '// candidate runtime wiring');
+    }
+    const head = await commit(repo.root, 'change runtime wiring');
+
+    await expect(
+      new ReviewLensRouter(repo.base).plan({
+        repositoryRoot: repo.root,
+        baseSha: repo.base,
+        headSha: head,
+      }),
+    ).resolves.toMatchObject({
+      kind: 'planned',
+      lenses: [{ id: 'runtime' }],
+      policy: { revision: repo.base },
+    });
+  });
+
   it.each([
     {
       path: 'src-server/providers/adapters/codex-approval-mode.ts',
@@ -232,23 +292,23 @@ describe('ReviewLensRouter', () => {
         write(root, path, '// changed approval policy\n'),
     },
     {
-      path: 'src-server/providers/adapters/codex-adapter.ts',
+      path: 'src-server/services/evidence/git-review-workspace-source.ts',
       change: async (root: string, path: string) =>
         execGit(['-C', root, 'rm', path]),
     },
     {
-      path: 'src-server/services/orchestration/orchestration-service.ts',
+      path: 'src-server/services/evidence/review-lens-router.ts',
       change: async (root: string, path: string) =>
         execGit([
           '-C',
           root,
           'mv',
           path,
-          'src-server/services/orchestration/renamed-service.ts',
+          'src-server/services/evidence/renamed-router.ts',
         ]),
     },
   ])(
-    'requires human review when Codex read-only enforcement policy changes by $path',
+    'requires human review when review policy or its dedicated enforcement changes at $path',
     async ({ path, change }) => {
       const repo = await fixture();
       await change(repo.root, path);

@@ -1,3 +1,5 @@
+import { isObjectRecord } from './record-guard.js';
+
 /** Versioned deployment registry for the first hosted Station boundary. */
 export const HOSTED_TENANT_REGISTRY_SCHEMA_VERSION = 1 as const;
 export const HOSTED_TENANT_REGISTRY_MAX_TENANTS = 128;
@@ -139,7 +141,7 @@ export function isHostedSessionReadAuthority(
 export function parseTenantExecutionContext(
   value: unknown,
 ): TenantExecutionContext | undefined {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['tenantId', 'source'])) {
+  if (!isObjectRecord(value) || !hasOnlyKeys(value, ['tenantId', 'source'])) {
     return undefined;
   }
   if (
@@ -245,7 +247,10 @@ export function canonicalTenantAuthority(value: string): string {
 export function parseHostedTenantRegistry(
   input: unknown,
 ): HostedTenantRegistry {
-  if (!isRecord(input) || !hasOnlyKeys(input, ['schemaVersion', 'tenants'])) {
+  if (
+    !isObjectRecord(input) ||
+    !hasOnlyKeys(input, ['schemaVersion', 'tenants'])
+  ) {
     throw new Error('Invalid hosted tenant registry');
   }
   if (
@@ -262,7 +267,7 @@ export function parseHostedTenantRegistry(
   const authorityToTenant: Record<string, TenantId> = Object.create(null);
   for (const rawEntry of input.tenants) {
     if (
-      !isRecord(rawEntry) ||
+      !isObjectRecord(rawEntry) ||
       !hasOnlyKeys(rawEntry, ['id', 'authority']) ||
       typeof rawEntry.id !== 'string' ||
       typeof rawEntry.authority !== 'string'
@@ -291,10 +296,6 @@ export function resolveHostedTenant(
   authority: string,
 ): TenantId | undefined {
   return registry.authorityToTenant[canonicalTenantAuthority(authority)];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function hasOnlyKeys(

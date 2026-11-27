@@ -1,7 +1,0 @@
-{
-  "revision": "043ab6b201fe989658a467ba3be20929d0452588",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.png","note":"Change under review (#4480 follow-ups on fix/start-owner-gate-followups-20261103): the interim start owner is bound only for a fresh start whose session.started has not settled and only when the stamp matches the dispatching principal (attachStarted now receives the dispatcher, startedBy); it is cleared when that session.started settles (appended, declined or abandoned), when an owner-bearing session.configured is appended, on failed-start cleanup and on teardown; the command gate prefers the durable owner. Checked this request-inspector capture: it shows an already-owned session's pending request inspector with no decision taken; nothing rendered depends on the start-owner window.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

@@ -1,0 +1,7 @@
+{
+  "revision": "4b4a014c9d90b800e45a48b7c2b6c1ee44cc11b4",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed against docs/reference/contracts.md: its only change is one added diagnostic-table row (opencode_serve_denied_path -> permission_denied, not retryable). This document links the contracts reference but states nothing about that table's rows, so nothing it says changes.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}

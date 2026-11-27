@@ -86,6 +86,7 @@ async function endedTask(
   const dispatcher = composeTaskDispatcher(graph);
   const outcome = await dispatcher.dispatch(task.id, {
     ownerUserId: 'human:local:earlier-owner',
+    fullAccessGrant: null,
   });
   expect(outcome.kind).toBe('dispatched');
   // A seeded dispatch leaves the Task ready with its lead attached.
@@ -236,6 +237,7 @@ describe('resume (#4554 slice 2)', () => {
     );
     await composeTaskDispatcher(graph).dispatch(task.id, {
       ownerUserId: 'human:local:earlier-owner',
+      fullAccessGrant: null,
     });
     await graph.updateTaskStatus(task.id, 'in_progress');
     await graph.setCloseOnMerge(task.id, true);
@@ -498,6 +500,7 @@ describe('exactly once (#4554)', () => {
     // After a dispatch, the replay answers the current Task, not `ready`.
     const outcome = await composeTaskDispatcher(restarted).dispatch(done.id, {
       ownerUserId: OPERATOR,
+      fullAccessGrant: null,
     });
     expect(outcome.kind).toBe('dispatched');
     const after = await restarted.resumeTask(input(done));

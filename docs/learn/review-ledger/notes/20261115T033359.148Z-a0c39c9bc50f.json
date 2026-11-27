@@ -1,0 +1,7 @@
+{
+  "revision": "ff1661f37fffeb3468c255c72dbafc75a37ba585",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Regenerated from the JSON after the timestampUtc schema text changed to say a nightly-npm row carries the registry-verification moment. Only that line differs; FUTURE_TIMESTAMP_SKEW_MS is exported for the CLI hand-off, and validation and rendering are otherwise unchanged.","inputs":["docs/reference/deploy-ledger.md","scripts/deploy-ledger.mjs"]}
+  ]
+}

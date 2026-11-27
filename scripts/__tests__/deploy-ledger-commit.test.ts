@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -331,5 +331,160 @@ describe('deploy-ledger commit-back with bounded re-derive-and-retry (MED-2)', (
       }),
     ).toThrow(/not retryable/);
     expect(git(origin, 'rev-parse', 'main').trim()).toBe(before);
+  });
+
+  it('refuses malformed record groups and subject choices before touching git', () => {
+    const { origin, writerA } = makeTwoWriterScratch();
+    const before = git(origin, 'rev-parse', 'main').trim();
+    const helper = resolve(scriptRoot, 'lib/deploy-ledger-commit.mjs');
+    const record = recordArgv(writerA, {
+      channel: 'stable-npm',
+      version: '0.4.1',
+      sha: A_SHA,
+      artifact: 'npm:@kontourai/station-cli@0.4.1 (dist-tag latest)',
+    });
+    for (const [label, args, reason] of [
+      [
+        'an empty record group',
+        ['--subject-run-id', '7', '--record', '--record', ...record],
+        /every --record group/,
+      ],
+      [
+        'both subject flags',
+        [
+          '--commit-subject',
+          'docs(ledger): x',
+          '--subject-run-id',
+          '7',
+          '--',
+          ...record,
+        ],
+        /usage/,
+      ],
+      ['no subject', ['--record', ...record], /usage/],
+    ] as const) {
+      const result = spawnSync(
+        process.execPath,
+        [helper, '--repo-root', writerA, ...args],
+        { encoding: 'utf8', windowsHide: true, env: testEnv() },
+      );
+      expect(result.status, label).toBe(1);
+      expect(result.stderr, label).toMatch(reason);
+    }
+    expect(() =>
+      commitLedgerWithRetry({
+        repoRoot: writerA,
+        recordArgvs: [record],
+        subjectRunId: '0',
+        env: testEnv(),
+      }),
+    ).toThrow(/positive decimal run id/);
+    expect(git(origin, 'rev-parse', 'main').trim()).toBe(before);
+  });
+
+  it('refuses a derived subject the head normalizer would not peel, with nothing committed', () => {
+    const { origin, writerA } = makeTwoWriterScratch();
+    const before = git(origin, 'rev-parse', 'main').trim();
+    // A row whose channel the subject shape does not know (a channel added
+    // to the ledger without updating GENERATED_LEDGER_SUBJECT): the record
+    // writes it, the derived subject cannot peel, and the helper must refuse.
+    const writeUnknownChannel = [
+      process.execPath,
+      '-e',
+      `const fs = require('node:fs');
+       const path = 'docs/reference/deploy-ledger.json';
+       const rows = JSON.parse(fs.readFileSync(path, 'utf8'));
+       rows.unshift({ ...rows[0], channel: 'nightly-ios', version: '1.0.0' });
+       fs.writeFileSync(path, JSON.stringify(rows, null, 2) + '\\n');
+       fs.appendFileSync('docs/reference/deploy-ledger.md', 'ios\\n');`,
+    ];
+    expect(() =>
+      commitLedgerWithRetry({
+        repoRoot: writerA,
+        recordArgvs: [writeUnknownChannel],
+        subjectRunId: '7',
+        env: testEnv(),
+      }),
+    ).toThrow(
+      /does not match the shape normalize-deploy-ledger-head\.mjs peels/,
+    );
+    expect(git(origin, 'rev-parse', 'main').trim()).toBe(before);
+  });
+
+  it("leaves the caller's other tracked edits and untracked files alone, in both modes", () => {
+    const { origin, writerA } = makeTwoWriterScratch();
+    writeFileSync(join(writerA, 'tracked.txt'), 'committed\n');
+    git(writerA, 'add', 'tracked.txt');
+    git(
+      writerA,
+      '-c',
+      'user.name=test',
+      '-c',
+      'user.email=test@example.com',
+      'commit',
+      '-q',
+      '-m',
+      'add a tracked file',
+    );
+    git(writerA, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
+    writeFileSync(join(writerA, 'tracked.txt'), 'edited by an earlier step\n');
+    writeFileSync(join(writerA, 'untracked.txt'), 'left by an earlier step\n');
+    const single = recordArgv(writerA, {
+      channel: 'stable-npm',
+      version: '0.4.1',
+      sha: A_SHA,
+      artifact: 'npm:one',
+    });
+    const multi = recordArgv(writerA, {
+      channel: 'stable-desktop',
+      version: '1.0.0',
+      sha: B_SHA,
+      artifact: 'github-release:v1.0.0',
+    });
+    const modes: Array<
+      [
+        string,
+        Pick<
+          Parameters<typeof commitLedgerWithRetry>[0],
+          'recordArgv' | 'recordArgvs' | 'commitSubject' | 'subjectRunId'
+        >,
+      ]
+    > = [
+      [
+        '--commit-subject --',
+        {
+          recordArgv: single,
+          commitSubject: 'docs(ledger): record stable-npm 0.4.1 from run 1',
+        },
+      ],
+      [
+        '--subject-run-id --record',
+        { recordArgvs: [multi], subjectRunId: '2' },
+      ],
+    ];
+    for (const [label, options] of modes) {
+      const before = git(origin, 'rev-parse', 'main').trim();
+      expect(
+        commitLedgerWithRetry({ repoRoot: writerA, env: testEnv(), ...options })
+          .pushed,
+        label,
+      ).toBe(true);
+      expect(readFileSync(join(writerA, 'tracked.txt'), 'utf8'), label).toBe(
+        'edited by an earlier step\n',
+      );
+      expect(readFileSync(join(writerA, 'untracked.txt'), 'utf8'), label).toBe(
+        'left by an earlier step\n',
+      );
+      expect(
+        git(origin, 'diff', '--name-only', `${before}..main`)
+          .trim()
+          .split('\n')
+          .sort(),
+        label,
+      ).toEqual([
+        'docs/reference/deploy-ledger.json',
+        'docs/reference/deploy-ledger.md',
+      ]);
+    }
   });
 });

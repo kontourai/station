@@ -104,7 +104,7 @@ export function startStartupAnimation(
     const variant = root.classList.contains('is-dev-build')
       ? 'dev'
       : (root.dataset.appChannel ?? root.dataset.startupMark);
-    next.src = ['dev', 'beta', 'nightly'].includes(variant ?? '')
+    next.src = ['dev', 'nightly'].includes(variant ?? '')
       ? `/favicon-${variant}.png`
       : '/favicon.png';
     if (next.src === image.src) return;

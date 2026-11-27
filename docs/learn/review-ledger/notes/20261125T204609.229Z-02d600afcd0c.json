@@ -1,0 +1,7 @@
+{
+  "revision": "6a825d0ab1eb458c4fe2668caad62b6618768584",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"Compared generated setting ids, route and scope with the catalog. Only the Sheet gestures preview help text changes to Chats. Registry deep-link and authority documentation remains accurate.","inputs":["src-server/generated/settings-registry.json"]}
+  ]
+}

@@ -25,10 +25,15 @@ import {
 } from '../contexts/conversation-open-policy';
 import type {
   HeldOutboundIntent,
+  OutboundDeliveryLookup,
   OutboundDispatchTurn,
   OutboundStationIdentity,
 } from '../lib/outboundQueue';
-import { outboundStationKey, rowBelongsToStation } from '../lib/outboundQueue';
+import {
+  outboundStationKey,
+  outboundTurnKey,
+  rowBelongsToStation,
+} from '../lib/outboundQueue';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
 import { describeStationFailure } from '../utils/stationFailure';
 import {
@@ -132,7 +137,22 @@ function sendableHere(clientTurnId: string): boolean {
 // not a second mounted instance.
 const supervisors = new Map<
   string,
-  { flushing: boolean; requested?: () => void }
+  {
+    flushing: boolean;
+    requested?: () => void;
+    /**
+     * The queue changed while a pass was running. Such a change starts no
+     * pass (most are the pass's own), but a pass asks Station about released
+     * sends only once, as it begins, so one released after that is looked
+     * for when the pass ends.
+     */
+    changedWhileFlushing?: boolean;
+    /**
+     * Released sends this supervisor has asked Station about, sent, or
+     * already started a pass for: each prompts at most one extra pass.
+     */
+    handled: Set<string>;
+  }
 >();
 /**
  * A flush asked for while one is running. The running pass may already have
@@ -143,7 +163,7 @@ function supervisorFor(station: OutboundStationIdentity) {
   const key = outboundStationKey(station);
   let state = supervisors.get(key);
   if (!state) {
-    state = { flushing: false };
+    state = { flushing: false, handled: new Set() };
     supervisors.set(key, state);
   }
   return state;
@@ -291,11 +311,13 @@ export function useOutboundQueueFlush(
         // pass makes them itself, and rerunning on them would never settle.
         if (rerunIfBusy)
           supervisor.requested = () => triggerFlushRef.current(true);
+        else supervisor.changedWhileFlushing = true;
         return;
       }
       supervisor.flushing = true;
+      supervisor.changedWhileFlushing = false;
       void import('../lib/outboundQueue')
-        .then(async ({ outboundDispatch }) => {
+        .then(async ({ outboundDispatch, OutboundLookupPausedError }) => {
           const {
             lookupTurnDelivery,
             IN_FLIGHT_FIRST_CHECK_MS,
@@ -311,14 +333,22 @@ export function useOutboundQueueFlush(
             mode === 'full'
               ? await outboundDispatch.reconcile(
                   async (turn) => {
-                    if (!current())
-                      throw new Error('Automatic delivery observation paused');
-                    const answer = await lookupTurnDelivery(
-                      apiBase,
-                      connection?.requestScope,
-                    )(turn);
-                    if (!current())
-                      throw new Error('Automatic delivery observation paused');
+                    // Hidden, offline or disconnected since the pass began:
+                    // whatever the request did then says nothing about
+                    // Station, so it is not one of the row's failed lookups.
+                    if (!current()) throw new OutboundLookupPausedError();
+                    supervisor.handled.add(outboundTurnKey(turn));
+                    let answer: Awaited<ReturnType<OutboundDeliveryLookup>>;
+                    try {
+                      answer = await lookupTurnDelivery(
+                        apiBase,
+                        connection?.requestScope,
+                      )(turn);
+                    } catch (error) {
+                      if (!current()) throw new OutboundLookupPausedError();
+                      throw error;
+                    }
+                    if (!current()) throw new OutboundLookupPausedError();
                     return answer;
                   },
                   { station },
@@ -381,6 +411,7 @@ export function useOutboundQueueFlush(
           const outcome = await outboundDispatch.flush(
             async (turn, claim) => {
               if (!current()) return { kind: 'deferred' as const };
+              supervisor.handled.add(outboundTurnKey(turn));
               const chat = activeChatsStore.getSnapshot()[turn.sessionId];
               if (
                 chat &&
@@ -486,6 +517,7 @@ export function useOutboundQueueFlush(
             );
             reportOutboundQueueUnavailable(
               'persistent queue settlement could not be confirmed.',
+              connection,
             );
           }
         })
@@ -493,7 +525,10 @@ export function useOutboundQueueFlush(
           const { reportOutboundQueueUnavailable } = await import(
             '../lib/outboundQueueReporting'
           );
-          reportOutboundQueueUnavailable(describeStationFailure(error).body);
+          reportOutboundQueueUnavailable(
+            describeStationFailure(error).body,
+            connection,
+          );
         })
         .finally(() => {
           supervisor.flushing = false;
@@ -501,7 +536,40 @@ export function useOutboundQueueFlush(
             const requested = supervisor.requested;
             supervisor.requested = undefined;
             requested();
+            return;
           }
+          // A send-only pass asks Station nothing, and starts no pass that
+          // would.
+          if (mode !== 'full' || !supervisor.changedWhileFlushing) return;
+          supervisor.changedWhileFlushing = false;
+          // A send released while this pass ran (its request got no answer)
+          // was not there when the pass asked Station about released sends,
+          // and its own notice started no pass. Ask about it now rather than
+          // at the next unrelated trigger.
+          void import('../lib/outboundQueue')
+            .then(({ outboundDispatch }) => outboundDispatch.snapshot())
+            .then((rows) => {
+              const released = rows.filter(
+                (row) =>
+                  row.status === 'invoking' &&
+                  row.awaitingLookup &&
+                  !row.heldBy &&
+                  !row.legacyImport &&
+                  rowBelongsToStation(row, station),
+              );
+              const keys = new Set(released.map(outboundTurnKey));
+              for (const key of supervisor.handled)
+                if (!keys.has(key)) supervisor.handled.delete(key);
+              const unseen = [...keys].filter(
+                (key) => !supervisor.handled.has(key),
+              );
+              if (unseen.length === 0) return;
+              for (const key of unseen) supervisor.handled.add(key);
+              triggerFlushRef.current(true);
+            })
+            .catch(() => {
+              // The queue could not be read: the next pass reports that.
+            });
         });
     },
     [sendMessage, apiBase, connection],
@@ -623,6 +691,7 @@ export function useOutboundQueueFlush(
               if (!active) return;
               reporter.reportOutboundQueueUnavailable(
                 describeStationFailure(error).body,
+                connection,
               );
             }
           });

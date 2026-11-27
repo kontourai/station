@@ -10,6 +10,7 @@
  * ends its workloads and exits when its IPC channel closes.
  */
 import { type ChildProcess, fork } from 'node:child_process';
+import { isRecord } from './ndjson.ts';
 import {
   isWorkloadEventMessage,
   type WorkloadErrorCode,
@@ -31,6 +32,7 @@ export type WorkloadReply = DistributiveOmit<
 
 const OPS = new Set([
   'spawn',
+  'capabilities',
   'write',
   'resize',
   'signal',
@@ -47,10 +49,6 @@ const HOST_READY_TIMEOUT_MS = 30_000;
 const HOST_STOP_TIMEOUT_MS = 15_000;
 /** Exited workloads kept in the registry for `status`. */
 const EXITED_KEPT = 64;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function failure(code: WorkloadErrorCode, message: string): WorkloadReply {
   return { ok: false, code, message };
@@ -123,13 +121,13 @@ export class WorkloadHost {
       forward(this.child);
       return;
     }
-    // Only a spawn starts the host. With no host, there is nothing to list
-    // and no workload to address.
+    // A spawn or explicit capability negotiation starts the host. With no
+    // host, there is nothing to list and no workload to address.
     if (op === 'list') {
       reply({ ok: true, result: [] });
       return;
     }
-    if (op !== 'spawn') {
+    if (op !== 'spawn' && op !== 'capabilities') {
       reply(failure('not-found', 'no such workload'));
       return;
     }

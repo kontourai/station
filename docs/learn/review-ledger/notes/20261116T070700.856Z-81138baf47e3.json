@@ -1,0 +1,7 @@
+{
+  "revision": "a99d98613c4e1cf6760fd15243ccf1bf426c4b94",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Re-checked the session answer / full access / authority section after the guardian change and added that a guardian may still allow an authority call on Station's engine; the autoApprove and guardian-limit sections are unchanged.","inputs":["docs/guides/agent-configuration.md","src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}

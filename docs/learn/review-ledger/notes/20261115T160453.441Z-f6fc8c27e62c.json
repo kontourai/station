@@ -1,0 +1,7 @@
+{
+  "revision": "52ed0aa6aabf748c9ee05e71166d5643f077e086",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the connections.md change: it adds a ciao patch note about stack-trace hooking and heap use only; the machine-relationship distinctions this guide links for are unchanged.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

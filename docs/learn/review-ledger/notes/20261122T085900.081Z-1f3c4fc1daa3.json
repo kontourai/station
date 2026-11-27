@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Scheduler logging/correlation keys still carry the job name (slug); displayName is not logged. No config claim changes.","inputs":["docs/reference/config.md","src-server/services/scheduling/builtin-scheduler.ts"]}
+  ]
+}

@@ -15,12 +15,11 @@
  * - TTL (AC2): sized per the lead notification's outcome tier
  *   (`NOTIFICATION_TTL_MS`), returned in seconds for `web-push`'s
  *   `options.TTL`.
- * - Deep link (AC3): resolves the lead notification's exact-session
- *   `openHref` the same way `AttentionProjectionService`'s approval
- *   projection does (`resolveNotificationOpenHref`), falling back to the
- *   generic attention inbox (`/notifications`) when metadata doesn't carry
- *   enough to resolve one — the same fallback
- *   `docs/guides/web-push-notifications.md`'s manual checklist documents.
+ * - Deep link (AC3): the lead notification's `notificationOpenLink`, the
+ *   one link every OS channel sends: its envelope or metadata session (the
+ *   same resolution `AttentionProjectionService`'s approval projection
+ *   uses), else the attention inbox (`/notifications`), with the opened
+ *   record and the sending Station's id added.
  *
  * Returns `null` when nothing in `pending` classifies to a known outcome
  * (defensive — `WebPushChannel.accepts` already filters before calling this).
@@ -32,17 +31,12 @@ import {
   type NotificationOutcome,
   rankNotificationContent,
 } from '@kontourai/station-shared/notification-priority';
-import {
-  resolveNotificationOpenHref,
-  withOpenedNotification,
-} from './notification-deep-link.js';
+import { notificationOpenLink } from './notification-deep-link.js';
 import {
   osNotificationBody,
   osNotificationTitle,
 } from './os-notification-text.js';
 import type { WebPushPayload } from './web-push-service.js';
-
-const NOTIFICATIONS_DEEP_LINK = '/notifications';
 
 interface ComposedWebPush {
   payload: WebPushPayload;
@@ -61,13 +55,11 @@ function toRankable(notification: Notification): RankableNotification | null {
   return { notification, outcome, updatedAt: notification.updatedAt };
 }
 
-function stringValue(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined;
-}
-
 export function composeWebPushPayload(
   notification: Notification,
   pending: readonly Notification[] = [notification],
+  /** The sending Station's environment id, carried in the link. */
+  stationId?: string,
 ): ComposedWebPush | null {
   const rankable = pending
     .map(toRankable)
@@ -75,21 +67,13 @@ export function composeWebPushPayload(
   const [lead] = rankNotificationContent(rankable);
   if (!lead) return null;
 
-  const metadata = lead.notification.metadata ?? {};
-  const sessionId =
-    stringValue(metadata.sessionId) ?? stringValue(metadata.conversationId);
-  const sessionKind = stringValue(metadata.sessionKind);
-  const url =
-    resolveNotificationOpenHref(metadata, sessionId, sessionKind) ??
-    NOTIFICATIONS_DEEP_LINK;
-
   return {
     payload: {
       title: osNotificationTitle(lead.notification.title),
       body: osNotificationBody(lead.notification.body),
       category: lead.notification.category,
       notificationId: lead.notification.id,
-      url: withOpenedNotification(url, lead.notification.id),
+      url: notificationOpenLink(lead.notification, stationId),
     },
     ttlSeconds: Math.round(NOTIFICATION_TTL_MS[lead.outcome] / 1000),
   };

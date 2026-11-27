@@ -1,26 +1,19 @@
-import type { Notification } from '@kontourai/station-contracts/notification';
-import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
+import {
+  type Notification,
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
+} from '@kontourai/station-contracts/notification';
+import { relativeTimeFromIso } from './relativeTime';
 
 /**
- * A row's time, as short as stays unambiguous: relative within a day, then a
- * date — with the year only once it is not this year. The exact instant is on
- * the `<time dateTime>` the callers render it in.
+ * A row's time, in the one compact format (`relativeTime`): relative within a
+ * week, then a date — with the year only once it is not this year. The exact
+ * instant is on the `<time dateTime>` the callers render it in.
  */
 export function formatNotificationTime(
   timestamp: string,
   now = new Date(),
 ): string {
-  const date = new Date(timestamp);
-  const diffMins = Math.floor((now.getTime() - date.getTime()) / MS_PER_MINUTE);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-  return date.toLocaleDateString([], {
-    month: 'short',
-    day: 'numeric',
-    ...(date.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
-  });
+  return relativeTimeFromIso(timestamp, now.getTime());
 }
 
 export function sortNotifications(
@@ -42,4 +35,32 @@ export function notificationDetail(
 ): string | undefined {
   const detail = notification.metadata?.detail;
   return typeof detail === 'string' ? detail : undefined;
+}
+
+/** Replace IDs in legacy Station-generated records still in notification history. */
+export function notificationBody(
+  notification: Pick<Notification, 'body' | 'source' | 'metadata'>,
+): string | undefined {
+  const { body, source, metadata } = notification;
+  const threadId = metadata?.threadId;
+  if (
+    source === TURN_COMPLETION_NOTIFICATION_SOURCE &&
+    typeof threadId === 'string' &&
+    body?.endsWith(` in session ${threadId}`)
+  )
+    return 'Open the chat for details.';
+  return body;
+}
+
+export function notificationSessionTitle(
+  notification: Pick<Notification, 'category' | 'metadata'>,
+): string | undefined {
+  if (
+    !['turn-completed', 'turn-failed', 'turn-stopped'].includes(
+      notification.category,
+    )
+  )
+    return;
+  const title = notification.metadata?.chatTitle;
+  return typeof title === 'string' && title.trim() ? title : undefined;
 }

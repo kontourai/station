@@ -1,0 +1,9 @@
+{
+  "revision": "13483c4f23ed6cc521785732b1b65a8da58be452",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked citing pages (getting-started fork actions, api read seam): the fork route codes schema-validation refusals and passes fork-context refusals from the history read through with their own code; api updated, getting-started unchanged.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked citing pages (getting-started fork actions, api read seam): the fork route codes schema-validation refusals and passes fork-context refusals from the history read through with their own code; api updated, getting-started unchanged.","inputs":["src-server/routes/chat/conversations.ts"]}
+  ]
+}

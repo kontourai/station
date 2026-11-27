@@ -1,0 +1,7 @@
+{
+  "revision": "b78420825342ac366cf00977a2a36b2fc40ec1a9",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"References the agent configuration guide; the guide edit is limited to the afterInvocation stats row, which this plan does not rely on.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agent-configuration.md"]}
+  ]
+}

@@ -41,7 +41,11 @@ import {
   type BuildProvenanceSnapshot,
   captureBuildProvenance,
 } from '../routes/system/build-provenance.js';
-import { usageTelemetryOutcomes } from '../telemetry/metrics.js';
+import {
+  usageTelemetryBatches,
+  usageTelemetryOutcomes,
+  usageTelemetrySuppressedWarnings,
+} from '../telemetry/metrics.js';
 import { errorMessage } from '../utils/error-message.js';
 import type { Logger } from '../utils/logger.js';
 import { persistedRandomIdentifierHash } from './persisted-random-identifier.js';
@@ -51,6 +55,9 @@ import type { TelemetrySecretResolver } from './secrets/secret-binding-administr
 import { TelemetryPublisherService } from './telemetry-publisher-service.js';
 import {
   abortableTelemetryOperation,
+  isPermanentTelemetryFailure,
+  parseRetryAfterMs,
+  readTelemetryErrorDetail,
   readTelemetryJson,
   TelemetryRequestError,
   telemetryRequestFailure,
@@ -68,6 +75,12 @@ const BATCH_SIZE = 20;
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_SHUTDOWN_FLUSH_ATTEMPTS = 5;
 const REQUEST_TIMEOUT_MS = 1_000;
+// #4994: a retryable failure defers the next attempt exponentially from one
+// flush interval, with equal jitter, up to 15 minutes. A server's Retry-After
+// (429/503) is a floor, itself bounded so a hostile value cannot park delivery.
+const RETRY_BASE_MS = FLUSH_INTERVAL_MS;
+const RETRY_MAX_MS = 15 * 60_000;
+const RETRY_AFTER_MAX_MS = 60 * 60_000;
 // Optional telemetry must not consume Station's service-stop time when an
 // ingestion host accepts a connection but never responds.
 type BufferedEvent = ProductTelemetryObservation;
@@ -79,7 +92,7 @@ interface UsageTelemetryServiceOptions {
   version: string;
   /** null preserves explicitly unknown bootstrap provenance. */
   buildProvenance?: BuildProvenanceSnapshot | null;
-  logger: Pick<Logger, 'warn'>;
+  logger: Pick<Logger, 'warn'> & Partial<Pick<Logger, 'debug'>>;
   env?: NodeJS.ProcessEnv;
   fetch?: typeof globalThis.fetch;
   setInterval?: typeof globalThis.setInterval;
@@ -146,6 +159,11 @@ export class UsageTelemetryService {
     null;
   private lastFailure: ProductTelemetryDeliveryStatus['lastFailure'] = null;
   private latestDelivery: 'never' | 'acknowledged' | 'failed' = 'never';
+  /** Interval and batch-full flushes wait until then after a retryable failure. */
+  private retryNotBefore = 0;
+  private consecutiveRetryableFailures = 0;
+  /** The failure last logged at warn; identical repeats log at debug. */
+  private warnedFailure: string | undefined;
   private probeStatus: TelemetryConnectionProbeStatus = {
     phase: 'never',
     checkedAt: null,
@@ -361,7 +379,10 @@ export class UsageTelemetryService {
         destination,
       );
     }
-    if (this.resolvedConfiguration().publishers[publisher].reason === 'DNT')
+    const status = this.resolvedConfiguration().publishers[publisher];
+    if (publisher === 'kontour' && !status.fullAvailable)
+      throw new Error('Detailed sharing is unavailable for Kontour.');
+    if (status.reason === 'DNT')
       throw new Error(
         'Full telemetry must be confirmed after DO_NOT_TRACK is removed.',
       );
@@ -420,11 +441,11 @@ export class UsageTelemetryService {
     return this.endpoint !== undefined;
   }
   async canSaveAuthorFull(): Promise<boolean> {
-    await this.author?.loadDisclosureReceipt();
+    if (!this.author) return true;
+    const status = this.resolvedConfiguration().publishers.kontour;
     return (
-      !this.author ||
-      this.resolvedConfiguration().publishers.kontour.reason === 'DNT' ||
-      this.author.hasCurrentDisclosureReceipt
+      status.fullAvailable === true &&
+      (status.reason === 'DNT' || (await this.author.loadDisclosureReceipt()))
     );
   }
   async telemetryStatus(): Promise<
@@ -450,10 +471,6 @@ export class UsageTelemetryService {
             { ...state, fullAvailable: state.endpointConfigured === true },
           ]),
         ),
-        kontour: {
-          ...resolved.publishers.kontour,
-          fullAvailable: !!resolved.authorEndpoint,
-        },
         operator: { ...resolved.publishers.operator, fullAvailable: true },
       },
       liteNotices: this.publishers.local.notices(),
@@ -718,6 +735,8 @@ export class UsageTelemetryService {
       this.deliveryEpoch++;
       this.latestDelivery = 'never';
       this.lastFailure = null;
+      this.resetRetry();
+      this.warnedFailure = undefined;
     }
     if (destinationChanged) {
       this.requestAbort?.abort();
@@ -862,7 +881,11 @@ export class UsageTelemetryService {
     }
     if (this.publisher === 'operator') {
       await this.publishers.observe(event, properties);
-      void this.author?.track(event, properties);
+      if (
+        this.author &&
+        this.resolvedConfiguration().publishers.kontour.fullAvailable
+      )
+        void this.author.track(event, properties);
     }
     const observation: BufferedEvent = {
       event,
@@ -1011,6 +1034,82 @@ export class UsageTelemetryService {
       /* optional diagnostics */
     }
   }
+  /**
+   * One warning per distinct failure (code and HTTP status), then debug until
+   * the failure changes or a batch is acknowledged. Only the code and status
+   * are logged: a receiver's detail is remote content, kept to the status.
+   */
+  private warnDeliveryFailure(
+    message: string,
+    failure: NonNullable<ProductTelemetryDeliveryStatus['lastFailure']>,
+    retryInMs?: number,
+  ): void {
+    const key = `${failure.code}:${failure.httpStatus ?? ''}`;
+    const context = {
+      publisher: this.publisher,
+      error: errorMessage(
+        new TelemetryRequestError(failure.code, failure.httpStatus),
+      ),
+      ...(retryInMs === undefined ? {} : { retryInMs }),
+    };
+    try {
+      if (key !== this.warnedFailure) {
+        this.warnedFailure = key;
+        this.options.logger.warn(message, context);
+        return;
+      }
+      usageTelemetrySuppressedWarnings.add(1, {
+        publisher: this.publisher,
+        code: failure.code,
+      });
+      this.options.logger.debug?.(message, context);
+    } catch {
+      /* optional diagnostics */
+    }
+  }
+  private recordBatch(
+    outcome: 'acknowledged' | 'rejected' | 'retry_scheduled',
+    failure?: NonNullable<ProductTelemetryDeliveryStatus['lastFailure']>,
+  ): void {
+    const status = failure?.httpStatus;
+    try {
+      usageTelemetryBatches.add(1, {
+        publisher: this.publisher,
+        outcome,
+        ...(failure ? { code: failure.code } : {}),
+        status_class:
+          outcome === 'acknowledged'
+            ? '2xx'
+            : status === undefined
+              ? 'none'
+              : status >= 400 && status < 500
+                ? '4xx'
+                : status >= 500 && status < 600
+                  ? '5xx'
+                  : 'other',
+      });
+    } catch {
+      /* optional observability */
+    }
+  }
+  private resetRetry(): void {
+    this.retryNotBefore = 0;
+    this.consecutiveRetryableFailures = 0;
+  }
+  /** Defers the next non-shutdown attempt; returns the delay in milliseconds. */
+  private scheduleRetry(retryAfterMs: number | undefined): number {
+    this.consecutiveRetryableFailures++;
+    const ceiling = Math.min(
+      RETRY_MAX_MS,
+      RETRY_BASE_MS * 2 ** Math.min(this.consecutiveRetryableFailures - 1, 20),
+    );
+    const jittered = ceiling / 2 + Math.random() * (ceiling / 2);
+    const delay = Math.round(
+      Math.min(RETRY_AFTER_MAX_MS, Math.max(jittered, retryAfterMs ?? 0)),
+    );
+    this.retryNotBefore = Date.now() + delay;
+    return delay;
+  }
   private recordOutcome(outcome: string, count = 1): void {
     try {
       usageTelemetryOutcomes.add(count, { outcome });
@@ -1123,6 +1222,8 @@ export class UsageTelemetryService {
   private async flushWithDeadline(deadline?: number): Promise<void> {
     if (!this.active || this.buffer.length === 0 || this.flushing)
       return this.flushing;
+    // Shutdown's bounded final attempt (with a deadline) ignores the backoff.
+    if (deadline === undefined && Date.now() < this.retryNotBefore) return;
     const batch = this.buffer.slice(0, BATCH_SIZE);
     const epoch = this.deliveryEpoch;
     const endpoint = this.endpoint!;
@@ -1169,7 +1270,13 @@ export class UsageTelemetryService {
           controller.signal,
         );
         if (!response.ok)
-          throw new TelemetryRequestError('http_refused', response.status);
+          throw new TelemetryRequestError('http_refused', response.status, {
+            detail: await readTelemetryErrorDetail(response, controller.signal),
+            retryAfterMs:
+              response.status === 429 || response.status === 503
+                ? parseRetryAfterMs(response.headers?.get?.('retry-after'))
+                : undefined,
+          });
         const body = await readTelemetryJson(response, controller.signal);
         credential.assertCurrent();
         let receipt: ProductTelemetryCommitReceipt;
@@ -1197,20 +1304,49 @@ export class UsageTelemetryService {
           eventCount: receipt.eventIds.length,
         };
         this.latestDelivery = 'acknowledged';
+        this.resetRetry();
+        this.warnedFailure = undefined;
+        this.recordBatch('acknowledged');
       } catch (error) {
         if (epoch !== this.deliveryEpoch) return;
-        await this.recordFull(batch, 'dropped', 'transport', wireId);
+        const failure = telemetryRequestFailure(error, controller.signal);
         this.counts.failedAttempts++;
-        this.lastFailure = telemetryRequestFailure(error, controller.signal);
+        this.lastFailure = failure;
         this.latestDelivery = 'failed';
         this.recordOutcome('batch_failed');
-        this.warn(
-          'Usage telemetry batch failed; requeued.',
-          new TelemetryRequestError(
-            this.lastFailure.code,
-            this.lastFailure.httpStatus,
-          ),
+        if (isPermanentTelemetryFailure(failure)) {
+          // Resending cannot change a 4xx judgement of the request, so the
+          // batch leaves the queue before any ledger write can fail (#4994).
+          for (const retained of batch) {
+            const index = this.buffer.indexOf(retained);
+            if (index !== -1) this.buffer.splice(index, 1);
+          }
+          this.counts.rejected += batch.length;
+          // The receiver answered, so the next batch need not wait.
+          this.resetRetry();
+          this.recordBatch('rejected', failure);
+          this.warnDeliveryFailure(
+            'Usage telemetry batch rejected; dropped.',
+            failure,
+          );
+          await this.recordFull(batch, 'dropped', 'rejected', wireId);
+          return;
+        }
+        const retryInMs = this.scheduleRetry(
+          error instanceof TelemetryRequestError
+            ? error.refusal.retryAfterMs
+            : undefined,
         );
+        this.recordBatch('retry_scheduled', failure);
+        this.warnDeliveryFailure(
+          'Usage telemetry batch failed; retry scheduled.',
+          failure,
+          retryInMs,
+        );
+        // #5053: the batch stays queued, so nothing is dropped yet. The ledger
+        // records a batch once, when it leaves the queue (sent, rejected,
+        // withdrawn or shutdown); attempt history lives in the delivery counts
+        // and the batches metric.
       } finally {
         clearTimeout(timeoutId);
         if (this.requestAbort === controller) this.requestAbort = undefined;
@@ -1280,6 +1416,8 @@ export class UsageTelemetryService {
       if (signal?.aborted) {
         this.recordDropped(this.buffer, 'transport');
         this.counts.shutdownDropped += this.buffer.length;
+        if (this.buffer.length > 0)
+          this.recordOutcome('shutdown_dropped', this.buffer.length);
         this.buffer.length = 0;
         // The request is already aborted; what remains is local ledger work
         // beneath the home (the cancelled flush and the dropped record).

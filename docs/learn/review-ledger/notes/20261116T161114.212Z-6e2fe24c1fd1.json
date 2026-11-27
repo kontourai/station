@@ -1,0 +1,9 @@
+{
+  "revision": "acef3efc2b6b5faad35c0fc425e53ce32bc3f8cb",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"#2376 slice 2: settings.md changed only the codex-bound-browser-device-tools row (Station Control also moves to the bound channel, about 110 KB per thread). Checked this page's claims about that preview; none conflict.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"#2376 slice 2: settings.md changed only the codex-bound-browser-device-tools row (Station Control also moves to the bound channel, about 110 KB per thread). Checked this page's claims about that preview; none conflict.","inputs":["docs/user/settings.md"]}
+  ]
+}

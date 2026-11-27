@@ -304,14 +304,14 @@ describe('buildPortableServerArchive target', () => {
         outputDir,
         platform: process.platform,
         arch: process.arch,
-        tag: 'v0.1.11-preview.3',
+        tag: 'v0.1.11-rc.3',
         sha: '0'.repeat(40),
         createdAt: '2026-01-01T00:00:00.000Z',
         nodeDistribution: undefined,
         expectedRing: 'nightly',
       }),
     ).rejects.toThrow(
-      'v0.1.11-preview.3 is a preview release, not the requested nightly ring',
+      'v0.1.11-rc.3 is a stable release, not the requested nightly ring',
     );
     expect(existsSync(outputDir)).toBe(false);
   });

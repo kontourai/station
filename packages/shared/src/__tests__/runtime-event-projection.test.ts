@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { frameAgentMessage } from '../agent-message-frame.js';
 import {
   projectRuntimeEventsToMessages,
+  TURN_COMPLETED_AFTER_INTERRUPTION_CODE,
+  TURN_ENGINE_ENDED_MESSAGE,
   turnInterruptedContinueBoundaryId,
   turnInterruptedContinueClientTurnId,
 } from '../runtime-event-projection.js';
@@ -1689,6 +1691,37 @@ describe('projectRuntimeEventsToMessages', () => {
         ).toEqual([{ type: 'text', text: 'Partial answer' }]);
       },
     );
+
+    it('stamps the banner with its own time when it closes a turn a runtime error left open', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'dead', prompt: 'go' }),
+        ev({
+          method: 'runtime.error',
+          turnId: 'dead',
+          message: 'Claude Code process exited',
+        }),
+        ev({
+          method: 'session.state-changed',
+          sessionId: 't1',
+          from: 'running',
+          to: 'awaiting-approval',
+          createdAt: '2026-06-27T00:05:00.000Z',
+          interruptedTurnBoundary: {
+            boundaryId: 'boundary-dead',
+            priorState: 'accepted',
+            providerTurnId: 'dead',
+            ownerId: 'owner-1',
+            boundaryCreatedAt: '2026-06-27T00:00:00.000Z',
+            boundaryUpdatedAt: '2026-06-27T00:00:00.000Z',
+          },
+        } as Partial<CanonicalRuntimeEvent> & { method: string }),
+      ]);
+      const banner = messages.at(-1);
+      expect(banner?.metadata?.interruptedTurnBoundaryId).toBe('boundary-dead');
+      expect(banner?.metadata?.timestamp).toBe(
+        Date.parse('2026-06-27T00:05:00.000Z'),
+      );
+    });
 
     it('renders the banner when interruptedTurnBoundary is present', () => {
       const messages = projectRuntimeEventsToMessages([
@@ -3712,6 +3745,175 @@ describe("Station's continuation after a memory kill", () => {
     expect(
       userRow({ clientTurnId: `${KEY}0`, clientOrigin: internal })?.metadata
         ?.stationMemoryContinuation,
+    ).toBeUndefined();
+  });
+});
+
+describe('a reply cut off at the output limit', () => {
+  const turn = (finishReason?: string) =>
+    projectRuntimeEventsToMessages(
+      [
+        ev({ method: 'turn.started', turnId: 'long', prompt: 'Write a lot.' }),
+        ev({
+          method: 'content.text-delta',
+          turnId: 'long',
+          delta: 'This reply runs out of room before it can',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'long',
+          ...(finishReason ? { finishReason } : {}),
+        } as Partial<CanonicalRuntimeEvent> & { method: string }),
+      ],
+      { markEndedTurns: true },
+    ).find((message) => message.role === 'assistant');
+
+  it('marks the turn’s last row when the engine stopped at max-tokens', () => {
+    const row = turn('max-tokens');
+    expect(row?.metadata?.turnEnded).toBe('completed');
+    expect(row?.metadata?.turnCutOff).toBe('max-tokens');
+  });
+
+  it.each(['stop', 'tool-calls', 'other', undefined])(
+    'leaves a %s finish unmarked',
+    (finishReason) => {
+      expect(turn(finishReason)?.metadata).not.toHaveProperty('turnCutOff');
+    },
+  );
+});
+
+describe('a turn that completed after it was recorded as interrupted', () => {
+  it('keeps the notice, then the reply, then says the turn finished after all', () => {
+    const base = { provider: 'claude', threadId: 't' } as const;
+    const events = [
+      {
+        ...base,
+        eventId: 's',
+        method: 'turn.started',
+        turnId: 'late',
+        createdAt: '2026-11-16T00:00:00.000Z',
+        prompt: 'work',
+      },
+      {
+        ...base,
+        eventId: 'a',
+        method: 'turn.aborted',
+        turnId: 'late',
+        createdAt: '2026-11-16T00:00:01.000Z',
+        reason: TURN_ENGINE_ENDED_MESSAGE,
+        recoveryTerminal: true,
+      },
+      {
+        ...base,
+        eventId: 'b',
+        method: 'session.state-changed',
+        createdAt: '2026-11-16T00:00:01.000Z',
+        sessionId: 't',
+        from: 'running',
+        to: 'awaiting-approval',
+        reason: TURN_ENGINE_ENDED_MESSAGE,
+        sessionState: 'needs_input',
+        transitionReason: 'runtime_exit',
+        transitionSource: 'system_recovery',
+        interruptedTurnBoundary: {
+          boundaryId: 'turn-boundary:x',
+          priorState: 'indeterminate',
+          ownerId: 'o',
+          boundaryCreatedAt: '2026-11-16T00:00:00.000Z',
+          boundaryUpdatedAt: '2026-11-16T00:00:00.000Z',
+        },
+      },
+      {
+        ...base,
+        eventId: 'c',
+        method: 'turn.completed',
+        turnId: 'late',
+        createdAt: '2026-11-16T00:00:02.000Z',
+        outputText: 'done after all',
+      },
+      {
+        ...base,
+        eventId: 'w',
+        method: 'runtime.warning',
+        turnId: 'late',
+        createdAt: '2026-11-16T00:00:03.000Z',
+        severity: 'warning',
+        code: TURN_COMPLETED_AFTER_INTERRUPTION_CODE,
+        message: 'This turn finished after all.',
+      },
+    ] as unknown as CanonicalRuntimeEvent[];
+    const text = projectRuntimeEventsToMessages(events, {
+      markEndedTurns: true,
+    })
+      .flatMap((message) => message.parts ?? [])
+      .map((part) => ('text' in part ? String(part.text) : ''))
+      .join('\n');
+    expect(text).toContain(`[TURN_INTERRUPTED] ${TURN_ENGINE_ENDED_MESSAGE}`);
+    expect(text).toContain('done after all');
+    expect(text.indexOf('This turn finished after all.')).toBeGreaterThan(
+      text.indexOf('done after all'),
+    );
+  });
+});
+
+describe('a user-role row a Station flow sent names that flow', () => {
+  const origin = (kind: string, sender?: Record<string, unknown>) => ({
+    version: 1,
+    actor: { kind },
+    reported: { surface: 'unknown' },
+    ...(sender ? { sender } : {}),
+  });
+  const userRow = (extra: Record<string, unknown>) =>
+    projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        turnId: 'origin',
+        prompt: '# Task brief: fix the flaky login test',
+        ...extra,
+      }),
+    ]).find((message) => message.role === 'user');
+
+  it('marks a delegated brief and an Automation run that Station sent', () => {
+    expect(
+      userRow({
+        clientOrigin: origin('internal'),
+        dispatchOrigin: 'delegation',
+      })?.metadata?.stationOrigin,
+    ).toBe('delegation');
+    expect(
+      userRow({
+        clientOrigin: origin('internal'),
+        dispatchOrigin: 'automation',
+      })?.metadata?.stationOrigin,
+    ).toBe('automation');
+  });
+
+  it("never marks the person's words, another agent's message or an unknown origin", () => {
+    expect(
+      userRow({
+        clientOrigin: origin('device'),
+        dispatchOrigin: 'delegation',
+      })?.metadata?.stationOrigin,
+    ).toBeUndefined();
+    expect(
+      userRow({
+        clientOrigin: origin('internal'),
+        dispatchOrigin: 'delegation',
+        authoredBy: 'person',
+      })?.metadata?.stationOrigin,
+    ).toBeUndefined();
+    expect(
+      userRow({
+        clientOrigin: origin('internal', {
+          kind: 'agent-session',
+          sessionId: 'sender',
+        }),
+        dispatchOrigin: 'delegation',
+      })?.metadata?.stationOrigin,
+    ).toBeUndefined();
+    expect(
+      userRow({ clientOrigin: origin('internal'), dispatchOrigin: 'unknown' })
+        ?.metadata?.stationOrigin,
     ).toBeUndefined();
   });
 });

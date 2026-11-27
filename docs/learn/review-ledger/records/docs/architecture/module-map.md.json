@@ -816,8 +816,6 @@
 
     "src-ui/src/components/CommandPalette.tsx",
 
-    "src-ui/src/components/home/StarterWorkCard.tsx",
-
     "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
 
     "src-ui/src/components/plugins/plugin-frame-runtime.ts",
@@ -1626,6 +1624,10 @@
 
     "src-ui/src/views/task-workspace/__tests__/TaskCapabilityPath.test.tsx",
 
+    "src-ui/src/views/apps/AppsLibrary.tsx",
+
+    "src-ui/src/views/apps/AppDetailsDialog.tsx",
+
     "src-ui/src/components/conversation/ConversationBody.tsx",
 
     "src-ui/src/components/conversation/ConversationReader.tsx",
@@ -1704,7 +1706,103 @@
 
     "src-ui/src/connections/__tests__/station-state-partitions.test.ts",
 
-    "src-ui/src/__tests__/ensureOrchestrationEventStream.test.ts"
+    "src-ui/src/__tests__/ensureOrchestrationEventStream.test.ts",
+
+    "src-ui/src/components/browser-activity/InlineBrowserActivity.tsx",
+
+    "src-ui/src/components/chat/BrowserActivityRun.tsx",
+
+    "src-ui/src/components/chat/BrowserActivityContext.tsx",
+
+    "src-ui/src/components/chat/browser-activity-calls.ts",
+
+    "src-ui/src/float-over-chat/BrowserSessionSurface.tsx",
+
+    "src-ui/src/float-over-chat/useBrowserSessionReads.ts",
+
+    "src-ui/src/float-over-chat/BoundBrowserActivityProvider.tsx",
+
+    "src-ui/src/float-over-chat/shownSources.ts",
+
+    "tests/inline-browser-activity.spec.ts",
+
+    "packages/sdk/src/terminal-view/controller.ts",
+
+    "packages/sdk/src/__tests__/terminal-view/controller.test.ts",
+
+    "scripts/windows-owned-guard.cs",
+
+    "src-server/services/terminal/windows-command-guard.ts",
+
+    "src-server/services/terminal/command-process.ts",
+
+    "src-server/services/terminal/__tests__/command-process.process.test.ts",
+
+    "src-server/services/approvals/guardian-conversation.ts",
+
+    "src-server/services/orchestration/turn-authorship.ts",
+
+    "src-server/services/connections/native-model-container.ts",
+
+    "src-server/services/connections/native-model-stdio-channel.ts",
+
+    "src-server/services/connections/native-model-stdio-protocol.ts",
+
+    "src-server/services/connections/native-model-stdio-worker.ts",
+
+    "src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts",
+
+    "scripts/child-work-native-model-channel-lab.ts",
+
+    "docs/guides/native-model-channel-lab.md",
+
+    "src-server/providers/registries/registry-source-detection.ts",
+
+    "src-server/providers/registries/agent-registry-provider.ts",
+
+    "src-server/providers/registries/confined-local-read.ts",
+
+    "src-server/providers/adapters/muse-serve-schema.ts",
+
+    "src-server/services/orchestration/child-work-history.ts",
+
+    "packages/sdk/src/relay-management.ts",
+
+    "src-server/services/evidence/task-code-review-module.ts",
+
+    "src-server/routes/evidence/task-code-reviews.ts",
+
+    "src-ui/src/components/chat/BrowserTurnActivity.tsx",
+
+    "src-ui/src/__tests__/shortcuts-cheatsheet-layout.browser.test.tsx",
+
+    "src-server/services/projects/project-room-coordinator.ts",
+
+    "src-server/services/projects/project-room-coordinator-store.ts",
+
+    "src-server/runtime/routes/project-room-coordinator-runtime.ts",
+
+    "src-server/runtime/routes/project-room-agent-runtime.ts",
+
+    "packages/shared/src/station-home-store-registry.ts",
+
+    "packages/sdk/src/query-domains/projectRooms.ts",
+
+    "src-ui/src/hooks/orchestration/engineStartWaits.ts",
+
+    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+
+    "src-ui/src/hooks/useChatInput.ts",
+
+    "src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts",
+
+    "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts",
+
+    "src-server/services/orchestration/session-tool-restriction.ts",
+
+    "src-server/services/orchestration/__tests__/retained-session-sync.test.ts",
+
+    "src-server/services/orchestration/cli-session-group.ts"
   ],
 
   "checks": [

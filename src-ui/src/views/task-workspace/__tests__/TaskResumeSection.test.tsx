@@ -211,9 +211,7 @@ describe('TaskResumeSection (#4554)', () => {
     fireEvent.change(within(dialog).getByLabelText('Why resume it?'), {
       target: { value: 'Go again' },
     });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Resume', exact: true }),
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Resume' }));
     expect(
       await screen.findByText(
         'This Task changed since you opened it. Review it again.',

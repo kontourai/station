@@ -10,7 +10,9 @@ import {
 } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { registerAgentTools } from './station-control-agent-tools.js';
+import { registerAppearanceTools } from './station-control-appearance-tools.js';
 import { registerAssessmentTools } from './station-control-assessment-tools.js';
+import { registerAutomationProposalTools } from './station-control-automation-proposal-tools.js';
 import { registerBasisTools } from './station-control-basis-tools.js';
 import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
@@ -21,6 +23,7 @@ import {
   StationControlDisclosure,
 } from './station-control-disclosure.js';
 import { registerHtmlReplyTools } from './station-control-html-reply-tools.js';
+import { listedForModels } from './station-control-listed-schema.js';
 import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
 import { registerPersonalBoardTools } from './station-control-personal-board-tools.js';
@@ -36,6 +39,8 @@ import {
   stationControlToolPolicy,
 } from './station-control-policy.js';
 import { registerProjectActivityTools } from './station-control-project-activity-tools.js';
+import { registerProjectLibraryTools } from './station-control-project-library-tools.js';
+import { registerProjectMemoryTools } from './station-control-project-memory-tools.js';
 import { registerReviewGuideTools } from './station-control-review-guide-tools.js';
 import { registerScheduleTools } from './station-control-schedule-tools.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
@@ -49,6 +54,7 @@ import { registerTaskBriefTools } from './station-control-task-brief-tools.js';
 import { registerTaskMemoryTools } from './station-control-task-memory-tools.js';
 import { registerTaskThreadTools } from './station-control-task-thread-tools.js';
 import { registerTerminalTools } from './station-control-terminal-tools.js';
+import { stationToolFamily } from './station-control-tool-families.js';
 import { registerTroubleshootTools } from './station-control-troubleshoot-tools.js';
 import { registerWalkthroughTools } from './station-control-walkthrough-tools.js';
 import { registerWorkClaimTools } from './station-control-work-claim-tools.js';
@@ -65,22 +71,18 @@ import { registerKnowledgeDataTools } from './station-knowledge-tools.js';
  *
  * Skipped where it has nothing to add: tools not in the table (the browser
  * tools, whose own refusal is unchanged), route-enforced tools (`notify_user`
- * answers `caller-required` itself), reads of data that belongs to no person
- * (any caller, or none, may read them), and tools that call no route
- * (`install_plugin` only explains). A principal-scoped or operator-wide read
- * is checked (slice B): a caller-less or owner-less session learns why here,
- * whatever envelope the tool's SDK call would have put the server's code in.
+ * answers `caller-required` itself), and tools that call no route
+ * (`install_plugin` only explains). Every other tool is checked, reads of
+ * data that belongs to no person included (slice D: a caller-less call is
+ * refused whatever it asks for), so a caller-less or owner-less session
+ * learns why here, whatever envelope the tool's SDK call would have put the
+ * server's code in.
  */
 function withToolSideRefusal<
   Callback extends (input: never, ...rest: never[]) => unknown,
 >(name: string, callback: Callback): Callback {
   const policy = stationControlToolPolicy(name);
-  if (
-    !policy ||
-    policy.enforcedBy === 'route' ||
-    (policy.toolClass === 'read-only' && policy.role === 'none') ||
-    policy.routes.length === 0
-  )
+  if (!policy || policy.enforcedBy === 'route' || policy.routes.length === 0)
     return callback;
   const guarded = async (
     ...args: Parameters<Callback>
@@ -106,23 +108,7 @@ function withToolSideRefusal<
 }
 
 function stationControlToolMetadata(name: string) {
-  const groups: [string, RegExp][] = [
-    ['Knowledge', /knowledge/],
-    ['Evidence', /basis|assessment|review|receipt/],
-    ['Agents', /agent/],
-    // The Sessions in a Project: a chat-level read, not a Project record.
-    ['Chats', /^(list_project_activity|list_active_work)$/],
-    // #3413 B: what a Session says it is on, shown with Project activity.
-    ['Chats', /^(claim_work|renew_claim|release_claim)$/],
-    ['Projects', /project|layout|^board_|personal_board/],
-    ['Chats', /conversation|session|message/],
-    ['Tasks', /task|delegat|ssh_environment|pull_request/],
-    ['Scheduling', /job|schedul|wake_up/],
-    ['Skills', /skill/],
-    ['Integrations', /integration|provider|plugin/],
-  ];
-  const group =
-    groups.find(([, pattern]) => pattern.test(name))?.[0] ?? 'Station';
+  const group = stationToolFamily(name) ?? 'Station';
   const policy = stationControlToolPolicy(name);
   return {
     title: name
@@ -205,7 +191,7 @@ export class StationControlToolRegistry {
       {
         description:
           'List available Station tool families. Load a family to discover its tools.',
-        inputSchema: z.object({}),
+        inputSchema: listedForModels(z.object({})),
         annotations: { readOnlyHint: true },
       },
       async () => {
@@ -229,10 +215,12 @@ export class StationControlToolRegistry {
       {
         description:
           'Load one Station tool family. Visibility never grants permission to call its tools.',
-        inputSchema: z.object({ family: z.string().min(1).max(80) }),
+        inputSchema: listedForModels(
+          z.object({ family: z.string().min(1).max(80) }),
+        ),
         annotations: { readOnlyHint: true },
       },
-      async ({ family }) => {
+      async ({ family }, context) => {
         if (!(await callerCurrent()) || !disclosure.current())
           return jsonToolResult(
             stationControlRefusalBody(
@@ -252,6 +240,17 @@ export class StationControlToolRegistry {
             ),
           );
         for (const tool of tools) tool.enable();
+        // `enable()` announces the change on the server's standalone stream,
+        // which the stateless HTTP route does not keep: each request builds
+        // its own server. Sending it as a notification related to THIS call
+        // puts it on the call's own response stream, where an HTTP client
+        // reads it before the result (Codex 0.167 with
+        // `features.mcp_tool_list_changed` re-lists on it; see
+        // scripts/qualify-tool-disclosure.ts). Stateful transports may also
+        // get the standalone copy; a duplicate only prompts another list.
+        await context.mcpReq.notify({
+          method: 'notifications/tools/list_changed',
+        });
         return jsonToolResult({
           family,
           loaded: true,
@@ -290,7 +289,7 @@ export class StationControlToolRegistry {
             ...(options ? { 'ai.kontour/durable-replay': options.replay } : {}),
           },
           description,
-          inputSchema: z.object(shape),
+          inputSchema: listedForModels(z.object(shape)),
         },
         withToolSideRefusal(name, callback),
       ),
@@ -309,7 +308,11 @@ export class StationControlToolRegistry {
       name,
       this.server.registerTool(
         name,
-        { ...stationControlToolMetadata(name), description, inputSchema },
+        {
+          ...stationControlToolMetadata(name),
+          description,
+          inputSchema: listedForModels(inputSchema),
+        },
         withToolSideRefusal(name, callback),
       ),
     );
@@ -352,7 +355,7 @@ export class StationControlToolRegistry {
         name,
         {
           description,
-          inputSchema,
+          inputSchema: listedForModels(inputSchema),
           ...metadata,
           ...config,
           _meta: { ...metadata._meta, ...config._meta },
@@ -440,9 +443,11 @@ export function createSelectedStationControlMcpServer(
   registerWorkDiscoveryTools(registry);
   registerBoardTools(registry);
   registerPersonalBoardTools(registry);
+  registerAppearanceTools(registry);
   registerCatalogTools(registry);
   registerOperationsTools(registry);
   registerScheduleTools(registry);
+  registerAutomationProposalTools(registry);
   registerTerminalTools(registry);
   registerPlatformTools(registry);
   registerAssessmentTools(registry);
@@ -461,8 +466,12 @@ export function createSelectedStationControlMcpServer(
   registerDeclarePullRequestTools(registry);
   // Epic #4003: the caller's own Task brief.
   registerTaskBriefTools(registry);
+  // #5067: the caller's own Project Library.
+  registerProjectLibraryTools(registry);
   // #4003: the caller's own Task summary and records.
   registerTaskMemoryTools(registry);
+  // #5065: the caller Session's own Project memory.
+  registerProjectMemoryTools(registry);
   registerTaskThreadTools(registry);
   registerReviewGuideTools(registry);
   registry.registerDiscovery();

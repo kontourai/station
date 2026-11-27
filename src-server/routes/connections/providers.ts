@@ -20,10 +20,12 @@ import {
 import { providerOps } from '../../telemetry/metrics.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import {
+  connectionAddressRefusal,
   errorMessage,
   getBody,
   param,
   providerSchema,
+  providerUpdateSchema,
   validate,
 } from '../schemas/schemas.js';
 import {
@@ -73,6 +75,12 @@ export function createProviderRoutes(
   } = {},
 ) {
   const app = new Hono();
+  const validateWrite = validate(providerSchema, {
+    refusal: connectionAddressRefusal,
+  });
+  const validateUpdate = validate(providerUpdateSchema, {
+    refusal: connectionAddressRefusal,
+  });
 
   /**
    * The standing classified observation already recorded for THIS connection,
@@ -113,7 +121,7 @@ export function createProviderRoutes(
     }
   });
 
-  app.post('/', validate(providerSchema), async (c) => {
+  app.post('/', validateWrite, async (c) => {
     try {
       const body = restoreLegacyProviderSecrets(
         getBody(c) as ProviderConnectionConfig,
@@ -154,7 +162,7 @@ export function createProviderRoutes(
     }
   });
 
-  app.put('/:id', validate(providerSchema), async (c) => {
+  app.put('/:id', validateUpdate, async (c) => {
     try {
       const id = param(c, 'id');
       const body = getBody(c) as Omit<ProviderConnectionConfig, 'id'>;

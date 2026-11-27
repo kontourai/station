@@ -160,8 +160,8 @@ ordinary account members cannot resume:
 ### End time and window
 
 - Add `TaskRecord.endedAt`, written in the same mutation as every move into
-  `done` or `canceled` (status change, board or repair action,
-  close-on-merge), and never changed by edits.
+  `done` or `canceled`, including through merge or automation run completion.
+  Later edits leave the timestamp intact.
 - Resume is allowed while `now - endedAt` is at most 14 days, the same duration
   the follow-up poller uses. The dialog shows retained observations, which
   may be absent or stale when polling is disabled, unavailable, or backing
@@ -468,8 +468,11 @@ Choices and differences from the sections above:
   the server can tell apart from an agent. `scripts/cli-mcp-parity.json`
   records the exemption. There is no MCP tool.
 - **Storage.** `endedAt` and `resumes` are new `TaskRecord` fields in
-  `task-graph.json`. The first write that adds either copies the file to
-  `task-graph.json.pre-task-resume` (refusing the write if the copy fails),
+  `task-graph.json`. A recurring automation dispatch moves its previous end
+  time into the private reservation and restores it if the reservation is
+  released or expires before starting. The first write that adds the resume
+  format copies the file to `task-graph.json.pre-task-resume` (refusing the
+  write if the copy fails),
   and later writes keep that first copy. An older build refuses the new
   document as a whole (its decoder accepts an exact field list) rather than
   dropping fields. To downgrade, stop Station and put the

@@ -173,8 +173,12 @@ relaxes durability on purpose is not silently undone. Pass
 `configureConnection: true` to hand the pragmas to the adapter.
 Turn-dedup claims accept an optional versioned `inputDigest`. A mismatch with a
 known original returns `conflict` before replay, contention or reclaim. Reclaim
-never attaches a retry's digest to a legacy row. Memory snapshots preserve the
-field; SQLite stores it with the current owner. A bound host may additionally
+preserves the original digest. A host that needs additional input proof can pass
+`witnessedTurnInputDigest(inputDigest, witness)`. A resolved row can answer this
+request only if it has matching witnessed input. A provably pre-effect reclaim
+can install the witness when the existing content digest matches. SQLite
+records the witness with the owner and requires the original digest proof
+before trusting it. A bound host may additionally
 supply `turnDedup.inputDigestColumn` after adding that nullable column. The
 adapter requires agreement with the owner JSON marker, so an older writer
 replacing the owner does not leave trusted stale proof. Owned SQLite tables

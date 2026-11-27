@@ -1,0 +1,7 @@
+{
+  "revision": "e3822450d337a642661a7b9f48a863a84bde6d07",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Review-fix round: the paragraph now says Station also reads managed-settings.json and managed-settings.d/*.json in Claude Code's fixed per-OS managed folder (paths taken from the engine source, no env override), treats instructionFiles or projectInstructions in any readable tier as a choice, resolves a relative CLAUDE_CONFIG_DIR against the session cwd (EXECUTED: the bundled engine read <cwd>/cfg/settings.json), refuses non-regular files and >256 drop-ins, and qualifies managed precedence: MDM/server-managed are unreadable to Station, so a modern instructionFiles there wins but a legacy projectInstructions there does not (engine reads the legacy key only while instructionFiles is unset or default; EXECUTED at the user tier, REASONED for managed).","inputs":["docs/guides/connections.md","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/claude-instruction-files.ts"]}
+  ]
+}

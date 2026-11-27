@@ -1,0 +1,7 @@
+{
+  "revision": "436b4ca4dbab9500c5051b403e99a9d236715639",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"listAutomationDeliveries may return interrupted; the client does not validate outcomes (verified by running the origin/main client against a payload with the new value).","inputs":["docs/reference/sdk.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

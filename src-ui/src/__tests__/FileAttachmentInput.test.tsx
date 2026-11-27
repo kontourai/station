@@ -4,18 +4,12 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { FileAttachmentInput } from '../components/chat/FileAttachmentInput';
 
-vi.mock('../contexts/PreviewContext', () => ({
-  usePreview: () => ({ openPreview: vi.fn() }),
-}));
-
 describe('FileAttachmentInput accessibility', () => {
   test('exposes one named non-submit control while keeping its paperclip decorative', () => {
     const { container } = render(
       <FileAttachmentInput
         attachments={[]}
         onFilesSelected={vi.fn()}
-        onRemove={vi.fn()}
-        onClearAll={vi.fn()}
         supportsImages
       />,
     );
@@ -45,8 +39,6 @@ describe('FileAttachmentInput accessibility', () => {
       <FileAttachmentInput
         attachments={[]}
         onFilesSelected={vi.fn()}
-        onRemove={vi.fn()}
-        onClearAll={vi.fn()}
         disabled
         supportsImages={false}
         supportsFiles={false}
@@ -64,5 +56,43 @@ describe('FileAttachmentInput accessibility', () => {
       'Grok Build reported that it cannot accept images.',
     );
     expect(openPicker).not.toHaveBeenCalled();
+  });
+
+  test('with files attached, the paperclip still opens the picker to add more', () => {
+    const onFilesSelected = vi.fn();
+    const { container } = render(
+      <FileAttachmentInput
+        attachments={[
+          {
+            id: 'a1',
+            name: 'screenshot.png',
+            type: 'image/png',
+            size: 10,
+            data: 'data:image/png;base64,AAAA',
+            preview: 'data:image/png;base64,AAAA',
+          },
+        ]}
+        onFilesSelected={onFilesSelected}
+        supportsImages
+        supportsFiles
+      />,
+    );
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const openPicker = vi.fn();
+    Object.defineProperty(input, 'click', { value: openPicker });
+
+    // The composer's chip strip lists and removes what is attached; the
+    // paperclip has no review panel of its own to open instead.
+    fireEvent.click(screen.getByRole('button', { name: 'Attach files' }));
+    expect(openPicker).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Clear all' })).toBeNull();
+
+    // The picked files go to the composer's intake alongside the first.
+    const added = new File(['more'], 'more.txt', { type: 'text/plain' });
+    fireEvent.change(input, { target: { files: [added] } });
+    expect(onFilesSelected).toHaveBeenCalledWith([added]);
   });
 });

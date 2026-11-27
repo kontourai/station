@@ -105,7 +105,6 @@ function chatSession(overrides: Partial<ChatSession> = {}): ChatSession {
     error: null,
     createdAt: 0,
     updatedAt: 0,
-    hasUnread: false,
     orchestrationSessionStarted: true,
     orchestrationHistoryRevision: 0,
     ...overrides,
@@ -341,8 +340,93 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
     );
     expect(document.querySelectorAll('.message.user')).toHaveLength(1);
     expect(
-      screen.getAllByText('Non-person input · sender not recorded'),
+      screen.getAllByText('Automated message · sender unknown'),
     ).toHaveLength(2);
+  });
+
+  test('a delegated Task brief and an Automation run say which Station flow sent them, never the person', async () => {
+    const internalOrigin = {
+      version: 1,
+      actor: { kind: 'internal' },
+      reported: { version: 1, surface: 'unknown', build: null },
+    };
+    windowEvents.current = [
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 't1',
+        prompt: '# Task brief: fix the flaky login test',
+        clientOrigin: internalOrigin,
+        dispatchOrigin: 'delegation',
+      }),
+      runtimeEvent({ method: 'turn.completed', turnId: 't1' }),
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 't2',
+        prompt: 'The full test run on main finished red.',
+        clientOrigin: internalOrigin,
+        dispatchOrigin: 'automation',
+      }),
+      runtimeEvent({ method: 'turn.completed', turnId: 't2' }),
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 't3',
+        prompt: 'Thanks, now open the PR.',
+        clientOrigin: personOrigin,
+        dispatchOrigin: 'interactive',
+        authoredBy: 'person',
+      }),
+      runtimeEvent({ method: 'turn.completed', turnId: 't3' }),
+    ];
+    renderTranscript();
+    await waitFor(() =>
+      expect(document.querySelectorAll('.agent-incoming')).toHaveLength(2),
+    );
+    expect(
+      screen.getByText('Task brief from the delegating agent'),
+    ).toBeTruthy();
+    expect(screen.getByText('Automation run started by Station')).toBeTruthy();
+    expect(screen.queryByText('Automated message · sender unknown')).toBeNull();
+    const labels = [
+      ...document.querySelectorAll<HTMLElement>('.agent-incoming[aria-label]'),
+    ].map((row) => row.getAttribute('aria-label'));
+    expect(labels).toEqual([
+      'Task brief from the delegating agent, not from you',
+      'Automation run started by Station, not from you',
+    ]);
+    const person = [...document.querySelectorAll<HTMLElement>('.message.user')];
+    expect(person).toHaveLength(1);
+    expect(person[0]?.textContent).toContain('Thanks, now open the PR.');
+  });
+
+  test("pull request feedback is labelled as Station's, not as an unknown sender or the person", async () => {
+    windowEvents.current = [
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 't1',
+        prompt:
+          '[Station: pull request feedback for acme/widgets#42 at a1b2c3d (1 item).]\n\nFailing checks (1):\n- `ci / unit-tests`: failure',
+        clientOrigin: agentOrigin({
+          kind: 'pull-request-feedback',
+          sessionId: THREAD,
+        }),
+      }),
+      runtimeEvent({ method: 'turn.completed', turnId: 't1' }),
+    ];
+    renderTranscript();
+    await waitFor(() =>
+      expect(document.querySelectorAll('.agent-incoming')).toHaveLength(1),
+    );
+    expect(document.querySelectorAll('.message.user')).toHaveLength(0);
+    const row = document.querySelector('.agent-incoming');
+    expect(row?.getAttribute('aria-label')).toBe(
+      'Pull request feedback from Station, not from you',
+    );
+    expect(screen.getByText('Pull request feedback from Station').tagName).toBe(
+      'P',
+    );
+    expect(document.body.textContent).not.toContain('sender unknown');
+    // Nothing to open: no Session sent it.
+    expect(row?.querySelector('a')).toBeNull();
   });
 
   test('the header links to the Session that sent it', async () => {
@@ -359,7 +443,7 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
       return found!;
     });
     expect(link.getAttribute('href')).toBe(
-      `/?surface=activity&session=${SENDER_THREAD}&messageSession=${SENDER_THREAD}&messageDirection=sent&messageRequest=request-key-1`,
+      `/?surface=chat&session=${SENDER_THREAD}&messageSession=${SENDER_THREAD}&messageDirection=sent&messageRequest=request-key-1`,
     );
     expect(link.getAttribute('aria-label')).toBe(
       'Open Fix login, the Session that sent this message',
@@ -370,7 +454,7 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
       .mockImplementation(() => {});
     fireEvent.click(link);
     expect(navigate).toHaveBeenCalledWith(
-      `/?surface=activity&session=${SENDER_THREAD}&messageSession=${SENDER_THREAD}&messageDirection=sent&messageRequest=request-key-1`,
+      `/?surface=chat&session=${SENDER_THREAD}&messageSession=${SENDER_THREAD}&messageDirection=sent&messageRequest=request-key-1`,
     );
     expect(focus).not.toHaveBeenCalled();
     // Exact anchors keep opening the durable Activity record even for an open chat.
@@ -500,7 +584,7 @@ describe('the sending call in the sender’s transcript (#3419)', () => {
       );
       expect(
         row.querySelector('a.agent-outgoing__link')?.getAttribute('href'),
-      ).toContain('/?surface=activity&session=other-recipient');
+      ).toContain('/?surface=chat&session=other-recipient');
     }
     expect(
       new URL(rows[0]!.querySelector('a')!.href).searchParams.get(

@@ -1,5 +1,10 @@
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
+  STATION_CONFINEMENT_METADATA_KEY,
+} from '@kontourai/station-contracts/provider';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import {
@@ -8,15 +13,411 @@ import {
   outsideMcpPayload as payload,
   protocols,
 } from '../../../__test-utils__/outside-agent-mcp-fixture.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { createStationControlCallerRecordResolver } from '../../../runtime/mcp/station-control-caller.js';
+import { createStationControlDispatchScope } from '../../../runtime/mcp/station-control-dispatch-scope.js';
 import { mintStationControlMcpToken } from '../../../runtime/mcp/station-control-mcp-token.js';
 import { outsideAgentReleaseGuard } from '../../../security/outside-agent-release-guard.js';
 import { requiredExternalSurfaceCapability } from '../../../security/pairing-route-scopes.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { DAY } from '../../../services/outside-agent/oauth-records.js';
 import { OutsideAgentGrantStore } from '../../../services/outside-agent/oauth-store.js';
 
 const resource = `${issuer}/mcp`;
 
+test('outside layout listing reads only the approved Project and drops plugin metadata', async () => {
+  const listLayouts = vi.fn<FileStorageAdapter['listLayouts']>();
+  const lockAttempts = vi.fn();
+  let storage!: FileStorageAdapter;
+  const f = await fixture(undefined, async ({ home, projects }) => {
+    storage = new FileStorageAdapter(home);
+    for (const project of projects) await storage.createProject(project);
+    await storage.createLayout('alpha', {
+      id: 'layout-primary',
+      projectSlug: 'alpha',
+      slug: 'coding',
+      type: 'coding',
+      name: 'Coding',
+      description: 'Private layout description',
+      config: { plugin: 'private-plugin-binding' },
+      createdAt: projects[0]!.createdAt,
+      updatedAt: projects[0]!.updatedAt,
+    });
+    listLayouts.mockImplementation((slug) => storage.listLayouts(slug));
+    return {
+      projectRevision(slug) {
+        const revision = storage.projectRevision(slug);
+        return {
+          ...revision,
+          async withCurrentRead(read) {
+            lockAttempts(slug);
+            if (!revision.withCurrentRead)
+              throw new Error(
+                'fixture Project revision did not provide a read lock',
+              );
+            return revision.withCurrentRead(read);
+          },
+        };
+      },
+      listLayouts,
+    };
+  });
+  const projectGrant = f.grant();
+  const globalGrant = f.grant(true);
+  const projectSession = await f.initialize(projectGrant.accessToken);
+  const globalSession = await f.initialize(globalGrant.accessToken);
+
+  f.source.listProjects.mockImplementation(() => {
+    throw new Error('A foreign Project layout directory is corrupt');
+  });
+  const catalog = await payload(
+    await f.rpc(
+      projectGrant.accessToken,
+      'tools/list',
+      {},
+      projectSession.session,
+    ),
+  );
+  expect(catalog.result.tools).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: 'list_project_layouts' }),
+    ]),
+  );
+
+  const list = async (token: string, session: string, slug: string) =>
+    payload(
+      await f.rpc(
+        token,
+        'tools/call',
+        { name: 'list_project_layouts', arguments: { slug } },
+        session,
+      ),
+    );
+  expect(
+    (await list(projectGrant.accessToken, projectSession.session, 'foreign'))
+      .result.isError,
+  ).toBe(true);
+  expect(
+    (await list(globalGrant.accessToken, globalSession.session, 'alpha')).result
+      .isError,
+  ).toBe(true);
+  expect(listLayouts).not.toHaveBeenCalled();
+  expect(lockAttempts).not.toHaveBeenCalled();
+
+  writeFileSync(join(f.home, 'projects', 'foreign', 'project.json'), '{');
+  expect(() => storage.listProjects()).toThrow();
+
+  const admitted = await list(
+    projectGrant.accessToken,
+    projectSession.session,
+    'alpha',
+  );
+  expect(f.source.listProjects).not.toHaveBeenCalled();
+  expect(listLayouts).toHaveBeenCalledExactlyOnceWith('alpha');
+  expect(lockAttempts).toHaveBeenCalledExactlyOnceWith('alpha');
+  expect(JSON.parse(admitted.result.content[0].text)).toEqual({
+    success: true,
+    data: [
+      {
+        id: 'layout-primary',
+        projectSlug: 'alpha',
+        slug: 'coding',
+        name: 'Coding',
+        type: 'coding',
+      },
+    ],
+  });
+  listLayouts.mockImplementationOnce(() => {
+    throw new Error('Private directory /var/station/projects/alpha/layouts');
+  });
+  const failed = await list(
+    projectGrant.accessToken,
+    projectSession.session,
+    'alpha',
+  );
+  expect(failed.result.isError).toBe(true);
+  expect(JSON.stringify(failed)).toContain('Project layouts unavailable');
+  expect(JSON.stringify(failed)).not.toContain('Private directory');
+});
+
+test('outside layout listing does not open replacement records after a slug is reused before the read lock', async () => {
+  const listLayouts = vi.fn<FileStorageAdapter['listLayouts']>();
+  const replacement = vi.fn();
+  const f = await fixture(undefined, async ({ home, projects }) => {
+    const storage = new FileStorageAdapter(home);
+    const project = projects.find((row) => row.slug === 'alpha')!;
+    await storage.createProject(project);
+    listLayouts.mockImplementation((slug) => storage.listLayouts(slug));
+    return {
+      projectRevision(slug) {
+        const revision = storage.projectRevision(slug);
+        return {
+          ...revision,
+          async withCurrentRead(read) {
+            await storage.deleteProject(slug);
+            await storage.createProject({ ...project, id: 'id-replacement' });
+            replacement(storage.getProject(slug).id);
+            if (!revision.withCurrentRead)
+              throw new Error(
+                'fixture Project revision did not provide a read lock',
+              );
+            return revision.withCurrentRead(read);
+          },
+        };
+      },
+      listLayouts,
+    };
+  });
+  const tokens = f.grant();
+  const { session } = await f.initialize(tokens.accessToken);
+  const response = await f.rpc(
+    tokens.accessToken,
+    'tools/call',
+    { name: 'list_project_layouts', arguments: { slug: 'alpha' } },
+    session,
+  );
+  const result = await payload(response);
+  expect(replacement).toHaveBeenCalledExactlyOnceWith('id-replacement');
+  expect(listLayouts).not.toHaveBeenCalled();
+  expect(result.result.isError).toBe(true);
+  expect(JSON.stringify(result)).not.toContain('id-replacement');
+});
+
 describe('outside-agent MCP transport and live authority', () => {
+  test('list_active_work filters the live grant before projection and refuses another grant’s cursor', async () => {
+    let projectedStore!: EventStore;
+    const firstSessionId = `alpha-one-${'é'.repeat(350)}`;
+    const f = await fixture(({ home, clock, projects, cleanup }) => {
+      const eventStore = new EventStore(join(home, 'active-work.sqlite'));
+      const service = new OrchestrationService({
+        eventStore,
+        adoptionLedger: eventStore.createAdoptionLedger(),
+        eventBus: new EventBus(),
+        adapterRegistry: {
+          register() {},
+          get: () => undefined,
+          list: () => [],
+        },
+        logger: { debug() {}, warn() {} },
+        isFullAccessGrantorCurrent: () => false,
+      });
+      cleanup(async () => {
+        await service.shutdown();
+        eventStore.close();
+      });
+      const seed = (
+        threadId: string,
+        localProjectId: string | undefined,
+        owner = 'operator',
+        extra: Record<string, unknown> = {},
+        ephemeral = false,
+      ) => {
+        const timestamp = new Date(clock.now - 60_000).toISOString();
+        eventStore.appendEvent({
+          eventId: `${threadId}:start`,
+          threadId,
+          sessionId: threadId,
+          provider: 'codex',
+          method: 'session.started',
+          createdAt: timestamp,
+          metadata: {
+            userId: owner,
+            projectSlug: 'alpha',
+            localProjectId,
+            ...extra,
+          },
+        });
+        eventStore.upsertSession({
+          threadId,
+          provider: 'codex',
+          status: 'ready',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          cwd: `/private/${threadId}`,
+          ...(ephemeral ? { ephemeral: true } : {}),
+        });
+      };
+      seed(firstSessionId, 'id-alpha');
+      seed('alpha-two', 'id-alpha');
+      seed('alpha-change-during-refresh', 'id-alpha');
+      seed('alpha-host', 'id-alpha', 'operator', {
+        [STATION_CONFINEMENT_METADATA_KEY]: 'host',
+      });
+      seed('revoked-host', 'id-alpha', 'operator', {
+        [STATION_CONFINEMENT_METADATA_KEY]: 'host',
+        [STATION_CONFINEMENT_GRANTOR_METADATA_KEY]: {
+          kind: 'device',
+          deviceId: 'revoked-test-device',
+        },
+      });
+      seed(
+        'ephemeral-host',
+        'id-alpha',
+        'operator',
+        {
+          [STATION_CONFINEMENT_METADATA_KEY]: 'host',
+        },
+        true,
+      );
+      expect(service.sessionRunsHost('revoked-host')).toBe(false);
+      seed('foreign-host', 'id-foreign', 'operator', {
+        stationConfinement: 'host',
+      });
+      seed('other-owner', 'id-alpha', 'another-person', {
+        stationConfinement: 'host',
+      });
+      seed('alpha-peer', 'id-alpha', 'operator', {
+        delegation: { environmentKind: 'peer' },
+      });
+      seed('legacy-root', undefined);
+      const timestamp = new Date(clock.now - 60_000).toISOString();
+      eventStore.reserveNextConversationSession({
+        conversationId: 'legacy-root',
+        predecessorSessionId: 'legacy-root',
+        proposedSessionId: 'alpha-successor',
+        createdAt: timestamp,
+      });
+      seed('alpha-successor', 'id-alpha');
+      expect(
+        eventStore.conversationForSession('alpha-successor')?.conversationId,
+      ).toBe('legacy-root');
+
+      const foreign = (index: number) => {
+        const threadId = `0-foreign-${index}`;
+        return {
+          eventId: `${threadId}:start`,
+          threadId,
+          sessionId: threadId,
+          provider: 'codex',
+          method: 'session.started',
+          createdAt: timestamp,
+          metadata: {
+            userId: 'another-person',
+            projectSlug: 'alpha',
+            localProjectId: 'id-alpha',
+          },
+        } as const;
+      };
+      // More same-Project records than the outside scan accepts, all with another owner.
+      eventStore.appendEvent(foreign(0), [], () => {
+        for (let index = 1; index <= 2_001; index += 1)
+          eventStore.appendEvent(foreign(index));
+      });
+      const projectIdForSlug = (slug: string) =>
+        projects.find((project) => project.slug === slug)?.id;
+      const conversationId = (threadId: string) =>
+        eventStore.conversationForSession(threadId)?.conversationId;
+      const conversationSessionIds = (id: string) =>
+        eventStore.conversationSessions(id).map((session) => session.sessionId);
+      const startedMetadata = (threadId: string) =>
+        service.firstStartedMetadataOfThread(threadId);
+      const resolveRecord = createStationControlCallerRecordResolver({
+        actingPrincipal: (id) => service.resolveSessionActingPrincipal(id),
+        startedMetadata,
+        localProjectId: projectIdForSlug,
+        conversationId,
+      });
+      const dispatchScope = createStationControlDispatchScope({
+        resolveRecord,
+        sessionOwnerId: (id) => service.sessionRecordedOwnerId(id),
+        sessionExists: (id) => service.hasSessionStartRecord(id),
+        sessionRunsHost: (id) => service.sessionRunsHost(id),
+        conversationThreads: (id) =>
+          conversationSessionIds(conversationId(id) ?? id),
+        conversationSessionIds,
+        defaultSessionDirectory: () => undefined,
+        projectIdForSlug,
+        projectDirectories: () => projects,
+        sessionCwd: (id) => eventStore.readSessionByThread(id)?.cwd,
+        ownerMay: (owner, id) =>
+          owner === 'operator' && projects.some((project) => project.id === id),
+      });
+      const listSessions = service.listSessions.bind(service);
+      vi.spyOn(service, 'listSessions').mockImplementationOnce(
+        async (authority) => {
+          const result = await listSessions(authority);
+          eventStore.appendEvent({
+            eventId: 'alpha-change-during-refresh:host-decision',
+            threadId: 'alpha-change-during-refresh',
+            sessionId: 'alpha-change-during-refresh',
+            provider: 'codex',
+            method: 'session.approval-mode-set',
+            approvalMode: 'never',
+            createdAt: new Date(clock.now).toISOString(),
+          });
+          return result;
+        },
+      );
+      projectedStore = eventStore;
+      return { eventStore, orchestrationService: service, dispatchScope };
+    });
+    const projection = vi.spyOn(
+      projectedStore,
+      'listSessionProjectionEventsForThreads',
+    );
+    const client = async () => {
+      const { accessToken } = f.grant();
+      const { session, response } = await f.initialize(accessToken);
+      await response.text();
+      return {
+        list: () => f.rpc(accessToken, 'tools/list', {}, session),
+        work: (args: Record<string, unknown>) =>
+          f.rpc(
+            accessToken,
+            'tools/call',
+            { name: 'list_active_work', arguments: args },
+            session,
+          ),
+      };
+    };
+    const alpha = await client();
+    const listed = await payload(await alpha.list());
+    expect(listed.result.tools).toContainEqual(
+      expect.objectContaining({
+        name: 'list_active_work',
+        annotations: { readOnlyHint: true },
+        inputSchema: expect.objectContaining({ additionalProperties: false }),
+      }),
+    );
+    const first = JSON.parse(
+      (await payload(await alpha.work({ limit: 1 }))).result.content[0].text,
+    ).data;
+    expect(
+      first.sessions.map((row: { sessionId: string }) => row.sessionId),
+    ).toEqual([firstSessionId]);
+    expect(first.incompleteSources).toEqual([
+      {
+        source: 'station.work',
+        state: 'partial',
+        reason: 'host-execution-filtered',
+        filteredCount: 3,
+      },
+    ]);
+    expect(first.nextCursor).toEqual(expect.any(String));
+    const second = JSON.parse(
+      (await payload(await alpha.work({ cursor: first.nextCursor, limit: 1 })))
+        .result.content[0].text,
+    ).data;
+    expect(
+      second.sessions.map((row: { sessionId: string }) => row.sessionId),
+    ).toEqual(['alpha-two']);
+    expect(second.nextCursor).toBeNull();
+    const otherGrant = await client();
+    const foreignCursor = await payload(
+      await otherGrant.work({ cursor: first.nextCursor }),
+    );
+    expect(foreignCursor.error).toMatchObject({
+      code: -32602,
+      message: 'Invalid active-work cursor',
+    });
+    expect(projection.mock.calls.map(([ids]) => [...ids].sort())).toEqual([
+      [firstSessionId, 'alpha-two'],
+      [firstSessionId, 'alpha-two'],
+    ]);
+  });
+
   test('anonymous GET before initialize challenges with resource metadata; no cookie/query/internal/device substitution', async () => {
     const f = await fixture();
     const token = f.grant().accessToken;
@@ -188,6 +589,84 @@ describe('outside-agent MCP transport and live authority', () => {
     expect(
       (await f.rpc(project.accessToken, 'tools/list', {}, p.session)).status,
     ).toBe(401);
+  });
+
+  test('a grant revoked on another connection while reading the request returns a session error', async () => {
+    const f = await fixture();
+    const tokens = f.grant();
+    const { session, response } = await f.initialize(tokens.accessToken);
+    await response.text();
+    const other = OutsideAgentGrantStore.open(f.home, { ...f.store.options });
+    try {
+      const grant = other.access(tokens.accessToken, resource)!;
+      const body = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            other.revoke(grant.id, grant.version);
+            controller.enqueue(
+              new TextEncoder().encode(
+                JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: 1,
+                  method: 'tools/call',
+                  params: { name: 'get_project', arguments: { slug: 'alpha' } },
+                }),
+              ),
+            );
+            controller.close();
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const init = {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${tokens.accessToken}`,
+          'content-type': 'application/json',
+          'mcp-session-id': session,
+          'mcp-protocol-version': '2025-11-25',
+        },
+        body,
+        duplex: 'half' as const,
+      };
+      const refused = await f.request('/mcp', init);
+      expect(refused.status).toBe(404);
+      expect(await payload(refused)).toMatchObject({
+        error: { code: -32001, message: 'Session not found' },
+      });
+      expect(f.source.getProject).not.toHaveBeenCalled();
+    } finally {
+      other.close();
+    }
+  });
+
+  test('a grant revoked on another connection during dispatch returns a session error', async () => {
+    const f = await fixture();
+    const tokens = f.grant();
+    const { session, response } = await f.initialize(tokens.accessToken);
+    await response.text();
+    const other = OutsideAgentGrantStore.open(f.home, { ...f.store.options });
+    try {
+      const grant = other.access(tokens.accessToken, resource)!;
+      const project = f.projects[0]!;
+      f.source.getProject.mockImplementationOnce(() => {
+        other.revoke(grant.id, grant.version);
+        return project;
+      });
+      const refused = await f.rpc(
+        tokens.accessToken,
+        'tools/call',
+        { name: 'get_project', arguments: { slug: 'alpha' } },
+        session,
+      );
+      expect(f.source.getProject).toHaveBeenCalledOnce();
+      expect(refused.status).toBe(404);
+      expect(await payload(refused)).toMatchObject({
+        error: { code: -32001, message: 'Session not found' },
+      });
+    } finally {
+      other.close();
+    }
   });
 
   test.each(['revoke', 'narrow', 'expiry', 'authority'] as const)(
@@ -734,15 +1213,56 @@ test('junk bearer ingress is bounded before access or CORS reads; refused floods
   expect(access).not.toHaveBeenCalled();
   expect(policy).not.toHaveBeenCalled();
   expect(
-    prepare.mock.calls.every(([sql]) =>
-      /^SELECT .*outside_oauth_budgets/.test(sql),
+    prepare.mock.calls.every(
+      ([sql]) =>
+        sql === 'PRAGMA busy_timeout' ||
+        /^SELECT .*outside_oauth_budgets/.test(sql),
     ),
   ).toBe(true);
   expect(
     exec.mock.calls.every(([sql]) =>
-      ['BEGIN IMMEDIATE', 'COMMIT'].includes(sql),
+      [
+        'BEGIN IMMEDIATE',
+        'COMMIT',
+        'PRAGMA busy_timeout=0',
+        'PRAGMA busy_timeout=5000',
+      ].includes(sql),
     ),
   ).toBe(true);
+});
+
+test('outside MCP refuses a held ingress-budget lock without a full SQLite busy wait', async () => {
+  const f = await fixture();
+  const tokens = f.grant();
+  const { session, response } = await f.initialize(tokens.accessToken);
+  await response.text();
+  const other = new DatabaseSync(
+    join(f.home, 'authentication/outside-agent-oauth.sqlite'),
+  );
+  try {
+    other.exec('BEGIN IMMEDIATE');
+    try {
+      const started = performance.now();
+      const refused = await f.rpc(
+        tokens.accessToken,
+        'tools/list',
+        {},
+        session,
+      );
+      expect(refused.status).toBe(503);
+      expect(performance.now() - started).toBeLessThan(2_000);
+      expect(await refused.json()).toEqual({
+        error: 'temporarily_unavailable',
+      });
+    } finally {
+      other.exec('ROLLBACK');
+    }
+    const retried = await f.rpc(tokens.accessToken, 'tools/list', {}, session);
+    expect(retried.status).toBe(200);
+    expect((await payload(retried)).result.tools).toHaveLength(2);
+  } finally {
+    other.close();
+  }
 });
 
 test('access and the one-second session recheck read without a write lock or expiry sweep', async () => {

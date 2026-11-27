@@ -725,7 +725,7 @@ describe('a plugin opens its own related panes', () => {
   // plugin disabled while the covered pane's guard was up opens nothing.
   test('a plugin disabled while a guard is answering is refused inside the lock', async () => {
     await mount();
-    act(() => probe.model?.placeSurface('activity', 'right'));
+    act(() => probe.model?.placeSurface('device', 'right'));
     const before = await settledStorageSnapshot();
     const unregister = navigationStore.registerNavigationGuard(
       Symbol('covered pane'),
@@ -733,7 +733,7 @@ describe('a plugin opens its own related panes', () => {
         facts.registryVersion = null;
         continueNavigation();
       },
-      'activity',
+      'device',
     );
     try {
       expect(await open({})).toEqual({
@@ -743,7 +743,7 @@ describe('a plugin opens its own related panes', () => {
     } finally {
       unregister();
     }
-    expect(regions().right.panes).toEqual(['activity']);
+    expect(regions().right.panes).toEqual(['device']);
     expect(await settledStorageSnapshot()).toEqual(before);
   });
 
@@ -813,8 +813,8 @@ describe('a handle reveals and closes only what its caller opened', () => {
   test('reveal focuses it; another occurrence of the same plugin cannot use it', async () => {
     await mount();
     const { handle } = (await open({})) as { handle: string };
-    act(() => probe.model?.placeSurface('activity', 'right'));
-    expect(regions().right.occupant).toBe('activity');
+    act(() => probe.model?.placeSurface('device', 'right'));
+    expect(regions().right.occupant).toBe('device');
     expect(await run(() => host().reveal(handle))).toEqual({
       status: 'focused',
       presentation: 'beside',
@@ -1045,8 +1045,8 @@ describe('a capability acts only for the occurrence and Station it was given to'
 
   test('an open whose caller unmounts while a guard is up opens nothing', async () => {
     await mount();
-    act(() => probe.model?.placeSurface('activity', 'right'));
-    const guard = deferredGuard('activity');
+    act(() => probe.model?.placeSurface('device', 'right'));
+    const guard = deferredGuard('device');
     try {
       const before = await settledStorageSnapshot();
       const arrangement = structuredClone(regions());
@@ -1079,8 +1079,8 @@ describe('a capability acts only for the occurrence and Station it was given to'
     'a narrowed capability whose scope %s while a guard is up commits only while it is current',
     async (_name, current) => {
       await mount();
-      act(() => probe.model?.placeSurface('activity', 'right'));
-      const guard = deferredGuard('activity');
+      act(() => probe.model?.placeSurface('device', 'right'));
+      const guard = deferredGuard('device');
       try {
         const before = await settledStorageSnapshot();
         let live = true;
@@ -1274,8 +1274,8 @@ describe('what a guard was asked about is what the open commits over', () => {
           projectPane: true,
         });
       });
-      act(() => probe.model?.placeSurface('activity', 'right'));
-      const first = deferredGuard('activity');
+      act(() => probe.model?.placeSurface('device', 'right'));
+      const first = deferredGuard('device');
       let second: ReturnType<typeof deferredGuard> | undefined;
       let release: (() => void) | undefined;
       try {
@@ -1320,7 +1320,7 @@ describe('what a guard was asked about is what the open commits over', () => {
             });
           });
         }
-        if (change === 'new guard') second = deferredGuard('activity');
+        if (change === 'new guard') second = deferredGuard('device');
         if (change === 'contended lock')
           release = installFakeLocks().holdExternally();
         const before = await settledStorageSnapshot();
@@ -1344,14 +1344,14 @@ describe('what a guard was asked about is what the open commits over', () => {
     },
   );
 
-  async function keptReportUnderActivity() {
+  async function keptReportUnderDevice() {
     await mount();
     const { handle } = (await open({ key: 'weekly' })) as { handle: string };
     await run(async () => {
       await probe.relations?.keep(handle);
     });
-    act(() => probe.model?.placeSurface('activity', 'right'));
-    expect(regions().right.occupant).toBe('activity');
+    act(() => probe.model?.placeSurface('device', 'right'));
+    expect(regions().right.occupant).toBe('device');
     return handle;
   }
 
@@ -1386,7 +1386,7 @@ describe('what a guard was asked about is what the open commits over', () => {
   test.each(requests)(
     'opening %s over a guard that moves other unsaved work in before it answers opens nothing',
     async (_name, request) => {
-      const kept = await keptReportUnderActivity();
+      const kept = await keptReportUnderDevice();
       const agentsDirty = vi.fn();
       const unregisterAgents = navigationStore.registerNavigationGuard(
         Symbol('agents draft'),
@@ -1404,7 +1404,7 @@ describe('what a guard was asked about is what the open commits over', () => {
           probe.model?.placeSurface('workspace-agents', 'right');
           proceed();
         },
-        'activity',
+        'device',
       );
       try {
         const relations = localStorage.getItem(PANE_RELATIONS_STORAGE_KEY);
@@ -1428,8 +1428,8 @@ describe('what a guard was asked about is what the open commits over', () => {
   test.each(requests)(
     'opening %s while more unsaved work is registered for the asked pane opens nothing',
     async (_name, request) => {
-      const kept = await keptReportUnderActivity();
-      const first = deferredGuard('activity');
+      const kept = await keptReportUnderDevice();
+      const first = deferredGuard('device');
       let second: ReturnType<typeof deferredGuard> | null = null;
       try {
         const before = await settledStorageSnapshot();
@@ -1439,7 +1439,7 @@ describe('what a guard was asked about is what the open commits over', () => {
           pending = request(kept);
         });
         await waitFor(() => expect(first.asked).toHaveBeenCalledTimes(1));
-        second = deferredGuard('activity');
+        second = deferredGuard('device');
         first.answer('proceed');
         expect(await run(() => pending)).toMatchObject({
           status: 'unavailable',

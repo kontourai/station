@@ -171,7 +171,7 @@ export function ReplayTransport({ sessionId }: { sessionId: string }) {
             ? ' Content is redacted; text layout differs.'
             : ''}
           {player.tape.presentation?.answerDelivery === 'buffered'
-            ? ' The source device buffered answer display; replay steps its raw canonical events and does not reproduce that pacing.'
+            ? ' The source device buffered answers; replay steps through the raw events without that pacing.'
             : ''}
           {player.tape.stoppedReason ? ` ${player.tape.stoppedReason}` : ''}
           {` Render: ${observation.performance?.render?.phase ?? 'not observed for this frame'}.`}

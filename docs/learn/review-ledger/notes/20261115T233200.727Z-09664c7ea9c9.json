@@ -1,0 +1,15 @@
+{
+  "revision": "2df442f566b413ffc416038ad5d5813693c79d94",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Claude transcript discovery now scans up to 16 leading records / 4 MiB for the first sessionId+cwd record, lists only projects/<project>/*.jsonl newest folder first, skips subagent sidechains, caches head results, and warns once when nothing is accepted. Checked this page's Claude transcript claims (general Session-source discovery, read-only import, usage/ancestry); none describe first-line discovery or traversal, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Claude transcript discovery now scans up to 16 leading records / 4 MiB for the first sessionId+cwd record, lists only projects/<project>/*.jsonl newest folder first, skips subagent sidechains, caches head results, and warns once when nothing is accepted. Checked this page's Claude transcript claims (general Session-source discovery, read-only import, usage/ancestry); none describe first-line discovery or traversal, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Claude transcript discovery now scans up to 16 leading records / 4 MiB for the first sessionId+cwd record, lists only projects/<project>/*.jsonl newest folder first, skips subagent sidechains, caches head results, and warns once when nothing is accepted. Checked this page's Claude transcript claims (general Session-source discovery, read-only import, usage/ancestry); none describe first-line discovery or traversal, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Claude transcript discovery now scans up to 16 leading records / 4 MiB for the first sessionId+cwd record, lists only projects/<project>/*.jsonl newest folder first, skips subagent sidechains, caches head results, and warns once when nothing is accepted. Checked this page's Claude transcript claims (general Session-source discovery, read-only import, usage/ancestry); none describe first-line discovery or traversal, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Claude transcript discovery now scans up to 16 leading records / 4 MiB for the first sessionId+cwd record, lists only projects/<project>/*.jsonl newest folder first, skips subagent sidechains, caches head results, and warns once when nothing is accepted. Checked this page's Claude transcript claims (general Session-source discovery, read-only import, usage/ancestry); none describe first-line discovery or traversal, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]}
+  ]
+}

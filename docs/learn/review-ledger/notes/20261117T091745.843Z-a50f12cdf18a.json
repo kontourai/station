@@ -1,0 +1,13 @@
+{
+  "revision": "50151a4fa88ff42de721bf8ef44c314dd174fc3e",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"The knowledge dropzone hint drops opacity: 0.7, which failed axe color contrast; it keeps --text-muted and its size and spacing. No other Project page rule changed.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"The knowledge dropzone hint drops opacity: 0.7, which failed axe color contrast; it keeps --text-muted and its size and spacing. No other Project page rule changed.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"The knowledge dropzone hint drops opacity: 0.7, which failed axe color contrast; it keeps --text-muted and its size and spacing. No other Project page rule changed.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"The knowledge dropzone hint drops opacity: 0.7, which failed axe color contrast; it keeps --text-muted and its size and spacing. No other Project page rule changed.","inputs":["src-ui/src/views/ProjectPage.css"]}
+  ]
+}

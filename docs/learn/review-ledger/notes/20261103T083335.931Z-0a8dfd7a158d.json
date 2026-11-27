@@ -1,7 +1,0 @@
-{
-  "revision": "a1004bb542f2e1f9eecec4812f2cb1536e9de6dd",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"Change under review (#4480 round two on fix/start-owner-gate-followups-20261103): consumeAdapterEvents settles the interim start owner for every pulled session.started or session.exited (skipped, faulted, abandoned or appended), still behind the single publishObservedEvent continue-gate; any appended session.exited ends it; settledStartEvents is kept only for known threads and forgotten on exit; a fork's stamp is compared with its admitted requester (the owner that becomes durable). Checked 'First send creates the real provider Session' for forks, the 'Session not found' read contract and 'Public startSession and sendTurn commands do not exist': all still accurate; reads never consult the interim owner.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]}
-  ]
-}

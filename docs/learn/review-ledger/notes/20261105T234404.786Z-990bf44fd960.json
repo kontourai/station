@@ -1,7 +1,0 @@
-{
-  "revision": "bc9ae2dd901d405bd0ce02a39c2451ede2d5abb2",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"Scoped recovery presentation review: explanatory delivery text now uses sentence case and token-based muted styling; action results wrap below the controls. Inspected mounted before/after component captures at 320px and 960px in dark and light themes, with no horizontal overflow. Composer hierarchy, retained-input rules, and Continue admission are unchanged; these captures do not claim deployed or native qualification.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/QueuedMessages.css"]}
-  ]
-}

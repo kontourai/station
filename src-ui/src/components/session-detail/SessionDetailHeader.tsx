@@ -21,7 +21,7 @@ import {
  * The raw thread id is not header content any more: it lives in the ⋯ menu
  * (copy) and in Details. The compact-viewport CSS contract
  * (`.sessions-detail--viewport-compact .sessions-detail__eyebrow` etc. in
- * SessionsView.css) depends on these class names staying put here.
+ * SessionDetail.css) depends on these class names staying put here.
  */
 export function SessionDetailHeader({
   session,

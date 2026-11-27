@@ -1,0 +1,7 @@
+{
+  "revision": "6c83a4dda393952f3bcc8ab18441af9354e84c9c",
+
+  "notes": [
+    {"path":".github/codex/qualification-repair.md","note":"Checked the repair prompt against qualification-repair.mjs and qualification-repair.yml: repair-context.json, base, issue and claim flow are unchanged; the prepare step now also downloads manifests and writes a failure classification into the report, and only enforce mode lets a known-only run skip opening an episode. Re-read against the qualification failure manifest change: the Vitest corpus runner, phase driver and e2e suite write a structured failure manifest only when STATION_QUALIFICATION_MANIFEST_DIR is set, corpus and Android jobs upload it on failure, and the repair and health trackers classify red runs from it in report mode unless STATION_QUALIFICATION_SIGNAL is enforce. No test selection, verdict, permission or release behaviour changes. This document makes no claim about those behaviors; no prose change needed.","inputs":[".github/codex/qualification-repair.md",".github/workflows/qualification-repair.yml","scripts/qualification-repair.mjs"]}
+  ]
+}

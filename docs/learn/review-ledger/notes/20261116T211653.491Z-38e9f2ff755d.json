@@ -1,0 +1,7 @@
+{
+  "revision": "2fe85ae364901ad4c8b8ce593f0d484f5ddbef3c",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Checked the rescoped manual path (only when no verifier attempt ran; never after an attempt that ran and failed) and the run 41720227898 attempt-2 claim against the jobs API (darwin-x64 and dependents re-ran; plan, fence and verifier carried over with attempt-1 start times and runner ids) and the attempt-2 Assemble log downloading attempt-1 artifacts.","inputs":["docs/guides/native-releases.md"]}
+  ]
+}

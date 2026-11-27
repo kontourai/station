@@ -1,0 +1,61 @@
+/* Quiet lines under the pull request's head: whether its agent gets
+   feedback, then (when a chat the reader may read gets it) which chat and
+   what went last on a row of its own. The chat's title gives way first. */
+.pr-feedback-strip {
+  /* The panel is a scrolling flex column: never squeeze a wrapped line. */
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+  min-width: 0;
+  min-height: 30px;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+.pr-feedback-strip__label {
+  color: var(--k-text);
+  font-weight: 500;
+}
+.pr-feedback-strip__dot {
+  color: var(--k-text-faint);
+}
+.pr-feedback-strip .button--link {
+  padding: 0;
+  font-size: inherit;
+}
+.pr-feedback-strip__detail {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  min-width: 0;
+}
+.pr-feedback-strip__owner {
+  flex: 0 1 auto;
+  min-width: 6ch;
+  /* The strip sits in a narrow side pane at every viewport width. */
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-feedback-strip__last {
+  flex: none;
+  display: inline-flex;
+  margin-inline-start: var(--k-space-2);
+  align-items: center;
+  gap: var(--k-space-2);
+  white-space: nowrap;
+}
+.pr-feedback-strip__last time {
+  color: var(--k-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.pr-feedback-strip__actions {
+  display: inline-flex;
+  align-items: center;
+}
+.pr-feedback-strip__gear {
+  margin-left: auto;
+}

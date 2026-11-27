@@ -1,0 +1,9 @@
+{
+  "revision": "b7842ea6259f3c32384ab50d256e7bd07f692f7c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked: this round changes the opened-row hold, when Scroll to bottom shows, and which attribute keeps the end's room; no claim on this page covers them","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked: this round changes the opened-row hold, when Scroll to bottom shows, and which attribute keeps the end's room; no claim on this page covers them","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

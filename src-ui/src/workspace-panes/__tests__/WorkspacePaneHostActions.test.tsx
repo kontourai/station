@@ -132,7 +132,7 @@ test('one real host bar aggregates multiple pane occupants and routes explicit s
     mocks.isCurrent,
   );
   fireEvent.click(screen.getByRole('button', { name: 'View result' }));
-  expect(mocks.showSurface).toHaveBeenCalledWith('activity', {
+  expect(mocks.showSurface).toHaveBeenCalledWith('chat', {
     session: 'execution-one',
     focus: 'evidence',
   });
@@ -209,7 +209,7 @@ test('missing Agent on canonical open falls back to the created Session evidence
   await act(async () =>
     fireEvent.click(screen.getByRole('button', { name: 'Open conversation' })),
   );
-  expect(mocks.showSurface).toHaveBeenCalledExactlyOnceWith('activity', {
+  expect(mocks.showSurface).toHaveBeenCalledExactlyOnceWith('chat', {
     session: 'created-session',
     focus: 'evidence',
   });
@@ -262,7 +262,7 @@ test('a failed catalog stays a failure while it retries instead of flickering to
   expect(screen.getByRole('alert').textContent).toContain(
     'Workspace actions unavailable',
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(mocks.refetch).toHaveBeenCalledTimes(1);
 
   // TanStack resets a no-data query to loading when the refetch starts.
@@ -285,6 +285,6 @@ test('a failed catalog stays a failure while it retries instead of flickering to
     'Could not reach Station',
   );
   expect(
-    screen.getByRole('button', { name: 'Try again' }).getAttribute('aria-busy'),
+    screen.getByRole('button', { name: 'Retry' }).getAttribute('aria-busy'),
   ).toBe('true');
 });

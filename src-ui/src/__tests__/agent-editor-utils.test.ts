@@ -164,6 +164,60 @@ describe('agent-editor utils', () => {
     });
   });
 
+  test('disabling a tool prunes its unattended patterns from the save and re-enabling does not restore them', () => {
+    const form = formFromAgent({
+      slug: 'nightly',
+      toolsConfig: {
+        mcpServers: ['github'],
+        available: ['github_*'],
+        unattendedAutoApprove: [
+          'github_run',
+          'mcp/github/run',
+          'github_*',
+          'mcp/github/*',
+          'mcp/github/r*',
+          'fs_read',
+        ],
+      },
+    });
+    const disabled = toggleIntegrationToolEnabled(
+      form,
+      'github',
+      'github_run',
+      toolList,
+    );
+    const enabledAgain = toggleIntegrationToolEnabled(
+      disabled,
+      'github',
+      'github_run',
+      toolList,
+    );
+
+    for (const draft of [disabled, enabledAgain]) {
+      expect(buildAgentPayload(draft).tools?.unattendedAutoApprove).toEqual([
+        'mcp/github/find',
+        'fs_read',
+      ]);
+    }
+  });
+
+  test('saving removal of the last integration grant writes an explicit empty list', () => {
+    const form = formFromAgent({
+      slug: 'nightly',
+      toolsConfig: {
+        mcpServers: ['build-tools'],
+        unattendedAutoApprove: [
+          'build-tools_*',
+          'buildTools_run',
+          'mcp/build-tools/*',
+        ],
+      },
+    });
+    expect(
+      buildAgentPayload(removeIntegration(form, 'build-tools')).tools,
+    ).toMatchObject({ unattendedAutoApprove: [] });
+  });
+
   test('tool toggles expand implicit all-tools state into explicit lists', () => {
     const base = buildForm();
     const disabled = toggleIntegrationToolEnabled(

@@ -5,6 +5,7 @@ import { scaleLivenessMs } from './scripts/lib/liveness-scale.mjs';
 const BASE_TEST_TIMEOUT_MS = 30_000;
 
 export default defineConfig({
+  esbuild: { include: /\.(?:[cm]?ts|[jt]sx)$/ },
   resolve: {
     // First-party example packages are also discovered by the root test lane.
     // Their source-linked SDK components and local renderers must share one
@@ -108,6 +109,7 @@ export default defineConfig({
     exclude: [
       'tests/**',
       '**/node_modules/**',
+      'dist-desktop-wix-resources/**',
       'vendor/**',
       '.claude/**',
       '.station/**',
@@ -117,7 +119,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'json-summary'],
-      include: ['src-server/**/*.ts'],
+      include: ['src-server/**/*.{ts,cts}'],
       exclude: ['**/__tests__/**', '**/__test-utils__/**', '**/*.d.ts'],
       thresholds: {
         statements: 30,

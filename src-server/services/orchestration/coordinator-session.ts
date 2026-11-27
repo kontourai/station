@@ -52,6 +52,11 @@
  * `retire` withdraws the wakes still queued in its inbox in one inbox
  * operation, cancels the old target's backoff, and arms what still waits for
  * the new one. A wake already being placed cannot be withdrawn.
+ *
+ * Everything here waits on the `coordinator-session` Feature Preview, read at
+ * each branch. While it is off nothing is recorded, waiting items are dropped
+ * at their next flush, and a queued wake is refused at placement
+ * (`coordinator_preview_disabled`). Designations are kept.
  */
 import { randomUUID } from 'node:crypto';
 import type { Notification } from '@kontourai/station-contracts';
@@ -93,6 +98,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
+import { errorMessage } from '../../utils/error-message.js';
 import { notificationSessionIdentity } from '../notifications/notification-session.js';
 import {
   type TransactionalSqliteDatabase,
@@ -482,7 +488,8 @@ export function createSqliteCoordinatorStore(db: TransactionalSqliteDatabase) {
     },
     /**
      * Retire waiting items without sending them (their Session is no longer
-     * readable). The row stays as the item's dedupe record for the window.
+     * readable, or the preview is off). The row stays as the item's dedupe
+     * record for the window.
      */
     dropItems(userId: string, itemKeys: readonly string[]): void {
       const drop = db.prepare(
@@ -746,6 +753,8 @@ function coordinatorWakeMessage(
 
 export interface CoordinatorWakePorts {
   readonly store: CoordinatorStore;
+  /** The `coordinator-session` preview, read at each branch. */
+  enabled(): boolean;
   readonly pictureEnabled?: () => boolean;
   /** Whether the person may read the Session (the same rule as its readers). */
   mayRead(userId: string, sessionId: string): boolean;
@@ -806,7 +815,7 @@ export class CoordinatorWakeDelivery {
   }
 
   observe(item: CoordinatorAttentionItem): CoordinatorObserveOutcome[] {
-    if (this.stopped) return [];
+    if (this.stopped || !this.ports.enabled()) return [];
     const conversationId = this.ports.conversationOf(item.sessionId);
     const delegatedBy = this.ports.delegatedBy(conversationId);
     const outcomes: CoordinatorObserveOutcome[] = [];
@@ -870,7 +879,7 @@ export class CoordinatorWakeDelivery {
       withdrawn = this.ports.withdrawQueuedWakes(conversationId, userId);
     } catch (error) {
       this.ports.logger.warn('coordinator wakes could not be withdrawn', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
     if (
@@ -901,6 +910,12 @@ export class CoordinatorWakeDelivery {
     readonly queuedAt: number;
   }): { reasonCode: string; reason: string } | undefined {
     if (!isCoordinatorWakeClientTurnId(input.clientTurnId)) return undefined;
+    // Its items stay claimed, so turning the preview back on does not re-send them.
+    if (!this.ports.enabled())
+      return {
+        reasonCode: 'coordinator_preview_disabled',
+        reason: 'The coordinator preview is off. Nothing was sent.',
+      };
     const wakeId = input.clientTurnId.slice('coordinator-wake:'.length);
     const designation = this.ports.store.designation(input.userId);
     if (designation?.conversationId !== input.conversationId)
@@ -977,8 +992,20 @@ export class CoordinatorWakeDelivery {
   /** Send the person's waiting items as one wake, if the hourly cap allows. */
   flush(
     userId: string,
-  ): 'sent' | 'capped' | 'empty' | 'failed' | 'undesignated' {
+  ): 'sent' | 'capped' | 'empty' | 'failed' | 'undesignated' | 'disabled' {
     if (this.stopped) return 'failed';
+    if (!this.ports.enabled()) {
+      // Items waiting when the preview was turned off are dropped, not held
+      // to arrive all at once when it is turned back on.
+      const waiting = this.ports.store.waitingItems(userId);
+      if (waiting.length)
+        this.ports.store.dropItems(
+          userId,
+          waiting.map((item) => item.itemKey),
+        );
+      this.ports.store.clearRetry(userId);
+      return 'disabled';
+    }
     const designation = this.ports.store.designation(userId);
     if (!designation) return 'undesignated';
     // Read access is decided again now: it may have been withdrawn while the
@@ -1009,6 +1036,14 @@ export class CoordinatorWakeDelivery {
 
   private send(wake: CoordinatorWakeRecord): 'sent' | 'failed' {
     const now = this.now();
+    if (!this.ports.enabled()) {
+      // A wake a restart cut short while the preview is off: its items are
+      // not released, so they are not sent later either.
+      this.ports.store.settleWake(wake.id, 'failed', now, {
+        reasonCode: 'preview_disabled',
+      });
+      return 'failed';
+    }
     const designation = this.ports.store.designation(wake.userId);
     if (!designation || designation.conversationId !== wake.conversationId) {
       // Undesignated or moved since it was claimed: nothing was handed over.
@@ -1059,7 +1094,7 @@ export class CoordinatorWakeDelivery {
     } catch (error) {
       this.ports.logger.warn('coordinator wake could not be sent', {
         wakeId: wake.id,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       this.ports.store.settleWake(wake.id, 'failed', now, {
         reasonCode: 'send_failed',
@@ -1124,6 +1159,7 @@ export function wireCoordinatorWakes(deps: {
     'conversationForSession' | 'delegationResultStore'
   >;
   readonly store: CoordinatorStore;
+  enabled(): boolean;
   readonly threadInbox: Pick<
     ThreadInboxDelivery,
     'submit' | 'list' | 'cancelQueued'
@@ -1136,6 +1172,7 @@ export function wireCoordinatorWakes(deps: {
 }): CoordinatorWakeDelivery & { unsubscribe(): void } {
   const delivery = new CoordinatorWakeDelivery({
     store: deps.store,
+    enabled: deps.enabled,
     ...(deps.pictureEnabled ? { pictureEnabled: deps.pictureEnabled } : {}),
     mayRead: deps.mayRead,
     conversationOf: (sessionId) =>
@@ -1172,7 +1209,7 @@ export function wireCoordinatorWakes(deps: {
       if (notification) delivery.observeNotification(notification);
     } catch (error) {
       deps.logger.warn('coordinator wake could not read a notification', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   });

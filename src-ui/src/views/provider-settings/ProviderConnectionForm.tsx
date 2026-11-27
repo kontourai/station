@@ -12,9 +12,36 @@ import {
   updateModelPickerPreferences,
   useModelPickerPreferences,
 } from '../../settings/modelPickerPreferences';
+import { modelOptionLabel } from '../../utils/modelCapabilities';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { PROVIDER_TYPES, resolveProviderPresentation } from './providerCatalog';
 import type { ProviderConnection } from './types';
+import { hasConnectionAddress } from './utils';
+
+/** The inline reason Create/Save is unavailable; the header button points at it. */
+export const CONNECTION_ADDRESS_REQUIRED_ID = 'provider-address-required';
+/** Same sentence the server answers with (`connection_address_required`). */
+const CONNECTION_ADDRESS_REQUIRED_MESSAGE =
+  'A server URL is required to save this connection.';
+/** A saved connection turned off can be saved without one (only to stay off). */
+const CONNECTION_ADDRESS_TO_TURN_ON_MESSAGE =
+  'A server URL is required to turn this connection on.';
+
+/**
+ * Why this OpenAI-compatible connection is missing its address, or `null`
+ * when it has one (or needs none). The server accepts an update that turns
+ * a saved connection off without an address, so Save stays available then.
+ */
+export function connectionAddressReason(
+  form: Pick<ProviderConnection, 'type' | 'config' | 'enabled'>,
+  isNew: boolean,
+): { message: string; blocksSave: boolean } | null {
+  if (form.type !== 'openai-compat' || hasConnectionAddress(form.config))
+    return null;
+  return !isNew && !form.enabled
+    ? { message: CONNECTION_ADDRESS_TO_TURN_ON_MESSAGE, blocksSave: false }
+    : { message: CONNECTION_ADDRESS_REQUIRED_MESSAGE, blocksSave: true };
+}
 
 /**
  * The connection's default model (archive#3652, archive#3654, and their review's).
@@ -74,7 +101,7 @@ export function DefaultModelField({
           <option value="">Choose a model…</option>
           {options.map((model) => (
             <option key={model.id} value={model.id}>
-              {model.name}
+              {modelOptionLabel(model, true)}
             </option>
           ))}
         </select>
@@ -183,6 +210,7 @@ export function ProviderConnectionForm({
   onLoadModels?: () => void;
 }) {
   const fieldId = useId();
+  const addressReason = connectionAddressReason(form, isNew);
   const nameId = `${fieldId}-name`;
   const serverUrlId = `${fieldId}-server-url`;
   const apiKeyId = `${fieldId}-api-key`;
@@ -464,14 +492,14 @@ export function ProviderConnectionForm({
               return (
                 <div className="provider-detail__model-row" key={model.id}>
                   <span>
-                    <strong>{model.name}</strong>
+                    <strong>{modelOptionLabel(model, true)}</strong>
                     <small>{model.id}</small>
                   </span>
                   <span className="provider-detail__model-actions">
                     <button
                       type="button"
                       className="button button--ghost"
-                      aria-label={`${favorite ? 'Remove' : 'Add'} ${model.name} ${favorite ? 'from' : 'to'} favorites`}
+                      aria-label={`${favorite ? 'Remove' : 'Add'} ${modelOptionLabel(model, true)} ${favorite ? 'from' : 'to'} favorites`}
                       aria-pressed={favorite}
                       onClick={() => updateList('favorites', !favorite)}
                     >
@@ -480,7 +508,7 @@ export function ProviderConnectionForm({
                     <button
                       type="button"
                       className="button button--ghost"
-                      aria-label={`Move ${model.name} up`}
+                      aria-label={`Move ${modelOptionLabel(model, true)} up`}
                       disabled={index === 0}
                       onClick={() => move(-1)}
                     >
@@ -489,7 +517,7 @@ export function ProviderConnectionForm({
                     <button
                       type="button"
                       className="button button--ghost"
-                      aria-label={`Move ${model.name} down`}
+                      aria-label={`Move ${modelOptionLabel(model, true)} down`}
                       disabled={index === orderedModels.length - 1}
                       onClick={() => move(1)}
                     >
@@ -498,7 +526,7 @@ export function ProviderConnectionForm({
                     <button
                       type="button"
                       className="button button--ghost"
-                      aria-label={`${hidden ? 'Show' : 'Hide'} ${model.name}`}
+                      aria-label={`${hidden ? 'Show' : 'Hide'} ${modelOptionLabel(model, true)}`}
                       aria-pressed={hidden}
                       onClick={() => updateList('hidden', !hidden)}
                     >
@@ -545,7 +573,7 @@ export function ProviderConnectionForm({
                 <option value="">Choose an installed model…</option>
                 {modelOptions.map((model) => (
                   <option key={model.id} value={model.id}>
-                    {model.name}
+                    {modelOptionLabel(model, true)}
                   </option>
                 ))}
               </select>
@@ -587,10 +615,19 @@ export function ProviderConnectionForm({
               type="text"
               value={(form.config.baseUrl as string) ?? ''}
               placeholder="https://api.openai.com/v1"
+              aria-invalid={addressReason ? true : undefined}
+              aria-describedby={
+                addressReason ? CONNECTION_ADDRESS_REQUIRED_ID : undefined
+              }
               onChange={(event) =>
                 onSetConfigField('baseUrl', event.target.value)
               }
             />
+            {addressReason && (
+              <div id={CONNECTION_ADDRESS_REQUIRED_ID} className="editor-error">
+                {addressReason.message}
+              </div>
+            )}
           </div>
           <div className="editor-field">
             <label className="editor-label" htmlFor={apiKeyId}>
@@ -682,7 +719,7 @@ export function ProviderConnectionForm({
             value={(form.config.defaultModel as string) ?? ''}
             options={modelOptions}
             placeholder="The model id to use when an agent names none"
-            hint="Used when an agent names no model, and by Test Connection if no model list is returned."
+            hint="Used when an agent doesn't name a model. Test connection also uses it if the model list is unavailable."
             onChange={(next) => onSetConfigField('defaultModel', next)}
           />
         </div>
@@ -815,7 +852,7 @@ export function ProviderConnectionForm({
             value={(form.config.defaultModel as string) ?? ''}
             options={modelOptions}
             placeholder="A model or inference-profile id this account can invoke"
-            hint="Used when an agent names no model, and by Test Connection if Bedrock models can't be listed."
+            hint="Used when an agent doesn't name a model. Test connection also uses it if the model list is unavailable."
             onChange={(next) => onSetConfigField('defaultModel', next)}
           />
         </>
@@ -848,8 +885,7 @@ export function ProviderConnectionForm({
         >
           Create saves this connection and checks its model list. If the service
           cannot list models, Station may send a small test prompt using the
-          default model. Your provider may charge for that request. A saved
-          connection is ready only after its check succeeds.
+          default model. Your provider may charge for that request.
         </p>
       ) : null}
 
@@ -867,7 +903,7 @@ export function ProviderConnectionForm({
             disabled={isTesting}
             aria-describedby="provider-test-disclosure"
           >
-            {isTesting ? 'Testing…' : 'Test Connection'}
+            {isTesting ? 'Testing…' : 'Test connection'}
           </button>
           {/* The contract used to call this non-billable,
               and the button said nothing at all. It asks the provider for its

@@ -54,19 +54,23 @@ function cli(
 }
 
 describe('adaptive planner outputs (child process)', () => {
-  // Literal boundaries protect the initial 40-file threshold independently
-  // of the implementation constant. The fixture supplies selection only;
-  // shard count and GitHub outputs come from the production CLI.
+  // Literal boundaries protect the 100-file threshold independently of the
+  // implementation constant, plus the plan sizes it was tuned on (40, 145,
+  // 300, 742 and 1,193 files). The fixture supplies selection only; shard
+  // count and GitHub outputs come from the production CLI.
   test.each([
     [0, 1],
-    [39, 1],
     [40, 1],
-    [41, 2],
-    [80, 2],
-    [81, 3],
-    [120, 3],
-    [121, 4],
-    [200, 4],
+    [99, 1],
+    [100, 1],
+    [101, 2],
+    [145, 2],
+    [200, 2],
+    [201, 3],
+    [300, 3],
+    [301, 4],
+    [742, 4],
+    [1193, 4],
   ])('%i selected files produce %i shards', (fileCount, expected) => {
     const { directory, head } = repository();
     const selected = planFor(

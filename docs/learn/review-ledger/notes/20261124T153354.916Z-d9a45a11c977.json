@@ -1,0 +1,9 @@
+{
+  "revision": "78f7d92916879bf4501ca540e5dca95442e2b2fd",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the create request durability and HTTP evidence references. The new owner cases observe the persisted allocation before the effect, preserve unknown legacy origin on replay, and refuse malformed stored origin before execution. The separate caller route suite passed seven cases.","inputs":["src-server/services/orchestration/__tests__/create-request-claims.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the create request durability and HTTP evidence references. The new owner cases observe the persisted allocation before the effect, preserve unknown legacy origin on replay, and refuse malformed stored origin before execution. The separate caller route suite passed seven cases.","inputs":["src-server/services/orchestration/__tests__/create-request-claims.test.ts"]}
+  ]
+}

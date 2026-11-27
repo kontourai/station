@@ -1,7 +1,0 @@
-{
-  "revision": "99e213f8e05a9f282d792f4ad1ab6d6c5c39119b",
-
-  "notes": [
-    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the migration function comment correction: provider admission precedes the no-data return; the knowledge provider-choice observation is unchanged.","inputs":["docs/architecture/abstraction-review.md","src-server/knowledge-index/migrate-pre-index-knowledge.ts"]}
-  ]
-}

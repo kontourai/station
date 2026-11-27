@@ -1,0 +1,11 @@
+{
+  "revision": "2fb350a386662f00ce2606cd02e3d08bba3d1fbb",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked: the controller imports the SDK open client statically (it is itself a lazy chunk; the client stays out of the entry bundle, as sdk.md states). Open patch semantics unchanged.","inputs":["src-ui/src/components/chat-dock/conversationOpenController.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked: the controller imports the SDK open client statically (it is itself a lazy chunk; the client stays out of the entry bundle, as sdk.md states). Open patch semantics unchanged.","inputs":["src-ui/src/components/chat-dock/conversationOpenController.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked: the controller imports the SDK open client statically (it is itself a lazy chunk; the client stays out of the entry bundle, as sdk.md states). Open patch semantics unchanged.","inputs":["src-ui/src/components/chat-dock/conversationOpenController.ts"]}
+  ]
+}

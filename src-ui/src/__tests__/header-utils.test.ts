@@ -5,26 +5,22 @@ import {
 } from '../components/header/utils';
 
 describe('header utils', () => {
-  test('returns generic help prompts when no view is provided', () => {
-    expect(getHelpPrompts()).toEqual([
-      {
-        label: 'What can you do?',
-        prompt: 'What can you help me with? List your capabilities.',
-      },
-      {
-        label: 'System health check',
-        prompt:
-          'Run a system health check and tell me if anything needs attention.',
-      },
-    ]);
-  });
-
-  test('prepends contextual help prompts for matching views', () => {
-    expect(getHelpPrompts({ type: 'connections-tools' })[0]).toEqual({
-      label: 'Add an MCP server',
-      prompt:
-        'Help me add a new MCP tool server. What popular ones are available?',
-    });
+  test('offers concrete reads of this Station and scopes project questions', () => {
+    expect(getHelpPrompts()[0].prompt).toContain('list_active_work');
+    expect(getHelpPrompts()[1].prompt).toContain('system_status');
+    expect(getHelpPrompts({ type: 'connections-tools' })[0].prompt).toContain(
+      'list_integrations',
+    );
+    expect(getHelpPrompts({ type: 'schedule' })[0].prompt).toContain(
+      'get_job_logs',
+    );
+    expect(
+      getHelpPrompts({
+        type: 'layout',
+        projectSlug: 'alpha',
+        layoutSlug: 'coding',
+      })[0].prompt,
+    ).toContain('project "alpha"');
   });
 
   test('resolves breadcrumb details for layout, project, and section views', () => {

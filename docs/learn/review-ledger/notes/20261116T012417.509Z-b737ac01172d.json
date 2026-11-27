@@ -1,0 +1,29 @@
+{
+  "revision": "f3920b0f12df533b5bbf7b55ad44772559fdd8e2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked against claudeToolSearchEnv: ENABLE_TOOL_SEARCH mapping unchanged (unset keeps the harness value, always false, on-demand true). Searched this document for tool search, mcpLoading and ENABLE_TOOL_SEARCH claims; none here is changed by it.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked against claudeToolSearchEnv: ENABLE_TOOL_SEARCH mapping unchanged (unset keeps the harness value, always false, on-demand true). Searched this document for tool search, mcpLoading and ENABLE_TOOL_SEARCH claims; none here is changed by it.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked against claudeToolSearchEnv: ENABLE_TOOL_SEARCH mapping unchanged (unset keeps the harness value, always false, on-demand true). Searched this document for tool search, mcpLoading and ENABLE_TOOL_SEARCH claims; none here is changed by it.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Checked against claudeToolSearchEnv: ENABLE_TOOL_SEARCH mapping unchanged (unset keeps the harness value, always false, on-demand true). Searched this document for tool search, mcpLoading and ENABLE_TOOL_SEARCH claims; none here is changed by it.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked against claudeToolSearchEnv: ENABLE_TOOL_SEARCH mapping unchanged (unset keeps the harness value, always false, on-demand true). Searched this document for tool search, mcpLoading and ENABLE_TOOL_SEARCH claims; none here is changed by it.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked against claudeToolSearchEnv: ENABLE_TOOL_SEARCH mapping unchanged (unset keeps the harness value, always false, on-demand true). Searched this document for tool search, mcpLoading and ENABLE_TOOL_SEARCH claims; none here is changed by it.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked against claudeToolSearchEnv: ENABLE_TOOL_SEARCH mapping unchanged (unset keeps the harness value, always false, on-demand true). Searched this document for tool search, mcpLoading and ENABLE_TOOL_SEARCH claims; none here is changed by it.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked against claudeToolSearchEnv: ENABLE_TOOL_SEARCH mapping unchanged (unset keeps the harness value, always false, on-demand true). Searched this document for tool search, mcpLoading and ENABLE_TOOL_SEARCH claims; none here is changed by it.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked against claudeToolSearchEnv: ENABLE_TOOL_SEARCH mapping unchanged (unset keeps the harness value, always false, on-demand true). Searched this document for tool search, mcpLoading and ENABLE_TOOL_SEARCH claims; none here is changed by it.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked against claudeToolSearchEnv: ENABLE_TOOL_SEARCH mapping unchanged (unset keeps the harness value, always false, on-demand true). Searched this document for tool search, mcpLoading and ENABLE_TOOL_SEARCH claims; none here is changed by it.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked against claudeToolSearchEnv: ENABLE_TOOL_SEARCH mapping unchanged (unset keeps the harness value, always false, on-demand true). Searched this document for tool search, mcpLoading and ENABLE_TOOL_SEARCH claims; none here is changed by it.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked against claudeToolSearchEnv: ENABLE_TOOL_SEARCH mapping unchanged (unset keeps the harness value, always false, on-demand true). Searched this document for tool search, mcpLoading and ENABLE_TOOL_SEARCH claims; none here is changed by it.","inputs":["src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

@@ -29,12 +29,19 @@ operator's computer.
 - The [Claude adapter](../../src-server/providers/adapters/claude-adapter.ts)
   delivers Station's browser server in process. This drives the Project's Station
   browser; it does not select a separate Claude-owned browser.
+- With the `station-orchestration-instructions` Feature Preview on, Station also
+  writes guidance on the Browser and Device tools into the Session's
+  [orchestration instructions](../guides/self-configuring-agent.md#orchestration-instructions).
+  It names only tools the Session is actually offered (the editor's
+  `browserTools` setting, engine assurance and the Codex preview still decide),
+  so it describes access and never grants it.
 - [Browser authority and control](../guides/browser-workspace.md) already bind
   access to a principal, Project, profile and live session. JavaScript has a
   separate default-off permission; a person can preempt Agent control.
 - [Device sessions](../../src-server/services/devices/device-session-service.ts)
   expose local and configured SSH-host `device_*` tools to bound, verified
-  Sessions through the shared lease and per-device shares. Human takeover
+  Sessions through the shared lease and per-device shares; never to a
+  Session whose network Station restricts (#4769). Human takeover
   fences input. Opening observes without claiming control and can request a
   bounded, reauthorized pane reveal in the matching active conversation.
   Weaker-custody engine credentials remain unavailable; real SSH/device

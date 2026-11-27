@@ -1,0 +1,7 @@
+{
+  "revision": "80933fd7347e17564b98c4707ef2c716b811e8f3",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Cites connections.md and peer-credential-routes.ts; it makes no claim about peer readiness or how the peer list is computed.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md","src-server/routes/environments/peer-credential-routes.ts"]}
+  ]
+}

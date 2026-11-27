@@ -456,25 +456,18 @@ function FilePreviewLine({
       id={lineId(stateKey, line.number)}
       data-line={line.number}
       style={{
-        display: 'block',
         background: line.requested ? 'var(--bg-selected)' : undefined,
       }}
     >
       <a
         href={`#${lineId(stateKey, line.number)}`}
         aria-label={`Link to line ${line.number}`}
-        style={{
-          color: 'var(--text-muted)',
-          display: 'inline-block',
-          minWidth: '3.5em',
-          textAlign: 'right',
-          marginRight: '1em',
-          userSelect: 'none',
-        }}
       >
         {line.number}
       </a>
-      <FilePreviewLineText text={line.text} tokens={tokens} />
+      <span>
+        <FilePreviewLineText text={line.text} tokens={tokens} />
+      </span>
     </span>
   );
 }
@@ -1043,7 +1036,7 @@ function FilePreviewChanges({
           wrong with it; try again in a moment.
         </p>
         <Button size="sm" onClick={() => void query.refetch()}>
-          Try again
+          Retry
         </Button>
       </div>
     );

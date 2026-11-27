@@ -1,0 +1,13 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Create refuses a projectId where Project runs are absent (503) or the project-schedules preview is off (404 feature_preview_disabled); bodies without projectId behave as before.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Create refuses a projectId where Project runs are absent (503) or the project-schedules preview is off (404 feature_preview_disabled); bodies without projectId behave as before.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Create refuses a projectId where Project runs are absent (503) or the project-schedules preview is off (404 feature_preview_disabled); bodies without projectId behave as before.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Create refuses a projectId where Project runs are absent (503) or the project-schedules preview is off (404 feature_preview_disabled); bodies without projectId behave as before.","inputs":["src-server/routes/operations/scheduler.ts"]}
+  ]
+}

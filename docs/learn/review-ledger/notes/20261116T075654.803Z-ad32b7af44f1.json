@@ -1,0 +1,19 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Added one un-awaited pullRequestFeedback tick beside the Task follow-up tick, its close, and the forgeFeedbackOwned port to TaskFollowUpWake. Scheduler, automation and follow-up claims on citing pages are unchanged (follow-up wakes still fire except checks/reviews on a pull request whose feedback is on, documented in the follow-ups decision and module map).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Added one un-awaited pullRequestFeedback tick beside the Task follow-up tick, its close, and the forgeFeedbackOwned port to TaskFollowUpWake. Scheduler, automation and follow-up claims on citing pages are unchanged (follow-up wakes still fire except checks/reviews on a pull request whose feedback is on, documented in the follow-ups decision and module map).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Added one un-awaited pullRequestFeedback tick beside the Task follow-up tick, its close, and the forgeFeedbackOwned port to TaskFollowUpWake. Scheduler, automation and follow-up claims on citing pages are unchanged (follow-up wakes still fire except checks/reviews on a pull request whose feedback is on, documented in the follow-ups decision and module map).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Added one un-awaited pullRequestFeedback tick beside the Task follow-up tick, its close, and the forgeFeedbackOwned port to TaskFollowUpWake. Scheduler, automation and follow-up claims on citing pages are unchanged (follow-up wakes still fire except checks/reviews on a pull request whose feedback is on, documented in the follow-ups decision and module map).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Added one un-awaited pullRequestFeedback tick beside the Task follow-up tick, its close, and the forgeFeedbackOwned port to TaskFollowUpWake. Scheduler, automation and follow-up claims on citing pages are unchanged (follow-up wakes still fire except checks/reviews on a pull request whose feedback is on, documented in the follow-ups decision and module map).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Added one un-awaited pullRequestFeedback tick beside the Task follow-up tick, its close, and the forgeFeedbackOwned port to TaskFollowUpWake. Scheduler, automation and follow-up claims on citing pages are unchanged (follow-up wakes still fire except checks/reviews on a pull request whose feedback is on, documented in the follow-ups decision and module map).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Added one un-awaited pullRequestFeedback tick beside the Task follow-up tick, its close, and the forgeFeedbackOwned port to TaskFollowUpWake. Scheduler, automation and follow-up claims on citing pages are unchanged (follow-up wakes still fire except checks/reviews on a pull request whose feedback is on, documented in the follow-ups decision and module map).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]}
+  ]
+}

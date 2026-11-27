@@ -1,0 +1,7 @@
+{
+  "revision": "ec474fb93199fa97b1a19bcd27266e7cdf730bfe",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Fix-round delta review of the qualification manifest isolation paragraph under Known qualification failures. The paragraph now says the location is withheld from test processes but is not a secret (predictable from RUNNER_TEMP, readable from an ancestor's environment). It says deliberate forgery is out of scope and that the collector rejects stray or mismatched entries. It describes the rename-over-target writes (replaceManifestFile in scripts/lib/qualification-failure-manifest.mjs, used by run-vitest-corpus.mjs, run-full-regression-phases.mjs and run-e2e-suite.mjs). It names the one surviving forgery (an unwritable directory) and says the fallback manifest keeps exit statuses. Checked against the committed sources and the new tests in scripts/__tests__/qualification-failure-manifest.test.ts. The rest of the guide was not re-read.","inputs":["docs/guides/testing.md","scripts/run-vitest-corpus.mjs"]}
+  ]
+}

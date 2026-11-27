@@ -4,9 +4,12 @@ import {
 } from '@kontourai/station-contracts/runtime-event-content';
 import { useApprovalContentQuery } from '@kontourai/station-sdk/runtime-event-content';
 import {
+  type ToolRequestRuleGrant,
   type ToolRequestServerGrant,
   type ToolRequestSessionGrant,
+  toolRequestAllGrantFromPayload,
   toolRequestFromPayload,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -39,6 +42,10 @@ export interface ApprovalContentGate {
   args?: unknown;
   sessionGrant?: ToolRequestSessionGrant;
   serverGrant?: ToolRequestServerGrant;
+  /** `null`: the resolved request offers no command-prefix grant. */
+  ruleGrant?: ToolRequestRuleGrant | null;
+  /** Whether the resolved request offers the session-wide grant. */
+  allGrant?: boolean;
   retry: () => void;
 }
 
@@ -99,7 +106,7 @@ export function useApprovalContent(
         target.station.capabilities.approvalAnswer.state === 'allowed'),
     ...(target?.station &&
     target.station.capabilities.approvalTrustTool.state !== 'allowed'
-      ? { sessionGrant: 'none' }
+      ? { sessionGrant: 'none', ruleGrant: null, allGrant: false }
       : {}),
     ...(target?.station &&
     target.station.capabilities.approvalTrustServer.state !== 'allowed'
@@ -181,6 +188,8 @@ function ApprovalContentLoader({
         toolCall.args,
       sessionGrant: toolRequestSessionGrantFromPayload(payload),
       serverGrant: toolRequestServerGrantFromPayload(payload),
+      ruleGrant: toolRequestRuleGrantFromPayload(payload) ?? null,
+      allGrant: toolRequestAllGrantFromPayload(payload),
       retry,
     });
   }, [data, isError, refetch, threadId, requestEventId, target]);

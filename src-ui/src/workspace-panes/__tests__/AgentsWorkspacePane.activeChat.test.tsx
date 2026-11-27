@@ -159,7 +159,9 @@ test('the pane lists the work the badge counts, for a conversation whose store k
   );
 
   expect(screen.getByTestId('badge').textContent).toBe('1');
-  expect(screen.getByText('Running (1)')).toBeTruthy();
+  expect(
+    screen.getByRole('heading', { name: 'Running · 1 agent' }),
+  ).toBeTruthy();
   expect(screen.getByText('Investigate flaky test')).toBeTruthy();
   expect(screen.queryByText('No subagents running')).toBeNull();
 });

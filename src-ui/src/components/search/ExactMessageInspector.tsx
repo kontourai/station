@@ -84,15 +84,14 @@ export function ExactMessageInspector({
   }, [page]);
   return (
     <Dialog
-      title="Matched message — read-only"
+      title="Matched message"
       closeLabel="Close matched message"
       onClose={onClose}
       size="lg"
-      subtitle={`Session ${locator.sessionId} · Event ${locator.matchedEventId}`}
       footer={
         <>
           <Button variant="secondary" onClick={onBack}>
-            Back to workspace search
+            Back to search
           </Button>
           {cursors.length > 1 && (
             <Button
@@ -120,17 +119,14 @@ export function ExactMessageInspector({
       ) : page ? (
         <>
           <p>
-            {page.role === 'user' ? 'User message' : 'Agent message'} ·{' '}
-            {page.assignedAgentId
-              ? `Agent: ${page.assignedAgentId}`
-              : 'No assigned Agent identity available'}
+            {page.role === 'user' ? 'User message' : 'Agent message'}
+            {page.assignedAgentId ? ` · Agent: ${page.assignedAgentId}` : ''}
           </p>
           <p role="status">
-            Text page {cursors.length}
+            Read-only · Text page {cursors.length}
             {page.nextContinuation
               ? ' · More text available'
               : ' · End of message'}
-            . This view does not resume or change the conversation.
           </p>
           <section
             ref={contentRef}
@@ -150,9 +146,22 @@ export function ExactMessageInspector({
       ) : (
         <ErrorState
           title="Message unavailable"
-          description="The exact message could not be read under the current authority. No other Session or message was opened."
+          description="Couldn't open this message. You may no longer have access to it."
         />
       )}
+      <details>
+        <summary>Details</summary>
+        <dl>
+          <dt>Session</dt>
+          <dd>
+            <code>{locator.sessionId}</code>
+          </dd>
+          <dt>Event</dt>
+          <dd>
+            <code>{locator.matchedEventId}</code>
+          </dd>
+        </dl>
+      </details>
     </Dialog>
   );
 }

@@ -8,6 +8,7 @@ export {
 export type {
   ConnectionHealthCheckResult,
   ConnectionHealthCoordinatorOptions,
+  ConnectionHealthFailureEvidence,
   ConnectionHealthSnapshot,
   ConnectionRouteResult,
 } from './core/ConnectionHealthCoordinator';
@@ -24,6 +25,7 @@ export type {
   SyncStatus,
 } from './core/ConnectionSupervisor';
 export { ConnectionSupervisor } from './core/ConnectionSupervisor';
+export { hasCameraApi } from './core/cameraSupport';
 export type {
   ConnectionCandidateDiscoveryResult,
   ConnectionCandidateProviderResult,
@@ -168,6 +170,7 @@ export type {
   StationHandshakeIdentity,
   StorageAdapter,
 } from './core/types';
+export { ConnectionManagerDiscoverPanel } from './react/ConnectionManagerDiscoverPanel';
 export type { ConnectionManagerModalProps } from './react/ConnectionManagerModal';
 export { ConnectionManagerModal } from './react/ConnectionManagerModal';
 export type { ConnectionStatusDotProps } from './react/ConnectionStatusDot';

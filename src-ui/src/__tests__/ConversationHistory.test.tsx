@@ -3,6 +3,14 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useFeaturePreviewsQuery: () => ({ data: [] }),
+}));
+
 const loadMore = vi.fn();
 const conversationState = vi.hoisted(() => ({
   conversations: [
@@ -222,7 +230,7 @@ describe('ConversationHistory', () => {
     expect(screen.getByRole('alert').textContent).toBe(
       'Could not load older messages. Try again.',
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(loadMore).toHaveBeenCalled();
 
     pagingState.loadMoreError = false;
@@ -288,7 +296,7 @@ describe('ConversationHistory', () => {
       menuState.deleteConfirm = { conv: { title: 'Doomed conversation' } };
       renderHistory();
       expect(screen.getByTestId('confirm-modal').textContent).toBe(
-        'Delete Conversation',
+        'Delete conversation',
       );
       expect(menuState.confirmDelete).not.toHaveBeenCalled();
     });
@@ -319,7 +327,7 @@ describe('ConversationHistory', () => {
       menuState.showClearAllConfirm = true;
       renderHistory();
       expect(screen.getByTestId('confirm-modal').textContent).toBe(
-        'Clear All Conversations',
+        'Clear all conversations',
       );
     });
 

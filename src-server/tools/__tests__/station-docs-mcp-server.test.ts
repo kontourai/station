@@ -5,17 +5,26 @@ import { WORKSPACE_PANE_REGIONS } from '@kontourai/station-contracts/workspace-p
 import { describe, expect, test } from 'vitest';
 import packageJson from '../../../package.json' with { type: 'json' };
 import {
-  readStationDocsInputs,
+  readStationDocsBundle,
   stationDocsDigest,
 } from '../../../scripts/generate-station-docs.mjs';
 import { parsePluginManifestDocumentWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
-import { STATION_DOCS_TOPICS } from '../station-docs-content.js';
+import { STATION_DOCS_BUNDLE } from '../station-docs-content.js';
 import {
   createStationDocsMcpServer,
   findStationDocsTopic,
-  STATION_DOCS_VERSION,
+  listStationDocsTopics,
+  type StationDocsTopic,
   searchStationDocs,
 } from '../station-docs-mcp-server.js';
+import { STATION_DOCS_VERSION } from '../station-docs-tools.js';
+import { callTool } from './station-docs-mcp-fixture.js';
+
+// Every topic as get_station_docs_topic serves it: the bundle mapped back to
+// the fields the tools have always returned.
+const STATION_DOCS_TOPICS: StationDocsTopic[] = listStationDocsTopics().map(
+  (summary) => findStationDocsTopic(summary.id)!,
+);
 
 /**
  * archive#1547. Two things are being proven here, and they are different:
@@ -29,9 +38,7 @@ import {
  * `src-server/runtime/agents/__tests__/runtime-default-agent.test.ts`.
  */
 
-type ToolResult = { content: Array<{ type: 'text'; text: string }> };
 type RegisteredTool = {
-  handler: (...args: any[]) => Promise<ToolResult>;
   description?: string;
 };
 
@@ -42,17 +49,11 @@ function registeredTools(): Record<string, RegisteredTool> {
   )._registeredTools;
 }
 
-async function callTool(name: string, args: unknown): Promise<any> {
-  const tool = registeredTools()[name];
-  expect(tool, `tool '${name}' is not registered`).toBeDefined();
-  const result = await tool.handler(args, {} as any);
-  return JSON.parse(result.content[0].text);
-}
-
 const SOURCE_FILES = [
   'station-docs-content.ts',
   'station-docs-mcp-server.ts',
   'station-docs-server.ts',
+  'station-docs-tools.ts',
 ] as const;
 
 function readSource(file: string): string {
@@ -416,6 +417,10 @@ describe('station-docs plugin-authoring topic', () => {
         'The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person\u2019s approval of its preview), with an install lifecycle that includes updates and removal.',
       ],
       [
+        'plugins',
+        'The installed view shows the stored verification for the selected plugin.',
+      ],
+      [
         'plugin-authoring',
         'Pane ids and renderer ids are opaque strings, but they are global across every installed plugin: follow the `pane:plugin%3A<plugin-name>:<group>:<name>` and `renderer:plugin%3A<plugin-name>:<renderer kind>:<name>` pattern above so yours cannot collide, write the parts you choose in lowercase, and give every pane its own `id` and its own `rendererId`.',
       ],
@@ -531,7 +536,8 @@ describe('station-docs lookup and search', () => {
 
     expect(searchStationDocs('station', 2).length).toBeLessThanOrEqual(2);
     expect(searchStationDocs('   ')).toEqual([]);
-    expect(searchStationDocs('a-string-that-appears-in-no-topic')).toEqual([]);
+    // Ranked search matches words, so the miss has to be a word no topic uses.
+    expect(searchStationDocs('xyzzyplugh')).toEqual([]);
   });
 });
 
@@ -594,6 +600,31 @@ describe('station-docs MCP server', () => {
     expect(payload.kind).toBe('shipped-documentation');
   });
 
+  test('the manual and architecture roots are topics, and parentId lists their children', async () => {
+    const all = await callTool('list_station_docs_topics', {});
+    const roots = all.topics.filter(
+      (topic: { parentId?: string }) => topic.parentId === undefined,
+    );
+    expect(roots.map((topic: { id: string }) => topic.id)).toEqual([
+      'manual',
+      'architecture',
+    ]);
+    const manual = await callTool('list_station_docs_topics', {
+      parentId: 'manual',
+    });
+    expect(manual.topics.map((topic: { id: string }) => topic.id)).toContain(
+      'station-overview',
+    );
+    expect(
+      manual.topics.every(
+        (topic: { sourcePath: string }) =>
+          topic.sourcePath === 'docs/reference/station-docs.md',
+      ),
+    ).toBe(true);
+    const root = await callTool('get_station_docs_topic', { id: 'manual' });
+    expect(root.topic.body).toContain('parentId manual');
+  });
+
   test('navigates the same architecture tree and identifies its compiled content', async () => {
     const roots = await callTool('list_station_docs_topics', {
       parentId: 'architecture',
@@ -601,7 +632,7 @@ describe('station-docs MCP server', () => {
     expect(roots.topics).toHaveLength(10);
     expect(
       roots.topics.every(
-        (topic: { parentId: string }) => topic.parentId === 'architecture',
+        (topic: { parentId?: string }) => topic.parentId === 'architecture',
       ),
     ).toBe(true);
     const children = await callTool('list_station_docs_topics', {
@@ -622,10 +653,13 @@ describe('station-docs MCP server', () => {
     // digest over the canonical sources and change when the content does.
     expect(topic.documentationDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(topic.documentationDigest).toBe(
-      stationDocsDigest(await readStationDocsInputs()),
+      stationDocsDigest(await readStationDocsBundle()),
     );
     expect(topic.documentationDigest).not.toBe(
-      stationDocsDigest(STATION_DOCS_TOPICS.slice(1)),
+      stationDocsDigest({
+        ...STATION_DOCS_BUNDLE,
+        topics: STATION_DOCS_BUNDLE.topics.slice(1),
+      }),
     );
     expect(
       (await callTool('list_station_docs_topics', { parentId: 'missing' }))
@@ -688,10 +722,17 @@ describe('station-docs structural properties (AC2)', () => {
     const allowed = new Set([
       '@modelcontextprotocol/server',
       '@modelcontextprotocol/server/stdio',
+      // Corpus's offline search entry only. Corpus guarantees it imports
+      // nothing with file, network, process, or timer access, and
+      // station-docs-bundle.test.ts proves the built server bundle still
+      // holds. The root `@kontourai/corpus` entry reads files when it loads,
+      // so it stays off this list.
+      '@kontourai/corpus/search',
       'zod',
       '../../package.json',
       './station-docs-content.js',
       './station-docs-mcp-server.js',
+      './station-docs-tools.js',
     ]);
     for (const file of SOURCE_FILES) {
       const source = readSource(file);

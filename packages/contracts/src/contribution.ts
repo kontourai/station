@@ -127,6 +127,7 @@
  */
 
 import type { FleetContributionConfig } from './fleet-contribution.js';
+import { isObjectRecord } from './record-guard.js';
 
 /**
  * The projection's wire version. Deliberately NOT an alias of
@@ -892,7 +893,7 @@ export function isWellFormedContributionProjection(
 export function contributionProjectionRefusal(
   value: unknown,
 ): string | undefined {
-  if (!isPlainObject(value)) {
+  if (!isObjectRecord(value)) {
     return `it is ${value === null ? 'null' : typeof value}, not an object`;
   }
   if (value.schemaVersion !== CONTRIBUTION_PROJECTION_SCHEMA_VERSION) {
@@ -942,7 +943,7 @@ export function contributionProjectionRefusal(
 
   if (!Array.isArray(value.execution)) return 'its execution is not an array';
   for (const entry of value.execution) {
-    if (!isPlainObject(entry)) return 'an execution entry is not an object';
+    if (!isObjectRecord(entry)) return 'an execution entry is not an object';
     if (typeof entry.repoId !== 'string' || entry.repoId.length === 0) {
       return 'an execution entry names no repoId';
     }
@@ -956,7 +957,7 @@ export function contributionProjectionRefusal(
 
   if (!Array.isArray(value.agents)) return 'its agents is not an array';
   for (const entry of value.agents) {
-    if (!isPlainObject(entry)) return 'an agent entry is not an object';
+    if (!isObjectRecord(entry)) return 'an agent entry is not an object';
     if (typeof entry.slug !== 'string' || entry.slug.length === 0) {
       return 'an agent entry names no slug';
     }
@@ -964,7 +965,7 @@ export function contributionProjectionRefusal(
 
   if (!Array.isArray(value.inference)) return 'its inference is not an array';
   for (const entry of value.inference) {
-    if (!isPlainObject(entry)) return 'an inference entry is not an object';
+    if (!isObjectRecord(entry)) return 'an inference entry is not an object';
     if (typeof entry.id !== 'string' || entry.id.length === 0) {
       return 'an inference entry names no id';
     }
@@ -980,7 +981,7 @@ export function contributionProjectionRefusal(
     return 'its diagnostics is not an array';
   }
   for (const entry of value.diagnostics) {
-    if (!isPlainObject(entry)) return 'a diagnostic is not an object';
+    if (!isObjectRecord(entry)) return 'a diagnostic is not an object';
     if (typeof entry.resourceId !== 'string' || entry.resourceId.length === 0) {
       return 'a diagnostic names no resourceId';
     }
@@ -1006,7 +1007,7 @@ export function contributionProjectionRefusal(
 export function isWellFormedContributionScope(
   value: unknown,
 ): value is ContributionScope {
-  if (!isPlainObject(value)) return false;
+  if (!isObjectRecord(value)) return false;
   if (value.kind === 'fleet') return Object.keys(value).length === 1;
   if (value.kind !== 'project') return false;
   if (typeof value.projectId !== 'string' || value.projectId.length === 0) {
@@ -1017,8 +1018,4 @@ export function isWellFormedContributionScope(
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

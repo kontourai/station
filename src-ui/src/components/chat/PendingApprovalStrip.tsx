@@ -2,6 +2,8 @@ import { inputRequestSummary } from '@kontourai/station-shared/input-request';
 import { toolRequestDisplayName } from '@kontourai/station-shared/tool-request-preview';
 import { useEffect, useRef, useState } from 'react';
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
+import { pendingRequestKind } from '../../hooks/orchestration/pendingRequestRows';
+import { attentionWord } from '../../views/home/work-status';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonBlock } from '../state';
 import { type ToolApprovalOutcome, ToolCallDisplay } from './ToolCallDisplay';
@@ -59,18 +61,24 @@ function useNewApprovalAnnouncement(
     // Still loading history, or the render that finished loading it:
     // whatever it brings was already waiting.
     if (!settled || !wasSettled || fresh.length === 0) return;
-    // A form names its own ask; its tool name is a protocol method.
-    const names = fresh.map((request) =>
-      request.inputRequest
-        ? inputRequestSummary(request.inputRequest.message)
-        : toolRequestDisplayName(request.toolName || request.name) || 'a tool',
-    );
+    // A form or a link names its own ask; its tool name is a protocol method.
+    const names = fresh.map((request) => {
+      const asked = request.inputRequest ?? request.inputRequestUrl;
+      return asked
+        ? inputRequestSummary(asked.message)
+        : toolRequestDisplayName(request.toolName || request.name) || 'a tool';
+    });
+    const label = fresh.some(
+      (request) => pendingRequestKind(request) !== 'input',
+    )
+      ? attentionWord('approval')
+      : attentionWord('answer');
     setAnnouncement((previous) => ({
       id: previous.id + 1,
       text:
         fresh.length === 1
-          ? `Needs approval: ${names[0]}`
-          : `Needs approval (${fresh.length}): ${names.join(', ')}`,
+          ? `${label}: ${names[0]}`
+          : `${label} (${fresh.length}): ${names.join(', ')}`,
     }));
   }, [keys, settled]);
   return announcement;
@@ -103,7 +111,13 @@ export function PendingApprovalStrip({
   settled?: boolean;
   onApprove: (
     request: PendingApprovalRequest,
-    action: 'once' | 'trust' | 'trust-server' | 'deny',
+    action:
+      | 'once'
+      | 'trust'
+      | 'trust-server'
+      | 'trust-rule'
+      | 'trust-all'
+      | 'deny',
   ) => Promise<ToolApprovalOutcome>;
 }) {
   const announcement = useNewApprovalAnnouncement(requests, settled);
@@ -125,7 +139,7 @@ export function PendingApprovalStrip({
           aria-label="Approvals waiting on you"
         >
           {requests.map((request) =>
-            request.inputRequest ? (
+            request.inputRequest || request.inputRequestUrl ? (
               <LazyBoundary
                 key={requestKey(request)}
                 load={loadInputRequest}

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, sep } from 'node:path';
@@ -19,6 +18,7 @@ import {
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
+  AttachedSessionDiscoveryPage,
   AttachedSessionDiscoveryResult,
   AttachedSessionReadResult,
   AttachedSessionSource,
@@ -29,6 +29,13 @@ import {
   type IndexedInspection,
   mergeOutcome,
 } from './grok-session-index.js';
+import {
+  asRecord,
+  boundedInteger,
+  digest,
+  isPlainRecord,
+  text,
+} from './session-source-values.js';
 import {
   deriveConfigHomeAffinity,
   readWindow,
@@ -277,7 +284,9 @@ export class GrokSessionSource implements AttachedSessionSource {
     return boundedText(session.resumeCursor.acpSessionId);
   }
 
-  async discover(): Promise<AttachedSessionDiscoveryResult> {
+  async discover(
+    page?: AttachedSessionDiscoveryPage,
+  ): Promise<AttachedSessionDiscoveryResult> {
     const sourceHome = deriveConfigHomeAffinity(
       SOURCE_HOME_NAMESPACE,
       this.homeDir,
@@ -292,12 +301,15 @@ export class GrokSessionSource implements AttachedSessionSource {
       this.inspect(root, { sessionDir, dirName }),
     );
     let outcome = refreshed.outcome;
-    const candidates = refreshed.sessions;
+    const end = page ? page.offset + page.limit : this.maxCandidates;
+    const candidates = page
+      ? refreshed.sessions.slice(page.offset, end)
+      : refreshed.sessions;
 
     const sourceIdentity = filesystemIdentity(root);
     const sessions: AttachedSessionDescriptor[] = [];
     for (const candidate of candidates) {
-      if (sessions.length >= this.maxCandidates) {
+      if (!page && sessions.length >= this.maxCandidates) {
         outcome = mergeOutcome(outcome, 'candidate_limit');
         break;
       }
@@ -320,6 +332,7 @@ export class GrokSessionSource implements AttachedSessionSource {
         threadId: `external:${PROVIDER}:${digest([sourceIdentity, sessionId])}`,
         cwd,
         createdAt,
+        modifiedAtMs: candidate.modifiedAt,
         sourceHandle: digest([
           this.kind,
           sourceIdentity,
@@ -336,7 +349,11 @@ export class GrokSessionSource implements AttachedSessionSource {
       });
       sessions.push(descriptor);
     }
-    return { outcome, sessions };
+    return {
+      outcome,
+      sessions,
+      ...(page && refreshed.sessions.length > end ? { nextOffset: end } : {}),
+    };
   }
 
   async read(
@@ -392,6 +409,9 @@ export class GrokSessionSource implements AttachedSessionSource {
         return {
           outcome: 'line_limit',
           events,
+          ...(cursor.offset + content.length < fileSize
+            ? { hasMore: true as const }
+            : {}),
           cursor: encodeCursor(cursor.offset + content.length, state),
         };
       }
@@ -450,6 +470,7 @@ export class GrokSessionSource implements AttachedSessionSource {
         return {
           outcome,
           events,
+          hasMore: true,
           cursor: encodeCursor(
             absoluteLineStart,
             beforeRecord,
@@ -464,6 +485,10 @@ export class GrokSessionSource implements AttachedSessionSource {
     return {
       outcome,
       events,
+      ...(cursor.offset + content.length < fileSize ||
+      (events.length === this.maxEvents && localOffset < content.length)
+        ? { hasMore: true as const }
+        : {}),
       cursor: encodeCursor(cursor.offset + localOffset, state),
     };
   }
@@ -1421,15 +1446,6 @@ function safeFilesystemIdentity(path: string): string | undefined {
   }
 }
 
-function digest(parts: unknown[]): string {
-  return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
-}
-
-function isPlainRecord(value: Record<string, unknown>): boolean {
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
 function isTimestamp(value: unknown): value is string {
   return (
     typeof value === 'string' &&
@@ -1450,10 +1466,6 @@ function tokenFigure(value: unknown): number | undefined {
     : undefined;
 }
 
-function text(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined;
-}
-
 function boundedText(value: unknown): string | undefined {
   const valueText = text(value);
   return valueText && Buffer.byteLength(valueText) <= MAX_CURSOR_TEXT_BYTES
@@ -1470,19 +1482,6 @@ function boundedPathText(value: unknown): string | undefined {
     : undefined;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
 function isOffset(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
-}
-
-function boundedInteger(name: string, value: number, ceiling: number): number {
-  if (!Number.isSafeInteger(value) || value < 1 || value > ceiling) {
-    throw new RangeError(
-      `${name} must be an integer from 1 through ${ceiling}.`,
-    );
-  }
-  return value;
 }

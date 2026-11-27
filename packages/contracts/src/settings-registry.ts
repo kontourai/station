@@ -1,5 +1,9 @@
 import { CLEAN_ID_PATTERN } from './agent-identity.js';
 import { type AppConfig, templateVariableFormatError } from './config.js';
+import {
+  DEFAULT_UPDATE_DOWNLOAD_POLICY,
+  UPDATE_DOWNLOAD_POLICIES,
+} from './system-status.js';
 
 /**
  * Station#settings-revamp slice 1 — the declarative settings registry
@@ -202,17 +206,16 @@ export const APP_SETTINGS_REGISTRY = [
     // (views/settings/AgentDefaultsSection.tsx) — the registry was carrying a
     // second, divergent name for one setting.
     label: 'Default agent instructions',
-    help: 'Every agent starts its context with these instructions, ahead of its own.',
-    description: 'Global instructions prepended to every agent.',
+    help: 'Station prepends these to prompts it builds, uses them in place of its built-in prompt, and omits them for external engines.',
+    description: 'Instructions for prompts built by Station.',
   }),
   defineSetting({
     key: 'templateVariables',
     scope: 'defaults',
     descriptor: { kind: 'composite' },
     label: 'Template variables',
-    help: 'Agent instructions can reference these values as {{key}} instead of repeating them.',
-    description:
-      'Custom template variables available as {{key}} in agent instructions.',
+    help: 'Station expands {{key}} in prompts it builds, while external engines receive the authored placeholders.',
+    description: 'Custom values for Station-built prompts.',
   }),
 
   // --- scope: station (controls for this Station instance) ---
@@ -230,19 +233,15 @@ export const APP_SETTINGS_REGISTRY = [
   defineSetting({
     key: 'serverUpdateDownloadPolicy',
     scope: 'station',
-    // `SERVER_UPDATE_DOWNLOAD_POLICIES` in system-status.ts, restated as a
-    // literal for the schema-parity test (see defaultApprovalMode below).
     descriptor: {
       kind: 'enum',
-      values: ['never', 'after-24h', 'immediately'],
+      values: UPDATE_DOWNLOAD_POLICIES,
     },
     label: 'Automatic server download',
-    help: 'A Station service downloads an available update by itself on this schedule; it restarts only when someone applies it.',
+    help: 'Choose when the server downloads an update.',
     description:
-      'For a Station service installed from a release archive: download an available server update never, once it has been available for 24 hours, or immediately. Downloading verifies the release and keeps the server running; restarting into it always takes an explicit Restart (or Update when idle).',
-    // Confirmed against ServerUpdateCoordinator's policy read: absent falls
-    // through to DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY.
-    defaultValue: 'after-24h',
+      'Sets the automatic download schedule for a Station service installed from a release archive. Restart or Update when idle applies the downloaded release.',
+    defaultValue: DEFAULT_UPDATE_DOWNLOAD_POLICY,
   }),
   defineSetting({
     key: 'lanDiscoveryEnabled',
@@ -253,6 +252,17 @@ export const APP_SETTINGS_REGISTRY = [
     description:
       'Opt-in DNS-SD publication on reachable local interfaces. Discovery does not grant access; connecting still requires consent and host approval.',
     defaultValue: false,
+  }),
+  defineSetting({
+    key: 'trustedConsentOrigin',
+    scope: 'station',
+    envFallback: 'STATION_TRUSTED_CONSENT_ORIGIN',
+    descriptor: { kind: 'string' },
+    label: 'Approval HTTPS origin',
+    help: 'Leave empty for automatic discovery or enter an exact HTTPS DNS origin.',
+    description:
+      'Persisted approval origin for dynamic route publications. The environment setting remains a legacy fallback. Selecting an origin does not configure HTTPS or grant access.',
+    defaultValue: '',
   }),
   defineSetting({
     key: 'telemetryTier',
@@ -546,12 +556,13 @@ export const APP_SETTINGS_REGISTRY = [
     key: 'knowledgeStores',
     scope: 'station',
     descriptor: { kind: 'boolean' },
-    label: 'Knowledge stores (preview)',
-    help: 'Create the read-only conversation-history Knowledge root at personal Station startup.',
+    label: 'Past conversations in Knowledge',
+    help: 'After a restart, adds past conversations on this Station to Knowledge, searchable after a reindex; turning it off later does not remove them.',
+    // Read once at personal startup (ensureConversationKnowledgeRoot); hosted
+    // startup skips it. Indexing is a separate operator-run rebuild, and
+    // DELETE /api/knowledge/roots refuses this root, so off cannot remove it.
     description:
-      'When enabled, personal Station startup registers root:conversations if absent. Other Knowledge routes do not depend on this flag. Turning it off does not remove an existing root; hosted mode does not register this projection.',
-    // Kept out of the Settings UI; this does not disable the bootstrap consumer.
-    userFacing: false,
+      'Adds past conversations on this Station to Knowledge as a read-only source. They become searchable after a Knowledge reindex, which needs an embedding connection and the Station operator. Off by default because conversation history is personal. Applies after a restart. Turning it off does not remove the source. No effect on a hosted Station.',
     defaultValue: false,
   }),
   defineSetting({
@@ -610,10 +621,9 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'number', min: 1, integer: true },
     label: 'Default max turns',
-    // #4402: the runtime framework's name is not product vocabulary.
-    help: 'Set the fallback step limit for runs on Station’s own engine; Claude Code, Codex and other engines do not apply this setting.',
+    help: 'Set the fallback step limit for supported runs on Station’s own engine, while external engines use their own limits.',
     description:
-      'Fallback step limit for runs on Station’s own engine when the Agent sets no step limit of its own. Claude Code, Codex and other engines do not apply this setting.',
+      'Fallback step limit for supported runs on Station’s own engine.',
     // `resolveMaxSteps` (src-server/constants.ts) falls through
     // `defaultMaxTurns || DEFAULT_MAX_STEPS` — the code's real absent-value
     // behavior is 200, not the file schema's stale documented "default": 10
@@ -736,7 +746,7 @@ export const APP_SETTINGS_REGISTRY = [
         'connection-default': 'Default',
         ask: 'Ask first',
         auto: 'Auto',
-        never: 'Never ask (full access)',
+        never: 'Full access',
       },
     },
     label: 'Default approval mode',
@@ -756,6 +766,21 @@ export const APP_SETTINGS_REGISTRY = [
     // it keeps the generic enum row rendering the value that is in force
     // instead of an empty select that reads as the first option by accident.
     defaultValue: 'connection-default',
+  }),
+  defineSetting({
+    key: 'confinedNetwork',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    label: 'Confined session network',
+    help: 'Restricted, confined sessions reach their model endpoint and the hosts you allow through Station’s broker; their other connections are blocked and reported.',
+    // #4769: read at each start that requires confinement
+    // (orchestration-service `withConfinement`); the operator's own `host`
+    // sessions are never confined. Enforced by the egress broker and the
+    // Seatbelt profile; a mechanism that cannot restrict the network
+    // (bubblewrap, Codex's sandbox) refuses such a start by name.
+    description:
+      'Open by default. Restricted applies only to sessions Station confines (full-access sessions started by someone other than you, on macOS): they reach the engine’s own model endpoint and the listed hosts, through Station’s broker. Such a session that cannot be confined with a restricted network (on Linux, with Codex, or one that would otherwise fall back to Auto) is refused rather than run open. Sessions at Auto or Ask, and your own sessions, are not confined, and their network is not restricted at all.',
+    defaultValue: { mode: 'full' },
   }),
   defineSetting({
     key: 'runtime',

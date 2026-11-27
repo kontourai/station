@@ -1,0 +1,10 @@
+/* A deep-linked conversation still opening: fills the reader where the
+   previous conversation would otherwise show (useChatDockActiveChatSync).
+   The wait is said, not only shown: the shared skeleton's label is visible
+   here (`--loading-label-display`, Skeleton.css). */
+.chat-dock__deep-link-opening {
+  --loading-label-display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--k-space-4);
+}

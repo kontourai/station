@@ -139,7 +139,7 @@ describe('NotificationContainer', () => {
   test('renders tool activity toasts with their label and detail', () => {
     render(<NotificationContainer />);
 
-    expect(screen.getByText('Tool Activity')).toBeTruthy();
+    expect(screen.getByText('Tool activity')).toBeTruthy();
     expect(screen.getByText('Dev Agent failed shell exec')).toBeTruthy();
     expect(screen.getByText('Permission denied')).toBeTruthy();
 
@@ -147,6 +147,46 @@ describe('NotificationContainer', () => {
       screen.getByRole('button', { name: 'Dismiss notification' }),
     );
     expect(dismissToast).toHaveBeenCalledWith('tool-1');
+  });
+
+  test('shows the chat attribution outside the diagnostic disclosure', () => {
+    notifications = [
+      {
+        id: 'chat-notice',
+        message: 'Review required',
+        timestamp: Date.now(),
+        dismissed: false,
+        metadata: {
+          attribution: 'from builder · Fix login',
+          detail: 'Review info',
+        },
+      },
+    ];
+    render(<NotificationContainer />);
+    expect(
+      screen.getByText('from builder · Fix login').closest('details'),
+    ).toBeNull();
+  });
+
+  test('a dismissed toast stays inert through its exit and then leaves the stack', () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(<NotificationContainer />);
+      notifications = notifications.map((item) => ({
+        ...item,
+        dismissed: true,
+      }));
+      view.rerender(<NotificationContainer />);
+
+      const exiting = screen
+        .getByText('Dev Agent failed shell exec')
+        .closest('.toast-stack__item');
+      expect(exiting?.hasAttribute('inert')).toBe(true);
+      act(() => vi.advanceTimersByTime(400));
+      expect(screen.queryByText('Dev Agent failed shell exec')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('keeps diagnostics behind Details and exposes the conversation action as a button', () => {
@@ -318,7 +358,7 @@ describe('NotificationContainer', () => {
         timestamp: Date.now(),
         dismissed: false,
         actions: [
-          { label: 'Allow Once', variant: 'primary', onClick: allowOnce },
+          { label: 'Allow once', variant: 'primary', onClick: allowOnce },
           { label: 'Deny', variant: 'danger', onClick: deny },
         ],
       },
@@ -351,7 +391,7 @@ describe('NotificationContainer', () => {
     expect(queuePanel.className).toContain('is-open');
     expect(screen.getByText('Codex wants to use shell exec')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Allow once' }));
     expect(allowOnce).toHaveBeenCalledOnce();
     expect(dismissToast).toHaveBeenCalledWith('approval-1');
   });
@@ -368,7 +408,7 @@ describe('NotificationContainer', () => {
         timestamp: Date.now(),
         dismissed: false,
         actions: [
-          { label: 'Allow Once', variant: 'primary', onClick: vi.fn() },
+          { label: 'Allow once', variant: 'primary', onClick: vi.fn() },
           {
             label: 'Allow Bash for this session',
             variant: 'secondary',
@@ -410,7 +450,7 @@ describe('NotificationContainer', () => {
         timestamp: Date.now(),
         dismissed: false,
         actions: [
-          { label: 'Allow Once', variant: 'primary', onClick: vi.fn() },
+          { label: 'Allow once', variant: 'primary', onClick: vi.fn() },
           { label: 'Deny', variant: 'danger', onClick: vi.fn() },
         ],
       },
@@ -440,7 +480,7 @@ describe('NotificationContainer', () => {
         timestamp: Date.now(),
         dismissed: false,
         actions: [
-          { label: 'Allow Once', variant: 'primary', onClick: vi.fn() },
+          { label: 'Allow once', variant: 'primary', onClick: vi.fn() },
         ],
       },
     ];
@@ -471,7 +511,7 @@ describe('NotificationContainer', () => {
           }}
         >
           <button type="button" className="tool-call__approve-btn">
-            Allow Once
+            Allow once
           </button>
         </div>
         <NotificationContainer />
@@ -482,7 +522,7 @@ describe('NotificationContainer', () => {
     fireEvent.click(pill);
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(document.activeElement?.textContent).toBe('Allow Once');
+    expect(document.activeElement?.textContent).toBe('Allow once');
     expect(pill.getAttribute('aria-expanded')).toBe('false');
   });
 
@@ -529,7 +569,7 @@ describe('NotificationContainer', () => {
           }}
         >
           <button type="button" className="tool-call__approve-btn">
-            Allow Once
+            Allow once
           </button>
         </div>
         <NotificationContainer />
@@ -561,7 +601,7 @@ describe('NotificationContainer', () => {
           data-approval-id="req-7"
         >
           <button type="button" className="tool-call__approve-btn">
-            Allow Once
+            Allow once
           </button>
         </div>
         <NotificationContainer />
@@ -697,7 +737,7 @@ describe('NotificationContainer', () => {
         timestamp: Date.now(),
         dismissed: false,
         actions: [
-          { label: 'Allow Once', variant: 'primary', onClick: allowOnce },
+          { label: 'Allow once', variant: 'primary', onClick: allowOnce },
         ],
       },
       {
@@ -716,7 +756,7 @@ describe('NotificationContainer', () => {
     queueTrigger.focus();
     fireEvent.click(queueTrigger);
 
-    const allow = screen.getByRole('button', { name: 'Allow Once' });
+    const allow = screen.getByRole('button', { name: 'Allow once' });
     allow.focus();
     fireEvent.click(allow);
     expect(dismissToast).toHaveBeenCalledWith('approval-1');
@@ -886,5 +926,103 @@ describe('NotificationContainer', () => {
       '/projects/research/layouts/rss-reader',
     );
     expect(dismissToast).toHaveBeenCalledWith('rss-2');
+  });
+
+  describe('touch swipe to dismiss', () => {
+    const touch = {
+      pointerId: 7,
+      pointerType: 'touch',
+      isPrimary: true,
+      button: 0,
+    };
+    function swipe(
+      card: HTMLElement,
+      dx: number,
+      dy = 0,
+      pointerType = 'touch',
+    ) {
+      const init = { ...touch, pointerType };
+      fireEvent.pointerDown(card, { ...init, clientX: 200, clientY: 100 });
+      fireEvent.pointerMove(card, {
+        ...init,
+        clientX: 200 + dx / 2,
+        clientY: 100 + dy / 2,
+      });
+      fireEvent.pointerMove(card, {
+        ...init,
+        clientX: 200 + dx,
+        clientY: 100 + dy,
+      });
+      fireEvent.pointerUp(card, {
+        ...init,
+        clientX: 200 + dx,
+        clientY: 100 + dy,
+      });
+    }
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    test('a sideways swipe dismisses the toast without activating it', () => {
+      const onNavigate = vi.fn();
+      notifications = [
+        {
+          id: 'swipe-1',
+          message: 'Build finished',
+          type: 'info',
+          timestamp: Date.now(),
+          dismissed: false,
+          onNavigate,
+        },
+      ];
+      render(<NotificationContainer />);
+      const card = screen.getByTestId('toast-card');
+      swipe(card, -140);
+      fireEvent.click(card, { detail: 1 });
+      expect(card.className).toContain('toast-card--leaving');
+      act(() => vi.runAllTimers());
+      expect(dismissToast).toHaveBeenCalledWith('swipe-1');
+      expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    test('a short drag, a vertical scroll and a mouse drag leave the toast', () => {
+      notifications = [
+        {
+          id: 'swipe-2',
+          message: 'Still here',
+          type: 'info',
+          timestamp: Date.now(),
+          dismissed: false,
+        },
+      ];
+      render(<NotificationContainer />);
+      const card = screen.getByTestId('toast-card');
+      vi.advanceTimersByTime(1_000);
+      swipe(card, 30);
+      vi.advanceTimersByTime(1_000);
+      swipe(card, 10, 160);
+      swipe(card, -200, 0, 'mouse');
+      act(() => vi.runAllTimers());
+      expect(dismissToast).not.toHaveBeenCalled();
+      expect(card.className).not.toContain('toast-card--leaving');
+    });
+
+    test('an approval card in the queue is not swiped away', () => {
+      notifications = [
+        {
+          id: 'approval-swipe',
+          message: 'Codex wants to run a command',
+          type: 'tool-approval',
+          timestamp: Date.now(),
+          dismissed: false,
+          actions: [],
+        },
+      ];
+      render(<NotificationContainer />);
+      const card = screen.getByTestId('toast-card');
+      expect(card.className).not.toContain('toast-card--swipe');
+      swipe(card, -200);
+      act(() => vi.runAllTimers());
+      expect(dismissToast).not.toHaveBeenCalled();
+    });
   });
 });

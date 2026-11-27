@@ -78,7 +78,6 @@ function session(
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     source: 'manual',
     createdAt: 1,

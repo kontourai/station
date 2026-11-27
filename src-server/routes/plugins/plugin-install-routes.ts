@@ -331,6 +331,7 @@ export function registerPluginInstallRoutes(
             version: manifest.version,
             description: manifest.description,
             installationReadiness: catalog.readiness,
+            ...(catalog.activationInFlight ? { activationInFlight: true } : {}),
             // The persisted receipt of the generation this observation bound;
             // a legacy or journal-less installation has no verified claim.
             registryTrust: pluginRegistryTrust(
@@ -783,13 +784,16 @@ export function registerPluginInstallRoutes(
                 await deps.registryTrustPolicyAuthority?.captureAdmission();
               if (entry.status === 'installed' && trust?.receipt) {
                 if (!policy) throw new RegistryAcquisitionRefused();
+                const receipt = await verifyRetainedRegistryAcquisition(
+                  policy,
+                  trust.receipt,
+                );
+                entry.registryTrust = pluginRegistryTrust({
+                  state: 'observed',
+                  receipt,
+                });
                 entry.consent.registryTrustRevision =
-                  registryAcquisitionRevision(
-                    await verifyRetainedRegistryAcquisition(
-                      policy,
-                      trust.receipt,
-                    ),
-                  );
+                  registryAcquisitionRevision(receipt);
                 return;
               }
               const required =
@@ -800,6 +804,7 @@ export function registerPluginInstallRoutes(
                 ) === true;
               if (entry.status === 'installed') {
                 if (required) throw new RegistryAcquisitionRefused();
+                entry.registryTrust = pluginRegistryTrust(trust);
                 return;
               }
               const registry =
@@ -827,6 +832,10 @@ export function registerPluginInstallRoutes(
                 evidence.format !== 'agent-plugin-1.0'
               )
                 throw new RegistryAcquisitionRefused();
+              entry.registryTrust = pluginRegistryTrust({
+                state: 'observed',
+                receipt: verified.registryAcquisition ?? null,
+              });
               if (verified.registryAcquisition)
                 entry.consent.registryTrustRevision =
                   registryAcquisitionRevision(verified.registryAcquisition);

@@ -1,0 +1,9 @@
+{
+  "revision": "8126402168f8c220092ed24a029e0ccf4a408d11",
+
+  "notes": [
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"The mobile conversation button opens a live browser view. It does not execute a browser action, change the lease policy, or replay an action.","inputs":["docs/guides/browser-workspace.md"]},
+
+    {"path":"docs/design/verified-action-replay.md","note":"The mobile conversation button opens a live browser view. It does not execute a browser action, change the lease policy, or replay an action.","inputs":["docs/guides/browser-workspace.md"]}
+  ]
+}

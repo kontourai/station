@@ -1,0 +1,7 @@
+{
+  "revision": "da3f9ba9df04737bc6151d7943da623e60540231",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Sidecar paragraph now says the desktop starts the server without a compile cache and removes an inherited NODE_COMPILE_CACHE (build_sidecar_command); server bootstrap removal, built-in child handoff and the process regressions it cites are unchanged.","inputs":["docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]}
+  ]
+}

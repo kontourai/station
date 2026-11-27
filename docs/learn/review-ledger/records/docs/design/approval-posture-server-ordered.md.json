@@ -20,7 +20,11 @@
 
     "src-server/providers/adapters/codex-confinement.ts",
 
-    "packages/contracts/src/execution-confinement.ts"
+    "packages/contracts/src/execution-confinement.ts",
+
+    "src-server/security/confinement/bubblewrap.ts",
+
+    "src-server/security/confinement/default-confinement-providers.ts"
   ],
 
   "checks": [

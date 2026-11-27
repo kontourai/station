@@ -9,7 +9,9 @@
  * `RegionToolbarControls.test.tsx`.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
@@ -95,6 +97,26 @@ import { OverflowMenu } from '../OverflowMenu';
 
 const onClose = vi.fn();
 
+function InteractiveOverflowMenu() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        More actions
+      </button>
+      <OverflowMenu
+        isOpen={open}
+        connStatus="connected"
+        userInitials="ST"
+        onClose={() => setOpen(false)}
+        onOpenConnections={vi.fn()}
+        onOpenHelp={vi.fn()}
+        onOpenProfile={vi.fn()}
+      />
+    </>
+  );
+}
+
 function renderMenu() {
   return render(
     <OverflowMenu
@@ -147,6 +169,44 @@ describe('OverflowMenu region section (#917)', () => {
     onClose.mockReset();
   });
 
+  test('Escape closes the offered menu and returns focus to its trigger', async () => {
+    const user = userEvent.setup();
+    render(<InteractiveOverflowMenu />);
+    const trigger = screen.getByRole('button', { name: 'More actions' });
+    await user.click(trigger);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Connections' }),
+    );
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('button', { name: 'Connections' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test.each(['backdrop', 'selection', 'Shift+Tab'] as const)(
+    '%s still dismisses the offered menu without trapping focus',
+    async (action) => {
+      const user = userEvent.setup();
+      render(<InteractiveOverflowMenu />);
+      const trigger = screen.getByRole('button', { name: 'More actions' });
+      await user.click(trigger);
+
+      if (action === 'backdrop') {
+        await user.click(
+          screen.getByRole('button', { name: 'Close more actions menu' }),
+        );
+      } else if (action === 'selection') {
+        await user.click(screen.getByRole('button', { name: 'Help' }));
+      } else {
+        await user.tab({ shift: true });
+      }
+
+      expect(screen.queryByRole('button', { name: 'Connections' })).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    },
+  );
+
   test('a coarse device gets one row per surface, checked to match what is visible', () => {
     renderMenu();
 
@@ -159,11 +219,10 @@ describe('OverflowMenu region section (#917)', () => {
     });
     expect(hideChat.getAttribute('aria-pressed')).toBe('true');
     expect(group.contains(hideChat)).toBe(true);
-    const showActivity = screen.getByRole('button', {
-      name: 'Show Activity in the dock',
-    });
-    expect(showActivity.getAttribute('aria-pressed')).toBe('false');
-    expect(group.contains(showActivity)).toBe(true);
+    expect(
+      screen.queryByRole('button', { name: 'Show Activity in the dock' }),
+    ).toBeNull();
+    expect(within(group).getAllByRole('button')).toHaveLength(1);
   });
 
   test('the region rows follow the menu it already had, never displacing it', () => {
@@ -183,7 +242,6 @@ describe('OverflowMenu region section (#917)', () => {
       'Help',
       'Live work, nothing active',
       'Hide Chat from the dock',
-      'Show Activity in the dock',
     ]);
   });
 
@@ -298,17 +356,22 @@ describe('OverflowMenu region section (#917)', () => {
   });
 
   test('selecting an unplaced surface issues the model toggle; the coarse fold rule is the model’s', () => {
+    Object.assign(harness.regions.bottom, {
+      panes: [],
+      occupant: null,
+      visible: false,
+    });
     renderMenu();
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Show Activity in the dock' }),
+      screen.getByRole('button', { name: 'Show Chat in the dock' }),
     );
 
     // Placing it in its default region and closing every other region — a
     // coarse device shows exactly one dock surface at a time — is the model's
     // (`toggleSurface` → `showSurface` → `showSurfaceAlone`, region-model.ts).
     // The row issues that one command and places nothing itself (#1420).
-    expectOnlyToggle('activity');
+    expectOnlyToggle('chat');
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -330,25 +393,18 @@ describe('OverflowMenu region section (#917)', () => {
    * claims no pressed state. `Show Activity` here would reveal it where it
    * already is, and the tap would read as nothing happening.
    */
-  test('a surface occupying main gets a Move row, not a Show toggle', () => {
+  test('a retired Activity placement cannot advertise a Move row', () => {
     Object.assign(harness.regions.main, {
       panes: ['activity'],
       occupant: 'activity',
     });
     renderMenu();
-
+    expect(
+      screen.queryByRole('button', { name: 'Move Activity to the dock' }),
+    ).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Show Activity in the dock' }),
     ).toBeNull();
-    const move = screen.getByRole('button', {
-      name: 'Move Activity to the dock',
-    });
-    expect(move.hasAttribute('aria-pressed')).toBe(false);
-    expect(screen.getByRole('group', { name: 'Regions' }).contains(move)).toBe(
-      true,
-    );
-    fireEvent.click(move);
-    expectOnlyToggle('activity');
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(harness.toggleSurface).not.toHaveBeenCalled();
   });
 });

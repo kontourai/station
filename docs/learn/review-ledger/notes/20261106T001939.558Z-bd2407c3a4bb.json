@@ -1,7 +1,0 @@
-{
-  "revision": "2c87ba3b1e0cd7d1ed71fa028cd9b30607e6bc5f",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Step 2 opens the Station name in the computer window; the chat.css edit affects only the phone notice overlay.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
-  ]
-}

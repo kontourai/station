@@ -1,4 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -62,6 +69,7 @@ import {
   MUSE_PROVIDER_MODES,
 } from '../adapters/muse-adapter-types.js';
 import { UNRESOLVED_TURN_TOOL_OUTPUT } from '../adapters/unresolved-tool-output.js';
+import { CredentialProfileEnvironmentError } from '../app-home/app-home-profiles.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 import {
   MUSE_13_BACKGROUND_FOLLOW_UP_TEXT,
@@ -94,7 +102,9 @@ vi.mock('../../telemetry/metrics.js', () => ({
   providerOps: { add: mockProviderOpsAdd },
 }));
 
+import { runMuseMcpList } from '../adapters/muse-mcp-status.js';
 import { FakeMuseProcess } from './fake-muse-process.js';
+import { MUSE_MCP_LIST_JSON } from './muse-mcp-list-output.js';
 
 async function flushIo(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -249,8 +259,9 @@ describe('MuseAdapter', () => {
     expect(adapter.metadata.builtin).toBe(true);
     // `abortSettlement` is consulted ONLY where a discovery call must settle
     // before an abort resolves (`ConnectionInspector` around
-    // `listModelCatalog`/`listModels`), and this adapter implements neither —
-    // so declaring it was a settlement policy with nothing behind it.
+    // `listModelCatalog`/`listModels`). An exec-only adapter has no
+    // discovery host, so it implements neither and declares no settlement
+    // (the serve adapter's catalog is pinned in `muse-serve-adapter.test.ts`).
     expect(adapter.metadata).not.toHaveProperty('abortSettlement');
     expect(adapter.listModelCatalog).toBeUndefined();
     expect(adapter.listModels).toBeUndefined();
@@ -2063,15 +2074,16 @@ describe('Muse registration', () => {
 
   // Absent from `PROVIDER_MODEL_OPTION_SUPPORT` means "no known restriction",
   // so a caller's options were accepted and then silently ignored. #2452:
-  // `approvalMode` is read (serve applies it; exec reports what applied);
-  // nothing else is.
+  // `approvalMode` is read (serve applies it; exec reports what applied),
+  // and so is `effort` (the turn's reasoning tier); nothing else is.
   test('rejects modelOptions muse cannot apply instead of accepting them silently', () => {
     expect(
       unsupportedModelOptionKeys('muse', {
         approvalMode: 'ask',
         effort: 'high',
+        fastMode: true,
       }),
-    ).toEqual(['effort']);
+    ).toEqual(['fastMode']);
     expect(unsupportedModelOptionKeys('muse', {})).toEqual([]);
   });
 });
@@ -2163,10 +2175,13 @@ describe('MuseAdapter credential detection', () => {
     expect(findBinary).toHaveBeenCalledWith('muse');
     // The injected probe stands in for every process this would otherwise
     // start; nothing else may reach `execFile`.
+    // #1942: under the switches that keep the `muse` launcher from
+    // downloading a missing binary or starting its own login.
     expect(runCommand).toHaveBeenCalledWith(
       '/fake/prefix/bin/muse',
       ['--version'],
       undefined,
+      { MUSE_NO_AUTO_UPDATE: '1', MUSE_LOGIN: '0' },
     );
     // Presence only — the credential file is stat'd, never opened.
     expect(credentialFileExists).toHaveBeenCalledWith('/xdg/muse/auth.json');
@@ -2188,6 +2203,62 @@ describe('MuseAdapter credential detection', () => {
     expect(prerequisites.find((p) => p.id === 'muse-auth')?.status).toBe(
       'missing',
     );
+  });
+
+  it("reads the active credential profile's store, not the global one (#1942)", async () => {
+    const credentialFileExists = vi.fn(
+      (path: string) => path === '/profile/muse/auth.json',
+    );
+    const signedIn = credentialAdapter({
+      env: { XDG_CONFIG_HOME: '/global' },
+      credentialFileExists,
+      peekAppHomeEnv: async () => ({
+        profileRef: 'work',
+        env: { XDG_CONFIG_HOME: '/profile' },
+      }),
+    });
+    expect(
+      (await signedIn.getPrerequisites()).find((p) => p.id === 'muse-auth')
+        ?.status,
+    ).toBe('installed');
+    expect(credentialFileExists).toHaveBeenCalledWith(
+      '/profile/muse/auth.json',
+    );
+
+    // The same host with no profile selected reads the (absent) global store.
+    const global = credentialAdapter({
+      env: { XDG_CONFIG_HOME: '/global' },
+      credentialFileExists,
+      peekAppHomeEnv: async () => ({ profileRef: null }),
+    });
+    expect(
+      (await global.getPrerequisites()).find((p) => p.id === 'muse-auth')
+        ?.status,
+    ).toBe('missing');
+  });
+
+  it('#1942: an ambient META_API_KEY does not sign in a credential profile, but still signs in the global connection', async () => {
+    const profile = credentialAdapter({
+      env: { META_API_KEY: 'sk-ambient' },
+      credentialFileExists: noFile,
+      peekAppHomeEnv: async () => ({
+        profileRef: 'work',
+        env: { XDG_CONFIG_HOME: '/profile' },
+      }),
+    });
+    expect(
+      (await profile.getPrerequisites()).find((p) => p.id === 'muse-auth')
+        ?.status,
+    ).toBe('missing');
+    const global = credentialAdapter({
+      env: { META_API_KEY: 'sk-ambient' },
+      credentialFileExists: noFile,
+      peekAppHomeEnv: async () => ({ profileRef: null }),
+    });
+    expect(
+      (await global.getPrerequisites()).find((p) => p.id === 'muse-auth')
+        ?.status,
+    ).toBe('installed');
   });
 
   it('honors XDG_CONFIG_HOME when locating the credential store', () => {
@@ -4275,5 +4346,309 @@ describe('Muse background work holds the turn (#2300)', () => {
       vi.advanceTimersByTimeAsync(50).then(() => 'none' as const),
     ]);
     expect(next).toBe('none');
+  });
+});
+
+describe('Muse reasoning effort on the exec path', () => {
+  /** Every event queued so far. The last read of the harness's iterator. */
+  async function drainQueued(harness: Harness): Promise<any[]> {
+    const events: any[] = [];
+    for (;;) {
+      const next = await Promise.race([
+        harness.iterator.next(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 30)),
+      ]);
+      if (!next || next.done) return events;
+      events.push(next.value);
+    }
+  }
+
+  async function turnArgv(
+    harness: Harness,
+    threadId: string,
+    turn: { modelOptions?: Record<string, unknown> } = {},
+  ) {
+    await harness.adapter.sendTurn({ threadId, input: 'ping', ...turn });
+    const child = harness.processes.at(-1)!;
+    await writeLines(child, MUSE_META_RUN_TERMINAL);
+    child.exit(0);
+    await flushIo();
+    return harness.spawnArgs.at(-1)!;
+  }
+
+  test('a turn effort rides --reasoning-effort, before the prompt separator, and is reported on turn.started', async () => {
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-effort',
+      cwd: '/tmp/project',
+    });
+    const args = await turnArgv(harness, 'thread-effort', {
+      modelOptions: { effort: 'xhigh' },
+    });
+    const flag = args.indexOf('--reasoning-effort');
+    expect(flag).toBeGreaterThan(0);
+    expect(args[flag + 1]).toBe('xhigh');
+    expect(flag).toBeLessThan(args.indexOf('--'));
+    const events = await drainQueued(harness);
+    const started = events.find((event) => event.method === 'turn.started');
+    expect(started?.metadata?.museReasoningEffort).toBe('xhigh');
+  });
+
+  test('a session-start effort applies to a turn that names none; a turn effort wins over it', async () => {
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-effort',
+      modelOptions: { effort: 'low' },
+    });
+    const first = await turnArgv(harness, 'thread-effort');
+    expect(first[first.indexOf('--reasoning-effort') + 1]).toBe('low');
+    const second = await turnArgv(harness, 'thread-effort', {
+      modelOptions: { effort: 'max' },
+    });
+    expect(second[second.indexOf('--reasoning-effort') + 1]).toBe('max');
+  });
+
+  test('no effort asked: no flag, no claim', async () => {
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-effort',
+    });
+    const args = await turnArgv(harness, 'thread-effort');
+    expect(args).not.toContain('--reasoning-effort');
+    const events = await drainQueued(harness);
+    const started = events.find((event) => event.method === 'turn.started');
+    expect(started).toBeDefined();
+    expect(started?.metadata ?? {}).not.toHaveProperty('museReasoningEffort');
+  });
+
+  test('an effort muse has no tier for is refused before anything spawns, at preflight and per turn', async () => {
+    const harness = createHarness();
+    await expect(
+      harness.adapter.preflightStart({
+        provider: 'muse',
+        threadId: 'thread-effort',
+        modelOptions: { effort: 'turbo' },
+      }),
+    ).rejects.toMatchObject({ kind: 'input_unsupported' });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-effort',
+    });
+    const refused = harness.adapter.sendTurn({
+      threadId: 'thread-effort',
+      input: 'ping',
+      modelOptions: { effort: 'turbo' },
+    });
+    await expect(refused).rejects.toBeInstanceOf(SendTurnRefusedError);
+    await expect(refused).rejects.toMatchObject({ kind: 'input_unsupported' });
+    expect(harness.spawnArgs).toEqual([]);
+  });
+});
+
+describe('#1942: exec turns run under the credential profile', () => {
+  function profileHarness(getAppHomeEnv: MuseAdapterOptions['getAppHomeEnv']) {
+    const envs: Array<Record<string, string> | undefined> = [];
+    const processes: FakeMuseProcess[] = [];
+    const harness = createHarness({
+      getAppHomeEnv,
+      processFactory: (_args, _cwd, _tmpDir, envOverrides) => {
+        envs.push(envOverrides);
+        const processHandle = new FakeMuseProcess();
+        processes.push(processHandle);
+        return { process: processHandle, release: () => {} };
+      },
+    });
+    return { harness, envs, processes };
+  }
+
+  test("every turn's muse exec gets the profile's XDG config root", async () => {
+    const getAppHomeEnv = vi.fn(async (ref?: string) => ({
+      profileRef: ref ?? null,
+      env: { XDG_CONFIG_HOME: '/station/app-homes/credential-profile-y' },
+    }));
+    const { harness, envs } = profileHarness(getAppHomeEnv);
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'profile-turn',
+      credentialProfileRef: 'work',
+    });
+    await harness.adapter.sendTurn({ threadId: 'profile-turn', input: 'hi' });
+    expect(getAppHomeEnv).toHaveBeenCalledWith('work');
+    expect(envs).toEqual([
+      { XDG_CONFIG_HOME: '/station/app-homes/credential-profile-y' },
+    ]);
+    await harness.adapter.stopAll();
+  });
+
+  test('a named profile that cannot be prepared refuses the start', async () => {
+    const { harness, envs } = profileHarness(async () => {
+      throw new Error('profile home could not be created');
+    });
+    await expect(
+      harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'profile-refused',
+        credentialProfileRef: 'work',
+      }),
+    ).rejects.toBeInstanceOf(CredentialProfileEnvironmentError);
+    expect(envs).toEqual([]);
+  });
+
+  test('a lookup failure with no profile named degrades to the global config', async () => {
+    const { harness, envs } = profileHarness(async () => {
+      throw new Error('settings unreadable');
+    });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'profile-degraded',
+    });
+    await harness.adapter.sendTurn({
+      threadId: 'profile-degraded',
+      input: 'hi',
+    });
+    expect(envs).toEqual([undefined]);
+    expect(harness.logger.warn).toHaveBeenCalled();
+    await harness.adapter.stopAll();
+  });
+});
+
+describe("muse's own MCP servers at session start", () => {
+  async function queued(harness: Harness): Promise<any[]> {
+    const events: any[] = [];
+    for (;;) {
+      const next = await Promise.race([
+        harness.iterator.next(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 30)),
+      ]);
+      if (!next || next.done) return events;
+      events.push(next.value);
+    }
+  }
+
+  test('publishes the configured servers as engine-config, read in the session folder under its profile', async () => {
+    const listMcpServers = vi.fn(async () => ({
+      stdout: MUSE_MCP_LIST_JSON,
+      stderr: '',
+      code: 0,
+    }));
+    const harness = createHarness({
+      listMcpServers,
+      findBinary: () => '/opt/muse/bin/muse',
+      getAppHomeEnv: async () => ({
+        profileRef: 'work',
+        env: { XDG_CONFIG_HOME: '/station/app-homes/credential-profile-z' },
+      }),
+    });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'mcp-status',
+      cwd: '/workspace/repo',
+      credentialProfileRef: 'work',
+    });
+    const events = await queued(harness);
+    expect(listMcpServers).toHaveBeenCalledWith({
+      command: '/opt/muse/bin/muse',
+      cwd: '/workspace/repo',
+      env: {
+        MUSE_NO_AUTO_UPDATE: '1',
+        MUSE_LOGIN: '0',
+        XDG_CONFIG_HOME: '/station/app-homes/credential-profile-z',
+      },
+      omitEnv: ['META_API_KEY'],
+    });
+    const status = events.filter((e) => e.method === 'engine-mcp.status');
+    expect(status).toHaveLength(1);
+    expect(status[0]).toMatchObject({
+      threadId: 'mcp-status',
+      complete: true,
+      servers: [
+        { name: 'http-one', state: 'configured', scope: 'engine-config' },
+        { name: 'stdio-one', state: 'disabled', scope: 'engine-config' },
+      ],
+    });
+    // Stable MSP has no MCP reconnect; none is declared.
+    expect(status[0]).not.toHaveProperty('reconnect');
+    expect(JSON.stringify(events)).not.toContain('canary-arg-secret');
+    await harness.adapter.stopAll();
+  });
+
+  test.each([
+    ['under a credential profile, drops', true, 'key-absent'],
+    ['with no profile, keeps', false, 'key-present'],
+  ])(
+    'the real listing run %s the ambient META_API_KEY',
+    async (_label, profile, expected) => {
+      // A stand-in `muse` that names a server after what its env carried.
+      const dir = makeSessionHome('muse-mcp-env-');
+      const muse = join(dir, 'muse');
+      writeFileSync(
+        muse,
+        [
+          '#!/bin/sh',
+          'if [ -n "$META_API_KEY" ]; then n=key-present; else n=key-absent; fi',
+          'printf \'{"servers":[{"name":"%s","status":"enabled","enabled":true}]}\\n\' "$n"',
+        ].join('\n'),
+      );
+      chmodSync(muse, 0o755);
+      vi.stubEnv('META_API_KEY', 'ambient-key');
+      try {
+        const harness = createHarness({
+          listMcpServers: runMuseMcpList,
+          findBinary: () => muse,
+          ...(profile
+            ? {
+                getAppHomeEnv: async () => ({
+                  profileRef: 'work',
+                  env: { XDG_CONFIG_HOME: join(dir, 'profile') },
+                }),
+              }
+            : {}),
+        });
+        await harness.adapter.startSession({
+          provider: 'muse',
+          threadId: 'mcp-env',
+          ...(profile ? { credentialProfileRef: 'work' } : {}),
+        });
+        // One reader: a real child (and its PATH lookup) can take a while.
+        let status: any;
+        let next = harness.iterator.next();
+        for (let waited = 0; !status && waited < 10_000; waited += 100) {
+          const event: any = await Promise.race([
+            next,
+            new Promise<null>((resolve) =>
+              setTimeout(() => resolve(null), 100),
+            ),
+          ]);
+          if (!event) continue;
+          if (event.done) break;
+          if (event.value.method === 'engine-mcp.status') status = event.value;
+          next = harness.iterator.next();
+        }
+        expect(status?.servers).toEqual([
+          { name: expected, state: 'configured', scope: 'engine-config' },
+        ]);
+        await harness.adapter.stopAll();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
+  test('a failed read publishes nothing', async () => {
+    const harness = createHarness({
+      listMcpServers: async () => ({
+        stdout: '',
+        stderr: 'muse: installed binary is missing; rerun the installer',
+        code: 1,
+      }),
+      findBinary: () => '/opt/muse/bin/muse',
+    });
+    await harness.adapter.startSession({ provider: 'muse', threadId: 'mcp-x' });
+    const events = await queued(harness);
+    expect(events.some((e) => e.method === 'engine-mcp.status')).toBe(false);
+    await harness.adapter.stopAll();
   });
 });

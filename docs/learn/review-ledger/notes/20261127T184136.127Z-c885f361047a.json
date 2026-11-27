@@ -1,0 +1,9 @@
+{
+  "revision": "d9924e3e229fbc9f84a8f1ba133f85ec01f2a9bf",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the transcript treatment and queue motion. Refused steers use the shared theme-aware negative color for the outline and status. Gesture and placement behavior are unchanged.","inputs":["src-ui/src/components/chat/QueuedMessages.css"]},
+
+    {"path":"docs/design/motion.md","note":"Checked the transcript treatment and queue motion. Refused steers use the shared theme-aware negative color for the outline and status. Gesture and placement behavior are unchanged.","inputs":["src-ui/src/components/chat/QueuedMessages.css"]}
+  ]
+}

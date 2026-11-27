@@ -1164,8 +1164,18 @@ export function createVoltAgentLifecycleHooks(
         } catch {
           /* Releasing turn state never fails the invocation. */
         }
+        // What VoltAgent hands this hook (#5390): a stream that fails before
+        // any content, a person's Stop and a denied tool arrive with `error`
+        // and no output, and are not recorded. VoltAgent's abort listener can
+        // also call this again with no output after a turn completed, so an
+        // abort must never count. A stream whose provider sent an error part
+        // arrives WITH output and `finishReason: 'error'` but no `error`; that
+        // failure is passed on, so it counts only if usage was reported.
         if (!context.conversationId || !output) return;
-        const usage = 'usage' in output ? output.usage : undefined;
+        const failed = output.finishReason === 'error';
+        // `usage` is the final model step's; `totalUsage` sums every step of
+        // a turn that called tools (VoltAgent's own finish usage prefers it).
+        const usage = output.totalUsage ?? output.usage;
         const toolCallCount =
           (context.context.get('toolCallCount') as number) || 0;
         await sharedHooks?.afterInvocation?.({
@@ -1199,6 +1209,9 @@ export function createVoltAgentLifecycleHooks(
               }
             : undefined,
           toolCallCount,
+          ...(failed
+            ? { error: new Error('The model stream ended with an error.') }
+            : {}),
         });
       } finally {
         pendingToolCalls.delete(context);
@@ -1303,11 +1316,7 @@ export class VoltAgentFramework {
             spec.guardrails.maxTokens ??
             config.appConfig.defaultMaxOutputTokens,
         }),
-        // maxSteps controls VoltAgent's agentic loop limit (VoltAgent's own
-        // default is a stingy 10). Priority: agent guardrails > agent spec >
-        // app config > high default (no artificial limit).
         maxSteps: resolveMaxSteps({
-          guardrailsMaxSteps: spec.guardrails?.maxSteps,
           specMaxSteps: spec.maxSteps,
           defaultMaxTurns: config.appConfig.defaultMaxTurns,
         }),

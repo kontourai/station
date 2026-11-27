@@ -1,0 +1,15 @@
+{
+  "revision": "118885a904428b83efc585ce693754dfca2bd104",
+
+  "notes": [
+    {"path":"README.md","note":"The cited page renamed the automation person-stop outcome to stopped (and automations.md described the 12-hour ceiling and card prefix); the citing page's claims about it are unaffected.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The cited page renamed the automation person-stop outcome to stopped (and automations.md described the 12-hour ceiling and card prefix); the citing page's claims about it are unaffected.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"The cited page renamed the automation person-stop outcome to stopped (and automations.md described the 12-hour ceiling and card prefix); the citing page's claims about it are unaffected.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The cited page renamed the automation person-stop outcome to stopped (and automations.md described the 12-hour ceiling and card prefix); the citing page's claims about it are unaffected.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"The cited page renamed the automation person-stop outcome to stopped (and automations.md described the 12-hour ceiling and card prefix); the citing page's claims about it are unaffected.","inputs":["docs/reference/cli.md"]}
+  ]
+}

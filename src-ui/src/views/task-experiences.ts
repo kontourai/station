@@ -7,7 +7,8 @@ type TaskExperienceAvailability = 'available' | 'unavailable';
 interface TaskExperienceDefinition {
   id: TaskExperienceId;
   label: string;
-  authority: string;
+  /** The product that owns this experience, shown as "From {owner}". */
+  owner: string;
   description: string;
   unavailableDescription: string;
   alternativeHref?: string;
@@ -22,30 +23,27 @@ const TASK_EXPERIENCE_DEFINITIONS: readonly TaskExperienceDefinition[] = [
   {
     id: 'direct',
     label: 'Direct',
-    authority: 'Station',
-    description:
-      'Inspect the exact Task workspace and recorded references. Inspection is not a verification claim.',
+    owner: 'Station',
+    description: 'Files and references recorded for this Task.',
     unavailableDescription: '',
   },
   {
     id: 'deliver',
     label: 'Deliver',
-    authority: 'Builder Kit',
-    description:
-      'Continue delivery through a Builder-owned Task reference. Station does not infer lifecycle completion.',
+    owner: 'Builder Kit',
+    description: 'Continue delivery in Builder Kit.',
     unavailableDescription:
-      'No trusted Builder Kit contract is attached. Direct work remains available, and Station does not report delivery completion.',
+      "Builder Kit isn't connected yet. Direct work is still available.",
     alternativeHref: '/plugins',
     alternativeLabel: 'Manage plugins',
   },
   {
     id: 'learn',
     label: 'Learn',
-    authority: 'Knowledge Kit',
-    description:
-      'Open a Knowledge-owned record with its published provenance and freshness.',
+    owner: 'Knowledge Kit',
+    description: 'Open the Knowledge record, with its source and freshness.',
     unavailableDescription:
-      'No trusted Knowledge Kit contract is attached. Station does not invent knowledge, provenance, or freshness.',
+      "Knowledge Kit isn't connected. Configure knowledge to open records here.",
     alternativeHref: settingsDeepLinkUrl({
       view: 'knowledge',
       highlight: 'personal-knowledge-store',
@@ -55,11 +53,9 @@ const TASK_EXPERIENCE_DEFINITIONS: readonly TaskExperienceDefinition[] = [
   {
     id: 'operate',
     label: 'Operate',
-    authority: 'Console',
-    description:
-      'Open a Console-owned operational projection. Station remains a reader and deep-link boundary.',
-    unavailableDescription:
-      'No trusted Console deep-link contract is attached. Station does not host or write Console operational state.',
+    owner: 'Console',
+    description: 'Open this Task in Console.',
+    unavailableDescription: "Console isn't connected yet.",
     alternativeHref: 'https://github.com/kontourai/console',
     alternativeLabel: 'Open Console project',
   },
@@ -104,7 +100,7 @@ export function resolveTaskExperiences(
   const attached = new Set(observation.attachedExperiences ?? []);
   // A task page must not advertise product experiences that it cannot open,
   // so an unattached optional experience is not listed at all — it is reached
-  // through the single Add capabilities affordance instead.
+  // through the single Add plugins affordance instead.
   return TASK_EXPERIENCE_DEFINITIONS.filter(
     (definition) => definition.id === 'direct' || attached.has(definition.id),
   ).map((definition) => ({ ...definition, availability: 'available' }));

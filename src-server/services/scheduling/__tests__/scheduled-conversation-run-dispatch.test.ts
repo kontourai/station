@@ -424,8 +424,8 @@ describe.each([
       });
       const routes = createSchedulerRoutes(
         {
-          addJob: (opts: Parameters<BuiltinScheduler['addJob']>[0]) =>
-            scheduler.addJob(opts),
+          createJob: (opts: Parameters<BuiltinScheduler['createJob']>[0]) =>
+            scheduler.createJob(opts),
           listJobs: () => scheduler.listJobs(),
         } as never,
         { error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,

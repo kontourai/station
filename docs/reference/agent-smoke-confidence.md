@@ -117,7 +117,11 @@ two contact the engine or spend allowance.
    connection's current configuration fingerprint. For an engine connection,
    that fingerprint covers the whole saved connection configuration, including
    its name, command, arguments, environment and enabled state. Any edit to
-   it, a rename included, drops the tier until the next smoke. The receipt
+   it, a rename included, drops the tier until the next smoke. For an
+   OpenCode connection it also covers which engine runs it: turning the
+   OpenCode native engine Feature Preview on adds that engine to the
+   fingerprint, so a receipt recorded with the preview off does not count
+   while it is on, and the reverse. The receipt
    does not record the engine's version. An engine upgraded in place
    at the same command therefore keeps its tier until the receipt expires.
 
@@ -626,6 +630,6 @@ exercise external adapters' passthrough or prove native policy enforcement.
 
 | Turn request | Real route owner | Validation / submitted body |
 | --- | --- | --- |
-| `POST /api/orchestration/chat` | `src-server/routes/orchestration/orchestration.ts:2916` | `foregroundMessageSchema` (`:981`, derived from `foregroundMessageObjectSchema`, `:802`); conversation ID, selected temporary Agent in `target`, expected engine, directory workspace, `model.override`, message and client turn ID. |
-| `POST /api/orchestration/chat/:conversationId/continue` | `orchestration.ts:3310` | `continueForegroundMessageSchema` (`:997`); message, `model.override` and client turn ID. |
-| `POST /api/orchestration/commands` | `orchestration.ts:5650` | `orchestrationCommandSchema` (`:571`); cleanup uses only `{ type: 'stopSession', threadId }`, never start/send commands. |
+| `POST /api/orchestration/chat` | `src-server/routes/orchestration/orchestration.ts:3511` | `foregroundMessageSchema` (`:1114`, derived from `foregroundMessageObjectSchema`, `:938`); conversation ID, selected temporary Agent in `target`, expected engine, directory workspace, `model.override`, message and client turn ID. |
+| `POST /api/orchestration/chat/:conversationId/continue` | `orchestration.ts:4113` | `continueForegroundMessageSchema` (`:1130`); message, `model.override` and client turn ID. |
+| `POST /api/orchestration/commands` | `orchestration.ts:7101` | `orchestrationCommandSchema` (`:649`); cleanup uses only `{ type: 'stopSession', threadId }`, never start/send commands. |

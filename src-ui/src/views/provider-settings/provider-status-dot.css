@@ -1,0 +1,15 @@
+/* A model connection's status dot. The base dot and its ready colour are
+   `.provider-overview__dot` and `--active` in index.css; these add the other
+   tones and the list row's size, so the row and the summary share one dot. */
+.provider-overview__dot--row {
+  width: 8px;
+  height: 8px;
+}
+
+.provider-overview__dot--warn {
+  background: var(--k-caution);
+}
+
+.provider-overview__dot--error {
+  background: var(--k-negative);
+}

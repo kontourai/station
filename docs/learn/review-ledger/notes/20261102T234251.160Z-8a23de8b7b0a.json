@@ -1,7 +1,0 @@
-{
-  "revision": "13e4e4edf7becd70eb87f0d01d6d48315d4b2db4",
-
-  "notes": [
-    {"path":"docs/design/verified-action-replay.md","note":"Reviewed the proposal’s current Browser and Device authority, history and clip claims against the merged routes, tools and guides; it remains a proposal and no executable replay is claimed.","inputs":["docs/design/verified-action-replay.md","src-server/tools/station-control-browser-tools.ts","src-server/services/browser/browser-automation.ts","src-server/routes/browser-agent.ts","src-server/services/browser/browser-session-registry.ts","docs/decisions/device-agent-control.md","docs/guides/browser-workspace.md","docs/guides/mobile-device-workspace.md"]}
-  ]
-}

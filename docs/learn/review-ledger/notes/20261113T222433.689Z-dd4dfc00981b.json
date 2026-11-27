@@ -1,0 +1,7 @@
+{
+  "revision": "d9e76efb71114f685d0732686262688a87e3d338",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Re-read for claims about the Muse sandbox or exec fallback after the contracts.md sandbox paragraph edit: the glossary names neither; its engine and matrix entries are unaffected; no edit needed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]}
+  ]
+}

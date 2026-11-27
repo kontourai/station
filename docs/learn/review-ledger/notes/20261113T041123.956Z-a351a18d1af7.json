@@ -1,0 +1,7 @@
+{
+  "revision": "0946da661976174f523abf28f0e12c51caabbe95",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Delta since the last note: the search tool description drops its 'plain words, stems and synonyms' sentence and the query description becomes 'Words to look for', so the docs tool list shrinks to 1580 bytes, inside the agent-context budget. The manual's 'These docs' section still describes the behaviour: ranked search over one static Corpus bundle, stems and synonyms, words not meaning, no network or credential.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-mcp-server.ts"]}
+  ]
+}

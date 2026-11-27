@@ -37,7 +37,9 @@ forwards only bounded HTTP(S) link requests. It has no MCP AppBridge, tool calls
 resource reads, message sending, or session APIs. Even a forged link message
 requires confirmation in trusted Station chrome before external opening.
 The viewer checks both the frame window and its exact origin on every message.
-An absent or same-origin frame configuration refuses rendering.
+A same-origin frame configuration refuses rendering. A client the frame
+listener cannot serve renders in the opaque-origin fallback described in the
+remote-client amendment.
 
 `prepareHtmlReply` accepts a caller-owned authorized workspace root, never a
 root chosen by public tool input. Quoted absolute PNG/JPEG/GIF/WebP paths in
@@ -71,8 +73,10 @@ still exists and atomically enforces the conversation's 32-page/32-MiB quota.
 A delayed publish cannot recreate pages after the Session was deleted.
 
 The small `{version, pageId, sessionId}` reference travels in the ordinary MCP
-tool result and therefore in canonical tool-completed history. Both live and
-replayed transcript paths recognize it at the tool position. The display
+tool result. During an active ACP turn, Station commits the visual reply's
+transcript entry with the page and suppresses any later engine echo of the same
+reference. Repeating an identical render within that turn reuses the page. The preview stays visible if ACP truncates or omits the tool output.
+Both live and replayed transcript paths recognize the publication. The display
 reference is not authority: the read route checks the same `canUserReadSession`
 predicate used by other history reads, then looks up that Session/page pair.
 Incoming `htmlReply` and `mcpAppResourceUri` metadata claims are discarded at
@@ -224,6 +228,20 @@ object. Agent-authored bytes never become part of that function source. The
 real preview regression reads script delimiters, Unicode separators and template
 syntax back from inside the opaque frame without changing their UTF-8 bytes.
 
+Preview's bootstrap page is a constant document the host serves at
+`http://station-document.invalid/`, answered through CDP `Fetch` once, for that
+target's main frame only; the request never reaches the network. It is not
+`about:blank` because Chrome for Testing 158 aborts the whole browser
+(`site_instance_impl.cc` CHECK `has_site_`) when an `about:blank` page adds a
+sandboxed `srcdoc` frame while sandboxed frames get their own process; Chrome
+157 does not (#4917). With a served page the opaque frame keeps its own renderer
+process and opaque origin. Turning `IsolateSandboxedIframes` off also avoids the
+abort but would put authored HTML in its bootstrap page's process, so preview
+does not do that, and a test refuses it. The served page sets `no-referrer` and
+an inert `data:` icon, so the frame still sees an empty `document.referrer` and
+the browser requests nothing else from that address. A real-browser probe logs
+whether the installed Chromium still aborts on the `about:blank` shape.
+
 
 The shared sandbox UDP regression requires Chromium. WebKit runs only when its
 Playwright executable is installed; otherwise the test reports an explicit
@@ -231,3 +249,66 @@ named skip with the missing executable path. The process-heavy CI lane installs
 Chromium alone, so WebKit viewer-residual evidence is local-only and is not a
 claim of WebKit verification by that lane. Neither engine's absence is treated
 as a passing browser execution.
+
+## Remote-client amendment (2026-11-12, #4821)
+
+The sandbox listener binds the host's loopback, so only a browser on the
+Station host can reach it. Every client used to receive its origin, and the
+phone app showed a refused connection instead of the reply. The owner chose to
+render for those clients rather than refuse:
+
+- The server offers the origin only when `isSameMachineBrowserCaller` holds:
+  for page reads, visual-file previews, and the MCP Apps origin in
+  `/config/app` and `/api/boot`. Plugin frames still receive it, because they
+  have no fallback.
+- Without it, `HtmlReply` renders the same page document in one
+  `sandbox="allow-scripts"` frame with an opaque origin. The page's CSP still
+  comes first, the theme is written as CSS, and links are accepted only from
+  that frame with origin `null`.
+
+Accepted residual risks, for those clients only: there is no outer proxy frame,
+so the page is a direct child of Station's window (listeners pinned to exact
+origins still refuse `null`); and the page inherits the app's CSP rather than
+`frame-src 'none'`, which may also block its inline scripts.
+
+Evidence: `runtime-routes-html-replies.test.ts` and `HtmlReply.test.tsx`; fault
+injection of either rule fails its test.
+
+### Staged shell delivery (2026-11-14, the #4821 residual)
+
+The srcdoc fallback inherited the embedding shell's CSP. In the Tauri shells
+that policy refuses inline scripts (`script-src` without `unsafe-inline`), so
+script-driven pages rendered blank on the phone: static markup, styles and SVG
+only, while headless preview — which inherits no shell policy — rendered the
+same HTML fully. The viewer/preview difference was delivery, not timing, and
+it reproduces under the shell's exact policy in Chromium
+(`html-reply-viewer-scripts.browser.test.tsx`: parity through the proxy,
+the inherited refusal, and the escape).
+
+The fallback now upgrades the frame to a document staged on the shell's own
+`station-html-reply:` scheme:
+
+- The shell's webview stages the composed bytes over the command bridge; the
+  scheme handler serves only staged bytes — no network fetch, no credential
+  read, no general authenticated proxy (the plugin asset protocol's rule
+  stands).
+- Admission mirrors the plugin asset protocol: a per-launch HMAC capability
+  in the URL, shell webview labels only (main and workspace pop-outs), a
+  fixed URL shape, bounded staged bytes (8 MiB + headroom across 16 slots)
+  and bounded in-flight requests.
+- The frame stays `sandbox="allow-scripts"` — an opaque origin that cannot
+  reach Station. The delivered document keeps its own meta CSP ahead of the
+  authored bytes, so the page-level network denial is unchanged, and a
+  success response carries no header CSP: a header policy there would
+  re-create exactly the inherited refusal this scheme exists to remove.
+- The app CSP gains only a `frame-src` source for the scheme; its script and
+  style policy are untouched.
+
+Scheme documents are real documents on every Wry platform — WKURLSchemeHandler
+on iOS, registered schemes on Linux, and `http(s)://<scheme>.localhost`
+interception on Windows and Android — so no shell policy is inherited; the
+plugin protocol's alias handling already depends on that materialization.
+Until the phone shell verifies the delivered page on device, this lane's
+claims rest on the Rust unit tests, the staged-upgrade component test, and
+the browser evidence above; native/device proof is recorded separately per
+the native verification guide.

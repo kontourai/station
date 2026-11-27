@@ -1,0 +1,31 @@
+{
+  "path": "docs/decisions/rc-promotion-provenance.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Stable RC/final version-bound schema-3 archive identity and separately authenticated same-byte promotion amend ADR0020 D1; Nightly remains schema2 for deployed installer compatibility.",
+
+  "limits": "Decision and source contract review only. Focused installer, archive and publication fixtures do not qualify hosted packaging, native shells, installed upgrades, store providers or a public release.",
+
+  "sources": [
+    "docs/adr/0020-distribution-two-trains-channels-as-pointers.md",
+
+    "docs/guides/release-rings.md",
+
+    "packages/shared/src/prebuilt-archive.ts",
+
+    "scripts/package-portable-release.sh",
+
+    "scripts/release-promotion.mjs",
+
+    "scripts/lib/release-tag.mjs",
+
+    "install.sh",
+
+    "packages/shared/src/installer/cli.ts"
+  ],
+
+  "checks": []
+}

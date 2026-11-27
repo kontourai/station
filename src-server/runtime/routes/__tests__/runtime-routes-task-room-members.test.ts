@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   humanPrincipal,
@@ -9,6 +9,9 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { GitReviewWorkspaceSource } from '../../../services/evidence/git-review-workspace-source.js';
+import { ReviewEvidenceModule } from '../../../services/evidence/review-evidence-module.js';
+import { FileReviewReceiptStore } from '../../../services/evidence/review-receipt-store.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
@@ -20,6 +23,8 @@ import { createProjectMembershipRuntime } from '../../../services/projects/proje
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import { execGit } from '../../../utils/git-exec.js';
+import { createLogger } from '../../../utils/logger.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', () => {
@@ -65,8 +70,13 @@ const authority = {
   operator: async () => {},
 };
 
-async function fixture() {
-  const root = makeTempDir('task-room-members-');
+async function fixture(
+  options: {
+    codeReviewCheckout?: boolean;
+    legacyConversationRead?: () => Promise<unknown[]>;
+  } = {},
+) {
+  const root = realpathSync(makeTempDir('task-room-members-'));
   const home = join(root, 'data');
   mkdirSync(join(home, 'security'), { recursive: true, mode: 0o700 });
   mkdirSync(join(root, 'home'));
@@ -75,7 +85,32 @@ async function fixture() {
   vi.stubEnv('STATION_ROOT', join(root, 'root'));
   vi.stubEnv('ALLOWED_ORIGINS', origin);
   const security = new EnvironmentSecurityService({ homeDir: home });
-  await security.initialize();
+  const { credential: operatorCredential } = await security.initialize();
+  const logger = createLogger({
+    name: 'task-room-members-test',
+    level: 'error',
+  });
+  const featurePreviews = new FeaturePreviewRegistry(home, logger);
+  await featurePreviews.setEnabled('task-review', true);
+  let checkout: string | undefined;
+  let base: string | undefined;
+  let head: string | undefined;
+  if (options.codeReviewCheckout) {
+    checkout = join(root, 'checkout');
+    mkdirSync(checkout);
+    const git = async (...args: string[]) =>
+      (await execGit(args, { cwd: checkout, timeout: 5000 })).stdout.trim();
+    await git('init', '-b', 'main');
+    await git('config', 'user.name', 'Room fixture');
+    await git('config', 'user.email', 'room@example.test');
+    writeFileSync(join(checkout, 'work.txt'), 'Task source\n');
+    await git('add', 'work.txt');
+    await git('commit', '-m', 'Task source');
+    base = await git('rev-parse', 'HEAD');
+    writeFileSync(join(checkout, 'work.txt'), 'Task review change\n');
+    await git('commit', '-am', 'Task review change');
+    head = await git('rev-parse', 'HEAD');
+  }
   const storage = new FileStorageAdapter(home);
   const manifests = new ProjectManifestStore(home, storage);
   const projects = new ProjectService(storage, manifests);
@@ -99,15 +134,9 @@ async function fixture() {
     store.close();
   });
   const graph = new TaskGraphService(home, {
-    resolveProjectWorkspace: () => undefined,
+    resolveProjectWorkspace: () => checkout,
   });
   const app = new Hono();
-  const featurePreviews = new FeaturePreviewRegistry(home, {
-    info() {},
-    warn() {},
-    error() {},
-    debug() {},
-  } as never);
   const context = deepStub({
     app,
     port: 4321,
@@ -118,7 +147,9 @@ async function fixture() {
       loadAppConfig: async () => ({}),
       mutateAppConfig: async (mutate: (value: object) => object) => mutate({}),
     },
-    logger: { debug() {}, info() {}, warn() {}, error() {} },
+    logger,
+    featurePreviews,
+    agentService: deepStub({ listAgents: async () => [] }),
     projectMembership: membership.service,
     projectSharedTasks: membership.sharedTasks,
     deploymentAuthentication: accounts,
@@ -128,7 +159,6 @@ async function fixture() {
     knowledgeStoreProvider: new KnowledgeStoreProvider(storage),
     projectService: projects,
     taskGraphService: graph,
-    featurePreviews,
     orchestrationEventStore: store,
     environmentSecurityService: security,
     eventBus: new EventBus(),
@@ -138,7 +168,11 @@ async function fixture() {
     agentTools: new Map(),
     agentStats: new Map(),
     agentStatus: new Map(),
-    memoryAdapters: new Map(),
+    memoryAdapters: new Map(
+      options.legacyConversationRead
+        ? [['legacy', { queryConversations: options.legacyConversationRead }]]
+        : [],
+    ),
     metricsLog: [],
     monitoringEvents: [],
   });
@@ -154,6 +188,7 @@ async function fixture() {
   const project = await projects.createProject({
     name: 'Review Project',
     slug: 'review-project',
+    ...(checkout ? { workingDirectory: checkout } : {}),
   });
   const { scope } = await membership.service.enable(
     project.slug,
@@ -168,7 +203,7 @@ async function fixture() {
     projectId: project.id,
     title: 'Unshared task',
   });
-  membership.sharedTasks.share({
+  const publication = membership.sharedTasks.share({
     scope,
     taskId: task.id,
     taskCreatedAt: task.createdAt,
@@ -294,9 +329,16 @@ async function fixture() {
     runtime,
     membership,
     security,
+    project,
+    checkout,
+    base,
+    head,
+    operatorCredential,
+    home,
     scope,
     task,
     privateTask,
+    publication,
     people,
     request,
     graph,
@@ -349,6 +391,301 @@ test('an account contributor with current shared Task access cannot resume it (#
   }
   expect(f.graph.readTask(done.id)).toEqual(done);
 });
+
+test('legacy Project conversations stay unavailable without reading unbound records', async () => {
+  const legacyRead = vi.fn(async () => [
+    { id: 'unbound-conversation', title: 'Private legacy conversation' },
+  ]);
+  const f = await fixture({ legacyConversationRead: legacyRead });
+  const member = f.people[0]!;
+  const base = `/api/projects/${f.project.slug}`;
+  expect((await f.request(member, base)).status).toBe(200);
+  const path = `${base}/conversations`;
+  const accountBoundDevice = await f.request(member, path);
+  expect(accountBoundDevice.status).toBe(403);
+
+  const operatorHeaders = {
+    Authorization: `Bearer ${f.operatorCredential}`,
+  };
+  expect(
+    (await f.app.request(`${origin}${base}`, { headers: operatorHeaders }))
+      .status,
+  ).toBe(200);
+  const response = await f.app.request(`${origin}${path}`, {
+    headers: operatorHeaders,
+  });
+  expect(response.status, await response.clone().text()).toBe(503);
+  expect(await response.json()).toMatchObject({
+    success: false,
+    code: 'project_conversations_unavailable',
+    error: 'Project conversation history is unavailable',
+  });
+  expect(legacyRead).not.toHaveBeenCalled();
+});
+
+test('Project readers hide Task reviews from members while preserving ordinary Project evidence', async () => {
+  const f = await fixture({ codeReviewCheckout: true });
+  if (!f.checkout || !f.base || !f.head)
+    throw new Error('Missing real review checkout');
+  const store = new FileReviewReceiptStore(
+    { workspace: () => f.checkout },
+    { coordinationDirectory: join(f.home, '.review-evidence-coordination') },
+  );
+  const execute = vi.fn(async () => ({
+    kind: 'completed' as const,
+    workspaceRelease: 'safe' as const,
+    output: {
+      findings: [
+        {
+          location: { file: 'work.txt', line: 1 },
+          scenario: {
+            stateOrInput: 'Task-only review source',
+            wrongOutcome: 'Private Task findings reach a Project member',
+          },
+          severity: 'high',
+          confidence: 'high',
+          basis: 'reasoned-from-code',
+          summary: 'Task-only finding sentinel.',
+        },
+      ],
+      deltaAssessments: [],
+    },
+  }));
+  const reviews = new ReviewEvidenceModule({
+    source: new GitReviewWorkspaceSource(
+      { workspace: () => f.checkout },
+      join(f.home, 'controlled-review-workspaces'),
+    ),
+    receipts: store,
+    submissions: store,
+    executor: {
+      workspaceAccess: 'read-only',
+      execute,
+    },
+    principals: {
+      resolveAgent: async (slug) => ({ actorId: `agent:${slug}` }),
+    },
+    observer: { record() {}, diagnostic() {} },
+  });
+  const receipts = [];
+  for (const kind of ['task', 'project']) {
+    const result = await reviews.run(
+      {
+        requestId: `${kind}-review`,
+        mode: 'initial',
+        target: {
+          kind: 'git-range',
+          projectSlug: f.project.slug,
+          baseRevision: f.base,
+          headRevision: f.head,
+        },
+        implementerAgentSlug: 'implementer',
+        reviewers: [
+          {
+            reviewerId: 'reviewer',
+            executorAgentSlug: 'reviewer',
+            lens: {
+              id: 'correctness',
+              instructions: 'Inspect controlled fixture source.',
+            },
+          },
+        ],
+      },
+      {
+        requestedBy: { actorId: operator.id },
+        ...(kind === 'task'
+          ? {
+              taskBinding: {
+                projectId: f.project.id,
+                projectCreatedAt: f.project.createdAt,
+                taskId: f.task.id,
+                taskCreatedAt: f.task.createdAt,
+              },
+            }
+          : {}),
+      },
+    );
+    expect(result.state).toBe('completed');
+    if (!result.result) throw new Error('Controlled reviewer did not publish');
+    receipts.push(result.result.receipt);
+  }
+  const request = (path: string, member: boolean) =>
+    f.app.request(`${origin}${path}`, {
+      headers: {
+        Authorization: `Bearer ${f.operatorCredential}`,
+        Origin: origin,
+        ...(member ? { Cookie: f.people[0]!.cookie } : {}),
+      },
+    });
+  const base = `/api/projects/${f.project.slug}/reviews`;
+  const operatorList = await request(base, false);
+  expect(operatorList.status, await operatorList.clone().text()).toBe(200);
+  const operatorPayload = (await operatorList.json()) as {
+    data: Array<{ requestId: string }>;
+  };
+  expect(operatorPayload.data).toHaveLength(2);
+  const memberList = await request(base, true);
+  expect(memberList.status, await memberList.clone().text()).toBe(200);
+  const memberPayload = (await memberList.json()) as {
+    data: Array<{ requestId: string }>;
+  };
+  expect(
+    memberPayload.data.map((entry: { requestId: string }) => entry.requestId),
+  ).toEqual(['project-review']);
+  for (const receipt of receipts) {
+    for (const path of [
+      `${base}/${receipt.receiptId}`,
+      `${base}/requests/${receipt.requestId}`,
+    ]) {
+      const response = await request(path, true);
+      expect(response.status, await response.clone().text()).toBe(
+        receipt.requestId === 'task-review' ? 404 : 200,
+      );
+    }
+  }
+  const aggregate = await request('/api/review-evidence', true);
+  expect(aggregate.status, await aggregate.clone().text()).toBe(200);
+  const aggregatePayload = (await aggregate.json()) as {
+    data: { receipts: Array<{ requestId: string }> };
+  };
+  expect(
+    aggregatePayload.data.receipts.map(
+      (entry: { requestId: string }) => entry.requestId,
+    ),
+  ).toEqual(['project-review']);
+  writeFileSync(join(f.checkout, 'work.txt'), 'Next review change\n');
+  await execGit(['commit', '-am', 'Next review change'], {
+    cwd: f.checkout,
+    timeout: 5000,
+  });
+  const head = (
+    await execGit(['rev-parse', 'HEAD'], { cwd: f.checkout, timeout: 5000 })
+  ).stdout.trim();
+  const taskReceipt = receipts.find(
+    (receipt) => receipt.requestId === 'task-review',
+  )!;
+  await reviews.run(
+    {
+      requestId: 'member-delta',
+      mode: 'delta',
+      target: {
+        kind: 'git-range',
+        projectSlug: f.project.slug,
+        baseRevision: f.head,
+        headRevision: head,
+      },
+      implementerAgentSlug: 'implementer',
+      reviewers: [
+        {
+          reviewerId: 'reviewer',
+          executorAgentSlug: 'reviewer',
+          lens: {
+            id: 'correctness',
+            instructions: 'Inspect controlled fixture source.',
+          },
+        },
+      ],
+      delta: {
+        priorReceiptId: taskReceipt.receiptId,
+        claimedFindingIds: taskReceipt.findings.map(
+          (finding) => finding.findingId,
+        ),
+      },
+    },
+    {
+      requestedBy: { actorId: f.people[0]!.principal.id },
+      includeTaskReviews: false,
+    },
+  );
+  expect(execute).toHaveBeenCalledTimes(2);
+}, 60000);
+
+test('Task code review refuses account identity even with valid operator or unbound Device transport', async () => {
+  const f = await fixture({ codeReviewCheckout: true });
+  const pairing = f.security.devicePairing;
+  const offer = pairing.createOffer({
+    endpoint: origin,
+    scope: 'orchestration:read orchestration:operate',
+  });
+  const pending = pairing.requestPairing({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: 'Personal review browser',
+    requesterPosition: 'unproven',
+    source: 'same-origin',
+  });
+  pairing.confirmRequest(pending.requestId, { kind: 'presented-credential' });
+  const paired = pairing.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: pending.requestId,
+  });
+  expect(
+    f.security.identifyDevice(paired.credential)?.principalBinding,
+  ).toBeUndefined();
+  const path = `/api/tasks/${f.task.id}/review/code`;
+  const readPath = `${path}?projectId=${f.project.id}&taskCreatedAt=${encodeURIComponent(f.task.createdAt)}`;
+  for (const credential of [f.operatorCredential, paired.credential]) {
+    const operatorRead = await f.app.request(`${origin}${readPath}`, {
+      headers: { Authorization: `Bearer ${credential}`, Origin: origin },
+    });
+    expect(operatorRead.status, await operatorRead.clone().text()).toBe(200);
+    expect(await operatorRead.json()).toMatchObject({
+      success: true,
+      data: {
+        canRequest: true,
+        requestsUnavailable: false,
+        workspace: { state: 'available', path: f.checkout, headSha: f.head },
+      },
+    });
+    const account = f.people[0]!;
+    for (const method of ['GET', 'POST']) {
+      const refused = await f.request(
+        account,
+        method === 'GET' ? readPath : path,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${credential}`,
+            'Content-Type': 'application/json',
+          },
+          ...(method === 'POST'
+            ? {
+                body: JSON.stringify({
+                  requestId: 'member-code-review',
+                  projectId: f.project.id,
+                  projectCreatedAt: f.project.createdAt,
+                  taskCreatedAt: f.task.createdAt,
+                  baseSha: f.head,
+                  headSha: f.head,
+                  reviewerAgentSlug: 'reviewer',
+                }),
+              }
+            : {}),
+        },
+      );
+      expect(refused.status, await refused.clone().text()).toBe(403);
+      expect(await refused.json()).toMatchObject({
+        success: false,
+        code: 'forbidden',
+      });
+    }
+  }
+  pairing.setDeviceScope(paired.device.id, ['orchestration:read'], {
+    kind: 'presented-credential',
+  });
+  const readOnly = await f.app.request(`${origin}${readPath}`, {
+    headers: { Authorization: `Bearer ${paired.credential}`, Origin: origin },
+  });
+  expect(readOnly.status, await readOnly.clone().text()).toBe(200);
+  expect(await readOnly.json()).toMatchObject({
+    data: {
+      canRequest: false,
+      requestUnavailableReason: 'execution-not-authorized',
+      workspace: { state: 'available', path: f.checkout, headSha: f.head },
+    },
+  });
+}, 60000);
 
 function readUntil(
   reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -404,12 +741,34 @@ test('shared room names both accounts, refuses a viewer post and closes on revoc
   const base = `/api/tasks/${f.task.id}/room`;
   const opened = await f.request(alice!, base);
   expect(opened.status, await opened.clone().text()).toBe(200);
+  for (const expectedMember of [
+    { principalId: bob!.principal.id, shareId: f.publication.shareId },
+    {
+      principalId: alice!.principal.id,
+      shareId: 'eeeeeeee-1111-4111-8111-000000000000',
+    },
+  ]) {
+    const result = await f.request(alice!, `${base}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        proposalId: 'stale-reply',
+        text: 'From the wrong account or publication',
+        expectedMember,
+      }),
+    });
+    expect(result.status).toBe(404);
+  }
   for (const person of [alice!, bob!]) {
     const result = await f.request(person, `${base}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         proposalId: `message-${person.name}`,
+        expectedMember: {
+          principalId: person.principal.id,
+          shareId: f.publication.shareId,
+        },
         text: `From ${person.name}`,
       }),
     });

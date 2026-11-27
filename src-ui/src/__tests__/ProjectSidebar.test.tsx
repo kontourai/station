@@ -18,6 +18,10 @@ import { openChatsStore } from '../contexts/open-chats-store';
 // `RegionModelProvider` wraps the whole application, so `useShowSurface`
 // requires it. This harness mounts a fragment of that tree, and nothing
 // here asserts a surface reveal, so the command hook is supplied directly.
+const featurePreviews = vi.hoisted(
+  () => [] as Array<{ id: string; enabled: boolean }>,
+);
+
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { name: 'Ada Lovelace' } }),
 }));
@@ -129,11 +133,6 @@ vi.mock('../contexts/open-chats-store', () => {
     }),
     openChatsStore: {
       focus: vi.fn(),
-      openCollection: vi.fn(),
-      registerNavigation: ({ openCollection }: any) => {
-        openChatsStore.openCollection = openCollection;
-        return vi.fn();
-      },
     },
   };
 });
@@ -183,15 +182,35 @@ vi.mock('../hooks/useIsMobile', async (importActual) => ({
   ...(await importActual<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => presentation.isMobile,
 }));
+// No Station is ready here, so the footer's Updates control stays icon-only.
+vi.mock('../hooks/useConnectedServerUpdateContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../hooks/useConnectedServerUpdateContext')
+  >()),
+  useConnectedServerUpdateContext: () => ({
+    apiBase: '',
+    scopeKey: 'sidebar-test',
+    connectionName: 'Test Station',
+    kind: 'remote-server',
+    reachability: 'unknown',
+    identity: null,
+    identityReady: false,
+    identitySettled: false,
+    nativeObservationPending: false,
+    claimedOwnerUnresolved: false,
+    isCurrent: () => false,
+  }),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: sessions }),
+  useCoreUpdateStatusQuery: () => ({ data: undefined }),
   useProjectLayoutsQuery: () => ({ data: [] }),
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
   // archive#3313 routed the sidebar's visibility flags through
   // useSurfaceVisibilityFlags, which reads enabled previews from here. A
   // hand-rolled module mock owes every export its subject reaches, so this
   // file went red on main the moment that hook was added.
-  useFeaturePreviewsQuery: () => ({ data: [] }),
+  useFeaturePreviewsQuery: () => ({ data: featurePreviews }),
   // archive#3780 gave ProjectSidebarRow the Board-availability read, and this
   // file went red again for exactly the reason recorded above — the same
   // hazard, one hook later. `undefined` is the honest shape while no row is
@@ -218,8 +237,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePromotePersonalLayoutMutation: () => ({ mutate: vi.fn() }),
 }));
 
+import { APPEARANCE_HOOKS } from '@kontourai/station-contracts/custom-appearance';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
-import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
 import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
@@ -229,6 +248,10 @@ import { useProjectAccents } from '../hooks/useProjectAccents';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import { useHomeWorkLanes } from '../views/home/useHomeWorkLanes';
+
+/** A custom-appearance hook selector, from the contract (APPEARANCE_HOOKS). */
+const appearanceHook = (id: string) =>
+  APPEARANCE_HOOKS.find((hook) => hook.id === id)!.selector;
 
 // #1765 routed the sidebar status row's command-palette keycap through
 // `useShortcutDisplay`, which throws outside KeyboardShortcutsProvider; an
@@ -259,6 +282,7 @@ function resetState() {
   projects.length = 0;
   sessions.length = 0;
   boards.length = 0;
+  featurePreviews.length = 0;
   boardCreateSpy.mockClear();
   navigate.mockClear();
   setProject.mockClear();
@@ -296,6 +320,14 @@ describe('ProjectSidebar Home affordances reveal the Home surface (#928 C2a)', (
     fireEvent.click(screen.getByRole('button', { name: 'Station home' }));
     expect(showSurfaceStub).toHaveBeenCalledWith('home');
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test('renders the sidebar custom-appearance hook on its navigation', () => {
+    resetState();
+    renderSidebar(<ProjectSidebar />);
+    const sidebar = document.querySelectorAll(appearanceHook('sidebar'));
+    expect(sidebar).toHaveLength(1);
+    expect(sidebar[0]!.tagName).toBe('NAV');
   });
 
   test('the Home row is active at / only while main shows Home', () => {
@@ -419,6 +451,34 @@ describe('ProjectSidebar Boards section mounts (#2062)', () => {
   });
 });
 
+// An archived Project stays archived on the server whatever the
+// `project-pause-archive` preview says (its chats refuse turns, its schedules
+// wait); the preview gates only starting a hold. So the sidebar keeps the
+// "Archived (n)" toggle that reaches it with the preview off as well as on.
+describe.each([
+  ['off', []],
+  ['on', [{ id: 'project-pause-archive', enabled: true }]],
+])(
+  'ProjectSidebar archived projects with the pause-and-archive preview %s',
+  (_label, previews) => {
+    test('an archived Project waits behind the Archived toggle, which reveals it', () => {
+      resetState();
+      featurePreviews.push(...previews);
+      projects.push({ id: 'p1', slug: 'station', name: 'Station' }, {
+        id: 'p2',
+        slug: 'ferry',
+        name: 'Ferry',
+        lifecycle: { state: 'archived', changedAt: '2026-11-16T09:00:00Z' },
+      } as (typeof projects)[number]);
+      renderSidebar(<ProjectSidebar />);
+      expect(screen.getByRole('button', { name: 'Station' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Ferry' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Archived (1)' }));
+      expect(screen.getByRole('button', { name: 'Ferry' })).toBeTruthy();
+    });
+  },
+);
+
 describe('ProjectSidebar panel order (#2059)', () => {
   const panelRowLabels = () =>
     Array.from(
@@ -445,7 +505,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
     // The header is above the body and is its own control, so it anchors the
     // order rather than joining the row list.
     expect(screen.getByRole('button', { name: 'Station home' })).toBeTruthy();
-    expect(panelRowLabels()).toEqual(['Home', 'Activity', 'Station', 'Ferry']);
+    expect(panelRowLabels()).toEqual(['Home', 'Station', 'Ferry']);
   });
 
   test('keeps individual customization destinations out of the panel', () => {
@@ -794,7 +854,6 @@ describe('a project wears the same colour everywhere', () => {
         remoteUnavailable={[]}
         remoteAuthenticationRequired={[]}
         onOpen={vi.fn()}
-        onViewActivity={vi.fn()}
         onRetry={vi.fn()}
       />
     );
@@ -818,7 +877,7 @@ describe('a project wears the same colour everywhere', () => {
     );
   }
 
-  test('the sidebar, the switcher, the dock inbox and Home agree on beta', async () => {
+  test('the sidebar, the dock inbox and Home agree on beta', async () => {
     resetState();
     projects.push(
       { id: 'p-gamma', slug: 'gamma', name: 'Gamma' },
@@ -848,39 +907,29 @@ describe('a project wears the same colour everywhere', () => {
     // which no allocation over beta alone would give it.
     expect(sidebarColour).toBe('var(--event-agent-complete)');
 
-    const switcher = renderSidebar(
-      <ChatDockProjectSwitcherSheet
-        anchorRef={{ current: null }}
-        boundProjectSlug="beta"
-        projects={[{ id: 'p-beta', slug: 'beta', name: 'Beta' }]}
-        onOpenProject={vi.fn()}
-        onSwitchProject={vi.fn()}
-        onNewProject={vi.fn()}
-        onClose={vi.fn()}
-      />,
+    const dock = renderSidebar(<DockInbox items={[betaWork]} />);
+    const dockMark = dock.container.querySelector(
+      '.inbox-row__project-accent.project-icon--initials',
     );
-    const switcherColour = switcher.baseElement.querySelector<HTMLElement>(
-      '.chat-dock__project-switcher-accent',
-    )?.style.backgroundColor;
-    switcher.unmount();
+    const dockColour = dockMark
+      ?.closest<HTMLElement>('.inbox-row__project-line')
+      ?.style.getPropertyValue('--inbox-project-accent');
+    dock.unmount();
 
-    const rowColour = (ui: ReactElement) => {
-      const view = renderSidebar(ui);
-      const colour = view.container.querySelector<HTMLElement>(
-        '.inbox-row__project-accent',
-      )?.style.backgroundColor;
-      view.unmount();
-      return colour;
-    };
-    const dockColour = rowColour(<DockInbox items={[betaWork]} />);
-    const homeColour = rowColour(<Home items={[betaWork]} />);
+    const home = renderSidebar(<Home items={[betaWork]} />);
+    expect(
+      home.getByRole('button', {
+        name: /^Tidy the beta release notes.*Beta.*Codex/,
+      }),
+    ).toBeTruthy();
+    const homeColour = home.container.querySelector<HTMLElement>(
+      '.inbox-row__project-accent',
+    )?.style.backgroundColor;
 
     expect({
-      switcher: switcherColour,
       dock: dockColour,
       home: homeColour,
     }).toEqual({
-      switcher: sidebarColour,
       dock: sidebarColour,
       home: sidebarColour,
     });
@@ -920,7 +969,7 @@ test('an open project popup is retired when the rail becomes a closed mobile dra
     projects.push({ id: 'p1', slug: 'station', name: 'Station' });
     deviceSettingsStore.set('projectSidebarCollapsed', true);
     renderSidebar(<ProjectSidebar />);
-    fireEvent.click(screen.getByRole('button', { name: 'Station views' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Station views/ }));
     expect(screen.getByRole('dialog', { name: 'Station views' })).toBeTruthy();
     act(() => {
       presentation.isMobile = true;
@@ -933,7 +982,7 @@ test('an open project popup is retired when the rail becomes a closed mobile dra
     });
     expect(
       screen
-        .getByRole('button', { name: 'Station views' })
+        .getByRole('button', { name: /^Station views/ })
         .getAttribute('aria-expanded'),
     ).toBe('false');
   } finally {

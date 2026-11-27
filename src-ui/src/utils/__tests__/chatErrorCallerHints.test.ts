@@ -9,7 +9,10 @@ import {
   CONTINUATION_WORKSPACE_REFUSAL_CODES,
   EXECUTION_ENGINE_CHANGED_CODE,
 } from '@kontourai/station-contracts/execution-target';
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  SESSION_CONFIGURATION_REPLACED_CODE,
+} from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
@@ -47,6 +50,7 @@ const INPUTS: Array<{
 }> = [
   ...[
     SESSION_ENDED_REJECTION_CODE,
+    SESSION_CONFIGURATION_REPLACED_CODE,
     ATTACHMENT_INPUT_UNSUPPORTED_CODE,
     ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
     EXECUTION_ENGINE_CHANGED_CODE,
@@ -134,7 +138,7 @@ describe("full access keeps main's hints exactly", () => {
   it.each([
     [
       { message: RAW, code: ENGINE_SESSION_BINDING_DEAD_CODE },
-      'Send your message again — the conversation continues in a fresh engine session — or start a new chat.',
+      'Send your message again to continue in a new engine session, or start a new chat.',
     ],
     [
       { message: 'x', code: SESSION_ENDED_REJECTION_CODE },
@@ -150,7 +154,7 @@ describe("full access keeps main's hints exactly", () => {
     ],
     [
       { message: OAUTH, code: ENGINE_TURN_FAILED_CODE },
-      'Sign in on that computer, then try again — or switch to another agent.',
+      'Sign in on that computer and try again, or switch to another agent.',
     ],
     [
       {

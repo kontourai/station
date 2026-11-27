@@ -1,7 +1,0 @@
-{
-  "revision": "48b2e8a877d43bf9966fef1ce40b655faf0af163",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Recorded the Windows host pass (Desktop WebDriver build with its bundled Station, PowerShell 7.6 / Windows PowerShell 5.1 / Git Bash live qualification, the script-runner and agent-run suite on Windows) against terminal-command-programs.ts, command-process.ts, terminal-runs.process.test.ts and src-desktop/Cargo.toml; listed the remaining Windows gaps (descendant Stop custody, resize-aware replay) under NOT_VERIFIED.","inputs":["docs/design/terminal.md"]}
-  ]
-}

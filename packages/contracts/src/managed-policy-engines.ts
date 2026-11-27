@@ -7,6 +7,11 @@
  * module imports nothing from it, so the two never form an import cycle.
  */
 import { isRecord, ownMember } from './record-guard.js';
+import {
+  isRemoteTaskVendorId,
+  REMOTE_TASK_VENDOR_IDS,
+  type RemoteTaskVendorId,
+} from './remote-task-engine.js';
 
 /**
  * Every engine id a policy may name: the built-in adapters Station registers
@@ -62,6 +67,20 @@ export interface ManagedPolicyEngineLimits {
   allowed?: ManagedPolicyEngineId[];
   /** `false`: ACP connections added from the public ACP registry do not run. */
   acpRegistryAgents?: false;
+  /**
+   * `off`: Station issues no credential from its engine host-auth vault to
+   * an engine (docs/decisions/engine-credential-provider.md). Engines that
+   * keep their own sign-in are unaffected. Absent or `allowed`: issuing works.
+   */
+  engineHostAuth?: 'allowed' | 'off';
+  /**
+   * The remote task engine vendors that may be used
+   * (docs/decisions/remote-task-engines.md). Unlike every other engine key,
+   * absence restricts: on a machine with a managed policy, a vendor this list
+   * does not name is off, because a remote task sends prompts and code to
+   * another company's machines.
+   */
+  remoteTasks?: RemoteTaskVendorId[];
   instances?: Partial<
     Record<ManagedPolicyLaunchEngineId, ManagedPolicyEngineInstance>
   >;
@@ -99,7 +118,13 @@ interface EngineProblem {
   message: string;
 }
 
-const ENGINE_LIMIT_KEYS = ['allowed', 'acpRegistryAgents', 'instances'];
+const ENGINE_LIMIT_KEYS = [
+  'allowed',
+  'acpRegistryAgents',
+  'engineHostAuth',
+  'remoteTasks',
+  'instances',
+];
 const INSTANCE_KEYS = ['locked', ...MANAGED_POLICY_ENGINE_LAUNCH_FIELDS];
 const BINARY_PATH_MAX_CHARS = 1024;
 const LAUNCH_ARGS_MAX = 64;
@@ -160,6 +185,28 @@ function allowedProblems(value: unknown): EngineProblem[] {
     }
     if (seen.has(entry))
       problems.push({ path: at, message: 'repeats an earlier engine' });
+    seen.add(entry);
+  });
+  return problems;
+}
+
+function remoteTasksProblems(value: unknown): EngineProblem[] {
+  const path = 'limits.engines.remoteTasks';
+  if (!Array.isArray(value))
+    return [{ path, message: 'must be an array of remote task vendor ids' }];
+  const seen = new Set<string>();
+  const problems: EngineProblem[] = [];
+  value.forEach((entry, index) => {
+    const at = `${path}[${index}]`;
+    if (!isRemoteTaskVendorId(entry)) {
+      problems.push({
+        path: at,
+        message: `must be one of ${REMOTE_TASK_VENDOR_IDS.join(', ')}`,
+      });
+      return;
+    }
+    if (seen.has(entry))
+      problems.push({ path: at, message: 'repeats an earlier vendor' });
     seen.add(entry);
   });
   return problems;
@@ -306,6 +353,19 @@ export function engineLimitProblems(
       message:
         'must be false; a policy can stop ACP registry agents from running but never force them on, so omit the key to allow them',
     });
+  const engineHostAuth = ownMember(engines, 'engineHostAuth');
+  if (
+    engineHostAuth !== undefined &&
+    engineHostAuth !== 'allowed' &&
+    engineHostAuth !== 'off'
+  )
+    problems.push({
+      path: `${path}.engineHostAuth`,
+      message: "must be 'allowed' or 'off'",
+    });
+  const remoteTasks = ownMember(engines, 'remoteTasks');
+  if (remoteTasks !== undefined)
+    problems.push(...remoteTasksProblems(remoteTasks));
   const instances = ownMember(engines, 'instances');
   if (instances !== undefined)
     problems.push(...instancesProblems(instances, allowed));
@@ -326,6 +386,12 @@ export function engineLimitsOf(limits: Record<string, unknown>): {
     );
   if (ownMember(engines, 'acpRegistryAgents') === false)
     copy.acpRegistryAgents = false;
+  const engineHostAuth = ownMember(engines, 'engineHostAuth');
+  if (engineHostAuth === 'allowed' || engineHostAuth === 'off')
+    copy.engineHostAuth = engineHostAuth;
+  const remoteTasks = ownMember(engines, 'remoteTasks');
+  if (Array.isArray(remoteTasks))
+    copy.remoteTasks = remoteTasks.filter(isRemoteTaskVendorId);
   const instances = ownMember(engines, 'instances');
   if (isRecord(instances)) {
     const pinned: NonNullable<ManagedPolicyEngineLimits['instances']> = {};
@@ -441,6 +507,20 @@ export function managedEngineAllowed(
 ): boolean {
   const allowed = engines?.allowed as readonly string[] | undefined;
   return !allowed || allowed.includes(engine);
+}
+
+/**
+ * Whether a remote task engine `vendor` may be used. Without a managed policy
+ * every vendor may (the Feature Preview and the per-connection
+ * acknowledgement still apply); with one, only a vendor
+ * `limits.engines.remoteTasks` names.
+ */
+export function managedRemoteTaskVendorAllowed(
+  policy: { engines?: Pick<ManagedPolicyEngineLimits, 'remoteTasks'> } | null,
+  vendor: RemoteTaskVendorId,
+): boolean {
+  if (!policy) return true;
+  return policy.engines?.remoteTasks?.includes(vendor) ?? false;
 }
 
 /** The pinned fields of `summary` for `engine`, or null when none are pinned. */

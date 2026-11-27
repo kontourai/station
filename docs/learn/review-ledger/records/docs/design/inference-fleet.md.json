@@ -34,9 +34,11 @@
 
     "package.json#/dependencies/@kontourai~1ferry",
 
-    "pnpm-lock.yaml#/packages",
+    "package.json#/dependencies/@kontourai~1relay",
 
-    "pnpm-lock.yaml#/snapshots"
+    "package.json#/dependencies/@kontourai~1bearing",
+
+    "packages/contracts/package.json#/dependencies/@kontourai~1datum"
   ],
 
   "checks": [

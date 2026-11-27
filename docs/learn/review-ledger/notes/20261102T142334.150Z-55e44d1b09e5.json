@@ -1,7 +1,0 @@
-{
-  "revision": "cfd7959d2a60bec48e6a664f087b7b4e4411b42b",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Correction to the previous note: the regenerated station-docs-content.ts changed only the TerminalSessions architecture topic (from the module map, now describing retention settings, restore after restart, ordinals and adopt) and the content digest. This document describes how shipped docs are generated and served, which is unchanged.","inputs":["docs/reference/station-docs.md"]}
-  ]
-}

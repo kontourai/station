@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { hasCameraApi } from '../core/cameraSupport';
 import { decodeDevicePairingPayload } from '../core/devicePairing';
 
 export interface QRScannerProps {
@@ -12,7 +13,25 @@ export interface QRScannerProps {
    * grant camera access at all.
    */
   onManualEntry?: () => void;
+  /**
+   * Invoked instead of showing an error when this browser has no camera to
+   * scan with: no camera API, or a capture request the browser refuses as
+   * unsupported or finds no device for. A person who only
+   * meant to type a code should not meet a camera error. Without a handler
+   * the scanner shows the failure like any other.
+   */
+  onUnavailable?: () => void;
 }
+
+// Capture failures that mean "there is no camera to use here", as opposed to
+// a camera that exists but was refused or is busy (NotAllowedError,
+// NotReadableError, AbortError), which the scanner still reports.
+const NO_CAMERA_ERRORS = new Set([
+  'InsecureContext',
+  'NotFoundError',
+  'NotSupportedError',
+  'OverconstrainedError',
+]);
 
 /**
  * Opens the device camera and scans QR codes using jsqr.
@@ -33,6 +52,7 @@ function CameraScanner({
   onScan,
   onCancel,
   onManualEntry,
+  onUnavailable,
   onRetry,
 }: QRScannerProps & { onRetry: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -42,6 +62,7 @@ function CameraScanner({
   const completedRef = useRef(false);
   const onScanRef = useRef(onScan);
   const onCancelRef = useRef(onCancel);
+  const onUnavailableRef = useRef(onUnavailable);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(true);
   // `scanning` flips true before getUserMedia resolves and the first frame
@@ -52,6 +73,7 @@ function CameraScanner({
 
   onScanRef.current = onScan;
   onCancelRef.current = onCancel;
+  onUnavailableRef.current = onUnavailable;
 
   const stopStream = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
@@ -69,17 +91,50 @@ function CameraScanner({
     let cancelled = false;
     completedRef.current = false;
 
+    const fail = (err: any, mayBeMissingCamera: boolean) => {
+      if (cancelled) return;
+      stopStream();
+      if (
+        mayBeMissingCamera &&
+        onUnavailableRef.current &&
+        NO_CAMERA_ERRORS.has(err?.name)
+      ) {
+        completedRef.current = true;
+        onUnavailableRef.current();
+        return;
+      }
+      setError(
+        err?.name === 'NotAllowedError'
+          ? 'Camera permission denied. Please allow camera access.'
+          : `Camera error: ${err?.message}`,
+      );
+      setScanning(false);
+      setVideoReady(false);
+    };
+
     const startCamera = async () => {
+      let stream: MediaStream;
       try {
-        if (!navigator.mediaDevices?.getUserMedia) {
+        if (!hasCameraApi()) {
           throw Object.assign(
             new Error('Camera requires a secure context (HTTPS or localhost).'),
             { name: 'InsecureContext' },
           );
         }
-        const stream = await navigator.mediaDevices.getUserMedia({
+        // The device list is not consulted: before a grant some engines list
+        // no camera even when one exists, so only a capture attempt decides.
+        stream = await navigator.mediaDevices.getUserMedia({
+          // Keep facingMode an ideal, never `exact`: with `exact`, a working
+          // front-only camera rejects with OverconstrainedError, which reads
+          // as "no camera" and would hide the scanner.
           video: { facingMode: 'environment' },
         });
+      } catch (err) {
+        // Only the capture request itself can say there is no camera.
+        fail(err, true);
+        return;
+      }
+      try {
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
@@ -90,17 +145,10 @@ function CameraScanner({
           await videoRef.current.play();
         }
         scan();
-      } catch (err: any) {
-        if (!cancelled) {
-          stopStream();
-          setError(
-            err.name === 'NotAllowedError'
-              ? 'Camera permission denied. Please allow camera access.'
-              : `Camera error: ${err.message}`,
-          );
-          setScanning(false);
-          setVideoReady(false);
-        }
+      } catch (err) {
+        // A granted camera that fails to play is a real failure, not a
+        // missing camera, whatever its error name.
+        fail(err, false);
       }
     };
 
@@ -169,6 +217,7 @@ function CameraScanner({
           }}
         >
           <div
+            role="alert"
             style={{
               color: 'var(--error-text, #ef4444)',
               fontSize: 13,

@@ -2,7 +2,12 @@ import type { OwnedSessionActivity } from '@kontourai/station-contracts/orchestr
 import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { isInputRequestEvent } from '@kontourai/station-shared/input-request';
 import { providerFailure } from '../../providers/provider-failure.js';
+import { runEngineOutsideStationServerScope } from '../../security/station-server-scope.js';
+import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
+import { ReceiverExecutionRefusal } from '../projects/project-contribution-service.js';
+import { withEngineStartPreparation } from './engine-start-preparation.js';
 
 export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 
@@ -24,6 +29,7 @@ import type {
   AgentRunStatus,
   AgentRunSummary,
   ConversationTurnActivity,
+  EngineStartWaitObservation,
   OrchestrationDelegationContext,
   OrchestrationPeerPendingRequest,
   OrchestrationSessionSummary,
@@ -42,6 +48,7 @@ import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
+  isEngineApprovalReviewer,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
@@ -49,6 +56,8 @@ import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-ev
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
+  isProviderTriggeredTurn,
+  PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
@@ -59,13 +68,20 @@ import {
 import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import { withoutCompletedTurnRecovery } from '@kontourai/station-shared/runtime-event-projection';
-import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import {
+  type ProviderAdapterShape,
+  SessionStartRefusedError,
+} from '../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { receiptBus } from '../infra/receipt-bus.js';
-import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
+import {
+  EngineStartCancelledError,
+  type RuntimeEngineStartLease,
+} from '../infra/resource-posture.js';
+import { deriveAttachedSourceActivity } from './attached-source-activity.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
 import { isStationChatFolder } from './no-project-chat-folder.js';
@@ -79,13 +95,11 @@ import {
   activeTurnIdForEvents,
   isUnattributedRuntimeError,
   nextTurnIdentityAnchor,
+  projectReadTurnOutcomes,
   projectSessionLifecycle,
   type TurnIdentityAnchor,
 } from './session-lifecycle-service.js';
-import {
-  SESSION_START_INDETERMINATE_CODE,
-  SessionStartIndeterminateError,
-} from './session-turn-boundary-binding.js';
+import { SessionStartIndeterminateError } from './session-turn-boundary-binding.js';
 
 const ATTACHED_SESSION_PROJECT_SLUG_MAX_LENGTH = 512;
 /** archive#1462: bounds the candidate list replayed out of event metadata. */
@@ -139,6 +153,28 @@ const DISPLAY_TITLE_MAX_LENGTH = 120;
  */
 function hasOpenTurn(events: CanonicalRuntimeEvent[]): boolean {
   return activeTurnIdForEvents(events) !== undefined;
+}
+
+/**
+ * Whether the latest turn boundary in `events` is a completion at the
+ * engine's output limit, with no turn open after it: the Session's last
+ * reply is incomplete although its turn completed.
+ */
+function latestTurnCutOff(
+  events: CanonicalRuntimeEvent[],
+): 'max-tokens' | undefined {
+  if (hasOpenTurn(events)) return undefined;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]!;
+    if (event.method === 'turn.completed')
+      return event.finishReason === 'max-tokens' ? 'max-tokens' : undefined;
+    if (
+      event.method === 'turn.aborted' ||
+      (event.method === 'turn.started' && event.inputKind !== 'steer')
+    )
+      return undefined;
+  }
+  return undefined;
 }
 
 /**
@@ -373,6 +409,8 @@ export async function resolveOrchestrationAdapterForThread(options: {
   materializeSession?: (
     threadId: string,
   ) => Promise<ProviderAdapterShape | undefined>;
+  /** What works instead, appended to the not-found answer when known. */
+  missingSessionHint?: (threadId: string) => string | undefined;
 }): Promise<ProviderAdapterShape> {
   const knownProvider = options.threadProviders.get(options.threadId);
   if (knownProvider) {
@@ -394,8 +432,9 @@ export async function resolveOrchestrationAdapterForThread(options: {
     return materialized;
   }
 
+  const hint = options.missingSessionHint?.(options.threadId);
   throw new OrchestrationProviderSessionNotFoundError(
-    `No provider session found for thread: ${options.threadId}`,
+    `No provider session found for thread: ${options.threadId}${hint ? `. ${hint}` : ''}`,
   );
 }
 
@@ -538,8 +577,10 @@ export function deriveReadModelSession(options: {
 }
 
 export function buildOrchestrationSessionSummary(options: {
+  /** `threadId`: the session's own answer where it differs from its engine's. */
   readDurabilityProfile?: (
     provider: string | undefined,
+    threadId?: string,
   ) => ProviderDurabilityProfile | undefined;
   persisted?: ProviderSession;
   loaded?: ProviderSession;
@@ -563,6 +604,8 @@ export function buildOrchestrationSessionSummary(options: {
   answerability: SessionAnswerabilityObservation;
   /** Process-local watchdog observation; never reconstructed from event time. */
   turnProgress?: TurnProgressObservation;
+  /** #4568: process-local capacity wait of a person's engine start. */
+  engineStartWait?: EngineStartWaitObservation;
   /** #2309: the conversation activity projection's read for this thread. */
   conversationActivity?: ConversationTurnActivity;
   /** Durable current execution child, supplied by a lineage-aware reader. */
@@ -592,6 +635,8 @@ export function buildOrchestrationSessionSummary(options: {
    * same prompt two different ways.
    */
   conversationFirstPromptedTurn?: CanonicalRuntimeEvent;
+  /** Read time for `attachedSourceActivity`; defaults to the wall clock. */
+  now?: number;
   /**
    * #2310: what the store knows about this thread's whole conversation
    * (`EventStore.conversationDraftFactsForThreads`). Omitted means the lineage
@@ -599,6 +644,14 @@ export function buildOrchestrationSessionSummary(options: {
    * stays absent unless the thread's own events rule it out).
    */
   conversationDraftFacts?: ConversationDraftFacts;
+  /**
+   * #5050: the admitted Station runtime home, for the "is `cwd` a folder
+   * Station made" check. A READER so a list builder admits the home once per
+   * build and only when some row has a `cwd`; resolving it per row repeated
+   * the whole admission filesystem walk for every session. Omitted, the check
+   * resolves the home itself.
+   */
+  readStationHome?: () => string;
 }): OrchestrationSessionSummary {
   const base = options.loaded ?? options.persisted;
   const persistedNativeState =
@@ -646,6 +699,8 @@ export function buildOrchestrationSessionSummary(options: {
   const modelLaunchPlan = extractModelLaunchPlan(events);
   const reportedModel = extractReportedModel(events);
   const appliedApprovalMode = extractAppliedApprovalMode(events);
+  const currentModeId = extractEngineMode(events);
+  const reportedApprovalReviewer = extractApprovalReviewer(events);
   const conversationIdentity = extractConversationIdentity(events);
   const displayTitle =
     (delegation?.title ? displayPromptTitle(delegation.title) : undefined) ??
@@ -659,6 +714,7 @@ export function buildOrchestrationSessionSummary(options: {
     ) ??
     delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
+  const latestTurnTrigger = extractLatestTurnTrigger(events);
   const lastRuntimeError = findTerminalFailureEvent(events);
   const controlMode = base.controlMode ?? 'station-owned';
   const { draft, firstSendOutcome } = deriveSessionDraft({
@@ -708,8 +764,16 @@ export function buildOrchestrationSessionSummary(options: {
   const openRequestIds = options.openRequestIds?.filter(
     (id) => !settledRequestIds.has(id),
   );
+  const latestRequests = new Map<
+    string,
+    Extract<CanonicalRuntimeEvent, { method: 'request.opened' }>
+  >();
+  for (const event of events) {
+    if (event.method === 'request.opened')
+      latestRequests.set(event.requestId, event);
+  }
   const summary: OrchestrationSessionSummary = {
-    durability: options.readDurabilityProfile?.(base.provider),
+    durability: options.readDurabilityProfile?.(base.provider, base.threadId),
     provider: base.provider,
     threadId: base.threadId,
     status: base.status,
@@ -730,10 +794,12 @@ export function buildOrchestrationSessionSummary(options: {
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
     // #4389: a no-project chat's scratch folder is one Station made too.
-    ...(base.cwd && isStationChatFolder(base.cwd)
+    ...(base.cwd && isStationChatFolder(base.cwd, options.readStationHome?.())
       ? { cwdManagedWorkspace: true as const }
       : {}),
     ...(appliedApprovalMode ? { appliedApprovalMode } : {}),
+    ...(currentModeId ? { currentModeId } : {}),
+    ...(reportedApprovalReviewer ? { reportedApprovalReviewer } : {}),
     ...(resumeCursor !== undefined ? { resumeCursor } : {}),
     // A partial live projection cannot erase a persisted native cursor or its
     // persistence posture; explicit false still refuses a native continuation.
@@ -745,6 +811,7 @@ export function buildOrchestrationSessionSummary(options: {
     isPersisted: Boolean(options.persisted),
     eventCount: options.eventCount ?? options.events?.length ?? 0,
     ...(turnOrigin ? { turnOrigin } : {}),
+    ...(latestTurnTrigger ? { latestTurnTrigger } : {}),
     ...lifecycleWithoutProjectSlug,
     ...(assignedAgentSlug
       ? { assignedAgentSlug: agentId(assignedAgentSlug) }
@@ -769,7 +836,13 @@ export function buildOrchestrationSessionSummary(options: {
     lastEvent.recoveryTerminal !== true
       ? { lastTurnAbortReason: lastEvent.reason }
       : {}),
+    ...(latestTurnCutOff(events)
+      ? { lastTurnCutOff: 'max-tokens' as const }
+      : {}),
     ...(options.turnProgress ? { turnProgress: options.turnProgress } : {}),
+    ...(options.engineStartWait
+      ? { engineStartWait: options.engineStartWait }
+      : {}),
     ...(options.conversationActivity
       ? { conversationActivity: options.conversationActivity }
       : {}),
@@ -779,6 +852,14 @@ export function buildOrchestrationSessionSummary(options: {
     ...(openRequestIds
       ? {
           openRequestIds: [...openRequestIds],
+          openRequestKinds: Object.fromEntries(
+            openRequestIds.flatMap((id) => {
+              const event = latestRequests.get(id);
+              if (!event || event.method !== 'request.opened') return [];
+              const kind = isInputRequestEvent(event) ? 'input' : 'approval';
+              return [[id, kind] as const];
+            }),
+          ),
           blockingOpenRequestIds: openRequestIds.filter(
             (id) =>
               !options.events?.some(
@@ -807,6 +888,15 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelLaunchPlan ? { modelLaunchPlan } : {}),
     ...(reportedModel ? { reportedModel } : {}),
     hasActiveTurn: hasOpenTurn(events),
+    ...(controlMode === 'read-only-attached'
+      ? {
+          attachedSourceActivity: deriveAttachedSourceActivity(
+            events,
+            options.now ?? Date.now(),
+            base.attachedSource?.lastWriteAt,
+          ),
+        }
+      : {}),
     ...(draft !== undefined ? { draft } : {}),
   };
   const ownedWork = options.readOwnedWork?.(base.threadId);
@@ -852,6 +942,22 @@ export function clientOriginIdentity(origin: ClientOrigin): string {
       ? `device:${origin.actor.deviceId}`
       : origin.actor.kind;
   return JSON.stringify([actor, origin.reported.surface]);
+}
+
+/**
+ * `'provider'` when the newest `turn.started` is a turn the engine opened on
+ * its own (a reply to background work no one sent), read through the one
+ * shared derivation. Absent for any other latest turn, or none.
+ */
+function extractLatestTurnTrigger(
+  events: CanonicalRuntimeEvent[],
+): OrchestrationSessionSummary['latestTurnTrigger'] {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.method !== 'turn.started') continue;
+    return isProviderTriggeredTurn(event) ? PROVIDER_TURN_TRIGGER : undefined;
+  }
+  return undefined;
 }
 
 function extractTurnOrigin(
@@ -1100,12 +1206,51 @@ function extractEffectiveModelSelection(events: CanonicalRuntimeEvent[]): {
  * generation and must not be surfaced as if it confirms the current one. Stop
  * there and report absent rather than keep scanning into older history.
  */
+function extractApprovalReviewer(events: readonly CanonicalRuntimeEvent[]) {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (!event) continue;
+    if (event.method === 'session.started') {
+      const reviewer = event.metadata?.reportedApprovalReviewer;
+      return event.provider === 'codex' && isEngineApprovalReviewer(reviewer)
+        ? reviewer
+        : undefined;
+    }
+    if (event.provider !== 'codex') continue;
+    if (event.method === 'session.approval-reviewer-observed') {
+      return isEngineApprovalReviewer(event.reviewer)
+        ? event.reviewer
+        : 'unknown';
+    }
+  }
+  return undefined;
+}
+
 /**
  * #4433: the approval mode the engine last reported applying, as the client
  * folds it live (`session.configured` / `turn.started` metadata; an event
  * without a mode changes nothing). Newest first over the projection, which
  * keeps the latest of each.
  */
+function readEngineMode(event: CanonicalRuntimeEvent): string | undefined {
+  const modeId =
+    event.method === 'session.engine-mode-observed'
+      ? event.modeId
+      : event.method === 'session.configured'
+        ? event.metadata?.acpSessionMode
+        : undefined;
+  return typeof modeId === 'string' && modeId.length > 0 ? modeId : undefined;
+}
+
+function extractEngineMode(events: readonly CanonicalRuntimeEvent[]) {
+  for (const event of [...events].reverse()) {
+    if (event.method === 'session.started') return undefined;
+    const modeId = readEngineMode(event);
+    if (modeId) return modeId;
+  }
+  return undefined;
+}
+
 function extractAppliedApprovalMode(
   events: readonly CanonicalRuntimeEvent[],
 ): ApprovalMode | undefined {
@@ -1382,6 +1527,12 @@ export function projectionFactKeysForEvent(
     facts.push({ key: 'effective-model-boundary' });
   }
   if (extractReportedModel([event])) facts.push({ key: 'reported-model' });
+  if (readEngineMode(event)) facts.push({ key: 'engine-mode' });
+  if (
+    event.method === 'session.approval-reviewer-observed' &&
+    event.provider === 'codex'
+  )
+    facts.push({ key: 'approval-reviewer' });
   // A bounded projection retains one latest fact per initiator, not per turn:
   // a session can restart indefinitely, so adding turn identity to the key
   // makes retained state grow forever. The projector still matches event
@@ -1703,12 +1854,14 @@ function recoveryFailureEventId(threadId: string, message: string): string {
  * spawned 36 seconds after boot for conversations nobody had opened.
  */
 export interface RecoveredSessionStartOptions {
+  signal?: AbortSignal;
   /** Production composition reauthorizes the retained Project after preparation. */
   assertRetainedWorkspaceAuthorized?: (threadId: string) => Promise<void>;
   /** Production composition joins the same durable start/turn authority. */
   invokeSessionStart?: (
     threadId: string,
     invoke: () => Promise<ProviderSession>,
+    input: ProviderSessionStartInput,
   ) => Promise<ProviderSession>;
   eventStore?: EventStore;
   assertAdapterReady: (
@@ -1773,6 +1926,15 @@ export interface RecoveredSessionStartOptions {
     threadId: string,
   ) => Record<string, unknown> | undefined;
   /**
+   * The native resume binding the session's latest start recorded
+   * (`NATIVE_RESUME_BINDING_METADATA_KEY` on its `session.started`), which
+   * `readSessionStartMetadata` strips as a reserved key. A recovery that
+   * resumes a native session on an adapter declaring
+   * `continuity.recoveryBinding: 'required'` hands it back as
+   * `nativeResumeBindingKey`. `undefined` when none was recorded.
+   */
+  readNativeResumeBindingKey?: (threadId: string) => string | undefined;
+  /**
    * archive#1011: re-settle the recovered session's working directory the same way a
    * live start does (project binding → `cwd`). Recovery otherwise replays
    * only the `cwd` persisted at start, so a session created before that
@@ -1798,13 +1960,36 @@ export interface RecoveredSessionStartOptions {
     input: ProviderSessionStartInput,
   ) => void;
   /**
-   * The same observed-host admission gate used for foreground engine starts.
-   * A critical refusal leaves the persisted session recoverable and writes no
-   * recovery-failure event — it is a deferral, not a verdict on the session.
+   * The engine-start lease, under the intent of whoever needs this start
+   * (#4568). A capacity refusal is recorded like any failed reopen; a
+   * person's Stop during the wait (`EngineStartCancelledError`) records
+   * nothing, because nothing ran.
    */
   admitEngineStart?: (
     threadId: string,
   ) => Promise<RuntimeEngineStartLease | undefined>;
+}
+
+/**
+ * The recorded native resume binding a start that resumes a session carries,
+ * shared by restart recovery and the credential-profile retry. Only an
+ * adapter declaring `continuity.recoveryBinding: 'required'` gets it, only
+ * with a cursor to resume, and never when the start switches to another
+ * credential profile, which changes the binding by design. Every other
+ * adapter (Claude, Codex) gets none: its recorded key can change
+ * legitimately (engine home, a deliberate profile switch, an older key
+ * scheme), and passing it would refuse a resume that works today.
+ */
+export function recordedResumeBindingForStart(
+  adapter: Pick<ProviderAdapterShape, 'metadata'>,
+  resumeCursor: unknown,
+  switchesCredentialProfile: boolean,
+  readRecorded: () => string | undefined,
+): string | undefined {
+  if (resumeCursor === undefined || switchesCredentialProfile) return undefined;
+  if (adapter.metadata?.continuity?.recoveryBinding !== 'required')
+    return undefined;
+  return readRecorded();
 }
 
 /**
@@ -1828,15 +2013,25 @@ export async function startRecoveredOrchestrationSession(options: {
   const { session, adapter, tenantExecutionContext } = options;
   const deps = options.options;
   try {
+    throwIfAborted(deps.signal);
     // Metadata reads can fail for one damaged persisted event. Keep them
     // inside this session's boundary so the caller sees one typed failure.
     const recoveredMetadata = deps.readSessionStartMetadata?.(session.threadId);
+    const recordedBindingKey = recordedResumeBindingForStart(
+      adapter,
+      session.resumeCursor,
+      false,
+      () => deps.readNativeResumeBindingKey?.(session.threadId),
+    );
     let startInput: ProviderSessionStartInput = {
       threadId: session.threadId,
       provider: session.provider,
       ...(deps.prepareModelLaunch ? {} : { modelId: session.model }),
       cwd: session.cwd,
       resumeCursor: session.resumeCursor,
+      ...(recordedBindingKey
+        ? { nativeResumeBindingKey: recordedBindingKey }
+        : {}),
       persistSession: session.persistSession,
       ...(tenantExecutionContext
         ? {
@@ -1846,9 +2041,13 @@ export async function startRecoveredOrchestrationSession(options: {
           }
         : {}),
       metadata: recoveredMetadata,
+      ...(deps.signal ? { signal: deps.signal } : {}),
     };
     if (deps.resolveSessionCwd) {
-      startInput = await deps.resolveSessionCwd(startInput);
+      startInput = await raceWithSignal(
+        Promise.resolve(deps.resolveSessionCwd(startInput)),
+        deps.signal,
+      );
     }
     startInput =
       deps.prepareModelLaunch?.(adapter, startInput, session.model) ??
@@ -1859,12 +2058,21 @@ export async function startRecoveredOrchestrationSession(options: {
       typeof recoveredMetadata?.connectionId === 'string'
         ? recoveredMetadata.connectionId
         : undefined;
-    await deps.assertAdapterReady(adapter, recoveredConnectionId);
+    await raceWithSignal(
+      deps.assertAdapterReady(adapter, recoveredConnectionId),
+      deps.signal,
+    );
     if (deps.applyApprovalPosture) {
-      startInput = await deps.applyApprovalPosture(adapter, startInput);
+      startInput = await raceWithSignal(
+        Promise.resolve(deps.applyApprovalPosture(adapter, startInput)),
+        deps.signal,
+      );
     }
     if (deps.resolveSessionAgent) {
-      startInput = await deps.resolveSessionAgent(startInput);
+      startInput = await raceWithSignal(
+        Promise.resolve(deps.resolveSessionAgent(startInput)),
+        deps.signal,
+      );
     }
     const unavailableReason = sessionAgentStartUnavailableReason({
       agentSlug: startInput.metadata?.agentSlug,
@@ -1876,23 +2084,46 @@ export async function startRecoveredOrchestrationSession(options: {
     // Apply credentials before reserving the independent engine-start slot.
     // Not wrapped in a try/catch: see `applyCredentialProfile`'s docs.
     if (deps.applyCredentialProfile) {
-      startInput = await deps.applyCredentialProfile(startInput);
+      startInput = await raceWithSignal(
+        Promise.resolve(deps.applyCredentialProfile(startInput)),
+        deps.signal,
+      );
     }
+    // #4435: the adapter's governance check runs before the start boundary,
+    // as it does for a fresh start. Inside the boundary, a definitive refusal
+    // (OpenCode's approval rules could not be read) was recorded as a start
+    // that may have happened, and every retry was refused behind it.
+    if (adapter.preflightStart)
+      await raceWithSignal(adapter.preflightStart(startInput), deps.signal);
+    throwIfAborted(deps.signal);
     const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
     let recovered: ProviderSession;
     try {
-      await deps.assertRetainedWorkspaceAuthorized?.(startInput.threadId);
-      // #2873: a respawn re-resolves the folder an agent's dispatch recorded
-      // and refuses a different result, before any adapter call.
-      assertDispatchCwdUnmoved(startInput, startInput.cwd);
-      recovered = await withTenantExecutionContext(
-        startInput.tenantExecutionContext,
-        () =>
-          deps.invokeSessionStart
-            ? deps.invokeSessionStart(startInput.threadId, () =>
-                adapter.startSession(startInput),
-              )
-            : adapter.startSession(startInput),
+      recovered = await withEngineStartPreparation<ProviderSession>(
+        deps.signal,
+        async (invokeProvider) => {
+          await deps.assertRetainedWorkspaceAuthorized?.(startInput.threadId);
+          throwIfAborted(deps.signal);
+          // #2873: a respawn re-resolves the folder an agent's dispatch recorded
+          // and refuses a different result, before any adapter call.
+          assertDispatchCwdUnmoved(startInput, startInput.cwd);
+          return withTenantExecutionContext(
+            startInput.tenantExecutionContext,
+            () =>
+              deps.invokeSessionStart
+                ? deps.invokeSessionStart(
+                    startInput.threadId,
+                    () =>
+                      invokeProvider(() => adapter.startSession(startInput)),
+                    startInput,
+                  )
+                : invokeProvider(() =>
+                    runEngineOutsideStationServerScope(() =>
+                      adapter.startSession(startInput),
+                    ),
+                  ),
+          );
+        },
       );
     } finally {
       admissionLease?.release();
@@ -1913,6 +2144,14 @@ export async function startRecoveredOrchestrationSession(options: {
     deps.eventStore?.upsertSession(nextSession);
     return nextSession;
   } catch (error) {
+    // #4568: a person's Stop cancelled this start while it waited for the
+    // start lease. No provider started and nothing failed, so the Session
+    // keeps its record exactly as it was.
+    if (
+      error instanceof EngineStartCancelledError ||
+      error instanceof ReceiverExecutionRefusal
+    )
+      throw error;
     const message = errorMessage(error);
     deps.logger.warn('Failed to recover provider session', {
       provider: session.provider,
@@ -1925,6 +2164,17 @@ export async function startRecoveredOrchestrationSession(options: {
     // `closed`, which NULLs `resume_cursor`) so the conversation stays
     // reopenable once the user undoes whatever broke it.
     const failedAt = new Date().toISOString();
+    const failure =
+      error instanceof SessionStartIndeterminateError ||
+      error instanceof SessionStartRefusedError
+        ? {
+            ...providerFailure(error.kind, error.failurePhase),
+            code: error.code,
+          }
+        : {
+            ...providerFailure('unavailable'),
+            code: SESSION_RECOVERY_FAILED_CODE,
+          };
     // archive#1399 fix round 2, B3: this literal always constructs
     // `method: 'runtime.error'`, never `tool.completed` — routed through
     // the safe sanitizer anyway (a true no-op here) so the writer-inventory
@@ -1937,20 +2187,9 @@ export async function startRecoveredOrchestrationSession(options: {
           threadId: session.threadId,
           createdAt: failedAt,
           method: 'runtime.error',
-          ...providerFailure(
-            error instanceof SessionStartIndeterminateError
-              ? 'indeterminate'
-              : 'unavailable',
-            error instanceof SessionStartIndeterminateError
-              ? 'indeterminate'
-              : 'failed',
-          ),
+          ...failure,
           severity: 'error',
-          code:
-            error instanceof SessionStartIndeterminateError
-              ? SESSION_START_INDETERMINATE_CODE
-              : SESSION_RECOVERY_FAILED_CODE,
-          retriable: !(error instanceof SessionStartIndeterminateError),
+          retriable: failure.retryable,
           message: `This conversation could not be reopened: ${message}`,
         } satisfies ProviderRuntimeErrorEvent,
         (warnMessage, meta) => deps.logger.warn(warnMessage, meta),
@@ -2198,7 +2437,7 @@ function deriveAgentRunStatus(options: {
   // life (MEDIUM 3) — so this variable's name understates it slightly:
   // "the identity anchor", not merely "the preceding turn's id".
   let turnIdentityAnchor: TurnIdentityAnchor | undefined;
-  for (const event of options.events) {
+  for (const event of projectReadTurnOutcomes(options.events)) {
     switch (event.method) {
       case 'session.started':
         // Attach fact, not progress: adapters publish this on every
@@ -2459,8 +2698,15 @@ function findTerminalFailureEvent(
   let lastFailure:
     | Extract<CanonicalRuntimeEvent, { method: 'runtime.error' }>
     | undefined;
-  for (const event of events) {
-    if (event.method === 'runtime.error') {
+  for (const event of projectReadTurnOutcomes(events)) {
+    const nextAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
+    if (
+      event.method === 'turn.started' &&
+      lastFailure?.turnId !== undefined &&
+      !acceptsTurnTerminalEvent(lastFailure, nextAnchor)
+    ) {
+      lastFailure = undefined;
+    } else if (event.method === 'runtime.error') {
       if (
         typeof turnIdentityAnchor === 'object' &&
         (event.turnId !== undefined || event.invocationId !== undefined) &&
@@ -2474,7 +2720,7 @@ function findTerminalFailureEvent(
     ) {
       lastFailure = undefined;
     }
-    turnIdentityAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
+    turnIdentityAnchor = nextAnchor;
   }
   return lastFailure;
 }

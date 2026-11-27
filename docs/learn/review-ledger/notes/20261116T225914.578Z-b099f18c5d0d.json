@@ -1,0 +1,7 @@
+{
+  "revision": "7025acbab6d4739a6cd968393defbc0ec949cab3",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Shortened the propose_job projectId parameter description only; the guide describes the behavior (a Project schedule starts a Task per run, out-of-scope and preview-off refusals), which is unchanged.","inputs":["src-server/tools/station-control-schedule-tools.ts"]}
+  ]
+}

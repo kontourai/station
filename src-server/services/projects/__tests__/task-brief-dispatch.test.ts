@@ -15,6 +15,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { LearningReviewTaskContext } from '@kontourai/station-contracts/learning-review';
+import { composeProjectSessionContext } from '@kontourai/station-contracts/project-session-context';
 import type { ProjectWorkingContext } from '@kontourai/station-contracts/project-working-configuration';
 import {
   TASK_BRIEF_COMPOSED_METADATA_KEY,
@@ -195,6 +196,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
   let adapters: RecordingAdapter[];
   let service: OrchestrationService;
   let graph: TaskGraphService;
+  let registry: IProviderAdapterRegistry;
 
   beforeEach(() => {
     tmp = makeTempDir('task-brief-dispatch-');
@@ -202,7 +204,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     adapters = (['claude', 'codex', 'station-agent'] as const).map(
       (provider) => new RecordingAdapter(provider),
     );
-    const registry: IProviderAdapterRegistry = {
+    registry = {
       register() {},
       get: (provider) => adapters.find((a) => a.provider === provider),
       list: () => adapters,
@@ -366,6 +368,41 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     );
     return { task, sessionId };
   }
+
+  test('#5062: a dispatched Task Session starts with its Project brief too, before the Task brief', async () => {
+    await service.shutdown();
+    service = new OrchestrationService({
+      adapterRegistry: registry,
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      resolveSessionAgent: fixtureTaskAgentSessionResolver,
+      projectSessionContext: {
+        resolve: async (slug) =>
+          slug === 'brief-project'
+            ? composeProjectSessionContext({
+                projectSlug: slug,
+                projectName: 'Brief project',
+                goal: 'Every dispatched Session knows the goal',
+                instructions: 'Ask before touching billing.',
+              })
+            : undefined,
+      },
+    });
+    const { sessionId } = await dispatch('codex');
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: sessionId, input: 'Go.' },
+    });
+    const actual = adapters.find((item) => item.provider === 'codex')!.sendTurn
+      .mock.calls[0]![0].input;
+    expect(actual).toContain('Goal: Every dispatched Session knows the goal');
+    expect(actual).toContain('Ask before touching billing.');
+    expect(actual).toContain('# Ship the brief');
+    expect(actual.indexOf('Ask before touching billing.')).toBeLessThan(
+      actual.indexOf('# Ship the brief'),
+    );
+  });
 
   test('approved learning reaches actual first input and canonical receipt, while public contribution metadata never substitutes its own refs', async () => {
     const own = {

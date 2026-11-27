@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     | { entered: () => void; released: Promise<void> }
     | undefined,
   send: vi.fn(),
+  showSurface: vi.fn(),
   history: {
     data: {
       pages: [
@@ -113,6 +114,12 @@ vi.mock('../../../contexts/AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => mocks.authority,
 }));
 
+vi.mock('../../../contexts/useShowSurface', () => ({
+  useShowSurface: () => mocks.showSurface,
+}));
+
+import { ChildChatContext } from '../../chat-dock/ChildChatNavigationContext';
+import { ConversationConnectionProvider } from '../../conversation/ConversationConnectionContext';
 import { ChildWorkInstructionPanel } from '../ChildWorkInstructionPanel';
 import { SubagentTranscriptCard } from '../SubagentTranscriptCard';
 import { UIBlockActionsContext } from '../UIBlockActionsContext';
@@ -129,8 +136,8 @@ beforeEach(async () => {
   mocks.authority.observation.grant = { kind: 'operator' };
 });
 afterEach(cleanup);
-function view(turnId = 'turn', allowed = true, name = 'Worker') {
-  return render(
+function panel(turnId = 'turn', allowed = true, name = 'Worker') {
+  return (
     <UIBlockActionsContext.Provider
       value={{ submitForm: () => {}, canSendChildInstruction: allowed }}
     >
@@ -142,18 +149,70 @@ function view(turnId = 'turn', allowed = true, name = 'Worker') {
         running
         name={name}
       />
-    </UIBlockActionsContext.Provider>,
+    </UIBlockActionsContext.Provider>
   );
 }
+
+function view(turnId = 'turn', allowed = true, name = 'Worker') {
+  return render(panel(turnId, allowed, name));
+}
+
+test('a reopened child draft stays bound to the turn on which it was typed', async () => {
+  const drafts = new Map();
+  const child = (turnId: string, canContinue = true) => (
+    <ChildWorkInstructionPanel
+      threadId="parent"
+      childId="child"
+      name="Worker"
+      turnId={turnId}
+      running
+      historyAvailable
+      composer={{
+        run: { engineLabel: 'Codex', model: 'example-model' },
+        canContinue,
+        drafts,
+      }}
+    />
+  );
+  const first = render(child('turn-one'));
+  fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), {
+    target: { value: 'Check this result' },
+  });
+  first.unmount();
+  const next = render(child('turn-two'));
+  expect(await screen.findByDisplayValue('Check this result')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  await screen.findByText(
+    'The subagent turn changed. This instruction was not sent.',
+  );
+  expect(mocks.send).not.toHaveBeenCalled();
+  next.rerender(child('turn-two', false));
+  expect(screen.queryByRole('textbox')).toBeNull();
+});
 
 test('sends only to the named child and keeps the same request after an uncertain response', async () => {
   mocks.send
     .mockResolvedValueOnce({ outcome: 'indeterminate' })
     .mockResolvedValueOnce({ outcome: 'steered' });
-  view();
-  const input = await screen.findByLabelText('Send to Worker');
+  render(
+    <ChildWorkInstructionPanel
+      threadId="parent"
+      childId="child"
+      name="Worker"
+      turnId="turn"
+      running
+      historyAvailable
+      composer={{
+        run: { engineLabel: 'Codex', model: 'example-model' },
+        canContinue: true,
+      }}
+    />,
+  );
+  const input = await screen.findByRole('textbox', { name: 'Message' });
+  expect(screen.queryByRole('button', { name: 'Attach files' })).toBeNull();
+  expect(screen.queryByText('This subagent accepts text only.')).toBeNull();
   fireEvent.change(input, { target: { value: 'Please check this' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
   await screen.findAllByText('May have reached the agent');
   const first = mocks.send.mock.calls[0][0];
   expect(first).toMatchObject({
@@ -173,6 +232,103 @@ test('sends only to the named child and keeps the same request after an uncertai
       )
     )?.clientInputId,
   ).toBe(first.clientInputId);
+});
+
+test('a child reader missing its Station lease cannot offer image upload using the active host', async () => {
+  render(
+    <ConversationConnectionProvider
+      value={{ apiBase: 'https://other.example' }}
+    >
+      <ChildWorkInstructionPanel
+        threadId="parent"
+        childId="child"
+        turnId="turn"
+        name="Worker"
+        running
+        historyAvailable
+        composer={{ canContinue: true, run: { images: true } }}
+      />
+    </ConversationConnectionProvider>,
+  );
+  await screen.findByRole('textbox', { name: 'Message' });
+  expect(screen.queryByRole('button', { name: 'Attach files' })).toBeNull();
+});
+
+test('a writable child sends a staged screenshot without text and retains only its reference while delivery is uncertain', async () => {
+  const key = 'child-steer:' + JSON.stringify(['owner', 'parent', 'child']);
+  const ref = {
+    source: 'current-composer' as const,
+    kind: 'image' as const,
+    clientAttachmentId: 'chosen',
+    stageId: 'stage_image',
+    digest: `sha256-${'0'.repeat(64)}` as const,
+    name: 'screen.png',
+    mimeType: 'image/png' as const,
+    size: 3,
+    expiresAt: new Date(Date.now() + 600000).toISOString(),
+  };
+  const files = [
+    {
+      id: 'chosen',
+      name: ref.name,
+      type: ref.mimeType,
+      size: ref.size,
+      data: 'data:image/png;base64,YWJj',
+    },
+  ];
+  const stages = [
+    {
+      clientAttachmentId: 'chosen',
+      stageId: ref.stageId,
+      name: ref.name,
+      mimeType: ref.mimeType,
+      size: ref.size,
+      state: 'complete' as const,
+      delivery: 'staged' as const,
+      progress: 1,
+      reference: ref,
+    },
+  ];
+  const client = await import('@kontourai/station-sdk/client');
+  const reconcile = vi
+    .spyOn(client, 'reconcileAttachmentStages')
+    .mockResolvedValue([
+      { state: 'complete', stageId: ref.stageId, reference: ref },
+    ]);
+  mocks.send.mockResolvedValue({ outcome: 'indeterminate' });
+  try {
+    render(
+      <ChildWorkInstructionPanel
+        threadId="parent"
+        childId="child"
+        name="Worker"
+        turnId="turn"
+        running
+        historyAvailable
+        composer={{
+          canContinue: true,
+          run: { images: true, engineLabel: 'Codex' },
+          drafts: new Map([[key, { text: '', turnId: 'turn', files, stages }]]),
+        }}
+      />,
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Attach files' }),
+    ).toHaveProperty('disabled', false);
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findAllByText('May have reached the agent');
+    expect(mocks.send.mock.calls[0][0]).toMatchObject({
+      threadId: 'parent',
+      childId: 'child',
+      turnId: 'turn',
+      input: { text: '', attachmentRefs: [ref] },
+    });
+    const saved = await get(key);
+    expect(saved).toMatchObject({ attachmentRefs: [ref] });
+    expect(JSON.stringify(saved)).not.toContain('data:image');
+  } finally {
+    reconcile.mockRestore();
+  }
 });
 
 test('concurrent panels claim one durable instruction before dispatch', async () => {
@@ -217,30 +373,46 @@ test('an older response cannot clear a later uncertain instruction', async () =>
   fireEvent.click(within(a.container).getByRole('button', { name: 'Send' }));
   await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1));
   const first = mocks.send.mock.calls[0][0];
+  const key = `child-steer:${JSON.stringify(['owner', 'parent', 'child'])}`;
+  expect(await get(key)).toMatchObject({ clientInputId: first.clientInputId });
   mocks.history.data = {
     pages: [
       { entries: [{ ...first, text: first.input, delivery: 'delivered' }] },
     ],
   };
+  // History can settle the existing panel before another panel loads its outbox.
+  a.rerender(panel('turn', true, 'A'));
+  await waitFor(async () => expect(await get(key)).toBeNull());
   const checking = view('turn', true, 'Checking');
-  fireEvent.click(
-    await within(checking.container).findByRole('button', {
-      name: 'Check',
-    }),
-  );
-  await waitFor(() =>
-    expect(
-      within(checking.container).queryByText(
-        'Saved instruction: First instruction',
-      ),
-    ).toBeNull(),
-  );
+  await within(checking.container).findByLabelText('Send to Checking');
+  expect(
+    within(checking.container).getByText('First instruction'),
+  ).toBeTruthy();
+  expect(
+    within(checking.container).queryByText(
+      'Saved instruction: First instruction',
+    ),
+  ).toBeNull();
+  expect(
+    await get(`child-steer:${JSON.stringify(['owner', 'parent', 'child'])}`),
+  ).toBeNull();
   fireEvent.change(inputB, { target: { value: 'Second instruction' } });
   fireEvent.click(within(b.container).getByRole('button', { name: 'Send' }));
   await within(b.container).findAllByText('May have reached the agent');
   const second = mocks.send.mock.calls[1][0];
+  expect(
+    (within(a.container).getByLabelText('Send to A') as HTMLTextAreaElement)
+      .disabled,
+  ).toBe(true);
   finishFirst({ outcome: 'steered' });
-  await within(a.container).findByText('Sent to the subagent.');
+  await waitFor(() =>
+    expect(
+      (within(a.container).getByLabelText('Send to A') as HTMLTextAreaElement)
+        .disabled,
+    ).toBe(false),
+  );
+  expect(within(a.container).getByText('Sent to the subagent.')).toBeTruthy();
+  expect(await get(key)).toMatchObject({ clientInputId: second.clientInputId });
   a.unmount();
   b.unmount();
   checking.unmount();
@@ -377,7 +549,7 @@ test('a remounted child keeps the exact uncertain request and shows recorded del
   expect(mocks.history.refetch).toHaveBeenCalled();
 });
 
-test('an open engine transcript keeps sent instructions attributed behind a disclosure without hiding uncertain input', async () => {
+test('delivered and uncertain instructions remain attributed in the parent card', () => {
   mocks.history.data = {
     pages: [
       {
@@ -386,10 +558,10 @@ test('an open engine transcript keeps sent instructions attributed behind a disc
             clientInputId: 'sent',
             text: 'Check the report',
             delivery: 'delivered',
-            principal: { display: 'Brian' },
+            principal: { display: 'Sender' },
           },
           {
-            clientInputId: 'uncertain',
+            clientInputId: 'pending',
             text: 'Another request',
             delivery: 'indeterminate',
           },
@@ -403,34 +575,16 @@ test('an open engine transcript keeps sent instructions attributed behind a disc
     >
       <ChildWorkInstructionPanel
         historyAvailable
-        transcriptOpen
         threadId="parent"
         childId="child"
-        turnId="turn"
         running
         name="Worker"
       />
-      <section aria-label="Engine transcript">
-        <p>Initial task</p>
-        <p>Check the report</p>
-        <p>Another native prompt</p>
-      </section>
     </UIBlockActionsContext.Provider>,
   );
-  expect(
-    screen
-      .getAllByText('Check the report', { selector: 'p' })
-      .filter((node) => node.closest('details:not([open])') === null),
-  ).toHaveLength(1);
-  expect(screen.getByText('Initial task')).toBeTruthy();
-  expect(screen.getByText('Another native prompt')).toBeTruthy();
-  expect(screen.getByText('Another request').closest('details')).toBeNull();
-  const disclosure = screen.getByText(/Sent instruction · Brian/);
-  fireEvent.click(disclosure);
-  expect(disclosure.closest('details')?.open).toBe(true);
-  expect(
-    within(disclosure.closest('details')!).getByText('Check the report'),
-  ).toBeTruthy();
+  expect(screen.getByText('Check the report')).toBeTruthy();
+  expect(screen.getByText(/Sender ·/)).toBeTruthy();
+  expect(screen.getByText('Another request')).toBeTruthy();
 });
 
 test('opening the real card transcript keeps the provider prompt once and retains the attributed copy on demand', async () => {
@@ -448,40 +602,38 @@ test('opening the real card transcript keeps the provider prompt once and retain
       },
     ],
   };
+  const open = vi.fn();
   render(
-    <UIBlockActionsContext.Provider
-      value={{ submitForm: () => {}, canSendChildInstruction: true }}
-    >
-      <SubagentTranscriptCard
-        child={{
-          toolAnchor: false,
-          provider: 'codex',
-          item: {
-            producer: 'engine-subagent',
-            reporterThreadId: 'parent',
-            childId: 'child',
-            status: 'completed',
-            transcript: {
-              kind: 'codex-thread',
-              threadId: '00000000-0000-4000-8000-000000000001',
-            },
-          },
-        }}
-      />
-    </UIBlockActionsContext.Provider>,
+    <ConversationConnectionProvider value={{ apiBase: 'http://station.test' }}>
+      <ChildChatContext.Provider value={open}>
+        <UIBlockActionsContext.Provider
+          value={{ submitForm: () => {}, canSendChildInstruction: true }}
+        >
+          <SubagentTranscriptCard
+            child={{
+              toolAnchor: false,
+              provider: 'codex',
+              item: {
+                producer: 'engine-subagent',
+                reporterThreadId: 'parent',
+                childId: 'child',
+                status: 'completed',
+                transcript: {
+                  kind: 'codex-thread',
+                  threadId: '00000000-0000-4000-8000-000000000001',
+                },
+              },
+            }}
+          />
+        </UIBlockActionsContext.Provider>
+      </ChildChatContext.Provider>
+    </ConversationConnectionProvider>,
   );
   fireEvent.click(screen.getByTestId('subagent-card').querySelector('button')!);
   expect(screen.getByText('Check the report')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  await screen.findByText('Initial task');
-  const copies = screen
-    .getAllByText('Check the report')
-    .filter((node) => node.closest('details:not([open])') === null);
-  expect(copies).toHaveLength(1);
-  expect(screen.getByText('Another native prompt')).toBeTruthy();
-  const summary = screen.getByText(/Sent instruction · Brian/);
-  fireEvent.click(summary);
-  expect(
-    within(summary.closest('details')!).getByText('Check the report'),
-  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+  expect(open).toHaveBeenCalledWith(
+    expect.objectContaining({ threadId: 'parent', childId: 'child' }),
+  );
+  expect(screen.getByText('Check the report')).toBeTruthy();
 });

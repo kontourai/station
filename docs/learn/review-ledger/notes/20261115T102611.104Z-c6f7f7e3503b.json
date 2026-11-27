@@ -1,0 +1,7 @@
+{
+  "revision": "57a6f2d4d657bfa10ac9cce3240fcfa062e533fb",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Baseline change is 4 screen entries merged via screenshot:baseline --allow-partial from the hosted PR: Gallery artifact gallery-pr-43702154801-1 (head c1922b6906 composed with main 89dc051aa7, 222 screens, none failed), the guide's documented refresh path. Manifest schema, per-screen RGBA sha256 and reference image layout are unchanged.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

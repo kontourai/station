@@ -18,6 +18,18 @@ export interface PublishedHtmlReply extends HtmlReplyPage {
   createdAt: string;
 }
 
+/** Host-owned transcript publication uses the page ID as its event ID. */
+export const HTML_REPLY_PUBLICATION_ID_PREFIX = 'html-reply:';
+
+export function isHtmlReplyPublication(event: {
+  eventId: string;
+  toolCallId: string;
+}): boolean {
+  return (
+    event.toolCallId === `${HTML_REPLY_PUBLICATION_ID_PREFIX}${event.eventId}`
+  );
+}
+
 export const HTML_REPLY_LIMITS = {
   sourceBytes: 256 * 1024,
   imageBytes: 2 * 1024 * 1024,

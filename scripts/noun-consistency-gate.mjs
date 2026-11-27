@@ -50,7 +50,7 @@
 //      rather than guessed at. This trades a few missed edge cases for
 //      zero false positives, which matters more for a zero-tolerance gate
 //      than exhaustive coverage.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   assertScopeIsHonest,
@@ -102,6 +102,22 @@ export const COPY_SOURCE_FILES = [
  * scanned with the wrong one reports zero blocks, which is a hard failure
  * rather than a quiet clean scan.
  */
+/**
+ * Plain TypeScript modules that hold user-facing words as string literals
+ * (row action labels, notice text) rather than JSX. The JSX scanners never
+ * read them, so a retired phrase written as `label: 'Settle conversation'`
+ * passed the gate. They are scanned for the retired user terms only, in
+ * every string and template literal: the older noun families have code
+ * senses (`agent`, `prompt`) a literal scan cannot tell from copy.
+ */
+export const LITERAL_COPY_FILES = [
+  'src-ui/src/components/inbox-row/inbox-row-actions.ts',
+  'src-ui/src/components/inbox-row/snooze-presets.ts',
+  'src-ui/src/components/chat-dock/mobile-activity-groups.ts',
+  'src-ui/src/components/chat-dock/useInboxGroups.ts',
+  'src-ui/src/components/chat-dock/inbox-toggle-label.ts',
+];
+
 export const COPY_SOURCE_OPENERS = {
   'packages/contracts/src/device-settings.ts': 'defineDeviceSetting(',
 };
@@ -166,6 +182,231 @@ export const RETIRED_PRODUCT_NOUN_PATTERN = /\bPrompts?\b/;
  * bare acronym "ACP" trip this pattern.
  */
 export const RETIRED_NOUN_PATTERN = /\b(External agents?|Agent apps?|ACP)\b/;
+
+/**
+ * User-facing terms retired by the 2026-11 UI copy pass (docs/glossary.md,
+ * "User-facing labels"). Each entry is zero-tolerance once active, like the
+ * patterns above, and case-insensitive: none of these phrases has a
+ * legitimate lowercase sense in UI copy.
+ *
+ * An entry marked `pending: true` is written and tested but not enforced:
+ * the copy lanes that remove the last uses land separately, and enforcing a
+ * rule before they merge would fail every unrelated change. To activate one
+ * after those merge, delete its `pending` flag. The test pins that every
+ * pending entry still catches a violation when enabled, so a flip is a
+ * one-line change with a proven rule behind it.
+ */
+export const RETIRED_USER_TERMS = Object.freeze([
+  { term: 'AI app', use: 'engine', pattern: /\bAI apps?\b/i, pending: true },
+  {
+    term: 'device hub',
+    use: 'device helper',
+    pattern: /\bdevice hubs?\b/i,
+    pending: true,
+  },
+  {
+    term: 'Station owner',
+    use: 'Station operator',
+    pattern: /\bStation owners?\b/i,
+    pending: true,
+  },
+  {
+    term: 'built-in assistant',
+    use: "Station's engine or the Station agent",
+    pattern: /\bbuilt-in assistants?\b/i,
+    pending: true,
+  },
+  {
+    term: 'default assistant',
+    use: "Station's engine or the Station agent",
+    pattern: /\bdefault assistants?\b/i,
+    pending: true,
+  },
+  {
+    term: 'credential entry',
+    use: 'account',
+    pattern: /\bcredential entr(?:y|ies)\b/i,
+    pending: true,
+  },
+  // Retired by the first-release design (docs/design/first-release.md, "Words
+  // that change"; epic #5386). Each stays pending until the slice that
+  // removes its last uses lands and deletes the flag. Only distinctive
+  // phrases are listed: single words the design also retires (Connections,
+  // Plugins, Registry, Layout, Profile, Basis, Settle, Dismiss, Hide, Revoke,
+  // READY, Integration, MCP server) keep legitimate uses this
+  // case-insensitive mechanism cannot tell apart.
+  // Customize and Station areas (first-release-customize.md,
+  // first-release-station.md, first-release-first-run.md).
+  {
+    term: 'model connection',
+    use: 'provider',
+    pattern: /\bmodel connections?\b/i,
+    pending: true,
+  },
+  // Also matches the network sense ("connect through a proxy"); the slice
+  // that enables it decides each such use.
+  {
+    term: 'Connect through',
+    use: 'Runs through',
+    pattern: /\bconnect through\b/i,
+    pending: true,
+  },
+  {
+    term: 'Pair a device',
+    use: 'Connect a device',
+    pattern: /\bpair (?:a |this |another |your )?(?:device|phone)s?\b/i,
+    pending: true,
+  },
+  // Projects area (first-release-projects.md).
+  {
+    term: 'Workspace view',
+    use: 'view',
+    pattern: /\bworkspace views?\b/i,
+    pending: true,
+  },
+  {
+    term: 'Starter layout',
+    use: 'view',
+    pattern: /\bstarter layouts?\b/i,
+    pending: true,
+  },
+  {
+    term: 'Files and connections',
+    use: 'Files',
+    pattern: /\bfiles (?:&|&amp;|and) connections\b/i,
+    pending: true,
+  },
+  // Chat area (first-release-chat.md).
+  {
+    term: 'Conversation stats',
+    use: 'Usage',
+    pattern: /\bconversation stat(?:s|istics)\b/i,
+    pending: true,
+  },
+  {
+    term: 'Chat inventory',
+    use: 'Work',
+    pattern: /\bchat inventory\b/i,
+    pending: true,
+  },
+  {
+    term: 'Chat settings',
+    use: 'Setup',
+    pattern: /\bchat settings\b/i,
+    pending: true,
+  },
+  {
+    term: 'Fork from here',
+    use: 'New chat from here',
+    pattern: /\bfork from here\b/i,
+    pending: true,
+  },
+  {
+    term: 'Branch from this answer',
+    use: 'New chat from here',
+    pattern: /\bbranch from this answer\b/i,
+    pending: true,
+  },
+  {
+    term: 'New chat from this message',
+    use: 'New chat from here',
+    pattern: /\bnew chat from this message\b/i,
+    pending: true,
+  },
+  {
+    term: 'Rewind conversation',
+    use: 'Rewind chat to here',
+    pattern: /\brewind conversation\b/i,
+    pending: true,
+  },
+  {
+    term: 'Restore workspace',
+    use: 'Restore files to here',
+    pattern: /\brestore workspace\b/i,
+    pending: true,
+  },
+  {
+    term: 'Reset agent context',
+    use: 'Start fresh context',
+    pattern: /\breset agent context\b/i,
+    pending: true,
+  },
+  // Inbox (first-release-automations-inbox.md, automations-inbox-13): one
+  // verb, Mark done, and Reopen undoes it; one snooze list with Wake now.
+  // Enforced: the inbox slice removed their last uses.
+  {
+    term: 'Settle conversation',
+    use: 'Mark done',
+    pattern: /\bsettle conversations?\b/i,
+  },
+  {
+    term: 'Dismiss from inbox',
+    use: 'Mark done',
+    pattern: /\bdismiss from (?:the )?inbox\b/i,
+  },
+  {
+    term: 'Hide from inbox',
+    use: 'Mark done',
+    pattern: /\bhide from (?:the )?inbox\b/i,
+  },
+  {
+    term: 'Restore to inbox',
+    use: 'Reopen',
+    pattern: /\brestore to (?:the )?inbox\b/i,
+  },
+  {
+    term: 'Discard unsent draft',
+    use: 'Discard draft',
+    pattern: /\bdiscard unsent drafts?\b/i,
+  },
+  {
+    term: 'Unsnooze',
+    use: 'Wake now',
+    pattern: /\bunsnooz(?:e|ed|ing)\b/i,
+  },
+  // The dock's list reads Chats; Inbox becomes the attention page's word.
+  // Only phrases that can name nothing but the dock list are listed: "Search
+  // inbox" or "Refresh inbox" could be the page's own once it is the Inbox.
+  {
+    term: 'Show inbox',
+    use: 'Show chats',
+    pattern: /\b(?:show|hide) inbox\b/i,
+  },
+  {
+    term: 'Chat list',
+    use: 'Chats',
+    pattern: /\bchat list\b/i,
+  },
+  {
+    term: 'Inbox chats',
+    use: 'Chats',
+    pattern: /\binbox chats\b/i,
+  },
+]);
+
+/** The retired user-facing terms the gate enforces today. */
+export const ACTIVE_RETIRED_USER_TERMS = Object.freeze(
+  RETIRED_USER_TERMS.filter((entry) => !entry.pending),
+);
+
+/**
+ * Every stale-noun pattern, global, for one scan: the fixed families above
+ * plus the given retired user terms. Each is a fresh RegExp so exec loops
+ * never share `lastIndex`.
+ */
+function staleNounPatterns(retiredTerms) {
+  return [
+    new RegExp(BANNED_WORD_PATTERN.source, 'gi'),
+    new RegExp(RETIRED_NOUN_PATTERN.source, 'g'),
+    new RegExp(RETIRED_PRODUCT_NOUN_PATTERN.source, 'g'),
+    ...retiredTerms.map(({ pattern }) => new RegExp(pattern.source, 'gi')),
+  ];
+}
+
+/** Whether one piece of copy carries any stale noun. */
+function hasStaleNoun(text, retiredTerms) {
+  return staleNounPatterns(retiredTerms).some((pattern) => pattern.test(text));
+}
 
 const ATTR_NAMES = [
   'label',
@@ -540,7 +781,13 @@ function allMatches(text, pattern) {
   return out;
 }
 
-function scanChildrenBetweenTags(file, content, betweenStart, betweenEnd) {
+function scanChildrenBetweenTags(
+  file,
+  content,
+  betweenStart,
+  betweenEnd,
+  retiredTerms,
+) {
   const between = content.slice(betweenStart, betweenEnd);
   const { masked, unbalanced } = maskExpressions(between);
   if (unbalanced) return [];
@@ -555,11 +802,9 @@ function scanChildrenBetweenTags(file, content, betweenStart, betweenEnd) {
   // RETIRED_*_PATTERN families can't share one flags-set regex, so each gets
   // its own exec loop; matches are merged and sorted so findings still surface
   // in file order.
-  const matches = [
-    ...allMatches(masked, new RegExp(BANNED_WORD_PATTERN.source, 'gi')),
-    ...allMatches(masked, new RegExp(RETIRED_NOUN_PATTERN.source, 'g')),
-    ...allMatches(masked, new RegExp(RETIRED_PRODUCT_NOUN_PATTERN.source, 'g')),
-  ].sort((a, b) => a.index - b.index);
+  const matches = staleNounPatterns(retiredTerms)
+    .flatMap((pattern) => allMatches(masked, pattern))
+    .sort((a, b) => a.index - b.index);
   for (const match of matches) {
     const lineStart = between.lastIndexOf('\n', match.index) + 1;
     let lineEnd = between.indexOf('\n', match.index);
@@ -594,7 +839,11 @@ function objectCopyLiteralText(literal) {
  * review L. Runs over the SAME enumerated file set as the JSX scanners, so
  * the gate never has a layer whose scope diverges from another's.
  */
-export function scanObjectLiteralCopy(file, rawContent) {
+export function scanObjectLiteralCopy(
+  file,
+  rawContent,
+  retiredTerms = ACTIVE_RETIRED_USER_TERMS,
+) {
   const content = stripComments(rawContent);
   const findings = [];
   OBJECT_COPY_FIELD_PATTERN.lastIndex = 0;
@@ -605,12 +854,7 @@ export function scanObjectLiteralCopy(file, rawContent) {
       objectCopyLiteralText(match[1]).replace(/\\(['"`\\])/g, '$1'),
     );
     if (!normalized) continue;
-    if (
-      !BANNED_WORD_PATTERN.test(normalized) &&
-      !RETIRED_NOUN_PATTERN.test(normalized) &&
-      !RETIRED_PRODUCT_NOUN_PATTERN.test(normalized)
-    )
-      continue;
+    if (!hasStaleNoun(normalized, retiredTerms)) continue;
     findings.push({
       file,
       line: lineNumberAt(content, match.index),
@@ -625,10 +869,52 @@ export function scanObjectLiteralCopy(file, rawContent) {
  * surfaces (JSX attribute values, JSX text nodes, object-literal copy
  * fields). Returns an array of findings: { file, line, snippet }.
  */
-export function scanFileContent(file, rawContent) {
+// A string or template literal on one line, or a template across lines.
+const STRING_LITERAL_PATTERN =
+  /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;
+
+/**
+ * Every string and template literal in `rawContent` that carries a retired
+ * user term. Template interpolations are blanked first, so `${title}` cannot
+ * hide or fake a phrase. Only the retired user terms are checked; see
+ * `LITERAL_COPY_FILES`.
+ */
+export function scanStringLiterals(file, rawContent, retiredTerms) {
   const content = stripComments(rawContent);
   const findings = [];
-  findings.push(...scanObjectLiteralCopy(file, content));
+  if (retiredTerms.length === 0) return findings;
+  for (const match of content.matchAll(STRING_LITERAL_PATTERN)) {
+    const literal = match[0].startsWith('`')
+      ? maskTemplateLiteral(match[0])
+      : match[0].slice(1, -1);
+    const normalized = normalizeSnippet(literal);
+    if (
+      !retiredTerms.some(({ pattern }) =>
+        new RegExp(pattern.source, 'i').test(normalized),
+      )
+    )
+      continue;
+    findings.push({
+      file,
+      line: lineNumberAt(content, match.index),
+      snippet: normalized,
+    });
+  }
+  return findings;
+}
+
+export function scanFileContent(
+  file,
+  rawContent,
+  retiredTerms = ACTIVE_RETIRED_USER_TERMS,
+) {
+  const content = stripComments(rawContent);
+  const findings = [];
+  findings.push(...scanObjectLiteralCopy(file, content, retiredTerms));
+  // Notice text, labels in object literals and `{'…'}` children: any string
+  // literal in a scanned component, for the retired user terms. A literal
+  // the attribute scanners already reported is not reported twice.
+  const literals = scanStringLiterals(file, rawContent, retiredTerms);
 
   function collectAttr(pattern) {
     pattern.lastIndex = 0;
@@ -642,12 +928,7 @@ export function scanFileContent(file, rawContent) {
         match.slice(1).find((group) => group !== undefined) ?? '';
       const normalized = normalizeSnippet(captured);
       if (!normalized) continue;
-      if (
-        !BANNED_WORD_PATTERN.test(normalized) &&
-        !RETIRED_NOUN_PATTERN.test(normalized) &&
-        !RETIRED_PRODUCT_NOUN_PATTERN.test(normalized)
-      )
-        continue;
+      if (!hasStaleNoun(normalized, retiredTerms)) continue;
       if (PROVIDER_COMPONENT_PATTERN.test(match[0])) continue;
       findings.push({
         file,
@@ -681,10 +962,19 @@ export function scanFileContent(file, rawContent) {
     const next = tags[i + 1];
     if (current.end >= next.start) continue;
     findings.push(
-      ...scanChildrenBetweenTags(file, content, current.end, next.start),
+      ...scanChildrenBetweenTags(
+        file,
+        content,
+        current.end,
+        next.start,
+        retiredTerms,
+      ),
     );
   }
 
+  const reported = new Set(findings.map(allowlistKey));
+  for (const finding of literals)
+    if (!reported.has(allowlistKey(finding))) findings.push(finding);
   return findings;
 }
 
@@ -744,6 +1034,7 @@ export function scanCopySourceContent(
   file,
   rawContent,
   opener = copySourceOpener(file),
+  retiredTerms = ACTIVE_RETIRED_USER_TERMS,
 ) {
   const content = stripComments(rawContent);
   const findings = [];
@@ -792,12 +1083,7 @@ export function scanCopySourceContent(
         valueMatch.slice(1).find((group) => group !== undefined) ?? '';
       const normalized = normalizeSnippet(captured);
       if (!normalized) continue;
-      if (
-        !BANNED_WORD_PATTERN.test(normalized) &&
-        !RETIRED_NOUN_PATTERN.test(normalized) &&
-        !RETIRED_PRODUCT_NOUN_PATTERN.test(normalized)
-      )
-        continue;
+      if (!hasStaleNoun(normalized, retiredTerms)) continue;
       findings.push({ file, line, snippet: normalized });
     }
 
@@ -836,16 +1122,39 @@ function allowlistKey(entry) {
  * copy sources (station#1543). `unscannable` carries copy the second scanner
  * could not read — never silently dropped.
  */
-export function runGate({ files, readFile, allowlist, copySourceFiles = [] }) {
-  const findings = [];
+export function runGate({
+  files,
+  readFile,
+  allowlist,
+  copySourceFiles = [],
+  literalCopyFiles = [],
+  retiredTerms = ACTIVE_RETIRED_USER_TERMS,
+}) {
+  const scanned = [];
   for (const file of files) {
     const content = readFile(file);
-    findings.push(...scanFileContent(file, content));
+    scanned.push(...scanFileContent(file, content, retiredTerms));
   }
+  for (const file of literalCopyFiles)
+    scanned.push(...scanStringLiterals(file, readFile(file), retiredTerms));
+  // One finding per place: a label can match both a JSX scanner and the
+  // literal scan.
+  const seen = new Set();
+  const findings = scanned.filter((finding) => {
+    const key = allowlistKey(finding);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   const unscannable = [];
   for (const file of copySourceFiles) {
-    const result = scanCopySourceContent(file, readFile(file));
+    const result = scanCopySourceContent(
+      file,
+      readFile(file),
+      copySourceOpener(file),
+      retiredTerms,
+    );
     findings.push(...result.findings);
     unscannable.push(...result.unscannable);
   }
@@ -879,12 +1188,19 @@ function main() {
     pinned: PINNED_SCOPE_INVENTORY,
     files: [...files, ...COPY_SOURCE_FILES],
   });
+  // A listed literal source that no longer exists is a scope that shrank.
+  for (const file of LITERAL_COPY_FILES)
+    if (!existsSync(file))
+      throw new Error(
+        `noun-consistency gate: literal copy source ${file} is missing; update LITERAL_COPY_FILES.`,
+      );
 
   const { unallowlisted, staleEntries, unscannable } = runGate({
     files,
     readFile: (file) => readFileSync(file, 'utf8'),
     allowlist,
     copySourceFiles: COPY_SOURCE_FILES,
+    literalCopyFiles: LITERAL_COPY_FILES,
   });
 
   console.log(
@@ -917,6 +1233,8 @@ function main() {
     for (const finding of unallowlisted) {
       console.error(`  ${finding.file}:${finding.line}: ${finding.snippet}`);
     }
+    for (const { term, use } of ACTIVE_RETIRED_USER_TERMS)
+      console.error(`  "${term}" is retired; say "${use}".`);
     console.error(
       '\nUse the current vocabulary (Skill, Command, Model, Engine) instead, or add a' +
         '\nreasoned scripts/noun-consistency-allowlist.json entry if this is a' +
@@ -946,7 +1264,7 @@ function main() {
       roots: SCAN_ROOTS,
       extensions: SCAN_EXTENSIONS,
       files,
-      extraFiles: COPY_SOURCE_FILES,
+      extraFiles: [...COPY_SOURCE_FILES, ...LITERAL_COPY_FILES],
     });
     const allowlistNote =
       allowlist.length === 0
@@ -954,7 +1272,7 @@ function main() {
         : `${allowlist.length} allowlist entries, all still live`;
     console.log(
       `OK: no un-allowlisted stale-noun matches. Scanned ${scope} — ` +
-        `${files.length + COPY_SOURCE_FILES.length} files total, ` +
+        `${files.length + COPY_SOURCE_FILES.length + LITERAL_COPY_FILES.length} files total, ` +
         `${allowlistNote}.`,
     );
     process.exit(0);

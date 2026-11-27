@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   constants as fsConstants,
   lstatSync,
@@ -7,6 +8,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import {
@@ -36,10 +38,16 @@ import {
   ensureAppHomeProfile,
   importClaudeGlobalSnapshot,
   importCodexGlobalSnapshot,
+  locateAppHomeProfile,
   markAppHomeProfileImported,
   readAppHomeProfileStatus,
   readAppHomeProfileUsage,
 } from '../app-home-profiles.js';
+import {
+  credentialProfileAppHomeDir,
+  ensureCredentialProfileAppHome,
+  locateCredentialProfileAppHome,
+} from '../credential-profile-registry.js';
 
 /**
  * A real-fs-backed `AppHomeFsPort` for tests that need to inject a
@@ -298,6 +306,177 @@ describe('ensureAppHomeProfile', () => {
       ensureAppHomeProfile('claude', { homeDir, fs }),
     ).rejects.toThrow(/not a regular file/);
     expect(lstatCallCount).toBe(2);
+  });
+});
+
+/** The containment refusal both callers share (`assertAppHomeProfileContained`). */
+const NOT_CONTAINED = /is not contained in the app-homes root/;
+
+describe('profile containment (#4774: shared by ensure and locate)', () => {
+  /**
+   * `app-homes/<id>` as a real symlink to a real directory outside the
+   * app-homes root, so the guard sees a resolved path that escapes.
+   */
+  function linkProfileOutside(profileDir: string): string {
+    const outside = join(scratch, 'outside');
+    mkdirSync(outside, { recursive: true });
+    mkdirSync(join(homeDir, 'app-homes'), { recursive: true });
+    symlinkSync(outside, profileDir);
+    return outside;
+  }
+
+  test('ensureAppHomeProfile refuses a profile dir linked outside the root and creates nothing there', async () => {
+    const outside = linkProfileOutside(appHomeProfileDir('claude', homeDir));
+    await expect(ensureAppHomeProfile('claude', { homeDir })).rejects.toThrow(
+      NOT_CONTAINED,
+    );
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  test('locateAppHomeProfile refuses the same link', async () => {
+    const outside = linkProfileOutside(appHomeProfileDir('claude', homeDir));
+    await expect(locateAppHomeProfile('claude', { homeDir })).rejects.toThrow(
+      NOT_CONTAINED,
+    );
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  test('a credential profile home linked outside the root is refused by ensure and locate', async () => {
+    const outside = linkProfileOutside(
+      credentialProfileAppHomeDir('claude', 'work', homeDir),
+    );
+    await expect(
+      ensureCredentialProfileAppHome('claude', 'work', { homeDir }),
+    ).rejects.toThrow(NOT_CONTAINED);
+    await expect(
+      locateCredentialProfileAppHome('claude', 'work', { homeDir }),
+    ).rejects.toThrow(NOT_CONTAINED);
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  test('a contained profile dir is accepted by both', async () => {
+    const dir = appHomeProfileDir('claude', homeDir);
+    await expect(locateAppHomeProfile('claude', { homeDir })).resolves.toEqual({
+      dir,
+    });
+    expect(existsSync(join(homeDir, 'app-homes'))).toBe(false);
+    await expect(ensureAppHomeProfile('claude', { homeDir })).resolves.toEqual({
+      dir,
+      created: true,
+    });
+    await expect(locateAppHomeProfile('claude', { homeDir })).resolves.toEqual({
+      dir,
+    });
+  });
+});
+
+describe('locateAppHomeProfile refuses what ensure could not create (#4774)', () => {
+  test('a profile path that is a regular file: ensure fails, locate refuses without writing', async () => {
+    const dir = appHomeProfileDir('claude', homeDir);
+    mkdirSync(join(homeDir, 'app-homes'), { recursive: true });
+    writeFileSync(dir, 'not a directory');
+    await expect(locateAppHomeProfile('claude', { homeDir })).rejects.toThrow(
+      /is not a directory/,
+    );
+    expect(readFileSync(dir, 'utf-8')).toBe('not a directory');
+    await expect(ensureAppHomeProfile('claude', { homeDir })).rejects.toThrow();
+  });
+
+  test('an app-homes root that is a regular file is refused the same way', async () => {
+    writeFileSync(join(homeDir, 'app-homes'), 'not a directory');
+    await expect(locateAppHomeProfile('claude', { homeDir })).rejects.toThrow(
+      /is not a directory/,
+    );
+    await expect(ensureAppHomeProfile('claude', { homeDir })).rejects.toThrow();
+  });
+
+  test('an app-homes root this process may not write: ensure fails, locate refuses', async (context) => {
+    const root = join(homeDir, 'app-homes');
+    mkdirSync(root, { recursive: true });
+    chmodSync(root, 0o555);
+    try {
+      // Root (or a host that ignores the mode) may still create entries;
+      // there ensure succeeds too, so there is nothing to refuse.
+      const probe = join(root, 'mode-probe');
+      let enforced = true;
+      try {
+        mkdirSync(probe);
+        rmSync(probe, { recursive: true, force: true });
+        enforced = false;
+      } catch {}
+      if (!enforced)
+        context.skip('this host does not enforce a read-only directory mode');
+      await expect(locateAppHomeProfile('claude', { homeDir })).rejects.toThrow(
+        /is not writable/,
+      );
+      await expect(
+        ensureAppHomeProfile('claude', { homeDir }),
+      ).rejects.toThrow();
+      expect(readdirSync(root)).toEqual([]);
+    } finally {
+      chmodSync(root, 0o755);
+    }
+  });
+
+  /**
+   * The refusal for an entry on the way to the profile dir that exists but
+   * cannot be resolved: `app-homes` as a real dangling symlink, or as one
+   * link of a real two-link loop. Skipped, with the reason, where the host
+   * cannot create symlinks.
+   */
+  describe.each([
+    [
+      'a dangling symlink',
+      (root: string) => {
+        const target = join(scratch, 'missing-app-homes');
+        symlinkSync(target, root);
+        return [target];
+      },
+    ],
+    [
+      'part of a symlink loop',
+      (root: string) => {
+        const other = join(homeDir, 'app-homes-loop');
+        symlinkSync(other, root);
+        symlinkSync(root, other);
+        return [];
+      },
+    ],
+  ])('an app-homes root that is %s', (_name, link) => {
+    test('ensure fails, locate refuses, and nothing is created at or through the link', async (context) => {
+      const root = join(homeDir, 'app-homes');
+      let targets: string[] = [];
+      try {
+        targets = link(root);
+      } catch (error) {
+        context.skip(`this host cannot create symlinks: ${String(error)}`);
+      }
+      const before = readdirSync(homeDir).sort();
+      await expect(
+        ensureAppHomeProfile('claude', { homeDir }),
+      ).rejects.toThrow();
+      await expect(locateAppHomeProfile('claude', { homeDir })).rejects.toThrow(
+        /exists but cannot be resolved/,
+      );
+      await expect(
+        locateCredentialProfileAppHome('claude', 'work', { homeDir }),
+      ).rejects.toThrow(/exists but cannot be resolved/);
+      expect(lstatSync(root).isSymbolicLink()).toBe(true);
+      expect(readdirSync(homeDir).sort()).toEqual(before);
+      for (const target of targets) expect(existsSync(target)).toBe(false);
+    });
+  });
+
+  test('an existing profile is located even where nothing more could be created', async () => {
+    const { dir } = await ensureAppHomeProfile('claude', { homeDir });
+    // Ensure needs no write for an existing profile, so locate needs none.
+    const fs = realFsPortForTest({ canCreateIn: async () => false });
+    await expect(
+      locateAppHomeProfile('claude', { homeDir, fs }),
+    ).resolves.toEqual({ dir });
+    await expect(
+      ensureAppHomeProfile('claude', { homeDir, fs }),
+    ).resolves.toEqual({ dir, created: false });
   });
 });
 

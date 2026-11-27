@@ -5,6 +5,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -16,6 +17,7 @@ import { useRegistryItemsQuery } from '../../../packages/sdk/src/query-domains/c
 import type { RegistryItem } from '../components/registry/registryCatalogModel';
 import * as remotePluginBundleConsent from '../core/remotePluginBundleConsent';
 
+const registrySources = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 const catalogRecovery = vi.hoisted(() => ({
   useItems: vi.fn(),
   fetch: vi.fn(),
@@ -188,11 +190,15 @@ function makeMutation(
           installedByTab[tab].delete(variables.id);
         }
       }
-      callbacks?.onSuccess?.({
-        success: true,
-        action: variables.action,
-        permissions: installedPermissions,
-      });
+      callbacks?.onSuccess?.(
+        tab === 'plugins' && pluginInstallResult
+          ? (pluginInstallResult as never)
+          : {
+              success: true,
+              action: variables.action,
+              permissions: installedPermissions,
+            },
+      );
     },
     variables: null,
   };
@@ -205,6 +211,10 @@ const installedErrorTabs = new Set<string>();
 const reconciledRefetchTabs = new Set<string>();
 const refetchInstalled = vi.fn();
 const reloadPlugins = vi.fn(async () => undefined);
+/** What the plugin install resolves with instead of an applied install. */
+let pluginInstallResult: unknown;
+/** What `GET /api/plugins` lists (readiness included). */
+let installedPluginRows: unknown[] = [];
 const pluginRegistryListeners = new Set<() => void>();
 let pluginRegistryStatus: {
   state: 'ready' | 'degraded';
@@ -242,6 +252,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useRegistryIntegrationActionMutation: () => makeMutation('integrations'),
   useRegistryLayoutActionMutation: () => makeMutation('layouts'),
   usePluginRegistryInstallMutation: () => makeMutation('plugins'),
+  usePluginsQuery: () => ({ data: installedPluginRows }),
   usePluginRegistryPreviewMutation: () => ({
     isPending: false,
     variables: undefined,
@@ -275,7 +286,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useReloadPluginsMutation: () => ({ mutateAsync: reloadPlugins }),
   useInvalidateQuery: () => vi.fn(),
   useRegistrySourcesQuery: () => ({
-    data: [],
+    data: registrySources,
     isLoading: false,
     error: null,
     refetch: vi.fn(),
@@ -379,6 +390,10 @@ afterEach(() => {
   mutationCalls.length = 0;
   previewResults.clear();
   installedPermissions = undefined;
+  pluginInstallResult = undefined;
+  installedPluginRows = [];
+  reloadPlugins.mockClear();
+  requestConsent.mockClear();
   previewMutationCalls.length = 0;
   previewMutationResets = 0;
   pluginRegistryReload.mockClear();
@@ -562,6 +577,126 @@ describe('RegistryView', () => {
     expect(mutationCalls).toEqual([
       { tab: 'skills', id: 'skill-one', action: 'install' },
     ]);
+  });
+
+  test('choosing a source opens its catalog tab unless it supplies the current one', () => {
+    registrySources.push(
+      {
+        id: 'skills-only',
+        kind: 'skills',
+        displayName: 'Skill library',
+        origin: 'user',
+        adapter: 'github',
+        enabled: true,
+        status: 'ready',
+        detection: {
+          state: 'detected',
+          checkedAt: '2026-11-12T00:00:00.000Z',
+          kinds: [
+            { kind: 'skills', count: 3, via: 'skill-md', installable: true },
+            {
+              kind: 'plugins',
+              count: 1,
+              via: 'claude-marketplace',
+              installable: false,
+            },
+          ],
+        },
+      },
+      {
+        id: 'mixed',
+        kind: 'skills',
+        displayName: 'Team catalog',
+        origin: 'user',
+        adapter: 'directory',
+        enabled: true,
+        status: 'ready',
+        detection: {
+          state: 'detected',
+          checkedAt: '2026-11-12T00:00:00.000Z',
+          kinds: [
+            { kind: 'skills', count: 2, via: 'skill-md', installable: true },
+            {
+              kind: 'agents',
+              count: 1,
+              via: 'station-manifest',
+              installable: true,
+            },
+          ],
+        },
+      },
+    );
+    try {
+      render(<RegistryView />);
+      const browse = screen.getByLabelText('Browse marketplace');
+      fireEvent.change(browse, { target: { value: 'mixed' } });
+      expect(navigateMock).not.toHaveBeenCalled();
+      fireEvent.change(browse, { target: { value: 'skills-only' } });
+      expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
+      // The route remounts the view for the new tab; the choice survives it.
+      cleanup();
+      render(<RegistryView initialTab="skills" />);
+      expect(
+        (screen.getByLabelText('Browse marketplace') as HTMLSelectElement)
+          .value,
+      ).toBe('skills-only');
+    } finally {
+      registrySources.length = 0;
+    }
+  });
+
+  test('a chosen source is kept when the person switches tabs', () => {
+    registrySources.push({
+      id: 'mixed',
+      kind: 'skills',
+      displayName: 'Team catalog',
+      origin: 'user',
+      adapter: 'directory',
+      enabled: true,
+      status: 'ready',
+    });
+    try {
+      render(<RegistryView initialTab="skills" />);
+      fireEvent.change(screen.getByLabelText('Browse marketplace'), {
+        target: { value: 'mixed' },
+      });
+      fireEvent.click(screen.getByRole('tab', { name: 'Plugins' }));
+      expect(navigateMock).toHaveBeenCalledWith('/registry/plugins');
+      // The route remounts the view for the new tab.
+      cleanup();
+      render(<RegistryView initialTab="plugins" />);
+      expect(
+        (screen.getByLabelText('Browse marketplace') as HTMLSelectElement)
+          .value,
+      ).toBe('mixed');
+    } finally {
+      registrySources.length = 0;
+    }
+  });
+
+  test('Discover comes first: management opens from the toolbar instead of sitting above the catalog', () => {
+    render(<RegistryView />);
+    const browse = screen.getByLabelText('Browse marketplace');
+    const tabs = screen.getByRole('tab', { name: 'Skills' });
+    const follows = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(browse, tabs)).toBe(true);
+    // No source list between browsing and the catalog.
+    expect(
+      screen.queryByText(/^Manage sources/, { selector: 'summary' }),
+    ).toBeNull();
+    const manage = screen.getByRole('button', { name: /^Manage sources/ });
+    expect(follows(manage, tabs)).toBe(true);
+    fireEvent.click(manage);
+    expect(screen.getByRole('dialog', { name: 'Manage sources' })).toBeTruthy();
+  });
+
+  test('a catalog card shows a short Details label and names the item for assistive tech', () => {
+    render(<RegistryView />);
+    const button = screen.getByRole('button', {
+      name: `View ${registryItems.agents[0]!.displayName} details`,
+    });
+    expect(button.textContent).toBe('Details');
   });
 
   test('updates the URL when switching Registry tabs', () => {
@@ -878,7 +1013,7 @@ describe('RegistryView', () => {
         ).toBeTruthy();
         expect(
           within(installedDetail).getByRole('button', {
-            name: 'Remove Plugin',
+            name: 'Remove plugin',
           }),
         ).toBeTruthy();
       } else {
@@ -945,20 +1080,32 @@ describe('RegistryView', () => {
     });
   });
 
-  test('shows in-app empty-state guidance and docs, not a terminal command', () => {
+  test('shows in-app empty-state guidance, not a terminal command', () => {
     emptyTabs.add('agents');
     render(<RegistryView />);
 
     expect(
-      screen.getByText(
-        'No agents are available from the configured registry sources yet.',
-      ),
+      screen.getByText('No agents in your marketplaces yet.'),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Manage plugins' })).toBeNull();
     expect(
-      screen.getByText(/Ask an administrator to include an item/i),
+      screen.getByText(
+        'Add a marketplace, or ask the Station operator to add one.',
+      ),
     ).toBeTruthy();
     expect(screen.queryByText(/station plugin install/i)).toBeNull();
+    // Plugin guidance belongs to the Plugins tab only.
+    expect(
+      screen.queryByRole('link', { name: 'Open plugin guidance' }),
+    ).toBeNull();
+  });
+
+  test('offers plugin guidance on an empty Plugins tab', () => {
+    emptyTabs.add('plugins');
+    render(<RegistryView initialTab="plugins" />);
+    expect(
+      screen.getByText('No plugins in your marketplaces yet.'),
+    ).toBeTruthy();
 
     const docsLink = screen.getByRole('link', { name: 'Open plugin guidance' });
     expect(docsLink.getAttribute('href')).toBe(
@@ -1013,7 +1160,7 @@ describe('RegistryView', () => {
     expect(
       (
         within(screen.getByTestId('registry-detail')).getByRole('button', {
-          name: 'Checking installed status...',
+          name: 'Checking installed status…',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -1166,7 +1313,7 @@ describe('RegistryView', () => {
     expect(
       (
         within(screen.getByTestId('registry-detail')).getByRole('button', {
-          name: 'Checking installed status...',
+          name: 'Checking installed status…',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -1175,6 +1322,95 @@ describe('RegistryView', () => {
     );
     expect(refetchInstalled).toHaveBeenCalledTimes(1);
     expect(mutationCalls).toEqual([]);
+  });
+
+  test('an install saved without completing its activation says it is not active and points at the plugin, without a host review it cannot finish', async () => {
+    previewResults.set('demo-layout', validDemoPreview());
+    pluginInstallResult = {
+      success: false,
+      plugin: { name: 'demo-layout', version: '1.0.0' },
+      permissions: {
+        pendingConsent: [],
+        dependencies: [
+          {
+            id: 'shared-providers',
+            pendingConsent: [
+              { permission: 'providers.register', tier: 'trusted' },
+            ],
+          },
+        ],
+      },
+      configurationActivation: {
+        status: 'pending',
+        recovery: 'required',
+        reason: 'saved',
+      },
+    };
+    render(<RegistryView initialTab="plugins" />);
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+
+    await waitFor(() => expect(showToastMock).toHaveBeenCalled());
+    const [text, , , actions, tone] = showToastMock.mock.calls.at(-1) as [
+      string,
+      unknown,
+      unknown,
+      Array<{ label: string; onClick: () => void }> | undefined,
+      string,
+    ];
+    expect(text).toBe(
+      'Demo Layout was installed, but its activation did not finish, so it is not active. Choose Recover plugin to activate it; trusted permissions are asked for after that.',
+    );
+    expect(tone).toBe('warning');
+    actions?.[0]?.onClick();
+    expect(navigateMock).toHaveBeenCalledWith('/plugins/demo-layout');
+    expect(mutationCalls).toHaveLength(1);
+    expect(requestConsent).not.toHaveBeenCalled();
+    expect(reloadPlugins).not.toHaveBeenCalled();
+  });
+
+  test('installing a plugin that is already installed but not active offers Recover, and installs again only when asked', async () => {
+    previewResults.set('demo-layout', validDemoPreview());
+    installedPluginRows = [
+      {
+        name: 'demo-layout',
+        version: '1.0.0',
+        installationReadiness: { state: 'pending', recovery: 'review' },
+      },
+    ];
+    render(<RegistryView initialTab="plugins" />);
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+
+    await waitFor(() => expect(showToastMock).toHaveBeenCalled());
+    const [text, , , actions, tone] = showToastMock.mock.calls.at(-1) as [
+      string,
+      unknown,
+      unknown,
+      Array<{ label: string; onClick: () => void }>,
+      string,
+    ];
+    expect(text).toBe(
+      'Demo Layout is already installed but not active. Recover it to activate it; installing it again adds another copy of its code.',
+    );
+    expect(tone).toBe('warning');
+    expect(mutationCalls).toEqual([]);
+    expect(actions.map((action) => action.label)).toEqual([
+      'Recover plugin',
+      'Install again anyway',
+    ]);
+    actions[0]!.onClick();
+    expect(navigateMock).toHaveBeenCalledWith('/plugins/demo-layout');
+    actions[1]!.onClick();
+    await waitFor(() => expect(mutationCalls).toHaveLength(1));
   });
 
   test('a plugin that contributes no layout is confirmed with nothing to place (#1536 G7)', () => {
@@ -1213,7 +1449,7 @@ describe('RegistryView', () => {
     expectInstalledToast('Installed Demo Layout', 'demo-layout');
 
     fireEvent.click(
-      within(detail).getByRole('button', { name: 'Remove Plugin' }),
+      within(detail).getByRole('button', { name: 'Remove plugin' }),
     );
     expect(screen.getByText('Removed Demo Layout')).toBeTruthy();
     expect(

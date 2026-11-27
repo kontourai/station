@@ -3,18 +3,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir, platform } from 'node:os';
 import nodePath from 'node:path';
-import {
-  deleteSession,
-  forkSession,
-  listSessions,
-  type McpServerConfig,
-  type Options,
-  type PermissionMode,
-  type PermissionResult,
-  type PermissionUpdate,
-  type Query,
-  query,
-  type SDKMessage,
+import type {
+  McpServerConfig,
+  Options,
+  PermissionMode,
+  PermissionResult,
+  PermissionUpdate,
+  Query,
+  SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages/messages';
 import {
@@ -39,6 +35,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
   NATIVE_RESUME_BINDING_METADATA_KEY,
@@ -47,7 +44,10 @@ import {
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
-import { CONFINED_FULL_ACCESS_UNAVAILABLE_CODE } from '@kontourai/station-contracts/provider-failure';
+import {
+  CONFINED_FULL_ACCESS_UNAVAILABLE_CODE,
+  CONFINED_NETWORK_DENIED_CODE,
+} from '@kontourai/station-contracts/provider-failure';
 import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderRuntimeErrorEvent,
@@ -58,6 +58,11 @@ import type {
   ModelOptionCapabilities,
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
+import {
+  type ChildWorkloadNotice,
+  type ChildWorkloadOutcome,
+  childWorkloadMemoryExhausted,
+} from '@kontourai/station-shared/child-workload';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import {
   externalMcpToolApprovalIdentity,
@@ -65,15 +70,20 @@ import {
 } from '@kontourai/station-shared/mcp-tool-selection';
 import {
   type ClaudeAskReason,
+  ruleGrantPermissionUpdates,
   sessionGrantPermissionUpdates,
   type ToolRequestGrantInput,
+  type ToolRequestRuleGrant,
   type ToolRequestServerGrant,
   type ToolRequestSessionGrant,
   toolRequestIsPlainCall,
+  toolRequestRuleGrant,
   toolRequestServerGrant,
   toolRequestSessionGrant,
+  toolRequestStrictSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
 import { NATIVE_SESSION_RESUMED_METADATA_KEY } from '@kontourai/station-shared/usage-fold';
+import { claudeToolSearchEnv } from '../../runtime/agents/claude-tool-search.js';
 import {
   delegatedApprovalDenial,
   type PreToolPolicyDecision,
@@ -94,13 +104,20 @@ import {
   observedConfinementRecord,
 } from '../../security/confinement/confinement-provider.js';
 import {
+  type EgressBroker,
+  type EgressDecisionRecord,
+  type EgressHostRule,
+  parseEgressHostRule,
+  startEgressBroker,
+} from '../../security/confinement/egress-broker.js';
+import {
   canonicalPath,
   type SeatbeltEvidence,
-  seatbeltConfinementProvider,
 } from '../../security/confinement/seatbelt.js';
 import {
   assertEngineAllowedByManagedPolicy,
   managedEngineBinaryPath,
+  managedEngineEnvironmentLocked,
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
@@ -114,7 +131,20 @@ import {
   stampLaunchExit,
 } from '../../services/infra/session-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
+import {
+  type SessionToolRestriction,
+  sessionToolRestriction,
+} from '../../services/orchestration/session-tool-restriction.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
+import {
+  CLAUDE_NATIVE_WEB_READ_TOOLS,
+  markNativeWebRead,
+} from '../../services/plugins/native-web-read-marks.js';
+import {
+  DELEGATED_RESULT_TOOLS,
+  sharedUntrustedContentLedger,
+  type UntrustedContentLedger,
+} from '../../services/plugins/untrusted-content-policy.js';
 import {
   agentCapabilityUndelivered,
   agentSystemPromptSessions,
@@ -123,6 +153,9 @@ import {
   providerOps,
 } from '../../telemetry/metrics.js';
 import { STATION_BROWSER_MCP_SERVER_ID } from '../../tools/station-browser-policy.js';
+import { restrictedNetworkStationControlTools } from '../../tools/station-control-policy.js';
+import { composeAmbientTurnText } from '../../utils/ambient-context.js';
+import { raceWithSignal } from '../../utils/bounded-async.js';
 import {
   childProcessEnvironment,
   scrubBootInternalSecrets,
@@ -179,6 +212,7 @@ import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import {
   assertExecutionOverrideDelivery,
+  confirmStationInstructionsDelivery,
   mergeCapabilityDeliveryMetadata,
 } from './capability-delivery-metadata.js';
 import {
@@ -198,6 +232,7 @@ import {
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
   reportClaudePermissionMode,
+  settleOpenClaudeTasks,
   settleUnresolvedClaudeToolCalls,
   withdrawnSubagentPermissionResult,
 } from './claude-adapter-events.js';
@@ -210,10 +245,12 @@ import {
   resolveClaudePermissionMode,
 } from './claude-approval-mode.js';
 import {
+  type ClaudeEngineExit,
   type ClaudeEngineProcess,
   claudeExitDetailWithStderr,
   createClaudeEngineProcess,
 } from './claude-code-spawn.js';
+import { claudeInstructionFilesSettings } from './claude-instruction-files.js';
 import {
   type ClaudeToolServerSkip,
   resolveClaudeMcpServers,
@@ -243,12 +280,17 @@ import {
   withdrawQueuedClaudeTurn,
 } from './claude-sdk-turns.js';
 import {
+  type ClaudeSpawnWrapMechanism,
   CONFINED_CLAUDE_CREDENTIAL_SETUP,
   type ConfinedClaudeLaunch,
+  claudeModelEndpoint,
+  claudeSpawnWrapLabel,
+  claudeSpawnWrapProvider,
   confinedClaudeConfigDir,
   confinedClaudeCredential,
   confinedClaudeDecision,
   confinedClaudeSpawn,
+  isClaudeSpawnWrapMechanism,
   prepareConfinedClaudeLaunch,
 } from './claude-seatbelt.js';
 import {
@@ -262,7 +304,12 @@ import {
   skillOverlayDirFor,
   sweepStaleSkillOverlays,
 } from './claude-skills-overlay.js';
+import { resolveClaudeStationDocs } from './claude-station-docs.js';
 import { applyEngineProxyAuthPrerequisite } from './engine-proxy-auth-prerequisite.js';
+import {
+  EngineWorkloadNotices,
+  workloadNoticeWarning,
+} from './engine-workload-notices.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { claudeAnswers, claudeInputRequest } from './harness-questions.js';
 import {
@@ -283,17 +330,67 @@ type PendingRequest = {
    */
   sessionGrant: ToolRequestSessionGrant;
   /**
+   * The request is an escalation (`toolRequestStrictSessionGrant` gives no
+   * tool grant): a session answer to it also covers the tool's later
+   * escalations, where one given on a plain call covers plain calls only.
+   */
+  escalation: boolean;
+  /**
    * Whether the request offered the server-wide Station browser grant: the
    * same `toolRequestServerGrant` computation the surfaces offer from.
    */
   serverGrant: ToolRequestServerGrant;
+  /**
+   * The command-prefix grant the request offered, if any: the same
+   * `toolRequestRuleGrant` computation the surfaces offer from.
+   */
+  ruleGrant?: ToolRequestRuleGrant;
   /** #3390: the form an `AskUserQuestion` opened, answered with content. */
   inputRequest?: InputRequestForm;
   eventId: string;
 };
 
+type ClaudeAgentSdk = typeof import('@anthropic-ai/claude-agent-sdk');
+let claudeAgentSdk: Promise<ClaudeAgentSdk> | undefined;
+/**
+ * The Agent SDK is loaded on first use, not at boot: loading it costs tens
+ * of MiB of memory, and an idle server never calls it. A failed load rejects where the SDK call would have
+ * thrown, and is not memoized here, so a later caller loads again.
+ * scripts/lib/server-static-imports.mjs fails the build if a static value
+ * import of it returns.
+ */
+function loadClaudeAgentSdk(): Promise<ClaudeAgentSdk> {
+  claudeAgentSdk ??= import('@anthropic-ai/claude-agent-sdk').catch(
+    (error: unknown) => {
+      claudeAgentSdk = undefined;
+      throw error;
+    },
+  );
+  return claudeAgentSdk;
+}
+
 /** The command Station resolves on PATH for this engine. */
 const CLAUDE_CLI_COMMAND = 'claude';
+// Exact native runtimes exercised by retained-context wildcard-deny controls.
+const CONTEXT_SYNC_RUNTIME_VERSIONS = new Set([
+  '2.1.308',
+  '2.1.318',
+  '2.1.322',
+]);
+/**
+ * #2540: the oldest Claude Code whose hook reporting (`includeHookEvents`)
+ * Station has checked: a settings hook, `async` and `asyncRewake` alike,
+ * reports `hook_started` before the turn's `result` and `hook_response` when
+ * it ends, and an SDK callback hook reports nothing. An older or unreported
+ * version is not parked early.
+ */
+const CLAUDE_HOOK_REPORTING_VERIFIED_VERSION = '2.1.322';
+/** #2540: tools that change the engine's session-scoped wakeups. */
+const CLAUDE_WAKEUP_SCHEDULING_TOOLS: ReadonlySet<string> = new Set([
+  'CronCreate',
+  'CronDelete',
+  'ScheduleWakeup',
+]);
 /** #2494: id of the confined-credential readiness entry (macOS only). */
 const CLAUDE_CONFINED_CREDENTIAL_PREREQUISITE_ID = 'claude-confined-credential';
 
@@ -722,6 +819,9 @@ function claudeModelCapabilities(
 
 type ClaudeSessionRecord = {
   session: ProviderSession;
+  toolRestriction?: SessionToolRestriction;
+  toolRestrictionPending?: true;
+  configuredClaudeEndpoint: boolean;
   deliveryProbeServerId?: string;
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
@@ -732,8 +832,32 @@ type ClaudeSessionRecord = {
   engineDied?: boolean;
   /** `stopSession` began: a stream failure after it is the stop, not a death. */
   stopping?: boolean;
+  /**
+   * The engine process exited without a stop (a crash, a memory kill). The
+   * SDK's message stream can stay open forever after that, so the exit itself
+   * is what ends the session.
+   */
+  engineExit?: ClaudeEngineExit;
+  /** Set once the SDK's message stream has ended (or thrown). */
+  streamEnded?: boolean;
+  /** Set once a failure for this engine's death was published. */
+  engineFailurePublished?: boolean;
+  /** Set once the observed exit of this engine ended the session. */
+  engineExitFinalized?: boolean;
+  /** The newest turn this adapter dispatched, kept after it ends. */
+  lastDispatchedTurnId?: string;
+  /** Stops observing the engine process's exit. */
+  stopWatchingEngineExit?: () => void;
+  /**
+   * #5113: workload notices the engine has not been told yet, drained into
+   * its context by the PostToolUse, PostToolUseFailure and UserPromptSubmit
+   * hooks; and the unsubscribe from the engine process's notices.
+   */
+  workloadNotices?: EngineWorkloadNotices;
+  stopWatchingWorkloadNotices?: () => void;
   promptQueue: AsyncUserMessageQueue;
   query: Query;
+  stationDocs?: Awaited<ReturnType<typeof resolveClaudeStationDocs>>;
   mcpServers: Record<string, McpServerConfig>;
   tenantExecutionContext?: TenantExecutionContext;
   configuredMetadata?: Record<string, unknown>;
@@ -742,6 +866,8 @@ type ClaudeSessionRecord = {
   coordinatorControlGeneration?: number;
   coordinatorKnowledgeGeneration?: number;
   stationControlBuiltin: boolean;
+  /** #4769: the start's plan restricted the network. */
+  networkRestricted?: true;
   pendingRequests: Map<string, PendingRequest>;
   /** Mirrors `ClaudeMessageState.activeTurnId`; derived from `sdkTurns`. */
   activeTurnId?: string;
@@ -760,6 +886,28 @@ type ClaudeSessionRecord = {
   onTaskSettled?: (taskId: string) => void;
   /** Mirrors `ClaudeMessageState.childWork` (#2457). */
   childWork?: ClaudeChildWorkState;
+  /** Mirrors `ClaudeMessageState.housekeepingTasks` (#2540). */
+  housekeepingTasks?: Set<string>;
+  /** Mirrors `ClaudeMessageState.mcpServersStationOnly` (#2540). */
+  mcpServersStationOnly?: boolean;
+  /** Mirrors `ClaudeMessageState.foreignHookObserved` (#2540). */
+  foreignHookObserved?: boolean;
+  /** Mirrors `ClaudeMessageState.claudeCodeVersion` (#2540). */
+  claudeCodeVersion?: string;
+  /**
+   * How many session-scoped wakeups (CronCreate, ScheduleWakeup, a loop) the
+   * engine reported scheduled when it last stopped (its Stop hook's
+   * `session_crons`). They live in this process, so a finished-session park
+   * would drop them. Absent until a Stop hook reports the field.
+   */
+  scheduledWakeups?: number;
+  /**
+   * The engine called a scheduling tool (CronCreate, CronDelete,
+   * ScheduleWakeup) since a Stop hook last reported `session_crons`: how many
+   * wakeups it holds is unknown, so it is treated as holding one. A turn that
+   * ends through StopFailure runs no Stop hook and leaves this set.
+   */
+  scheduledWakeupsUnknown?: boolean;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** The engine's live permission mode, as Station last sent it or the
@@ -796,11 +944,20 @@ type ClaudeSessionRecord = {
    * Tool-level session grants from `acceptForSession`. The SDK's own session
    * rule is scoped to its suggested `PermissionUpdate` — for Bash that is the
    * command pattern, not the tool — so a second, different Bash command
-   * re-prompts even after "Allow Bash for this session". Station remembers
+   * re-prompts even after "Allow all Bash commands for this session". Station remembers
    * the tool name itself here (mirrors station-agent-adapter's
    * `approvedTools`) so the grant covers the whole tool for this session.
    */
   approvedTools: Set<string>;
+  /**
+   * Owner decision (2026-11-16): tools a person allowed for the session when
+   * answering an ESCALATION of them (a safety check, a path outside the
+   * session's folders, a rule- or hook-forced ask). Only these grants answer
+   * a later escalation; one given on a plain call (`approvedTools` alone)
+   * never does, so an ordinary "allow all" cannot silently cover the risky
+   * case.
+   */
+  approvedToolEscalations: Set<string>;
   /**
    * Server-wide session grants from an `acceptForSession` answer carrying
    * `sessionGrantScope: 'server'`: the MCP server ids whose every later
@@ -873,7 +1030,38 @@ function adoptionTitle(threadId: string): string {
   return `Station continuation ${threadId}`;
 }
 
+/**
+ * The title a new Claude session starts with. Without one the engine asks the
+ * model to name the session from the first prompt: an extra request per
+ * session that Station never reads, since it names conversations itself
+ * (conversation-title-generation.ts). Distinct from `adoptionTitle`, which
+ * child cleanup matches exactly.
+ */
+function newSessionTitle(threadId: string): string {
+  return `Station conversation ${threadId}`;
+}
+
 const CLAUDE_CONFIG_DIR_ENV_KEY = 'CLAUDE_CONFIG_DIR';
+
+function hasConfiguredClaudeEndpoint(
+  env: Options['env'],
+  configuredBaseUrl: string | undefined,
+): boolean {
+  if (
+    !configuredBaseUrl ||
+    env?.ANTHROPIC_BASE_URL !== configuredBaseUrl ||
+    managedEngineEnvironmentLocked('claude') ||
+    !/^https?:\/\//i.test(configuredBaseUrl)
+  ) {
+    return false;
+  }
+  try {
+    const { hostname } = new URL(configuredBaseUrl);
+    return hostname.replace(/\.$/, '') !== 'api.anthropic.com';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * #3163: the config home a spawn resolves, in `buildOptions`' own env layer
@@ -884,13 +1072,19 @@ function claudeSpawnConfigHome(
   appHomeEnv: Record<string, string> | undefined,
   connectionEnv: Record<string, string> | undefined,
   augmentedEnv: Record<string, string | undefined> | undefined,
+  /**
+   * Where a relative value is resolved. The engine resolves it against the cwd
+   * it is spawned in; callers that key bindings by this path keep resolving
+   * against Station's own cwd, as they always have.
+   */
+  base: string = process.cwd(),
 ): string {
   const configured =
     appHomeEnv?.[CLAUDE_CONFIG_DIR_ENV_KEY] ??
     connectionEnv?.[CLAUDE_CONFIG_DIR_ENV_KEY] ??
     (augmentedEnv ?? process.env)[CLAUDE_CONFIG_DIR_ENV_KEY];
   return configured?.trim()
-    ? nodePath.resolve(configured.trim())
+    ? nodePath.resolve(base, configured.trim())
     : nodePath.join(homedir(), '.claude');
 }
 
@@ -1124,6 +1318,8 @@ export interface ClaudeAdapterOptions {
   ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
   /** Testable bound for the in-process PreToolUse callback. */
   preToolPolicyTimeoutMs?: number;
+  /** #4828: where native web reads are marked; the shared ledger by default. */
+  untrustedContentLedger?: UntrustedContentLedger;
   /**
    * The two filesystem leaves `stopSession` calls to clean up this session's
    * materialized skills, injected so a test can observe WHETHER they ran.
@@ -1146,8 +1342,15 @@ export interface ClaudeAdapterOptions {
    */
   streamStopGraceMs?: number;
   /**
-   * #2494: the Seatbelt provider a start whose plan names `seatbelt` is
-   * confined through. Defaults to the server's own; injected by tests.
+   * How long the SDK's message stream may stay open after its engine process
+   * exited unasked before the adapter closes it. Default
+   * `CLAUDE_ENGINE_EXIT_STREAM_GRACE_MS`; injected by tests.
+   */
+  engineExitStreamGraceMs?: number;
+  /**
+   * #2494: the provider a start whose plan names a spawn-wrapped mechanism
+   * (`seatbelt`, or `bubblewrap` since #4770) is confined through. Defaults
+   * to the server's own for that mechanism; injected by tests.
    */
   seatbeltProvider?: ConfinementProvider<SeatbeltEvidence>;
   /** #2494: Station's runtime home for confined sessions; injected by tests. */
@@ -1157,18 +1360,66 @@ export interface ClaudeAdapterOptions {
    * handshake before it is refused as not observed. Default 60 s.
    */
   confinementHandshakeTimeoutMs?: number;
+  /**
+   * #4769: where a restricted session's distinct broker decisions are kept
+   * (the Station log in production). Absent, they are not kept.
+   */
+  logNetworkDecision?: (details: Record<string, unknown>) => void;
   logger?: ClaudeAdapterLogger;
+  /**
+   * The engine's managed settings folder, read to keep a managed choice of
+   * project instruction files. Defaults to the platform's fixed folder
+   * (`claudeManagedSettingsRoot`).
+   */
+  managedSettingsRoot?: string;
 }
 
-/** #2494: a start confined by Seatbelt, prepared before its spawn. */
+/**
+ * #2494: a start confined by a spawn-wrapped mechanism (Seatbelt, or
+ * bubblewrap since #4770), prepared before its spawn.
+ */
 interface SeatbeltStart {
-  plan: ConfinementPlan;
+  plan: ConfinementPlan & { mechanism: ClaudeSpawnWrapMechanism };
   provider: ConfinementProvider<SeatbeltEvidence>;
   launch: ConfinedClaudeLaunch;
   /** The app-home layer pointing the engine at its Station-owned home. */
   appHomeEnv: Record<string, string>;
   /** Variables the operator configured for this engine; they pass as set. */
   configuredKeys: ReadonlySet<string>;
+  /**
+   * #4769: the session's egress broker, when its plan restricts the network.
+   * Closed by `launch.cleanup`, with the session's temp directory.
+   */
+  egress?: { broker: EgressBroker };
+}
+
+/** #4769: the distinct refused hosts a session reports, one warning each. */
+const MAX_REPORTED_NETWORK_DENIALS = 20;
+
+/** #4769: what each fallback to Auto means, in a restricted refusal. */
+const RESTRICTED_FALLBACK_REASONS: Record<ConfinementFallbackReason, string> = {
+  'confined-credential-unavailable':
+    'no credential a confined Claude session can use was found',
+  'config-root-pinned':
+    'it continues a conversation kept in your own Claude configuration, which a confined session may not write',
+  'resume-bound-elsewhere':
+    'it resumes a conversation recorded under another Claude configuration home',
+  'workspace-too-broad':
+    "its folder is or contains your home folder or Station's data (or, under bubblewrap, a secret store the sandbox hides)",
+};
+
+/**
+ * #4769: a start whose plan restricts the network but which would fall back
+ * to Auto with nothing engaged (and so with an open network) is refused,
+ * naming the fallback, rather than run open.
+ */
+function restrictedNetworkFallbackRefusal(
+  reason: ConfinementFallbackReason,
+): ConfinementRefusedError {
+  return new ConfinementRefusedError(
+    'confinement_mechanism_unavailable',
+    `This claude session requires a restricted network, which cannot be applied to this start: ${RESTRICTED_FALLBACK_REASONS[reason]} (${reason}). Nothing started.`,
+  );
 }
 
 /**
@@ -1229,7 +1480,7 @@ function withoutUnconfinedFullAccess<T extends ProviderSessionStartInput>(
   input: T,
 ): T {
   return (input.confinement ?? 'workspace') === 'workspace' &&
-    input.confinementPlan?.mechanism !== 'seatbelt' &&
+    !isClaudeSpawnWrapMechanism(input.confinementPlan?.mechanism) &&
     readApprovalMode(input.modelOptions) === 'never'
     ? {
         ...input,
@@ -1287,6 +1538,26 @@ const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
 const CLAUDE_STREAM_STOP_GRACE_MS = 1_000;
 
 /**
+ * After the `claude` process exits without a stop, the SDK's message stream
+ * (streaming input mode) can stay open forever: it neither ends nor throws, so
+ * nothing would ever record the death. This long after the exit, a stream
+ * still open is closed, which ends it.
+ */
+const CLAUDE_ENGINE_EXIT_STREAM_GRACE_MS = 2_000;
+
+/** How long an unexpected exit waits for its scope's workload outcome. */
+const CLAUDE_ENGINE_EXIT_OUTCOME_WAIT_MS = 12_000;
+
+const toMiB = (bytes: number) => Math.round(bytes / (1024 * 1024));
+
+function claudeMemoryExhaustedMessage(outcome: ChildWorkloadOutcome): string {
+  const budget = outcome.memoryMaxBytes
+    ? ` Its workload budget is ${toMiB(outcome.memoryMaxBytes)} MiB${outcome.memoryPeakBytes ? ` (peak ${toMiB(outcome.memoryPeakBytes)} MiB)` : ''}, shared by Claude, its subagents and every command they run.`
+    : '';
+  return `Claude ran out of memory and was stopped, along with the work it was running.${budget} When the chat continues, Station tells Claude what was interrupted and to run memory-heavy steps one at a time.`;
+}
+
+/**
  * Keep the raw SDK name for authentic grant provenance and any user-visible
  * receipt. Matching stages use the forms their owning policy understands:
  * `<server>_<tool>` for delegation and the MCP leaf for config protection.
@@ -1313,6 +1584,9 @@ function serverDelegation(
  * the oldest; one dropped early costs a prompt, never a grant.
  */
 const MAX_PENDING_POLICY_ALLOWS = 256;
+
+/** #4828: station-control tools as the engine names them. */
+const STATION_CONTROL_TOOL_PREFIX = 'mcp__station-control__';
 
 /** JSON with object keys sorted at every depth, so key order is no difference. */
 function stableJson(value: unknown): unknown {
@@ -1430,6 +1704,14 @@ async function evaluateClaudePreToolPolicy(
     toolName: string,
     toolInput: unknown,
   ) => void,
+  onGuardianAsk: (
+    toolUseId: string,
+    toolName: string,
+    toolInput: unknown,
+    reason: string,
+  ) => void,
+  /** The engine runs at `bypassPermissions` for this call. */
+  fullAccess = false,
 ) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -1444,6 +1726,7 @@ async function evaluateClaudePreToolPolicy(
         {
           interaction: 'external',
           identity: externalPreToolPolicyIdentity(input.tool_name),
+          ...(fullAccess ? { fullAccess } : {}),
         },
       ),
       new Promise<PreToolPolicyDecision>((resolve) => {
@@ -1463,6 +1746,14 @@ async function evaluateClaudePreToolPolicy(
     ]);
     if (decision.behavior === 'allow' && !decision.toolGrant) {
       onPolicyAllow(input.tool_use_id, input.tool_name, input.tool_input);
+    }
+    if (decision.behavior === 'ask' && decision.guardianReason) {
+      onGuardianAsk(
+        input.tool_use_id,
+        input.tool_name,
+        input.tool_input,
+        decision.guardianReason,
+      );
     }
     return preToolPolicyHookOutput(decision);
   } catch (error) {
@@ -1493,6 +1784,24 @@ async function coordinatorMcpDeadline<T>(operation: Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Whether Station's orchestration instructions are appended to this session's
+ * system prompt: an authored prompt to append after, instructions to append,
+ * and the built-in station-control server in the servers the session is
+ * actually given. One predicate for the options and the delivery receipt, so
+ * the two cannot disagree.
+ */
+function claudeStationInstructionsAppended(
+  input: Pick<ProviderSessionStartInput, 'agent'>,
+  servers: Record<string, McpServerConfig> | undefined,
+): boolean {
+  return Boolean(
+    input.agent?.systemPrompt &&
+      input.agent.stationInstructions &&
+      servers?.['station-control'] !== undefined,
+  );
+}
+
 export class ClaudeAdapter implements ProviderAdapterShape {
   readonly coordinatorToolsRefresh = true as const;
   coordinatorToolsNeedSuccessor(threadId: string): boolean {
@@ -1507,6 +1816,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
+  /** `sendTurn` refuses a Session in `error` as `session_gone`. */
+  readonly refusesTurnsAfterFailure = true as const;
   private readonly continuity: ProviderContinuityCapabilities = {
     resume: 'same-session',
     fork: 'none',
@@ -1536,6 +1847,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     engineId: engineId('claude'),
     abortSettlement: 'await',
     workloadScope: 'engine-process' as const,
+    // #2540: with `earlyParkRefusal`, see there for what this rests on.
+    openEngineWork: 'complete' as const,
+    // `respondToRequest` forwards only the offered Bash prefix rules.
+    sessionGrantScopes: ['rule'] as const,
     recovery: {
       sameSession: true,
       maxAttempts: 1,
@@ -1580,6 +1895,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   private readonly events = new AsyncEventQueue();
   private readonly sessions = new Map<string, ClaudeSessionRecord>();
+  private readonly restrictedStartingProcesses = new Map<
+    string,
+    ClaudeEngineProcess
+  >();
   /** #1551: memoized `<claude> --version` probes, keyed by command + args. */
   private readonly versionProbes = new Map<
     string,
@@ -1605,10 +1924,33 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       this.continuity.nativeReturn = 'same-binding';
   }
 
+  async assertContextSyncRuntime(): Promise<void> {
+    const executable = await this.resolveClaudeExecutable();
+    const version =
+      executable.launch === 'installed'
+        ? executable.installedVersion
+        : executable.bundledVersion;
+    if (!CONTEXT_SYNC_RUNTIME_VERSIONS.has(version ?? ''))
+      throw new Error('group_sync_policy_unavailable');
+  }
+
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
     try {
+      const restriction = sessionToolRestriction(input.threadId);
+      if (restriction) {
+        if (
+          this.nativeSessionIdentity(input.resumeCursor)?.sessionId !==
+          restriction.nativeSessionId
+        )
+          throw new Error('group_sync_identity_changed');
+        input = {
+          ...input,
+          requireNativeResumeIdentity: true,
+          nativeResumeBindingKey: restriction.nativeBindingKey,
+        };
+      }
       input = withoutUnconfinedFullAccess(input);
       if (
         input.requireNativeResumeIdentity &&
@@ -1656,11 +1998,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       const usageAccountKey = resolvedHome
         ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
         : undefined;
+      const sdk = await loadClaudeAgentSdk();
       // #2494: a plan that engages Seatbelt confines this start, or (for a
       // reason a check derives) runs it at Auto with nothing engaged. Every
       // other start takes the same synchronous path as before.
-      if (input.confinementPlan?.mechanism !== 'seatbelt')
+      if (!isClaudeSpawnWrapMechanism(input.confinementPlan?.mechanism)) {
+        const docs = resolveClaudeStationDocs(input);
+        const stationDocs = docs ? await docs : undefined;
+        if (docs) input.signal?.throwIfAborted();
         return this.startTrackedSession(
+          sdk,
           input,
           input.persistSession === true,
           skillsReport,
@@ -1675,7 +2022,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           undefined,
           oauthTokens,
           artifactsEnv,
+          stationDocs,
         );
+      }
       const seatbelt = await this.prepareSeatbeltStart(input, {
         appHomeEnv,
         connectionEnv,
@@ -1684,6 +2033,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         usageAccountKey,
       });
       const session = await this.startTrackedSession(
+        sdk,
         seatbelt.input,
         seatbelt.input.persistSession === true,
         skillsReport,
@@ -1700,7 +2050,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         artifactsEnv,
       );
       if (seatbelt.fallback)
-        this.publishConfinementFallback(input.threadId, seatbelt.fallback);
+        this.publishConfinementFallback(
+          input.threadId,
+          seatbelt.fallback,
+          input.confinementPlan?.mechanism,
+        );
       return session;
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
@@ -1731,7 +2085,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     fallback?: ConfinementFallbackReason;
   }> {
     const plan = input.confinementPlan;
-    if (plan?.mechanism !== 'seatbelt') return { input };
+    if (!plan || !isClaudeSpawnWrapMechanism(plan.mechanism)) return { input };
     const stationHome = canonicalPath(
       this.options.confinedStationHome ?? resolveHomeDir(),
     );
@@ -1745,6 +2099,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       },
       globalConfigPinned: context.globalConfigPinned,
       stationHome,
+      mechanism: plan.mechanism,
     });
     let fallback = 'fallback' in decision ? decision.fallback : undefined;
     if (
@@ -1759,6 +2114,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         )
     )
       fallback = 'resume-bound-elsewhere';
+    // #4769: under a restricted network a fallback would run the engine at
+    // Auto with nothing engaged, its network open, so it is refused.
+    if ((fallback || !('configDir' in decision)) && plan.network)
+      throw restrictedNetworkFallbackRefusal(fallback ?? 'workspace-too-broad');
     if (fallback || !('configDir' in decision))
       return {
         input: withConfinementFallback(
@@ -1768,19 +2127,54 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ),
         fallback: fallback ?? 'workspace-too-broad',
       };
-    const launch = await prepareConfinedClaudeLaunch({
+    // #4769: a restricted network is refused before anything is prepared
+    // when its policy or the model endpoint cannot be read.
+    const allowedHosts = plan.network
+      ? this.restrictedNetworkRules(plan, {
+          ...(context.augmentedEnv ?? process.env),
+          ...context.connectionEnv,
+          ...context.appHomeEnv,
+        })
+      : undefined;
+    const prepared = await prepareConfinedClaudeLaunch({
       workspace: decision.workspace,
       configDir: decision.configDir,
       stationHome,
+      mechanism: plan.mechanism,
     });
+    let launch = prepared;
+    let egress: SeatbeltStart['egress'];
+    if (allowedHosts) {
+      let broker: EgressBroker;
+      try {
+        broker = await startEgressBroker({
+          allowedHosts,
+          onDecision: this.networkDenialReporter(input.threadId),
+        });
+      } catch (error) {
+        prepared.cleanup();
+        throw error;
+      }
+      egress = { broker };
+      launch = {
+        ...prepared,
+        cleanup: () => {
+          prepared.cleanup();
+          void broker.close();
+        },
+      };
+    }
     // The secure-store override is dropped by the spawn wrapper, from
     // whichever layer it comes, not here.
     return {
       input,
       confined: {
-        plan,
-        provider: this.options.seatbeltProvider ?? seatbeltConfinementProvider,
+        plan: { ...plan, mechanism: plan.mechanism },
+        provider:
+          this.options.seatbeltProvider ??
+          claudeSpawnWrapProvider(plan.mechanism),
         launch,
+        ...(egress ? { egress } : {}),
         appHomeEnv: {
           ...context.appHomeEnv,
           CLAUDE_CONFIG_DIR: launch.configDir,
@@ -1791,6 +2185,169 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ]),
       },
     };
+  }
+
+  /**
+   * #4769: the allowed-host rules of a plan that restricts the network, or
+   * a refusal (nothing started) when the policy lists an entry the broker
+   * cannot read, or the model endpoint cannot be derived from the
+   * environment this start would spawn with.
+   */
+  private restrictedNetworkRules(
+    plan: ConfinementPlan,
+    env: Readonly<Record<string, string | undefined>>,
+  ): EgressHostRule[] {
+    const rules: EgressHostRule[] = [];
+    for (const entry of plan.network?.allowedHosts ?? []) {
+      const rule = parseEgressHostRule(entry);
+      if (!rule)
+        throw new ConfinementRefusedError(
+          'confinement_mechanism_unavailable',
+          `This claude session requires a restricted network, and this Station's confined network policy lists an allowed host Station cannot read (${JSON.stringify(entry.slice(0, 80))}). Nothing started.`,
+        );
+      rules.push(rule);
+    }
+    const model = claudeModelEndpoint(env);
+    if ('refusal' in model)
+      throw new ConfinementRefusedError(
+        'confinement_mechanism_unavailable',
+        `This claude session requires a restricted network. ${model.refusal} Nothing started.`,
+      );
+    return rules;
+  }
+
+  /**
+   * #4769: keeps a restricted session's broker decisions. Each distinct
+   * decision (allowed or denied) is written once to the Station log (host,
+   * port, verdict, reason, time; at most 80 per session). Each refused
+   * connection is also reported as a `runtime.warning` (host, port and
+   * reason; never a payload or path), stored with the session's events: the
+   * simplest existing path to the person until #2495 turns sandbox denials
+   * into approval cards. Each distinct refusal is reported once, and at most
+   * {@link MAX_REPORTED_NETWORK_DENIALS} per session.
+   */
+  private networkDenialReporter(
+    threadId: string,
+  ): (record: EgressDecisionRecord) => void {
+    const reported = new Set<string>();
+    const logged = new Set<string>();
+    let capped = false;
+    return (record) => {
+      // Each distinct decision once per session in the Station log: host,
+      // port, verdict, reason and time, never more.
+      const logKey = `${record.verdict}|${record.reason}|${record.host ?? ''}|${record.port ?? ''}`;
+      if (
+        !logged.has(logKey) &&
+        logged.size < 4 * MAX_REPORTED_NETWORK_DENIALS
+      ) {
+        logged.add(logKey);
+        this.options.logNetworkDecision?.({ threadId, ...record });
+      }
+      if (record.verdict !== 'denied') return;
+      const key = `${record.reason}|${record.host ?? ''}|${record.port ?? ''}`;
+      if (reported.has(key) || capped) return;
+      if (reported.size >= MAX_REPORTED_NETWORK_DENIALS) {
+        capped = true;
+        this.publishNetworkDenial(
+          threadId,
+          `Further blocked connections in this session are not reported one by one (the first ${MAX_REPORTED_NETWORK_DENIALS} were).`,
+          { reason: 'reporting-capped' },
+        );
+        return;
+      }
+      reported.add(key);
+      const target =
+        record.host !== undefined ? `${record.host}:${record.port}` : undefined;
+      const message =
+        record.reason === 'not-allowed' && target
+          ? `Blocked a connection to ${target}: it is not an allowed host for confined sessions on this Station.`
+          : record.reason === 'non-public-address' && target
+            ? `Blocked a connection to ${target}: it resolves to a private or local address.`
+            : record.reason === 'unresolved' && target
+              ? `Blocked a connection to ${target}: the name did not resolve.`
+              : record.reason === 'method-not-allowed'
+                ? `Blocked a plain HTTP request${target ? ` to ${target}` : ''}: a confined session reaches allowed hosts over HTTPS only.`
+                : 'Blocked a malformed or unfinished request to the network broker.';
+      this.publishNetworkDenial(threadId, message, {
+        reason: record.reason,
+        ...(record.host !== undefined ? { host: record.host } : {}),
+        ...(record.port !== undefined ? { port: record.port } : {}),
+      });
+    };
+  }
+
+  /**
+   * #5113: a transition in this engine's own workload scope. The transcript
+   * shows it at once as a `runtime.warning`; the engine is told at its next
+   * tool result (PostToolUse/PostToolUseFailure `additionalContext`, which
+   * Claude Code adds to the model's context as a system reminder) or, when
+   * no tool runs first, with its next prompt (UserPromptSubmit).
+   */
+  private receiveWorkloadNotice(
+    record: ClaudeSessionRecord,
+    notice: ChildWorkloadNotice,
+  ): void {
+    const threadId = record.session.threadId;
+    if (
+      record.stopping ||
+      record.engineExit ||
+      this.sessions.get(threadId) !== record
+    )
+      return;
+    record.workloadNotices?.receive(notice);
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      ...(record.activeTurnId ? { turnId: record.activeTurnId } : {}),
+      ...workloadNoticeWarning(notice),
+    });
+  }
+
+  /** The hook result, carrying any workload notices the engine has not seen. */
+  private withWorkloadNotices(
+    threadId: string,
+    hookEventName: 'PostToolUse' | 'PostToolUseFailure' | 'UserPromptSubmit',
+    delivery: 'mid-turn' | 'turn-start',
+  ) {
+    const record = this.sessions.get(threadId);
+    const notices =
+      record && !record.stopping && !record.engineExit
+        ? record.workloadNotices
+        : undefined;
+    const batch = notices?.take();
+    if (!notices || !batch) return { continue: true };
+    notices.delivered(batch, delivery);
+    return {
+      continue: true,
+      hookSpecificOutput: { hookEventName, additionalContext: batch.text },
+    };
+  }
+
+  private endWorkloadNotices(record: ClaudeSessionRecord): void {
+    record.stopWatchingWorkloadNotices?.();
+    record.stopWatchingWorkloadNotices = undefined;
+    record.workloadNotices?.end();
+  }
+
+  private publishNetworkDenial(
+    threadId: string,
+    message: string,
+    details: Record<string, unknown>,
+  ): void {
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      message,
+      code: CONFINED_NETWORK_DENIED_CODE,
+      details,
+    });
   }
 
   /**
@@ -1826,24 +2383,32 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     } finally {
       if (timer) clearTimeout(timer);
     }
-    const posture = pending
+    const observed = pending
       ? pending.observe({
           spawned: engineProcess.spawned(),
           handshake,
           bounds: seatbelt.launch.bounds,
         })
       : 'configured-but-failed';
+    // #4769: a plan that restricts the network is confined only when the
+    // profile spawned restricts it.
+    const network = pending?.network?.();
+    const posture =
+      seatbelt.plan.network && network !== 'restricted'
+        ? 'configured-but-failed'
+        : observed;
     const confinementRecord = observedConfinementRecord(
       seatbelt.plan,
       posture,
       seatbelt.launch.writeGrants,
+      network,
     );
     if (posture === 'confined') return confinementRecord;
     await this.abandonSeatbeltStart(record, sdkQuery, engineProcess, seatbelt);
     const stderr = engineProcess.stderrTail();
     throw new ConfinementRefusedError(
       'confinement_not_observed',
-      `This claude session requires ${seatbelt.plan.level} confinement, but the started engine was not observed inside its Seatbelt profile (${posture}). ${
+      `This claude session requires ${seatbelt.plan.level} confinement, but the started engine was not observed inside its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} (${posture}). ${
         handshake === 'failed'
           ? `The engine did not answer its startup handshake${stderr ? `: ${stderr}` : ''}.`
           : 'The engine was not spawned through the profile Station built.'
@@ -1877,7 +2442,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private publishConfinementFallback(
     threadId: string,
     reason: ConfinementFallbackReason,
+    mechanism?: ConfinementPlan['mechanism'],
   ): void {
+    // #4770: bubblewrap also refuses a folder holding a hidden secret.
+    const message =
+      reason === 'workspace-too-broad' && mechanism === 'bubblewrap'
+        ? `${CONFINEMENT_FALLBACK_MESSAGES[reason]} Under the bubblewrap sandbox this also covers a folder inside, or containing, a secret store the sandbox hides.`
+        : CONFINEMENT_FALLBACK_MESSAGES[reason];
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -1885,7 +2456,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       createdAt: new Date().toISOString(),
       method: 'runtime.warning',
       severity: 'warning',
-      message: CONFINEMENT_FALLBACK_MESSAGES[reason],
+      message,
       code: CONFINED_FULL_ACCESS_UNAVAILABLE_CODE,
       details: { reason },
     });
@@ -1908,11 +2479,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       throw new Error('Claude does not support a completed-turn fork cutoff.');
     // #2494: adoption deliberately pins the global configuration root
     // (archive#896 decision 2), which a confined engine may not write, so a
-    // plan for Seatbelt runs at Auto here instead.
-    const adoptionFallback =
-      input.confinementPlan?.mechanism === 'seatbelt'
-        ? ('config-root-pinned' as const)
-        : undefined;
+    // plan for a spawn-wrapped mechanism (Seatbelt, or bubblewrap since
+    // #4770) runs at Auto here instead.
+    const adoptionFallback = isClaudeSpawnWrapMechanism(
+      input.confinementPlan?.mechanism,
+    )
+      ? ('config-root-pinned' as const)
+      : undefined;
+    // #4769: and under a restricted network that Auto start would run open,
+    // so it is refused instead.
+    if (adoptionFallback && input.confinementPlan?.network)
+      throw restrictedNetworkFallbackRefusal(adoptionFallback);
     if (adoptionFallback && input.confinementPlan)
       input = withConfinementFallback(
         input,
@@ -1926,8 +2503,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         sourceAffinity: snapshotSessionSourceAffinity(input.sourceAffinity!),
       };
     }
+    // Before the creation hook: a failed load creates no child, so it must
+    // not enter the reservation-cleanup path.
+    const sdk = await loadClaudeAgentSdk();
     await hooks?.onProviderChildCreationStarted?.();
-    const fork = await forkSession(input.sourceSessionId, {
+    const fork = await sdk.forkSession(input.sourceSessionId, {
       dir: input.cwd,
       title: adoptionTitle(input.threadId),
     });
@@ -1979,6 +2559,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       );
       if (!adoptionFallback)
         return this.startTrackedSession(
+          sdk,
           { ...input, resumeCursor, persistSession: true },
           true,
           skillsReport,
@@ -1995,6 +2576,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           artifactsEnv,
         );
       const session = await this.startTrackedSession(
+        sdk,
         { ...input, resumeCursor, persistSession: true },
         true,
         skillsReport,
@@ -2017,7 +2599,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // the reservation marker) and owns cleanup. Deleting here too would
       // make its subsequent SDK deletion fail as "session not found".
       if (!hooks)
-        await deleteSession(fork.sessionId, { dir: input.cwd }).catch(() => {});
+        await sdk
+          .deleteSession(fork.sessionId, { dir: input.cwd })
+          .catch(() => {});
       throw error;
     }
   }
@@ -2059,6 +2643,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       recovery.createdAt
     ) {
       const earliest = Date.parse(recovery.createdAt);
+      const { listSessions } = await loadClaudeAgentSdk();
       const candidates = (await listSessions({ dir: cwd })).filter(
         (session) =>
           session.customTitle === adoptionTitle(recovery.adoptionKey!) &&
@@ -2080,6 +2665,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
     if (typeof cursor === 'string') {
       if (recovery?.adoptionKey) {
+        const { deleteSession } = await loadClaudeAgentSdk();
         await deleteSession(cursor, { dir: cwd });
         return;
       }
@@ -2088,11 +2674,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // `deleteSession` call resolves (archive#896, decision 5) — Station owns the
       // profile dir, so an orphaned transcript there is not a discard
       // failure. Profile GC is a wave-2 follow-up, not implemented here.
-      await deleteSession(cursor, { dir: cwd }).catch((error) => {
-        (this.options.logger ?? console).warn?.(
-          `Claude discardSession: deleteSession failed for cursor '${cursor}' (possibly an app-home-profile session whose transcript lives under a different config root): ${errorMessage(error)}`,
-        );
-      });
+      // The load joins the chain so a failed load is warned like a failed
+      // deletion, not thrown.
+      await loadClaudeAgentSdk()
+        .then(({ deleteSession }) => deleteSession(cursor, { dir: cwd }))
+        .catch((error) => {
+          (this.options.logger ?? console).warn?.(
+            `Claude discardSession: deleteSession failed for cursor '${cursor}' (possibly an app-home-profile session whose transcript lives under a different config root): ${errorMessage(error)}`,
+          );
+        });
     }
   }
 
@@ -2112,6 +2702,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
 
   private startTrackedSession(
+    sdk: ClaudeAgentSdk,
     input: ProviderSessionStartInput,
     persistSession: boolean,
     skillsReport?: CapabilityDeliveryChannelReport,
@@ -2126,7 +2717,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     seatbelt?: SeatbeltStart,
     oauthTokens?: ReadonlyMap<string, string>,
     artifactsEnv: ClaudeArtifactsSpawnEnv = claudeArtifactsSpawnEnv(false),
+    stationDocs?: ClaudeSessionRecord['stationDocs'],
   ): ProviderSession | Promise<ProviderSession> {
+    const restriction = sessionToolRestriction(input.threadId);
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
     const requestedPermissionMode = this.resolvePermissionMode(
@@ -2165,7 +2758,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       assertRequiredConfinementObserved(
         observedConfinementRecord(seatbelt.plan, 'configured-but-failed'),
         this.provider,
-        'Its Seatbelt profile would grant writes past the workspace, its git subset and the Station-owned directories.',
+        seatbelt.launch.buildError
+          ? `Its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} cannot be built: ${seatbelt.launch.buildError}`
+          : `Its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} would grant writes past the workspace, its git subset and the Station-owned directories.`,
       );
     }
     const seatbeltSpawn = seatbelt
@@ -2173,10 +2768,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           seatbelt.provider,
           seatbelt.launch,
           seatbelt.configuredKeys,
+          seatbelt.egress,
         )
       : undefined;
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
     const toolServers = this.resolveAgentToolServers(input, oauthTokens);
+    if (stationDocs && toolServers.mcpServers?.[stationDocs.config.name]) {
+      toolServers.mcpServers[stationDocs.config.name] = stationDocs.config;
+    }
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const configHome = claudeSpawnConfigHome(
       appHomeEnv,
@@ -2222,7 +2821,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       seatbeltSpawn?.wrap,
       input.threadId,
     );
-    let sdkQuery: ReturnType<typeof query>;
+    let sdkQuery: Query;
+    let configuredClaudeEndpoint: boolean;
     // After station-control, so the browser server reuses its credential.
     let builtinServers: Record<string, McpServerConfig> | undefined;
     try {
@@ -2232,31 +2832,49 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ]);
       // After station-control, so the browser server reuses its credential.
       builtinServers = this.resolveStationBrowser(input);
-      sdkQuery = query({
-        prompt: promptQueue,
-        options: this.buildOptions(
-          input,
-          engineProcess,
-          persistSession,
-          permissionMode,
-          appHomeEnv,
-          connectionEnv,
-          toolServers.mcpServers,
-          skillsOverlayDir,
-          augmentedEnv,
-          preToolPolicy,
-          claudeExecutable,
-          builtinServers,
-          Boolean(seatbelt) ||
-            hostBypassGrant ||
-            permissionMode === 'bypassPermissions',
-          sessionTmpDir,
-          artifactsEnv,
-        ),
-      });
+      const options = this.buildOptions(
+        input,
+        engineProcess,
+        persistSession,
+        permissionMode,
+        appHomeEnv,
+        connectionEnv,
+        toolServers.mcpServers,
+        skillsOverlayDir,
+        augmentedEnv,
+        preToolPolicy,
+        claudeExecutable,
+        builtinServers,
+        Boolean(seatbelt) ||
+          hostBypassGrant ||
+          permissionMode === 'bypassPermissions',
+        sessionTmpDir,
+        artifactsEnv,
+      );
+      configuredClaudeEndpoint = hasConfiguredClaudeEndpoint(
+        options.env,
+        appHomeEnv?.ANTHROPIC_BASE_URL ?? connectionEnv?.ANTHROPIC_BASE_URL,
+      );
+      restriction?.assertCurrent();
+      sdkQuery = sdk.query({ prompt: promptQueue, options });
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
+      if (restriction) {
+        this.restrictedStartingProcesses.set(input.threadId, engineProcess);
+        return engineProcess.terminate().then(async () => {
+          this.restrictedStartingProcesses.delete(input.threadId);
+          seatbelt?.launch.cleanup();
+          if (nativeId)
+            this.options.nativeSessionOwnership?.retired(input.threadId);
+          await stationDocs?.close();
+          throw error;
+        });
+      }
       seatbelt?.launch.cleanup();
+      if (stationDocs)
+        return stationDocs.close().then(() => {
+          throw error;
+        });
       throw error;
     }
 
@@ -2280,6 +2898,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const probeServer = probeSuffix ? `probe${probeSuffix}` : undefined;
     const record: ClaudeSessionRecord = {
       session,
+      ...(restriction
+        ? { toolRestriction: restriction, toolRestrictionPending: true }
+        : {}),
+      configuredClaudeEndpoint,
       deliveryProbeServerId:
         probeServer &&
         input.agent?.toolServers?.some((server) => server.id === probeServer)
@@ -2291,6 +2913,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         (nativeId && this.options.nativeSessionOwnership ? true : undefined),
       promptQueue,
       query: sdkQuery,
+      stationDocs,
       mcpServers: { ...toolServers.mcpServers, ...builtinServers },
       coordinatorControlGeneration: input.agent?.toolServers?.find(
         (server) =>
@@ -2300,6 +2923,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         (server) =>
           server.id === 'station-knowledge' && server.coordinatorDerived,
       )?.coordinatorGeneration,
+      ...(input.confinementPlan?.network
+        ? { networkRestricted: true as const }
+        : {}),
       stationControlBuiltin:
         input.agent?.toolServers?.some(
           (server) =>
@@ -2313,6 +2939,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         : {}),
       pendingRequests: new Map(),
       approvedTools: new Set(),
+      approvedToolEscalations: new Set(),
       serverGrants: new Set(),
       stationBrowserVerified: false,
       stationBrowserDelivered:
@@ -2377,6 +3004,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       this.sessions.set(input.threadId, record);
       // Once per start: a confined start committed when it registered.
       commitHostImageLaunch();
+      record.stopWatchingEngineExit = engineProcess.onExit((exit) =>
+        this.observeEngineExit(record, exit),
+      );
+      record.workloadNotices = new EngineWorkloadNotices('claude');
+      record.stopWatchingWorkloadNotices = engineProcess.onWorkloadNotice(
+        (notice) => this.receiveWorkloadNotice(record, notice),
+      );
       record.streamTask = this.consumeMessages(record);
 
       this.publish({
@@ -2480,6 +3114,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         });
       }
 
+      if (input.agent?.stationInstructions) {
+        configuredMetadata = confirmStationInstructionsDelivery(
+          configuredMetadata,
+          claudeStationInstructionsAppended(input, record.mcpServers),
+        );
+      }
+
       configuredMetadata[MODEL_SELECTION_RECEIPT_METADATA_KEY] =
         modelSelectionReceipt(input.modelId, record.session.model);
       record.configuredMetadata = configuredMetadata;
@@ -2506,6 +3147,39 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       appHomeSessions.add(1, { provider: this.provider, applied: appHome });
 
       return session;
+    };
+    const announceQualified = async (
+      confinementRecord?: ReturnType<typeof observedConfinementRecord>,
+    ): Promise<ProviderSession> => {
+      if (!restriction) return announce(confinementRecord);
+      this.sessions.set(input.threadId, record);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const init = await Promise.race([
+          sdkQuery.initializationResult(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('group_sync_policy_unavailable')),
+              10_000,
+            );
+          }),
+        ]);
+        restriction.assertCurrent();
+        if (
+          record.stopping ||
+          this.sessions.get(input.threadId) !== record ||
+          !CONTEXT_SYNC_RUNTIME_VERSIONS.has(init.claude_code_version ?? '')
+        )
+          throw new Error('group_sync_policy_unavailable');
+        delete record.toolRestrictionPending;
+      } catch (error) {
+        if (this.sessions.get(input.threadId) === record && !record.stopping)
+          await this.stopSession(input.threadId);
+        throw error;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      return announce(confinementRecord);
     };
     if (seatbelt && seatbeltSpawn) {
       // #2494: nothing is consumed or announced until the provider has
@@ -2542,15 +3216,38 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           );
           throw new ConfinementRefusedError(
             'confinement_not_observed',
-            `This claude session was observed inside its Seatbelt profile, but full access could not be applied there (${errorMessage(error)}). The session was not started.`,
+            `This claude session was observed inside its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)}, but full access could not be applied there (${errorMessage(error)}). The session was not started.`,
           );
         }
         record.allowsBypassPermissions = true;
         delete record.confinementPending;
-        return announce(confinementRecord);
+        return restriction
+          ? announceQualified(confinementRecord)
+          : announce(confinementRecord);
       })();
     }
-    return announce();
+    return restriction ? announceQualified() : announce();
+  }
+
+  /**
+   * Full access on a session spawned without the bypass grant (one that
+   * started with no Station mode, see `hostBypassGrant`): `sendTurn` would
+   * refuse the escalation, but a fresh start at `never` takes the grant. Not
+   * where the engine refuses that grant at all (root outside a sandbox), so
+   * the relaunch would fail to start.
+   */
+  turnNeedsEngineRelaunch(
+    threadId: string,
+    modelOptions: Record<string, unknown> | undefined,
+  ): boolean {
+    const record = this.sessions.get(threadId);
+    return (
+      record !== undefined &&
+      !record.allowsBypassPermissions &&
+      !record.confinementPending &&
+      this.resolvePermissionMode(modelOptions) === 'bypassPermissions' &&
+      !claudeRefusesBypassGrant()
+    );
   }
 
   async sendTurn(
@@ -2558,9 +3255,33 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.requireSession(input.threadId);
-    if (record.session.status === 'error' || record.session.status === 'dead') {
-      throw new ProviderTurnEndedError();
-    }
+    if (record.toolRestrictionPending)
+      throw new Error('group_sync_policy_unavailable');
+    if (
+      record.toolRestriction !== sessionToolRestriction(input.threadId) ||
+      (record.toolRestriction &&
+        record.toolRestriction.clientTurnId !== input.clientTurnId)
+    )
+      throw new Error('group_sync_activation_changed');
+    // Refused before anything reaches the engine: its stream has ended, so
+    // this turn cannot start. A refusal releases the turn-start claim; any
+    // other error would hold it as a turn that may have started.
+    // Also refused once the engine's exit is observed, before the Session's
+    // end is published (it waits for the workload outcome): a prompt queued
+    // there would be accepted into a process that is gone.
+    if (
+      record.engineExit !== undefined ||
+      record.engineProcess?.exited() === true
+    )
+      throw new SendTurnRefusedError(
+        "This Claude Session's engine has exited and Station is closing the Session, so nothing was sent. Send again in a moment: the conversation then continues in a new Session.",
+        'session_gone',
+      );
+    if (record.session.status === 'error' || record.session.status === 'dead')
+      throw new SendTurnRefusedError(
+        'This Claude Session has stopped and takes no more turns. Continue its conversation by the conversation id to start a new Session.',
+        'session_gone',
+      );
     // #2494: no turn runs before a confined start's posture is observed.
     if (record.confinementPending)
       throw new SendTurnRefusedError(
@@ -2638,11 +3359,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         !this.options.isCoordinatorSession?.(threadId)
       )
         throw refuse();
-      const selected = control.disabledTools?.length
+      const agentSelected = control.disabledTools?.length
         ? (control.allowedTools ?? control.toolNames ?? []).filter(
             (name) => !control.disabledTools!.includes(name),
           )
         : control.allowedTools;
+      // #4769: as at the start, a restricted session keeps its narrow set.
+      const selected = record.networkRestricted
+        ? restrictedNetworkStationControlTools(agentSelected)
+        : agentSelected;
       if (
         control.coordinatorDerived &&
         control.coordinatorGeneration === undefined
@@ -2782,14 +3507,29 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
     turnId: ReturnType<typeof crypto.randomUUID>,
   ): Promise<ProviderTurnStartResult> {
+    const { ambientContext, displayInput, input: canonicalInput } = input;
+    const splitText: ContentBlockParam[] | undefined =
+      ambientContext?.trim() &&
+      typeof displayInput === 'string' &&
+      displayInput.length > 0 &&
+      composeAmbientTurnText(ambientContext, displayInput) === canonicalInput
+        ? [
+            {
+              type: 'text',
+              text: canonicalInput.slice(0, -displayInput.length),
+            },
+            { type: 'text', text: displayInput },
+          ]
+        : undefined;
     const decodedAttachments = decodeChatAttachments(input.attachments);
     const content: string | ContentBlockParam[] =
       decodedAttachments.length === 0
-        ? input.input
+        ? (splitText ?? canonicalInput)
         : [
-            ...(input.input
-              ? ([{ type: 'text', text: input.input }] as ContentBlockParam[])
-              : []),
+            ...(splitText ??
+              (canonicalInput
+                ? ([{ type: 'text', text: canonicalInput }] as const)
+                : [])),
             ...decodedAttachments.map(({ attachment, base64 }) => {
               if (attachment.kind === 'image') {
                 return {
@@ -2935,6 +3675,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       }
     }
 
+    if (record.toolRestrictionPending)
+      throw new Error('group_sync_policy_unavailable');
+    if (
+      record.toolRestriction !== sessionToolRestriction(input.threadId) ||
+      (record.toolRestriction &&
+        record.toolRestriction.clientTurnId !== input.clientTurnId)
+    )
+      throw new Error('group_sync_activation_changed');
     // #2324: synchronous from here to the push — nothing can interleave.
     this.refuseSendWhileTurnOwed(record);
     const enqueued = record.promptQueue.push({
@@ -2957,6 +3705,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // nothing else is running and the CLI cannot say otherwise, and on its
     // `command_lifecycle` `started` when it can — so the published order is
     // the engine's order.
+    record.lastDispatchedTurnId = turnId;
     recordClaudeTurnDispatched(record, turnId, {
       context: this.sdkTurnContext(record),
       event: this.dispatchedTurnStartEvent(
@@ -3257,6 +4006,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     turnId: string,
   ): Promise<void> {
     const record = this.requireSession(threadId);
+    if (record.toolRestriction)
+      throw new Error('group_sync_activation_changed');
     // #2324 review M1: a send still queued behind another turn has not
     // started; there is nothing to steer yet. Refused before any effect.
     if (queuedClaudeTurn(record, turnId)) {
@@ -3333,21 +4084,30 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       throw new Error('This request does not accept question answers.');
     record.pendingRequests.delete(requestId);
     const grant = pending.sessionGrant;
+    const scope = context?.sessionGrantScope;
     // #2916 / #2915: where no session grant is offered (a plan exit, or an
     // escalation with no directory to forward), the answer is for this one
-    // call: nothing is minted and no suggestion is forwarded.
+    // call: nothing is minted and no suggestion is forwarded. So is a
+    // command-prefix answer to a request that offered no prefix: it never
+    // falls back to a wider grant.
     const effectiveDecision =
-      decision === 'acceptForSession' && grant === 'none' ? 'accept' : decision;
+      decision === 'acceptForSession' &&
+      (grant === 'none' || (scope === 'rule' && !pending.ruleGrant))
+        ? 'accept'
+        : decision;
     // #2915: only a tool grant mints a Station tool grant. An edit-mode grant
     // forwards the engine's acceptEdits mode change alone, and a folder grant
     // its directory suggestions alone (the approved directory is then the
     // engine's state); neither mints anything.
+    // A scoped answer (`server`, `rule`) mints no tool grant.
     if (
       effectiveDecision === 'acceptForSession' &&
       grant === 'tool' &&
-      context?.sessionGrantScope !== 'server'
+      scope === undefined
     ) {
       record.approvedTools.add(pending.toolName);
+      if (pending.escalation)
+        record.approvedToolEscalations.add(pending.toolName);
     }
     // Owner decision: the typed `sessionGrantScope: 'server'` widens the
     // answer to the Station browser server, only where the request offered it
@@ -3364,16 +4124,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     ) {
       record.serverGrants.add(STATION_BROWSER_MCP_SERVER_ID);
     }
+    // Owner decision: the typed `sessionGrantScope: 'rule'` forwards only
+    // the engine's suggested Bash prefix rules, with the session as
+    // destination, so the engine itself stops asking for matching commands.
     const result = mapClaudeDecisionToPermissionResult(
       effectiveDecision,
       pending.toolInput,
-      context?.sessionGrantScope === 'server'
+      scope === 'server'
         ? undefined
-        : pending.suggestions &&
+        : scope === 'rule'
+          ? ruleGrantPermissionUpdates(pending.suggestions)
+          : pending.suggestions &&
             // Full access is the server's recorded decision alone: an
             // engine-suggested switch into it is never forwarded, even under
             // a tool grant that forwards every other suggestion.
-            sessionGrantPermissionUpdates(grant, pending.suggestions).filter(
+            sessionGrantPermissionUpdates(
+              // A tool grant widened onto an escalation (owner decision
+              // 2026-11-16) is Station's own: it forwards none of the
+              // engine's suggestions, so a full-access or plan-mode session
+              // is never switched to acceptEdits by it.
+              grant === 'tool' && pending.escalation ? 'none' : grant,
+              pending.suggestions,
+            ).filter(
               (update) =>
                 !(
                   update.type === 'setMode' &&
@@ -3421,13 +4193,25 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // minting, or a second stop). Revocation is id-tolerant.
     this.options.revokeStationControlCallerToken?.(threadId);
     const record = this.sessions.get(threadId);
-    if (!record) return;
+    if (!record) {
+      const pending = this.restrictedStartingProcesses.get(threadId);
+      if (pending) {
+        await pending.terminate();
+        this.restrictedStartingProcesses.delete(threadId);
+      }
+      return;
+    }
     // Settle outstanding canUseTool promises before teardown so the SDK
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
     this.cancelPendingRequests(record, threadId);
     record.stopping = true;
+    this.endWorkloadNotices(record);
     record.promptQueue.close();
-    record.query.close();
+    try {
+      record.query.close();
+    } finally {
+      if (record.stationDocs) await record.stationDocs.close();
+    }
     await record.engineProcess?.terminate();
     record.confinementCleanup?.();
     this.options.nativeSessionOwnership?.retired(threadId);
@@ -3565,10 +4349,101 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return this.sessions.has(threadId);
   }
 
+  /**
+   * A record leaves `sessions` only after its engine's exit was observed or
+   * its stop awaited the process's termination (an abandoned confined start
+   * leaves first, but `sendTurn` refuses until confinement is observed, so
+   * no turn reached it); a record that stays (a
+   * failed stream keeps it, `status: 'error'`) answers from the process's
+   * own observed exit. An engine this adapter did not spawn cannot be seen,
+   * so it answers false. "No record" speaks only for this instance: a
+   * replacement adapter has no record of the engines its predecessor owned,
+   * so a caller asks the instance the thread is bound to.
+   */
+  engineEnded(threadId: string): boolean {
+    const record = this.sessions.get(threadId);
+    return record === undefined
+      ? !this.restrictedStartingProcesses.has(threadId)
+      : record.engineProcess?.exited() === true;
+  }
+
+  /**
+   * A task the engine started and has not reported an end for. Read from
+   * the engine's own task frames, not the child-work registry, so a gap in
+   * that record can never let an idle park stop a working engine.
+   */
+  hasOpenEngineWork(threadId: string): boolean {
+    const tasks = this.sessions.get(threadId)?.activeTasks;
+    if (!tasks) return false;
+    for (const task of tasks.values()) {
+      if (!task.unresolvedPublished) return true;
+    }
+    return false;
+  }
+
+  /**
+   * #2540: why this engine must not be parked seconds after a finished turn,
+   * beyond the open tasks {@link hasOpenEngineWork} reports. Consulted only
+   * by the finished-session park; the idle, recovery and relaunch parks never
+   * read it, so a stale answer here can cost memory but never recovery.
+   *
+   * What it rests on (the `openEngineWork: 'complete'` claim):
+   * - every task the engine registers is a task frame: agents, shells,
+   *   monitors and workflows in `activeTasks`, housekeeping ones
+   *   (`skip_transcript`) in `housekeepingTasks`;
+   * - its own scheduled wakeups are known from the last Stop hook's
+   *   `session_crons`, and become unknown again at any scheduling-tool call;
+   * - its only MCP servers are Station's in-process (`sdk`) ones, whose state
+   *   lives in Station, not in a server process the engine started;
+   * - every hook it runs is reported (`includeHookEvents`, on a CLI at least
+   *   {@link CLAUDE_HOOK_REPORTING_VERIFIED_VERSION}), Station's own hooks
+   *   being SDK callbacks that report none; any reported hook therefore is
+   *   foreign and refuses for the rest of the engine's life.
+   * Not seen: a hook that is configured but has not fired in this engine (it
+   * has nothing running to lose; one that fires only after idling, such as
+   * an idle `Notification`, does not fire once parked, as after the idle
+   * park), and a process a command leaves running after its tool call
+   * returned without making it a background task.
+   */
+  earlyParkRefusal(threadId: string): string | undefined {
+    const record = this.sessions.get(threadId);
+    if (!record) return 'no live engine';
+    const version = parseClaudeCodeVersion(record.claudeCodeVersion);
+    // The shared parser drops a prerelease suffix, so `2.1.322-beta` would read
+    // as the verified release. A prerelease sorts before its release, so one
+    // at or below the verified version is treated as unverified.
+    const prerelease = /^\s*v?\d+\.\d+\.\d+-/.test(
+      record.claudeCodeVersion ?? '',
+    );
+    const order = version
+      ? compareClaudeCodeVersions(
+          version,
+          CLAUDE_HOOK_REPORTING_VERIFIED_VERSION,
+        )
+      : -1;
+    if (!version || order < 0 || (prerelease && order <= 0))
+      return 'its hook reporting is unverified for this Claude Code version';
+    if (record.foreignHookObserved)
+      return 'a hook Station did not install has run';
+    if (record.mcpServersStationOnly !== true)
+      return 'an MCP server other than Station’s own, or unreported servers';
+    if (record.scheduledWakeupsUnknown || record.scheduledWakeups === undefined)
+      return 'its scheduled wakeups are unknown';
+    if (record.scheduledWakeups > 0) return 'a scheduled wakeup';
+    if ((record.housekeepingTasks?.size ?? 0) > 0)
+      return 'a housekeeping task is running';
+    return undefined;
+  }
+
   async stopAll(): Promise<void> {
     try {
       await Promise.all(
-        [...this.sessions.keys()].map((threadId) => this.stopSession(threadId)),
+        [
+          ...new Set([
+            ...this.sessions.keys(),
+            ...this.restrictedStartingProcesses.keys(),
+          ]),
+        ].map((threadId) => this.stopSession(threadId)),
       );
     } finally {
       this.events.close();
@@ -3794,8 +4669,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     signal.addEventListener('abort', abortProbe, { once: true });
     const promptQueue = new AsyncUserMessageQueue();
     const engineProcess = createClaudeEngineProcess();
-    let sdkQuery: ReturnType<typeof query> | undefined;
+    let sdkQuery: Query | undefined;
     try {
+      const { query } = await loadClaudeAgentSdk();
+      // An abort during the first load must not start the probe.
+      signal.throwIfAborted();
       sdkQuery = query({
         prompt: promptQueue,
         options: {
@@ -3951,11 +4829,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const control = toolServers.find(
       (server) => server.id === 'station-control',
     );
-    const selectedControlTools = control?.disabledTools?.length
+    const agentSelectedControlTools = control?.disabledTools?.length
       ? (control.allowedTools ?? control.toolNames ?? []).filter(
           (name) => !control.disabledTools!.includes(name),
         )
       : control?.allowedTools;
+    // #4769: a restricted session gets only the tools that keep Station from
+    // acting outside its sandbox for it (no device, preview or delegation).
+    const selectedControlTools = input.confinementPlan?.network
+      ? restrictedNetworkStationControlTools(agentSelectedControlTools)
+      : agentSelectedControlTools;
     const knowledge = toolServers.find(
       (server) => server.id === 'station-knowledge',
     );
@@ -3977,12 +4860,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       );
     const { servers, skipped } = resolveClaudeMcpServers(
       toolServers,
-      {
-        ...this.options.getStationControlEnv?.(),
-        ...(tenantExecutionContext
-          ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
-          : {}),
-      },
+      this.options.getStationControlEnv?.(),
       {
         ...(this.options.createInProcessStationKnowledge
           ? {
@@ -3990,7 +4868,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 this.options.createInProcessStationKnowledge!(
                   input.threadId,
                   tenantExecutionContext,
-                  allowedTools,
+                  // #4769: the same allow-list as station-control, so a
+                  // knowledge tool withheld later is withheld here too.
+                  input.confinementPlan?.network
+                    ? restrictedNetworkStationControlTools(allowedTools)
+                    : allowedTools,
                   ...(knowledge?.coordinatorDerived
                     ? [knowledge.coordinatorGeneration]
                     : []),
@@ -4023,7 +4905,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                       ),
             }
           : {}),
-        ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
       },
       oauthTokens,
     );
@@ -4056,7 +4937,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   /**
    * #90 D14: the built-in `station-browser` server for a resolved agent,
-   * unless the agent switched it off or this runtime cannot serve it bound.
+   * unless the agent switched it off, this runtime cannot serve it bound, or
+   * (#4769) the start's network is restricted.
    * An authored tool server that reuses the id is replaced, never merged.
    */
   private resolveStationBrowser(
@@ -4065,6 +4947,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const create = this.options.createInProcessStationBrowser;
     if (!create || !input.agent || input.agent.browserTools === false)
       return undefined;
+    // #4769: Station's browser runs in Station's own process, outside the
+    // sandbox, and navigates wherever it is told: under a restricted network
+    // it would be a way out, so a restricted session does not get it.
+    if (input.confinementPlan?.network) return undefined;
     return {
       [STATION_BROWSER_MCP_SERVER_ID]: {
         type: 'sdk',
@@ -4096,6 +4982,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     artifactsEnv: ClaudeArtifactsSpawnEnv = claudeArtifactsSpawnEnv(false),
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
+    // AGENTS.md beside CLAUDE.md, unless the user chose otherwise in the
+    // config home this spawn reads (claude-instruction-files.ts).
+    const instructionFiles = claudeInstructionFilesSettings(
+      // A relative CLAUDE_CONFIG_DIR is resolved by the engine against the cwd
+      // it is spawned in (the SDK's default is this process's cwd).
+      claudeSpawnConfigHome(
+        appHomeEnv,
+        connectionEnv,
+        augmentedEnv,
+        input.cwd ?? process.cwd(),
+      ),
+      { managedRoot: this.options.managedSettingsRoot },
+    );
+    if (!instructionFiles.settings)
+      (this.options.logger ?? console).debug?.(
+        `[claude] AGENTS.md loading left to the engine's setting: ${instructionFiles.reason}`,
+      );
     // #2947: the approval guardian's allows, by the engine's tool-use id,
     // from the PreToolUse hook to `canUseTool`. The hook states no opinion,
     // so the guardian's verdict is carried here and answers the engine's
@@ -4141,6 +5044,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ? 'allowed'
         : 'changed';
     };
+    const guardianAsks = new Map<
+      string,
+      { toolName: string; inputDigest?: string; reason: string }
+    >();
+    const rememberGuardianAsk = (
+      toolUseId: string,
+      toolName: string,
+      toolInput: unknown,
+      reason: string,
+    ) => {
+      if (!toolUseId) return;
+      guardianAsks.delete(toolUseId);
+      guardianAsks.set(toolUseId, {
+        toolName,
+        inputDigest: toolInputDigest(toolInput),
+        reason,
+      });
+      if (guardianAsks.size > MAX_PENDING_POLICY_ALLOWS) {
+        const oldest = guardianAsks.keys().next();
+        if (!oldest.done) guardianAsks.delete(oldest.value);
+      }
+    };
     const disallowedTools = [
       ...(input.agent?.toolServers?.some(
         (server) =>
@@ -4166,9 +5091,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ? []
         : [CLAUDE_ARTIFACT_TOOL_NAME]),
     ];
+    const resumeSessionId = claudeResumeSessionId(input.resumeCursor);
+    const toolSearchEnv = claudeToolSearchEnv(input.agent?.toolServerLoading);
+    const restriction = sessionToolRestriction(input.threadId);
     return {
       cwd: input.cwd,
-      ...(disallowedTools.length ? { disallowedTools } : {}),
+      ...(restriction
+        ? { tools: [], disallowedTools: ['*'] }
+        : disallowedTools.length
+          ? { disallowedTools }
+          : {}),
       model: input.modelId,
       // #1551: run the Claude Code the user installed. Omitted when none
       // resolved, which is the SDK's documented "use the built-in executable"
@@ -4176,8 +5108,19 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ...(claudeExecutable
         ? { pathToClaudeCodeExecutable: claudeExecutable }
         : {}),
-      resume: claudeResumeSessionId(input.resumeCursor),
+      resume: resumeSessionId,
+      // A supplied title skips the engine's own naming request. A resumed
+      // session keeps the title it was recorded with (the SDK ignores this
+      // option there), so only a new session sends one.
+      ...(resumeSessionId === undefined
+        ? { title: newSessionTitle(input.threadId) }
+        : {}),
       includePartialMessages: true,
+      // #2540: report every hook the engine runs, so one Station did not
+      // install keeps the engine from the finished-session park
+      // (`earlyParkRefusal`). Station's own hooks are SDK callbacks and
+      // report nothing.
+      includeHookEvents: true,
       // station#1877 follow-up: ask the SDK to summarise what a subagent is
       // doing, so `task_progress.summary` carries a live status line instead
       // of nothing. Without it a five-minute background agent reports its
@@ -4230,12 +5173,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // authored prompt keep byte-identical options (option entirely
       // unset). A bare-string value would instead REPLACE the prompt and
       // strip the engine's own behavior — rejected.
+      //
+      // Station orchestration instructions ride the same append, after the
+      // authored prompt, and only when station-control is in the servers this
+      // session is actually given (`claudeStationInstructionsAppended`). They
+      // never create the append: that would flip an Agent with no authored
+      // prompt onto the claude_code preset, so that case uses the first turn.
       ...(input.agent?.systemPrompt
         ? {
             systemPrompt: {
               type: 'preset' as const,
               preset: 'claude_code' as const,
-              append: input.agent.systemPrompt,
+              append: claudeStationInstructionsAppended(input, {
+                ...mcpServers,
+                ...builtinServers,
+              })
+                ? `${input.agent.systemPrompt}\n\n${input.agent.stationInstructions}`
+                : input.agent.systemPrompt,
             },
           }
         : {}),
@@ -4280,12 +5234,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(augmentedEnv ?? process.env),
         ...connectionEnv,
         ...appHomeEnv,
-        ...(input.agent?.toolServerLoading
-          ? {
-              ENABLE_TOOL_SEARCH:
-                input.agent.toolServerLoading === 'always' ? 'false' : 'true',
-            }
-          : {}),
+        // The same rule decides whether Station's instructions say its
+        // tools load on demand (`session-agent-resolution.ts`).
+        ...(toolSearchEnv ? { ENABLE_TOOL_SEARCH: toolSearchEnv } : {}),
         // After every caller/ambient layer: the Station setting owns this
         // key (see `claudeArtifactsSpawnEnv`).
         ...artifactsEnv,
@@ -4295,6 +5246,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // Station's tap has recorded each permission ask on it.
       spawnClaudeCodeProcess: engineProcess.spawn,
       canUseTool: async (toolName, toolInput, options) => {
+        if (restriction)
+          return {
+            behavior: 'deny',
+            message: 'Retained context sync disables tools.',
+          };
         // #2932: the structured reason of this ask, read from its frame and
         // consumed here. Null when no frame was recorded for the request
         // id: that ask counts as an escalation and prompts.
@@ -4353,7 +5309,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           input.agent?.askBeforeUse,
           sourceApproval.key,
         );
+        const guardianAsk = options.toolUseID
+          ? guardianAsks.get(options.toolUseID)
+          : undefined;
+        if (options.toolUseID) guardianAsks.delete(options.toolUseID);
+        const guardianReason =
+          guardianAsk?.toolName === toolName &&
+          guardianAsk.inputDigest !== undefined &&
+          guardianAsk.inputDigest === toolInputDigest(toolInput)
+            ? guardianAsk.reason
+            : undefined;
         const explicitAsk =
+          guardianAsk !== undefined ||
           authoredApproval === 'ask' ||
           (sourceApproval.ambiguous && !!input.agent?.askBeforeUse?.length);
         // Fix (external autoApprove parity): match Station's own
@@ -4374,7 +5341,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // engine's literal escalation reasons, its ask flags and its
         // structured reason: a safety check, an ask rule on a single
         // command, any PowerShell ask, or an ask whose frame was not read.
-        // A chained Bash command hides its parts' ask rules (see
+        // A chained Bash command hides its parts' ask rules, and Claude's
+        // Bash command-analysis warnings are plain calls (see
         // `claudeAskEscalates`).
         if (
           !inputRequest &&
@@ -4424,7 +5392,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             { toolName, threadId: input.threadId, reason: notApplied },
           );
         }
-        // Tool-level session grant: "Allow Bash for this session" must cover
+        // Tool-level session grant: "Allow all Bash commands for this session" must cover
         // every later Bash call, not just the SDK-suggested command pattern.
         // Checked after agent autoApprove (authored policy stays first) and
         // before publishing, so granted tools never re-prompt. Denies are
@@ -4436,11 +5404,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // engine remembers each allowed host itself, so each new host asks.
         const sessionGrant = toolRequestSessionGrant(request);
         const serverGrant = toolRequestServerGrant(request);
+        const ruleGrant = toolRequestRuleGrant(request);
+        // A plain call is answered by any tool grant; an escalation only by a
+        // grant a person gave on an escalation of the same tool.
+        const escalation = toolRequestStrictSessionGrant(request) !== 'tool';
         if (
           !inputRequest &&
           !explicitAsk &&
-          record.approvedTools.has(toolName) &&
-          sessionGrant === 'tool'
+          sessionGrant === 'tool' &&
+          (escalation
+            ? record.approvedToolEscalations.has(toolName)
+            : record.approvedTools.has(toolName))
         ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
@@ -4492,6 +5466,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
               claudeSandboxNetworkTitle(toolName, toolInput) ??
               `Allow ${toolName}`),
           description: claudeRequestDisplayText(options.description),
+          ...(guardianReason ? { guardianReason } : {}),
           payload: {
             ...(inputRequest ? { inputRequest } : {}),
             toolName,
@@ -4537,7 +5512,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             toolName,
             ...(options.agentID ? { agentId: options.agentID } : {}),
             sessionGrant,
+            escalation,
             serverGrant,
+            ...(ruleGrant ? { ruleGrant } : {}),
             eventId,
             ...(inputRequest ? { inputRequest } : {}),
           });
@@ -4552,14 +5529,107 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             this.cancelPendingRequest(record, input.threadId, requestId);
         });
       },
-      ...(input.agent &&
-      (preToolPolicy ||
-        input.agent.toolServers?.some(
-          (server) =>
-            server.allowedTools !== undefined || server.disabledTools?.length,
-        ))
-        ? {
-            hooks: {
+      hooks: {
+        // #2540: the wakeups the engine has scheduled for itself, which the
+        // finished-session park must not drop (`earlyParkRefusal`). Reported
+        // on each stop; an engine that omits the field leaves it unknown.
+        Stop: [
+          {
+            hooks: [
+              async (hookInput) => {
+                if (
+                  hookInput.hook_event_name === 'Stop' &&
+                  Array.isArray(hookInput.session_crons)
+                ) {
+                  const record = this.sessions.get(input.threadId);
+                  if (record) {
+                    record.scheduledWakeups = hookInput.session_crons.length;
+                    record.scheduledWakeupsUnknown = false;
+                  }
+                }
+                return { continue: true };
+              },
+            ],
+          },
+        ],
+        // #4828: a completed WebFetch or WebSearch (in a subagent too) marks
+        // this conversation as having read content written by others, before
+        // the engine's next PreToolUse. The SDK awaits a synchronous hook's
+        // result before it continues, and the mark is recorded inside it.
+        PostToolUse: [
+          {
+            hooks: [
+              async (hookInput) => {
+                if (hookInput.hook_event_name !== 'PostToolUse')
+                  return { continue: true };
+                const ledger =
+                  this.options.untrustedContentLedger ??
+                  sharedUntrustedContentLedger;
+                // #2540: a schedule changed; only the next Stop says how.
+                if (CLAUDE_WAKEUP_SCHEDULING_TOOLS.has(hookInput.tool_name)) {
+                  const record = this.sessions.get(input.threadId);
+                  if (record) record.scheduledWakeupsUnknown = true;
+                }
+                if (CLAUDE_NATIVE_WEB_READ_TOOLS.has(hookInput.tool_name))
+                  markNativeWebRead([input.threadId], {
+                    ledger,
+                    delegation: serverDelegation(input.metadata),
+                  });
+                // A delegated child's result: when that child read
+                // untrusted content, this conversation has read it too.
+                const delegatedTool = hookInput.tool_name.startsWith(
+                  STATION_CONTROL_TOOL_PREFIX,
+                )
+                  ? hookInput.tool_name.slice(
+                      STATION_CONTROL_TOOL_PREFIX.length,
+                    )
+                  : undefined;
+                if (delegatedTool && DELEGATED_RESULT_TOOLS.has(delegatedTool))
+                  ledger.carryDescendantRead(input.threadId);
+                return this.withWorkloadNotices(
+                  input.threadId,
+                  'PostToolUse',
+                  'mid-turn',
+                );
+              },
+            ],
+          },
+        ],
+        // #5113: a failed command (one the kernel killed, often) is where a
+        // pending workload notice matters most.
+        PostToolUseFailure: [
+          {
+            hooks: [
+              async () =>
+                this.withWorkloadNotices(
+                  input.threadId,
+                  'PostToolUseFailure',
+                  'mid-turn',
+                ),
+            ],
+          },
+        ],
+        // #5113: a notice that arrived while no tool ran reaches the engine
+        // with its next prompt.
+        UserPromptSubmit: [
+          {
+            hooks: [
+              async () =>
+                this.withWorkloadNotices(
+                  input.threadId,
+                  'UserPromptSubmit',
+                  'turn-start',
+                ),
+            ],
+          },
+        ],
+        ...(input.agent &&
+        (preToolPolicy ||
+          input.agent.toolServers?.some(
+            (server) =>
+              server.allowedTools !== undefined || server.disabledTools?.length,
+          ))
+          ? {
               PreToolUse: [
                 {
                   timeout: sdkPreToolMatcherTimeoutSeconds(
@@ -4616,14 +5686,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
                         rememberPolicyAllow,
+                        rememberGuardianAsk,
+                        // Read per call: a mid-chat switch changes it.
+                        this.sessions.get(input.threadId)
+                          ?.currentPermissionMode === 'bypassPermissions',
                       );
                     },
                   ],
                 },
               ],
-            },
-          }
-        : {}),
+            }
+          : {}),
+      },
       // NO `settingSources` — deliberately, and tested (#1545). Left unset, the
       // SDK loads the CLI's whole cascade: `~/.claude/settings.json`, then the
       // workspace's checked-in `.claude/settings.json`, then
@@ -4695,7 +5769,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       effort: modelOptions.effort,
       settings:
         modelOptions.fastMode !== undefined ||
-        modelOptions.autoMode !== undefined
+        modelOptions.autoMode !== undefined ||
+        instructionFiles.settings
           ? {
               ...(modelOptions.fastMode !== undefined
                 ? { fastMode: modelOptions.fastMode }
@@ -4703,6 +5778,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
               ...(modelOptions.autoMode === false
                 ? { disableAutoMode: 'disable' as const }
                 : {}),
+              ...instructionFiles.settings,
             }
           : undefined,
     };
@@ -4803,6 +5879,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         agentId: taskId,
       });
     }
+    // Before the tool-call settle: a task woken after its first terminal
+    // re-opened a call that settle skips (see `settleOpenClaudeTasks`).
+    settleOpenClaudeTasks({
+      provider: this.provider,
+      record: record as ClaudeMessageState,
+      publish,
+    });
     settleUnresolvedClaudeToolCalls({
       provider: this.provider,
       record: record as ClaudeMessageState,
@@ -4814,6 +5897,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     try {
       await this.consumeMessagesInner(record);
     } finally {
+      if (record.stationDocs) await record.stationDocs.close();
+      record.streamEnded = true;
+      // An exit nobody asked for, with no failure published for it yet: the
+      // stream ended (or was closed) without saying why. Its children settle
+      // as interrupted by it.
+      if (
+        record.engineExit &&
+        !record.stopping &&
+        !record.engineFailurePublished
+      )
+        record.engineDied = true;
       // #2324: nothing runs once the iterator is gone. A turn the engine
       // opened on its own and never reported the end of is closed here —
       // turns Station dispatched get theirs from the failure that ended the
@@ -4837,6 +5931,120 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // leaves a newer launch of the thread alone.
       removeLaunchedRoot(record.session.threadId, record.hostImageLaunch);
     }
+    await this.finalizeUnexpectedEngineExit(record);
+  }
+
+  /**
+   * The engine process exited. Without a stop that is a death: if the SDK's
+   * stream is still open a moment later it never will end on its own, so it
+   * is closed, which lets `consumeMessages` record the death.
+   */
+  private observeEngineExit(
+    record: ClaudeSessionRecord,
+    exit: ClaudeEngineExit,
+  ): void {
+    if (record.stopping || record.engineExit) return;
+    record.engineExit = exit;
+    record.stopWatchingEngineExit?.();
+    this.endWorkloadNotices(record);
+    // The stream already ended (stdout closed before the exit was seen):
+    // nothing else will record this death.
+    if (record.streamEnded) {
+      void this.finalizeUnexpectedEngineExit(record);
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (record.stopping || record.streamEnded) return;
+      try {
+        record.query.close();
+      } catch {
+        // Already closed: the stream is ending by itself.
+      }
+    }, this.options.engineExitStreamGraceMs ??
+      CLAUDE_ENGINE_EXIT_STREAM_GRACE_MS);
+    timer.unref?.();
+  }
+
+  /**
+   * An engine that exited without a stop and whose stream ended without a
+   * failure: record why the session ended, on the turn its work belongs to,
+   * and end the session. A memory kill is reported as one, which hands the
+   * conversation to the memory-exhaustion continuation; anything else reads
+   * as the engine stopping unexpectedly. Before this, the session silently
+   * stayed `ready` with no failure, exit or interrupted work recorded.
+   *
+   * A stream that failed first (its failure is already published, the
+   * record kept with `status: 'error'`) still ends here once the exit is
+   * observed: the session is closed and `session.exited` published, so the
+   * conversation's next message goes to a new Session instead of this dead
+   * record, which refuses every turn. Its failure is not published twice,
+   * and it is not re-read as a memory kill: that hands the conversation to
+   * an unattended continuation, which only a failure reported as one may.
+   */
+  private async finalizeUnexpectedEngineExit(
+    record: ClaudeSessionRecord,
+  ): Promise<void> {
+    const exit = record.engineExit;
+    if (!exit || record.stopping || record.engineExitFinalized) return;
+    record.engineExitFinalized = true;
+    const failureAlreadyPublished = record.engineFailurePublished === true;
+    record.engineFailurePublished = true;
+    const threadId = record.session.threadId;
+    const outcome =
+      exit.workloadOutcome && !failureAlreadyPublished
+        ? await raceWithSignal(
+            exit.workloadOutcome,
+            AbortSignal.timeout(CLAUDE_ENGINE_EXIT_OUTCOME_WAIT_MS),
+          ).catch(() => undefined)
+        : undefined;
+    if (record.stopping || this.sessions.get(threadId) !== record) return;
+    const memoryExhausted = childWorkloadMemoryExhausted(outcome, exit.signal);
+    const turnId = record.activeTurnId ?? record.lastDispatchedTurnId;
+    const detail = claudeExitDetailWithStderr(
+      exit.signal
+        ? `Claude Code process terminated by signal ${exit.signal}`
+        : `Claude Code process exited with code ${exit.code ?? 'unknown'}`,
+      record.engineStderrTail?.(),
+    );
+    const createdAt = new Date().toISOString();
+    if (!failureAlreadyPublished)
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt,
+        ...(turnId ? { turnId } : {}),
+        method: 'runtime.error',
+        ...providerFailure('engine_crashed'),
+        severity: 'error',
+        message:
+          memoryExhausted && outcome
+            ? claudeMemoryExhaustedMessage(outcome)
+            : `Claude stopped unexpectedly: ${detail}`,
+        code: memoryExhausted
+          ? ENGINE_MEMORY_EXHAUSTED_CODE
+          : 'claude-engine-exited',
+        details: {
+          ...(exit.signal ? { exitSignal: exit.signal } : {}),
+          ...(outcome ? { workload: outcome } : {}),
+        },
+      } satisfies ProviderRuntimeErrorEvent);
+    record.session.status = 'closed';
+    this.sessions.delete(threadId);
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt,
+      method: 'session.exited',
+      sessionId: threadId,
+      ...(exit.code !== null ? { exitCode: exit.code } : {}),
+      reason: memoryExhausted
+        ? 'memory-exhausted'
+        : exit.code === 0
+          ? 'completed'
+          : 'process-exit',
+    });
   }
 
   private async consumeMessagesInner(
@@ -4885,6 +6093,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       if (record.terminalResultObserved) {
         record.session.status =
           record.terminalResultObserved === 'binding-dead' ? 'dead' : 'error';
+        record.engineFailurePublished = true;
         return;
       }
       // The engine died only when its process is seen gone: a stream can
@@ -4913,8 +6122,35 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(startupFailure ? engineStartupFailureEvent(startupFailure) : {}),
       } satisfies ProviderRuntimeErrorEvent);
       record.session.status = 'error';
+      record.engineFailurePublished = true;
       record.promptQueue.close();
+      // #4266: the stream failed but `claude` may still run. This record
+      // takes no more turns, and a successor would resume the same native
+      // conversation in a second engine beside it, so the engine is stopped
+      // now; its observed exit then ends the Session (`session.exited`).
+      if (!record.stopping && record.engineProcess?.exited() === false)
+        void this.stopEngineAfterStreamFailure(record);
     }
+  }
+
+  /**
+   * Bounded: `terminate` signals, waits, then forces. If the exit is still
+   * not observed, `engineEnded` keeps answering false, so orchestration
+   * keeps the conversation from starting a second engine for it.
+   */
+  private async stopEngineAfterStreamFailure(
+    record: ClaudeSessionRecord,
+  ): Promise<void> {
+    try {
+      await record.engineProcess?.terminate();
+    } catch {
+      // Reported below by the exit that did not happen.
+    }
+    if (record.stopping || record.engineProcess?.exited() !== false) return;
+    (this.options.logger ?? console).warn?.(
+      'Claude engine process did not exit after its stream failed; the conversation will not start a new engine beside it',
+      { threadId: record.session.threadId },
+    );
   }
 
   private mapMessage(record: ClaudeSessionRecord, message: SDKMessage): void {

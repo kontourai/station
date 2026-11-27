@@ -42,6 +42,16 @@ describe('operatingState SDK domain', () => {
     await expect(fetchOperatingState('demo')).rejects.toThrow('boom');
   });
 
+  it('keeps the HTTP status when a failure body is not JSON', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response('<html>Bad Gateway</html>', { status: 502 }),
+    );
+    await expect(fetchOperatingState('demo')).rejects.toMatchObject({
+      name: 'StationHttpError',
+      status: 502,
+    });
+  });
+
   it('posts a board intent with the exact consent value supplied', async () => {
     mockJsonResponse({
       success: true,

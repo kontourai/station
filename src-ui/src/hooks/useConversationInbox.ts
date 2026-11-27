@@ -1,11 +1,14 @@
 import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
+  type ConversationQueueAction,
   cancelConversationInboxEntry,
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
   listConversationInbox,
   StationHttpError,
+  updateConversationQueue,
 } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type QueryClient,
   skipToken,
@@ -15,10 +18,18 @@ import {
 } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
-import type { StationConnection } from '../connections/station-connection';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useConstrainedNetwork } from '../platform/networkCost';
 import { subscribeSharedOrchestrationStream } from './orchestration/sharedStreamListeners';
+import {
+  inboxQueryKey,
+  inboxReceiptsKey,
+  useInboxReceipts,
+  visibleInboxEntries,
+  withInboxReceipts,
+} from './useConversationInboxSnapshot';
+
+export { visibleInboxEntries } from './useConversationInboxSnapshot';
 
 type InboxScope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 interface Cancellation {
@@ -28,15 +39,6 @@ interface Cancellation {
   queryKey: readonly unknown[];
   conversationId: string;
   key: string;
-}
-
-/** Entries a reader still needs to see: not sent, not withdrawn. */
-export function visibleInboxEntries(
-  entries: readonly ConversationInboxEntry[] | undefined,
-): ConversationInboxEntry[] {
-  return (entries ?? []).filter(
-    (entry) => entry.state !== 'sent' && entry.state !== 'cancelled',
-  );
 }
 
 /**
@@ -50,41 +52,20 @@ export function visibleInboxEntries(
 export const INBOX_ACTIVE_POLL_MS = 2_000;
 export const INBOX_IDLE_POLL_MS = 15_000;
 
-function inboxQueryKey(
-  scope: { apiBase: string; authorityKey: string } | undefined,
-  conversationId: string,
-  apiBase = scope?.apiBase,
-) {
-  return ['conversation-inbox', apiBase, scope?.authorityKey, conversationId];
-}
-
 /**
- * The entries the pending list shows now, read from the same query without
- * reading the inbox again: for a second view of that list (the chat's
- * context card). Empty while the list's own read has no current answer.
+ * A read that fails (a phone's network blip, a relay hop, a stalled host) is
+ * retried twice before the list reports it lost sight of the entries. While a
+ * retry is pending the query keeps its last answer, so the pending list does
+ * not flicker between its rows and "Couldn't load" on every missed poll. An
+ * authority or absence answer is final and is not retried.
  */
-export function useConversationInboxSnapshot(
-  conversationId: string,
-  connection?: StationConnection | null,
-): ConversationInboxEntry[] {
-  const hostScope = useHostRequestAuthorityScope();
-  const target = useOptionalConversationConnection();
-  const scope =
-    connection === null
-      ? undefined
-      : (connection?.requestScope ?? target?.requestScope ?? hostScope);
-  const apiBase =
-    connection === null
-      ? undefined
-      : (connection?.targetApiBase ?? target?.apiBase ?? scope?.apiBase);
-  const query = useQuery<ConversationInboxEntry[]>({
-    queryKey: inboxQueryKey(scope, conversationId, apiBase),
-    queryFn: skipToken,
-    gcTime: 0,
-  });
-  return query.status === 'success' && query.fetchStatus !== 'paused'
-    ? visibleInboxEntries(query.data)
-    : [];
+export const INBOX_READ_RETRIES = 2;
+export const INBOX_READ_RETRY_DELAY_MS = 400;
+
+function isFinalInboxError(error: unknown): boolean {
+  return (
+    error instanceof StationHttpError && [401, 403, 404].includes(error.status)
+  );
 }
 
 export function useConversationInbox(
@@ -99,12 +80,22 @@ export function useConversationInbox(
   const client = useQueryClient();
   const enabled = Boolean(conversationId && scope?.isCurrent());
   const queryKey = inboxQueryKey(scope, conversationId, apiBase);
+  const controlsKey = [...queryKey, 'queue-controls'];
+  const queueControls = useQuery<{ supported: boolean; steerTarget?: string }>({
+    queryKey: controlsKey,
+    queryFn: skipToken,
+    gcTime: 0,
+  });
   const query = useQuery<ConversationInboxEntry[]>({
     queryKey,
     enabled,
     staleTime: 0,
     gcTime: 0,
-    retry: false,
+    retry: (failures, error) =>
+      failures < INBOX_READ_RETRIES &&
+      !isFinalInboxError(error) &&
+      Boolean(scope?.isCurrent()),
+    retryDelay: INBOX_READ_RETRY_DELAY_MS,
     refetchOnMount: 'always',
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,
@@ -121,11 +112,18 @@ export function useConversationInbox(
     queryFn: async ({ signal }): Promise<ConversationInboxEntry[]> => {
       if (!scope?.isCurrent())
         throw new Error('The Station connection changed.');
+      const receiptsKey = inboxReceiptsKey(queryKey);
+      const confirmedByThisRead =
+        client.getQueryData<ConversationInboxEntry[]>(receiptsKey);
       const entries = await listConversationInbox(apiBase!, conversationId, {
         requestScope: scope,
         requireCredential: scope.requiresEnrolledCredential !== false,
         signal,
         timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+        onQueueControls: (supported, steerTarget) => {
+          if (!signal.aborted && scope.isCurrent())
+            client.setQueryData(controlsKey, { supported, steerTarget });
+        },
         onHead: (head) => {
           if (!signal.aborted && scope.isCurrent())
             client.setQueryData([...queryKey, 'head'], head);
@@ -133,9 +131,15 @@ export function useConversationInbox(
       });
       if (!scope.isCurrent())
         throw new Error('The Station connection changed.');
+      if (!signal.aborted && confirmedByThisRead?.length) {
+        client.setQueryData<ConversationInboxEntry[]>(receiptsKey, (current) =>
+          current?.filter((entry) => !confirmedByThisRead.includes(entry)),
+        );
+      }
       return entries;
     },
   });
+  const receipts = useInboxReceipts(queryKey);
   useEffect(() => {
     if (!scope || !conversationId) return;
     const subscription = subscribeSharedOrchestrationStream(apiBase!, {
@@ -177,12 +181,11 @@ export function useConversationInbox(
       : query.isSuccess
         ? 'available'
         : 'loading';
-  const entries = availability === 'available' ? query.data : undefined;
-  // A failed read keeps TanStack's last successful data; it is not shown (it
-  // may be stale), but it says whether there was anything to lose sight of.
+  const observedEntries = withInboxReceipts(query.data, receipts);
+  const entries = availability === 'unavailable' ? undefined : observedEntries;
   const lostSightOfEntries =
     availability === 'unavailable' &&
-    (visibleInboxEntries(query.data).length > 0 ||
+    (visibleInboxEntries(observedEntries).length > 0 ||
       query.data?.some(
         (entry) => entry.kind === 'display' && entry.state === 'sent',
       ) === true);
@@ -232,6 +235,34 @@ export function useConversationInbox(
     },
   });
 
+  const queueUpdate = useMutation({
+    mutationKey: [...queryKey, 'update-queue'],
+    retry: false,
+    mutationFn: async (
+      request: Cancellation & { action: ConversationQueueAction },
+    ) => {
+      if (!request.scope.isCurrent())
+        throw new Error('The Station connection changed.');
+      await updateConversationQueue(
+        request.apiBase,
+        request.conversationId,
+        request.action,
+        {
+          requestScope: request.scope,
+          requireCredential: request.scope.requiresEnrolledCredential !== false,
+          timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+        },
+      );
+    },
+    onSettled: async (_result, _error, request) => {
+      if (request.scope.isCurrent())
+        await request.client.invalidateQueries({
+          queryKey: request.queryKey,
+          exact: true,
+        });
+    },
+  });
+
   return {
     availability,
     entries,
@@ -239,6 +270,39 @@ export function useConversationInbox(
     refresh: () => {
       if (enabled && scope?.isCurrent())
         void query.refetch({ cancelRefetch: false });
+    },
+    supportsQueueControls:
+      availability === 'available' && queueControls.data?.supported === true,
+    queueSteerTarget:
+      availability === 'available'
+        ? queueControls.data?.steerTarget
+        : undefined,
+    updating: queueUpdate.isPending,
+    updateError: queueUpdate.isError,
+    updateQueue: async (
+      action:
+        | Exclude<ConversationQueueAction, { kind: 'promote' }>
+        | Omit<Extract<ConversationQueueAction, { kind: 'promote' }>, 'key'>,
+    ) => {
+      if (!scope?.isCurrent())
+        throw new Error('The Station connection changed.');
+      if (!queueControls.data?.supported)
+        throw new Error('Queue controls are unavailable on this Station.');
+      return queueUpdate.mutateAsync({
+        apiBase: apiBase!,
+        scope,
+        client,
+        queryKey,
+        conversationId,
+        key: action.kind === 'promote' ? action.source : action.key,
+        action:
+          action.kind !== 'promote'
+            ? action
+            : {
+                ...action,
+                key: randomCorrelationId(),
+              },
+      });
     },
     removing: cancellation.isPending,
     removalError: cancellation.isError,

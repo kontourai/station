@@ -1,0 +1,23 @@
+{
+  "revision": "56b37ae836e30a30c088cef90b484d201b39bdc1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "6c83a4dda393952f3bcc8ab18441af9354e84c9c",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked against run-e2e-suite.mjs: suites, specs, reporters and the per-phase Playwright JSON report are unchanged; the suite additionally reads that report into a failure manifest when the manifest directory is set. Re-read against the qualification failure manifest change: the Vitest corpus runner, phase driver and e2e suite write a structured failure manifest only when STATION_QUALIFICATION_MANIFEST_DIR is set, corpus and Android jobs upload it on failure, and the repair and health trackers classify red runs from it in report mode unless STATION_QUALIFICATION_SIGNAL is enforce. No test selection, verdict, permission or release behaviour changes. This document makes no claim about those behaviors; no prose change needed.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/run-e2e-suite.mjs"]}
+  ]
+}

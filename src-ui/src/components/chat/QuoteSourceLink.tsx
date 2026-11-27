@@ -129,7 +129,7 @@ function QuoteSourceInspection({
               });
             }}
           >
-            Open source conversation
+            Open original chat
           </Button>
         )
       }
@@ -145,9 +145,9 @@ function QuoteSourceInspection({
         <>
           <p role="status">
             {quoteMatchesSource(quote, source)
-              ? 'Source revision is unchanged. The saved excerpt is user-provided.'
-              : 'The source has changed. The saved quote is unchanged.'}{' '}
-            Quotation does not establish evidence standing.
+              ? 'Source unchanged since you quoted it.'
+              : 'The source has changed since you quoted it.'}{' '}
+            Quotes aren't verified evidence.
           </p>
           <blockquote>{quote.excerpt}</blockquote>
           <details open>
@@ -158,7 +158,7 @@ function QuoteSourceInspection({
       ) : (
         <ErrorState
           title="Source unavailable"
-          description="The exact answer could not be read under current access. No other answer was substituted."
+          description="Couldn't open this answer. It may be gone, or you may not have access."
         />
       )}
     </Dialog>
@@ -226,6 +226,7 @@ function useGuardedChatReveal() {
   }) => {
     if (!request.admit()) return;
     const asked = guardedPanesHidden();
+    const layer = latest.current.model.phoneLayer;
     const registered = new Set<string>();
     const stop = navigationStore.subscribeNavigationGuardOwners((owner) =>
       registered.add(owner),
@@ -238,20 +239,30 @@ function useGuardedChatReveal() {
       waiting.current.delete(end);
     };
     waiting.current.add(end);
+    const canProceed = () =>
+      live &&
+      request.admit() &&
+      latest.current.model.phoneLayer === layer &&
+      !guardedPanesHidden().some(
+        (owner) => !asked.includes(owner) || registered.has(owner),
+      );
     const proceed = () => {
-      if (!live) return;
-      end();
-      if (!request.admit()) return;
-      if (
-        guardedPanesHidden().some(
-          (owner) => !asked.includes(owner) || registered.has(owner),
-        )
-      )
+      if (!canProceed()) {
+        end();
         return;
-      request.open();
-      if (latest.current.placement !== 'viewport')
-        latest.current.showSurface('chat');
-      request.after?.();
+      }
+      const open = () => {
+        end();
+        request.open();
+        if (latest.current.placement !== 'viewport')
+          latest.current.showSurface('chat');
+        request.after?.();
+      };
+      if (layer) {
+        void latest.current.model
+          .closePhoneLayer(open, canProceed)
+          .finally(end);
+      } else open();
     };
     const ask = (owners: readonly string[]) => {
       const [owner, ...rest] = owners;
@@ -261,6 +272,6 @@ function useGuardedChatReveal() {
       }
       navigationStore.runNavigationGuards(() => ask(rest), end, { owner });
     };
-    ask(asked);
+    ask(asked.filter((owner) => owner !== layer?.surfaceId));
   };
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "2de3c01fdfc38e1c752a60fbc739369dbac5370c",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Added Phone dock sizes and checked it against dockSnap.ts (Collapsed, Half 45%, Tall 75%, Full; nearest level on a slow release, one level down on a moderate flick, collapse on a fast one), useDockShellChrome.ts (toggleDockMaximize shared by the control and dock.maximize; Restore returns to where the dock last rested; the navigation restore leaves it open) and ChatDockResizeHandle.tsx (arrow keys step one level).","inputs":["docs/guides/responsive-ui.md","src-ui/src/__tests__/ChatDock.engineSwitchGate.test.tsx","src-ui/src/__tests__/menu-dismiss-backdrop.hit-test.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

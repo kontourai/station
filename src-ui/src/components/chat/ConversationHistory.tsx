@@ -1,5 +1,8 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
-import { useEffect } from 'react';
+import { EXTERNAL_SESSION_HISTORY_PREVIEW } from '@kontourai/station-contracts/orchestration';
+import { useFeaturePreviewsQuery } from '@kontourai/station-sdk';
+import { useEffect, useState } from 'react';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useSessionManagementMenu } from '../../hooks/useSessionManagementMenu';
 import { useSessionManagementViewModel } from '../../hooks/useSessionManagementViewModel';
@@ -7,6 +10,7 @@ import { workGroupLabelText } from '../inbox-row/work-group-label';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { SessionConversationItem } from '../session/SessionConversationItem';
 import { Empty, SkeletonList } from '../state';
+import { ExternalSessionHistory } from './ExternalSessionHistory';
 
 interface Session {
   id: string;
@@ -36,6 +40,7 @@ interface ConversationHistoryProps {
   onTitleUpdate: (sessionId: string, newTitle: string) => void;
   onDelete: (sessionId: string) => void;
   onSelect: (sessionId: string) => void;
+  onOpenImportedSession?: (threadId: string) => void;
   onOpenConversation: (
     conversationId: string,
     agentSlug: string,
@@ -55,9 +60,24 @@ export function ConversationHistory({
   onTitleUpdate,
   onDelete,
   onSelect,
+  onOpenImportedSession,
   onOpenConversation,
   onClose,
 }: ConversationHistoryProps) {
+  const [openedAuthority, setOpenedAuthority] = useState<string>();
+  const archiveScope = useHostRequestAuthorityScope();
+  const previews = useFeaturePreviewsQuery(
+    archiveScope?.apiBase,
+    { enabled: !!archiveScope && !projectScope },
+    archiveScope,
+  );
+  const showArchive =
+    onOpenImportedSession !== undefined &&
+    !projectScope &&
+    !!archiveScope &&
+    previews.data?.some(
+      ({ id, enabled }) => id === EXTERNAL_SESSION_HISTORY_PREVIEW && enabled,
+    );
   const menu = useSessionManagementMenu({
     sessions,
     agents,
@@ -137,24 +157,45 @@ export function ConversationHistory({
           {workGroupLabelText('History', visibleConversations.length)}
         </span>
         <div className="conversation-history__actions">
+          {showArchive && (
+            <button
+              type="button"
+              className="conversation-history__clear-btn"
+              onClick={() => setOpenedAuthority(archiveScope?.authorityKey)}
+            >
+              Third-party history
+            </button>
+          )}
           {mutableConversations.length > 0 && (
             <button
               type="button"
               className="conversation-history__clear-btn"
               onClick={() => menu.setShowClearAllConfirm(true)}
             >
-              Clear All
+              Clear all
             </button>
           )}
           <button
             type="button"
             className="conversation-history__close-btn"
             onClick={onClose}
+            aria-label="Close history"
           >
             ×
           </button>
         </div>
       </div>
+
+      {showArchive && openedAuthority === archiveScope?.authorityKey && (
+        <ExternalSessionHistory
+          key={archiveScope?.authorityKey}
+          onClose={() => setOpenedAuthority(undefined)}
+          onOpenSaved={(threadId) => {
+            onClose();
+            onOpenImportedSession?.(threadId);
+          }}
+        />
+      )}
 
       {projectScope && (
         <div className="conversation-history__scope">
@@ -168,7 +209,7 @@ export function ConversationHistory({
         ) : visibleConversations.length === 0 ? (
           <Empty
             variant="compact"
-            label="No conversations yet"
+            label="No chats yet"
             action={
               <button
                 type="button"
@@ -237,7 +278,7 @@ export function ConversationHistory({
               className="conversation-history__load-more"
               onClick={() => void loadMore()}
             >
-              Try again
+              Retry
             </button>
           </>
         ) : hasMore ? (
@@ -257,7 +298,7 @@ export function ConversationHistory({
 
       <ConfirmModal
         isOpen={confirmConversationDelete && !!menu.deleteConfirm}
-        title="Delete Conversation"
+        title="Delete conversation"
         message={`Delete "${menu.deleteConfirm?.conv.title || 'this conversation'}"? This cannot be undone.`}
         confirmLabel="Delete"
         cancelLabel="Cancel"
@@ -278,9 +319,9 @@ export function ConversationHistory({
 
       <ConfirmModal
         isOpen={menu.showClearAllConfirm}
-        title="Clear All Conversations"
+        title="Clear all conversations"
         message={`Delete all ${mutableConversations.length} editable conversations? History kept by an external engine stays available.`}
-        confirmLabel="Clear All"
+        confirmLabel="Clear all"
         cancelLabel="Cancel"
         variant="danger"
         onConfirm={() => menu.clearAll(mutableConversations)}

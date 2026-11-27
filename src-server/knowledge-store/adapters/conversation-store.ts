@@ -111,6 +111,7 @@ export interface ConversationSessionReader {
   /** Uncapped by contract — see the module doc's R3 note. */
   listSessionReadModel(
     authority: SessionReadScope,
+    options: { purpose: 'conversation-store' },
   ): Promise<Array<{ threadId: string; assignedAgentSlug?: string }>>;
   sessionQueries: SessionQueryModule;
   /**
@@ -290,7 +291,9 @@ async function sessionLegRecords(
   sessionReader: ConversationSessionReader,
   authority: SessionReadScope,
 ): Promise<KitRecord[]> {
-  const summaries = await sessionReader.listSessionReadModel(authority);
+  const summaries = await sessionReader.listSessionReadModel(authority, {
+    purpose: 'conversation-store',
+  });
   const records: KitRecord[] = [];
   for (const summary of summaries) {
     if (summary.assignedAgentSlug === undefined) continue;

@@ -1,4 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -91,6 +98,40 @@ afterEach(() => {
 });
 
 describe('ProjectService', () => {
+  test('createProject persists No icon and suppresses discovered repository artwork', async () => {
+    const root = makeTempDir('station-no-icon-');
+    mkdirSync(join(root, '.git'));
+    writeFileSync(
+      join(root, 'favicon.png'),
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]),
+    );
+    const adapter = createMockStorageAdapter();
+    const svc = new ProjectService(adapter as any);
+    const { withDiscoveredProjectIcon } = await import(
+      '../project-icon-discovery.js'
+    );
+    await svc.createProject({
+      name: 'Detected',
+      slug: 'detected',
+      workingDirectory: root,
+    });
+    expect(
+      (await withDiscoveredProjectIcon(adapter.getProject('detected')))
+        .derivedIcon,
+    ).toBeTruthy();
+    await svc.createProject({
+      name: 'Initials',
+      slug: 'initials',
+      workingDirectory: root,
+      iconDisabled: true,
+    });
+    const stored = adapter.getProject('initials');
+    expect(stored.iconDisabled).toBe(true);
+    expect(await withDiscoveredProjectIcon(stored)).not.toHaveProperty(
+      'derivedIcon',
+    );
+  });
+
   test('createProject generates id and timestamps', async () => {
     const adapter = createMockStorageAdapter();
     const svc = new ProjectService(adapter as any);
@@ -265,6 +306,18 @@ describe('ProjectService', () => {
     const sidecar = projectManifestPath(home, project.slug);
     expect(existsSync(sidecar)).toBe(true);
     const record = JSON.parse(readFileSync(sidecar, 'utf-8'));
+    expect(project.repositorySource).toBeUndefined();
+    // The create response names the repository a later read would.
+    expect(project.repositoryDisplay).toBe('github.com/kontourai/station');
+    expect(svc.listProjects()[0].repositoryDisplay).toBe(
+      'github.com/kontourai/station',
+    );
+    expect(svc.getProject(project.slug).repositoryDisplay).toBe(
+      'github.com/kontourai/station',
+    );
+    // An update response names the same repository a later read would.
+    const renamed = await svc.updateProject(project.slug, { name: 'Acme 2' });
+    expect(renamed.repositoryDisplay).toBe('github.com/kontourai/station');
     expect(record.schemaVersion).toBe(1);
     expect(record.id).toMatch(/^prj_/);
     // NOT the local project id: the manifest's id is the portable join key.
@@ -277,6 +330,50 @@ describe('ProjectService', () => {
         role: 'primary',
       },
     ]);
+  });
+
+  test('repository display isolates corrupt and invalid manifests and caches unchanged records', async () => {
+    const home = makeTempDir('station-display-');
+    const adapter = new FileStorageAdapter(home);
+    const manifests = new ProjectManifestStore(home, adapter, {
+      readRemotes: async () => ({
+        ok: true,
+        remotes: [
+          { name: 'origin', url: 'https://github.com/example/good.git' },
+        ],
+      }),
+    });
+    const svc = new ProjectService(adapter, manifests);
+    for (const slug of ['good', 'corrupt', 'invalid', 'empty']) {
+      await svc.createProject({
+        name: slug,
+        slug,
+        workingDirectory: home,
+      } as any);
+    }
+    writeFileSync(manifests.manifestPath('corrupt'), '{');
+    writeFileSync(
+      manifests.manifestPath('invalid'),
+      JSON.stringify({ schemaVersion: 1, repos: 'invalid' }),
+    );
+    writeFileSync(manifests.manifestPath('empty'), '');
+    const read = vi.spyOn(manifests, 'readRecord');
+    const list = svc.listProjects();
+    expect(list).toHaveLength(4);
+    expect(list.find((p) => p.slug === 'good')?.repositoryDisplay).toBe(
+      'github.com/example/good',
+    );
+    for (const slug of ['corrupt', 'invalid', 'empty'])
+      expect(svc.getProject(slug)).not.toHaveProperty('repositoryDisplay');
+    const calls = read.mock.calls.length;
+    svc.listProjects();
+    expect(read.mock.calls.length).toBe(calls);
+    const good = readFileSync(manifests.manifestPath('good'), 'utf8');
+    writeFileSync(manifests.manifestPath('corrupt'), good);
+    expect(svc.getProject('corrupt').repositoryDisplay).toBe(
+      'github.com/example/good',
+    );
+    expect(read.mock.calls.length).toBe(calls + 1);
   });
 
   test('a manifest backfill that THROWS does not fail the creation it followed', async () => {

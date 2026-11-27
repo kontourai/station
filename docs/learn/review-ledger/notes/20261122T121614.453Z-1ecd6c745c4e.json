@@ -1,0 +1,7 @@
+{
+  "revision": "07323a9c82896bb5f1fbb9f867b2f5bfa40bad92",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Knowledge provider row still holds: KnowledgeService gets vector and embedding resolvers from bootstrap; the change adds race-safe code namespace registration and an alreadyIndexed count, not a provider choice.","inputs":["docs/architecture/abstraction-review.md","src-server/services/knowledge/knowledge-service.ts"]}
+  ]
+}

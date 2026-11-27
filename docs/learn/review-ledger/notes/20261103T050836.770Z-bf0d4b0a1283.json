@@ -1,7 +1,0 @@
-{
-  "revision": "1b607afacaa71905c8a1e3db0598ccaf1b28a990",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the formatter-only collapse of the dispatched-state assertion. The fixture still compares the same state and prints the same inspect-based captured-error diagnostic; the prior 21/21 focused test receipt remains its behavior evidence, and the hosted captured error remains unverified. No design, runtime or acceptance claim changes.","inputs":["docs/design/task-room-agent-requests.md","src-server/services/projects/__tests__/task-room-conversation-module.test.ts"]}
-  ]
-}

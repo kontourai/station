@@ -16,9 +16,11 @@ import type { ClientOriginSender } from '@kontourai/station-contracts/client-ori
 import type {
   InputRequestForm,
   InputRequestRecord,
+  InputRequestUrl,
 } from '@kontourai/station-contracts/input-request';
 import type {
   ApprovalMode,
+  EngineApprovalReviewer,
   EngineId,
   ProviderDurabilityProfile,
 } from '@kontourai/station-contracts/provider';
@@ -28,6 +30,7 @@ import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import type {
+  ToolRequestRuleGrant,
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -35,6 +38,7 @@ import type { ChatStationBindingV1 } from './connections/station-connection';
 import type {
   ChatActivityHint,
   ChatBackgroundTask,
+  ChatEngineMcpServer,
   ChatLiveUsage,
   FlowGateVerdictInfo,
   FlowRunBinding,
@@ -43,6 +47,7 @@ import type { PeerChatBinding } from './lib/peer-chat';
 import type { EffectiveModelSource } from './utils/execution';
 import type { TransformationReceipt } from './utils/heif-normalizer';
 import type { PlanArtifact } from './utils/planArtifacts';
+import type { EngineDetailTab } from './views/connections-hub/connection-sections';
 
 export type {
   LayoutAction,
@@ -156,6 +161,8 @@ export interface ComposerAttachmentStageSnapshot {
 }
 
 export interface ChatMessage {
+  /** This view loaded the row from history without observing its arrival. */
+  historyEntry?: true;
   /** Stable server/event identity when the projection can provide one. */
   id?: string;
   /** Stable client identity while an optimistic user row awaits persistence. */
@@ -189,6 +196,7 @@ export interface ChatMessage {
    * step it stopped otherwise reads as cancelled for no reason.
    */
   steerInterruptedRun?: boolean;
+  steer?: true;
   /**
    * A check-back Station sent into the chat (the agent scheduled it): sent
    * as the person, written by nobody. The bubble shows it as Station's.
@@ -204,6 +212,16 @@ export interface ChatMessage {
    * (unattended work it continued): written by Station, not the person.
    */
   stationRestartContinuation?: boolean;
+  /**
+   * A delegated Task's brief or an Automation's run: a Station flow sent it,
+   * the person did not type it. The row says which (`stationTurnOrigin`).
+   */
+  stationOrigin?: 'delegation' | 'automation';
+  /**
+   * An in-place engine rewind hid this turn from the engine. The row stays
+   * in the transcript, shown dimmed with a Rewound badge.
+   */
+  rewound?: boolean;
   /**
    * The interrupted-turn boundary this row reports: the restart notice, or
    * the stopped row that says "Station restarted mid-turn" in its place.
@@ -247,6 +265,9 @@ export interface ChatMessage {
     htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
     claudeArtifact?: import('@kontourai/station-contracts/claude-artifact').ClaudeArtifactLink;
     stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
+    /** chat-24: see `MessagePart.modelReroute`. */
+    modelReroute?: import('@kontourai/station-shared/conversation-message').MessagePart['modelReroute'];
+    appearanceProposal?: import('@kontourai/station-contracts/custom-appearance').CustomAppearanceProposalReference;
     error?: string;
     errorText?: string;
     state?: string;
@@ -269,11 +290,22 @@ export interface ChatMessage {
     approvalSessionGrant?: ToolRequestSessionGrant;
     /** See `MessagePart.approvalServerGrant`. */
     approvalServerGrant?: ToolRequestServerGrant;
+    /** See `MessagePart.approvalRuleGrant`. */
+    approvalRuleGrant?: ToolRequestRuleGrant;
+    /** See `MessagePart.approvalAllGrant`. */
+    approvalAllGrant?: true;
     /**
      * #3390: an open form request (a harness question or a tool server's
      * elicitation), answered on the pending-requests card.
      */
+    /** Semantic kind retained even before a form body is loaded. */
+    requestKind?: 'input' | 'approval';
     inputRequest?: InputRequestForm;
+    /**
+     * An open link request (an MCP server's sign-in page, a URL-mode
+     * elicitation, an engine's link), opened from the pending-requests card.
+     */
+    inputRequestUrl?: InputRequestUrl;
     /** #3390: an `input-request` part's record; see `MessagePart`. */
     inputRequestRecord?: InputRequestRecord;
     cancelled?: boolean;
@@ -332,6 +364,8 @@ export interface ChatMessage {
   turnEndedReason?: string;
   /** Who stopped that turn, when Station recorded it. */
   turnStoppedBy?: 'person' | 'stall' | 'restart';
+  /** The turn stopped at the engine's output limit; the reply is incomplete. */
+  turnCutOff?: 'max-tokens';
   /**
    * archive#1410: the turn's provenance envelope exactly as the server sent
    * it. Untyped on purpose — see `TurnProvenanceCard`, which narrows it
@@ -436,11 +470,11 @@ export interface ChatSession {
   error?: string | null;
   createdAt: number;
   updatedAt: number;
-  hasUnread: boolean;
   provider?: EngineId;
   providerOptions?: Record<string, unknown>;
   /** See ChatUIState.lastAppliedApprovalMode (active-chats-state.ts) — not persisted. */
   lastAppliedApprovalMode?: ApprovalMode;
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   /** See ChatUIState.approvalEscalationRejected (active-chats-state.ts, #2436). */
   approvalEscalationRejected?: boolean;
   /** #3290: the engine's latest turn could not take the recorded posture. */
@@ -508,6 +542,7 @@ export interface ChatSession {
   currentModeId?: string | null;
   planArtifact?: PlanArtifact | null;
   pendingApprovals?: string[];
+  pendingRequestKinds?: Record<string, 'input' | 'approval'>;
   /** See ChatUIState.answeredApprovals. */
   answeredApprovals?: string[];
   /** See ChatUIState.unacknowledgedDecisions (#2880). */
@@ -520,6 +555,12 @@ export interface ChatSession {
   backgroundTasks?: ChatBackgroundTask[];
   /** Latest provider-reported usage observation for the live context meter. */
   liveUsage?: ChatLiveUsage;
+  /** See ChatUIState.engineMcpServers — the engine's MCP servers. */
+  engineMcpServers?: ChatEngineMcpServer[];
+  /** See ChatUIState.engineMcpReconnect. */
+  engineMcpReconnect?: true;
+  /** See ChatUIState.engineMcpComplete. */
+  engineMcpComplete?: true;
   /** Synthetic event-replay chat; absent on ordinary sessions. */
   replay?: {
     mode?: 'timeline';
@@ -595,7 +636,12 @@ export type NavigationView =
   | { type: 'connections-models' }
   | { type: 'connections-model-edit'; id: string }
   | { type: 'connections-engines' }
-  | { type: 'connections-engine-edit'; id: string }
+  | {
+      type: 'connections-engine-edit';
+      id: string;
+      /** Route tab; absent opens the detail's default view. */
+      tab?: EngineDetailTab;
+    }
   | { type: 'connections-engine-new'; providerId: string }
   | { type: 'connections-tools' }
   | { type: 'connections-tool-edit'; id: string }

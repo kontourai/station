@@ -1,0 +1,7 @@
+{
+  "revision": "b78420825342ac366cf00977a2a36b2fc40ec1a9",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Station Assistant identity and engine delivery claims unchanged; runtime-default-agent.ts now only additionally records the prompt and tool estimate for stats.","inputs":["docs/reference/station-docs.md","src-server/runtime/agents/runtime-default-agent.ts"]}
+  ]
+}

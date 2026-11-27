@@ -1,0 +1,7 @@
+{
+  "revision": "f347f235a9bba843490da4606e3689b71f3739aa",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed the capacity inventory against the current workflows. The hosted container job leaves the shared lease inventory; every remaining leased job still has the pinned action, owner lifetime and budget checks.","inputs":["scripts/__tests__/actionlint-gate.test.ts"]}
+  ]
+}

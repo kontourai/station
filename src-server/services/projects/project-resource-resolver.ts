@@ -180,6 +180,7 @@ import {
 } from '@kontourai/station-contracts/project-identity';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { projectResourceResolutions } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { assertPathInside } from '../../utils/path-containment.js';
 import { expandTilde, resolveHomeDir } from '../../utils/paths.js';
 import {
@@ -565,7 +566,7 @@ export class ProjectResourceResolver {
         return { kind: 'unchecked', reason: error.message };
       return {
         kind: 'unavailable',
-        reason: error instanceof Error ? error.message : String(error),
+        reason: errorMessage(error),
       };
     }
     if (root === undefined) return { kind: 'none' };

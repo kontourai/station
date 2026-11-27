@@ -48,6 +48,8 @@
 
     "src-ui/src/__tests__/ProjectSidebar.test.tsx",
 
+    "src-ui/src/views/apps/AppsLibrary.tsx",
+
     "src-ui/src/components/conversation/ConversationBody.tsx",
 
     "src-ui/src/components/conversation/ConversationReader.tsx",

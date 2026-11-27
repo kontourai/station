@@ -97,7 +97,9 @@ function GuardedHarness({ dirty }: { dirty: boolean }) {
 
 describe('project-settings/KnowledgeSection (#242 shell port)', () => {
   it('renders the no-working-directory state through the canonical Empty component', () => {
-    render(<KnowledgeSection slug="demo-project" />);
+    const { container } = render(<KnowledgeSection slug="demo-project" />);
+    // The section title stands alone, without an eyebrow restating it.
+    expect(container.querySelector('.page-section__eyebrow')).toBeNull();
 
     // `.empty` is the hook the shared @kontourai/ui Empty primitive renders.
     expect(
@@ -134,6 +136,20 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
       expect(screen.getByText('Try again in a moment.')).toBeTruthy(),
     );
     expect(screen.queryByText(/Indexed 0 files/)).toBeNull();
+  });
+
+  it('reports files a second scan found already indexed apart from skipped ones', async () => {
+    knowledgeMocks.workingDirectory = '/tmp/demo';
+    knowledgeMocks.scan.mockResolvedValueOnce({
+      indexed: 0,
+      alreadyIndexed: 3,
+      skipped: 1,
+    });
+    render(<KnowledgeSection slug="demo-project" />);
+    fireEvent.click(screen.getByRole('button', { name: /Index directory/ }));
+    expect(
+      await screen.findByText('Indexed 0 files, 3 already indexed, skipped 1'),
+    ).toBeTruthy();
   });
 
   it('reports a failed upload with its filename while continuing the remaining files', async () => {

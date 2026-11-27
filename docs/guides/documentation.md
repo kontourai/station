@@ -78,13 +78,54 @@ machinery:
 - [keep reviews fresh](documentation-review-ledger.md#keep-reviews-fresh): after
   committing reviewed bytes, run `npm run docs:freshness:check`, inspect each
   document it names, and record what you checked with
-  `npm run docs:review:record -- <doc> --note "..."`;
+  `npm run docs:review:record -- <doc> --note "..."` (`--input <source>`
+  writes that note for every document citing one changed source);
 - the [ledger layout and merge rules](documentation-review-ledger.md#ledger-layout-and-merges),
   including the append-only note guards;
 - [generated release records and removed notes](documentation-review-ledger.md#generated-release-records-and-removed-notes).
 
 A note records which inputs a reviewer checked. Neither a note nor a passing
 gate proves the prose is accurate.
+
+## Keep external product content current
+
+Corpus, formerly Docs Kit, owns the shared related-content contract.
+Station's `corpus-content.json` maps product paths to the
+[product site](https://station.kontourai.io/), the company site's Station
+pages, and the [public app privacy policy](https://kontourai.io/privacy/station/).
+`gate:for` and `docs:impact` use the public `@kontourai/corpus/content`
+interface to show affected targets. These are portable URLs, not sibling
+checkout paths. The mappings are conservative review leads; they do not
+discover every new dependency or establish that a claim needs changing.
+
+The websites dogfood `corpus content check` through
+`npm run station:sync:check`. Their review manifests bind selected Station
+input bytes and public output bytes to SHA-256 values, with review dates,
+notes, exact reviewed revisions and limits. GitHub URLs track `main`; Corpus
+resolves each repository/ref once and reads every file at that observed commit.
+No sibling checkout is required. Local `--checkout owner/repo=directory`
+mappings are an optional working-copy convenience, not remote-head evidence.
+
+Website validation and daily scheduled workflows detect changed inputs even
+when no website commit occurs. Changed bytes fail; missing or inaccessible
+inputs report `NOT_VERIFIED`. Inspect the changed claims and their real callers,
+update or justify the public copy, then record the reviewed hashes and note.
+There is no automatic hash-refresh command. Keep the site's existing claim
+inventory, generated copy and rendered tests consistent with the review.
+
+The generated [privacy working copy](../privacy-policy.md) and its inventory
+remain Station's source declarations. Review the public summary against them
+and their implementation; byte equality does not establish legal/store
+classification, inventory completeness or provider practices. The website's
+own analytics, signup and hosting notice has separate inputs. Keep screenshots
+bound to their dated capture manifests: re-reviewing source does not recapture
+an image. Verify deployment separately from source merges and passing builds.
+
+See [Corpus's related-content guide](https://github.com/kontourai/corpus/blob/dfadba4e64883e6187fb42e32911ca9f091e0fa7/docs/related-content.md)
+for the manifest, commands, exit codes and authentication limits. Veritas can
+require the evidence check; it does not own the dependency matcher. Existing
+Station ledger reviews and the generated Pages/Corpus publishing route retain
+their separate responsibilities.
 
 ## Make the application learnable
 
@@ -237,11 +278,24 @@ reader's parser and rendered heading IDs. It checks relative and self links,
 including section anchors, and GitHub `main` or exact-current-revision links
 that the reader opens locally. Historical revision links remain external;
 this check does not crawl external sites. Fenced and inline code examples are
-not links. Duplicate headings receive unique suffixes. For a stable explicit
+not links. A valid leading YAML metadata block supplies no
+rendered anchors. Link diagnostics still use original source line numbers.
+Duplicate headings receive unique suffixes. For a stable explicit
 anchor, the reader accepts an empty `<a id="stable-name"></a>` or
 `<span id="stable-name"></span>` with a safe ID; arbitrary raw HTML stays escaped.
 The learning generator runs the same validation against the captured document
 bytes before producing a snapshot.
+
+`docs:public:hygiene` also compares the public promise on the README, the
+Pages home and `corpus.json` with its
+[single source](../strategy/differentiators.md). The GitHub repository
+description is outside the checkout, and the gates make no network calls.
+After changing the promise, compare it by hand and update it with
+`gh repo edit kontourai/station --description "<promise>"`:
+
+```bash
+gh repo view kontourai/station --json description --jq .description
+```
 
 These check links, indexes, public content policy, examples, source paths,
 documentation tests, and generated Pages output. They do not prove every prose
@@ -256,12 +310,19 @@ bundle-only document (`"publish": false`, so it gets no page) and mirrors the
 `docs/learn/mcp-topics.json` topics as anchors into it, so the shared server
 answers with the same sections as Station Docs. `docs-kit-manifest.test.ts`
 fails when either drifts. `PR: Docs kit` runs `corpus check` on pull
-requests, merge-queue entries and main as an advisory, non-required check; run
+requests and merge-queue entries (main gets the queue's verdict for the same
+SHA, or a manual dispatch) as an advisory, non-required check; run
 `npx -y github:kontourai/corpus#<sha> check` locally for faster
 feedback.
 
 The learning atlas and Station Docs MCP share the concept catalog and module
 map. The [shipped manual](../reference/station-docs.md) owns the MCP's introductory
 and authoring topics. Run `npm run docs:mcp:generate` when those inputs change;
-do not hand-edit `src-server/tools/station-docs-content.ts`. Keep generated
-payloads static so documentation retrieval cannot acquire live-state access.
+do not hand-edit `src-server/tools/station-docs-content.ts`. It is one Corpus
+docs bundle, validated with Corpus's bundle shape check, which list, get, and
+search all read; search ranks it with `@kontourai/corpus/search`. Its
+identity, `builtOn` and `synonyms` come from `corpus.json`. The advisory docs
+gate and the Pages bundle still pin Corpus 0.7 source, which refuses a
+`synonyms` key, so add product synonyms only after that pin moves. Keep
+generated payloads static so documentation retrieval cannot acquire
+live-state access.

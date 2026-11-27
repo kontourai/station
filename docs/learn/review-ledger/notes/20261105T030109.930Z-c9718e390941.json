@@ -1,7 +1,0 @@
-{
-  "revision": "afc5075dffd45ae320b2c811bb563f5b597aad98",
-
-  "notes": [
-    {"path":"deployment/telemetry/README.md","note":"Public domain sentence now names provisioned channels (public-domain.ts). The dashboard sentence still matches public-dashboard.ts: it follows every page and reports values within noise.","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/README.md"]}
-  ]
-}

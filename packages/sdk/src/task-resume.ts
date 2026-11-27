@@ -18,6 +18,7 @@ import {
 import { hasCapability } from './capability.js';
 import { getJson, mutateJson } from './client/http.js';
 import { readPublicStationCapabilities } from './client/publicStationCapabilities.js';
+import { rethrowDeadline } from './client/request-deadline.js';
 import type { ApiRequestScope } from './query-core';
 
 export type TaskResumeHostSupport = 'supported' | 'unsupported' | 'unknown';
@@ -110,7 +111,8 @@ async function read<T>(response: Response): Promise<T> {
   let body: { success?: boolean; data?: T; code?: unknown; error?: unknown };
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     body = {};
   }
   if (response.ok && body.success) return body.data as T;

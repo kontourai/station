@@ -160,9 +160,10 @@ create authority.
 Claude Agents receive `station-browser` in-process unless the Agent switches it
 off. With the **Codex browser and device tools** Feature Preview enabled, a
 Codex Agent can receive the same registrations through its Session's dynamic
-tool stream. On resume, Station accepts persisted tool names only when they are
-also in the current authorized catalog; tools added since the thread started
-need a new thread. ACP header-token calls remain `caller-not-bound`. See the
+tool stream; a new Session whose Agent has Station Control also gets that whole
+catalog there, at `bound`, and no header token. On resume, Station accepts
+persisted tool names only when they are also in the current authorized catalog;
+tools added since the thread started need a new thread. ACP header-token calls remain `caller-not-bound`. See the
 [bound-channel decision](../decisions/browser-agent-actions-and-bound-channel.md)
 for the protocol and evidence limits.
 
@@ -263,6 +264,37 @@ driven the session), which releases the lease explicitly and is recorded as
 person's hold to lapse. Closing the pane does not release the lease; it
 can lapse. A timeout or interrupted operation does not establish that an
 already-sent browser effect was undone.
+
+Human live-view input uses a registered source for the lifetime of that viewer's
+target and transport. `POST /api/live-surfaces/:surfaceId/lease` accepts
+`{action: 'open-input-source'}` and returns `{success: true, data: {sourceId}}`.
+Opening requires the authenticated person's current input and control access;
+it does not claim the control lease. Input batches may carry that `sourceId`
+alongside `epoch` and `events`. The host checks the source's person and device
+before claiming control and again at queued dispatch. Legacy batches without a
+source remain accepted; current viewers fail closed if registration is
+unavailable rather than sending input without teardown protection.
+
+On target/transport change or unmount, the viewer sends
+`{action: 'close-input-source', sourceId}` to the same lease route. The host seals
+the source before waiting for prior input to settle, then cancels only its held
+keys and buttons. Late input from the sealed source is refused; a newer viewer's
+press on the same key is preserved. A button changing pointer type first cancels
+the displaced gesture, so a mouse press cannot hide a still-held touch. Closing
+is not a control-lease release.
+The response waits at most ten seconds for cancellation; a failure or timeout
+does not establish physical release. Failed cleanup retains the held state and
+blocks further input as `surface-wedged` until an authorized whole-surface
+neutral cleanup succeeds. An unrelated empty source close does not clear that
+fence. Registration is bounded to 128 sources per live-surface entry; opening
+also retires idle sources older than five minutes only when they hold no input.
+If input is refused because its source is no longer valid, the viewer discards
+that input and its queued follow-ups. A new person-initiated action registers a
+fresh source; the refused action is never replayed automatically. Replacing the
+viewer's transport also reconnects its frame stream under the new transport.
+Failed registration is discarded too: another user action may register again
+after a refusal or transport failure, without replaying the earlier input.
+The existing producer, authority and control contracts still apply.
 
 **Let agents run JavaScript in this Project's pages** (**Settings → Advanced →
 Browser & devices**) is off by
@@ -459,7 +491,10 @@ reference. Its original request continues without replaying a GET in the
 opener. The pane discovers admitted popups and selects their tabs. Selecting a
 tab does not change an Agent tool's explicit session target. Empty popups that
 never provide a URL, disallowed URLs and popups beyond the profile's twelve
-live/opening-session bound are closed. Browser policy still denies unsupported
+live/opening-session bound are closed. The popup's own document request is
+held until the popup is admitted or refused: a refused popup's request is
+failed, so its document never loads. Before admission, its opener can still write and run script in the popup's initial blank document; that script runs with the opener's own origin and egress, so it gains nothing, and admission gates the popup's own document request. A popup not adopted within 15 seconds is closed and
+its slot released. Browser policy still denies unsupported
 navigation and Station's own listeners; popup adoption does not grant network
 or Agent authority.
 
@@ -546,7 +581,10 @@ acquisition/host/producer seams only.
 The tab/navigation and popup-admission changes have service/route and mounted
 UI fixture coverage. This Linux host had no installed Chromium, so its real-host
 suite skipped; these changes have no new real-browser, mobile or native-shell
-receipt. Named/incognito profile management, file transfer, native authentication
+receipt. Later, on macOS, a real Chrome 157 and 158 showed popup adoption never
+finishing: the host waited on `Page.enable` for the popup, which Chromium does
+not answer while the popup's own document request is held. Admission now comes
+before that setup, and the real-host suite has a popup-admission case. Named/incognito profile management, file transfer, native authentication
 handoff, annotations/recordings, document preview and connection admission remain
 separate acceptance work under #90. The epic must remain open until its remaining
 behavior and platform receipts exist.
@@ -684,7 +722,10 @@ socket accepted bytes, not that the device applied the gesture.
 
 Human input follows the shared control lease and stale-epoch/fence checks.
 The station-control `device_*` tools admit a bound, verified agent Session with
-its recorded owner and Project. The operator may use local devices; active
+its recorded owner and Project, except a Session whose network Station
+restricts ([`confinedNetwork`](config.md#optional-fields)): it is not given
+the tools, and the device-agent route refuses it (`device-network-restricted`,
+#4769). The operator may use local devices; active
 Project admins/owners remain limited to devices shared with that Project. Every
 call rechecks this authority and requires the operator to enable agent device
 access in **Settings → Advanced → Browser & devices**. Disabling that opt-in also revokes existing surface grants. The in-process device grant targets one host/device

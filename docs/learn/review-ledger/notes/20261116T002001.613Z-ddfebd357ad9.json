@@ -1,0 +1,7 @@
+{
+  "revision": "97e1eefda198a51bd315b249b226e75f4655f5a5",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md change adds a Gallery app-error section; the lane/qualification definitions this context cites are unchanged and its links resolve.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
+  ]
+}

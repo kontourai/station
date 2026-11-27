@@ -27,4 +27,15 @@ describe('displayTitleFromPrompt', () => {
     expect(displayTitleFromPrompt('x'.repeat(140))).toHaveLength(100);
     expect(displayTitleFromPrompt('[Timezone: UTC]')).toBe('');
   });
+
+  it('names nothing from a Station system-event line', () => {
+    expect(
+      displayTitleFromPrompt(
+        '[SYSTEM_EVENT] [CHAT_ERROR:model_not_advertised] ACP model option unavailable',
+      ),
+    ).toBe('');
+    expect(displayTitleFromPrompt('  [SYSTEM_EVENT] [CHAT_ERROR] boom')).toBe(
+      '',
+    );
+  });
 });

@@ -1,7 +1,0 @@
-{
-  "revision": "a1004bb542f2e1f9eecec4812f2cb1536e9de6dd",
-
-  "notes": [
-    {"path":"docs/design/approval-posture-server-ordered.md","note":"Change under review (#4480 round two on fix/start-owner-gate-followups-20261103): consumeAdapterEvents settles the interim start owner for every pulled session.started or session.exited (skipped, faulted, abandoned or appended), still behind the single publishObservedEvent continue-gate; any appended session.exited ends it; settledStartEvents is kept only for known threads and forgotten on exit; a fork's stamp is compared with its admitted requester (the owner that becomes durable). Checked the dispatchWithReceipt authorization list and 'Command authorization admits only the session owner's own principals': still accurate; the interim owner is the requester's own stamp, others and other tenants are refused (start-owner-publication-contention.test.ts). The 'fork 1' owner decision at :663 is unrelated.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

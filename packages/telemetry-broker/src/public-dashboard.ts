@@ -36,11 +36,12 @@ export const DASHBOARD_HTML = `<!doctype html>
 <script src="/public/dashboard.js" defer></script></head><body><main>
 <header class="top"><div><h1>Station usage</h1>
 <p class="sub">Weekly estimates from Station's anonymous daily count · last four closed weeks (UTC)</p></div>
-<a href="/v1/public/aggregates">Aggregate JSON</a></header>
+<div><a href="/insights">Private insights</a> · <a href="/v1/public/aggregates">Aggregate JSON</a></div></header>
+<p class="muted" id="publication"></p>
 <p class="muted" id="status" role="status">Loading…</p>
 <div id="tiles" class="tiles"></div>
 <div id="charts" class="grid"></div>
-<p class="muted">Estimates with privacy noise added, not counts of people. Each card shows a value only when noise alone would produce a false one less than 5% of the time.</p>
+<p class="muted">Estimates with privacy noise added, not counts of people. Small estimates cannot be reliably separated from the added noise.</p>
 </main></body></html>`;
 
 const PAGE_JS = `
@@ -49,14 +50,15 @@ const PAGE_JS = `
   var status = document.getElementById('status'), tiles = document.getElementById('tiles'), charts = document.getElementById('charts');
   var LABELS = { engines_used_today: 'Harnesses used', platform: 'Platform', arch: 'Architecture', surfaces_today: 'Surfaces used', version: 'Versions', channel: 'Release channel', distribution: 'Distribution', public_plugins_enabled: 'Public plugins' };
   function load() {
-    var cells = [], epsilon = 0;
+    var cells = [], epsilon = 0, databaseDay, deliveryCoverage;
     function page(cursor) {
       return fetch('/v1/public/aggregates' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''), { credentials: 'omit' })
         .then(function (r) { if (!r.ok) throw new Error('unavailable'); return r.json(); })
         .then(function (data) {
           cells.push.apply(cells, data.cells);
           epsilon = data.epsilonPerCount;
-          return data.nextCursor ? page(data.nextCursor) : { cells: cells, epsilon: epsilon };
+          databaseDay = data.databaseDay; deliveryCoverage = data.deliveryCoverage;
+          return data.nextCursor ? page(data.nextCursor) : { cells: cells, epsilon: epsilon, databaseDay: databaseDay, deliveryCoverage: deliveryCoverage };
         });
     }
     return page(null);
@@ -74,6 +76,8 @@ const PAGE_JS = `
     if (!weeks.length) { status.textContent = 'No week has been published yet.'; return; }
     status.textContent = '';
     var latest = weeks[weeks.length - 1];
+    var through = new Date(Date.parse(latest + 'T00:00:00Z') + 6 * 86400000).toISOString().slice(0, 10);
+    document.getElementById('publication').textContent = 'Published weeks through ' + through + ' (UTC). The current week is published after it closes on Monday.' + (data.deliveryCoverage === 'unknown' ? ' Collection coverage has not been verified.' : '');
     function values(week, dimension) {
       return cells.filter(function (c) { return c.week === week && c.dimension === dimension; });
     }
@@ -89,6 +93,18 @@ const PAGE_JS = `
     function aboveNoise(estimate) { return estimate > weekBound; }
     function shown(estimate) { return aboveNoise(estimate) ? '≈ ' + C.compact(estimate) : 'Too few to show'; }
     var current = active[active.length - 1], prior = active.length > 1 ? active[active.length - 2] : null;
+    var dimensions = ['engines_used_today', 'platform', 'surfaces_today', 'version', 'arch', 'channel'];
+    var hasSignal = active.some(aboveNoise) || dimensions.some(function (dimension) {
+      var rows = values(latest, dimension).filter(function (c) { return c.value !== 'none'; });
+      return rows.some(function (c) { return c.estimate > threshold(rows.length); });
+    });
+    if (!hasSignal) {
+      var empty = C.card(charts, 'No reliable public estimates yet', 'The published estimates are too uncertain to interpret.', 'wide');
+      C.h('p', '', 'This does not mean there was no activity. Privacy noise can overwhelm small counts, and the current week is not included yet.', empty.body);
+      C.h('a', '', 'View exact recent activity in private insights', empty.body).href = '/insights';
+      status.textContent = 'Showing the available weekly publication.';
+      return;
+    }
     var hero = C.stat(tiles, 'Weekly active networks, week of ' + C.shortDay(latest), shown(current),
       prior !== null && aboveNoise(prior) ? 'Previous week ≈ ' + C.compact(prior) : '', true);
     if (!aboveNoise(current)) hero.querySelector('.value').classList.add('quiet');

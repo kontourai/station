@@ -36,6 +36,14 @@ const loadSkillExperiencePanel = () =>
 
 interface ChatDockContentAreaProps {
   activeSession: ChatSession | null;
+  /**
+   * #5592: with no chat open the desktop dock shows its New chat draft
+   * instead of an empty card. With no Agents the card remains and says so.
+   */
+  noAgentReady?: boolean;
+  transcriptSnapshotRef?: ComponentProps<
+    typeof ChatDockBody
+  >['transcriptSnapshotRef'];
   connection?: import('../../connections/station-connection').StationConnection;
   workingDirectory?: string | null;
   /**
@@ -72,12 +80,14 @@ interface ChatDockContentAreaProps {
     typeof ChatDockBody
   >['toolPolicyDelivery'];
   availableModels: ComponentProps<typeof ChatDockBody>['availableModels'];
+  stagedAgentChange?: ComponentProps<typeof ChatDockBody>['stagedAgentChange'];
   executionModels?: ComponentProps<typeof ChatDockBody>['executionModels'];
   onExecutionModelSelect?: ComponentProps<
     typeof ChatDockBody
   >['onExecutionModelSelect'];
   modelsLoading?: ComponentProps<typeof ChatDockBody>['modelsLoading'];
   onComposerEnabledChange?: (element: HTMLTextAreaElement | null) => void;
+  sendQueuedForUploads?: boolean;
   chatInput: ComponentProps<typeof ChatDockBody>['chatInput'];
   secondaryActions?: ComposerActionsMenuProps;
   onOpenAgentHandoff?: ComponentProps<
@@ -92,6 +102,7 @@ interface ChatDockContentAreaProps {
   onTitleUpdate: (sessionId: string, title: string) => void;
   onDeleteSession: (sessionId: string) => void;
   onFocusSession: (sessionId: string) => void;
+  onOpenImportedSession?: (threadId: string) => void;
   onOpenConversation: (
     conversationId: string,
     agentSlug: string,
@@ -115,6 +126,7 @@ interface ChatDockContentAreaProps {
 
 function ChatDockContentAreaImpl({
   activeSession,
+  transcriptSnapshotRef,
   connection,
   workingDirectory,
   activeOrchestrationSession,
@@ -140,11 +152,13 @@ function ChatDockContentAreaImpl({
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
+  stagedAgentChange,
   executionModels,
   onExecutionModelSelect,
   modelsLoading,
   chatInput,
   onComposerEnabledChange,
+  sendQueuedForUploads,
   secondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
@@ -155,9 +169,11 @@ function ChatDockContentAreaImpl({
   onDeleteSession,
   onFocusSession,
   onOpenConversation,
+  onOpenImportedSession,
   onForkFromTurn,
   onResendFromMessage,
   onNewChat,
+  noAgentReady = false,
   onRetryConversationOpen,
   onOpenBackgroundTasks,
 }: ChatDockContentAreaProps) {
@@ -208,7 +224,10 @@ function ChatDockContentAreaImpl({
                   </div>
                 </div>
                 <div className="conversation-history__list">
-                  <LazyBoundaryError onRetry={onRetry} />
+                  <LazyBoundaryError
+                    onRetry={onRetry}
+                    surface={{ id: 'conversation-history', label: 'History' }}
+                  />
                 </div>
               </div>
             )}
@@ -229,6 +248,7 @@ function ChatDockContentAreaImpl({
               onTitleUpdate,
               onDelete: onDeleteSession,
               onSelect: onFocusSession,
+              onOpenImportedSession,
               onOpenConversation,
               onClose: onCloseHistory,
             }}
@@ -257,6 +277,7 @@ function ChatDockContentAreaImpl({
             <ChatDockBody
               connection={connection}
               activeSession={activeSession}
+              transcriptSnapshotRef={transcriptSnapshotRef}
               workingDirectory={workingDirectory}
               activeOrchestrationSession={activeOrchestrationSession}
               activeOrchestrationSessionRead={activeOrchestrationSessionRead}
@@ -276,11 +297,13 @@ function ChatDockContentAreaImpl({
               stationApprovalModeDefault={stationApprovalModeDefault}
               toolPolicyDelivery={toolPolicyDelivery}
               availableModels={availableModels}
+              stagedAgentChange={stagedAgentChange}
               executionModels={executionModels}
               onExecutionModelSelect={onExecutionModelSelect}
               modelsLoading={modelsLoading}
               chatInput={chatInput}
               onComposerEnabledChange={onComposerEnabledChange}
+              sendQueuedForUploads={sendQueuedForUploads}
               secondaryActions={secondaryActions}
               onOpenAgentHandoff={onOpenAgentHandoff}
               agentHandoffTriggerRef={agentHandoffTriggerRef}
@@ -299,7 +322,10 @@ function ChatDockContentAreaImpl({
             <Empty
               variant="prominent"
               className="chat-dock__no-chat"
-              label="No chat open"
+              label={noAgentReady ? 'No Agents yet' : 'No chat open'}
+              description={
+                noAgentReady ? 'Create an Agent to start a chat.' : undefined
+              }
               action={<NewChatAction onClick={() => onNewChat()} />}
             />
           )}

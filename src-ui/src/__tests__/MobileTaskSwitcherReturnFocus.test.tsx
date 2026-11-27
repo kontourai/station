@@ -26,6 +26,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { MobileInboxPanel } from '../components/chat-dock/MobileInboxPanel';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 
+// Focus restoration is isolated from the host's project catalogue query.
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 const tasks: HomeWorkItem[] = [
   {
     id: 'chat:one',
@@ -110,7 +115,7 @@ describe('MobileInboxPanel return focus (station#1245)', () => {
     mountSheet(trigger);
     expect(document.activeElement).not.toBe(trigger);
 
-    fireEvent.keyDown(screen.getByRole('region', { name: 'Inbox' }), {
+    fireEvent.keyDown(screen.getByRole('region', { name: 'Chats' }), {
       key: 'Escape',
     });
     act(() => {
@@ -137,7 +142,7 @@ describe('MobileInboxPanel return focus (station#1245)', () => {
     trigger.focus();
 
     mountSheet(trigger);
-    fireEvent.keyDown(screen.getByRole('region', { name: 'Inbox' }), {
+    fireEvent.keyDown(screen.getByRole('region', { name: 'Chats' }), {
       key: 'Escape',
     });
     // Switching chat re-rendered the header the trigger lived in.
@@ -163,7 +168,7 @@ describe('MobileInboxPanel return focus (station#1245)', () => {
     trigger.focus();
 
     mountSheet(trigger);
-    fireEvent.keyDown(screen.getByRole('region', { name: 'Inbox' }), {
+    fireEvent.keyDown(screen.getByRole('region', { name: 'Chats' }), {
       key: 'Escape',
     });
     bar.remove();

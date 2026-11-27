@@ -2,41 +2,46 @@ import {
   type ConversationContextBoundaryTranscriptMarker,
   isSummaryContextBoundary,
 } from '@kontourai/station-contracts/conversation-context-boundary';
-import './ConversationHandoff.css';
+import type { TurnProvenanceEngine } from '@kontourai/station-contracts/turn-provenance';
+import {
+  engineSentenceName,
+  FreshContextGlyph,
+  TranscriptChangeMarker,
+} from './TranscriptChangeMarker';
 
-/** A durable transcript fact. Pending intent is intentionally never rendered. */
+/**
+ * A durable transcript fact (chat-24 "fresh context"): the engine stays, its
+ * memory does not. Pending intent is intentionally never rendered. The engine
+ * is the one the last recorded turn before the boundary ran on; without that
+ * record the line names "The agent" instead of guessing.
+ */
 export function ConversationContextBoundary({
   boundary,
+  previousEngine,
 }: {
   boundary: ConversationContextBoundaryTranscriptMarker;
+  previousEngine?: TurnProvenanceEngine;
 }) {
-  const empty = !boundary.priorTranscriptInjected;
-  const summarized = isSummaryContextBoundary(boundary.policy);
+  const engine = previousEngine
+    ? engineSentenceName(previousEngine)
+    : 'The agent';
+  // A summary start (of the chat, or of its Task's state) and a history
+  // start both give the engine a bounded read, never its memory back.
+  const note = isSummaryContextBoundary(boundary.policy)
+    ? `${engine} kept only a summary. You still see everything above.`
+    : boundary.priorTranscriptInjected
+      ? `${engine} started over and read recent messages from this chat.`
+      : `${engine} forgot everything above. You still see it.`;
   return (
-    <section
-      className="conversation-handoff-boundary"
-      aria-label={
-        summarized
-          ? 'Context continued from a bounded summary'
-          : empty
-            ? 'Next engine context started without prior transcript'
-            : 'Next engine context re-anchored from prior transcript'
+    <TranscriptChangeMarker
+      kind="context"
+      pill={
+        <>
+          <FreshContextGlyph />
+          Fresh context
+        </>
       }
-    >
-      <strong>
-        {summarized
-          ? 'Context continued from a bounded summary'
-          : empty
-            ? 'Next engine context started empty'
-            : 'Next engine context re-anchored from durable history'}
-      </strong>
-      <span>
-        {summarized
-          ? 'Raw history remains readable. Earlier tool state, approvals and attachments were omitted from engine context.'
-          : empty
-            ? 'Prior transcript was not injected. The readable transcript, Task links, and evidence remain preserved.'
-            : 'Prior transcript was re-anchored into this engine context. The readable transcript, Task links, and evidence remain preserved.'}
-      </span>
-    </section>
+      note={note}
+    />
   );
 }

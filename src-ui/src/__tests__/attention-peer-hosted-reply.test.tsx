@@ -34,7 +34,21 @@ const snoozePreviews: { id: string; enabled: boolean }[] = [];
 const snoozeAttention = vi.fn();
 const unsnoozeAttention = vi.fn();
 const snoozeNotification = vi.fn();
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => [],
+}));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
+  // The page's For you section (#4799): this reader has no mentions.
+  usePersonNotificationsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
+  useMarkPersonNotificationReadMutation: () => ({ mutateAsync: vi.fn() }),
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({ data: [], error: null, isLoading: false }),
   useAttentionQuery: () => ({ data: attention, isLoading: false }),
@@ -199,7 +213,7 @@ describe('Notifications inbox: a paired-Station item offers no local reply', () 
   test('the peer item has no reply, says where to answer, and opens Activity', () => {
     renderPage();
     const peer = row('attention-item', 'Peer task needs input');
-    expect(within(peer).queryByLabelText('Answer this session')).toBeNull();
+    expect(within(peer).queryByLabelText('Answer this request')).toBeNull();
     expect(within(peer).queryByRole('textbox')).toBeNull();
     expect(
       within(peer).queryByRole('button', { name: 'Send answer' }),
@@ -273,8 +287,6 @@ describe('Bell popover: a paired-Station item says where it is answered', () => 
 
   test('the peer row carries the note and no reply; the local row carries neither', () => {
     const { container } = renderBell();
-    // The popover renders no reply for any kind; pinned so a future reply
-    // cannot appear on a peer row unnoticed.
     expect(container.querySelector('textarea')).toBeNull();
     const notes = screen.getAllByTestId('attention-peer-elsewhere');
     expect(notes).toHaveLength(1);
@@ -285,7 +297,7 @@ describe('Bell popover: a paired-Station item says where it is answered', () => 
     expect(peerRow?.textContent).toContain('Peer task needs input');
     expect(
       within(peerRow as HTMLElement)
-        .getByRole('link', { name: 'Open in Activity' })
+        .getByRole('link', { name: 'Peer task needs input' })
         .getAttribute('href'),
     ).toBe(PEER_HREF);
   });

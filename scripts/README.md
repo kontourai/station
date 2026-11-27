@@ -19,6 +19,7 @@ when. Its schedule is generated from `scripts/verification-lanes.mjs`.
 | `scripts/fixtures/` | Inputs and small executable helpers (capture and probe servers) used by tests and by `region-grid-parity.mjs`. |
 | `scripts/templates/` | Android and iOS project templates copied by the native build scripts. |
 | `scripts/bench/` | Hand-run benchmarks. Not part of any gate. |
+| `scripts/evals/` | Hand-run [evals](evals/README.md): a paid model against Station's real tool text. CI runs only their graders' tests. |
 
 ## Entry points by purpose
 

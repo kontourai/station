@@ -4,7 +4,7 @@
  * contracts rule (`projectIconProblem`), the service persists or clears, and
  * the assertions read the record back from the file store the writer wrote.
  */
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   PROJECT_ICON_MAX_IMAGE_BYTES,
@@ -176,5 +176,32 @@ describe('POST / applies the same rule at creation', () => {
     const cleared = await create({ name: 'Plain', slug: 'plain', icon: '' });
     expect(cleared.status).toBe(201);
     expect(storage.getProject('plain')).not.toHaveProperty('icon');
+  });
+});
+
+describe('GET / derives repository artwork', () => {
+  test('returns the same derived artwork in list and detail without persisting it', async () => {
+    const { app, stored, put } = await harness();
+    const directory = stored().workingDirectory as string;
+    mkdirSync(join(directory, '.git'));
+    writeFileSync(join(directory, 'favicon.png'), Buffer.from(PNG_SIGNATURE));
+    const response = await app.request('/');
+    expect(response.status).toBe(200);
+    const body = await json(response);
+    expect(body.data[0].derivedIcon).toBe(pngDataUrl(8));
+    const detail = await json(await app.request('/demo'));
+    expect(detail.data.derivedIcon).toBe(body.data[0].derivedIcon);
+    expect(stored().icon).toBeUndefined();
+    expect(body.data[0].icon).toBeUndefined();
+    await put({ icon: '' });
+    expect(stored().iconDisabled).toBe(true);
+    expect(
+      (await json(await app.request('/demo'))).data.derivedIcon,
+    ).toBeUndefined();
+    await put({ icon: '', iconDisabled: false });
+    expect(stored().iconDisabled).toBe(false);
+    expect((await json(await app.request('/demo'))).data.derivedIcon).toBe(
+      pngDataUrl(8),
+    );
   });
 });

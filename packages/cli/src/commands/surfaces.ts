@@ -1,4 +1,10 @@
 import {
+  AUTOMATION_OPERATOR_OPERATIONS,
+  AUTOMATION_OPERATOR_SURFACE,
+  type AutomationDispatchRuleInput,
+  type AutomationPollSourceInput,
+} from '@kontourai/station-contracts/automation';
+import {
   parseIndependentReviewRequest,
   REVIEW_EVIDENCE_OPERATOR_SURFACE,
 } from '@kontourai/station-contracts/review-evidence';
@@ -6,11 +12,19 @@ import type { AddJobOpts } from '@kontourai/station-contracts/scheduler';
 import type { AuthenticatedFetchInit } from '@kontourai/station-sdk/client';
 import {
   authenticatedFetch,
+  createAutomationRule,
+  createAutomationSource,
   createIntegration,
   createJob,
+  deleteAutomationRule,
+  deleteAutomationSource,
   deleteIntegration,
   deleteJob,
+  disableAutomationRule,
+  disableAutomationSource,
   disableJob,
+  enableAutomationRule,
+  enableAutomationSource,
   enableJob,
   fetchRegistrySkills,
   getIntegration,
@@ -23,6 +37,9 @@ import {
   getSchedulerStatus,
   installRegistrySkill,
   listAutomationDeliveries,
+  listAutomationEpisodes,
+  listAutomationRules,
+  listAutomationSources,
   listIntegrations,
   listJobs,
   listReviewReceipts,
@@ -30,21 +47,27 @@ import {
   listSchedulerProviders,
   previewSchedule,
   reconnectIntegration,
+  retryAutomationEpisode,
   runIndependentReview,
   runJob,
   SchedulerRunFailedError,
+  updateAutomationRule,
   updateIntegration,
   updateJob,
 } from '@kontourai/station-sdk/client';
 import {
   configureApiCredential,
   loadJsonPayload,
+  optionalValueFlag,
   type ParsedCoreArgs,
   parseCoreArgs,
+  parseWholeNumber,
+  parseWholeNumberFlag,
   printFetched,
   printJson,
   printResolvedTarget,
   requestJson,
+  requestText,
   requirePositional,
   resolveApiBase,
   streamSse,
@@ -105,14 +128,22 @@ function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const isNonemptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0;
+
+/**
+ * The host derives an unused slug from `displayName` when `name` is omitted,
+ * and judges what a display name may contain; this only refuses a body with
+ * neither.
+ */
 function requireSchedulerCreateBody(body: JsonRecord): AddJobOpts {
   if (
-    typeof body.name !== 'string' ||
-    body.name.length === 0 ||
-    typeof body.prompt !== 'string' ||
-    body.prompt.length === 0
+    !(isNonemptyString(body.name) || isNonemptyString(body.displayName)) ||
+    !isNonemptyString(body.prompt)
   ) {
-    throw new Error('Scheduler create requires nonempty name and prompt');
+    throw new Error(
+      'Scheduler create requires a nonempty prompt and a nonempty name or displayName',
+    );
   }
   return body as AddJobOpts;
 }
@@ -709,16 +740,12 @@ async function runScheduleCommand(args: string[]) {
       // ZONED job's schedule could not express the one fact that decides its
       // instants. Absent stays absent — the server treats an unzoned schedule
       // as UTC and the preview must agree rather than substitute a default.
-      const timezone =
-        typeof parsed.flags.timezone === 'string' &&
-        parsed.flags.timezone.trim().length > 0
-          ? parsed.flags.timezone.trim()
-          : undefined;
+      const timezone = optionalValueFlag(parsed, 'timezone')?.trim();
       printFetched(
         await previewSchedule(
           apiBase,
           cron,
-          count === undefined ? undefined : Number.parseInt(count, 10),
+          count === undefined ? undefined : parseWholeNumber(count, 'count'),
           timezone ? { timezone } : undefined,
         ),
       );
@@ -729,7 +756,8 @@ async function runScheduleCommand(args: string[]) {
       const count = parsed.positionals[2];
       printFetched(
         await getJobLogs(apiBase, target, {
-          count: count === undefined ? undefined : Number.parseInt(count, 10),
+          count:
+            count === undefined ? undefined : parseWholeNumber(count, 'count'),
         }),
       );
       return;
@@ -784,30 +812,141 @@ async function runScheduleCommand(args: string[]) {
 }
 
 /**
- * `station automation` (epic #3439). Slice S2 ships the read-only
- * `deliveries` verb; the other `AUTOMATION_OPERATOR_SURFACE` verbs arrive
- * with their routes.
+ * `station automation` (epic #3439, S5 #4513): every
+ * `AUTOMATION_OPERATOR_SURFACE` verb. Mutations are refused by the server
+ * unless the operator makes them in person. `enable`, `source-enable` and
+ * `rule-update` need the configuration fingerprint; pass
+ * `--expected-fingerprint=<sha256>` to pin the version you reviewed, or the
+ * CLI reads the current one first.
  */
 async function runAutomationCommand(args: string[]) {
   const parsed = parseCoreArgs(args);
   const apiBase = resolveSurfaceApiBase(parsed);
   const action = requirePositional(parsed, 0, 'automation action');
+  const limit = (): { limit?: number } => {
+    const value = parseWholeNumberFlag(parsed, 'limit', { min: 1 });
+    return value === undefined ? {} : { limit: value };
+  };
+  const pinned = (): string | undefined => {
+    const raw = parsed.flags['expected-fingerprint'];
+    if (raw === undefined) return undefined;
+    if (typeof raw !== 'string' || !/^[a-f0-9]{64}$/.test(raw))
+      throw new Error('--expected-fingerprint must be a sha256 hex digest.');
+    return raw;
+  };
+  const ruleFingerprint = async () =>
+    pinned() ?? (await listAutomationRules(apiBase)).configurationFingerprint;
+  const sourceFingerprint = async () =>
+    pinned() ?? (await listAutomationSources(apiBase)).configurationFingerprint;
+  const surface = AUTOMATION_OPERATOR_SURFACE;
 
   switch (action) {
-    case 'deliveries': {
-      const raw = parsed.flags.limit;
-      if (raw !== undefined && (typeof raw !== 'string' || !/^\d+$/.test(raw)))
-        throw new Error('--limit must be a positive integer.');
+    case surface.deliveries.cli:
+      printFetched(await listAutomationDeliveries(apiBase, limit()));
+      return;
+    case surface.episodes.cli:
+      printFetched(await listAutomationEpisodes(apiBase, limit()));
+      return;
+    case surface['retry-episode'].cli: {
+      const ruleId = requirePositional(parsed, 1, 'rule id');
+      const episodeId = requirePositional(parsed, 2, 'episode id');
+      announceMutationTarget(parsed);
       printFetched(
-        await listAutomationDeliveries(
+        await retryAutomationEpisode(apiBase, { ruleId, episodeId }),
+      );
+      return;
+    }
+    case surface['list-sources'].cli:
+      printFetched(await listAutomationSources(apiBase));
+      return;
+    case surface['create-source'].cli: {
+      const body = await loadJsonPayload(parsed);
+      announceMutationTarget(parsed);
+      printFetched(
+        await createAutomationSource(
           apiBase,
-          raw === undefined ? {} : { limit: Number(raw) },
+          body as AutomationPollSourceInput,
         ),
       );
       return;
     }
+    case surface['enable-source'].cli: {
+      const id = requirePositional(parsed, 1, 'source id');
+      announceMutationTarget(parsed);
+      await enableAutomationSource(apiBase, id, await sourceFingerprint());
+      printFetched({ enabled: id });
+      return;
+    }
+    case surface['disable-source'].cli: {
+      const id = requirePositional(parsed, 1, 'source id');
+      announceMutationTarget(parsed);
+      await disableAutomationSource(apiBase, id);
+      printFetched({ disabled: id });
+      return;
+    }
+    case surface['delete-source'].cli: {
+      const id = requirePositional(parsed, 1, 'source id');
+      announceMutationTarget(parsed);
+      await deleteAutomationSource(apiBase, id);
+      printFetched({ deleted: id });
+      return;
+    }
+    case surface['list-rules'].cli:
+      printFetched(await listAutomationRules(apiBase));
+      return;
+    case surface['create-rule'].cli: {
+      const body = await loadJsonPayload(parsed);
+      announceMutationTarget(parsed);
+      printFetched(
+        await createAutomationRule(
+          apiBase,
+          body as Parameters<typeof createAutomationRule>[1],
+        ),
+      );
+      return;
+    }
+    case surface['update-rule'].cli: {
+      const id = requirePositional(parsed, 1, 'rule id');
+      const body = await loadJsonPayload(parsed);
+      announceMutationTarget(parsed);
+      printFetched(
+        await updateAutomationRule(apiBase, id, {
+          ...(body as AutomationDispatchRuleInput),
+          expectedFingerprint:
+            typeof body.expectedFingerprint === 'string'
+              ? body.expectedFingerprint
+              : await ruleFingerprint(),
+        }),
+      );
+      return;
+    }
+    case surface['enable-rule'].cli: {
+      const id = requirePositional(parsed, 1, 'rule id');
+      announceMutationTarget(parsed);
+      await enableAutomationRule(apiBase, id, await ruleFingerprint());
+      printFetched({ enabled: id });
+      return;
+    }
+    case surface['disable-rule'].cli: {
+      const id = requirePositional(parsed, 1, 'rule id');
+      announceMutationTarget(parsed);
+      await disableAutomationRule(apiBase, id);
+      printFetched({ disabled: id });
+      return;
+    }
+    case surface['delete-rule'].cli: {
+      const id = requirePositional(parsed, 1, 'rule id');
+      announceMutationTarget(parsed);
+      await deleteAutomationRule(apiBase, id);
+      printFetched({ deleted: id });
+      return;
+    }
     default:
-      throw new Error("Unknown automation action. Use 'deliveries'.");
+      throw new Error(
+        `Unknown automation action. Use ${AUTOMATION_OPERATOR_OPERATIONS.map(
+          (operation) => `'${surface[operation].cli}'`,
+        ).join(', ')}.`,
+      );
   }
 }
 
@@ -947,10 +1086,7 @@ async function runKnowledgeCommand(args: string[]) {
     case 'documents': {
       const subaction = requirePositional(parsed, 1, 'documents action');
       const project = requirePositional(parsed, 2, 'project slug');
-      const namespace =
-        typeof parsed.flags.namespace === 'string'
-          ? parsed.flags.namespace
-          : undefined;
+      const namespace = optionalValueFlag(parsed, 'namespace');
       const base = getNamespaceBase(project, namespace);
 
       if (subaction === 'list') {
@@ -1062,10 +1198,11 @@ async function runAuthCommand(args: string[]) {
       const subaction = requirePositional(parsed, 1, 'users action');
       if (subaction === 'search') {
         const query = requirePositional(parsed, 2, 'query');
-        await requestRawAndPrint(
+        const { body } = await requestText(
           apiBase,
           `/api/users/search?q=${encodeURIComponent(query)}`,
         );
+        printJson(JSON.parse(body));
         return;
       }
       if (subaction === 'get') {
@@ -1215,14 +1352,8 @@ async function runInsightsCommand(args: string[]) {
     // never ends — the command hangs (station#3076 review). `station
     // monitoring events` gets this right by branching to streamSse; this verb
     // is a bounded read, so it supplies a default window instead.
-    const rawDays = parsed.flags.days;
-    const days = Number.parseInt(String(rawDays ?? ''), 10);
-    if (rawDays !== undefined && !(days > 0)) {
-      throw new Error(
-        `--days must be a positive integer, got: ${String(rawDays)}`,
-      );
-    }
-    const window = (days > 0 ? days : 14) * 86_400_000;
+    const days = parseWholeNumberFlag(parsed, 'days', { min: 1 });
+    const window = (days ?? 14) * 86_400_000;
     if (parsed.flags.start === undefined) {
       // Anchor the default window on --end when one was given. Anchoring it
       // on `now` regardless produced start > end for any historical --end,
@@ -1346,8 +1477,33 @@ async function runAcpCommand(args: string[]) {
   const parsed = parseCoreArgs(args);
   const apiBase = resolveSurfaceApiBase(parsed);
   const action = requirePositional(parsed, 0, 'acp action');
+  if (
+    ['setup', 'status', 'commands', 'command-options'].includes(action) &&
+    parsed.positionals.length > 1
+  ) {
+    throw new Error(
+      `station acp ${action} takes no engine id. Use 'station acp setup' to inspect engines; 'commands' lists the shared ACP command catalog.`,
+    );
+  }
 
   switch (action) {
+    case 'setup':
+      try {
+        await requestAndPrint(apiBase, '/acp/setup');
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          'status' in error &&
+          error.status === 404 &&
+          !('code' in error)
+        ) {
+          throw new Error(
+            'This Station does not support guided engine setup. Update the Station host or open Connections → Engines.',
+          );
+        }
+        throw error;
+      }
+      return;
     case 'status':
       await requestAndPrint(apiBase, '/acp/status');
       return;
@@ -1369,10 +1525,7 @@ async function runAcpCommand(args: string[]) {
       const data = await getProviderCommands<
         Array<{ name?: string; description?: string }>
       >(apiBase, 'acp');
-      const q =
-        typeof parsed.flags.q === 'string'
-          ? parsed.flags.q.toLowerCase()
-          : undefined;
+      const q = optionalValueFlag(parsed, 'q')?.toLowerCase();
       const filtered = q
         ? data.filter(
             (cmd) =>
@@ -1436,7 +1589,7 @@ async function runAcpCommand(args: string[]) {
     }
     default:
       throw new Error(
-        "Unknown acp action. Use 'status', 'commands', 'command-options', or 'connections'.",
+        "Unknown acp action. Use 'setup', 'status', 'commands', 'command-options', or 'connections'.",
       );
   }
 }
@@ -1490,19 +1643,11 @@ function requireStringFlag(parsed: ParsedCoreArgs, flag: string): string {
   return value;
 }
 
-function optionalStringFlag(
-  parsed: ParsedCoreArgs,
-  flag: string,
-): string | undefined {
-  const value = parsed.flags[flag];
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
 function optionalListFlag(
   parsed: ParsedCoreArgs,
   flag: string,
 ): string[] | undefined {
-  const entries = optionalStringFlag(parsed, flag)
+  const entries = optionalValueFlag(parsed, flag)
     ?.split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
@@ -1526,7 +1671,7 @@ async function runFlowCommand(args: string[]) {
     case 'start': {
       const body = {
         definition: requireStringFlag(parsed, 'definition'),
-        runId: optionalStringFlag(parsed, 'run-id'),
+        runId: optionalValueFlag(parsed, 'run-id'),
       };
       await requestAndPrint(apiBase, `${base}/runs`, {
         method: 'POST',
@@ -1549,16 +1694,16 @@ async function runFlowCommand(args: string[]) {
       const runId = requirePositional(parsed, 2, 'run id');
       const expectationIds = optionalListFlag(parsed, 'expectation-ids');
       const supersede = optionalListFlag(parsed, 'supersede');
-      const timeoutMs = optionalStringFlag(parsed, 'timeout-ms');
+      const timeoutMs = parseWholeNumberFlag(parsed, 'timeout-ms', { min: 1 });
       const body = {
         gate: requireStringFlag(parsed, 'gate'),
         command: requireStringFlag(parsed, 'command'),
         claimType: requireStringFlag(parsed, 'claim-type'),
-        producer: optionalStringFlag(parsed, 'producer'),
-        label: optionalStringFlag(parsed, 'label'),
+        producer: optionalValueFlag(parsed, 'producer'),
+        label: optionalValueFlag(parsed, 'label'),
         ...(expectationIds ? { expectationIds } : {}),
         ...(supersede ? { supersede } : {}),
-        ...(timeoutMs ? { timeoutMs: Number.parseInt(timeoutMs, 10) } : {}),
+        ...(timeoutMs !== undefined ? { timeoutMs } : {}),
       };
       await requestAndPrint(
         apiBase,
@@ -1576,7 +1721,7 @@ async function runFlowCommand(args: string[]) {
     }
     case 'evaluate': {
       const runId = requirePositional(parsed, 2, 'run id');
-      const body = { gate: optionalStringFlag(parsed, 'gate') };
+      const body = { gate: optionalValueFlag(parsed, 'gate') };
       await requestAndPrint(
         apiBase,
         `${base}/runs/${encodeURIComponent(runId)}/evaluate`,

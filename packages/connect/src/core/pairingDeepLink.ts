@@ -8,7 +8,7 @@ import {
 } from './pairingDeepLinkChannels.generated';
 
 /** The client build selected by a pairing link, never the Station backend. */
-export type PairingDeepLinkChannel = 'stable' | 'beta' | 'nightly' | 'dev';
+export type PairingDeepLinkChannel = 'stable' | 'nightly' | 'dev';
 
 export const PAIRING_DEEP_LINK_VERSION = '1';
 export const PAIRING_LINK_REMEDY =
@@ -23,7 +23,9 @@ export function pairingDeepLinkScheme(
   devScheme?: string,
 ): string | null {
   if (channel === 'dev') return devScheme ?? null;
-  return RELEASE_PAIRING_DEEP_LINK_SCHEMES[channel];
+  return Object.hasOwn(RELEASE_PAIRING_DEEP_LINK_SCHEMES, channel)
+    ? RELEASE_PAIRING_DEEP_LINK_SCHEMES[channel]
+    : null;
 }
 
 export { devPairingDeepLinkScheme };

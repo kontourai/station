@@ -1,0 +1,7 @@
+{
+  "revision": "3e119df23ae0f56b6e15972f3a27e5bffa9a73d6",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Slice 4.10: responsive-action-surfaces.txt now describes the approval cluster as Allow once and Deny buttons plus its session-grant menu; the page's two-labelled-actions-plus-overflow rule still holds. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

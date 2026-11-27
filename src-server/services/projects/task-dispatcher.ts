@@ -84,6 +84,12 @@ export type DispatchIntent = TaskDispatchInput & {
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   readonly monitor?: MonitorTaskDispatchIntent;
+  /** Exact standing Task incarnation admitted by the Automation runtime. */
+  readonly recurringAutomationTask?: {
+    createdAt: string;
+    sessionId?: string;
+    authorize: (sessionIds: string[]) => boolean;
+  };
 };
 
 /** A total outcome; legacy callers map non-dispatched outcomes at their boundary. */
@@ -228,6 +234,7 @@ export interface TaskDispatchRemoteSessions {
   ): Promise<
     | { kind: 'ready'; agentStart?: TaskDispatchAgentStart }
     | { kind: 'refused'; reason: string }
+    | { kind: 'unavailable'; reason: string }
   >;
   startOrSeed(
     reservation: TaskDispatchReservation,
@@ -340,6 +347,8 @@ class TaskDispatcherImplementation implements TaskDispatcher {
     }
     if (prepared?.kind === 'refused')
       return { kind: 'failed', reason: prepared.reason };
+    if (prepared?.kind === 'unavailable')
+      return { kind: 'unavailable', reason: prepared.reason, retryable: true };
     const agentStart = prepared?.agentStart;
     let admission: Awaited<ReturnType<TaskDispatchGraphState['reserve']>>;
     try {

@@ -1,4 +1,5 @@
 import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto';
+import { once } from 'node:events';
 import {
   chmodSync,
   linkSync,
@@ -141,6 +142,63 @@ async function rewriteNativeRequestProof(
     })
     .sign(client.privateKey);
 }
+type BrokerRaceOperation =
+  | { method: 'renew'; args: Parameters<SelfHostedBrokerService['renew']> }
+  | {
+      method: 'redeemInvitation';
+      args: Parameters<SelfHostedBrokerService['redeemInvitation']>;
+    };
+
+async function raceBrokerOwners(path: string, operation: BrokerRaceOperation) {
+  const barrier = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
+  const release = new Int32Array(barrier);
+  const source = `
+    import { parentPort, workerData } from 'node:worker_threads';
+    import { SelfHostedBrokerService } from ${JSON.stringify(new URL('../self-hosted-broker-service.ts', import.meta.url).href)};
+    const { barrier, path, operation } = workerData;
+    const service = new SelfHostedBrokerService(path, () => 1_000);
+    const release = new Int32Array(barrier);
+    let outcome = 'won';
+    try {
+      parentPort.postMessage('ready');
+      Atomics.wait(release, 0, 0);
+      service[operation.method](...operation.args);
+    } catch (error) {
+      outcome = error instanceof Error ? error.message : 'failed';
+    } finally {
+      service.close();
+    }
+    // SQLite can remove the WAL sidecars when the last owner closes.
+    parentPort.postMessage(outcome);
+  `;
+  const workers: Worker[] = [];
+  try {
+    for (let count = 0; count < 2; count++) {
+      workers.push(
+        new Worker(source, {
+          eval: true,
+          workerData: { barrier, path, operation },
+          execArgv: ['--import', 'tsx'],
+        }),
+      );
+    }
+    const signal = AbortSignal.timeout(5_000);
+    const ready = await Promise.all(
+      workers.map((worker) => once(worker, 'message', { signal })),
+    );
+    expect(ready).toEqual([['ready'], ['ready']]);
+
+    const results = Promise.all(
+      workers.map((worker) => once(worker, 'message')),
+    );
+    Atomics.store(release, 0, 1);
+    Atomics.notify(release, 0, workers.length);
+    return (await results).map(([outcome]) => outcome);
+  } finally {
+    await Promise.all(workers.map((worker) => worker.terminate()));
+  }
+}
+
 test('fails closed where private path custody is not implemented', () => {
   expect(() => assertSelfHostedBrokerPlatform('win32')).toThrow(
     'self_hosted_broker_private_custody_unavailable_on_windows',
@@ -152,6 +210,7 @@ describe.runIf(process.platform !== 'win32')(
     const makeIceTempDir = trackTempDirs();
     const makeWithdrawalTempDir = trackTempDirs();
     const makeScopeObservationTempDir = trackTempDirs();
+    const makeBrokerRaceTempDir = trackTempDirs();
     test('ICE HTTP routes require exact native PoP or connector authority and refuse retired owners', async () => {
       const root = makeIceTempDir('station-broker-ice-routes-');
       const now = 1_000;
@@ -1154,45 +1213,19 @@ describe.runIf(process.platform !== 'win32')(
       }
     });
     test('two independent SQLite owners racing one lease revision produce one winner', async () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-broker-cas-'));
-      const path = join(root, 'broker.sqlite');
+      const path = join(
+        makeBrokerRaceTempDir('station-broker-cas-'),
+        'broker.sqlite',
+      );
       const owner = new SelfHostedBrokerService(path, () => 1_000);
       const issued = owner.provision(scope, 600_000);
       owner.close();
-      const barrier = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2);
-      const state = new Int32Array(barrier);
-      const source = `import {parentPort,workerData} from 'node:worker_threads';import {SelfHostedBrokerService} from ${JSON.stringify(new URL('../self-hosted-broker-service.ts', import.meta.url).href)};const state=new Int32Array(workerData.barrier);Atomics.add(state,0,1);Atomics.notify(state,0);Atomics.wait(state,1,0);const service=new SelfHostedBrokerService(workerData.path,()=>1000);try{service.renew(workerData.scope,workerData.credential,0,60000);parentPort.postMessage('won');}catch(error){parentPort.postMessage(error instanceof Error?error.message:'failed');}finally{service.close();}`;
-      const workers = [0, 1].map(
-        () =>
-          new Worker(source, {
-            eval: true,
-            workerData: { barrier, path, scope, credential: issued.connector },
-            execArgv: ['--import', 'tsx'],
-          }),
-      );
-      try {
-        const deadline = Date.now() + 5_000;
-        while (Atomics.load(state, 0) < 2) {
-          if (Date.now() > deadline)
-            throw new Error('CAS workers missed readiness bound');
-          await new Promise<void>((resolveTurn) => setImmediate(resolveTurn));
-        }
-        Atomics.store(state, 1, 1);
-        Atomics.notify(state, 1, 2);
-        const results = await Promise.all(
-          workers.map(
-            (worker) =>
-              new Promise<string>((resolveResult, reject) => {
-                worker.once('message', resolveResult);
-                worker.once('error', reject);
-              }),
-          ),
-        );
-        expect(results.sort()).toEqual(['lease_conflict', 'won']);
-      } finally {
-        await Promise.all(workers.map((worker) => worker.terminate()));
-        rmSync(root, { recursive: true, force: true });
-      }
+
+      const results = await raceBrokerOwners(path, {
+        method: 'renew',
+        args: [scope, issued.connector, 0, 60_000],
+      });
+      expect(results.sort()).toEqual(['lease_conflict', 'won']);
     });
     test('upgrades a version-one database without reassigning legacy signaling', () => {
       const root = mkdtempSync(join(tmpdir(), 'station-broker-upgrade-'));
@@ -1951,8 +1984,10 @@ describe.runIf(process.platform !== 'win32')(
       }
     });
     test('two broker owners racing one invitation publish exactly one grant', async () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-broker-invite-race-'));
-      const path = join(root, 'broker.sqlite');
+      const path = join(
+        makeBrokerRaceTempDir('station-broker-invite-race-'),
+        'broker.sqlite',
+      );
       const owner = new SelfHostedBrokerService(path, () => 1_000);
       const issued = owner.provision(scope, 600_000);
       const invitation = owner.issueInvitation({
@@ -1964,52 +1999,23 @@ describe.runIf(process.platform !== 'win32')(
         stationSigningGeneration: 1,
       });
       owner.close();
-      const barrier = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2);
-      const state = new Int32Array(barrier);
-      const source = `import {parentPort,workerData} from 'node:worker_threads';import {SelfHostedBrokerService} from ${JSON.stringify(new URL('../self-hosted-broker-service.ts', import.meta.url).href)};const state=new Int32Array(workerData.barrier);Atomics.add(state,0,1);Atomics.notify(state,0);Atomics.wait(state,1,0);const service=new SelfHostedBrokerService(workerData.path,()=>1000);try{service.redeemInvitation(workerData.invitation,workerData.origin);parentPort.postMessage('won');}catch(error){parentPort.postMessage(error instanceof Error?error.message:'failed');}finally{service.close();}`;
-      const workers = [0, 1].map(
-        () =>
-          new Worker(source, {
-            eval: true,
-            workerData: {
-              barrier,
-              path,
-              invitation,
-              origin: scope.browserOrigin,
-            },
-            execArgv: ['--import', 'tsx'],
-          }),
-      );
+
+      const results = await raceBrokerOwners(path, {
+        method: 'redeemInvitation',
+        args: [invitation, scope.browserOrigin],
+      });
+      expect(results.sort()).toEqual(['invitation_refused', 'won']);
+
+      const reopened = new SelfHostedBrokerService(path, () => 1_000);
       try {
-        const deadline = Date.now() + 5_000;
-        while (Atomics.load(state, 0) < 2) {
-          if (Date.now() > deadline)
-            throw new Error('Invitation workers missed readiness bound');
-          await new Promise<void>((resolveTurn) => setImmediate(resolveTurn));
-        }
-        Atomics.store(state, 1, 1);
-        Atomics.notify(state, 1, 2);
-        const results = await Promise.all(
-          workers.map(
-            (worker) =>
-              new Promise<string>((resolveResult, reject) => {
-                worker.once('message', resolveResult);
-                worker.once('error', reject);
-              }),
-          ),
-        );
-        expect(results.sort()).toEqual(['invitation_refused', 'won']);
-        const reopened = new SelfHostedBrokerService(path, () => 1_000);
         expect(reopened.listClientGrants(scope, issued.routing)).toHaveLength(
           1,
         );
         expect(() =>
           reopened.redeemInvitation(invitation, scope.browserOrigin),
         ).toThrow('invitation_refused');
-        reopened.close();
       } finally {
-        await Promise.all(workers.map((worker) => worker.terminate()));
-        rmSync(root, { recursive: true, force: true });
+        reopened.close();
       }
     });
     const makeLongInvitationTempDir = trackTempDirs();
@@ -2087,7 +2093,7 @@ describe.runIf(process.platform !== 'win32')(
         ).rejects.toThrow('invalid_native_proof');
         const changedChannel = {
           ...invitation,
-          surface: { ...invitation.surface, channel: 'beta' as const },
+          surface: { ...invitation.surface, channel: 'nightly' as const },
         };
         await expect(
           service.redeemNativeInvitation(

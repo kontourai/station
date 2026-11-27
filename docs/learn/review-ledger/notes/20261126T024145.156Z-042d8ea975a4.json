@@ -1,0 +1,7 @@
+{
+  "revision": "06005c158ed86287322621db7c976a0e7469380c",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Traced tool_call and tool_call_update through the supervisor: identical projected metadata does not emit another start, changed name, kind and arguments still do. Terminal output and provider claims remain accurate.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-tool-update-supervisor.ts"]}
+  ]
+}

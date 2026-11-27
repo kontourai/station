@@ -1,9 +1,0 @@
-{
-  "revision": "6cf868d575b77c0a02ea40e037b7ec87b3ec9250",
-
-  "notes": [
-    {"path":"docs/design/process-supervisor.md","note":"Reviewed only the implemented phase2 terminal IPC paragraph for #4498 against SupervisorLink requestWorkload/send, handoff/drained callers and Node24 IPC semantics. False may mean accepted under backpressure; workload callback errors reject unavailable with cause; queued drained waits its send callback. Original-source IPC regressions failed4cases; real supervisor/PTY fixture reproduced TerminalSessions.load to SupervisorShellHost.attach failure during generation2 reattach. Fixed49tests passed; clean-tree return-semantics mutation failed4/48 and exact restoration passed49. The real journey forces the legal false return while still sending on actual Node IPC, not physical saturation. Broader proposal, provider, physical-crash, installed-force-restart and Windows claims remain unqualified.","inputs":["docs/design/process-supervisor.md","src-server/runtime/bootstrap/supervisor-link.ts","src-server/runtime/bootstrap/__tests__/supervisor-link-workloads.test.ts","src-server/runtime/bootstrap/__tests__/supervisor-link.test.ts","src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts","src-server/services/terminal/__tests__/fixtures/workload-journey-core.ts"]},
-
-    {"path":"docs/reference/env-vars.md","note":"Reviewed #4498 IPC send/callback change against STATION_SUPERVISOR_IPC and STATION_SUPERVISOR_GENERATION row and supervised startup callers. Capability handshake, environment selection, park/promotion and child-variable stripping are unchanged; only accepted IPC backpressure and workload send-error settlement change. Existing environment documentation remains accurate; no prose or configuration change needed.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/supervisor-link.ts"]}
-  ]
-}

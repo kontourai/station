@@ -26,6 +26,10 @@ export interface RuntimeAttentionRouteDependencies {
     credentialMayDecidePairingRequests(credential: string): boolean;
   };
   stationControlDispatchScope: StationControlDispatchScope | undefined;
+  /** Absent on a hosted Station, which composes no pull request feedback. */
+  pullRequestFeedback?: {
+    viewerMayChange(request: Request, conversationId: string): boolean;
+  };
 }
 
 /**
@@ -60,6 +64,12 @@ export function runtimeAttentionRouteOptions(
     // recorded host), and the paired Station authorizes on its side.
     viewerMayRespondToPeerTask: (c, taskId, requestType) =>
       mayAnswerDelegatedRequest(deps, c, taskId, requestType, true),
+    // Pull request feedback's Send again and Turn off: the feedback routes'
+    // own writer rule (a current, in-person operator who may continue the
+    // chat). Without the feature composed, no item claims it.
+    viewerMayChangePullRequestFeedback: (request, conversationId) =>
+      deps.pullRequestFeedback?.viewerMayChange(request, conversationId) ??
+      false,
     // #765 D5: derive the device-pairing items' `viewerCanDecide` from the
     // SAME two gates the middleware applies to an approve/deny request, in
     // the same order: the pairing family's authority boundary

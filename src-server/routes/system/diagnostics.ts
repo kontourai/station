@@ -1,3 +1,4 @@
+import type { ConfinementPreflight } from '@kontourai/station-contracts/execution-confinement';
 import { TROUBLESHOOT_SURFACES } from '@kontourai/station-contracts/troubleshoot';
 import {
   MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
@@ -15,7 +16,10 @@ import {
   isBoundRuntimeOwner,
   resolveClientOriginForRequest,
 } from '../../security/runtime-request-security.js';
-import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import {
+  stationControlRequestAuthority,
+  stationControlRequestCurrent,
+} from '../../security/station-control-request-authority.js';
 import type { DiagnosticsService } from '../../services/infra/diagnostics-service.js';
 import {
   MAX_SERVER_LOG_QUERY_LIMIT,
@@ -42,8 +46,18 @@ export function createDiagnosticsRoutes(
   logReader: ServerLogReader,
   access?: {
     agentGrant?: (sessionId: string) => boolean;
+    requestLogRead?: (
+      sessionId: string,
+      description: string,
+      signal: AbortSignal,
+    ) => Promise<boolean>;
     /** #4470: absent leaves the troubleshoot prepare route unmounted. */
     troubleshoot?: TroubleshootService;
+    /**
+     * #4774: this host's confinement facts before any start. Absent leaves
+     * the confinement preflight route unmounted.
+     */
+    confinementPreflight?: () => Promise<ConfinementPreflight>;
   },
 ) {
   const app = new Hono();
@@ -63,6 +77,24 @@ export function createDiagnosticsRoutes(
       return c.json({ error: errorMessage(error) }, 500);
     }
   });
+
+  // #4774: what `station doctor` reports about confinement. Content-free:
+  // states and the providers' own reasons with paths removed, never an
+  // environment value, a path or a credential. It takes no input.
+  const confinementPreflight = access?.confinementPreflight;
+  if (confinementPreflight) {
+    app.get('/confinement-preflight', async (c) => {
+      try {
+        return c.json(await confinementPreflight());
+      } catch (error) {
+        logger.error('Failed to read the confinement preflight', { error });
+        return c.json(
+          { error: 'The confinement preflight could not be read.' },
+          500,
+        );
+      }
+    });
+  }
 
   // #4470: prepare an in-app troubleshooting conversation. People only: an
   // agent (including Station's internal principal) may not start one, since
@@ -144,8 +176,7 @@ export function createDiagnosticsRoutes(
           if (
             authority?.kind !== 'caller' ||
             authority.caller.assurance !== 'bound' ||
-            !authority.caller.principal?.elevationEligible ||
-            !hasAgentGrant(authority.caller.sessionId)
+            !authority.caller.principal?.elevationEligible
           )
             return c.json(
               { error: 'Diagnostics log access is not granted' },
@@ -200,6 +231,29 @@ export function createDiagnosticsRoutes(
 
       const q = c.req.query('q');
 
+      let approvedOnce = false;
+      if (agentSessionId && !hasAgentGrant(agentSessionId)) {
+        const description = [
+          `Severity: ${rawLevel ?? 'all levels'}`,
+          `From: ${since ? new Date(since).toISOString() : 'no lower bound'}`,
+          `To: ${until ? new Date(until).toISOString() : 'no upper bound'}`,
+          `Maximum entries: ${limit ?? 200}`,
+          ...(q ? ['A text filter applies.'] : []),
+          'The result may contain private conversation content.',
+        ].join('\n');
+        approvedOnce =
+          (await access?.requestLogRead?.(
+            agentSessionId,
+            description,
+            c.req.raw.signal,
+          )) === true;
+        if (!approvedOnce || !stationControlRequestCurrent(c.req.raw))
+          return c.json(
+            { error: 'Diagnostics log access is not granted' },
+            403,
+          );
+      }
+
       const options: ServerLogQueryOptions = {
         ...(rawLevel !== undefined ? { level: rawLevel } : {}),
         ...(since !== undefined ? { since } : {}),
@@ -209,11 +263,15 @@ export function createDiagnosticsRoutes(
         // One derivation, bound by the auth boundary: the owner (mint-time
         // `locality: 'home-possession'` or owner-device standing). Absent (or a
         // second call that skipped the boundary) fails closed to redacted.
-        redact: !isBoundRuntimeOwner(c.req.raw),
+        redact: approvedOnce || !isBoundRuntimeOwner(c.req.raw),
       };
 
       const result = await logReader.query(options);
-      if (agentSessionId && !hasAgentGrant(agentSessionId))
+      if (
+        agentSessionId &&
+        (!stationControlRequestCurrent(c.req.raw) ||
+          (!approvedOnce && !hasAgentGrant(agentSessionId)))
+      )
         return c.json({ error: 'Diagnostics log access is not granted' }, 403);
       serverLogsRead.add(1, { surface: 'route' });
       return c.json(result);

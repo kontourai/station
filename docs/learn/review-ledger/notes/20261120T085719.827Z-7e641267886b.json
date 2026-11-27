@@ -1,0 +1,7 @@
+{
+  "revision": "e5b70abdc6bc003d26798c18a79ae5675e6d863b",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the affected-test planner against the Atlas browser fixture. Runtime assets are served from disk and the Markdown renderer supplies the search data through the generator. The three input cases fail with a missing browser selection before these entries.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}

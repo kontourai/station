@@ -1,4 +1,5 @@
 import { useInboxWorkingCount } from '../components/chat-dock/useInboxGroups';
+
 // @vitest-environment jsdom
 
 /**
@@ -26,6 +27,12 @@ import {
 } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { snoozeChoices } from '../components/inbox-row/snooze-presets';
+
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [{ slug: 'alpha', name: 'Alpha' }] }),
+}));
+
 import { FOLD_FIXTURES } from '../../../tests/helpers/session-summary-fold-fixtures';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import {
@@ -140,7 +147,7 @@ function renderSheetHost(
   );
 }
 
-function expectSharedRowAnatomy(root: ParentNode) {
+function expectSharedRowAnatomy(root: ParentNode, recency = '1m ago') {
   // One shared row implementation: the class family is the contract.
   expect(root.querySelector('.chat-dock-inbox__row')).not.toBeNull();
   expect(root.querySelector('.inbox-row__agent')?.textContent).toBe(
@@ -153,7 +160,7 @@ function expectSharedRowAnatomy(root: ParentNode) {
   // line's slot: a status row used to drop its time entirely, leaving "how
   // long has it sat like this?" unanswerable from the inbox.
   expect(root.querySelector('.inbox-row__word')?.textContent).toBe('Running');
-  expect(root.querySelector('.inbox-row__time')?.textContent).toBe('1m');
+  expect(root.querySelector('.inbox-row__time')?.textContent).toBe(recency);
 }
 
 describe('shared inbox rows render in both hosts (station#3312)', () => {
@@ -176,7 +183,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       now: NOW,
     };
     const mounted = render(<MobileInboxPanel {...props} open />);
-    fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Search chats' }));
     fireEvent.change(screen.getByRole('searchbox'), {
       target: { value: 'Shared row' },
     });
@@ -186,14 +193,14 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     )!;
     list.scrollTop = 120;
     mounted.rerender(<MobileInboxPanel {...props} open={false} />);
-    expect(screen.queryByRole('region', { name: 'Inbox' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Chats' })).toBeNull();
     mounted.rerender(<MobileInboxPanel {...props} open />);
     expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe(
       'Shared row',
     );
     expect(list.scrollTop).toBe(120);
     expect(
-      screen.getByRole('button', { name: 'Shared row title, Shared project' }),
+      screen.getByRole('button', { name: /^Shared row title.*Shared project/ }),
     ).toBeTruthy();
   });
 
@@ -229,7 +236,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Shared row title, Shared project' }),
+      screen.getByRole('button', { name: /^Shared row title.*Shared project/ }),
     );
     await waitFor(() => expect(onOpenFailed).toHaveBeenCalledOnce());
     expect(onOpenConversation.mock.calls[0]?.slice(0, 2)).toEqual([
@@ -238,7 +245,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     ]);
     expect(onClose).not.toHaveBeenCalled();
     expect(onAcknowledgeConversation).not.toHaveBeenCalled();
-    expect(screen.getByRole('region', { name: 'Inbox' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Chats' })).toBeTruthy();
   });
   beforeEach(() => {
     localStorage.clear();
@@ -283,9 +290,8 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       ),
     });
     expect(screen.getByText('Child chat')).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Details for Child chat' }),
-    );
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Child chat/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     await screen.findByRole('dialog', { name: 'Details for Child chat' });
     mounted.rerender(view([parent, { ...child, lifecycleLabel: 'Completed' }]));
     const details = await screen.findByRole('dialog', {
@@ -319,7 +325,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+      screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
     );
     expect(screen.getByText(child.title)).toBeTruthy();
     expect(screen.getByText(parent.title)).toBeTruthy();
@@ -376,37 +382,76 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
               />,
             );
       const first = mount();
-      fireEvent.change(screen.getByRole('combobox', { name: 'Inbox scope' }), {
-        target: { value: 'project:["station:local","alpha"]' },
-      });
+      if (host === 'mobile') {
+        fireEvent.click(screen.getByRole('button', { name: 'Filter chats' }));
+        fireEvent.click(screen.getByRole('button', { name: /^Alpha/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
+      } else
+        fireEvent.change(
+          screen.getByRole('combobox', { name: 'Scope for Chats' }),
+          {
+            target: { value: 'project:["station:local","alpha"]' },
+          },
+        );
       expect(screen.queryByText('Remote approval')).toBeNull();
       expect(screen.getByText('Local project work')).toBeTruthy();
       first.unmount();
       deviceSettingsStore.reloadFromStorage();
       mount();
-      expect(
-        (
-          screen.getByRole('combobox', {
-            name: 'Inbox scope',
-          }) as HTMLSelectElement
-        ).value,
-      ).toBe('project:["station:local","alpha"]');
+      if (host === 'mobile')
+        expect(
+          screen.getByRole('button', { name: 'Clear filters' }),
+        ).toBeTruthy();
+      else
+        expect(
+          (
+            screen.getByRole('combobox', {
+              name: 'Scope for Chats',
+            }) as HTMLSelectElement
+          ).value,
+        ).toBe('project:["station:local","alpha"]');
       fireEvent.click(
+        // Desktop: a count badge on the scope picker; the phone keeps its notice.
         screen.getByRole('button', {
-          name: '1 need you outside this filter · Show all',
+          name:
+            host === 'desktop'
+              ? '1 need you outside this filter. Show all work'
+              : '1 need you outside this filter · Show all',
         }),
       );
       expect(screen.getByText('Remote approval')).toBeTruthy();
     },
   );
 
-  it('defaults to all work; a chosen Current project follows the project page on screen (#4405 A36)', () => {
+  it('describes the effective all-work empty state when Current project resolves outside a project', () => {
+    act(() => navigationStore.navigate('/'));
+    render(
+      <MobileInboxPanel
+        open
+        tasks={[]}
+        openChatSessionIds={[]}
+        activeChatSessionId={null}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByText('No chats yet.')).toBeTruthy();
+    expect(screen.queryByText('No work in this filter.')).toBeNull();
+  });
+
+  it('defaults to the project page and respects explicit All work (#4405 A36)', () => {
     const items = [
       workItem({
         id: 'alpha-chat',
         title: 'Alpha project work',
         projectSlug: 'alpha',
-        projectLabel: 'Alpha',
+        projectLabel: undefined as any,
         chatSessionId: 'alpha-chat',
       }),
       workItem({
@@ -429,30 +474,66 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       />
     );
     try {
-      act(() => navigationStore.navigate('/projects/alpha'));
+      act(() => navigationStore.navigate('/projects/alpha/layouts/coding'));
       const mounted = render(panel());
       const scope = () =>
         screen.getByRole('combobox', {
-          name: 'Inbox scope',
+          name: 'Scope for Chats',
         }) as HTMLSelectElement;
-      // Unchosen, every open chat stays listed: the open conversation is
-      // never filtered out of its own Inbox.
-      expect(scope().value).toBe('all');
-      expect(screen.getByText('No project chat')).toBeTruthy();
-      fireEvent.change(scope(), { target: { value: 'current-project' } });
+      // With no stored setting a project route scopes the inbox.
+      expect(scope().value).toBe('current-project');
+      expect(scope().selectedOptions[0].textContent).toBe(
+        'This project: Alpha',
+      );
       expect(screen.getByText('Alpha project work')).toBeTruthy();
       expect(screen.queryByText('No project chat')).toBeNull();
       act(() => navigationStore.navigate('/'));
       mounted.rerender(panel());
       expect(screen.getByText('No project chat')).toBeTruthy();
       expect(screen.getByText('Alpha project work')).toBeTruthy();
+      expect(scope().selectedOptions[0].textContent).toBe('All work');
+      expect(
+        [...scope().options].filter(
+          (option) => !option.hidden && option.text === 'All work',
+        ),
+      ).toHaveLength(1);
+      expect(screen.queryByRole('option', { name: 'Follow page' })).toBeNull();
+      expect(
+        [...scope().options]
+          .filter((option) => !option.hidden)
+          .slice(0, 2)
+          .map((option) => option.text),
+      ).toEqual(['All work', 'This Station']);
+      expect(scope().value).toBe('current-project');
+      fireEvent.change(scope(), { target: { value: 'all' } });
+      act(() => navigationStore.navigate('/projects/alpha'));
+      mounted.rerender(panel());
+      expect(scope().value).toBe('all');
+      expect(screen.getByText('No project chat')).toBeTruthy();
+      fireEvent.change(scope(), { target: { value: 'current-project' } });
+
       // Back on a project page the chosen scope filters again; "All work"
       // undoes it.
       act(() => navigationStore.navigate('/projects/alpha'));
       mounted.rerender(panel());
       expect(screen.queryByText('No project chat')).toBeNull();
+      expect(
+        screen.getByRole('option', { name: 'Always Alpha · This Station' }),
+      ).toBeTruthy();
+      fireEvent.change(scope(), {
+        target: { value: 'project:["station:local","alpha"]' },
+      });
+      act(() => navigationStore.navigate('/'));
+      mounted.rerender(panel());
+      expect(screen.queryByText('No project chat')).toBeNull();
       fireEvent.change(scope(), { target: { value: 'all' } });
       expect(screen.getByText('No project chat')).toBeTruthy();
+      expect(scope().selectedOptions[0].textContent).toBe('All work');
+      expect(
+        [...scope().options].filter(
+          (option) => !option.hidden && option.text === 'All work',
+        ),
+      ).toHaveLength(1);
     } finally {
       act(() => navigationStore.navigate('/'));
     }
@@ -511,7 +592,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       expect(within(lane).getByText('Ship release')).toBeTruthy();
       fireEvent.click(
         within(lane).getByRole('button', {
-          name: 'Release conversation, Shared project',
+          name: /^Release conversation.*Shared project/,
         }),
       );
       expect(onFocusChat).toHaveBeenCalledWith('linked-chat');
@@ -521,7 +602,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         '/tasks/task-1?dock=open&chat=linked-chat&taskView=conversation',
       );
       expect(
-        within(lane).queryByRole('button', { name: 'Ship release, alpha' }),
+        within(lane).queryByRole('button', { name: /^Ship release.*alpha/ }),
       ).toBeNull();
       fireEvent.click(
         within(lane).getByRole('button', { name: 'Open task Ship release' }),
@@ -650,7 +731,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       }
       fireEvent.click(
         within(needsYou).getByRole('button', {
-          name: 'Security review, No project',
+          name: /^Security review.*No project/,
         }),
       );
       await vi.waitFor(() =>
@@ -684,7 +765,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
           0,
         );
         fireEvent.click(
-          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
         );
       } else {
         render(
@@ -699,7 +780,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       }
       if (host === 'mobile')
         fireEvent.click(
-          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
         );
       expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
         20,
@@ -724,7 +805,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       ).toBeNull();
       fireEvent.click(
         screen.getByRole('button', {
-          name: 'Historical work 44, Shared project',
+          name: /^Historical work 44.*Shared project/,
         }),
       );
       expect(handlers.onFocusChat).toHaveBeenCalledWith('history-44');
@@ -758,7 +839,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
           />,
         );
         fireEvent.click(
-          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
         );
       } else {
         render(
@@ -773,10 +854,10 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       }
       if (host === 'mobile')
         fireEvent.click(
-          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
         );
       const current = screen.getByRole('button', {
-        name: 'Historical work 40, Shared project',
+        name: /^Historical work 40.*Shared project/,
       });
       expect(current.getAttribute('aria-current')).toBe('true');
       expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
@@ -784,7 +865,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       );
       expect(
         screen.queryByRole('button', {
-          name: 'Historical work 39, Shared project',
+          name: /^Historical work 39.*Shared project/,
         }),
       ).toBeNull();
     },
@@ -795,25 +876,25 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expectSharedRowAnatomy(container);
     expect(
       screen.getByRole('button', {
-        name: 'Shared row title, Shared project',
+        name: /^Shared row title.*Shared project/,
       }),
     ).not.toBeNull();
   });
 
   it('sheet host renders the same shared anatomy with touch chrome', () => {
     renderSheetHost(workItem());
-    const dialog = screen.getByRole('region', { name: 'Inbox' });
+    const dialog = screen.getByRole('region', { name: 'Chats' });
     expectSharedRowAnatomy(dialog);
     expect(
       screen.getByRole('button', {
-        name: 'Shared row title, Shared project',
+        name: /^Shared row title.*Shared project/,
       }),
     ).not.toBeNull();
     // The sheet's rows use the always-visible ≥44px action chrome.
     expect(dialog.querySelector('.inbox-row--touch')).not.toBeNull();
     expect(dialog.querySelector('.inbox-row--hover')).toBeNull();
     // Chrome stays host-owned: the pinned accessible names survive.
-    expect(screen.getByRole('region', { name: 'Inbox' })).not.toBeNull();
+    expect(screen.getByRole('region', { name: 'Chats' })).not.toBeNull();
   });
 
   // Rendered through the shared row directly: a 3h-old terminal row lives in
@@ -828,7 +909,6 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         })}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat={false}
         now={NOW}
         onActivate={vi.fn()}
       />,
@@ -845,7 +925,6 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         item={workItem({ lifecycleLabel: 'Failed', updatedAt: 0 })}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat={false}
         now={NOW}
         onActivate={vi.fn()}
       />,
@@ -856,34 +935,35 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expect(container.querySelector('.inbox-row__time')).toBeNull();
   });
 
-  it('the sheet keeps one overflow control and snoozes from its actions sheet', async () => {
+  it('a selected phone row snoozes from its Details sheet', async () => {
     renderSheetHost(workItem());
     expect(
       screen.queryByRole('button', { name: 'Snooze Shared row title' }),
     ).toBeNull();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Details for Shared row title' }),
+    fireEvent.contextMenu(
+      screen.getByRole('button', { name: /^Shared row title/ }),
     );
-    expect(await screen.findByRole('button', { name: '3 hours' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect(
-      screen.getByRole('button', { name: 'Dismiss from inbox' }),
+      await screen.findByRole('button', { name: /^Tomorrow morning,/ }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '3 hours' }));
+    expect(screen.getByRole('button', { name: 'Mark done' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Tomorrow morning,/ }));
     const snoozed = screen.getByRole('region', { name: 'Snoozed · 1' });
     fireEvent.click(
       within(snoozed).getByRole('button', { name: 'Snoozed · 1' }),
     );
     expect(
       within(snoozed).getByRole('button', {
-        name: 'Shared row title, Shared project',
+        name: /^Shared row title.*Shared project/,
       }),
     ).toBeTruthy();
   });
 
-  it('the desktop panel’s snooze is one control that opens the duration choice (D7)', () => {
+  it('the desktop panel’s snooze is in the one row menu, which opens the duration choice (D7)', () => {
     renderPanelHost(workItem());
     const snooze = screen.getByRole('button', {
-      name: 'Snooze Shared row title',
+      name: 'Actions for Shared row title',
     });
     expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
     expect(
@@ -894,14 +974,22 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     // Pressing it opens the choice and snoozes nothing: a one-tap default
     // would hide the row before the user said for how long.
     fireEvent.click(snooze);
-    const menu = screen.getByRole('menu', { name: 'Snooze Shared row title' });
+    const menu = screen.getByRole('menu', {
+      name: 'Actions for Shared row title',
+    });
     expect(
       within(menu)
         .getAllByRole('menuitem')
-        .map((option) => option.textContent?.trim()),
-    ).toEqual(['1 hour', '3 hours', 'Tomorrow 9am', 'Next Monday 9am']);
+        .map((option) => option.firstChild?.textContent),
+    ).toEqual([
+      'Open chat',
+      'Mark done',
+      ...snoozeChoices(NOW).map((choice) => choice.label),
+    ]);
     expect(screen.queryByRole('button', { name: 'Snoozed · 1' })).toBeNull();
-    fireEvent.click(within(menu).getByRole('menuitem', { name: '1 hour' }));
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: /^In 1 hour,/ }),
+    );
     expect(screen.getByRole('button', { name: 'Snoozed · 1' })).not.toBeNull();
   });
 
@@ -940,18 +1028,20 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
   it('a snooze written in one host is read by the other (same store, same key)', async () => {
     const item = workItem();
     const sheet = renderSheetHost(item);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Details for Shared row title' }),
+    fireEvent.contextMenu(
+      screen.getByRole('button', { name: /^Shared row title/ }),
     );
-    fireEvent.click(await screen.findByRole('button', { name: '1 hour' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^In 1 hour,/ }));
     sheet.unmount();
 
     renderPanelHost(item);
     const snoozedToggle = screen.getByRole('button', { name: 'Snoozed · 1' });
     fireEvent.click(snoozedToggle);
-    expect(
-      screen.getByRole('button', { name: 'Unsnooze Shared row title' }),
-    ).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Shared row title' }),
+    );
+    expect(screen.getByRole('menuitem', { name: 'Wake now' })).not.toBeNull();
   });
 });
 
@@ -979,7 +1069,9 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
       [{ slug: 'claude', name: 'Claude Code' }] as any,
     );
     const row = screen.getByTestId('inbox-row');
-    expect(row.textContent).toContain('Claude Code');
+    // A hover row draws the agent as its mark, named in the mark's tooltip.
+    const marks = row.querySelector('[data-testid="identity-marks"]');
+    expect(marks?.getAttribute('title')).toBe('Claude Code');
     expect(row.textContent).not.toContain('Codex');
   });
   beforeEach(() => {
@@ -1036,18 +1128,20 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
       AGENTS,
     );
     expect(avatarOf(container)).toBeNull();
-    expect(container.querySelector('.brand-icon')).toBeNull();
+    expect(container.querySelector('.identity-marks .brand-icon')).toBeNull();
   });
 
   it('an unresolved row keeps its whole meta line, in words', () => {
-    const { container } = renderPanelHost(
+    renderPanelHost(
       sessionItem({ agentSlug: 'agent-that-is-gone' }),
       vi.fn(),
       AGENTS,
     );
-    expect(container.querySelector('.inbox-row__meta-text')?.textContent).toBe(
-      'Codex · Shared project',
-    );
+    // No mark to stand for it, so the agent stays in words after the project.
+    const row = screen.getByRole('button', {
+      name: /^Shared row title.*Shared project.*Codex/,
+    });
+    expect(within(row).getByText('Codex')).toBeTruthy();
   });
 
   it('adds no icon column at all for a host that supplies no catalog', () => {
@@ -1073,7 +1167,7 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
     expect(avatar?.hasAttribute('tabindex')).toBe(false);
     // The row's accessible name is unchanged by the icon.
     expect(
-      screen.getByRole('button', { name: 'Shared row title, Shared project' }),
+      screen.getByRole('button', { name: /^Shared row title.*Shared project/ }),
     ).not.toBeNull();
     const focusableWithIcon = withIcon.container.querySelectorAll(
       '.chat-dock-inbox__row button',
@@ -1089,7 +1183,7 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
 
   it('renders the same icon through the mobile sheet chrome', () => {
     renderSheetHost(sessionItem({ agentSlug: 'codex' }), vi.fn(), AGENTS);
-    const dialog = screen.getByRole('region', { name: 'Inbox' });
+    const dialog = screen.getByRole('region', { name: 'Chats' });
     expect(avatarOf(dialog)?.getAttribute('data-brand-key')).toBe('codex');
   });
 });
@@ -1230,11 +1324,10 @@ describe('inbox row engine fallback for a resolved agent without engineId (#3355
       container
         .querySelector('[data-testid="identity-marks"]')
         ?.getAttribute('title'),
-    ).toBe('Ran on Claude Code, Codex');
-    // The agent stays named in text beside the marks.
-    expect(container.querySelector('.inbox-row__agent')?.textContent).toBe(
-      'Station',
-    );
+    ).toBe('Station — Ran on Claude Code, Codex');
+    // The marks stand in for the agent's name on a hover row: it is in their
+    // tooltip (above) and the hover card, not repeated as text.
+    expect(container.querySelector('.inbox-row__agent')).toBeNull();
 
     const many = renderPanelHost(
       rowFor({
@@ -1333,7 +1426,7 @@ it.each([0, 1, 2])(
     expect(
       within(lane).getAllByRole('button', { name: 'Open task One outcome' }),
     ).toHaveLength(1);
-    expect(within(lane).getByText('Task · In progress')).toBeTruthy();
+    expect(within(lane).getByText('In progress')).toBeTruthy();
     if (count)
       expect(
         within(lane).getByRole('button', {

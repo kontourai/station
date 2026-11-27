@@ -1,0 +1,7 @@
+{
+  "revision": "6ba7d2563eb634b289aab9c418ca0786b2e2613e",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Added the additive sessionReadModel diagnostics bundle field (#4992); checked against DiagnosticsService.generateBundle and the runtime wiring; triage allowlist unaffected.","inputs":["docs/reference/cli.md"]}
+  ]
+}

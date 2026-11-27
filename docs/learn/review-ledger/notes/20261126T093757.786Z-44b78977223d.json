@@ -1,0 +1,9 @@
+{
+  "revision": "eab032cf19f8f218ff968d8261948cd14a6ae075",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#5592 adds resting-draft tests and updates three draft tests to the new empty-pane behaviour; no claim about module ownership or Station connection boundaries changed.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"#5592 adds resting-draft tests and updates three draft tests to the new empty-pane behaviour; no claim about module ownership or Station connection boundaries changed.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]}
+  ]
+}

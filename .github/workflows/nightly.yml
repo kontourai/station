@@ -1,7 +1,9 @@
 name: Nightly
 
 # Nightly proves source usability and signed artifact custody independently of
-# scheduled full qualification. Beta and stable retain exact-SHA full regression.
+# scheduled full qualification. Stable RC/final retain exact-SHA full regression.
+# Source usability is the merge queue's fast-checks statics on this exact SHA
+# when that run passed, and otherwise the source gate's own checks below.
 on:
   schedule:
     - cron: '47 * * * *'
@@ -33,11 +35,18 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+      - name: Refuse a Nightly base at or below a published RC or final
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/nightly-release-base.mjs --package-json package.json --repository "$GITHUB_REPOSITORY"
       - id: decide
         name: Decide configured cadence and bounded terminal delivery recovery
         env:
           GH_TOKEN: ${{ github.token }}
           STATION_NIGHTLY_INTERVAL_HOURS: ${{ vars.STATION_NIGHTLY_INTERVAL_HOURS }}
+          REQUESTED_REBUILD_INDEX: ${{ inputs.rebuild_index }}
         run: |
           set -euo pipefail
           # The ledger's rows land on main after a ship, so the run's own
@@ -45,7 +54,7 @@ jobs:
           git fetch --no-tags origin main
           reservations="$RUNNER_TEMP/nightly-reservations.txt"
           git ls-remote --refs "https://github.com/$GITHUB_REPOSITORY" 'refs/tags/nightly-version-code/*' > "$reservations"
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ -n "$REQUESTED_REBUILD_INDEX" ]; then
             echo 'publish=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -66,7 +75,8 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' && needs.delivery-decide.outputs.publish == 'true' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 45
-    permissions: { contents: read }
+    # actions: read is for the merge-queue receipt lookup's run and job listings.
+    permissions: { contents: read, actions: read }
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
     steps:
@@ -92,13 +102,31 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      # The merge queue ran these checks on this exact SHA when its merge_group
+      # run of ci.yml passed fast-checks statics, journey step included
+      # (scripts/nightly-source-gate-receipt.mjs). Only accepted=true skips
+      # them; no receipt, an API error or a failure of this step runs them all.
+      - id: receipt
+        name: Accept the merge queue's source gate for this exact SHA
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: node scripts/nightly-source-gate-receipt.mjs
+      # Installation and the Chromium cache steps always run: this job is the
+      # only writer of the cache that pull-request and merge-group jobs restore.
       - run: npm run dependencies:ci
       - name: Check native platform boundary before staging
+        if: steps.receipt.outputs.accepted != 'true'
         run: npm run native-platform:ratchet
       - name: Lint
+        if: steps.receipt.outputs.accepted != 'true'
         run: npm run lint:check
-      - run: npm run build:connect
+      - if: steps.receipt.outputs.accepted != 'true'
+        run: npm run build:connect
       - name: Typecheck
+        if: steps.receipt.outputs.accepted != 'true'
         env:
           # station#2621: this fleet reports 4 vCPUs / ~15.6 GiB, which the
           # RAM-only default rounds to 2 typecheck slots -- see the matching
@@ -129,6 +157,7 @@ jobs:
           echo '::error::Playwright install failed after 3 attempts'
           exit 1
       - name: Run deterministic browser smoke
+        if: steps.receipt.outputs.accepted != 'true'
         timeout-minutes: 10
         env:
           PW_REPORTER: line,html
@@ -207,7 +236,19 @@ jobs:
     needs: [test-gate]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha }}
     runs-on: ubuntu-22.04
-    permissions: { contents: write, id-token: write, actions: read }
+    timeout-minutes: 30
+    # Nothing here writes the repository any more (the deploy-ledger push
+    # moved out), so contents is read: checkout, OIDC npm publish, the run's
+    # created_at lookup (actions: read) and the receipt upload need no more.
+    permissions: { contents: read, id-token: write, actions: read }
+    # This job no longer writes the deploy ledger. Its registry-verified
+    # publish is recorded in the run's one ledger commit: by the native
+    # cohort's record job, or by record-cli-ledger below when the cohort
+    # does not get there. These outputs are what record-cli-ledger records.
+    outputs:
+      ledger_ready: ${{ steps.cli_registry_provenance.outcome }}
+      version: ${{ steps.identity.outputs.version }}
+      recorded_at: ${{ steps.cli_registry_provenance.outputs.recorded_at }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -232,15 +273,18 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.cli_source_decide.outputs.build == 'true'
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - name: Setup pinned Node for CLI receipt recovery
+        if: steps.cli_source_decide.outputs.build != 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: .nvmrc, package-manager-cache: false }
       - id: identity
         name: Build exact-SHA CLI nightly identity
-        if: steps.cli_source_decide.outputs.build == 'true'
         env:
+          BUILD_CLI: ${{ steps.cli_source_decide.outputs.build }}
           GH_TOKEN: ${{ github.token }}
           STATION_CLI_BUILD_CHANNEL: nightly
           STATION_CLI_SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
         run: |
-          npm run dependencies:ci
           # Run creation time is immutable across reruns, including midnight.
           export NIGHTLY_RUN_CREATED_AT
           NIGHTLY_RUN_CREATED_AT=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq '.created_at')
@@ -248,8 +292,11 @@ jobs:
           # A raw `npm version` walks the workspace to refresh a lockfile this
           # pnpm-managed repository does not have, and fails on peer conflicts
           # (ERESOLVE) before it ever writes the field. Only the field changes.
-          node scripts/lib/nightly-build-identity.mjs --cli-version "$version" --package-json packages/cli/package.json
-          npm run build:cli
+          if [ "$BUILD_CLI" = true ]; then
+            npm run dependencies:ci
+            node scripts/lib/nightly-build-identity.mjs --cli-version "$version" --package-json packages/cli/package.json
+            npm run build:cli
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - id: cli_npm_preflight
         name: Check npm trusted publishing for @kontourai/station-cli
@@ -278,7 +325,6 @@ jobs:
           echo 'trusted_publisher=true' >> "$GITHUB_OUTPUT"
       - id: npm_idempotency
         name: Refuse a conflicting CLI version and skip an exact rerun
-        if: steps.cli_source_decide.outputs.build == 'true'
         env:
           CLI_VERSION: ${{ steps.identity.outputs.version }}
           SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
@@ -312,7 +358,7 @@ jobs:
         run: npm publish --tag nightly --access public
       - id: cli_registry_provenance
         name: Bind the published CLI receipt to npm registry provenance
-        if: ${{ always() && steps.cli_npm_publish.outcome == 'success' }}
+        if: ${{ always() && (steps.cli_npm_publish.outcome == 'success' || (steps.npm_idempotency.outcome == 'success' && steps.npm_idempotency.outputs.publish == 'false')) }}
         env:
           SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
           CLI_VERSION: ${{ steps.identity.outputs.version }}
@@ -339,20 +385,11 @@ jobs:
             sleep 15
           done
           registry_sha=$(node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA")
-          REGISTRY_SHA="$registry_sha" node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync(process.argv[1], JSON.stringify({schemaVersion:1,kind:"station.npm-publish-receipt",package:"@kontourai/station-cli",version:process.env.CLI_VERSION,sourceSha:process.env.SOURCE_SHA,registryGitHead:process.env.REGISTRY_SHA,artifactBuiltAt:null,artifactBuiltAtReason:"npm package has no native artifact manifest",sourceBinding:"npm registry gitHead",},null,2)+"\n")' provider-receipts/nightly-cli.json
-      - id: ledger_token
-        if: ${{ always() && steps.cli_registry_provenance.outcome == 'success' }}
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          permission-contents: write
-      - name: Record the independent CLI ship in the deploy ledger
-        if: ${{ always() && steps.cli_registry_provenance.outcome == 'success' }}
-        env:
-          GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
-        run: |
-          node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record nightly-npm ${{ steps.identity.outputs.version }} from run $GITHUB_RUN_ID" --summary-line "- recorded: nightly-npm ${{ steps.identity.outputs.version }}" -- node scripts/deploy-ledger.mjs --channel nightly-npm --version "${{ steps.identity.outputs.version }}" --sha "${{ needs.test-gate.outputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'Nightly exact gates success; npm registry gitHead equals source SHA' --github-repo "$GITHUB_REPOSITORY" --artifact "npm:@kontourai/station-cli@${{ steps.identity.outputs.version }} (dist-tag nightly; artifactBuiltAt unknown)" --note 'artifactBuiltAt is null: npm package has no native artifact manifest'
+          # The ledger row's timestamp: the moment this publish was verified,
+          # whichever later job writes the row.
+          recorded_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          REGISTRY_SHA="$registry_sha" VERIFIED_AT="$recorded_at" node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync(process.argv[1], JSON.stringify({schemaVersion:1,kind:"station.npm-publish-receipt",package:"@kontourai/station-cli",version:process.env.CLI_VERSION,sourceSha:process.env.SOURCE_SHA,registryGitHead:process.env.REGISTRY_SHA,verifiedAt:process.env.VERIFIED_AT,artifactBuiltAt:null,artifactBuiltAtReason:"npm package has no native artifact manifest",sourceBinding:"npm registry gitHead",},null,2)+"\n")' provider-receipts/nightly-cli.json
+          echo "recorded_at=$recorded_at" >> "$GITHUB_OUTPUT"
       - name: Retain the Nightly CLI provider receipt
         if: ${{ always() && steps.cli_registry_provenance.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -361,3 +398,47 @@ jobs:
           path: provider-receipts/nightly-cli.json
           if-no-files-found: error
           retention-days: 14
+
+  # One deploy-ledger commit per run: every push to main discards the merge
+  # groups in flight. When the native cohort reaches its record job, that job
+  # writes this run's npm row in the same commit as the native rows. This job
+  # runs after the cohort however it ended (skipped, failed or cancelled) and
+  # records the npm row alone only if main does not hold it yet (--if-absent),
+  # so the row is neither lost nor written twice. Like the in-job ledger step
+  # it replaces, it also runs when the run is cancelled: the publish happened.
+  record-cli-ledger:
+    name: 4 · Record the CLI ship the cohort did not
+    needs: [test-gate, nightly-cli, native-cohort]
+    if: ${{ always() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha && needs['nightly-cli'].outputs.ledger_ready == 'success' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.test-gate.outputs.source_sha }}
+          # The changelog slice walks the previous npm ship SHA to this one.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - id: ledger_token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+      - name: Record the independent CLI ship in the deploy ledger
+        env:
+          GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
+          CLI_VERSION: ${{ needs.nightly-cli.outputs.version }}
+          CLI_RECORDED_AT: ${{ needs.nightly-cli.outputs.recorded_at }}
+          SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          test -n "$GITHUB_TOKEN"
+          test -n "$CLI_VERSION"
+          test -n "$CLI_RECORDED_AT"
+          node scripts/lib/deploy-ledger-commit.mjs --subject-run-id "$GITHUB_RUN_ID" --record node scripts/deploy-ledger.mjs --if-absent --channel nightly-npm --version "$CLI_VERSION" --sha "$SOURCE_SHA" --timestamp "$CLI_RECORDED_AT" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'Nightly exact gates success; npm registry gitHead equals source SHA' --github-repo "$GITHUB_REPOSITORY" --artifact "npm:@kontourai/station-cli@$CLI_VERSION (dist-tag nightly; artifactBuiltAt unknown)" --note 'artifactBuiltAt is null: npm package has no native artifact manifest'

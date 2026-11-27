@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  conversationStatsMeasurementView,
   describeUnreportedMeasurements,
+  enginesReportingTokensSeparately,
   formatMeasuredCostUsd,
   formatMeasuredTokens,
   UNREPORTED_MEASUREMENT_TEXT,
@@ -8,24 +10,34 @@ import {
 } from '../usage-measurement.js';
 
 describe('the one unreported-measurement representation (station#3201)', () => {
-  it('formats an unreported figure as the shared dash and a reported zero as zero', () => {
-    expect(formatMeasuredTokens(undefined)).toBe(UNREPORTED_MEASUREMENT_TEXT);
+  it('formats an unreported figure as "Not reported" and a reported zero as zero', () => {
+    expect(UNREPORTED_MEASUREMENT_TEXT).toBe('Not reported');
+    expect(formatMeasuredTokens(undefined)).toBe('Not reported');
     expect(formatMeasuredTokens(0)).toBe('0');
     expect(formatMeasuredTokens(1234)).toBe('1,234');
 
-    expect(formatMeasuredCostUsd(undefined)).toBe(UNREPORTED_MEASUREMENT_TEXT);
-    // A provider that reported zero cost says so; only absence dashes.
+    expect(formatMeasuredCostUsd(undefined)).toBe('Not reported');
+    // A provider that reported zero cost says so; only absence reads
+    // "Not reported".
     expect(formatMeasuredCostUsd(0)).toBe('$0.0000');
     expect(formatMeasuredCostUsd(0.0125)).toBe('$0.0125');
   });
 
-  it("discloses nothing for Station's own accounting, where absence is a counted zero", () => {
-    expect(unreportedMeasurementClasses({ source: 'station-memory' })).toEqual(
-      [],
-    );
+  it("names only token counts for Station's own accounting, and only when none were reported (#5390)", () => {
+    // Station prices cost itself and estimates context itself, so neither is
+    // something the model failed to report.
+    expect(unreportedMeasurementClasses({ source: 'station-memory' })).toEqual([
+      'token counts',
+    ]);
     expect(
       describeUnreportedMeasurements(
         { source: 'station-memory' },
+        () => 'Station',
+      ),
+    ).toBe('The model did not report token counts for this chat.');
+    expect(
+      describeUnreportedMeasurements(
+        { source: 'station-memory', inputTokens: 0, outputTokens: 0 },
         () => 'Station',
       ),
     ).toBeNull();
@@ -107,5 +119,86 @@ describe('the one unreported-measurement representation (station#3201)', () => {
         () => 'Muse Code',
       ),
     ).toContain('Muse Code did not report token counts, cost or context usage');
+  });
+
+  it('counts a cost in the engine\u2019s own unit and the engine\u2019s own context reading as reported', () => {
+    expect(
+      unreportedMeasurementClasses({
+        source: 'engine-events',
+        provider: 'acp',
+        reportedCostUnits: 1,
+        contextPercent: 2.2,
+      }),
+    ).toEqual(['token counts']);
+    expect(
+      unreportedMeasurementClasses({
+        source: 'engine-events',
+        provider: 'acp',
+      }),
+    ).toEqual(['token counts', 'cost', 'context usage']);
+  });
+
+  it('does not call token counts unreported when two engines each reported their own (#5389)', () => {
+    const mixed = {
+      turns: 2,
+      toolCalls: 0,
+      estimatedCost: 0.25,
+      contextTokens: 900,
+      measurement: { source: 'engine-events' as const, provider: 'codex' },
+      engines: [
+        { provider: 'claude', turns: 1, toolCalls: 0, inputTokens: 14 },
+        { provider: 'codex', turns: 1, toolCalls: 0, totalTokens: 790 },
+      ],
+    };
+    expect(
+      describeUnreportedMeasurements(
+        conversationStatsMeasurementView(mixed),
+        () => 'Codex',
+      ),
+    ).toBeNull();
+    // A cache figure is a reported token count too.
+    expect(
+      unreportedMeasurementClasses(
+        conversationStatsMeasurementView({
+          ...mixed,
+          engines: [
+            { provider: 'claude', turns: 1, toolCalls: 0, cacheReadTokens: 9 },
+          ],
+        }),
+      ),
+    ).toEqual([]);
+    // An engine row without token figures does not stand in for them.
+    expect(
+      unreportedMeasurementClasses(
+        conversationStatsMeasurementView({
+          ...mixed,
+          engines: [{ provider: 'acp', turns: 2, toolCalls: 0 }],
+        }),
+      ),
+    ).toEqual(['token counts']);
+  });
+});
+
+describe('enginesReportingTokensSeparately (#5389)', () => {
+  const claude = {
+    provider: 'claude',
+    turns: 1,
+    toolCalls: 0,
+    inputTokens: 14,
+  };
+  const codex = { provider: 'codex', turns: 1, toolCalls: 0, totalTokens: 790 };
+  const acp = { provider: 'acp', turns: 1, toolCalls: 0 };
+
+  it('lists the engines that reported tokens when there are several', () => {
+    expect(
+      enginesReportingTokensSeparately({ engines: [claude, acp, codex] }),
+    ).toEqual([claude, codex]);
+  });
+
+  it('is undefined when the conversation has a single token total', () => {
+    expect(enginesReportingTokensSeparately({})).toBeUndefined();
+    expect(
+      enginesReportingTokensSeparately({ engines: [claude, acp] }),
+    ).toBeUndefined();
   });
 });

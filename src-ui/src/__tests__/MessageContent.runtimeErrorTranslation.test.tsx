@@ -167,6 +167,23 @@ test('a failed engine turn preserves its refusal without claiming the session wa
   );
 });
 
+test('a classified Claude version refusal shows the proxy check in the message', async () => {
+  const { container } = renderPart({
+    type: 'text',
+    content:
+      '⚠️ Claude reported a client version requirement. If the connection uses a model proxy, check the proxy’s upstream client version.',
+    runtimeError: true,
+    runtimeErrorCode: 'engine-turn-failed',
+  });
+  await waitFor(() =>
+    expect(container.textContent).toContain(
+      'check the proxy’s upstream client version',
+    ),
+  );
+  expect(container.textContent).toContain('This turn did not complete');
+  expect(container.textContent).not.toContain('Open Details');
+});
+
 test('a station-agent retriable turn failure renders translated copy with a retry hint, not the bare engine sentence', async () => {
   const { container } = renderPart({
     type: 'text',

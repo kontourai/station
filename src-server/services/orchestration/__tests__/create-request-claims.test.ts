@@ -8,6 +8,7 @@ import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-file
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { SessionStartRefusedError } from '../../../providers/adapter-shape.js';
+import type { DelegatedTaskHandle } from '../../../tools/station-control-delegation.js';
 import { withStationControlCallerContext } from '../../../tools/station-control-shared.js';
 import type { ForegroundMessageHandle } from '../../execution-target/execution-target-execution.js';
 import { ReceiverExecutionRefusal } from '../../projects/project-contribution-service.js';
@@ -40,6 +41,21 @@ const handle = (sessionId: string): ForegroundMessageHandle => ({
     modelLaunchPlan: { kind: 'engine-selected', evidence: 'adapter-declared' },
   },
 });
+function taskHandle(id: string): DelegatedTaskHandle {
+  const { target, resolution } = handle(id);
+  return {
+    conversationId: id,
+    taskId: id,
+    sessionId: 'child-session',
+    currentSessionId: 'child-session',
+    status: 'dispatched',
+    turnId: 'turn-1',
+    environment: { id: 'station', name: 'Station', kind: 'current' },
+    target,
+    resolution,
+  };
+}
+
 function setup() {
   const home = temp('create-claims-');
   return {
@@ -54,6 +70,88 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
+});
+
+test('retains the original create intent while resolving the caller', async () => {
+  const { claims } = setup();
+  const request = input();
+  const effect = vi.fn(async (id: string) => handle(id));
+  const creating = claims.run(request, effect);
+  request.intent.message = 'changed after entry';
+  const original = await creating;
+
+  await expect(claims.run(input(), effect)).resolves.toEqual(original);
+  await expect(claims.run(request, effect)).rejects.toMatchObject({
+    code: 'create_request_conflict',
+  });
+  expect(effect).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  ['server', undefined],
+  ['provided', 'task:05dc6e5e-7e8f-47be-8eb4-a5f01203b6e0'],
+] as const)(
+  'records %s Task identity at reservation before invoking the effect',
+  async (origin, sessionId) => {
+    const { file, claims } = setup();
+    const request = {
+      ...input(),
+      kind: 'delegation' as const,
+      sessionId: sessionId as string | undefined,
+    };
+    const replacement = 'task:93403d98-0e7e-4722-819a-905b70dda867';
+    const effect = vi.fn(async (id: string) => {
+      const ledger = JSON.parse(readFileSync(file, 'utf8'));
+      expect(Object.values(ledger.claims)).toEqual([
+        expect.objectContaining({
+          sessionId: id,
+          sessionIdentityOrigin: origin,
+        }),
+      ]);
+      if (sessionId) expect(id).toBe(sessionId);
+      else expect(id).toMatch(/^task:[0-9a-f-]{36}$/);
+      expect(id).not.toBe(replacement);
+      return taskHandle(id);
+    });
+    const creating = claims.run(request, effect);
+    request.sessionId = replacement;
+    await expect(creating).resolves.toMatchObject({ status: 'dispatched' });
+    expect(effect).toHaveBeenCalledOnce();
+  },
+);
+
+test('a retained legacy Task receipt replays without inferring its allocation origin', async () => {
+  const { home, file, claims } = setup();
+  const request = { ...input(), kind: 'delegation' as const };
+  const effect = vi.fn(async (id: string) => taskHandle(id));
+  const first = await claims.run(request, effect);
+  const ledger = JSON.parse(readFileSync(file, 'utf8'));
+  delete ledger.claims[Object.keys(ledger.claims)[0]].sessionIdentityOrigin;
+  writeFileSync(file, JSON.stringify(ledger));
+
+  await expect(
+    new CreateRequestClaims(home).run(request, effect),
+  ).resolves.toEqual(first);
+  expect(effect).toHaveBeenCalledOnce();
+  expect(
+    Object.values(JSON.parse(readFileSync(file, 'utf8')).claims)[0],
+  ).not.toHaveProperty('sessionIdentityOrigin');
+});
+
+test('refuses malformed Task allocation provenance before invoking an effect', async () => {
+  const { file, claims } = setup();
+  const request = { ...input(), kind: 'delegation' as const };
+  await claims.run(request, async (id) => taskHandle(id));
+  const ledger = JSON.parse(readFileSync(file, 'utf8'));
+  ledger.claims[Object.keys(ledger.claims)[0]].sessionIdentityOrigin =
+    'unknown';
+  writeFileSync(file, JSON.stringify(ledger));
+
+  const effect = vi.fn(async (id: string) => taskHandle(id));
+  await expect(
+    claims.run({ ...request, requestKey: 'next' }, effect),
+  ).rejects.toThrow('Malformed create request claim');
+  expect(effect).not.toHaveBeenCalled();
 });
 
 test('completed receipts replay for seven days, then expire without removing unresolved claims', async () => {

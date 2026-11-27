@@ -11,19 +11,7 @@ import {
   managedPolicyDenial,
   managedTelemetryAllowed,
 } from '@kontourai/station-contracts/managed-policy';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { AwsInstrumentation } from '@opentelemetry/instrumentation-aws-sdk';
-import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
-import {
-  defaultResource,
-  resourceFromAttributes,
-} from '@opentelemetry/resources';
-import {
-  AggregationTemporality,
-  PeriodicExportingMetricReader,
-} from '@opentelemetry/sdk-metrics';
-import { core, NodeSDK } from '@opentelemetry/sdk-node';
+import type { NodeSDK } from '@opentelemetry/sdk-node';
 import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { observeOtelBootstrapConfig } from './domain/telemetry-bootstrap-config.js';
 import { resolveOtelTelemetryConfiguration } from './domain/telemetry-configuration.js';
@@ -41,6 +29,7 @@ import {
   failOtelTelemetryBootstrap,
   markOtelTelemetryManagedOff,
 } from './telemetry-delivery-state.js';
+import { loadOtelSdkDependencies } from './telemetry-sdk.cjs';
 import { resolveHomeDir } from './utils/paths.js';
 
 export const OTEL_INSTALLATION_ID_ATTRIBUTE = 'service.installation.id';
@@ -82,6 +71,18 @@ function createSdk(
   endpoint: string,
   delivery: ReturnType<typeof beginOtelTelemetryDelivery>,
 ): NodeSDK {
+  const {
+    OTLPMetricExporter,
+    OTLPTraceExporter,
+    AwsInstrumentation,
+    HttpInstrumentation,
+    defaultResource,
+    resourceFromAttributes,
+    AggregationTemporality,
+    PeriodicExportingMetricReader,
+    core,
+    NodeSDK,
+  } = loadOtelSdkDependencies();
   const exportAuthority = new AsyncLocalStorage<{
     key?: string;
     assertCurrent: () => void;

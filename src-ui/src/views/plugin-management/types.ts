@@ -3,12 +3,15 @@ import type {
   PluginInstallationReadiness,
   PluginInstallationRevision,
   PluginPreview,
+  PluginUpdateRecord,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
 import type { PluginRegistryTrust } from '@kontourai/station-contracts/registry-trust';
 
 export interface ReadyPlugin {
   installationReadiness?: PluginInstallationReadiness;
+  /** The server is still activating this plugin; see `InstalledPluginRecord`. */
+  activationInFlight?: true;
   /** Server-persisted registry verification; absent from an older server. */
   registryTrust?: PluginRegistryTrust;
   retainedOnRemoval?: boolean;
@@ -114,6 +117,7 @@ export interface PreviewData extends PluginPreview {
     status: string;
     components?: Array<{ type: string; id: string }>;
     git?: GitInfo;
+    registryTrust?: PluginRegistryTrust;
     consent?: {
       grantRevision?: string;
       registryTrustRevision?: string;
@@ -126,15 +130,10 @@ export interface PreviewData extends PluginPreview {
   git?: GitInfo;
 }
 
-export interface PluginUpdateSummary {
-  name: string;
-  currentVersion: string;
-  latestVersion: string;
-  source: string;
-}
+export type PluginUpdateSummary = PluginUpdateRecord;
 
 export interface PluginMessage {
-  type: 'success' | 'error';
+  type: 'success' | 'warning' | 'error';
   text: string;
   action?: {
     label: string;

@@ -1,0 +1,7 @@
+{
+  "revision": "6fcf24b0e0fa8c4a8ff52a232d93c7c6619a4967",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked: cites keyboard-shortcuts guide for undo; the separate Undo inbox dismissal command no longer exists, no claim here depends on it","inputs":["docs/architecture/abstraction-review.md","docs/guides/keyboard-shortcuts.md"]}
+  ]
+}

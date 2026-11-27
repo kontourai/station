@@ -306,6 +306,52 @@ describe('AiSdkLLMProvider.createStream: station#3586 mid-stream error parts', (
     // publish a completion.
     expect(chunks.some((chunk) => chunk.type === 'finish')).toBe(false);
   });
+
+  // station#4738: an OpenAI-compatible server's mid-stream `{ error: {
+  // message, type } }` frame reaches ai-sdk's `error` part as that plain
+  // object, which `String()` rendered as "[object Object]".
+  test('a plain-object error part yields its message, not "[object Object]"', async () => {
+    streamTextMock.mockReturnValueOnce(
+      fakeStreamTextResult({
+        text: ['partial '],
+        finishReason: Promise.resolve('error'),
+        errorPart: {
+          message: 'Scripted mid-stream failure',
+          type: 'scripted_error',
+        },
+      }),
+    );
+    const chunks = await collectChunks(new TestLLMProvider({}));
+    expect(chunks.find((chunk) => chunk.type === 'error')).toEqual({
+      type: 'error',
+      error: 'Scripted mid-stream failure',
+    });
+  });
+
+  // station#4738: a retried 5xx arrives as `AI_RetryError`, whose message
+  // and missing `statusCode` hid the provider's own failure.
+  test('a retry-wrapped request failure yields the last attempt message and status', async () => {
+    const lastError = Object.assign(new Error('Model is overloaded'), {
+      statusCode: 503,
+    });
+    const retryError = Object.assign(
+      new Error('Failed after 3 attempts. Last error: Model is overloaded'),
+      { name: 'AI_RetryError', lastError },
+    );
+    streamTextMock.mockReturnValueOnce(
+      fakeStreamTextResult({
+        text: [],
+        finishReason: Promise.resolve('error'),
+        errorPart: retryError,
+      }),
+    );
+    const chunks = await collectChunks(new TestLLMProvider({}));
+    expect(chunks.find((chunk) => chunk.type === 'error')).toEqual({
+      type: 'error',
+      error: 'Model is overloaded',
+      errorStatus: 503,
+    });
+  });
 });
 
 // archive#3598: `createStream` used to pass `maxTokens` to `streamText`, but

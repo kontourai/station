@@ -1,4 +1,8 @@
-import { execSync as realExecSync, spawn } from 'node:child_process';
+import {
+  execSync as realExecSync,
+  spawnSync as realSpawnSync,
+  spawn,
+} from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import {
@@ -16,13 +20,16 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { request as nodeRequest } from 'node:http';
+import {
+  createServer as createHttpServer,
+  request as nodeRequest,
+} from 'node:http';
 import {
   createConnection as createRawConnection,
   createServer as createRawServer,
 } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, win32 } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { serve } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
@@ -62,12 +69,20 @@ import {
 import type { Logger } from '../../../../src-server/utils/logger.js';
 import { renderLaunchdPlist } from '../commands/service-launchd.js';
 import { renderSystemdUnit } from '../commands/service-systemd.js';
+import {
+  renderWindowsServiceCommand,
+  windowsRegistration,
+} from '../commands/service-windows.js';
 import { plutilJson } from './helpers/launchd-plist-fixture.js';
 import {
   reapAllLongRunningFixtureChildren,
   reapLongRunningFixtureChild,
   spawnLongRunningFixtureChild,
 } from './helpers/longrunning-fixture-child.js';
+import {
+  formatTaskSettings,
+  schtasksDefaultSettings,
+} from './helpers/windows-task-settings-fixture.js';
 
 type LifecycleModule = typeof import('../commands/lifecycle.js');
 type PlatformModule = typeof import('../commands/platform.js');
@@ -542,6 +557,14 @@ function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true });
 }
 
+function ensureTrustedInstallDirectory(path: string): void {
+  mkdirSync(path, { recursive: true, mode: 0o755 });
+}
+
+function writeTrustedInstallFile(path: string, content: string): void {
+  writeFileSync(path, content, { mode: 0o644 });
+}
+
 /**
  * Station homes are read by the instance registry before `clean` removes
  * them. A home fixture therefore has to satisfy the same owner-only contract
@@ -582,7 +605,6 @@ function writeStaleServiceManifest(
 ): string {
   const platform = currentServicePlatform();
   const serviceDirectory = join(home, 'service');
-  const unitPath = join(serviceDirectory, `station-${instanceId}.unit`);
   ensureDir(serviceDirectory);
   const unit = {
     ...location,
@@ -596,17 +618,24 @@ function writeStaleServiceManifest(
     } as Parameters<typeof renderSystemdUnit>[0]['lifecycle'],
     servicePath: '/usr/bin:/bin',
   };
+  const registration =
+    platform === 'win32'
+      ? windowsRegistration(instanceId, unit.lifecycle)
+      : { unitPath: join(serviceDirectory, `station-${instanceId}.unit`) };
+  const { unitPath } = registration;
   writeFileSync(
     unitPath,
-    platform === 'linux'
-      ? renderSystemdUnit(unit)
-      : renderLaunchdPlist({
-          ...unit,
-          label: `io.kontourai.station.${instanceId}`,
-        }).replace(
-          '<key>ProcessType</key><string>Interactive</string>',
-          '<key>ProcessType</key><string>Background</string>',
-        ),
+    platform === 'win32'
+      ? renderWindowsServiceCommand(unit)
+      : platform === 'linux'
+        ? renderSystemdUnit(unit)
+        : renderLaunchdPlist({
+            ...unit,
+            label: `io.kontourai.station.${instanceId}`,
+          }).replace(
+            '<key>ProcessType</key><string>Interactive</string>',
+            '<key>ProcessType</key><string>Background</string>',
+          ),
   );
   writeFileSync(
     join(serviceDirectory, `${instanceId}.json`),
@@ -619,7 +648,7 @@ function writeStaleServiceManifest(
       platform,
       // The registration field a real `service install` records for each
       // backend — the status probe needs it to ask about the unit at all.
-      ...(platform === 'win32' ? { taskName: `\\Station-${instanceId}` } : {}),
+      ...registration,
       ...(platform === 'darwin'
         ? { label: `io.kontourai.station.${instanceId}` }
         : {}),
@@ -663,6 +692,40 @@ function stoppedServiceProbe(
   return null;
 }
 
+function expectServiceGuidance(
+  message: string | null,
+  action: 'install' | 'status' | 'uninstall',
+  expectedArguments: string[],
+): void {
+  const command = message?.match(
+    new RegExp(`"(station service ${action} [^\\r\\n]+)"`, 'u'),
+  )?.[1];
+  expect(command).toBeDefined();
+  const shell =
+    process.platform === 'win32'
+      ? resolve(
+          realExecSync('git --exec-path', {
+            encoding: 'utf8',
+            windowsHide: true,
+          }).trim(),
+          '../../..',
+          'bin/sh.exe',
+        )
+      : 'sh';
+  const result = realSpawnSync(
+    shell,
+    ['-c', `station() { printf '%s\\0' "$@"; }; ${command}`],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status).toBe(0);
+  expect(result.stdout.split('\0').slice(0, -1)).toEqual([
+    'service',
+    action,
+    ...expectedArguments,
+  ]);
+}
+
 function staleSchedulingSpawnSync(unitPath: string): Mock {
   return vi.fn((command: string, args: string[]) => {
     const probe = stoppedServiceProbe(command, args);
@@ -671,7 +734,11 @@ function staleSchedulingSpawnSync(unitPath: string): Mock {
       return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
     }
     if (process.platform === 'win32') {
-      return { status: 0, stderr: '', stdout: '7\n' };
+      return {
+        status: 0,
+        stderr: '',
+        stdout: `${formatTaskSettings(schtasksDefaultSettings())}\n`,
+      };
     }
     return {
       status: 0,
@@ -692,6 +759,44 @@ function runningServiceSpawnSync(unitPath: string): Mock {
     }
     if (command === 'systemctl' && args.includes('is-enabled')) {
       return { status: 0, stderr: '', stdout: 'enabled\n' };
+    }
+    if (process.platform === 'win32') {
+      if (/\\schtasks\.exe$/i.test(command) && args.includes('/XML')) {
+        const wrapper = unitPath
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&apos;');
+        const interpreter = win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'cmd.exe',
+        );
+        return {
+          status: 0,
+          stderr: '',
+          stdout: `<Task><Principals><Principal><UserId>S-1-5-21-1000</UserId><RunLevel>LeastPrivilege</RunLevel></Principal></Principals><Actions><Exec><Command>${interpreter}</Command><Arguments>/d /c &quot;${wrapper}&quot;</Arguments></Exec></Actions></Task>`,
+        };
+      }
+      if (/\\whoami\.exe$/i.test(command) && args.includes('/user')) {
+        return {
+          status: 0,
+          stderr: '',
+          stdout: '"DESKTOP-WIN\\fixture","S-1-5-21-1000"\n',
+        };
+      }
+      if (/\\powershell\.exe$/i.test(command)) {
+        const program = Buffer.from(args[3] ?? '', 'base64').toString(
+          'utf16le',
+        );
+        if (
+          program.includes('Get-ScheduledTask') &&
+          program.includes('[int]$task.State')
+        ) {
+          return { status: 0, stderr: '', stdout: '4\n' };
+        }
+      }
     }
     return fallback(command, args);
   });
@@ -776,6 +881,8 @@ function writeInstanceState(options: {
   hostedProbeAuthority?: string;
   /** Where the lifecycle keeps records; a prebuilt archive's is elsewhere. */
   stateDir?: string;
+  /** Started through the process supervisor (`station restart` needs it). */
+  supervised?: boolean;
 }): string {
   const instanceId =
     options.instanceId ||
@@ -806,6 +913,7 @@ function writeInstanceState(options: {
         serverFingerprint: options.serverFingerprint,
         serverPort: options.serverPort ?? 3141,
         startedAt: options.startedAt ?? new Date().toISOString(),
+        supervised: options.supervised,
         uiPid: options.uiPid,
         uiFingerprint: options.uiFingerprint,
         uiPort: options.uiPort ?? 3000,
@@ -1181,36 +1289,28 @@ describe('lifecycle instance state', () => {
       ),
       '',
     );
-    const spawn = vi
-      .fn()
-      .mockReturnValueOnce({ pid: 43031, unref: vi.fn() })
-      .mockReturnValueOnce({ pid: 43032, unref: vi.fn() });
-    vi.spyOn(process, 'kill').mockImplementation(((
-      pid: number,
-      signal?: NodeJS.Signals | number,
-    ) => {
-      if (signal === 0 && (pid === 43031 || pid === 43032)) {
-        return true;
-      }
-      throw new Error(`unexpected process.kill(${pid}, ${String(signal)})`);
-    }) as typeof process.kill);
-    vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+    const launchCaptured = new Error('supervisor launch captured');
+    const spawn = vi.fn().mockImplementationOnce(() => {
+      throw launchCaptured;
+    });
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
       platformOverrides: { sleepSync: vi.fn() },
     });
     const supervisorBirth = vi.fn(() => 'launcher-birth-12345');
 
-    await lifecycle.start({
-      baseDir: TEST_ALT_HOME,
-      instanceName: 'supervised-no-birth',
-      serverPort: 3253,
-      supervisorPid: 12345,
-      supervisorBirth,
-      uiPort: 5283,
-    });
+    await expect(
+      lifecycle.start({
+        baseDir: TEST_ALT_HOME,
+        instanceName: 'supervised-no-birth',
+        serverPort: 3253,
+        supervisorPid: 12345,
+        supervisorBirth,
+        uiPort: 5283,
+      }),
+    ).rejects.toBe(launchCaptured);
 
-    // The supervisor bundle ran, and it discards the birth: never probed.
+    // The attempt chose the supervisor bundle without probing launcher birth.
     expect(String(spawn.mock.calls[0][1][0])).toContain(
       'station-supervisor.js',
     );
@@ -2310,6 +2410,158 @@ describe('lifecycle instance state', () => {
     }
   }, 15_000);
 
+  describe('restart says what it is about to interrupt', () => {
+    const CREDENTIAL = 'paired-device-credential';
+
+    /**
+     * A supervised instance whose server port answers the running-turns
+     * route as the real one does, a handoff that records when it was asked,
+     * and a profile store of this test's own.
+     */
+    async function restartHarness(options: { savedCredential: boolean }) {
+      ensureDir(TEST_CWD);
+      ensureDir(TEST_ALT_HOME);
+      const station = createHttpServer((request, response) => {
+        const authorized =
+          request.url === '/api/system/core-update/running-turns' &&
+          request.headers.authorization === `Bearer ${CREDENTIAL}`;
+        response.writeHead(authorized ? 200 : 401, {
+          'Content-Type': 'application/json',
+        });
+        response.end(
+          JSON.stringify(
+            authorized
+              ? {
+                  turns: [
+                    {
+                      sessionId: 'task:build',
+                      conversationId: 'task:build',
+                      title: 'Fix the build',
+                      engine: 'claude',
+                      startedAt: null,
+                    },
+                  ],
+                  hiddenCount: 1,
+                }
+              : { success: false, error: { code: 'authentication_required' } },
+          ),
+        );
+      });
+      await new Promise<void>((resolveListening) =>
+        station.listen(0, '127.0.0.1', () => resolveListening()),
+      );
+      const serverPort = (station.address() as { port: number }).port;
+      const serverPid = await spawnLongRunning();
+      writeInstanceState({
+        baseDir: TEST_ALT_HOME,
+        instanceName: 'restart-turns',
+        serverPid,
+        serverPort,
+        supervised: true,
+        uiPid: null,
+        uiPort: 5279,
+      });
+      vi.stubEnv('STATION_ROOT', join(TEST_ROOT, 'profile-root'));
+      vi.stubEnv('STATION_HOME', join(TEST_ROOT, 'profile-root', 'home'));
+      const output: string[] = [];
+      vi.spyOn(console, 'log').mockImplementation((line?: unknown) => {
+        output.push(String(line));
+      });
+      const runSupervisorHandoff = vi.fn(async () => {
+        output.push('<handoff requested>');
+        return {
+          status: 'unavailable' as const,
+          messages: [],
+          detail: 'no supervisor in this test',
+        };
+      });
+      vi.doMock('../commands/supervisor-launch.js', async () => ({
+        ...(await vi.importActual<
+          typeof import('../commands/supervisor-launch.js')
+        >('../commands/supervisor-launch.js')),
+        runSupervisorHandoff,
+      }));
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: { killProcessTree: vi.fn() },
+      });
+      // The module instances the freshly loaded lifecycle reads.
+      const credentials = await import('../commands/profile-credentials.js');
+      const values = new Map<string, string>();
+      const previousStore = credentials.getProfileCredentialStore();
+      credentials.setProfileCredentialStore({
+        get: (ref) => values.get(ref.id),
+        set: (ref, credential) => void values.set(ref.id, credential),
+        delete: (ref) => void values.delete(ref.id),
+        status: (ref) => (values.has(ref.id) ? 'available' : 'missing'),
+      });
+      if (options.savedCredential) {
+        const credentialRef = credentials.profileCredentialRef('test:local');
+        values.set(credentialRef.id, CREDENTIAL);
+        const { upsertProfile } = await import('../commands/profile-store.js');
+        upsertProfile({
+          name: 'local',
+          endpoint: `http://127.0.0.1:${serverPort}`,
+          setupSource: 'existing',
+          configurationState: 'configured',
+          credentialRef,
+          makeDefault: true,
+          force: true,
+        });
+      }
+      return {
+        lifecycle,
+        output,
+        runSupervisorHandoff,
+        close: async () => {
+          credentials.setProfileCredentialStore(previousStore);
+          vi.doUnmock('../commands/supervisor-launch.js');
+          await new Promise<void>((resolveClosed) => {
+            station.closeAllConnections();
+            station.close(() => resolveClosed());
+          });
+        },
+      };
+    }
+
+    it('prints the running turns before it asks for the handoff, and asks nothing', async () => {
+      const harness = await restartHarness({ savedCredential: true });
+      try {
+        // No supervisor answers in this test: the restart itself fails
+        // after the handoff was requested, which is all this test needs.
+        await expect(
+          harness.lifecycle.restart({ instanceName: 'restart-turns' }),
+        ).rejects.toThrow('Could not restart');
+        expect(harness.runSupervisorHandoff).toHaveBeenCalledOnce();
+        expect(harness.output).toEqual([
+          '2 agent turns are running and will be interrupted:',
+          '  · Fix the build (claude)',
+          '  · 1 more in a session this device may not read',
+          expect.stringContaining('to a new core generation'),
+          '<handoff requested>',
+        ]);
+      } finally {
+        await harness.close();
+      }
+    });
+
+    it('with no credential for the instance it restarts exactly as before', async () => {
+      const harness = await restartHarness({ savedCredential: false });
+      try {
+        await expect(
+          harness.lifecycle.restart({ instanceName: 'restart-turns' }),
+        ).rejects.toThrow('Could not restart');
+        expect(harness.runSupervisorHandoff).toHaveBeenCalledOnce();
+        expect(harness.output).toEqual([
+          expect.stringContaining('to a new core generation'),
+          '<handoff requested>',
+        ]);
+      } finally {
+        await harness.close();
+      }
+    });
+  });
+
   it('signals only the recorded pids and never a lingering port owner (#3253)', async () => {
     ensureDir(TEST_CWD);
     ensureDir(TEST_ALT_HOME);
@@ -2852,6 +3104,49 @@ describe('lifecycle instance state', () => {
     ).rejects.toThrow('--watch runs from source and builds nothing');
     expect(spawn).not.toHaveBeenCalled();
   });
+
+  // #3909: STATION_FEATURES=strands-runtime used to switch the server to
+  // Strands. The server no longer reads it, so start refuses it before any
+  // other check; any other value never changed the runtime and is ignored.
+  // `watch` + `build` makes the next check refuse too, so an ignored value
+  // reaches that refusal instead of starting anything.
+  it.each([
+    ['strands-runtime', true],
+    ['managed-chat-orchestration,strands-runtime', true],
+    ['managed-chat-orchestration', false],
+    ['', false],
+  ])(
+    'STATION_FEATURES=%s at start: refused=%s, before anything is spawned',
+    async (value, refused) => {
+      ensureDir(TEST_CWD);
+      ensureDir(TEST_ALT_HOME);
+      const spawn = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(), spawn },
+      });
+      vi.stubEnv('STATION_FEATURES', value);
+      try {
+        await expect(
+          lifecycle.start({
+            baseDir: TEST_ALT_HOME,
+            homeSource: '--base',
+            instanceName: 'features-env',
+            serverPort: 3343,
+            uiPort: 5375,
+            watch: true,
+            build: true,
+          }),
+        ).rejects.toThrow(
+          refused
+            ? /^STATION_FEATURES=.* no longer selects the Strands runtime .*station config set runtime strands/
+            : /--watch runs from source and builds nothing/,
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      expect(spawn).not.toHaveBeenCalled();
+    },
+  );
 
   it('refuses start --watch on a non-loopback host before anything is spawned (#3254)', async () => {
     ensureDir(TEST_CWD);
@@ -4316,8 +4611,13 @@ describe('homeReset (station#1913)', () => {
 
   it('--if-incompatible still archives an incompatible home when confirmed (the deploy path)', async () => {
     ensureDir(TEST_CWD);
-    ensureDir(TEST_ALT_HOME);
+    ensureOwnerControlledStationHome(TEST_ALT_HOME);
     ensureDir(join(TEST_ALT_HOME, 'agents'));
+    upsertInstance(
+      'past-service',
+      { port: 38142, type: 'service' },
+      TEST_ALT_HOME,
+    );
 
     const { lifecycle } = await loadLifecycleModule();
 
@@ -4331,6 +4631,49 @@ describe('homeReset (station#1913)', () => {
     expect(result.archived).toBe(true);
     expect(existsSync(TEST_ALT_HOME)).toBe(false);
     expect(existsSync(result.archivePath!)).toBe(true);
+    expect(existsSync(join(result.archivePath!, 'instances.json'))).toBe(true);
+  });
+
+  it('refuses a live supervised instance recorded only in the home registry', async () => {
+    ensureDir(TEST_CWD);
+    ensureOwnerControlledStationHome(TEST_ALT_HOME);
+    upsertInstance(
+      'active-service',
+      { port: 38142, type: 'service', pid: process.pid },
+      TEST_ALT_HOME,
+    );
+    const registryPath = join(TEST_ALT_HOME, 'instances.json');
+    const registryBytes = readFileSync(registryPath);
+    const { lifecycle } = await loadLifecycleModule();
+
+    expect(() =>
+      lifecycle.homeReset({
+        confirm: true,
+        projectHome: TEST_ALT_HOME,
+        homeSource: '--base',
+      }),
+    ).toThrow(
+      /active-service \(service\).*station service stop --instance=active-service/s,
+    );
+    expect(readFileSync(registryPath)).toEqual(registryBytes);
+  });
+
+  it('keeps a home whose instance registry cannot establish inactivity', async () => {
+    ensureDir(TEST_CWD);
+    ensureOwnerControlledStationHome(TEST_ALT_HOME);
+    const registryPath = join(TEST_ALT_HOME, 'instances.json');
+    const unreadable = '{broken registry';
+    writeFileSync(registryPath, unreadable, { mode: 0o600 });
+    const { lifecycle } = await loadLifecycleModule();
+
+    expect(() =>
+      lifecycle.homeReset({
+        confirm: true,
+        projectHome: TEST_ALT_HOME,
+        homeSource: '--base',
+      }),
+    ).toThrow(/instance registry is corrupt or not owner-controlled/i);
+    expect(readFileSync(registryPath, 'utf8')).toBe(unreadable);
   });
 
   it('is a harmless no-op when the target home does not exist at all', async () => {
@@ -5134,7 +5477,7 @@ describe('upgrade', () => {
     ensureDir(TEST_CWD);
     ensureDir(join(TEST_CWD, '.git'));
     writeOwnedDependencyLifecycle(TEST_CWD);
-    const channelHome = join(TEST_ROOT, 'beta-home');
+    const channelHome = join(TEST_ROOT, 'beta home');
     const unitPath = writeStaleServiceManifest(channelHome, 'beta-upgrade');
     const execSync = vi.fn(
       (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
@@ -5182,9 +5525,13 @@ describe('upgrade', () => {
           }),
         ),
       ).toMatchObject({ sha: '0123456789abcdef0123456789abcdef01234567' });
-      expect(log.mock.calls.flat().join('\n')).toContain(
-        `station service install --instance=beta-upgrade --base=${channelHome} --port=3141 --ui-port=3000 --host=127.0.0.1`,
-      );
+      expectServiceGuidance(log.mock.calls.flat().join('\n'), 'install', [
+        '--instance=beta-upgrade',
+        `--base=${channelHome}`,
+        '--port=3141',
+        '--ui-port=3000',
+        '--host=127.0.0.1',
+      ]);
     } finally {
       log.mockRestore();
     }
@@ -5234,11 +5581,9 @@ describe('upgrade', () => {
     ensureDir(TEST_CWD);
     ensureDir(join(TEST_CWD, '.git'));
     writeOwnedDependencyLifecycle(TEST_CWD);
-    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
-    const unitPath = writeStaleServiceManifest(
-      TEST_DEFAULT_HOME,
-      'service-unknown',
-    );
+    const serviceHome = join(TEST_ROOT, 'unknown service home');
+    vi.stubEnv('STATION_HOME', serviceHome);
+    const unitPath = writeStaleServiceManifest(serviceHome, 'service-unknown');
     const fallback = staleSchedulingSpawnSync(unitPath);
     const spawnSync = vi.fn((command: string, args: string[]) =>
       command === 'launchctl' ||
@@ -5252,7 +5597,7 @@ describe('upgrade', () => {
       childProcessMock: { execSync, spawnSync },
     });
 
-    const refusal = lifecycle.upgrade().then(
+    const refusal = lifecycle.upgrade({ baseDir: serviceHome }).then(
       () => null,
       (error: Error) => error.message,
     );
@@ -5263,14 +5608,14 @@ describe('upgrade', () => {
     // Actionable (review M2): the manifest file, the status command for this
     // unit, the uninstall that clears a gone unit, and the override flag.
     expect(message).toContain(
-      `manifest: ${join(TEST_DEFAULT_HOME, 'service', 'service-unknown.json')}`,
+      `manifest: ${join(serviceHome, 'service', 'service-unknown.json')}`,
     );
-    expect(message).toContain(
-      `"station service status --instance=service-unknown --base=${TEST_DEFAULT_HOME}"`,
-    );
-    expect(message).toContain(
-      `"station service uninstall --instance=service-unknown --base=${TEST_DEFAULT_HOME}"`,
-    );
+    const targetingArguments = [
+      '--instance=service-unknown',
+      `--base=${serviceHome}`,
+    ];
+    expectServiceGuidance(message, 'status', targetingArguments);
+    expectServiceGuidance(message, 'uninstall', targetingArguments);
     expect(message).toContain('--ignore-service-state');
     expect(execSync).not.toHaveBeenCalled();
   });
@@ -5503,14 +5848,14 @@ describe('upgrade', () => {
       launcher: 'station-nightly',
     },
   ] as const)(
-    'delegates a signed packaged $runtimeChannel upgrade through the installer with the persisted release ring',
+    'enforces packaged $runtimeChannel upgrade admission before installer effects',
     async ({ runtimeChannel, releaseChannel, launcher }) => {
       const installRoot = join(TEST_ROOT, `portable-${runtimeChannel}`);
       const release = join(installRoot, 'releases', 'a'.repeat(64));
       const stationHome = join(TEST_ROOT, `home-${runtimeChannel}`);
-      ensureDir(release);
+      ensureTrustedInstallDirectory(release);
       ensureDir(stationHome);
-      writeFileSync(
+      writeTrustedInstallFile(
         join(release, '.station-release.json'),
         `${JSON.stringify({
           schemaVersion: 2,
@@ -5529,7 +5874,7 @@ describe('upgrade', () => {
       writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
         mode: 0o700,
       });
-      writeFileSync(
+      writeTrustedInstallFile(
         join(installRoot, '.station-portable-install-root'),
         'station-portable-install-root-v1\n',
       );
@@ -5570,6 +5915,14 @@ describe('upgrade', () => {
           spawnSync: staleSchedulingSpawnSync(unitPath),
         },
       });
+      if (runtimeChannel === 'beta') {
+        await expect(lifecycle.upgrade()).rejects.toThrow(
+          'packaged release provenance is invalid',
+        );
+        expect(execFileSync).not.toHaveBeenCalled();
+        expect(execSync).not.toHaveBeenCalled();
+        return;
+      }
       // What the CLI bootstrap writes into every CLI process: this
       // process's launch facts, never a request for the installed runtime.
       // The installer's own port variable is the caller's, and passes.
@@ -5626,9 +5979,9 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-service');
     const release = join(installRoot, 'releases', 'e'.repeat(64));
     const stationHome = join(TEST_ROOT, 'home-service');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -5643,7 +5996,7 @@ describe('upgrade', () => {
     writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -5683,11 +6036,9 @@ describe('upgrade', () => {
     ensureDir(TEST_CWD);
     ensureDir(join(TEST_CWD, '.git'));
     writeOwnedDependencyLifecycle(TEST_CWD);
-    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
-    const unitPath = writeStaleServiceManifest(
-      TEST_DEFAULT_HOME,
-      'source-guidance',
-    );
+    const serviceHome = join(TEST_ROOT, 'stale service home');
+    vi.stubEnv('STATION_HOME', serviceHome);
+    const unitPath = writeStaleServiceManifest(serviceHome, 'source-guidance');
     const execSync = vi.fn(
       (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
         if (command === 'npm run build:server') {
@@ -5721,14 +6072,18 @@ describe('upgrade', () => {
     });
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
-      await lifecycle.upgrade();
+      await lifecycle.upgrade({ baseDir: serviceHome });
 
       expect(log.mock.calls.flat().join('\n')).toContain(
         'Service scheduling is stale for source-guidance',
       );
-      expect(log.mock.calls.flat().join('\n')).toContain(
-        `station service install --instance=source-guidance --base=${TEST_DEFAULT_HOME} --port=3141 --ui-port=3000 --host=127.0.0.1`,
-      );
+      expectServiceGuidance(log.mock.calls.flat().join('\n'), 'install', [
+        '--instance=source-guidance',
+        `--base=${serviceHome}`,
+        '--port=3141',
+        '--ui-port=3000',
+        '--host=127.0.0.1',
+      ]);
     } finally {
       log.mockRestore();
     }
@@ -5745,8 +6100,8 @@ describe('upgrade', () => {
     async ({ state }) => {
       const installRoot = join(TEST_ROOT, 'portable-unknown-ring');
       const release = join(installRoot, 'releases', 'd'.repeat(64));
-      ensureDir(release);
-      writeFileSync(
+      ensureTrustedInstallDirectory(release);
+      writeTrustedInstallFile(
         join(release, '.station-release.json'),
         `${JSON.stringify({
           schemaVersion: 2,
@@ -5821,24 +6176,24 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-mismatch');
     const release = join(installRoot, 'releases', 'c'.repeat(64));
     const stationHome = join(TEST_ROOT, 'home-mismatch');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
         sha: 'd'.repeat(40),
-        ref: 'v1.2.3-preview.4',
+        ref: 'v1.2.3-nightly.4',
         createdAt: '2026-07-22T00:00:00.000Z',
-        channel: 'beta',
-        releaseChannel: 'preview',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
         prerelease: true,
       })}\n`,
     );
     writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -5871,9 +6226,9 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-permissive-root');
     const release = join(installRoot, 'releases', 'e'.repeat(64));
     const stationHome = join(TEST_ROOT, 'home-permissive-root');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -5888,7 +6243,7 @@ describe('upgrade', () => {
     writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -7696,7 +8051,7 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
 // generated script) rather than relying on Vitest to produce it — the
 // `globalThis.__name` shim in `buildUiServerScript` is what's asserted, not
 // this test's own transform.
-describe('buildUiServerScript output runs as a real standalone node -e process (code-review M2)', () => {
+describe('buildUiServerScript output runs as a real standalone node process (code-review M2)', () => {
   const makeUiDir = trackTempDirs();
 
   function spawnUiScript(script: string) {
@@ -7712,8 +8067,8 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         };
       })();
     `;
-    const child = spawn(process.execPath, ['-e', observeListening + script], {
-      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    const child = spawn(process.execPath, ['-'], {
+      stdio: ['pipe', 'ignore', 'pipe', 'ipc'],
       windowsHide: true,
       env: {
         ...process.env,
@@ -7754,6 +8109,7 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         reject(new Error(`UI child exited (${code}, ${signal}): ${stderr}`));
       });
     });
+    child.stdin!.end(observeListening + script);
     return { child, listening, stderr: () => stderr };
   }
 
@@ -8285,72 +8641,75 @@ describe('lifecycle build + restart ergonomics', () => {
     ).toBe('active-ui');
   });
 
-  it('uses exact packaged release provenance when Git metadata is absent', async () => {
-    ensureDir(TEST_CWD);
-    // Byte-for-byte what package-portable-release.sh writes: same key order,
-    // 2-space indent, trailing newline.
-    writeFileSync(
-      join(TEST_CWD, '.station-release.json'),
-      `${JSON.stringify(
-        {
-          schemaVersion: 2,
-          sha: 'fedcba9876543210fedcba9876543210fedcba98',
-          ref: 'v0.1.0',
-          createdAt: '2026-07-22T12:34:56.000Z',
-          channel: 'stable',
-          releaseChannel: 'stable',
-          prerelease: false,
+  it.each([2, 3] as const)(
+    'uses exact packaged v%s release provenance when Git metadata is absent',
+    async (schemaVersion) => {
+      ensureDir(TEST_CWD);
+      // Byte-for-byte what package-portable-release.sh writes: same key order,
+      // 2-space indent, trailing newline.
+      writeFileSync(
+        join(TEST_CWD, '.station-release.json'),
+        `${JSON.stringify(
+          {
+            schemaVersion,
+            sha: 'fedcba9876543210fedcba9876543210fedcba98',
+            ...(schemaVersion === 2 ? { ref: 'v0.1.0' } : { version: '0.1.0' }),
+            createdAt: '2026-07-22T12:34:56.000Z',
+            channel: 'stable',
+            releaseChannel: 'stable',
+            prerelease: false,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      const execSync = vi.fn(
+        (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
+          if (command === 'npm run build:server') {
+            const serverDir = join(
+              TEST_CWD,
+              String(options?.env?.STATION_BUILD_SERVER_DIR),
+            );
+            ensureDir(serverDir);
+            writeFileSync(
+              join(serverDir, 'command-station.js'),
+              'candidate-server',
+            );
+          }
+          if (command === 'npm run build:ui') {
+            const uiDir = join(
+              TEST_CWD,
+              String(options?.env?.STATION_BUILD_UI_DIR),
+            );
+            ensureDir(uiDir);
+            writeFileSync(join(uiDir, 'index.html'), 'candidate-ui');
+          }
+          return '';
         },
-        null,
-        2,
-      )}\n`,
-    );
-    const execSync = vi.fn(
-      (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
-        if (command === 'npm run build:server') {
-          const serverDir = join(
-            TEST_CWD,
-            String(options?.env?.STATION_BUILD_SERVER_DIR),
-          );
-          ensureDir(serverDir);
-          writeFileSync(
-            join(serverDir, 'command-station.js'),
-            'candidate-server',
-          );
-        }
-        if (command === 'npm run build:ui') {
-          const uiDir = join(
-            TEST_CWD,
-            String(options?.env?.STATION_BUILD_UI_DIR),
-          );
-          ensureDir(uiDir);
-          writeFileSync(join(uiDir, 'index.html'), 'candidate-ui');
-        }
-        return '';
-      },
-    );
-    const { lifecycle } = await loadLifecycleModule({
-      childProcessMock: { execSync },
-    });
+      );
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync },
+      });
 
-    const manifest = await lifecycle.buildApplication({
-      instanceName: 'portable',
-      baseDir: TEST_ALT_HOME,
-      serverPort: 3242,
-      uiPort: 5274,
-    });
+      const manifest = await lifecycle.buildApplication({
+        instanceName: 'portable',
+        baseDir: TEST_ALT_HOME,
+        serverPort: 3242,
+        uiPort: 5274,
+      });
 
-    expect(manifest).toEqual({
-      sha: 'fedcba9876543210fedcba9876543210fedcba98',
-      branch: 'v0.1.0',
-      builtAt: expect.any(String),
-    });
-    expect(Number.isFinite(Date.parse(manifest.builtAt))).toBe(true);
-    expect(execSync).not.toHaveBeenCalledWith(
-      'git rev-parse HEAD',
-      expect.anything(),
-    );
-  });
+      expect(manifest).toEqual({
+        sha: 'fedcba9876543210fedcba9876543210fedcba98',
+        branch: 'v0.1.0',
+        builtAt: expect.any(String),
+      });
+      expect(Number.isFinite(Date.parse(manifest.builtAt))).toBe(true);
+      expect(execSync).not.toHaveBeenCalledWith(
+        'git rev-parse HEAD',
+        expect.anything(),
+      );
+    },
+  );
 
   it('reports the exact missing packaged provenance path', async () => {
     ensureDir(TEST_CWD);
@@ -10019,7 +10378,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
   });
 
   /**
-   * An install.sh archive install (v0.7.0-preview.3 active through `current`)
+   * An install.sh archive install (v0.7.0-nightly.3 active through `current`)
    * whose home holds one running service; `serviceFields` adjusts its
    * manifest, which otherwise names this install root's `current`.
    */
@@ -10029,40 +10388,40 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     ) => Record<string, unknown> = () => ({}),
   ) {
     const installRoot = join(TEST_ROOT, 'archive-install');
-    const version = join(installRoot, 'versions', '0.7.0-preview.3');
+    const version = join(installRoot, 'versions', '0.7.0-nightly.3');
     const stationHome = join(TEST_ROOT, 'home-archive');
-    ensureDir(version);
+    ensureTrustedInstallDirectory(version);
     ensureDir(stationHome);
     writeFileSync(
       join(version, '.station-prebuilt-archive'),
       'station-prebuilt-archive-v1\n',
     );
-    writeFileSync(
+    writeTrustedInstallFile(
       join(version, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
         sha: 'a'.repeat(40),
-        ref: 'v0.7.0-preview.3',
+        ref: 'v0.7.0-nightly.3',
         createdAt: '2026-09-26T00:00:00.000Z',
-        channel: 'beta',
-        releaseChannel: 'preview',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
         prerelease: true,
       })}\n`,
     );
     writeFileSync(join(version, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
-    const manifestUrl = 'https://example.test/station/preview.json';
+    const manifestUrl = 'https://example.test/station/nightly.json';
     writeFileSync(
       join(installRoot, '.station-release-state.json'),
       `${JSON.stringify({
         schemaVersion: 4,
-        channel: 'beta',
-        releaseChannel: 'preview',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
         installRoot,
         stationRoot: join(TEST_ROOT, 'root-archive'),
         stationHome,
@@ -10116,7 +10475,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       expect.objectContaining({
         cwd: version,
         env: expect.objectContaining({
-          STATION_CHANNEL: 'beta',
+          STATION_CHANNEL: 'nightly',
           STATION_HOME: stationHome,
           STATION_INSTALL_ROOT: installRoot,
           STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl,
@@ -10199,7 +10558,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       expect.objectContaining({
         cwd: version,
         env: expect.objectContaining({
-          STATION_CHANNEL: 'beta',
+          STATION_CHANNEL: 'nightly',
           STATION_HOME: stationHome,
           STATION_INSTALL_ROOT: installRoot,
           STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl,
@@ -10289,9 +10648,9 @@ describe('station upgrade under the managed update limit (#4522)', () => {
     const installRoot = join(TEST_ROOT, `managed-portable-${releaseChannel}`);
     const release = join(installRoot, 'releases', 'a'.repeat(64));
     const stationHome = join(TEST_ROOT, `managed-home-${releaseChannel}`);
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -10306,7 +10665,7 @@ describe('station upgrade under the managed update limit (#4522)', () => {
     writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );

@@ -1,0 +1,19 @@
+{
+  "revision": "d7c487980bba14870f7760207985425c5d562642",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"#5052 adds one counter, station.notification.retention_pruned (status attribute); no cited claim about existing instruments, attributes or conventions changes. Monitoring table and generated catalog updated.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5052 adds one counter, station.notification.retention_pruned (status attribute); no cited claim about existing instruments, attributes or conventions changes. Monitoring table and generated catalog updated.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"#5052 adds one counter, station.notification.retention_pruned (status attribute); no cited claim about existing instruments, attributes or conventions changes. Monitoring table and generated catalog updated.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#5052 adds one counter, station.notification.retention_pruned (status attribute); no cited claim about existing instruments, attributes or conventions changes. Monitoring table and generated catalog updated.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"#5052 adds one counter, station.notification.retention_pruned (status attribute); no cited claim about existing instruments, attributes or conventions changes. Monitoring table and generated catalog updated.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"#5052 adds one counter, station.notification.retention_pruned (status attribute); no cited claim about existing instruments, attributes or conventions changes. Monitoring table and generated catalog updated.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/reference/metrics.md","note":"#5052 adds one counter, station.notification.retention_pruned (status attribute); no cited claim about existing instruments, attributes or conventions changes. Monitoring table and generated catalog updated.","inputs":["src-server/telemetry/metrics.ts"]}
+  ]
+}

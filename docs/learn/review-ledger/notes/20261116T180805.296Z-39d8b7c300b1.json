@@ -1,0 +1,11 @@
+{
+  "revision": "b6bc5f276a354fdfdc5129b06b62ab399906b2d7",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked each page citing this source after the native-literal selection edges and the local explicit-target rule: they link to the testing guide's other sections, to the changed-verification receipt validator or to its demo fixture, and state nothing about which tests a changed native file selects or which explicit targets a local run keeps.","inputs":["scripts/run-changed-verification.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Checked each page citing this source after the native-literal selection edges and the local explicit-target rule: they link to the testing guide's other sections, to the changed-verification receipt validator or to its demo fixture, and state nothing about which tests a changed native file selects or which explicit targets a local run keeps.","inputs":["scripts/run-changed-verification.mjs"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Checked each page citing this source after the native-literal selection edges and the local explicit-target rule: they link to the testing guide's other sections, to the changed-verification receipt validator or to its demo fixture, and state nothing about which tests a changed native file selects or which explicit targets a local run keeps.","inputs":["scripts/run-changed-verification.mjs"]}
+  ]
+}

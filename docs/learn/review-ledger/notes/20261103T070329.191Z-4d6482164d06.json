@@ -1,9 +1,0 @@
-{
-  "revision": "3079b57dada7abec6723813b4aa8fbbe7ebfcfee",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the startup-ownership-only delta against the retained request-inspection capture and its metadata. No request inspection UI, pending-request read authority, approval/denial path, identity disclosure or decision behavior changed. The caption and existing controlled-provider/historical-chrome qualifications remain accurate. No recapture or approval/provider-effect acceptance is claimed.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
-
-    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the startup-ownership-only delta against the retained request-inspection capture and its metadata. No request inspection UI, pending-request read authority, approval/denial path, identity disclosure or decision behavior changed. The caption and existing controlled-provider/historical-chrome qualifications remain accurate. No recapture or approval/provider-effect acceptance is claimed.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

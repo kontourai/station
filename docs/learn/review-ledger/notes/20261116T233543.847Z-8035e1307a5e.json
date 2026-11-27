@@ -1,0 +1,7 @@
+{
+  "revision": "f084d02891d336e26bc962557b185243c0064d2e",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked packages/contracts/package.json: only the @kontourai/flow-agents dev/peer pin moves 11.0.0 -> 11.2.0 (a minor release adding subpaths); the contract surfaces this page documents, including narrative-retained-codecs use, are unchanged.","inputs":["docs/reference/contracts.md","packages/contracts/package.json"]}
+  ]
+}

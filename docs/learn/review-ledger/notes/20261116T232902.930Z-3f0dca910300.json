@@ -1,0 +1,7 @@
+{
+  "revision": "f084d02891d336e26bc962557b185243c0064d2e",
+
+  "notes": [
+    {"path":"docs/design/survey-flow-review.md","note":"Checked: the service still calls the public Flow Agents adapters (discover via ./survey-flow-gate-review-work, continuation via createSurveyFlowGateAdapter from ./survey-flow-gate-adapter), now loaded on first use rather than at construction; routes, 503 behavior and the no-local-semantics claim are unchanged. New tests drive continuePausedGate through the real adapter.","inputs":["docs/design/survey-flow-review.md","package.json#/dependencies/@kontourai~1flow-agents","src-server/services/flow/__tests__/survey-flow-review-service.test.ts","src-server/services/flow/survey-flow-review-service.ts"]}
+  ]
+}

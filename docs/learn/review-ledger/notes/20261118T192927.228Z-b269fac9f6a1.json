@@ -1,0 +1,9 @@
+{
+  "revision": "74e1fd6558c8578a0a7569bfa7f314376949d727",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"The test additions exercise selected-home reset registry custody and incompatible-home recovery. The previous OAuth and runtime-entry fixtures remain the relevant evidence for their linked documentation.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"The test additions exercise selected-home reset registry custody and incompatible-home recovery. The previous OAuth and runtime-entry fixtures remain the relevant evidence for their linked documentation.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}

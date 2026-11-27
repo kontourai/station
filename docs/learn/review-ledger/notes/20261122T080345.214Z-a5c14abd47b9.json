@@ -1,0 +1,7 @@
+{
+  "revision": "c87dc6f19d4ab7e699dc2b465fee63e7901ce8f4",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the Home project chip line: Home's project is its own per-tab pick, also written as the dock binding and not read back; matches HomeStartComposer and useStartSelection.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/hooks/useStartSelection.ts"]}
+  ]
+}

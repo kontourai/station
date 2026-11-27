@@ -34,40 +34,34 @@
   font-family: var(--k-font-ui);
 }
 
-/* #4404 (A43): the phone presentation, chosen by `useIsMobile` in the
-   component, so no page-local media query. A bottom sheet over a dimmed page;
-   tapping the dimmed page closes it (the component's outside-press rule). */
-.notification-history-backdrop {
+.notification-history-overlay.responsive-surface-overlay[data-sheet] {
   position: fixed;
-  inset: 0;
-  z-index: var(--layer-dialog);
-  background: rgb(0 0 0 / 40%);
+  inset: var(--responsive-visual-viewport-top) 0 auto;
+  display: flex;
+  height: var(--responsive-visual-viewport-height);
+  align-items: flex-end;
+  padding: 0;
+  background: var(--overlay-modal);
 }
 
-/* Docked to the VISIBLE viewport's bottom edge, the one every fixed phone
-   sheet shares (`--visual-viewport-bottom-inset`, the chat dock and the shared
-   `ResponsiveDialogSurface` overlay read the same store): a fixed `bottom: 0`
-   is the layout viewport's edge, which iOS Safari's floating toolbar and a
-   software keyboard cover, so the sheet's last rows sat under the toolbar. */
-.notification-history--sheet {
-  top: auto;
-  right: 0;
-  bottom: var(--visual-viewport-bottom-inset, 0px);
-  left: 0;
+.notification-history.notification-history--sheet {
+  position: relative;
+  inset: auto;
+  z-index: auto;
   width: 100%;
-  max-height: min(
-    85dvh,
-    calc(
-      100dvh -
-      var(--visual-viewport-bottom-inset, 0px) -
-      var(--app-toolbar-total-height) -
-      var(--k-space-4)
-    )
-  );
-  margin-top: 0;
+  max-height: 85%;
   padding-bottom: var(--safe-bottom, 0px);
-  border-bottom: none;
+  min-height: 0;
+  margin: 0;
+  border-bottom: 0;
   border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
+}
+
+.notification-history__sheet-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
 }
 
 .notification-history__header {
@@ -114,9 +108,8 @@
 }
 
 .notification-history__tabs {
-  display: flex;
-  gap: var(--k-space-4);
-  padding: 0 var(--k-space-4);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border-bottom: 1px solid var(--k-line);
 }
 
@@ -124,11 +117,13 @@
   display: inline-flex;
   min-height: var(--touch-target-min, 40px);
   align-items: center;
+  justify-content: center;
   gap: var(--k-space-2);
   margin-bottom: -1px;
   padding: 0;
   border: none;
   border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: transparent;
   color: var(--k-text-muted);
   cursor: pointer;
@@ -175,12 +170,7 @@
   align-items: flex-start;
   gap: var(--k-space-3);
   padding: var(--k-space-3) var(--k-space-2) var(--k-space-3) var(--k-space-4);
-  border-bottom: 1px solid var(--k-line);
   font-size: var(--k-text-sm);
-}
-
-.notification-history__item:last-child {
-  border-bottom: none;
 }
 
 .notification-history__item:hover {
@@ -233,7 +223,7 @@
   -webkit-line-clamp: 2;
   line-clamp: 2;
   color: var(--k-text);
-  font-weight: 500;
+  font-weight: 600;
   line-height: var(--k-leading-tight);
 }
 
@@ -262,6 +252,28 @@
   -webkit-line-clamp: 3;
   line-clamp: 3;
   overflow: hidden;
+}
+
+/* The recorded text behind a translated cause: closed by default. */
+.notification-history__raw {
+  margin-top: var(--k-space-1);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+
+.notification-history__raw > summary {
+  cursor: pointer;
+  /* A tap target on a phone: the shared touch floor (44px there, unset on a
+     desktop), reached by padding the one line rather than a flex box, which
+     would drop the disclosure marker. */
+  min-height: var(--touch-target-min, auto);
+  padding-block: max(0px, calc((var(--touch-target-min, 0px) - 1lh) / 2));
+  box-sizing: border-box;
+}
+
+.notification-history__raw > p {
+  margin: var(--k-space-1) 0 0;
+  overflow-wrap: anywhere;
 }
 
 /*
@@ -447,4 +459,80 @@
   /* The sentence carries an ISO timestamp (~110 chars) and this popover is
      narrow — without this it overflows rather than wrapping. */
   overflow-wrap: anywhere;
+}
+
+.notification-history__row {
+  position: relative;
+}
+
+.notification-history__row[data-swipe] {
+  touch-action: pan-y;
+}
+
+.notification-history__row-content {
+  position: relative;
+  margin-inline-end: calc(-1 * var(--swipe-action-offset));
+  background: var(--k-panel);
+  transition: margin-inline-end var(--motion-fast) var(--ease-standard);
+}
+
+.notification-history__row-content[data-dragging] {
+  transition: none;
+}
+
+.notification-history__swipe-actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  width: var(--swipe-action-width);
+  align-items: center;
+  justify-content: space-evenly;
+  background: var(--k-panel-raised);
+}
+
+.notification-history__swipe-actions[hidden] {
+  display: none;
+}
+
+.notification-history .notification-row-title-link {
+  display: block;
+}
+
+.notification-history--with-handle .notification-history__header {
+  padding-top: var(--k-space-4);
+}
+
+.notification-history__row:not(:last-child) {
+  border-bottom: 1px solid var(--k-line);
+}
+
+.notification-history__item {
+  position: relative;
+}
+
+.notification-history__item .notification-row-title-link::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+}
+
+.notification-history__item
+  :is(button, summary, a:not(.notification-row-title-link), input, textarea) {
+  position: relative;
+  z-index: 1;
+}
+
+.notification-history__heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.notification-history__heading > :nth-child(2) {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.notification-history__heading .notification-history__meta {
+  justify-content: flex-start;
 }

@@ -107,7 +107,6 @@ function chatSession(overrides: Partial<ChatSession> = {}): ChatSession {
     error: null,
     createdAt: 0,
     updatedAt: 0,
-    hasUnread: false,
     orchestrationSessionStarted: true,
     orchestrationHistoryRevision: 0,
     ...overrides,
@@ -408,12 +407,12 @@ describe('ACP (OpenCode) tool rows', () => {
     // The batch surfaces the pending call without being opened…
     await waitFor(() =>
       expect(
-        screen.getAllByRole('button', { name: 'Allow Once' }),
+        screen.getAllByRole('button', { name: 'Allow once' }),
       ).toHaveLength(1),
     );
     // …and nothing else renders a second copy of the same decision.
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(
+    expect(screen.getAllByRole('button', { name: 'Allow once' })).toHaveLength(
       1,
     );
     expect(screen.getAllByRole('button', { name: 'Deny' })).toHaveLength(1);
@@ -421,7 +420,7 @@ describe('ACP (OpenCode) tool rows', () => {
     // command line is not the grant's subject.
     // The session choices sit behind the row's overflow menu (#3045).
     const more = screen.getByRole('button', {
-      name: 'More ways to allow this request',
+      name: 'Allow for this session',
     });
     fireEvent.click(more);
     const grant = await screen.findByRole('menuitem', {
@@ -482,20 +481,21 @@ describe('ACP (OpenCode) tool rows', () => {
     );
     await waitFor(() =>
       expect(
-        screen.getAllByRole('button', { name: 'Allow Once' }),
+        screen.getAllByRole('button', { name: 'Allow once' }),
       ).toHaveLength(1),
     );
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(
+    expect(screen.getAllByRole('button', { name: 'Allow once' })).toHaveLength(
       1,
     );
-    // #2915: a Claude Edit asked with no acceptEdits suggestion has nothing a
-    // session answer could forward, so no session option is offered.
+    // Owner decision (2026-11-16): a session answer is offered on every tool
+    // approval. A Claude Edit with no acceptEdits suggestion offers Station's
+    // own tool grant, which forwards nothing to the engine.
     expect(
-      screen.queryByRole('button', {
-        name: 'More ways to allow this request',
+      screen.getByRole('button', {
+        name: 'Allow for this session',
       }),
-    ).toBeNull();
+    ).toBeTruthy();
     expect(screen.getAllByText(/^Edit approved\.txt/)).toHaveLength(1);
   });
 });

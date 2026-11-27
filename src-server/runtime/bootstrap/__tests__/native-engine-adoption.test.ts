@@ -393,7 +393,7 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     expect(detect).toHaveBeenCalledTimes(1);
   });
 
-  it('elides the next candidate probe when the abort lands during a write (#1815)', async () => {
+  it('elides the next candidate probe when abort lands before Agent lock admission (#1815)', async () => {
     const loader = createLoader();
     const controller = new AbortController();
     // The window the loop's pre-probe check covers on its own: candidate 1's
@@ -456,16 +456,12 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       codex: 'interrupted',
       muse: 'interrupted',
     });
-    // Candidate 1's writes completed: the check stops the NEXT candidate, it
-    // does not abandon a write already under way. Both halves are asserted,
-    // because the connection write had already RETURNED when the abort
-    // landed — the write actually under way was the agent materialization,
-    // and asserting only the connection would not have covered the sentence
-    // above it.
+    // The connection committed before abort. Agent materialization had yet
+    // to acquire its persistence lock, so it leaves no Agent behind.
     const registry = await loadOrCreateAgentRegistry(loader);
     expect(registry.engineConnections.map((c) => c.id)).toEqual(['claude']);
-    await expect(loader.loadAgent('claude')).resolves.toMatchObject({
-      execution: { agentConnectionId: 'claude' },
+    await expect(loader.loadAgent('claude')).rejects.toMatchObject({
+      code: 'AGENT_CONFIG_NOT_FOUND',
     });
   });
 
@@ -694,6 +690,55 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       muse: 'error',
     });
     expect(silentLogger.warn).toHaveBeenCalled();
+  });
+});
+
+describe('preview-gated native engines (copilot-sdk-engine)', () => {
+  it('never probes or adopts a preview engine while its preview is off', async () => {
+    const loader = createLoader();
+    const detect = vi.fn(async (_cli: string) => true);
+    const summary = await adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      previewCandidates: [
+        { id: 'copilot-sdk', cli: 'copilot', allowed: () => false },
+      ],
+    });
+    expect(detect.mock.calls.map(([cli]) => cli)).not.toContain('copilot');
+    expect(summary.outcomes['copilot-sdk']).toBe('disabled');
+    const registry = await loadOrCreateAgentRegistry(loader);
+    expect(registry.engineConnections.map((c) => c.id)).not.toContain(
+      'copilot-sdk',
+    );
+  });
+
+  it('reads the preview at each candidate, so turning it on during the window adopts it', async () => {
+    const loader = createLoader();
+    const detect = vi.fn(async (_cli: string) => true);
+    let enabled = false;
+    const summary = await adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect: async (cli) => {
+        // The preview is turned on while the first probe runs.
+        enabled = true;
+        return detect(cli);
+      },
+      delaysMs: [0, 0],
+      previewCandidates: [
+        { id: 'copilot-sdk', cli: 'copilot', allowed: () => enabled },
+      ],
+    });
+    expect(summary.outcomes['copilot-sdk']).toBe('adopted');
+    expect(detect.mock.calls.filter(([cli]) => cli === 'copilot')).toHaveLength(
+      1,
+    );
+    await expect(loader.loadAgent('copilot-sdk')).resolves.toMatchObject({
+      name: 'GitHub Copilot (SDK)',
+      execution: { agentConnectionId: 'copilot-sdk' },
+    });
   });
 });
 

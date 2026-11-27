@@ -32,6 +32,12 @@ describe('settings catalog search', () => {
     expect(matchingSettingsRows('obsidian').map(({ id }) => id)).toContain(
       'personal-knowledge-store',
     );
+    expect(matchingSettingsRows('trustedConsentOrigin')).toEqual([]);
+    expect(
+      matchingSettingsRows('trustedConsentOrigin', {
+        experimentalStationRoutesEnabled: true,
+      }).map(({ id, scope }) => ({ id, scope })),
+    ).toEqual([{ id: 'station-routes', scope: 'station' }]);
   });
 
   test('every catalog title finds its own exact row', () => {

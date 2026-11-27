@@ -1,0 +1,7 @@
+{
+  "revision": "4a0ce413c2b6218fe47b9a4518c7a5c5f7e12e42",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-checked after tests/helpers/gallery-app-error-state.ts stopped exporting APP_ERROR_SURFACES and APP_ERROR_SURFACE_EXEMPT_SCREENS: the guide still names the exemption constant correctly as where a screen is exempted; no behaviour changed.","inputs":["docs/guides/testing.md","tests/helpers/gallery-app-error-state.ts"]}
+  ]
+}

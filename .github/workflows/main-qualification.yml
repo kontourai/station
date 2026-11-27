@@ -3,6 +3,15 @@ name: "Main: Qualification"
 on:
   push:
     branches: [main]
+    # The release bot's ledger commits change only these files. A push that
+    # changes nothing else starts no run, so it cannot displace a pending
+    # source run.
+    # Scheduled runs on such a commit still qualify it: a test failure on an
+    # ancestor that differs only in these files counts (see
+    # qualification-evidence.mjs), and a pass never does.
+    paths-ignore:
+      - docs/reference/deploy-ledger.json
+      - docs/reference/deploy-ledger.md
   schedule:
     - cron: '17 */6 * * *'
   workflow_dispatch:
@@ -29,6 +38,10 @@ jobs:
       capacity_class: background
       source_sha: ${{ github.sha }}
       allow_reuse: ${{ !inputs.force }}
+      # A scheduled run on a source whose corpus already failed tests in the
+      # last 24 hours fails without repeating it; pushes and manual dispatches
+      # always execute.
+      skip_failed_source: ${{ github.event_name == 'schedule' }}
 
   delivery-validation:
     needs: [qualification]

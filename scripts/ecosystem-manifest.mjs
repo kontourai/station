@@ -28,6 +28,7 @@ import {
 import {
   assertEnvelopeShape,
   assertEnvelopeSignature,
+  CHANNEL_VERSION,
   canonicalManifestJson,
   hasExactKeys,
   isCanonicalUrl,
@@ -41,6 +42,8 @@ import {
   validateCommonPayload,
   validateReleaseManifestPayloadV2,
 } from '../packages/shared/src/release-manifest.mjs';
+import { STATION_RELEASE_RINGS } from '../packages/shared/src/release-rings.generated.mjs';
+import { parseReleaseTag } from './lib/release-tag.mjs';
 
 const RELEASE = '(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)';
 // Schema v1 (stable/preview with a macOS cask) keeps its original grammar.
@@ -245,6 +248,28 @@ function requiredTargets(targets, allowPartial) {
 }
 
 /**
+ * The release the assets are staged under: `v<version>`, or a Stable
+ * candidate's own tag `v<version>-rc.N` (#4929). The payload still names
+ * `v<version>`, the version its bytes carry; only the URLs move.
+ */
+function assetLocationTag({ version, channel, locationTag }) {
+  const releaseTag = `v${version}`;
+  if (locationTag === undefined || locationTag === releaseTag)
+    return releaseTag;
+  let parsed;
+  try {
+    parsed = parseReleaseTag(locationTag);
+  } catch {
+    parsed = undefined;
+  }
+  if (channel !== 'stable' || parsed?.baseVersion !== version)
+    throw new Error(
+      `--location-tag ${locationTag} is not a ${channel} release of ${version}`,
+    );
+  return locationTag;
+}
+
+/**
  * A schema v2 payload built from the descriptors the portable archive build
  * writes beside each archive (`<archive>.json`), so no digest or size is ever
  * typed by hand. `baseUrl` must be the versioned release-asset directory: a
@@ -257,24 +282,28 @@ function assemblePayload({
   channel,
   sourceSha,
   baseUrl,
+  locationTag,
   nodeVersion,
   launcherProtocolMin,
   launcherProtocolMax,
   publishedAt,
   targets,
 }) {
+  if (!['stable', 'nightly'].includes(channel))
+    throw new Error(`invalid --channel ${channel}`);
   const releaseTag = `v${version}`;
+  const assetTag = assetLocationTag({ version, channel, locationTag });
   if (!isHttpsArtifactUrl(baseUrl) || !baseUrl.endsWith('/'))
     throw new Error(
       '--base-url must be a canonical HTTPS URL ending in a slash, with no userinfo, query or fragment',
     );
   const segments = new URL(baseUrl).pathname.split('/');
   if (
-    !segments.includes(releaseTag) ||
+    !segments.includes(assetTag) ||
     segments.some((segment) => segment.toLowerCase() === 'latest')
   )
     throw new Error(
-      `--base-url must name the versioned release ${releaseTag}, not a rolling pointer`,
+      `--base-url must name the versioned release ${assetTag}, not a rolling pointer`,
     );
   if (!NODE_VERSION.test(nodeVersion))
     throw new Error('--node-version must be MAJOR.MINOR.PATCH');
@@ -309,13 +338,51 @@ function assemblePayload({
     if (!Number.isSafeInteger(descriptor.size) || descriptor.size <= 0)
       throw new Error(`${where}: malformed size`);
     const release = descriptor.release;
+    const ring = STATION_RELEASE_RINGS[channel];
+    const keys =
+      release && typeof release === 'object' ? Object.keys(release).sort() : [];
+    const expectedKeys =
+      release?.schemaVersion === 3
+        ? [
+            'channel',
+            'createdAt',
+            'prerelease',
+            'releaseChannel',
+            'schemaVersion',
+            'sha',
+            'version',
+          ]
+        : [
+            'channel',
+            'createdAt',
+            'prerelease',
+            'ref',
+            'releaseChannel',
+            'schemaVersion',
+            'sha',
+          ];
+    const validIdentity =
+      release?.schemaVersion === 3
+        ? (channel === 'stable' || channel === 'nightly') &&
+          release.version === version &&
+          release.version.length <= 127 &&
+          CHANNEL_VERSION[channel]?.test(release.version)
+        : release?.schemaVersion === 2 && release.ref === releaseTag;
     if (
-      release?.sha !== sourceSha ||
-      release?.ref !== releaseTag ||
-      release?.releaseChannel !== channel
+      !ring ||
+      keys.length !== expectedKeys.length ||
+      keys.some((key, index) => key !== expectedKeys[index]) ||
+      !validIdentity ||
+      release.sha !== sourceSha ||
+      release.releaseChannel !== channel ||
+      release.channel !== ring.runtimeChannel ||
+      release.prerelease !== ring.prerelease ||
+      typeof release.createdAt !== 'string' ||
+      !Number.isFinite(Date.parse(release.createdAt)) ||
+      new Date(release.createdAt).toISOString() !== release.createdAt
     )
       throw new Error(
-        `${where}: built for ${String(release?.ref)} (${String(release?.releaseChannel)}) at ${String(release?.sha)}, not ${releaseTag} (${channel}) at ${sourceSha}`,
+        `${where}: built for ${String(release?.version ?? release?.ref)} (${String(release?.releaseChannel)}) at ${String(release?.sha)}, not ${releaseTag} (${channel}) at ${sourceSha}`,
       );
     if (byTarget.has(descriptor.target))
       throw new Error(`duplicate archive descriptor for ${descriptor.target}`);
@@ -450,6 +517,7 @@ try {
       channel: option('--channel'),
       sourceSha: option('--source-sha'),
       baseUrl: option('--base-url'),
+      locationTag: optionalOption('--location-tag'),
       nodeVersion: pinnedNodeVersion,
       launcherProtocolMin: parsePositiveInteger(
         '--launcher-protocol-min',

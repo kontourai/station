@@ -1,0 +1,7 @@
+{
+  "revision": "c2d157194d0a5e07c43bf6ee4e19427a1b742d3f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Review-fix round: the armed-send paragraph now states that every composer send path (Send, Return, busy Queue) is the handoff, prepared through useChatInput.prepareOutgoingText, held while blocked or dispatching, that a retried earlier request keeps a newer draft, and that the first message and carry-over list are under Details; checked against ConversationBody, ConversationHandoffDialog and their tests.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/__tests__/ConversationHandoffDialog.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

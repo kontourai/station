@@ -1,0 +1,7 @@
+{
+  "revision": "ec474fb93199fa97b1a19bcd27266e7cdf730bfe",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Delta review only: scripts/run-e2e-suite.mjs now writes job-manifest.json by renaming a temporary file over it (replaceManifestFile) instead of writing it directly. Suite selection, buckets, specs and Playwright arguments did not change, so this page's claims about the suite runner are unaffected and the prose is unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/run-e2e-suite.mjs"]}
+  ]
+}

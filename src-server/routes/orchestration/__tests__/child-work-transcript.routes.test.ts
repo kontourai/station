@@ -136,6 +136,63 @@ describe('#3163 GET /sessions/:threadId/child-work/:childId/transcript', () => {
     );
   });
 
+  test('a tail read returns the latest messages and where they start and end, and a cursor read continues from the end', async () => {
+    const f = fixture();
+    const tail = (await (
+      await f.request(TRANSCRIPT_AGENT_ID, '?tail=1&limit=2')
+    ).json()) as {
+      data: {
+        entries: Array<{ kind: string; message: number; text?: string }>;
+        offset?: number;
+        endOffset?: number;
+        nextOffset?: number;
+      };
+    };
+    // Five conversation messages; the thinking-only one maps to no entry.
+    expect(
+      tail.data.entries.map((entry) => [entry.kind, entry.message]),
+    ).toEqual([
+      ['tool-result', 3],
+      ['text', 4],
+    ]);
+    expect(tail.data).toMatchObject({ offset: 3, endOffset: 5 });
+    expect(tail.data.nextOffset).toBeUndefined();
+    const since = (await (
+      await f.request(TRANSCRIPT_AGENT_ID, '?offset=5')
+    ).json()) as {
+      data: { entries: unknown[]; offset?: number; endOffset?: number };
+    };
+    expect(since.data).toEqual({ entries: [], offset: 5, endOffset: 5 });
+    // A cursor past the end (a transcript rewritten shorter) reads the end.
+    const past = (await (
+      await f.request(TRANSCRIPT_AGENT_ID, '?offset=9')
+    ).json()) as { data: unknown };
+    expect(past.data).toEqual({ entries: [], offset: 5, endOffset: 5 });
+    const older = (await (
+      await f.request(TRANSCRIPT_AGENT_ID, '?offset=1&limit=2')
+    ).json()) as {
+      data: {
+        entries: Array<{ kind: string }>;
+        offset?: number;
+        endOffset?: number;
+      };
+    };
+    expect(older.data.entries.map((entry) => entry.kind)).toEqual([
+      'tool-call',
+    ]);
+    expect(older.data).toMatchObject({
+      offset: 1,
+      endOffset: 3,
+      nextOffset: 3,
+    });
+    expect(
+      (await f.request(TRANSCRIPT_AGENT_ID, '?tail=1&offset=2')).status,
+    ).toBe(400);
+    expect((await f.request(TRANSCRIPT_AGENT_ID, '?tail=yes')).status).toBe(
+      400,
+    );
+  });
+
   test('a path in the request is never read: the route has no input for one', async () => {
     const f = fixture();
     const steered = await f.request(

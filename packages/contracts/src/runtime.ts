@@ -1,3 +1,12 @@
+import { isRecord } from './record-guard.js';
+import {
+  ENGINE_MCP_ERROR_MAX_CHARS,
+  ENGINE_MCP_SERVER_NAME_MAX_CHARS,
+  ENGINE_MCP_STATUS_MAX_SERVERS,
+  type EngineMcpServerState,
+  type EngineMcpServerStatus,
+} from './runtime-events.js';
+
 export interface ToolCallResponse {
   success: boolean;
   response?: unknown;
@@ -116,30 +125,281 @@ export interface ConversationStatsResponse {
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
   contextTokens?: number;
+  /**
+   * From the token pair when the engine reported one, else the engine's own
+   * context reading (`token-usage.updated.contextPercent`).
+   */
   contextWindowPercentage?: number;
+  /**
+   * Costs the engine reported in its own unit, one total per unit (`credit`,
+   * `EUR`, …), carried as reported and never converted to USD. Absent when
+   * the engine reported none. Separate from `estimatedCost`, which is USD.
+   */
+  reportedCosts?: ConversationReportedCost[];
+  /**
+   * The engine's MCP servers as its `engine-mcp.status` events last left
+   * them, folded over the conversation's events. Absent when the engine
+   * reported none. Lets a reopened conversation show what a live one shows.
+   */
+  engineMcp?: ConversationEngineMcpStatus;
   systemPromptTokens?: number;
   mcpServerTokens?: number;
   userMessageTokens?: number;
   assistantMessageTokens?: number;
   contextFilesTokens?: number;
   modelStats?: Record<string, ConversationModelStats>;
+  /**
+   * #5389: what each engine counted, one row per engine in the order the
+   * engines first ran. Present on every `engine-events` view, with one row
+   * for a single-engine conversation. When more than one engine reported
+   * tokens ({@link reportsEngineTokens}), the conversation's own token
+   * figures above are absent: the engines count on different scales, so no
+   * single total exists. Turns, tool calls and costs above stay
+   * conversation-wide.
+   */
+  engines?: ConversationEngineUsage[];
   notFound?: true;
   measurement?: ConversationStatsMeasurement;
+}
+
+/** The token figures an engine row may carry, each on the engine's own scale. */
+export const CONVERSATION_ENGINE_TOKEN_FIGURES = [
+  'inputTokens',
+  'outputTokens',
+  'totalTokens',
+  'cacheReadTokens',
+  'cacheWriteTokens',
+] as const;
+
+/**
+ * Whether an engine row (or a fold's per-engine figures, which use the same
+ * names) reported any token figure, cache figures included. The usage fold
+ * and the stats renderers share this one predicate.
+ */
+export function reportsEngineTokens(
+  usage: Partial<
+    Record<(typeof CONVERSATION_ENGINE_TOKEN_FIGURES)[number], number>
+  >,
+): boolean {
+  return CONVERSATION_ENGINE_TOKEN_FIGURES.some(
+    (field) => usage[field] !== undefined,
+  );
+}
+
+/**
+ * At most this many engine rows in one stats response; the parser refuses a
+ * longer list rather than cutting it. Engines are counted once each, and
+ * Station has far fewer engine kinds than this.
+ */
+export const CONVERSATION_STATS_ENGINES_MAX = 32;
+
+/**
+ * One engine's usage within a conversation, on that engine's own scale.
+ * Same absent-is-not-zero rule as {@link ConversationStatsResponse}.
+ */
+export interface ConversationEngineUsage {
+  /** The engine's provider id (`event.provider`). */
+  provider: string;
+  turns: number;
+  toolCalls: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  /** The engine's own USD figure. */
+  estimatedCost?: number;
+  /** The engine's costs in its own units, never converted. */
+  reportedCosts?: ConversationReportedCost[];
+  /** The latest model the engine's Sessions configured. */
+  modelId?: string;
+}
+
+export interface ConversationReportedCost {
+  unit: string;
+  amount: number;
+}
+
+/** One engine MCP server in conversation stats: the event's server without its passive sign-in link. */
+export type ConversationEngineMcpServer = Omit<
+  EngineMcpServerStatus,
+  'authUrl'
+>;
+
+/** The folded `engine-mcp.status` reports of one conversation. */
+export interface ConversationEngineMcpStatus {
+  /** In the engine's order, at most {@link ENGINE_MCP_STATUS_MAX_SERVERS}. */
+  servers: ConversationEngineMcpServer[];
+  /** The latest report said the session can reconnect a server. */
+  reconnect?: true;
+}
+
+const ENGINE_MCP_SERVER_STATES: ReadonlySet<unknown> =
+  new Set<EngineMcpServerState>([
+    'starting',
+    'ready',
+    'failed',
+    'needs-auth',
+    'disabled',
+    'configured',
+  ]);
+
+function isEngineMcpServerState(value: unknown): value is EngineMcpServerState {
+  return ENGINE_MCP_SERVER_STATES.has(value);
+}
+
+function isToolCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+/** One server from an event or the stats wire; anything out of bounds is refused. */
+export function parseConversationEngineMcpServer(
+  value: unknown,
+): ConversationEngineMcpServer | undefined {
+  if (!isRecord(value)) return undefined;
+  const { name, state, scope, toolCount, error } = value;
+  if (
+    typeof name !== 'string' ||
+    name.length === 0 ||
+    name.length > ENGINE_MCP_SERVER_NAME_MAX_CHARS ||
+    !isEngineMcpServerState(state) ||
+    (scope !== 'session' && scope !== 'engine-config') ||
+    (toolCount !== undefined && !isToolCount(toolCount)) ||
+    (error !== undefined &&
+      (typeof error !== 'string' || error.length > ENGINE_MCP_ERROR_MAX_CHARS))
+  )
+    return undefined;
+  return {
+    name,
+    state,
+    scope,
+    ...(isToolCount(toolCount) ? { toolCount } : {}),
+    ...(error ? { error } : {}),
+  };
+}
+
+/**
+ * Fold one `engine-mcp.status` report into the servers a conversation
+ * shows. A complete report replaces the list; a partial one updates the
+ * servers it names in place and appends new ones, up to the bound. The
+ * reconnect bit is the latest report's. The live chat and the server's
+ * stats fold share this, so a reopened conversation shows the same list.
+ */
+export function foldEngineMcpStatus(
+  current: ConversationEngineMcpStatus | undefined,
+  report: { servers?: unknown; complete?: unknown; reconnect?: unknown },
+): ConversationEngineMcpStatus {
+  const next = new Map<string, ConversationEngineMcpServer>(
+    report.complete === true
+      ? []
+      : (current?.servers ?? []).map((server) => [server.name, server]),
+  );
+  for (const raw of Array.isArray(report.servers) ? report.servers : []) {
+    const server = parseConversationEngineMcpServer(raw);
+    if (!server) continue;
+    if (!next.has(server.name) && next.size >= ENGINE_MCP_STATUS_MAX_SERVERS)
+      continue;
+    next.set(server.name, server);
+  }
+  return {
+    servers: [...next.values()],
+    ...(report.reconnect === true ? { reconnect: true as const } : {}),
+  };
+}
+
+/**
+ * The stats wire's `engineMcp`: `undefined` when absent, `null` when its
+ * shape is malformed, else the value with each server that does not parse
+ * dropped (one bad entry costs only itself) and servers past the bound
+ * dropped.
+ */
+function readConversationEngineMcp(
+  value: unknown,
+): ConversationEngineMcpStatus | undefined | null {
+  if (value === undefined) return undefined;
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.servers) ||
+    (value.reconnect !== undefined && value.reconnect !== true)
+  )
+    return null;
+  const servers: ConversationEngineMcpServer[] = [];
+  for (const raw of value.servers) {
+    if (servers.length >= ENGINE_MCP_STATUS_MAX_SERVERS) break;
+    const server = parseConversationEngineMcpServer(raw);
+    if (server) servers.push(server);
+  }
+  return { servers, ...(value.reconnect === true ? { reconnect: true } : {}) };
+}
+
+/** Bound on a wire cost unit; engines spell one as a short token. */
+const REPORTED_COST_UNIT = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
+
+/**
+ * At most this many cost units in one stats response. The usage fold refuses
+ * a unit past it; the parser keeps the first this many rather than refusing
+ * the whole response.
+ */
+export const CONVERSATION_REPORTED_COST_UNITS_MAX = 16;
+
+/** A cost unit the stats wire carries (`credit`, `USD`, `EUR`). */
+export function isReportedCostUnit(unit: unknown): unit is string {
+  return typeof unit === 'string' && REPORTED_COST_UNIT.test(unit);
+}
+
+function isConversationReportedCosts(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.every(
+        (entry) =>
+          isRecord(entry) &&
+          isReportedCostUnit(entry.unit) &&
+          isFiniteNonnegative(entry.amount),
+      ))
+  );
 }
 
 const isFiniteNonnegative = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+function isConversationEngineUsage(
+  value: unknown,
+): value is ConversationEngineUsage {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.provider === 'string' &&
+    value.provider.length > 0 &&
+    isFiniteNonnegative(value.turns) &&
+    isFiniteNonnegative(value.toolCalls) &&
+    [...CONVERSATION_ENGINE_TOKEN_FIGURES, 'estimatedCost'].every(
+      (key) => value[key] === undefined || isFiniteNonnegative(value[key]),
+    ) &&
+    (value.modelId === undefined || typeof value.modelId === 'string') &&
+    isConversationReportedCosts(value.reportedCosts) &&
+    (!Array.isArray(value.reportedCosts) ||
+      value.reportedCosts.length <= CONVERSATION_REPORTED_COST_UNITS_MAX)
+  );
+}
+
+/** Each engine once, at most {@link CONVERSATION_STATS_ENGINES_MAX} of them. */
+function isConversationEngineUsageList(value: unknown): boolean {
+  if (
+    !Array.isArray(value) ||
+    value.length > CONVERSATION_STATS_ENGINES_MAX ||
+    !value.every(isConversationEngineUsage)
+  )
+    return false;
+  return (
+    new Set(value.map((engine: ConversationEngineUsage) => engine.provider))
+      .size === value.length
+  );
 }
 
 function isConversationModelStats(
   value: unknown,
 ): value is ConversationModelStats {
-  if (!isPlainRecord(value)) return false;
+  if (!isRecord(value)) return false;
   const candidate = value;
   return (
     ['turns', 'toolCalls'].every((key) =>
@@ -197,18 +457,35 @@ export function parseConversationStatsResponse(
       typeof candidate.conversationId !== 'string') ||
     (candidate.notFound !== undefined && candidate.notFound !== true) ||
     !isConversationStatsMeasurement(candidate.measurement) ||
+    !isConversationReportedCosts(candidate.reportedCosts) ||
+    (candidate.engines !== undefined &&
+      !isConversationEngineUsageList(candidate.engines)) ||
     (candidate.modelStats !== undefined &&
-      (!isPlainRecord(candidate.modelStats) ||
+      (!isRecord(candidate.modelStats) ||
         !Object.values(candidate.modelStats).every(isConversationModelStats)))
   )
     return undefined;
-  return candidate as unknown as ConversationStatsResponse;
+  const engineMcp = readConversationEngineMcp(candidate.engineMcp);
+  if (engineMcp === null) return undefined;
+  return {
+    ...candidate,
+    ...(Array.isArray(candidate.reportedCosts) &&
+    candidate.reportedCosts.length > CONVERSATION_REPORTED_COST_UNITS_MAX
+      ? {
+          reportedCosts: candidate.reportedCosts.slice(
+            0,
+            CONVERSATION_REPORTED_COST_UNITS_MAX,
+          ),
+        }
+      : {}),
+    ...(engineMcp ? { engineMcp } : {}),
+  } as ConversationStatsResponse;
 }
 
 /** `undefined` is valid (the field is optional); a malformed record is not. */
 function isConversationStatsMeasurement(value: unknown): boolean {
   if (value === undefined) return true;
-  if (!isPlainRecord(value)) return false;
+  if (!isRecord(value)) return false;
   return (
     (value.source === 'station-memory' || value.source === 'engine-events') &&
     (value.provider === undefined || typeof value.provider === 'string')

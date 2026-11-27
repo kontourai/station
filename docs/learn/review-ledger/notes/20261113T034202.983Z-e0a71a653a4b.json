@@ -1,0 +1,19 @@
+{
+  "revision": "62316443b3461414d8d0604ac4437104bccf2591",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-reviewed the sole follow-up source delta in orchestration-session-state: ES2023 findLast was replaced by ES2022 slice/reverse/find with identical last-open-event selection. Request-kind semantics, snapshot metadata, authorization and all documented claims are unchanged; this note is limited to that compatibility correction.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Re-reviewed the sole follow-up source delta in orchestration-session-state: ES2023 findLast was replaced by ES2022 slice/reverse/find with identical last-open-event selection. Request-kind semantics, snapshot metadata, authorization and all documented claims are unchanged; this note is limited to that compatibility correction.","inputs":["docs/guides/development.md","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Re-reviewed the sole follow-up source delta in orchestration-session-state: ES2023 findLast was replaced by ES2022 slice/reverse/find with identical last-open-event selection. Request-kind semantics, snapshot metadata, authorization and all documented claims are unchanged; this note is limited to that compatibility correction.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Re-reviewed the sole follow-up source delta in orchestration-session-state: ES2023 findLast was replaced by ES2022 slice/reverse/find with identical last-open-event selection. Request-kind semantics, snapshot metadata, authorization and all documented claims are unchanged; this note is limited to that compatibility correction.","inputs":["docs/reference/api.md","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Re-reviewed the sole follow-up source delta in orchestration-session-state: ES2023 findLast was replaced by ES2022 slice/reverse/find with identical last-open-event selection. Request-kind semantics, snapshot metadata, authorization and all documented claims are unchanged; this note is limited to that compatibility correction.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-reviewed the sole follow-up source delta in orchestration-session-state: ES2023 findLast was replaced by ES2022 slice/reverse/find with identical last-open-event selection. Request-kind semantics, snapshot metadata, authorization and all documented claims are unchanged; this note is limited to that compatibility correction.","inputs":["docs/reference/sdk.md","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Re-reviewed the sole follow-up source delta in orchestration-session-state: ES2023 findLast was replaced by ES2022 slice/reverse/find with identical last-open-event selection. Request-kind semantics, snapshot metadata, authorization and all documented claims are unchanged; this note is limited to that compatibility correction.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}

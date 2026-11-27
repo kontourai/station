@@ -1,0 +1,19 @@
+{
+  "revision": "97d654ec2cae0b299b085cbcbb62e75c1aa9aa68",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the dock transcript path from the existing history window and sequenced live feed to settled MessageBubble rows. The dock removes entry motion from history rows. Readers, authority and session state keep their existing ownership.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed ChatMessageList form submission and the settled row wrapper. The wrapper applies history entry styling. Form actions and captured state follow the same callbacks.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the documented composer controls, transcript actions and turn navigation against ChatMessageList and the shared conversation owner. History entry styling leaves their markup, handlers and live status motion intact.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed docking, panel motion and transcript placement claims. The history rule applies to individual MessageBubble entry animation inside the dock. Shell and panel placement, transforms and mobile navigation use their existing owners.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Reviewed connection-scoped history and live delivery through the transcript controller. The presentation rule uses the bound view and sequenced frames. The connection, read scopes and approval ports retain their documented owners.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed panel entrances and the global reduced-motion contract. The CSS rule scopes to existing dock history rows. The global reduced-motion reset and panel entrance styles still apply as documented.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed first chat, continuing conversations and transcript controls. The dock now reveals existing rows without a slide-in. All documented actions, setup steps and controls still follow their existing paths.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

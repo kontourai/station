@@ -1,0 +1,7 @@
+{
+  "revision": "03608b8d8a6389c15557e84d850bce1b120f7dee",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked work-facts and InboxRowStatus changes (#5398): list_project_activity words a Session from the contract SESSION_STATUS_WORDS on the server, which this change does not touch.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/inbox-row/InboxRowStatus.tsx","src-ui/src/views/home/work-facts.ts"]}
+  ]
+}

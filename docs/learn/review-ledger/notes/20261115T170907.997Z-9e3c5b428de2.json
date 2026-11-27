@@ -1,0 +1,7 @@
+{
+  "revision": "75118037bf6de0a99606da1a97921802d58eb9c6",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"ComposerChoice gained an inline safety glyph before the value; layout claims (truncation, 44px targets, sheet owns choices) unchanged.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ComposerChoice.css","src-ui/src/components/ComposerChoice.tsx"]}
+  ]
+}

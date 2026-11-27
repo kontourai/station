@@ -257,6 +257,11 @@ export class ProjectMembershipService {
     return this.members.readableProjectAdmissionsForPrincipalId(principalId);
   }
 
+  /** Only inside an operation the caller was admitted to on this exact scope. */
+  viewingMembers(scope: ProjectMembershipScope) {
+    return this.members.viewingMembers(scope);
+  }
+
   /** Only for attribution after the caller has authorized this exact scope. */
   memberDisplayName(
     scope: ProjectMembershipScope,

@@ -113,13 +113,13 @@ function PackageHostActions({
         authority.isCurrent,
       );
       if (!opened && authority.isCurrent())
-        showSurface('activity', {
+        showSurface('chat', {
           session: created.sessionId,
           focus: 'evidence',
         });
     } catch {
       if (authority.isCurrent())
-        showSurface('activity', {
+        showSurface('chat', {
           session: created.sessionId,
           focus: 'evidence',
         });
@@ -207,7 +207,7 @@ function PackageHostActions({
             <Button
               onClick={() => {
                 if (authority?.isCurrent())
-                  showSurface('activity', {
+                  showSurface('chat', {
                     session: result.sessionId,
                     focus: 'evidence',
                   });
@@ -248,7 +248,7 @@ export function WorkspacePaneHostActions({
             pending={failure.retrying}
             onClick={() => void query.refetch()}
           >
-            Try again
+            Retry
           </Button>
         }
       />
@@ -267,8 +267,8 @@ export function WorkspacePaneHostActions({
       </div>
       {!query.data.complete ? (
         <p role="status">
-          Some package declarations could not be read. Review Plugins before
-          using legacy workspace actions.
+          Some plugins couldn’t be read. Check Plugins before using these
+          workspace actions.
         </p>
       ) : null}
       {query.data.contributions.map(({ projection, reason, displayName }) => (

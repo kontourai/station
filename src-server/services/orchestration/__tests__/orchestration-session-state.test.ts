@@ -4,12 +4,16 @@ import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
 } from '@kontourai/station-contracts/provider';
+import { ACP_RESUME_CONFIGURATION_CHANGED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { sessionAttentionKind } from '@kontourai/station-contracts/session-attention';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import type {
-  ProviderAdapterShape,
-  ProviderSession,
+import {
+  ApprovalGovernanceRefusedError,
+  type ProviderAdapterShape,
+  type ProviderSession,
+  SessionStartRefusedError,
 } from '../../../providers/adapter-shape.js';
 import { waitForReceipt } from '../../infra/receipt-bus.js';
 import { ToolLibraryService } from '../../plugins/tool-library-service.js';
@@ -19,6 +23,7 @@ import {
   buildOrchestrationSessionSummary,
   projectOrchestrationEventToReadModel,
   type RecoveredSessionStartOptions,
+  recordedResumeBindingForStart,
   recoverOrchestrationSessions,
   resolveOrchestrationAdapterForThread,
   SESSION_RECOVERY_FAILED_CODE,
@@ -26,7 +31,11 @@ import {
   trackOrchestrationSession,
 } from '../orchestration-session-state.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
-import { SessionStartIndeterminateError } from '../session-turn-boundary-binding.js';
+import {
+  createInMemorySessionTurnBoundaryAuthority,
+  runSessionStartWithBoundary,
+  SessionStartIndeterminateError,
+} from '../session-turn-boundary-binding.js';
 
 /**
  * archive#3476: the engine-start half of recovery, which boot no longer runs.
@@ -490,6 +499,123 @@ describe('orchestration-session-state', () => {
     );
   });
 
+  test('startRecoveredOrchestrationSession hands its recorded binding key only to an adapter that requires it', async () => {
+    const adapterFor = (provider: string, requiresBinding: boolean) => {
+      const startSession = vi.fn(async (input: { threadId: string }) => ({
+        provider,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        createdAt: '2026-11-14T00:00:00.000Z',
+        updatedAt: '2026-11-14T00:00:00.000Z',
+      }));
+      const adapter = {
+        provider,
+        metadata: {
+          continuity: {
+            resume: 'same-session',
+            fork: 'none',
+            rewind: 'none',
+            ...(requiresBinding ? { recoveryBinding: 'required' } : {}),
+          },
+        },
+        startSession,
+      } as unknown as ProviderAdapterShape;
+      return { adapter, startSession };
+    };
+    const readNativeResumeBindingKey = vi.fn(() => 'b'.repeat(64));
+    const session = (
+      provider: string,
+      resumeCursor?: unknown,
+    ): ProviderSession => ({
+      provider,
+      threadId: resumeCursor ? `${provider}-resumed` : `${provider}-fresh`,
+      status: 'ready',
+      ...(resumeCursor ? { resumeCursor } : {}),
+      createdAt: '2026-11-14T00:00:00.000Z',
+      updatedAt: '2026-11-14T00:00:00.000Z',
+    });
+
+    const required = adapterFor('copilot-sdk', true);
+    await startRecovered({
+      session: session('copilot-sdk', { copilotSessionId: 'native-1' }),
+      adapter: required.adapter,
+      options: { readNativeResumeBindingKey },
+    });
+    await startRecovered({
+      session: session('copilot-sdk'),
+      adapter: required.adapter,
+      options: { readNativeResumeBindingKey },
+    });
+    expect(required.startSession.mock.calls[0]![0]).toMatchObject({
+      threadId: 'copilot-sdk-resumed',
+      nativeResumeBindingKey: 'b'.repeat(64),
+    });
+    // Nothing to resume, so no binding to check.
+    expect(required.startSession.mock.calls[1]![0]).not.toHaveProperty(
+      'nativeResumeBindingKey',
+    );
+
+    // An adapter that does not opt in (Claude, Codex) recovers exactly as
+    // before, even with a recorded key: its key can change legitimately.
+    const legacy = adapterFor('claude', false);
+    await startRecovered({
+      session: session('claude', { claudeSessionId: 'native-2' }),
+      adapter: legacy.adapter,
+      options: { readNativeResumeBindingKey },
+    });
+    expect(legacy.startSession.mock.calls[0]![0]).not.toHaveProperty(
+      'nativeResumeBindingKey',
+    );
+    expect(readNativeResumeBindingKey).toHaveBeenCalledTimes(1);
+  });
+
+  // The rule the credential-profile retry
+  // (`restartCredentialProfileProviderSession`) applies through this same
+  // helper. A silent revert that handed Claude its recorded key would break
+  // Claude's credential retries, since Claude refuses a mismatched key.
+  test('a credential retry passes the recorded binding only to an opted-in adapter keeping its profile', () => {
+    const adapter = (recoveryBinding?: 'required') =>
+      ({
+        metadata: {
+          continuity: {
+            resume: 'same-session',
+            fork: 'none',
+            rewind: 'none',
+            ...(recoveryBinding ? { recoveryBinding } : {}),
+          },
+        },
+      }) as unknown as Pick<ProviderAdapterShape, 'metadata'>;
+    const recorded = 'c'.repeat(64);
+    const read = vi.fn(() => recorded);
+    const cursor = { copilotSessionId: 'native-1' };
+
+    // Copilot-style, keeping its profile: gets the key.
+    expect(
+      recordedResumeBindingForStart(adapter('required'), cursor, false, read),
+    ).toBe(recorded);
+    // The same adapter switching to another profile: none.
+    expect(
+      recordedResumeBindingForStart(adapter('required'), cursor, true, read),
+    ).toBeUndefined();
+    // Claude (no opt-in), with or without a switch: never.
+    expect(
+      recordedResumeBindingForStart(adapter(), cursor, false, read),
+    ).toBeUndefined();
+    expect(
+      recordedResumeBindingForStart(adapter(), cursor, true, read),
+    ).toBeUndefined();
+    // Nothing to resume: none, and nothing is read.
+    expect(
+      recordedResumeBindingForStart(
+        adapter('required'),
+        undefined,
+        false,
+        read,
+      ),
+    ).toBeUndefined();
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
   test('scopes recovery readiness to the persisted external connection', async () => {
     const adapter = {
       provider: 'acp',
@@ -706,6 +832,39 @@ describe('orchestration-session-state', () => {
       );
       expect(eventStore.appendEventIfAbsent.mock.calls[0][0].message).toContain(
         'This conversation could not be reopened',
+      );
+    });
+
+    test('an ACP connection change releases the start boundary and remains a typed refusal', async () => {
+      const { adapter, eventStore, session } = failingRecovery();
+      const authority = createInMemorySessionTurnBoundaryAuthority();
+      const refusal = new SessionStartRefusedError(
+        'Choose Continue from history.',
+        ACP_RESUME_CONFIGURATION_CHANGED_CODE,
+      );
+      vi.mocked(adapter.startSession).mockRejectedValueOnce(refusal);
+      await expect(
+        startRecovered({
+          session,
+          adapter,
+          options: {
+            eventStore,
+            invokeSessionStart: (threadId, invoke) =>
+              runSessionStartWithBoundary(authority, threadId, invoke),
+          },
+        }),
+      ).rejects.toBe(refusal);
+      expect(
+        authority.claimSessionStart(session.threadId, new Date().toISOString())
+          .kind,
+      ).toBe('owner');
+      expect(eventStore.appendEventIfAbsent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: ACP_RESUME_CONFIGURATION_CHANGED_CODE,
+          failurePhase: 'refused',
+          retryable: false,
+          message: expect.stringContaining('Continue from history'),
+        }),
       );
     });
 
@@ -1063,6 +1222,65 @@ describe('orchestration-session-state', () => {
         message: expect.stringContaining('ollama not ready yet'),
       }),
     );
+  });
+
+  /**
+   * #4435: OpenCode 2.x has no `debug agent <name>`, so the ACP adapter's
+   * governance check refuses. On recovery that check ran inside the start
+   * boundary, so the refusal was recorded as a start that may have happened
+   * and every retry was refused with "Session start admission is
+   * unavailable". The check now runs first, and the boundary stays free.
+   */
+  test('startRecoveredOrchestrationSession refuses an ungovernable start before the start boundary, so a retry can start', async () => {
+    const authority = createInMemorySessionTurnBoundaryAuthority();
+    let governable = false;
+    const refusal = new ApprovalGovernanceRefusedError(
+      "Station can't apply its approval mode to OpenCode, so the chat was not started: Station could not read OpenCode's resolved approval rules (debug agent build exited with code 1:     agents).",
+    );
+    const session: ProviderSession = {
+      provider: 'acp',
+      threadId: 'thread-governance',
+      status: 'running',
+      model: 'glm',
+      createdAt: '2026-11-14T16:00:00.000Z',
+      updatedAt: '2026-11-14T19:00:00.000Z',
+    };
+    // The real adapter repeats the check inside startSession when no
+    // preflight result is fresh, so both refuse until the rules are readable.
+    const adapter = {
+      provider: 'acp',
+      preflightStart: vi.fn(async () => {
+        if (!governable) throw refusal;
+      }),
+      startSession: vi.fn(async () => {
+        if (!governable) throw refusal;
+        return { ...session, status: 'ready' };
+      }),
+    } as unknown as ProviderAdapterShape;
+    const options = {
+      eventStore: {
+        upsertSession: vi.fn(),
+        markSessionClosed: vi.fn(),
+        appendEventIfAbsent: vi.fn(),
+      } as any,
+      invokeSessionStart: <T>(threadId: string, invoke: () => Promise<T>) =>
+        runSessionStartWithBoundary(authority, threadId, invoke),
+    };
+
+    const first = startRecovered({ session, adapter, options });
+    await expect(first).rejects.toBe(refusal);
+    await expect(first).rejects.not.toBeInstanceOf(
+      SessionStartIndeterminateError,
+    );
+    expect(adapter.startSession).not.toHaveBeenCalled();
+
+    governable = true;
+    await expect(
+      startRecovered({ session, adapter, options }),
+    ).resolves.toEqual(
+      expect.objectContaining({ threadId: 'thread-governance' }),
+    );
+    expect(adapter.startSession).toHaveBeenCalledTimes(1);
   });
 
   test("startRecoveredOrchestrationSession recovers an acp session via the cursor's connectionId when no metadata survives", async () => {
@@ -4574,3 +4792,104 @@ test('session summaries expose the captured route when the loaded runtime has no
     }).modelRoute,
   ).toBeUndefined();
 });
+
+test('summary carries unresolved input kinds alongside blocking ids', () => {
+  const loaded = {
+    provider: 'codex' as const,
+    threadId: 'kind-thread',
+    status: 'running' as const,
+    createdAt: '2026-11-01T00:00:00Z',
+    updatedAt: '2026-11-01T00:00:00Z',
+  };
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      ...loaded,
+      eventId: 'question',
+      method: 'request.opened',
+      requestId: 'q',
+      requestType: 'input',
+      title: 'Question',
+    },
+  ];
+  expect(
+    buildOrchestrationSessionSummary({
+      answerability: OBSERVATION,
+      loaded,
+      events,
+      openRequestIds: ['q'],
+    }),
+  ).toMatchObject({
+    blockingOpenRequestIds: ['q'],
+    openRequestKinds: { q: 'input' },
+    lifecycleState: 'needs_input',
+  });
+});
+
+test('summary does not invent a permission kind when the open event is unavailable', () => {
+  const loaded = {
+    provider: 'codex' as const,
+    threadId: 'missing-kind',
+    status: 'running' as const,
+    createdAt: '2026-11-01T00:00:00Z',
+    updatedAt: '2026-11-01T00:00:00Z',
+  };
+  const summary = buildOrchestrationSessionSummary({
+    answerability: OBSERVATION,
+    loaded,
+    events: [],
+    openRequestIds: ['unknown'],
+  });
+  expect(summary?.openRequestIds).toEqual(['unknown']);
+  expect(summary?.openRequestKinds?.unknown).toBeUndefined();
+});
+
+test.each(['AskUserQuestion', 'cursor/create_plan', 'ExitPlanMode'])(
+  'summary display kind for %s never changes lifecycle routing',
+  (toolName) => {
+    const loaded = {
+      provider: 'claude' as const,
+      threadId: 'display-form',
+      status: 'running' as const,
+      createdAt: '2026-11-01T00:00:00Z',
+      updatedAt: '2026-11-01T00:00:00Z',
+    };
+    const summary = buildOrchestrationSessionSummary({
+      loaded,
+      answerability: OBSERVATION,
+      openRequestIds: ['q'],
+      events: [
+        {
+          provider: 'claude',
+          threadId: loaded.threadId,
+          createdAt: loaded.createdAt,
+          eventId: 'q-event',
+          method: 'request.opened',
+          requestId: 'q',
+          requestType: 'approval',
+          title: 'Review',
+          payload: {
+            toolName,
+            inputRequest: {
+              schema: 'station.input-request/v1',
+              source: 'harness:claude',
+              requester: 'Claude',
+              message: 'Choose',
+              body: {
+                kind: 'form',
+                fields: [{ name: 'answer', kind: 'string', required: true }],
+              },
+            },
+          },
+        },
+      ],
+    });
+    expect(summary.openRequestKinds).toEqual({
+      q: toolName === 'AskUserQuestion' ? 'input' : 'approval',
+    });
+    expect(summary.lifecycleState).toBe('review_pending');
+    // The real writer keeps forms as a pending review; only the display refines it.
+    expect(sessionAttentionKind(summary)).toBe(
+      toolName === 'AskUserQuestion' ? 'answer' : 'approval',
+    );
+  },
+);

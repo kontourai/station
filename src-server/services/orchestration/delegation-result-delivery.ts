@@ -100,6 +100,11 @@ import {
   isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
 import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
+import { errorMessage } from '../../utils/error-message.js';
+import {
+  sharedUntrustedContentLedger,
+  type UntrustedContentLedger,
+} from '../plugins/untrusted-content-policy.js';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
 import {
   evaluateSessionWait,
@@ -1065,6 +1070,11 @@ export interface DelegationResultOutputEvent {
 }
 
 export interface DelegationResultDeliveryPorts {
+  /**
+   * #4828: the untrusted-content ledger a delivered result carries a child's
+   * untrusted read through; the shared one by default.
+   */
+  untrustedContentLedger?: UntrustedContentLedger;
   readonly store: DelegationResultStore;
   /** The Session's lifecycle fold events, oldest first (`ACTIVE_TURN_FOLD_METHODS`). */
   foldEvents(threadId: string): readonly SessionWaitFoldEvent[];
@@ -1196,7 +1206,7 @@ const FOLD_METHODS = new Set([
 ]);
 
 const OUTCOME_WORDS: Record<DelegationResultOutcome, string> = {
-  completed: 'completed',
+  completed: 'finished its turn',
   interrupted: 'was interrupted when Station restarted, before it finished',
   aborted: 'was stopped',
   error: 'failed',
@@ -1423,7 +1433,7 @@ export class DelegationResultDelivery {
         this.onFoldEvent(threadId, method);
       } catch (error) {
         this.ports.logger.warn('delegation result delivery failed', {
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     });
@@ -1797,7 +1807,7 @@ export class DelegationResultDelivery {
       .catch((error) => {
         this.ports.logger.warn('delegation result delivery failed', {
           deliveryId: row.deliveryId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       })
       .finally(() => this.inFlight.delete(key));
@@ -1869,6 +1879,7 @@ export class DelegationResultDelivery {
     const sender: ClientOriginSender = {
       kind: 'delegation-result',
       sessionId: row.childSessionId,
+      ...(owner.childAgent ? { agent: owner.childAgent } : {}),
       requestKey: row.deliveryId,
     };
     const ports: SessionMessageDeliveryPorts = {
@@ -1898,6 +1909,19 @@ export class DelegationResultDelivery {
           clientInputId,
         }),
     };
+    // #4828: a child that read content written by others hands it to the
+    // parent with its result, so the parent is marked (durably when wired)
+    // before the result can reach its next turn.
+    const ledger =
+      this.ports.untrustedContentLedger ?? sharedUntrustedContentLedger;
+    if (
+      await ledger.conversationHasRead(
+        row.childConversationId,
+        row.childSessionId,
+      )
+    )
+      for (const id of new Set([owner.parentConversationId, threadId]))
+        ledger.markConversation(id, Promise.resolve(true));
     let delivery: Awaited<ReturnType<typeof deliverSessionMessage>>;
     try {
       delivery = await deliverSessionMessage(ports, {
@@ -1915,10 +1939,7 @@ export class DelegationResultDelivery {
       // a turn (no Agent binding) settles instead of retrying forever.
       const attempts = store.countAttempt(row, true);
       if (attempts >= DELEGATION_RESULT_MAX_ATTEMPTS)
-        return this.giveUp(
-          row,
-          `start refused: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        return this.giveUp(row, `start refused: ${errorMessage(error)}`);
       this.scheduleRetry(row, 'failure');
       return;
     }
@@ -1994,7 +2015,7 @@ export class DelegationResultDelivery {
           : 'delegation result re-check failed',
         {
           deliveryId: row.deliveryId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
           ...(storeClosed
             ? {}
             : { stack: error instanceof Error ? error.stack : undefined }),

@@ -5,7 +5,10 @@ import {
   snoozesVersion,
   subscribeSnoozes,
 } from '../../utils/activity-snooze-store';
-import { workAttentionCount } from '../../views/home/home-lane-model';
+import {
+  finishedAtOf,
+  workAttentionCount,
+} from '../../views/home/home-lane-model';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
@@ -21,7 +24,7 @@ import { useConversationWorkState } from './useConversationWorkState';
  * THE inbox's groups, from its live sources: the items with brief lifecycle
  * churn held (`useHeldLifecycles`) and the snooze map re-read on every
  * snooze write in this tab. The desktop inbox panel renders these, and the
- * inbox toggle's "Show inbox, 3 need you" counts the same Needs-you group,
+ * inbox toggle's "Show chats, 3 need you" counts the same Needs-you group,
  * so snoozing a row and then hiding the inbox cannot leave the toggle
  * counting a row the panel no longer shows.
  */
@@ -66,23 +69,82 @@ export function useInboxGroups(
     () => readSnoozes(now, namespace),
     [now, version, namespace],
   );
+  const windowed = Boolean(resolution) && !term;
+  const settledAt = state.settled;
   return useMemo(
     () => [
-      ...groupMobileActivity(visible, now, snoozed, workFacts, resolution),
+      ...groupMobileActivity(visible, now, snoozed, workFacts, resolution).map(
+        (group) => (windowed ? windowShelf(group, now, settledAt) : group),
+      ),
       ...(includeDismissed && dismissed.length
-        ? [{ id: 'dismissed' as const, label: 'Dismissed', items: dismissed }]
+        ? [
+            {
+              id: 'dismissed' as const,
+              // Rows marked done on this device, or hidden on the host.
+              label: 'Marked done',
+              items: dismissed,
+            },
+          ]
         : []),
     ],
-    [visible, now, snoozed, workFacts, dismissed, resolution, includeDismissed],
+    [
+      visible,
+      now,
+      snoozed,
+      workFacts,
+      dismissed,
+      resolution,
+      includeDismissed,
+      windowed,
+      settledAt,
+    ],
   );
+}
+
+/** How far back the Settled and Third-party shelves reach before "Show older". */
+export const INBOX_SHELF_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * When a row joined its shelf: a conversation's settlement record, else
+ * (Tasks, or no record) when its work ended. A third-party Session's last
+ * activity.
+ */
+function shelfTime(
+  group: MobileActivityGroup,
+  item: HomeWorkItem,
+  settledAt: Readonly<Record<string, string>>,
+) {
+  if (group.id === 'external') return item.updatedAt;
+  const record = settledAt[item.conversationId ?? item.id];
+  const parsed = record === undefined ? Number.NaN : Date.parse(record);
+  return Number.isFinite(parsed) ? parsed : finishedAtOf(item);
+}
+
+function windowShelf(
+  group: MobileActivityGroup,
+  now: number,
+  settledAt: Readonly<Record<string, string>>,
+): MobileActivityGroup {
+  if (group.id !== 'settled' && group.id !== 'external') return group;
+  const items: HomeWorkItem[] = [];
+  const older: HomeWorkItem[] = [];
+  for (const item of group.items)
+    (now - shelfTime(group, item, settledAt) > INBOX_SHELF_WINDOW_MS
+      ? older
+      : items
+    ).push(item);
+  return older.length ? { ...group, items, older } : group;
 }
 
 /** How many rows the inbox's Needs-you group holds, from `useInboxGroups`. */
 export function useInboxNeedsYouCount(
   items: HomeWorkItem[],
   now: number,
+  workFacts?: WorkFactsById,
 ): number {
-  const groups = useInboxGroups(items, now);
+  // The same facts the inbox reads: without them this count's dismissal read
+  // would see an engine-opened turn as waking a row, and restore it.
+  const groups = useInboxGroups(items, now, workFacts);
   const group = groups.find((group) => group.id === 'needsYou');
   return group ? workAttentionCount(group.items, now, group.childrenById) : 0;
 }

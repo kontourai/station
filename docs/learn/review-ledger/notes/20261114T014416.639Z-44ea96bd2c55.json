@@ -1,0 +1,9 @@
+{
+  "revision": "cf60f6d0b078984c55b2e94ecbeadeaef83e45ea",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"#4929 rc staging review. Source delta: scripts/pr-delivery-paths.json lists scripts/lib/release-tag.mjs under the install and portable delivery paths because the portable packager and the archive builder now import it. The guide's delivery-path statements (install smoke and portable archive builds run when their inputs change) remain accurate. No further prose change.","inputs":["docs/guides/release-rings.md","scripts/pr-delivery-paths.json"]},
+
+    {"path":"docs/guides/releasing.md","note":"#4929 rc staging review. Source delta: scripts/pr-delivery-paths.json adds scripts/lib/release-tag.mjs to the install and portable delivery paths (new import of the packager and archive builder). No releasing step or claim changes. No prose change.","inputs":["docs/guides/releasing.md","scripts/pr-delivery-paths.json"]}
+  ]
+}

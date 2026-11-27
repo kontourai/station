@@ -1,7 +1,8 @@
 /**
  * Signing an engine in from Station, using only what the engine itself
- * advertises in a live ACP handshake (ADR 0013: Station never holds, reads or
- * bridges an engine's credentials).
+ * advertises in a live ACP handshake, or a reviewed built-in login whose
+ * required flag was observed in the installed CLI's help. Credentials stay
+ * in the engine's own store.
  *
  * - The handshake is a short-lived process that offers `auth.terminal`, so an
  *   engine may list terminal methods. Raw methods (with their `args`/`env`)
@@ -16,6 +17,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
+import { basename } from 'node:path';
 import type {
   AuthMethod,
   AuthMethodTerminal,
@@ -30,7 +32,9 @@ import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
   findCliBinaryAsync,
   resolveAugmentedPath,
+  runCliCommand,
 } from '../../providers/auth/cli-auth.js';
+import { managedEngineLaunch } from '../../security/managed-engine-limits.js';
 import { sanitizeConnectionEnvMap } from '../connections/connection-env.js';
 import { ensureEngineSpawnTmpDir } from '../infra/engine-spawn-tmpdir.js';
 import {
@@ -40,7 +44,9 @@ import {
 import { createAcpInboundExtensionRequestHandler } from './acp-inbound-extension-policy.js';
 import { createProbeClient } from './acp-probe.js';
 import { ACPProcess, type ACPProcessOptions } from './acp-process.js';
+import { antigravityOutcomeProfile } from './antigravity-prompt-outcome.js';
 import {
+  engineSignInStatus,
   forgetEngineAuthStatus,
   invalidateEngineStatus,
   recordEngineAuthenticated,
@@ -97,6 +103,7 @@ export interface SignInTerminalHost {
 }
 
 interface MethodsObservation {
+  cliLogin?: AuthMethodTerminal & { type: 'terminal' };
   key: string;
   at: number;
   methods?: AuthMethod[];
@@ -325,6 +332,37 @@ export class EngineSignInService {
     } finally {
       await process.destroy().catch(() => undefined);
     }
+    const binding = registryAuthFor(config)?.auth.terminalLogin;
+    if (binding) {
+      const help = await runCliCommand(
+        config.command,
+        binding.helpArgs,
+        undefined,
+        registryLaunchEnvFor(config),
+        { timeoutMs: 8_000, maxBuffer: 64 * 1024 },
+      );
+      this.#requireCurrent(config, generation);
+      if (
+        help?.code === 0 &&
+        !help.timedOut &&
+        !help.outputTruncated &&
+        `${help.stdout}\n${help.stderr}`.includes(binding.requiredHelpText)
+      ) {
+        const observed = this.#methods.get(config.id);
+        this.#methods.set(config.id, {
+          ...observed,
+          key,
+          at: this.#now(),
+          methods: observed?.methods ?? [],
+          cliLogin: {
+            id: binding.id,
+            name: binding.name,
+            type: 'terminal',
+            args: [...binding.args],
+          },
+        });
+      }
+    }
   }
 
   #observation(config: ACPConnectionConfig): MethodsObservation | undefined {
@@ -345,6 +383,7 @@ export class EngineSignInService {
     const observedAt = new Date(observed.at).toISOString();
     if (!observed.methods) return { observedAt, error: observed.error };
     const hidden = new Set(registryAuthFor(config)?.auth.hiddenAuthMethodIds);
+    if (observed.cliLogin) hidden.add(observed.cliLogin.id);
     const methods: EngineSignInMethod[] = [];
     for (const method of observed.methods) {
       const id = boundedText(method?.id, 256);
@@ -361,6 +400,12 @@ export class EngineSignInService {
       });
       if (methods.length >= 32) break;
     }
+    if (observed.cliLogin)
+      methods.unshift({
+        id: observed.cliLogin.id,
+        name: observed.cliLogin.name,
+        kind: 'terminal',
+      });
     return { methods, observedAt };
   }
 
@@ -383,9 +428,10 @@ export class EngineSignInService {
         502,
       );
     const hidden = registryAuthFor(config)?.auth.hiddenAuthMethodIds ?? [];
-    const method = observed.methods.find(
-      (candidate) => candidate?.id === methodId,
-    );
+    const method =
+      observed.cliLogin?.id === methodId
+        ? observed.cliLogin
+        : observed.methods.find((candidate) => candidate?.id === methodId);
     if (!method || hidden.includes(methodId))
       throw new EngineSignInError(
         'The engine does not offer that sign-in.',
@@ -475,6 +521,7 @@ export class EngineSignInService {
     const generation = this.#generation(config);
     this.#claim(config.id);
     const method = await this.#liveMethod(config, methodId);
+    const reviewedCliLogin = method === this.#observation(config)?.cliLogin;
     this.#requireCurrent(config, generation);
     if (!isTerminalMethod(method))
       throw new EngineSignInError('That sign-in does not run in a terminal.');
@@ -508,9 +555,38 @@ export class EngineSignInService {
       PATH: path,
       ...registryLaunchEnvFor(config),
       ...engineCredentialEnvFor(config),
-      // The protocol: method variables override the launch configuration.
-      ...sanitizeConnectionEnvMap(method.env),
     };
+    const configuredArgs = config.args ?? [];
+    // The protocol: method variables override the launch configuration.
+    const methodEnv = sanitizeConnectionEnvMap(method.env);
+    let profile: ReturnType<typeof antigravityOutcomeProfile>;
+    if (
+      !reviewedCliLogin &&
+      basename(program) === 'agy' &&
+      extra.length === 1 &&
+      extra[0] === '--login'
+    ) {
+      const launch = managedEngineLaunch(
+        'acp',
+        {
+          command: config.command,
+          args: configuredArgs,
+          env: { ...process.env, ...env },
+        },
+        'user',
+      );
+      const geminiHome = launch.env.GEMINI_HOME;
+      try {
+        profile = antigravityOutcomeProfile({
+          command: config.command,
+          args: configuredArgs,
+          geminiHome,
+        });
+      } catch (error) {
+        throw new EngineSignInError(errorText(error), 409);
+      }
+      if (geminiHome !== undefined) methodEnv.GEMINI_HOME = geminiHome;
+    }
     const view: EngineSignInAttempt = {
       id: randomUUID(),
       methodId,
@@ -542,19 +618,39 @@ export class EngineSignInService {
         rows: 30,
         launch: {
           file: program,
-          args: [...(config.args ?? []), ...extra],
-          env,
+          args: reviewedCliLogin
+            ? extra
+            : [...configuredArgs, ...(profile?.args ?? []), ...extra],
+          env: { ...env, ...methodEnv },
         },
       });
       terminalId = opened.terminalId;
-      void opened.exited.then(({ exitCode }) =>
-        live.finish(
-          exitCode === 0 ? 'succeeded' : 'failed',
-          exitCode === 0
-            ? undefined
-            : `The sign-in ended with exit code ${exitCode ?? 'unknown'}.`,
-        ),
-      );
+      void opened.exited
+        .then(async ({ exitCode }) => {
+          if (live.view.state !== 'running') return;
+          if (exitCode === 0 && reviewedCliLogin) {
+            const status = await engineSignInStatus(config, {
+              refresh: true,
+              commandOnly: true,
+            });
+            live.finish(
+              status.state === 'authenticated' ? 'succeeded' : 'failed',
+              status.state === 'authenticated'
+                ? undefined
+                : 'The engine has not confirmed sign-in. Check its sign-in status before trying again.',
+            );
+            return;
+          }
+          live.finish(
+            exitCode === 0 ? 'succeeded' : 'failed',
+            exitCode === 0
+              ? undefined
+              : `The sign-in ended with exit code ${exitCode ?? 'unknown'}.`,
+          );
+        })
+        .catch(() =>
+          live.finish('failed', 'The engine could not confirm sign-in.'),
+        );
       if (live.view.state === 'running')
         live.view = {
           ...live.view,

@@ -1,0 +1,11 @@
+{
+  "revision": "34765fe01898ee84a267a1d0b57216030c9ad09c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"The only vitest-resource-manifest.mjs change adds scripts/__tests__/source-verification-policy.test.ts to PROCESS_HEAVY_VITEST_FILES because it now spawns the publisher CLI as one short Node child; the resource-class rules described here are unchanged, so no prose change.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"The only vitest-resource-manifest.mjs change adds scripts/__tests__/source-verification-policy.test.ts to PROCESS_HEAVY_VITEST_FILES because it now spawns the publisher CLI as one short Node child; the resource-class rules described here are unchanged, so no prose change.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"The only vitest-resource-manifest.mjs change adds scripts/__tests__/source-verification-policy.test.ts to PROCESS_HEAVY_VITEST_FILES because it now spawns the publisher CLI as one short Node child; the resource-class rules described here are unchanged, so no prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

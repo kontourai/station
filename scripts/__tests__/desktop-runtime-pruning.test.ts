@@ -9,7 +9,7 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { stageDesktopServerRuntime } from '../lib/desktop-server-runtime.mjs';
 
@@ -31,6 +31,409 @@ function writeFixturePackage(
 }
 
 describe('desktop runtime pruning', () => {
+  it.each([false, true])(
+    'preserves the payload with opt-in stage diagnostics enabled=%s',
+    (enabled) => {
+      const project = makeTempDir('station-runtime-diagnostics-');
+      const packages = Array.from(
+        { length: 12 },
+        (_, index) => `fixture-${index}`,
+      );
+      for (const name of packages) {
+        writeFixturePackage(
+          join(project, 'node_modules', name),
+          { name, version: '1.0.0', main: 'index.cjs' },
+          { 'index.cjs': 'module.exports = 42;', 'index.d.ts': 'export {};' },
+        );
+      }
+      const output = join(project, 'release');
+      const diagnostic = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      vi.stubEnv('STATION_DESKTOP_BUILD_DIAGNOSTICS', enabled ? '1' : '0');
+      try {
+        expect(
+          stageDesktopServerRuntime({
+            projectRoot: project,
+            outputRoot: output,
+            packages,
+            platform: 'win32',
+          }),
+        ).toBe(output);
+        for (const name of packages) {
+          expect(
+            readFileSync(
+              join(output, 'node_modules', name, 'index.cjs'),
+              'utf8',
+            ),
+          ).toBe('module.exports = 42;');
+          expect(
+            existsSync(join(output, 'node_modules', name, 'index.d.ts')),
+          ).toBe(false);
+        }
+        if (!enabled) {
+          expect(diagnostic).not.toHaveBeenCalled();
+          return;
+        }
+        const receipts = diagnostic.mock.calls.map(([, receipt]) =>
+          JSON.parse(String(receipt)),
+        );
+        expect(receipts.map(({ phase, event }) => `${phase}:${event}`)).toEqual(
+          [
+            'prepare output:start',
+            'prepare output:end',
+            'planning:start',
+            'planning:end',
+            'copy:start',
+            'copy:end',
+            'inspection:start',
+            'inspection:end',
+          ],
+        );
+        expect(receipts[3].work).toMatchObject({
+          plannedPackages: 12,
+          uniqueSources: 12,
+        });
+        expect(receipts[5].work).toMatchObject({
+          runtimeCopies: 12,
+          wixCopies: 0,
+          filterRejected: 12,
+        });
+        expect(receipts[5].slowPackages).toHaveLength(10);
+        expect(
+          receipts[5].slowPackages.every(
+            ({ completed }: { completed: boolean }) => completed,
+          ),
+        ).toBe(true);
+        expect(receipts[7].work).toMatchObject({ inspectedFiles: 24 });
+        expect(receipts[7].work.inspectedBytes).toBeGreaterThan(0);
+        expect(receipts[7].parentCpuMicros).toEqual({
+          user: expect.any(Number),
+          system: expect.any(Number),
+        });
+      } finally {
+        diagnostic.mockRestore();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
+  it('attributes a release-budget failure to inspection without stale copy context', () => {
+    const project = makeTempDir('station-runtime-diagnostics-failure-');
+    writeFixturePackage(join(project, 'node_modules/fixture'), {
+      name: 'fixture',
+      version: '1.0.0',
+    });
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('STATION_DESKTOP_BUILD_DIAGNOSTICS', '1');
+    try {
+      expect(() =>
+        stageDesktopServerRuntime({
+          projectRoot: project,
+          outputRoot: join(project, 'release'),
+          packages: ['fixture'],
+          budget: { maxBytes: 0, maxFiles: 0 },
+        }),
+      ).toThrow('Desktop server runtime exceeds its release budget');
+      const receipt = JSON.parse(String(diagnostic.mock.calls.at(-1)?.[1]));
+      expect(receipt).toMatchObject({
+        phase: 'inspection',
+        event: 'failed',
+        work: { inspectedFiles: 1 },
+      });
+      expect(receipt.error.message).toContain(
+        'Desktop server runtime exceeds its release budget',
+      );
+      expect(receipt).not.toHaveProperty('currentPackage');
+      expect(receipt).not.toHaveProperty('lastCopyEntry');
+    } finally {
+      diagnostic.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each(['dependencies', 'peerDependencies'])(
+    'hoists conflicting %s without growing the installed OTLP dependency chain',
+    async (dependencyField) => {
+      const project = makeTempDir('station-runtime-hoist-');
+      const names = [
+        '@opentelemetry/exporter-trace-otlp-http',
+        '@opentelemetry/otlp-exporter-base',
+        '@opentelemetry/otlp-transformer',
+        '@opentelemetry/sdk-metrics',
+        '@opentelemetry/resources',
+      ];
+      let source = join(project, 'node_modules', names[0]);
+      for (const [index, name] of names.entries()) {
+        const next = names[index + 1];
+        if (index > 0) {
+          writeFixturePackage(
+            join(project, 'node_modules', name),
+            {
+              name,
+              version: '2.0.0',
+              main: 'index.cjs',
+            },
+            { 'index.cjs': "module.exports = ['2.0.0'];" },
+          );
+        }
+        writeFixturePackage(
+          source,
+          {
+            name,
+            version: '1.0.0',
+            main: 'index.cjs',
+            [dependencyField]: next ? { [next]: '1.0.0' } : {},
+          },
+          {
+            'index.cjs': `module.exports = ['1.0.0'${next ? `, ...require('${next}')` : ''}];`,
+          },
+        );
+        if (next) source = join(source, 'node_modules', next);
+      }
+      const output = join(project, 'release');
+      stageDesktopServerRuntime({
+        projectRoot: project,
+        outputRoot: output,
+        packages: names,
+        platform: 'win32',
+      });
+      const probe = await execFileAsync(
+        process.execPath,
+        [
+          '-e',
+          `console.log(JSON.stringify([require('${names[0]}'), require('${names[4]}')]));`,
+        ],
+        { cwd: output, windowsHide: true, timeout: 10_000 },
+      );
+      expect(JSON.parse(probe.stdout)).toEqual([
+        Array.from({ length: names.length }, () => '1.0.0'),
+        ['2.0.0'],
+      ]);
+      const pending = [output];
+      while (pending.length > 0) {
+        const directory = pending.pop()!;
+        for (const entry of readdirSync(directory, { withFileTypes: true })) {
+          const path = join(directory, entry.name);
+          expect(path.slice(output.length).length).toBeLessThan(180);
+          if (entry.isDirectory()) pending.push(path);
+        }
+      }
+    },
+  );
+
+  it('does not shadow a previously resolved dependency when hoisting a later descendant', async () => {
+    const project = makeTempDir('station-runtime-hoist-shadow-');
+    const modules = join(project, 'node_modules');
+    for (const [name, version, dependencies, entry] of [
+      ['shared', '1.0.0', {}, "module.exports = 'root';"],
+      ['child', '2.0.0', {}, "module.exports = 'unused';"],
+      ['middle', '2.0.0', {}, "module.exports = 'unused';"],
+      [
+        'owner',
+        '1.0.0',
+        { child: '1.0.0' },
+        "module.exports = require('child');",
+      ],
+      [
+        'owner/node_modules/child',
+        '1.0.0',
+        { shared: '1.0.0', middle: '1.0.0' },
+        "module.exports = [require('shared'), require('middle')];",
+      ],
+      [
+        'owner/node_modules/child/node_modules/middle',
+        '1.0.0',
+        { shared: '2.0.0' },
+        "module.exports = require('shared');",
+      ],
+      [
+        'owner/node_modules/child/node_modules/middle/node_modules/shared',
+        '2.0.0',
+        {},
+        "module.exports = 'nested';",
+      ],
+    ] as const) {
+      writeFixturePackage(
+        join(modules, name),
+        {
+          name: name.split('/').at(-1),
+          version,
+          dependencies,
+          main: 'index.cjs',
+        },
+        { 'index.cjs': entry },
+      );
+    }
+    const output = join(project, 'release');
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: ['shared', 'child', 'middle', 'owner'],
+    });
+    const probe = await execFileAsync(
+      process.execPath,
+      ['-e', "console.log(JSON.stringify(require('owner')));"],
+      { cwd: output, windowsHide: true, timeout: 10_000 },
+    );
+    expect(JSON.parse(probe.stdout)).toEqual(['root', 'nested']);
+  });
+
+  it('keeps installed stable and incubating semantic conventions identical through Node import and require', async () => {
+    const output = join(makeTempDir('station-runtime-semconv-'), 'release');
+    stageDesktopServerRuntime({
+      projectRoot: repoRoot,
+      outputRoot: output,
+      packages: ['@opentelemetry/semantic-conventions'],
+    });
+    const probe = await execFileAsync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import { createRequire } from 'node:module';
+import * as stable from '@opentelemetry/semantic-conventions';
+import * as incubating from '@opentelemetry/semantic-conventions/incubating';
+const require = createRequire(import.meta.url);
+console.log(JSON.stringify({
+  service: stable.ATTR_SERVICE_NAME,
+  model: incubating.ATTR_GEN_AI_REQUEST_MODEL,
+  stableIdentity: stable.default === require('@opentelemetry/semantic-conventions'),
+  incubatingIdentity: incubating.default === require('@opentelemetry/semantic-conventions/incubating'),
+}));`,
+      ],
+      { cwd: output, windowsHide: true, timeout: 10_000 },
+    );
+    expect(JSON.parse(probe.stdout)).toEqual({
+      service: 'service.name',
+      model: 'gen_ai.request.model',
+      stableIdentity: true,
+      incubatingIdentity: true,
+    });
+    const staged = join(
+      output,
+      'node_modules/@opentelemetry/semantic-conventions',
+    );
+    expect(existsSync(join(staged, 'build/src/index.js'))).toBe(true);
+    expect(existsSync(join(staged, 'build/src/index-incubating.js'))).toBe(
+      true,
+    );
+    expect(readFileSync(join(staged, 'LICENSE'), 'utf8')).toContain(
+      'Apache License',
+    );
+    expect(existsSync(join(staged, 'build/esm'))).toBe(false);
+    expect(existsSync(join(staged, 'build/esnext'))).toBe(false);
+  });
+
+  it('scopes semantic-convention distribution pruning to the reviewed package', () => {
+    const project = makeTempDir('station-runtime-semconv-scope-');
+    const names = [
+      '@opentelemetry/semantic-conventions',
+      'other-semantic-conventions',
+    ];
+    for (const name of names) {
+      writeFixturePackage(
+        join(project, 'node_modules', name),
+        {
+          name,
+          version: '1.0.0',
+          main: 'build/src/index.js',
+          exports: {
+            '.': {
+              module: './build/esm/index.js',
+              default: './build/src/index.js',
+            },
+            './incubating': {
+              esnext: './build/esnext/index-incubating.js',
+              default: './build/src/index-incubating.js',
+            },
+          },
+        },
+        {
+          'build/src/index.js': 'node implementation',
+          'build/src/index-incubating.js': 'node incubating implementation',
+          'build/esm/index.js': 'bundler implementation',
+          'build/esnext/index-incubating.js': 'esnext implementation',
+          LICENSE: 'license',
+        },
+      );
+    }
+    const output = join(project, 'release');
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: names,
+    });
+    for (const name of names) {
+      const staged = join(output, 'node_modules', name);
+      expect(existsSync(join(staged, 'build/src/index.js'))).toBe(true);
+      expect(existsSync(join(staged, 'build/src/index-incubating.js'))).toBe(
+        true,
+      );
+      expect(existsSync(join(staged, 'LICENSE'))).toBe(true);
+      const retained = name === 'other-semantic-conventions';
+      expect(existsSync(join(staged, 'build/esm'))).toBe(retained);
+      expect(existsSync(join(staged, 'build/esnext'))).toBe(retained);
+    }
+  });
+
+  it.each(['import', 'require', 'node', 'module-sync', 'default'])(
+    'retains semantic-convention variants when %s selects a new Node entry',
+    async (condition) => {
+      const project = makeTempDir('station-runtime-semconv-condition-');
+      writeFixturePackage(
+        join(project, 'node_modules/@opentelemetry/semantic-conventions'),
+        {
+          name: '@opentelemetry/semantic-conventions',
+          version: '2.0.0',
+          main: 'build/src/index.js',
+          exports: {
+            '.': {
+              [condition]: './build/esm/index.js',
+              ...(condition === 'default'
+                ? {}
+                : { default: './build/src/index.js' }),
+            },
+            './incubating': { default: './build/src/index-incubating.js' },
+          },
+        },
+        {
+          'build/src/index.js': "exports.runtime = 'node-cjs';",
+          'build/src/index-incubating.js':
+            "exports.runtime = 'incubating-cjs';",
+          'build/esm/package.json': '{"type":"module"}',
+          'build/esm/index.js': "export const runtime = 'node-esm';",
+          'build/esnext/index.js': 'future variant',
+          LICENSE: 'license',
+        },
+      );
+      const output = join(project, 'release');
+      stageDesktopServerRuntime({
+        projectRoot: project,
+        outputRoot: output,
+        packages: ['@opentelemetry/semantic-conventions'],
+      });
+      const staged = join(
+        output,
+        'node_modules/@opentelemetry/semantic-conventions',
+      );
+      expect(existsSync(join(staged, 'build/esm/index.js'))).toBe(true);
+      expect(existsSync(join(staged, 'build/esnext/index.js'))).toBe(true);
+      if (condition === 'import' || condition === 'default') {
+        const probe = await execFileAsync(
+          process.execPath,
+          [
+            '--input-type=module',
+            '-e',
+            "import { runtime } from '@opentelemetry/semantic-conventions'; console.log(runtime);",
+          ],
+          { cwd: output, windowsHide: true, timeout: 10_000 },
+        );
+        expect(probe.stdout.trim()).toBe('node-esm');
+      }
+    },
+  );
+
   it('keeps the installed OTLP Node serializers usable through import and require', async () => {
     const output = join(makeTempDir('station-runtime-otlp-'), 'release');
     stageDesktopServerRuntime({

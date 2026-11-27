@@ -208,7 +208,6 @@ function buildSession(overrides: Partial<ChatSession>): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -419,6 +418,30 @@ describe('ChatDockBody Continue after a restart', () => {
     // Not the composer's send: the person's draft is not part of it.
     expect(chatInput.handleSend).not.toHaveBeenCalled();
     await act(async () => finish());
+  });
+
+  test('after an engine ended under a running Station, sends the engine-ended prompt, not the restart one', async () => {
+    const ENGINE_ENDED =
+      'Turn interrupted — the engine process ended before Station could confirm this turn started. Nothing is running now; your next message starts a new turn.';
+    const ENGINE_ENDED_PROMPT =
+      "Your engine process ended while your last turn was starting, so that turn may not have run, or may have run only in part. Before you continue, check what already happened: run `git status` and `git log` in the working directory, check the state of the Task's pull request and issue if this work has them, and look for background processes you started. Do not repeat a push, a pull request, a comment or any other action outside this working directory until you have confirmed it did not already happen. Then continue from where you stopped.";
+    const sendComposed = renderWith(
+      buildSession({
+        messages: [
+          prompt,
+          {
+            ...banner,
+            content: `[SYSTEM_EVENT] [TURN_INTERRUPTED] ${ENGINE_ENDED}`,
+          },
+        ],
+      }),
+    ).sendComposedMessage;
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+    expect(sendComposed).toHaveBeenCalledWith(
+      ENGINE_ENDED_PROMPT,
+      `continue-interrupted:${BOUNDARY}`,
+    );
+    expect(sendComposed).not.toHaveBeenCalledWith(PROMPT, expect.anything());
   });
 
   test('is offered under the stopped row that took the notice’s place', async () => {

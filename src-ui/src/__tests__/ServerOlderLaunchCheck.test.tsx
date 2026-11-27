@@ -103,6 +103,7 @@ describe('ServerOlderLaunchCheck notices', () => {
         // The notice renders only inside Updates, beside the section's own
         // update control: no detail repeats it and no action reopens Updates.
         detail: undefined,
+        updateAvailable: true,
       },
     ]);
     const sequence = openRequest.sequence;
@@ -187,6 +188,7 @@ describe('ServerOlderLaunchCheck notices', () => {
       'operator restriction',
       {
         selfUpdateUnavailableReason: 'managed by an operator',
+        releaseCheck: 'unreachable' as const,
         updateAvailable: false,
       },
       /managed by an operator/,
@@ -204,6 +206,21 @@ describe('ServerOlderLaunchCheck notices', () => {
       expect(sdk.useApplyCoreUpdateMutation).not.toHaveBeenCalled();
     },
   );
+
+  test('clears an older-app notice when a managed archive is verified current', () => {
+    const view = render(tree());
+    expect(notices).toHaveLength(1);
+    status = serviceArchive({
+      installKind: 'archive',
+      applyMethod: 'station-upgrade',
+      latestVersion: '0.1.11-nightly.246303',
+      updateAvailable: false,
+      selfUpdateUnavailableReason: 'managed by an operator',
+    });
+    view.rerender(tree());
+    expect(notices).toEqual([]);
+    expect(sdk.useApplyCoreUpdateMutation).not.toHaveBeenCalled();
+  });
 
   test.each([
     ['identity pending', { identityReady: false }],

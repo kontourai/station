@@ -1,0 +1,9 @@
+{
+  "revision": "70547657a4e01d94e59bdb0342989ceba4b30a2f",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Checked pages citing api.md (terminal design, integrating guide): the edit only adds the fork source-read and refusal-code paragraph; none of their cited claims concern forks.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked pages citing api.md (terminal design, integrating guide): the edit only adds the fork source-read and refusal-code paragraph; none of their cited claims concern forks.","inputs":["docs/reference/api.md"]}
+  ]
+}

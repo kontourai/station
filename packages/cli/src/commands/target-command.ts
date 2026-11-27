@@ -16,7 +16,8 @@ export interface TargetCommandDependencies {
 function isLocalEndpoint(endpoint: URL): boolean {
   return (
     endpoint.hostname === '127.0.0.1' ||
-    endpoint.hostname === '::1' ||
+    // `URL.hostname` keeps an IPv6 literal's brackets.
+    endpoint.hostname === '[::1]' ||
     endpoint.hostname === 'localhost'
   );
 }

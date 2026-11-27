@@ -15,6 +15,10 @@
   margin-bottom: 2rem;
 }
 
+.project-page__header--operator {
+  gap: var(--k-space-2);
+}
+
 .project-page__identity {
   display: flex;
   align-items: flex-start;
@@ -40,6 +44,7 @@
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .project-page__desc {
@@ -111,28 +116,12 @@
   white-space: nowrap;
 }
 
-.project-page__settings-btn {
+.project-page__header-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: var(--text-base);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition:
-    background-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard);
   flex-shrink: 0;
-  margin-top: 4px;
-}
-
-.project-page__settings-btn:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  gap: var(--k-space-2);
 }
 
 /* ── Shared section styles ──────────────────────────────────────── */
@@ -304,10 +293,6 @@
 
 /* ── Tasks & Relation Graph ─────────────────────────────────────── */
 
-.project-page__tasks {
-  margin-bottom: 2rem;
-}
-
 .project-page__task-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -346,6 +331,14 @@
 
 .project-page__task-list {
   overflow: hidden;
+}
+
+/* Holding an empty or error state, which draws its own card: no second frame
+   around it and no reserved height below it. */
+.project-page__task-list--state {
+  min-height: 0;
+  border: 0;
+  background: transparent;
 }
 
 .project-page__task-row {
@@ -917,7 +910,6 @@
   font-size: var(--k-text-sm);
   color: var(--text-muted);
   margin-top: 4px;
-  opacity: 0.7;
 }
 
 /* ── Document list items ────────────────────────────────────────── */
@@ -1103,15 +1095,14 @@
    flight, and its own call to action. Every value here is an existing token —
    no new colours, no gradients. */
 
-.project-page__live-work {
-  margin-bottom: 2rem;
-}
-
 .project-page__live-work-lane {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 14px;
+}
+
+.project-page__live-work-lane + .project-page__live-work-lane {
+  margin-block-start: var(--k-space-4);
 }
 
 .project-page__live-work-eyebrow {
@@ -1350,7 +1341,7 @@
     padding: 8px 12px;
   }
 
-  .project-page__settings-btn,
+  .project-page__header-action,
   .project-page__add-btn,
   .project-page__ns-tab,
   .project-page__doc-group-header {
@@ -1362,19 +1353,12 @@
     min-width: 44px;
   }
 
-  /* Header stays a row: Settings collapses to an icon-only button pinned
-     top-right beside the identity block instead of stacking below it. */
-  .project-page__header {
-    gap: 12px;
-  }
-
-  .project-page__settings-btn {
+  .project-page__header-action {
     min-width: 44px;
-    padding: 6px;
-    margin-top: 0;
+    padding-inline: var(--k-space-2);
   }
 
-  .project-page__settings-label {
+  .project-page__header-action-label {
     display: none;
   }
 
@@ -1419,15 +1403,6 @@
   color: var(--text-muted);
 }
 
-.project-page__navigation {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--k-space-2);
-  border-bottom: 1px solid var(--k-line);
-  padding-block: var(--k-space-3);
-}
-
-.project-page__navigation a,
 .project-page__workspace > summary {
   display: flex;
   align-items: center;
@@ -1438,14 +1413,6 @@
   cursor: pointer;
 }
 
-.project-page__navigation a[aria-current="page"] {
-  background: var(--k-panel-raised);
-  color: var(--k-text);
-  text-decoration: underline;
-  text-underline-offset: var(--k-space-1);
-}
-
-.project-page__navigation a:focus-visible,
 .project-page__workspace > summary:focus-visible {
   outline: 2px solid var(--k-focus-ring);
   outline-offset: var(--k-space-1);
@@ -1464,7 +1431,6 @@
 
 .project-page__workspace {
   border-top: 1px solid var(--k-line);
-  margin-top: var(--k-space-5);
 }
 
 .project-page__workspace > summary::before {
@@ -1481,77 +1447,41 @@
 }
 
 .project-page__inner.project-page__space {
-  display: grid;
-  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
   width: 100%;
   max-width: none;
   margin: 0;
   min-height: 100%;
   padding: 0;
-  align-content: start;
 }
 .project-page__space > .project-page__header {
-  grid-column: 1 / -1;
   margin: 0;
-  padding: var(--k-space-5);
   border-bottom: 1px solid var(--k-line-strong);
   background: var(--k-panel);
 }
-.project-page__space > .project-page__navigation-panel {
-  flex-direction: column;
-  flex-wrap: nowrap;
-  align-self: stretch;
-  border: 0;
-  border-right: 1px solid var(--k-line-strong);
-  padding: var(--k-space-4) var(--k-space-3);
-  background: var(--k-panel);
-}
-.project-page__space:has(> .project-page__navigation-panel:not([open])) {
-  grid-template-columns: minmax(6rem, 8rem) minmax(0, 1fr);
+/* The section navigation and its body: the shared rail from
+   `page-layout.css`, as in Settings. The header and body share the page inset. */
+.project-page__space > .project-page__header,
+.project-page__layout {
+  padding: var(--k-space-5);
 }
 .project-tasks-section__collections {
   display: flex;
   flex-wrap: wrap;
   gap: var(--k-space-2);
-  margin-block: var(--k-space-3);
+  margin-block: 0 var(--k-space-3);
 }
 .project-tasks-section__collection-empty {
   color: var(--k-text-muted);
   padding-block: var(--k-space-4);
 }
-.project-page__space .project-page__navigation a {
-  text-decoration: none;
-  font-weight: 600;
-}
-.project-page__space .project-page__navigation a[aria-current="page"] {
-  background: var(--k-action);
-  color: var(--k-action-contrast);
-}
 .project-page__content {
   min-width: 0;
-  padding: var(--k-space-6);
   display: flex;
   flex-direction: column;
   gap: var(--k-space-6);
 }
 .project-page__content > [hidden] {
   display: none;
-}
-
-.project-page__navigation-panel > summary {
-  display: list-item;
-  min-height: 44px;
-  padding: var(--k-space-2) var(--k-space-3);
-  cursor: pointer;
-  color: var(--k-text);
-}
-.project-page__navigation-panel > .project-page__navigation {
-  flex-direction: column;
-  border: 0;
-}
-.project-page__navigation-panel > summary:focus-visible {
-  outline: 2px solid var(--k-focus-ring);
-  outline-offset: var(--k-space-1);
 }
 
 @media (max-width: 768px) {
@@ -1572,27 +1502,22 @@
     min-height: 44px;
   }
 
-  .project-page__inner.project-page__space {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .project-page__space:has(> .project-page__navigation-panel:not([open])) {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .project-page__space > .project-page__navigation-panel {
-    flex-direction: row;
-    flex-wrap: wrap;
-    border-right: 0;
-    border-bottom: 1px solid var(--k-line);
-  }
-  .project-page__content {
+  .project-page__space > .project-page__header,
+  .project-page__layout {
     padding: var(--k-space-4);
   }
+}
 
-  .project-page__navigation-panel > summary {
-    display: list-item;
-    align-content: center;
-  }
-  .project-page__navigation-panel > .project-page__navigation {
-    flex-direction: row;
-  }
+/* #5062: the Project's goal, one line under its name. */
+.project-page__goal {
+  margin: var(--k-space-1) 0 0;
+  font-size: var(--k-text-md);
+  overflow-wrap: anywhere;
+}
+
+.project-page__goal-label {
+  margin-inline-end: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
 }

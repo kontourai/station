@@ -1,7 +1,0 @@
-{
-  "revision": "f965f7c7c3673e6bfaf958c1d07dd09a3528700e",
-
-  "notes": [
-    {"path":"CONTEXT-MAP.md","note":"Compared the Agent Runtime to Workspace Surfaces relationship with the revised module-map connection owners. Shared conversation rendering still consumes execution and approval state; transport leases do not move domain authority into the shell.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]}
-  ]
-}

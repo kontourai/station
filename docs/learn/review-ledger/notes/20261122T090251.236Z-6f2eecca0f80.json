@@ -1,0 +1,7 @@
+{
+  "revision": "a46df40a2bef79288a97a4cb4ead44e5325e4b44",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"ProjectPage.tsx change only removes the projectId prop to ProjectNavigation; nothing in this guide describes Project search or that prop.","inputs":["docs/user/getting-started.md","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

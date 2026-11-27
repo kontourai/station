@@ -40,6 +40,7 @@ import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   DelegationAttemptConflictError,
+  DelegationAttemptExistsError,
   DelegationAttemptPendingError,
   delegationAttemptClaimKey,
   FileDelegationAttemptClaimStore,
@@ -305,6 +306,39 @@ describe('receiver-local claim → single effect', () => {
     ).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(DelegationAttemptConflictError);
     // No second session, no second turn.
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  test('the portable attempt refuses a change to its verified tool restrictions', async () => {
+    const service = localService();
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const delegation = {
+      mode: 'isolated-child' as const,
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: agentId('parent'),
+      rootAgentSlug: agentId('root'),
+      blockedTools: ['repo_write'],
+    };
+    const first = await delegateTask(
+      claimInput({ delegation }),
+      service as never,
+    );
+    await expect(
+      delegateTask(claimInput({ delegation }), service as never),
+    ).rejects.toBeInstanceOf(DelegationAttemptExistsError);
+    await expect(
+      delegateTask(
+        claimInput({ delegation: { ...delegation, blockedTools: [] } }),
+        service as never,
+      ),
+    ).rejects.toBeInstanceOf(DelegationAttemptConflictError);
+    const record = await new FileDelegationAttemptClaimStore(dir).read(
+      CLAIM_KEY,
+    );
+    expect(record?.taskId).toBe(first.taskId);
+    expect(record?.state).toBe('accepted');
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
   });
@@ -875,6 +909,87 @@ describe('ordinary local create request claims', () => {
       delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(dir),
     };
   }
+
+  test('a durable Task create key refuses a changed tool policy', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    const delegation = {
+      mode: 'isolated-child' as const,
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: agentId('parent'),
+      rootAgentSlug: agentId('root'),
+      blockedTools: ['repo_write'],
+    };
+    const first = await delegateTask(
+      { ...localInput(), delegation },
+      service as never,
+    );
+    await expect(
+      delegateTask({ ...localInput(), delegation }, service as never),
+    ).resolves.toEqual(first);
+    await expect(
+      delegateTask(
+        { ...localInput(), delegation: { ...delegation, blockedTools: [] } },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'create_request_conflict' });
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(['launch target', 'create intent'] as const)(
+    'captures borrowed %s before environment resolution and replays the unchanged request',
+    async (field) => {
+      const { delegateTask } = await import('../station-control-delegation.js');
+      const service = localService();
+      const originalIntent = () => ({
+        prompt: 'first input',
+        target: localInput().target,
+      });
+      const input = { ...localInput(), createRequestIntent: originalIntent() };
+      let entered!: () => void;
+      let release!: () => void;
+      const resolving = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const receiver = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation(async (request, options) => {
+        const url = String(request);
+        if (url === `${CURRENT_API}/.well-known/station/v1`) {
+          entered();
+          await gate;
+          return json({ environmentId: 'environment-current' });
+        }
+        if (url === `${CURRENT_API}/api/agents/changed`)
+          return json({
+            success: true,
+            data: { slug: 'changed', name: 'Changed', available: true },
+          });
+        return receiver(request, options);
+      });
+      const creating = delegateTask(input, service as never);
+      await resolving;
+      if (field === 'launch target') input.target.agent = agentId('changed');
+      else input.createRequestIntent.target.agent = agentId('changed');
+      release();
+      const first = await creating;
+      expect(service.startSessionInternal.mock.calls[0]?.[0]).toMatchObject({
+        input: { metadata: { agentId: 'reviewer' } },
+      });
+      await expect(
+        delegateTask(
+          { ...localInput(), createRequestIntent: originalIntent() },
+          service as never,
+        ),
+      ).resolves.toEqual(first);
+      expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+      expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+    },
+  );
 
   test('a typed rejected session-start outcome releases the same request key', async () => {
     const { delegateTask } = await import('../station-control-delegation.js');

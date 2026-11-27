@@ -1,0 +1,17 @@
+{
+  "revision": "a0b72485028d87716fcf28756ee3000071f677dd",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked: a settling denial now carries a generationSettling marker so the Codex adapter returns its retry advice as the tool result; policy stages and refusal text are unchanged.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked: a settling denial now carries a generationSettling marker so the Codex adapter returns its retry advice as the tool result; policy stages and refusal text are unchanged.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked: a settling denial now carries a generationSettling marker so the Codex adapter returns its retry advice as the tool result; policy stages and refusal text are unchanged.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked: a settling denial now carries a generationSettling marker so the Codex adapter returns its retry advice as the tool result; policy stages and refusal text are unchanged.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked: a settling denial now carries a generationSettling marker so the Codex adapter returns its retry advice as the tool result; policy stages and refusal text are unchanged.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked: a settling denial now carries a generationSettling marker so the Codex adapter returns its retry advice as the tool result; policy stages and refusal text are unchanged.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}

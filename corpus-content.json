@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "repository": "kontourai/station",
+  "relationships": [
+    {
+      "id": "station-product-site",
+      "covers": [
+        "docs/user/**",
+        "docs/guides/connections.md",
+        "docs/guides/plugins.md",
+        "docs/guides/deployment-authentication.md",
+        "docs/guides/nightly.md",
+        "docs/guides/release-channel-ports.md",
+        "docs/reference/project-task-room-collaboration-acceptance.md",
+        "src-server/providers/**",
+        "src-server/services/identity/**",
+        "src-desktop/**",
+        "install.sh",
+        "install.ps1",
+        "docs/privacy-policy.md"
+      ],
+      "targets": ["https://station.kontourai.io/"]
+    },
+    {
+      "id": "company-station-content",
+      "covers": [
+        "docs/user/**",
+        "docs/guides/deployment-authentication.md",
+        "docs/guides/nightly.md",
+        "docs/guides/release-channel-ports.md",
+        "install.sh",
+        "install.ps1",
+        "packages/cli/package.json"
+      ],
+      "targets": [
+        "https://github.com/kontourai/kontourai.io/blob/main/src/pages/index.astro",
+        "https://github.com/kontourai/kontourai.io/blob/main/src/pages/developers.astro",
+        "https://github.com/kontourai/kontourai.io/blob/main/src/pages/early-access.astro",
+        "https://github.com/kontourai/kontourai.io/blob/main/src/data/product-status.json"
+      ]
+    },
+    {
+      "id": "station-public-privacy",
+      "covers": [
+        "docs/privacy-policy.md",
+        "src-server/**",
+        "src-desktop/**",
+        "packages/connect/**",
+        "packages/contracts/src/plugin-telemetry.ts",
+        "packages/shared/src/plugin-telemetry.ts",
+        "src-ui/src/providers/voice/**",
+        "src-ui/src/hooks/usePushNotifications.ts"
+      ],
+      "targets": [
+        "https://github.com/kontourai/kontourai.io/blob/main/src/pages/privacy/station.astro"
+      ]
+    }
+  ]
+}

@@ -39,7 +39,6 @@ describe('ChatDockContentArea', () => {
       attachments: [],
       queuedMessages: [],
       status: 'idle',
-      hasUnread: false,
       inputHistory: [],
       createdAt: 1,
       updatedAt: 1,
@@ -52,6 +51,13 @@ describe('ChatDockContentArea', () => {
     expect(screen.queryByText('Chat body')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
     expect(onNewChat).toHaveBeenCalledOnce();
+  });
+
+  test('says there are no Agents when none exist', () => {
+    renderContentArea(vi.fn(), vi.fn(), false, null, true);
+    expect(screen.getByText('No Agents yet')).toBeTruthy();
+    expect(screen.getByText('Create an Agent to start a chat.')).toBeTruthy();
+    expect(screen.queryByText('No chat open')).toBeNull();
   });
 
   test('starts a chat through the empty dock action', () => {
@@ -136,7 +142,11 @@ describe('ChatDockContentArea', () => {
     historyError = new Error('history chunk unavailable');
     renderContentArea(onCloseHistory);
 
-    expect(await screen.findByRole('alert')).toBeTruthy();
+    const failure = await screen.findByRole('alert');
+    expect(failure.getAttribute('data-lazy-surface')).toBe(
+      'conversation-history',
+    );
+    expect(failure.textContent).toContain('Unable to load History.');
     expect(screen.getByText('No chat open')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Close history' }));
     expect(onCloseHistory).toHaveBeenCalledOnce();
@@ -153,10 +163,12 @@ function renderContentArea(
   onNewChat = vi.fn(),
   isHistoryOpen = true,
   activeSession: ChatSession | null = null,
+  noAgentReady = false,
 ) {
   return render(
     <ChatDockContentArea
       activeSession={activeSession}
+      noAgentReady={noAgentReady}
       activeOrchestrationSession={null}
       activeOrchestrationSessionRead="present"
       onRetryOrchestrationSessions={() => {}}

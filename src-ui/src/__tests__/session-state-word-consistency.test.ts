@@ -43,7 +43,7 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
   // it; `work-status.test.ts` pins its lane.
   needsYou: new Set([
     'Needs approval',
-    'Needs answer',
+    'Needs input',
     'Interrupted',
     'Blocked',
     'Waiting on you',
@@ -63,14 +63,14 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
   // is not filed under Just finished). "Running" is deliberately absent: an
   // idle lane whose row says Running is the owner's "Active with no
   // activity" complaint in the other direction.
-  idle: new Set(['Idle', 'Read only']),
+  idle: new Set(['Idle', 'Read only', 'Unknown']),
   // Over. The refinement is which ending.
-  recentlyFinished: new Set(['Done', 'Stopped', 'Failed']),
+  recentlyFinished: new Set(['Done', 'Cut off', 'Stopped', 'Failed']),
   // #2310: nothing has been sent. Not "Queued" or "Running" — the raw state
   // of a never-prompted session is a transport fact, and either word would
   // claim work exists.
   drafts: new Set(['Draft']),
-  earlier: new Set(['Done', 'Stopped', 'Failed']),
+  earlier: new Set(['Done', 'Cut off', 'Stopped', 'Failed']),
 };
 
 const NOW = Date.parse('2026-08-18T12:00:00.000Z');
@@ -227,6 +227,12 @@ const MIXED_FIXTURE: OrchestrationSessionSummary[] = [
     draft: true,
   }),
   session({ threadId: 'just-completed', lifecycleState: 'completed' }),
+  // The latest turn stopped at the engine's output limit.
+  session({
+    threadId: 'just-cut-off',
+    lifecycleState: 'idle',
+    lastTurnCutOff: 'max-tokens',
+  }),
   session({ threadId: 'just-failed', lifecycleState: 'failed' }),
   session({ threadId: 'just-canceled', lifecycleState: 'canceled' }),
   session({ threadId: 'closed-undecorated', status: 'closed' }),
@@ -239,6 +245,12 @@ const MIXED_FIXTURE: OrchestrationSessionSummary[] = [
   session({
     threadId: 'long-completed',
     lifecycleState: 'completed',
+    updatedAt: new Date(NOW - 5 * 3_600_000).toISOString(),
+  }),
+  session({
+    threadId: 'long-cut-off',
+    lifecycleState: 'completed',
+    lastTurnCutOff: 'max-tokens',
     updatedAt: new Date(NOW - 5 * 3_600_000).toISOString(),
   }),
   session({
@@ -379,9 +391,12 @@ describe('a row status word never contradicts its lane', () => {
     running: new Set(['Running']),
     idle: new Set(['Idle', 'Read only']),
     drafts: new Set(['Draft']),
-    finished: new Set(['Done', 'Failed', 'Stopped']),
+    finished: new Set(['Done', 'Cut off', 'Failed', 'Stopped']),
   };
-  const statusOf = (lifecycleLabel: HomeLifecycleLabel) =>
+  const statusOf = (
+    lifecycleLabel: HomeLifecycleLabel,
+    facts?: Parameters<typeof workStatus>[2],
+  ) =>
     workStatus(
       {
         id: 'row',
@@ -395,7 +410,14 @@ describe('a row status word never contradicts its lane', () => {
         lifecycleLabel,
       },
       0,
+      facts,
     );
+
+  test('a cut-off completed row reads a word its lane permits', () => {
+    const { lane, word } = statusOf('Completed', { cutOff: true });
+    expect([lane, word]).toEqual(['finished', 'Cut off']);
+    expect(WORD_VOCABULARY[lane].has(word)).toBe(true);
+  });
 
   test.each([...HOME_LIFECYCLE_LABELS])(
     '%s reads a word its lane permits',
@@ -444,10 +466,8 @@ const SURFACE_ROOTS = [
   'components/session-detail',
   'components/status',
   'views/home',
-  'views/activity',
   'views/sessions',
   'views/project-page',
-  'views/SessionsView.tsx',
   'views/HomeView.tsx',
   'components/flow/WorkflowPlanPanel.tsx',
   'components/chat/PendingApprovalStrip.tsx',
@@ -473,7 +493,7 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
   ['Approval required', 'Needs approval'],
   ['Approval needed', 'Needs approval'],
   ['approvals needed', 'Needs approval (n)'],
-  ['Needs your answer', 'Needs answer'],
+  ['Needs your answer', 'Needs input'],
   ['Engine complete', 'Done'],
   ['Engine running', 'Running'],
   ['Tool activity running', 'Running · tool'],
@@ -495,8 +515,7 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
   ['Recently finished', 'Just finished'],
   ['Conversation history', 'History'],
   ['Copy thread ID', 'Copy chat ID'],
-  ['Expand chat list', 'Show inbox'],
-  ['Collapse chat list', 'Hide inbox'],
+  ['Chat list', 'Chats'],
   ['Session inventory', 'Chat inventory'],
   ['Open code layout', 'Open in Coding'],
   ['Model not reported', 'omit the model'],
@@ -568,7 +587,6 @@ describe('one vocabulary on the work surfaces', () => {
     );
     for (const guarded of [
       'views/home/work-status.ts',
-      'views/SessionsView.tsx',
       'components/chat-dock/ChatDockInboxRows.tsx',
       'components/chat-dock/ChatInboxHoverCard.tsx',
       'components/chat-dock/ChatDockHeader.tsx',
@@ -611,7 +629,7 @@ describe('one vocabulary on the work surfaces', () => {
     // "Needs approval"; nothing else may spell a rung's word.
     const WORDS = [
       "'Needs approval'",
-      "'Needs answer'",
+      "'Needs input'",
       "'Interrupted'",
       "'Read only'",
       "'Idle'",

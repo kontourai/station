@@ -42,7 +42,6 @@ export interface OpenChatsNavigation {
     > &
       ChatFocusTarget,
   ) => void | Promise<void>;
-  openCollection: () => void;
 }
 
 class OpenChatsStore {
@@ -121,10 +120,6 @@ class OpenChatsStore {
     );
   }
 
-  openCollection() {
-    this.navigation?.openCollection();
-  }
-
   registerNavigation(navigation: OpenChatsNavigation) {
     this.navigation = navigation;
     this.navigationWaiter?.(navigation);
@@ -200,12 +195,6 @@ export function openChatIdentitiesSnapshot(): readonly OpenChatIdentity[] {
   identitiesSignature = signature;
   identitiesCache = Object.freeze(next);
   return identitiesCache;
-}
-
-export function countOpenChatAttention(
-  chats: ReadonlyArray<{ hasUnread?: boolean }>,
-): number {
-  return chats.reduce((count, chat) => count + (chat.hasUnread ? 1 : 0), 0);
 }
 
 /**

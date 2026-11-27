@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { monitorBrowserHealth } from './helpers/browser-health';
 import { test } from './helpers/fixture-audit';
+import { installKeyboardEmulation } from './helpers/keyboard-emulation';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
@@ -164,71 +165,6 @@ const APPROVAL_EVENTS = [
     },
   },
 ];
-
-/**
- * A software keyboard, emulated: Chromium cannot raise one, so this replaces
- * `window.visualViewport` with one whose height the test shrinks, exactly as
- * iOS Safari and Android Chrome report an open keyboard. Painting the
- * keyboard's area is for the screenshot only; it takes no pointer events.
- * Real iOS behaviour is a separate, device-only check.
- */
-async function installKeyboardEmulation(page: Page) {
-  await page.addInitScript(() => {
-    const target = new EventTarget();
-    let keyboard = 0;
-    const viewport = new Proxy(target, {
-      get(object, property) {
-        switch (property) {
-          case 'height':
-            return window.innerHeight - keyboard;
-          case 'width':
-            return window.innerWidth;
-          case 'offsetTop':
-          case 'offsetLeft':
-          case 'pageTop':
-          case 'pageLeft':
-            return 0;
-          case 'scale':
-            return 1;
-          default: {
-            const value = Reflect.get(object, property, object);
-            return typeof value === 'function' ? value.bind(object) : value;
-          }
-        }
-      },
-    });
-    Object.defineProperty(window, 'visualViewport', {
-      configurable: true,
-      get: () => viewport,
-    });
-    (window as any).__emulateKeyboard = (height: number) => {
-      keyboard = height;
-      document.getElementById('e2e-emulated-keyboard')?.remove();
-      if (height > 0) {
-        const pane = document.createElement('div');
-        pane.id = 'e2e-emulated-keyboard';
-        pane.textContent = 'Emulated keyboard';
-        pane.setAttribute('aria-hidden', 'true');
-        Object.assign(pane.style, {
-          position: 'fixed',
-          left: '0',
-          right: '0',
-          bottom: '0',
-          height: `${height}px`,
-          zIndex: '2147483647',
-          pointerEvents: 'none',
-          display: 'grid',
-          placeItems: 'center',
-          font: '14px system-ui',
-          color: '#555',
-          background: '#d1d3d9',
-        });
-        document.body.append(pane);
-      }
-      target.dispatchEvent(new Event('resize'));
-    };
-  });
-}
 
 async function openChatWith(
   page: Page,
@@ -719,7 +655,7 @@ test.describe('Mobile request sheet (#3331)', () => {
           }),
         });
       });
-      await dialog.getByRole('button', { name: 'Allow Once' }).first().click();
+      await dialog.getByRole('button', { name: 'Allow once' }).first().click();
       const error = dialog.getByRole('alert');
       await expect(error).toContainText('Delivery is not confirmed');
       await expect(error.locator('details')).not.toHaveAttribute('open');
@@ -738,7 +674,7 @@ test.describe('Mobile request sheet (#3331)', () => {
         ),
       ).toBe(true);
       await expect(
-        dialog.getByRole('button', { name: 'Allow Once' }).first(),
+        dialog.getByRole('button', { name: 'Allow once' }).first(),
       ).toBeDisabled();
       expect(answers(posted)).toHaveLength(1);
       await shot(page, `grouped-approval-error-${width}`, testInfo);
@@ -751,12 +687,12 @@ test.describe('Mobile request sheet (#3331)', () => {
         .click();
       await expect(dialog).toBeVisible();
       await expect(
-        dialog.getByRole('button', { name: 'Allow Once' }).first(),
+        dialog.getByRole('button', { name: 'Allow once' }).first(),
       ).toBeDisabled();
       inspectPending = true;
       await dialog.getByRole('button', { name: 'Check status' }).click();
       await expect(
-        dialog.getByRole('button', { name: 'Allow Once' }).first(),
+        dialog.getByRole('button', { name: 'Allow once' }).first(),
       ).toBeEnabled();
       expect(answers(posted)).toHaveLength(1);
       expect(
@@ -767,7 +703,7 @@ test.describe('Mobile request sheet (#3331)', () => {
     });
   }
 
-  test('short approval: the row opens a half-height sheet; dismissal never denies; Allow Once answers', async ({
+  test('short approval: the row opens a half-height sheet; dismissal never denies; Allow once answers', async ({
     page,
   }, testInfo) => {
     const browserHealth = await monitorBrowserHealth(page);
@@ -782,7 +718,7 @@ test.describe('Mobile request sheet (#3331)', () => {
     await expect(
       row.getByRole('img', { name: 'Needs approval' }),
     ).toBeVisible();
-    await expect(row.getByRole('button', { name: 'Allow Once' })).toHaveCount(
+    await expect(row.getByRole('button', { name: 'Allow once' })).toHaveCount(
       0,
     );
     const answer = row.getByRole('button', { name: 'Answer', exact: true });
@@ -817,13 +753,13 @@ test.describe('Mobile request sheet (#3331)', () => {
     };
     await open();
     await expect(dialog).toContainText('rm -rf build');
-    const allow = dialog.getByRole('button', { name: 'Allow Once' });
+    const allow = dialog.getByRole('button', { name: 'Allow once' });
     const deny = dialog.getByRole('button', { name: 'Deny' });
-    await expectReachable(page, allow, 'Allow Once');
+    await expectReachable(page, allow, 'Allow once');
     await expectReachable(page, deny, 'Deny');
     // R3: the session grant is a secondary action, in the overflow menu.
     await expect(
-      dialog.getByRole('button', { name: 'More approval options' }),
+      dialog.getByRole('button', { name: 'Allow for this session' }),
     ).toBeVisible();
     // R2: a short request opens at about half height.
     const panelBox = (await dialog.boundingBox())!;
@@ -881,7 +817,9 @@ test.describe('Mobile request sheet (#3331)', () => {
     const posted = await openChatWith(page, APPROVAL_EVENTS, PHONE, true);
     const dialog = page.getByRole('dialog', { name: 'Needs approval' });
     await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: 'More approval options' }).click();
+    await dialog
+      .getByRole('button', { name: 'Allow for this session' })
+      .click();
     await page.getByRole('menuitem', { name: /for this session/ }).click();
     await expect.poll(() => answers(posted).length).toBe(1);
     expect(answers(posted)[0]).toMatchObject({
@@ -920,7 +858,7 @@ test.describe('Mobile request sheet (#3331)', () => {
     await expect(denying).toBeVisible();
     await expect(denying).toHaveAttribute('aria-busy', 'true');
     await expect(
-      dialog.getByRole('button', { name: 'Allow Once' }),
+      dialog.getByRole('button', { name: 'Allow once' }),
     ).toBeDisabled();
     await expect.poll(() => answers(posted).length).toBe(1);
     releaseResponse();
@@ -1068,7 +1006,7 @@ test.describe('Mobile request sheet (#3331)', () => {
   }, testInfo) => {
     await openChatWith(page, APPROVAL_EVENTS, { width: 1280, height: 900 });
     const row = page.locator('.tool-call[data-approval-id="approval-1"]');
-    await expect(row.getByRole('button', { name: 'Allow Once' })).toBeVisible();
+    await expect(row.getByRole('button', { name: 'Allow once' })).toBeVisible();
     await expect(row.getByRole('button', { name: 'Deny' })).toBeVisible();
     await expect(
       row.getByRole('button', { name: 'Answer', exact: true }),

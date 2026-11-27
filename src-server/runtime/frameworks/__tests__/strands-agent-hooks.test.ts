@@ -1,10 +1,20 @@
 import {
   AfterInvocationEvent,
   AfterToolCallEvent,
+  Agent,
+  type BaseModelConfig,
   BeforeToolCallEvent,
+  type Message,
+  Model,
+  ModelContentBlockDeltaEvent,
+  ModelContentBlockStopEvent,
+  ModelMessageStartEvent,
+  ModelMessageStopEvent,
+  type ModelStreamEvent,
 } from '@strands-agents/sdk';
 import { describe, expect, test, vi } from 'vitest';
 import { createMCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
+import { createAgentHooks } from '../../agents/agent-hooks.js';
 import { createStagedPreToolPolicyEvaluator } from '../../agents/pre-tool-policy.js';
 import {
   createBuiltinVendedTool,
@@ -506,5 +516,99 @@ describe('wireStrandsAgentHooks', () => {
       },
       toolCallCount: 0,
     });
+  });
+});
+
+/** Answers with text and reports no usage, or fails mid-stream. */
+class ScriptedModel extends Model {
+  constructor(private readonly fail: boolean) {
+    super();
+  }
+  updateConfig(_config: BaseModelConfig): void {}
+  getConfig(): BaseModelConfig {
+    return { modelId: 'scripted-no-usage' };
+  }
+  async *stream(_messages: Message[]): AsyncIterable<ModelStreamEvent> {
+    yield new ModelMessageStartEvent({
+      type: 'modelMessageStartEvent',
+      role: 'assistant',
+    });
+    if (this.fail) throw new Error('model stream failed');
+    yield new ModelContentBlockDeltaEvent({
+      type: 'modelContentBlockDeltaEvent',
+      delta: { type: 'textDelta', text: 'Done.' },
+    });
+    yield new ModelContentBlockStopEvent({
+      type: 'modelContentBlockStopEvent',
+    });
+    yield new ModelMessageStopEvent({
+      type: 'modelMessageStopEvent',
+      stopReason: 'endTurn',
+    });
+  }
+}
+
+describe('Strands turns a model reported no usage for (#5390)', () => {
+  /** A real SDK agent wired to the real Station hooks and a stats store. */
+  function strandsTurn(fail: boolean) {
+    let metadata: Record<string, unknown> = {};
+    const store = {
+      getConversation: vi.fn(async () => ({ resourceId: 'agent-a', metadata })),
+      getMessages: vi.fn().mockResolvedValue([]),
+      addMessage: vi.fn().mockResolvedValue(undefined),
+      updateConversation: vi.fn(
+        async (_id: string, update: { metadata: Record<string, unknown> }) => {
+          metadata = update.metadata;
+        },
+      ),
+      removeLastMessage: vi.fn().mockResolvedValue(undefined),
+    };
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    };
+    const hooks = createAgentHooks({
+      spec: { name: 'Agent A', prompt: 'Help.' },
+      appConfig: { defaultModel: 'scripted-no-usage' },
+      configLoader: { loadAgent: vi.fn().mockResolvedValue({}) },
+      agentFixedTokens: new Map(),
+      memoryAdapters: new Map([['agent-a', store]]),
+      toolNameMapping: new Map(),
+      logger,
+    } as any);
+    const agent = new Agent({ model: new ScriptedModel(fail), printer: false });
+    wireStrandsAgentHooks({
+      strandsAgent: agent,
+      hooks,
+      deniedToolCalls: new Map(),
+      invocationCtx: {
+        agentSlug: 'agent-a',
+        conversationId: 'conv-1',
+        userId: 'user-1',
+      },
+      memoryAdapter: store as any,
+      logger,
+      resolvedModel: 'scripted-no-usage',
+      getLastStreamUsage: () => null,
+    });
+    return { agent, store, stats: () => metadata.stats as any };
+  }
+
+  test('an answered turn counts once, with no token counts', async () => {
+    const turn = strandsTurn(false);
+    await turn.agent.invoke('hello');
+    expect(turn.stats()).toMatchObject({ turns: 1, toolCalls: 0 });
+    expect(turn.stats()).not.toHaveProperty('inputTokens');
+  });
+
+  test('a turn whose stream failed is not counted', async () => {
+    const turn = strandsTurn(true);
+    await expect(turn.agent.invoke('hello')).rejects.toThrow(
+      'model stream failed',
+    );
+    expect(turn.store.updateConversation).not.toHaveBeenCalled();
+    expect(turn.stats()).toBeUndefined();
   });
 });

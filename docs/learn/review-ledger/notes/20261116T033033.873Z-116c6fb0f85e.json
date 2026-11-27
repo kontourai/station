@@ -1,0 +1,7 @@
+{
+  "revision": "92b391b81dbf4ca101c22dc7dee4134074cfcd9e",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Phone row second line (engine mark, engine name, project) unchanged: MobileInboxPanel.css keeps explicit grid placement and the new headline wrapper is display: contents; verified at 393px dark in a live instance and by InboxRow.geometry phone cases.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

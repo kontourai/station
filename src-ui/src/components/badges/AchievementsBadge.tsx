@@ -24,9 +24,8 @@ export function AchievementsBadge({
   if (compact) {
     return (
       <div className="achievements-compact">
-        <span>🏆</span>
         <span>
-          {unlockedCount}/{totalCount}
+          Milestones {unlockedCount}/{totalCount}
         </span>
       </div>
     );
@@ -36,7 +35,6 @@ export function AchievementsBadge({
     <div className="achievements-panel">
       <div className="achievements-header">
         <h3 className="achievements-title">
-          <span>🏆</span>
           <span>Station milestones</span>
         </h3>
         <div className="achievements-header-actions">
@@ -114,17 +112,11 @@ function AchievementCard({
     <div
       className={`achievement-card ${achievement.unlocked ? 'achievement-card-unlocked' : 'achievement-card-locked'}`}
     >
-      <div
-        className={`achievement-icon ${achievement.unlocked ? '' : 'achievement-icon-locked'}`}
-      >
-        {achievement.unlocked ? '🏆' : '🔒'}
-      </div>
-
       <div className="achievement-content">
         <div className="achievement-header">
           <div className="achievement-name">{achievement.name}</div>
           {achievement.unlocked && (
-            <div className="achievement-unlocked-badge">✓ UNLOCKED</div>
+            <div className="achievement-unlocked-badge">Unlocked</div>
           )}
         </div>
 
@@ -168,7 +160,6 @@ function AchievementCard({
 
         {achievement.unlocked && achievement.unlockedAt && (
           <div className="achievement-unlocked-date">
-            <span>🎉</span>
             <span>
               Unlocked {new Date(achievement.unlockedAt).toLocaleDateString()}
             </span>

@@ -1,0 +1,7 @@
+{
+  "revision": "bc0544e11a8263b9cd3931b1a0777bb4e37ccbce",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Compile-cache line: NODE_DISABLE_COMPILE_CACHE=1 opts out for the desktop sidecar's server and, through withStationCompileCache's guard (unit-tested and fault-injected), for the built-in station-control/knowledge children using <STATION_HOME>/cache/node-compile. No other variable changed.","inputs":["docs/reference/env-vars.md","packages/cli/src/commands/lifecycle.ts","src-server/runtime/bootstrap/station-control-runtime-env.ts","src-server/index.ts"]}
+  ]
+}

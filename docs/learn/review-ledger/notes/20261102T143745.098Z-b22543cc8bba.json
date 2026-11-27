@@ -1,7 +1,0 @@
-{
-  "revision": "5f8ec7faed94fca201d05c05fc7df26d656962e9",
-
-  "notes": [
-    {"path":"docs/guides/code-quality.md","note":"Only change in recorded source scripts/__tests__/docs-index-reachability.test.ts is the station-docs MCP digest assertion (digest now computed at runtime from STATION_DOCS_TOPICS, no committed constant). The ledger-freshness test, docs:foundations:test wiring and scoped/advisory policy this document describes are unchanged; no prose change needed.","inputs":["docs/guides/code-quality.md","scripts/__tests__/docs-index-reachability.test.ts"]}
-  ]
-}

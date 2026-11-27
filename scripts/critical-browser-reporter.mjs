@@ -1,8 +1,8 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, lstatSync, mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { PR_BROWSER_SMOKE_CONTRACT } from '../tests/e2e-manifest.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 
 /**
  * @param {{ journeys: Array<{path: string}>, requiredObservations: Array<{path: string, title: string}> }} contract
@@ -59,18 +59,18 @@ export function evaluateCriticalBrowserEvidence(
 }
 
 function sourceIdentity() {
-  const options = {
-    encoding: 'utf8',
-    windowsHide: true,
-    maxBuffer: 4 * 1024 * 1024,
-  };
-  const head = execFileSync('git', ['rev-parse', 'HEAD'], options).trim();
-  const diff = execFileSync(
+  const options = { encoding: 'utf8', windowsHide: true };
+  const head = execFileSyncBounded(
+    'git',
+    ['rev-parse', 'HEAD'],
+    options,
+  ).trim();
+  const diff = execFileSyncBounded(
     'git',
     ['diff', '--no-ext-diff', 'HEAD', '--'],
     options,
   );
-  const status = execFileSync(
+  const status = execFileSyncBounded(
     'git',
     ['status', '--porcelain', '--untracked-files=normal'],
     options,

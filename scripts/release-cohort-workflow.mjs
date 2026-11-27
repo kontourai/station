@@ -335,6 +335,14 @@ const COHORT_CHAIN_JOBS = Object.freeze([
 const RECOVERY_STATE = 'incomplete';
 
 /**
+ * Whether the protected verifier finalized: its first attempt, or the second
+ * attempt the workflow runs only when GitHub never gave the first a runner.
+ */
+const verifierFinalized = (jobResults) =>
+  jobResults['protected-finalize'] === 'success' ||
+  jobResults['protected-finalize-retry'] === 'success';
+
+/**
  * What one platform's publishing job left behind: its own job result and,
  * when its per-platform state artifact exists, the provider claim it
  * recorded. An absent state is disclosed as such rather than inferred.
@@ -454,7 +462,13 @@ function recoveryReceipt([
       githubReleaseObservationDigest: digestFile(githubReleaseObservationPath),
     },
   };
-  if (COHORT_CHAIN_JOBS.every((job) => jobResults[job] === 'success'))
+  if (
+    COHORT_CHAIN_JOBS.every((job) =>
+      job === 'protected-finalize'
+        ? verifierFinalized(jobResults)
+        : jobResults[job] === 'success',
+    )
+  )
     fail('every cohort chain job succeeded; there is nothing to disclose');
   const platforms = Object.fromEntries(
     (windowsStatePath
@@ -473,7 +487,7 @@ function recoveryReceipt([
       ),
     ]),
   );
-  const finalityConfirmed = jobResults['protected-finalize'] === 'success';
+  const finalityConfirmed = verifierFinalized(jobResults);
   // Derived from the record job's durable writes (ledger rows, Android
   // marker), not from whether the job as a whole failed: a record job that
   // died before any write recorded nothing; one that wrote the ledger and

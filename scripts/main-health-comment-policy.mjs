@@ -22,7 +22,10 @@ import { createHash } from 'node:crypto';
  * 2. **No recorded state** — the tracker predates this policy (or its marker
  *    was edited away). Comment once to establish the marker, then go quiet.
  * 3. **Different failure** — a different job/step failed, or failed with a
- *    different conclusion, than the last comment recorded.
+ *    different conclusion, than the last comment recorded, and the last
+ *    comment is at least a day old. A change sooner than that rewrites the
+ *    existing comment and its marker instead: a flaky secondary job flipping
+ *    the failure set would otherwise comment on every run.
  * 4. **Heartbeat** — same failure, but 24h have passed since the last comment.
  *    Says how many red runs happened in that window.
  * 5. Otherwise **silent**: no new comment. The run is still recorded, by
@@ -134,6 +137,23 @@ function normalizeFailureLabel(value) {
 }
 
 /**
+ * Remote text (job and step names, annotation lines) as a literal block: a
+ * fenced block renders no headings, links, mentions or emphasis, and a run of
+ * three or more backticks inside it is rewritten so it cannot close the
+ * fence early.
+ *
+ * @param {string[]} lines
+ * @returns {string[]}
+ */
+function fenced(lines) {
+  return [
+    '```text',
+    ...lines.map((line) => String(line).replace(/`{3,}/g, "'''")),
+    '```',
+  ];
+}
+
+/**
  * Sorted and deduped, and deliberately NOT truncated — this is what the digest
  * is taken over.
  *
@@ -204,7 +224,15 @@ const MARKER_PATTERN = new RegExp(
  * @returns {string}
  */
 export function renderMainHealthState(state) {
-  return `<!-- ${MAIN_HEALTH_STATE_MARKER}: ${JSON.stringify(state)} -->`;
+  // Job and step names are remote text inside an HTML comment. Escaping
+  // every <, > and - as a JSON unicode escape means no stored string can
+  // spell -->, --!> or any other comment terminator; JSON.parse restores it.
+  const payload = JSON.stringify(state).replace(
+    /[<>-]/g,
+    (character) =>
+      `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
+  return `<!-- ${MAIN_HEALTH_STATE_MARKER}: ${payload} -->`;
 }
 
 /**
@@ -340,10 +368,15 @@ export function renderMainHealthComment(run, state) {
     `Head SHA: ${run.headSha}`,
   ];
   if (state.failures.length > 0) {
-    sections.push('', 'Failing:');
-    for (const failure of state.failures) sections.push(`- ${failure}`);
     const hidden = state.failureCount - state.failures.length;
-    if (hidden > 0) sections.push(`- …and ${hidden} more`);
+    sections.push(
+      '',
+      'Failing:',
+      ...fenced([
+        ...state.failures.map((failure) => `- ${failure}`),
+        ...(hidden > 0 ? [`- …and ${hidden} more`] : []),
+      ]),
+    );
   }
   if (state.redRunsSinceComment > 0) {
     const runs =
@@ -428,12 +461,6 @@ export function decideMainHealthComment({
     );
   if (!previous)
     return comment('no-recorded-state', 'The workflow failed again on main.');
-  if (previous.digest !== digest)
-    return comment(
-      'failure-changed',
-      'The workflow failed again on main, at a different point than the last comment recorded.',
-    );
-
   // A red run that posts nothing is still recorded, so the next heartbeat can
   // report the size of the silence rather than only its duration.
   const redRunsSinceComment = previous.redRunsSinceComment + 1;
@@ -442,6 +469,30 @@ export function decideMainHealthComment({
     !Number.isFinite(elapsedMs) ||
     elapsedMs < 0 ||
     elapsedMs >= heartbeatIntervalMs;
+  if (previous.digest !== digest) {
+    // A changed failure set speaks at most once a day: a flaky secondary job
+    // flipping the set (Fresh-home: 15 of 23 replayed comments) is still
+    // recorded at once, in the issue body and in this comment's marker.
+    if (heartbeatDue)
+      return comment(
+        'failure-changed',
+        'The workflow failed again on main, at a different point than the last comment recorded.',
+      );
+    const state = {
+      ...previous,
+      failures: current.slice(0, MAX_TRACKED_FAILURES),
+      failureCount: current.length,
+      digest,
+      redRunsSinceComment,
+    };
+    return {
+      action: 'update-marker',
+      reason: 'failure-changed-within-a-day',
+      commentId: recorded?.commentId,
+      body: renderMainHealthComment(run, state),
+      state,
+    };
+  }
   if (heartbeatDue) {
     const runs =
       redRunsSinceComment === 1
@@ -449,7 +500,7 @@ export function decideMainHealthComment({
         : `${redRunsSinceComment} red runs`;
     return comment(
       'heartbeat',
-      `Still red on main: ${runs} since the last comment, all failing at the same point.`,
+      `Still red on main: ${runs} since the last comment; the newest failing set is below.`,
     );
   }
 
@@ -462,4 +513,443 @@ export function decideMainHealthComment({
     body: renderMainHealthComment(run, state),
     state,
   };
+}
+
+/**
+ * Damping, chosen by replaying 2026-10-17..11-16 for every watched scheduled
+ * workflow: a tracker closes only on a green with no red run of the same
+ * workflow on main in the preceding day, and a red within a day of a close
+ * reopens it without an announcement. Opening is never damped. Against
+ * closing on any green this cut replayed comments from 199 to 129; Main:
+ * Qualification health went from 34 opens and 66 comments to 8 and 20.
+ */
+export const CLOSE_HOLD_MS = 24 * 60 * 60 * 1000;
+
+/** Run conclusions that count as a red for the hold. */
+const RED_RUN_CONCLUSIONS = new Set([
+  'failure',
+  'timed_out',
+  'startup_failure',
+]);
+
+/**
+ * @param {{id: number, updated_at?: string, created_at: string}} run the green being considered
+ * @param {{id: number, conclusion?: string | null, updated_at?: string, created_at: string}[]} runs recent completed runs of the workflow on main
+ * @param {number} [holdMs]
+ */
+export function greenHasHeld(run, runs = [], holdMs = CLOSE_HOLD_MS) {
+  // The event payload carries the run's times; a payload without them is
+  // judged at the moment of the check.
+  const stamped = Date.parse(run?.updated_at ?? run?.created_at);
+  const at = Number.isFinite(stamped) ? stamped : Date.now();
+  return !(runs ?? []).some((other) => {
+    if (
+      other?.id === run.id ||
+      !RED_RUN_CONCLUSIONS.has(String(other?.conclusion))
+    )
+      return false;
+    const redAt = Date.parse(other.updated_at ?? other.created_at);
+    return Number.isFinite(redAt) && redAt <= at && at - redAt < holdMs;
+  });
+}
+
+/**
+ * Whether a closed tracker was closed within the damping window, so a red
+ * now continues the same episode.
+ *
+ * @param {{state?: string, closed_at?: string | null}} issue
+ * @param {number} now
+ */
+export function closedRecently(issue, now, holdMs = CLOSE_HOLD_MS) {
+  const closedAt = Date.parse(issue?.closed_at ?? '');
+  return (
+    issue?.state === 'closed' &&
+    Number.isFinite(closedAt) &&
+    now - closedAt < holdMs
+  );
+}
+
+/** Every tracker's title: the dedupe key, one issue per watched workflow. */
+export function trackerTitle(workflowName) {
+  return `Main pipeline red: ${workflowName}`;
+}
+
+/** Labels every tracker carries, whether or not `ci:red` exists yet. */
+export const MAIN_HEALTH_BASE_LABELS = Object.freeze(['bug', 'P1']);
+
+/**
+ * The filter the owner and, later, agent intake read: every issue it marks is
+ * one watched workflow that is red on main, opened and closed by
+ * `main-health.yml` alone. The owner creates it; until then trackers are
+ * opened unlabelled rather than not at all.
+ */
+export const MAIN_HEALTH_LABEL = 'ci:red';
+
+/**
+ * The labels a tracker can carry right now. `ci:red` only once it exists:
+ * adding a missing label would create it with an arbitrary colour, which the
+ * label-manifest check then reports as drift. A label API failure never
+ * stops a tracker: it is opened with the base labels and `note` says why,
+ * for the tracker body.
+ *
+ * @param {any} github Octokit
+ * @param {{owner: string, repo: string}} repo
+ * @param {{info: (line: string) => void, warning?: (line: string) => void}} core
+ * @returns {Promise<{labels: string[], note: string | null}>}
+ */
+export async function trackerLabels(github, repo, core) {
+  try {
+    await github.rest.issues.getLabel({ ...repo, name: MAIN_HEALTH_LABEL });
+    return {
+      labels: [...MAIN_HEALTH_BASE_LABELS, MAIN_HEALTH_LABEL],
+      note: null,
+    };
+  } catch (error) {
+    if (error?.status === 404) {
+      core.info(
+        `main-health: label ${MAIN_HEALTH_LABEL} does not exist yet; trackers stay unlabelled with it until the owner creates it.`,
+      );
+      return { labels: [...MAIN_HEALTH_BASE_LABELS], note: null };
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    core.warning?.(
+      `main-health: could not read label ${MAIN_HEALTH_LABEL}: ${message}`,
+    );
+    return {
+      labels: [...MAIN_HEALTH_BASE_LABELS],
+      note: `Label ${MAIN_HEALTH_LABEL} could not be checked, so this tracker may be missing it; the Main: Health run log has the error.`,
+    };
+  }
+}
+
+/** The account `GITHUB_TOKEN` writes as: every tracker is opened by it. */
+export const TRACKER_CREATOR = 'github-actions[bot]';
+
+/**
+ * Every existing tracker, from one consistent listing of the issues the
+ * workflow bot opened (22 in this repository on 2026-11-16, all states),
+ * rather than a scan of every issue (~50 pages) or a search, which is
+ * eventually consistent and can miss a tracker created seconds earlier.
+ * Creation is serialised per workflow by the reporter's concurrency group,
+ * so a second red run reads the first run's tracker here.
+ *
+ * Only exact titles match: a tracker a person renamed, or one whose workflow
+ * was renamed, is no longer found; the next red opens a fresh tracker and the
+ * old one stays as it is.
+ *
+ * @param {any} github Octokit
+ * @param {{owner: string, repo: string}} repo
+ * @returns {Promise<{number: number, title: string, state: string, body?: string | null}[]>}
+ */
+export async function listTrackers(github, repo) {
+  const issues = await github.paginate(github.rest.issues.listForRepo, {
+    ...repo,
+    creator: TRACKER_CREATOR,
+    state: 'all',
+    per_page: 100,
+  });
+  return issues.filter(
+    (issue) =>
+      !issue?.pull_request &&
+      String(issue?.title ?? '').startsWith(trackerTitle('')),
+  );
+}
+
+/** Marks a tracker body written by Main: Health. */
+export const TRACKER_MARKER = '<!-- main-health-tracker -->';
+
+/**
+ * Whether an issue body is one Main: Health wrote for this workflow: the
+ * tracker marker, the overdue marker, or the line every tracker body has
+ * carried since before the markers (`Workflow: <name>`). Creator and title
+ * alone are not enough: a person can rename any bot-opened issue.
+ *
+ * @param {unknown} body
+ * @param {string} workflowName
+ */
+export function isTrackerBody(body, workflowName) {
+  const text = String(body ?? '');
+  return (
+    text.includes(TRACKER_MARKER) ||
+    text.startsWith('<!-- main-health-overdue -->') ||
+    text.split(/\r?\n/).includes(`Workflow: ${workflowName}`)
+  );
+}
+
+/**
+ * The trackers one title may reuse: Main: Health's own, never one closed as
+ * a duplicate. One closed as "not planned" is reused: closing a tracker does
+ * not stop a workflow being watched (remove it from the watch list for that),
+ * so its next red reopens it.
+ *
+ * @param {{number: number, title: string, state: string, state_reason?: string | null, body?: string | null}[]} trackers
+ * @param {string} title
+ */
+function candidates(trackers, title) {
+  const workflowName = title.slice(trackerTitle('').length);
+  return trackers.filter(
+    (issue) =>
+      issue.title === title &&
+      issue.state_reason !== 'duplicate' &&
+      isTrackerBody(issue.body, workflowName),
+  );
+}
+
+/**
+ * The tracker for one title: the oldest open one, otherwise the newest
+ * closed one.
+ *
+ * @param {{number: number, title: string, state: string, state_reason?: string | null, body?: string | null}[]} trackers
+ * @param {string} title
+ */
+export function pickTracker(trackers, title) {
+  const matches = candidates(trackers, title);
+  const open = matches
+    .filter((issue) => issue.state === 'open')
+    .sort((a, b) => a.number - b.number);
+  if (open.length) return open[0];
+  return [...matches].sort((a, b) => b.number - a.number)[0] ?? null;
+}
+
+/**
+ * Converge on one tracker per title: when several are open (#3403 and #4037
+ * both track Main: Container smoke), keep the oldest and close each other
+ * with a comment pointing to it. A closed duplicate is never picked again,
+ * so this speaks once per duplicate.
+ *
+ * @param {any} github Octokit
+ * @param {{owner: string, repo: string}} repo
+ * @param {{number: number, title: string, state: string}[]} trackers
+ * @param {string} title
+ */
+export async function consolidateTracker(github, repo, trackers, title) {
+  const kept = pickTracker(trackers, title);
+  if (!kept || kept.state !== 'open') return kept;
+  for (const duplicate of candidates(trackers, title)) {
+    if (duplicate.state !== 'open' || duplicate.number === kept.number)
+      continue;
+    await github.rest.issues.createComment({
+      ...repo,
+      issue_number: duplicate.number,
+      body: `Duplicate of #${kept.number}: Main: Health keeps one tracker per workflow and reports there.`,
+    });
+    await github.rest.issues.update({
+      ...repo,
+      issue_number: duplicate.number,
+      state: 'closed',
+      state_reason: 'duplicate',
+    });
+    duplicate.state = 'closed';
+    duplicate.state_reason = 'duplicate';
+  }
+  return kept;
+}
+
+/** Unsuccessful jobs whose annotations are read, so one red run costs a bounded number of calls. */
+export const MAX_ANNOTATED_JOBS = 5;
+
+/** Bounds on the failing lines quoted into a tracker body. */
+export const MAX_FAILING_LINES = 15;
+export const MAX_FAILING_LINE_LENGTH = 300;
+
+/**
+ * The jobs whose annotations are worth reading: anything that did not pass,
+ * in the order GitHub listed them, bounded.
+ *
+ * @param {{id?: unknown, conclusion?: unknown}[]} jobs
+ */
+export function unsuccessfulJobs(jobs = []) {
+  return (jobs ?? [])
+    .filter(
+      (job) =>
+        UNSUCCESSFUL_CONCLUSIONS.has(String(job?.conclusion)) &&
+        Number.isSafeInteger(job?.id),
+    )
+    .slice(0, MAX_ANNOTATED_JOBS);
+}
+
+/**
+ * Who cancelled a run, from its jobs' check-run annotations. GitHub records
+ * the cause only there; the run and job objects say `cancelled` either way.
+ * Every pattern below is a verbatim annotation from a real run (fixtures in
+ * scheduled-failure-reporting.test.ts carry the run ids).
+ *
+ * - `person`: "The run was canceled by @login." Writes nothing: someone chose it.
+ * - `superseded`: "Canceling since a higher priority waiting request for
+ *   <group> exists". Writes nothing: the newer run carries the verdict.
+ * - `infrastructure`: GitHub gave up on the job ("not acquired by Runner",
+ *   "lost communication with the server"). Reported.
+ * - `unknown`: anything else, including a cancel with no annotation at all
+ *   (an API cancel by automation leaves none). Reported too, saying the cause
+ *   was not recognised: a failure must do something, and only a positively
+ *   identified choice by a person or a newer run is allowed to stay silent.
+ *
+ * A person's cancel wins over everything else in the same run: cancelling a
+ * run that was stuck waiting for a runner is still a person's decision.
+ *
+ * @param {{message?: unknown}[]} annotations
+ * @returns {'person' | 'superseded' | 'infrastructure' | 'unknown'}
+ */
+export function classifyCancellation(annotations = []) {
+  const messages = (annotations ?? []).map((annotation) =>
+    String(annotation?.message ?? ''),
+  );
+  if (messages.some((message) => /^The run was canceled by @/.test(message)))
+    return 'person';
+  if (
+    messages.some((message) =>
+      /^Canceling since a higher priority waiting request for .+ exists/.test(
+        message,
+      ),
+    )
+  )
+    return 'superseded';
+  if (
+    messages.some((message) =>
+      /not acquired by Runner of type|lost communication with the server/.test(
+        message,
+      ),
+    )
+  )
+    return 'infrastructure';
+  return 'unknown';
+}
+
+/**
+ * A cancelled run with no jobs was replaced while still pending: a newer run
+ * of the same workflow on the same ref took its place in a workflow-level
+ * concurrency group, which records no annotation (Main: Qualification health
+ * run 43099494704, replaced 7 s later by 43099513706). Without a newer run
+ * the cancel stays unrecognised and is reported.
+ *
+ * @param {{id: number, head_branch?: string, created_at: string}} run
+ * @param {{id: number, head_branch?: string, created_at: string}[]} runs the workflow's runs on that branch
+ */
+export function supersededByNewerRun(run, runs = []) {
+  const created = Date.parse(run?.created_at);
+  if (!Number.isFinite(created)) return false;
+  return (runs ?? []).some(
+    (other) =>
+      other?.id !== run.id &&
+      other?.head_branch === run.head_branch &&
+      Date.parse(other?.created_at) > created,
+  );
+}
+
+/** Cancel causes that write nothing. */
+export const SILENT_CANCEL_CAUSES = Object.freeze(['person', 'superseded']);
+
+/**
+ * Normalize one annotation line for a fenced block: no control characters,
+ * bounded length. `fenced` rewrites backtick runs for every fenced line.
+ *
+ * @param {unknown} value
+ */
+function quotedLine(value) {
+  return (
+    String(value ?? '')
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: annotation text is remote data.
+      .replace(/[\u0000-\u0008\u000b-\u001f\u007f]+/g, ' ')
+      .trimEnd()
+      .slice(0, MAX_FAILING_LINE_LENGTH)
+  );
+}
+
+/**
+ * The first failing lines of a run: its failure-level annotations (the
+ * `##[error]` lines a reader sees in the log), prefixed with their job.
+ *
+ * @param {{message?: unknown, annotation_level?: unknown, job?: unknown}[]} annotations
+ * @returns {string[]}
+ */
+export function failingLines(annotations = []) {
+  const lines = [];
+  for (const annotation of annotations ?? []) {
+    if (annotation?.annotation_level !== 'failure') continue;
+    for (const line of String(annotation?.message ?? '').split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      lines.push(quotedLine(`${annotation?.job ?? 'job'}: ${line}`));
+      if (lines.length >= MAX_FAILING_LINES) return lines;
+    }
+  }
+  return lines;
+}
+
+/**
+ * The tracker body: everything a person or an agent needs to start on the
+ * red without opening the Actions tab. Rewritten for every reported run, so it
+ * always describes the newest one.
+ *
+ * @param {{
+ *   workflowName: string,
+ *   runUrl: string,
+ *   headSha: string,
+ *   event?: string,
+ *   conclusion?: string,
+ *   failures?: string[],
+ *   lines?: string[],
+ *   detailsError?: string | null,
+ *   notes?: string[],
+ *   cancelCause?: string | null,
+ * }} input
+ */
+export function renderTrackerBody({
+  workflowName,
+  runUrl,
+  headSha,
+  event,
+  conclusion,
+  failures = [],
+  lines = [],
+  detailsError = null,
+  notes = [],
+  cancelCause = null,
+}) {
+  const lead =
+    conclusion !== 'cancelled'
+      ? 'A watched workflow failed on main.'
+      : cancelCause === 'infrastructure'
+        ? 'A watched workflow never completed on main: GitHub cancelled it (no runner took the job, or the runner was lost).'
+        : 'A watched workflow was cancelled on main and the cause was not recognised: not a person, not a newer run in its concurrency group, not a lost runner. Check who or what cancelled it.';
+  const shown = normalizeFailures(failures);
+  const sections = [
+    TRACKER_MARKER,
+    lead,
+    '',
+    `Workflow: ${workflowName}`,
+    `Run: ${runUrl}`,
+    `Head SHA: ${headSha}`,
+    `Trigger: ${event || 'unknown'}`,
+    `Conclusion: ${conclusion || 'unknown'}`,
+  ];
+  if (shown.length > 0) {
+    sections.push(
+      '',
+      'Failing:',
+      ...fenced([
+        ...shown
+          .slice(0, MAX_TRACKED_FAILURES)
+          .map((failure) => `- ${failure}`),
+        ...(shown.length > MAX_TRACKED_FAILURES
+          ? [`- …and ${shown.length - MAX_TRACKED_FAILURES} more`]
+          : []),
+      ]),
+    );
+  }
+  if (lines.length > 0) {
+    sections.push('', 'First failing lines:', ...fenced(lines));
+  }
+  if (detailsError) {
+    sections.push(
+      '',
+      'Run details unavailable (open the run above):',
+      ...fenced([quotedLine(detailsError)]),
+    );
+  }
+  if (notes.length > 0) sections.push('', ...notes);
+  sections.push(
+    '',
+    'This issue is updated in place while the workflow stays red and closed by the next fully green run.',
+  );
+  return sections.join('\n');
 }

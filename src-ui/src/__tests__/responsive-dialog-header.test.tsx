@@ -39,10 +39,8 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { createRef } from 'react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
-import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
 import { ResponsiveDialogHeader } from '../components/ResponsiveDialogSurface';
 
 // The switcher paints each project with the sidebar's colour
@@ -67,7 +65,6 @@ function readSource(relativePath: string): string {
 // (archive#1825's brief: "check the other sheets/modals in this
 // family for the same pattern before inventing a one-off fix").
 const HEADER_CONSUMERS = [
-  'components/chat-dock/ChatDockProjectSwitcherSheet.tsx',
   'components/chat-dock/ChatDockMobileOverflowSheet.tsx',
   'components/chat-dock/ComposerActionsMenu.tsx',
   // #2059: `ProjectSidebarStatus` was this family's sidebar member through its
@@ -177,28 +174,5 @@ describe('shared dialog header (station#1825 item 1)', () => {
     expect(header.children[1].getAttribute('aria-label')).toBe(
       'Close project switcher',
     );
-  });
-
-  test('the project switcher sheet renders its header via the shared component with the close button reachable and last in the header row', () => {
-    render(
-      <ChatDockProjectSwitcherSheet
-        anchorRef={createRef<HTMLElement>()}
-        boundProjectSlug="alpha"
-        projects={[]}
-        onOpenProject={vi.fn()}
-        onSwitchProject={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
-    const dialog = screen.getByRole('dialog', { name: 'Projects' });
-    const header = dialog.querySelector('.responsive-dialog-header');
-    expect(header).toBeTruthy();
-    const closeButton = screen.getByRole('button', {
-      name: 'Close project switcher',
-    });
-    expect(header?.contains(closeButton)).toBe(true);
-    expect(header?.lastElementChild).toBe(closeButton);
-
-    fireEvent.click(closeButton);
   });
 });

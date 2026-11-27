@@ -14,6 +14,7 @@ import {
 } from '@kontourai/station-sdk';
 import type { RefetchOptions } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { agentRunnability } from '../components/agent-runnability';
 import {
   buildNewChatModalViewModel,
   buildNewChatModelOverrideKey,
@@ -92,7 +93,9 @@ export interface ACPSelectionConnection {
     options?: Array<string | { value: string; name?: string }>;
   }>;
   /** The served model catalog (config option, else the `models` list). */
-  advertisedModels?: Array<{ id: string; name: string }>;
+  advertisedModels?: Array<
+    Pick<SelectableModel, 'id' | 'name' | 'catalogRoute'>
+  >;
 }
 
 /**
@@ -105,7 +108,7 @@ export interface ACPSelectionConnection {
 export function acpCatalogModelOptions(
   acpConnections: ACPSelectionConnection[],
   agentConnectionId: string | undefined,
-): Array<{ id: string; name: string }> {
+): Array<Pick<SelectableModel, 'id' | 'name' | 'catalogRoute'>> {
   if (!agentConnectionId) return [];
   return acpAdvertisedModels(
     acpConnections.find((acp) => acp.id === agentConnectionId),
@@ -398,15 +401,16 @@ export function useNewChatSelectionModel({
     acpConnections,
     projectDefaultModel: selectedProjectConfig?.defaultModel,
     projectChatDefaults: selectedProjectSlug ? projectChatDefaults : undefined,
-    preferredAgentSlug:
-      rememberedAgentSlug ??
-      getRecentAgentSlugsForContext(
+    preferredAgentSlug: firstStartableAgentSlug(viewModel.flatList, [
+      rememberedAgentSlug,
+      ...getRecentAgentSlugsForContext(
         activeChatsSnapshot,
         selectedContext,
         [],
-      )[0] ??
-      selectedProjectConfig?.defaultAgent ??
+      ),
+      selectedProjectConfig?.defaultAgent,
       layout?.defaultAgent,
+    ]),
 
     lastChosenModelByBinding,
   });
@@ -667,4 +671,23 @@ export function useNewChatSelectionModel({
     modelChoiceKey,
     defaultEffectiveModelForAgent,
   };
+}
+
+/**
+ * The new chat's preferred Agent: the first of the remembered, recent and
+ * configured Agents that can start. One that needs setup is passed over, so a
+ * stale memory never outranks a working default. When none can start, the
+ * first one named is kept, so a missing Agent is still reported as missing.
+ */
+export function firstStartableAgentSlug(
+  agents: readonly AgentData[],
+  candidates: readonly (string | undefined)[],
+): string | undefined {
+  const named = candidates.filter((slug): slug is string => Boolean(slug));
+  return (
+    named.find((slug) => {
+      const agent = agents.find((candidate) => candidate.slug === slug);
+      return agent !== undefined && agentRunnability(agent).runnable;
+    }) ?? named[0]
+  );
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "9c5110c6082ce2e2ce56bfdda1631f62ae40ef89",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Reviewed terminal transport design claims against the real journal/gateway/SDK frame-credit test. The Windows producer now waits for each numbered marker in the actual journal before requesting its successor instead of assuming ConPTY maps timed writes one-to-one to records. The same 160 outputs, >140-record premise, advertised 128-frame window, blocked-output assertion, ACK progression, and SDK rendering checks remain. POSIX full suite passes; Windows execution is reported separately. No product transport or credit budget changes.","inputs":["src-server/services/terminal/__tests__/terminal-gateway.process.test.ts"]}
+  ]
+}

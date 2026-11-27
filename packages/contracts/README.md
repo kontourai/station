@@ -59,6 +59,9 @@ README.
 The `/child-work` contract's optional `latestTool` carries only a reported child
 tool name, independently of its progress summary. Reducers retain it across
 updates and settlement; no tool arguments or inferred activity are added.
+Its optional `workKind` (`agent`, `command`, `monitor`) is read through
+`childWorkKindOf`, which treats older Claude history labelled `local_bash` as a
+command.
 
 ## Subpaths without a reference section
 
@@ -85,6 +88,7 @@ names what the module owns. Read the module before depending on it.
 - `/turn-changed-files`: the files a turn changed, and why that list can be unavailable.
 - `/session-output-declaration`: durable provenance for an output a native tool declared.
 - `/session-outputs`: the metadata-only Session Outputs page and inspection (v1).
+- `/project-library`: the Project Library page, upload path rule and filters (v1).
 - `/mcp-elicitation`: the field subset Station renders for an MCP form elicitation.
 - `/mcp-app-display-mode`: host-mediated display-mode decisions for MCP Apps.
 - `/stall-watchdog`: a stream read raced against a resetting stall timeout.
@@ -109,6 +113,9 @@ names what the module owns. Read the module before depending on it.
 - `/work-claims`: a Session's work claim as Station's routes answer it (information, not a lock), its parser and labels.
 - `/pull-request-provider`: provider-neutral pull request capabilities and merge methods.
 - `/conversation-pull-request-links`: pull requests linked to a conversation and how each link was found.
+- `/pull-request-feedback`: pull request agent feedback: switches, the forge observation, status and delivery history.
+- `/pull-request-watch`: Task-owned pull requests: the Project setting, a Task's choice, the ready test, refusals and the Task's watch view.
+- `/project-room-coordinator`: the `#general` coordinator: the Project's limits, the reply's routing block, suggested-Tasks cards and the status sweep.
 - `/action-operation`: the durable execution-status envelope around an existing mutation.
 - `/operational-event`: versioned, bounded facts emitted by Station actors; contract only.
 - `/live-activity`: the Activity live-collaborator roster projection.
@@ -125,9 +132,7 @@ names what the module owns. Read the module before depending on it.
 - `/workspace-task-room-composition`: Task room composition and its degradations.
 - `/workspace-coding-file-composition`, `/workspace-coding-diff-composition`,
   `/workspace-coding-evidence-composition`: coding pane selection and read grants.
-- Built-in pane descriptors and instances: `/workspace-activity-pane`,
-  `/workspace-activity-review-pane` (docked, occurrence-only review),
-  `/workspace-agents-pane`, `/workspace-chat-pane`, `/workspace-coding-panels`,
+- Pane descriptors: `/workspace-agents-pane`, `/workspace-chat-pane`, `/workspace-coding-panels`,
   `/workspace-device-pane`, `/workspace-evidence-panels`, `/workspace-home-pane`,
   `/workspace-layout-pane`, `/workspace-plugin-draft-pane`,
   `/workspace-pull-request-pane`, `/workspace-spatial-board`,

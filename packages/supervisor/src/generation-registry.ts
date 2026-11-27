@@ -9,6 +9,7 @@
  * touched; one that cannot be fingerprinted is left alone and kept on record.
  */
 import { execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import {
   closeSync,
   fsyncSync,
@@ -344,7 +345,9 @@ export async function reapStaleGenerations(
 }
 
 function writeRecords(path: string, records: GenerationRecord[]): void {
-  const temp = `${path}.${process.pid}.tmp`;
+  // A random part beside the pid: a reused pid cannot land on a temp file an
+  // earlier, killed writer left behind.
+  const temp = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
   try {
     const fd = openSync(temp, 'w', 0o600);
     try {

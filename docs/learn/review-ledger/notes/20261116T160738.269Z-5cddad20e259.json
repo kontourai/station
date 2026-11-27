@@ -1,0 +1,15 @@
+{
+  "revision": "acef3efc2b6b5faad35c0fc425e53ce32bc3f8cb",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#2376 slice 2: orchestration instructions for Codex are composed at bound when the bound channel carries station-control (preview on, control not coordinator-derived), else delegated-custody. Checked this page's instruction and assurance claims; none states Codex is always delegated-custody except where edited in this change.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"#2376 slice 2: orchestration instructions for Codex are composed at bound when the bound channel carries station-control (preview on, control not coordinator-derived), else delegated-custody. Checked this page's instruction and assurance claims; none states Codex is always delegated-custody except where edited in this change.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"#2376 slice 2: orchestration instructions for Codex are composed at bound when the bound channel carries station-control (preview on, control not coordinator-derived), else delegated-custody. Checked this page's instruction and assurance claims; none states Codex is always delegated-custody except where edited in this change.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2376 slice 2: orchestration instructions for Codex are composed at bound when the bound channel carries station-control (preview on, control not coordinator-derived), else delegated-custody. Checked this page's instruction and assurance claims; none states Codex is always delegated-custody except where edited in this change.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#2376 slice 2: orchestration instructions for Codex are composed at bound when the bound channel carries station-control (preview on, control not coordinator-derived), else delegated-custody. Checked this page's instruction and assurance claims; none states Codex is always delegated-custody except where edited in this change.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]}
+  ]
+}

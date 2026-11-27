@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Routing guide only; the additive scheduler displayName field and api/contracts edits change no integration route or requirement it states.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md"]}
+  ]
+}

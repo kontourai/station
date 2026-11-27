@@ -59,7 +59,9 @@ function world() {
     } as never,
   });
   const events = new EventStore(join(homeDir, 'orchestration.sqlite'));
-  closers.push(() => events.close());
+  closers.push(() => {
+    events.close();
+  });
   const followUps = new TaskFollowUpStore(join(homeDir, 'follow-ups.sqlite'));
   closers.push(() => followUps.close());
   const sent: { conversationId: string; clientTurnId: string }[] = [];
@@ -99,6 +101,7 @@ function world() {
   const dispatch = async (taskId: string) => {
     const outcome = await composeTaskDispatcher(graph).dispatch(taskId, {
       ownerUserId: OWNER,
+      fullAccessGrant: null,
     });
     expect(outcome.kind).toBe('dispatched');
     return graph.readTask(taskId)!;

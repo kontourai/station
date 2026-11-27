@@ -22,7 +22,12 @@ import { dirname, resolve } from 'node:path';
 import { assertRoot, CHECKS } from './lib/hygiene/checks.mjs';
 import { createGithub, DEFAULT_REPOSITORY } from './lib/hygiene/github.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
-import { upsertTrackingIssue } from './lib/tracking-issue.mjs';
+import {
+  assertReportRevision,
+  postableReport,
+  runGh,
+  upsertTrackingIssue,
+} from './lib/tracking-issue.mjs';
 
 export const HYGIENE_ISSUE_TITLE = 'Code hygiene sweep';
 export const HYGIENE_ISSUE_LABELS = Object.freeze(['P2']);
@@ -148,6 +153,40 @@ export function buildIssueBody(results, { revision, generatedAt }) {
   return `${body.join('\n')}\n`;
 }
 
+/**
+ * Keep the one tracking issue current from a report the hygiene job wrote.
+ * That job installs dependencies, so the issue job posts only a report
+ * stamped with its own checkout's revision (current, not proof of who wrote
+ * it), through `postableReport` (no live mentions, size bound on the posted
+ * text).
+ * @param {{ repo: string, reportPath: string, head?: string, gh?: (args: string[]) => string }} input
+ */
+export function upsertHygieneIssue({
+  repo,
+  reportPath,
+  head = execFileSync('git', ['rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim(),
+  gh = runGh,
+}) {
+  const report = readFileSync(reportPath, 'utf8');
+  const revision = new RegExp(
+    `^<!-- ${MARKER} findings=\\d+ not_verified=\\d+ revision=([a-f0-9]{40}) -->$`,
+    'm',
+  ).exec(report)?.[1];
+  if (!revision) throw new Error(`report is missing the ${MARKER} marker`);
+  assertReportRevision(revision, head);
+  return upsertTrackingIssue({
+    repo,
+    reportPath: postableReport(reportPath),
+    title: HYGIENE_ISSUE_TITLE,
+    labels: HYGIENE_ISSUE_LABELS,
+    outstanding: reportOutstanding(report),
+    gh,
+  });
+}
+
 /** Outstanding items recorded in a report body: findings plus NOT_VERIFIED checks. */
 export function reportOutstanding(report) {
   const match = new RegExp(
@@ -161,12 +200,9 @@ export function reportOutstanding(report) {
 export function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   if (options.upsert) {
-    const outcome = upsertTrackingIssue({
+    const outcome = upsertHygieneIssue({
       repo: options.repo,
       reportPath: options.report,
-      title: HYGIENE_ISSUE_TITLE,
-      labels: HYGIENE_ISSUE_LABELS,
-      outstanding: reportOutstanding(readFileSync(options.report, 'utf8')),
     });
     console.log(
       `[hygiene] ${outcome.action}${outcome.number ? ` #${outcome.number}` : ''}`,

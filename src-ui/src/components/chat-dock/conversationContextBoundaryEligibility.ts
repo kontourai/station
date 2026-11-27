@@ -26,29 +26,25 @@ export function conversationContextBoundaryEligibility(input: {
   if (input.sessionRead === 'pending') {
     return {
       kind: 'blocked',
-      reason:
-        'Station is still reading the current Session lifecycle. Wait before replacing the engine context.',
+      reason: "Checking the agent's status…",
     };
   }
   if (input.sessionRead === 'error') {
     return {
       kind: 'blocked',
-      reason:
-        'Station could not read the current Session lifecycle. Reconnect before replacing the engine context.',
+      reason: "Couldn't read the agent's status. Reconnect and try again.",
     };
   }
   if (input.sessionRead === 'absent' || !input.orchestrationSession) {
     return {
       kind: 'blocked',
-      reason:
-        'Station has no current Session record to stop. Send or restore the conversation before replacing the engine context.',
+      reason: 'Send a message first.',
     };
   }
   if (input.session.stopPending) {
     return {
       kind: 'blocked',
-      reason:
-        'Station is waiting for the current turn to stop. No context boundary has been reserved.',
+      reason: 'Waiting for the agent to stop.',
     };
   }
   if (
@@ -57,15 +53,13 @@ export function conversationContextBoundaryEligibility(input: {
   ) {
     return {
       kind: 'blocked',
-      reason:
-        'The current turn or approval is still active. Stop or finish it before replacing the engine context.',
+      reason: 'Stop or finish the current turn first.',
     };
   }
   if (input.hasLocalDeferredMessages) {
     return {
       kind: 'blocked',
-      reason:
-        'Resolve queued or offline messages before replacing the engine context.',
+      reason: 'Send or discard queued messages first.',
     };
   }
   if (
@@ -77,7 +71,6 @@ export function conversationContextBoundaryEligibility(input: {
   }
   return {
     kind: 'stop-session',
-    reason:
-      'The current Session is ready but still open. Stop it before reserving the next engine context.',
+    reason: 'Stop the agent first.',
   };
 }

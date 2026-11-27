@@ -1,0 +1,57 @@
+{
+  "revision": "57faaf556d1c2517d7fbb1232d8db963eae23cfa",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"The glossary edit adds Mark done and rewords Open / Settled; no context name, boundary or route this map states changed.","inputs":["CONTEXT-MAP.md"]},
+
+    {"path":"CONTEXT.md","note":"The glossary edit adds the Mark done entry and rewords Open / Settled; the context vocabulary here names neither verb, so nothing changed.","inputs":["CONTEXT.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The keyboard-shortcuts edit renames the inbox Undo target (Mark done, Reopen); the abstraction claims about the one Undo command still hold.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"useInboxPanelController still owns activation currency, search, snooze, dismissal and Undo for both shells; it now also routes settle through the same Undo. No owner or boundary changed.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"NotificationHistory only renamed its in-place Undo words (Marked done); the delivery and dismissal behaviour this page states is unchanged.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Rewrote the inbox action passages for the row menu (Open chat, Mark done, snooze list, Discard draft), Mark done over settle, hide and local dismissal, and its Undo; checked against ChatDockInboxRows, inbox-dismissals, useInboxPanelController and MobileInboxSelection.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/design/motion.md","note":"InboxRow.css change centres the slim action slot by offset instead of a transform and renames the swipe class; the motion durations and reduced-motion rules here are unchanged.","inputs":["docs/design/motion.md"]},
+
+    {"path":"docs/design/placement.md","note":"MobileInboxPanel passes restore to the bulk tray and drops the unused open-chat list; useInboxGroups renames the searched shelf Marked done. Placement claims unchanged.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/design/station-connection.md","note":"The controller still scopes snooze and dismissal keys per authority; the e2e spec now drives the row menu. No connection-scoping claim changed.","inputs":["docs/design/station-connection.md"]},
+
+    {"path":"docs/glossary.md","note":"Added the Mark done entry (one verb, what it records, Reopen, Undo, the row menu order), the one snooze list with Wake now and the one Discard draft label; reworded Open / Settled. Checked against inbox-row-actions, ChatDockInboxRows inboxRowDone, inbox-dismissals and snooze-presets.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"AttentionCard only gained Mark done wording and the paired notification dismissal for failed Sessions; the agent configuration claims citing it are unchanged.","inputs":["docs/guides/agent-configuration.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"settings.md changed only the swipe action label (Mark done); nothing this guide cites from it changed.","inputs":["docs/guides/agent-efficiency.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"settings.md changed only the swipe action label under Sheet gestures; preview ids, defaults and graduation rules are unchanged.","inputs":["docs/guides/feature-previews.md"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Reworded the inbox Undo paragraph for Mark done and Reopen under Marked done; checked inbox-dismissals offerInboxUndo and the dismissal tests.","inputs":["docs/guides/keyboard-shortcuts.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Updated the swipe tray (Snooze then Mark done), the bulk tray (Snooze and Mark done with one Undo), the desktop row menu and the Marked done search shelf; checked ChatDockInboxRows, MobileInboxSelection and useInboxGroups.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"NotificationsPage changes (failed-run pair as one row, Wake now, bulk label kept) do not touch the Starter Work claims citing it.","inputs":["docs/guides/starter-work.md"]},
+
+    {"path":"docs/guides/testing.md","note":"conversation-surfaces.spec now opens the row menu for snooze, Wake now and Mark done; the testing guidance citing it is unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/ui-copy.md","note":"The noun gate gained enforced inbox entries (Settle conversation, Dismiss from inbox, Hide from inbox, Restore to inbox, Discard unsent draft, Unsnooze); the copy rules here still describe the mechanism correctly.","inputs":["docs/guides/ui-copy.md"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"NotificationsPage changes do not affect the request-inspection scene: the inspector, Deny and Approve once are unchanged.","inputs":["docs/learn/walkthroughs.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"AttentionCard still acknowledges a failed Session through the attention route and dismisses notifications through DELETE; only the label and the paired dismissal were added. API claims unchanged.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"cross-runtime-chat-switching now reads rows by their Actions menu labels; the smoke procedure here is unchanged.","inputs":["docs/testing/browser-smoke.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Rewrote the inbox clearing, Undo, Discard draft, Open and Settled and inbox page row-menu paragraphs for Mark done, the row menu and the one snooze list; checked against the shipped labels.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/user/settings.md","note":"Swipe action label now Mark done (check); checked against ChatDockInboxRows swipe tray.","inputs":["docs/user/settings.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"The controller change adds settle-with-Undo to row actions; the routing rules this file states are unchanged.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"NotificationsPage change (failed pair, Wake now) does not alter the request inspector this capture shows; image still accurate.","inputs":["docs/learn/media/inspect-request.png"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"NotificationsPage change (failed pair, Wake now) does not alter the request inspection flow this recording shows.","inputs":["docs/learn/media/inspect-request.webm"]}
+  ]
+}

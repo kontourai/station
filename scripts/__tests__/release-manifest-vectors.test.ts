@@ -81,7 +81,7 @@ const KEYS = {
       keyId: 'fixture-release',
       algorithm: 'ed25519',
       publicKeySpkiPem: pem(releaseKey.publicKey, 'spki'),
-      channels: ['stable', 'preview'],
+      channels: ['stable'],
     },
   ],
 };
@@ -138,12 +138,13 @@ type Outcome = 'accept' | string;
 type Vector = {
   name: string;
   envelope: () => Record<string, unknown>;
+  keys?: () => unknown;
   expected: Outcome;
   /** The shared verifier's outcome where it deliberately differs. */
   sharedExpected?: Outcome;
   /**
    * install.sh's outcome where it differs from the shared verifier's. It
-   * keeps schema 1 as the source-release fallback for stable/preview (the
+   * keeps schema 1 as the source-release fallback for Stable (the
    * shared API is schema 2 only), and validates it as the signer does.
    */
   installExpected?: Outcome;
@@ -164,6 +165,18 @@ const VECTORS: Vector[] = [
     name: 'a valid v2 envelope publishing one platform',
     envelope: () => nightly(withArtifacts((list) => [list[3]])),
     expected: 'accept',
+  },
+  {
+    name: 'retired Preview key grant',
+    envelope: () => nightly(platformPayload()),
+    keys: () => ({
+      keys: KEYS.keys.map((entry) =>
+        entry.keyId === 'fixture-release'
+          ? { ...entry, channels: ['stable', 'preview'] }
+          : entry,
+      ),
+    }),
+    expected: 'signing-key table has an invalid entry',
   },
   {
     name: 'duplicate platforms',
@@ -448,7 +461,6 @@ function sharedOutcome(
 const installer = join(root, 'install.sh');
 const RUNTIME_CHANNEL: Record<string, string> = {
   stable: 'stable',
-  preview: 'beta',
   nightly: 'nightly',
 };
 
@@ -554,10 +566,17 @@ function coreOutcome(
 describe('release manifest golden vectors (#2675)', () => {
   it.each(VECTORS)(
     '$name',
-    ({ envelope, expected, sharedExpected, installExpected }) => {
+    ({
+      envelope,
+      keys = () => KEYS,
+      expected,
+      sharedExpected,
+      installExpected,
+    }) => {
       const dir = makeTempDir('station-release-manifest-vectors-');
+      const keyTable = keys();
       const keysPath = join(dir, 'keys.json');
-      writeFileSync(keysPath, JSON.stringify(KEYS));
+      writeFileSync(keysPath, JSON.stringify(keyTable));
       const value = envelope();
       const manifestPath = join(dir, 'manifest.json');
       writeFileSync(manifestPath, JSON.stringify(value));
@@ -576,11 +595,11 @@ describe('release manifest golden vectors (#2675)', () => {
         expect(signer.status).toBe(1);
         expect(signer.stderr.trim()).toBe(expected);
       }
-      expect(sharedOutcome(value)).toBe(sharedExpected ?? expected);
-      expect(installOutcome(dir, value)).toBe(
+      expect(sharedOutcome(value, keyTable)).toBe(sharedExpected ?? expected);
+      expect(installOutcome(dir, value, keyTable)).toBe(
         installExpected ?? sharedExpected ?? expected,
       );
-      expect(coreOutcome(value)).toBe(sharedExpected ?? expected);
+      expect(coreOutcome(value, keyTable)).toBe(sharedExpected ?? expected);
     },
   );
 
@@ -726,12 +745,12 @@ describe('release manifest signer CLI (#2675)', () => {
   });
 });
 
-const PREVIEW = {
-  version: '0.7.0-preview.3',
-  channel: 'preview',
+const ASSEMBLY = {
+  version: '0.7.0-nightly.3',
+  channel: 'nightly',
   sha: 'c'.repeat(40),
 };
-const BASE_URL = `https://github.com/kontourai/station/releases/download/v${PREVIEW.version}/`;
+const BASE_URL = `https://github.com/kontourai/station/releases/download/v${ASSEMBLY.version}/`;
 
 /**
  * An archive descriptor in the shape the portable archive build writes
@@ -767,11 +786,11 @@ function descriptor(
     },
     release: {
       schemaVersion: 2,
-      sha: PREVIEW.sha,
-      ref: `v${PREVIEW.version}`,
+      sha: ASSEMBLY.sha,
+      ref: `v${ASSEMBLY.version}`,
       createdAt: '2026-09-26T00:00:00.000Z',
-      channel: 'beta',
-      releaseChannel: 'preview',
+      channel: 'nightly',
+      releaseChannel: 'nightly',
       prerelease: true,
     },
     unpacked: { bytes: 300_000_000, files: 20_000, longestRelativePath: 180 },
@@ -816,9 +835,9 @@ function assembleTree(
   const output = join(dir, 'payload.json');
   const options = {
     '--descriptors': tree,
-    '--version': PREVIEW.version,
-    '--channel': PREVIEW.channel,
-    '--source-sha': PREVIEW.sha,
+    '--version': ASSEMBLY.version,
+    '--channel': ASSEMBLY.channel,
+    '--source-sha': ASSEMBLY.sha,
     '--base-url': BASE_URL,
     '--launcher-protocol-min': '1',
     '--launcher-protocol-max': '2',
@@ -871,10 +890,10 @@ describe('release manifest assemble (#2675)', () => {
     const payload = JSON.parse(readFileSync(result.output, 'utf8'));
     expect(payload).toEqual({
       schemaVersion: 2,
-      channel: 'preview',
-      version: PREVIEW.version,
-      releaseTag: `v${PREVIEW.version}`,
-      sourceSha: PREVIEW.sha,
+      channel: 'nightly',
+      version: ASSEMBLY.version,
+      releaseTag: `v${ASSEMBLY.version}`,
+      sourceSha: ASSEMBLY.sha,
       publishedAt: '2026-09-26T01:00:00.000Z',
       nodeVersion: PINNED_NODE_VERSION,
       launcherProtocol: { min: 1, max: 2 },
@@ -890,8 +909,8 @@ describe('release manifest assemble (#2675)', () => {
     });
 
     // The assembled payload signs, and both entry points accept the result.
-    const privatePath = join(dir, 'release.pem');
-    writeFileSync(privatePath, pem(releaseKey.privateKey, 'pkcs8'));
+    const privatePath = join(dir, 'nightly.pem');
+    writeFileSync(privatePath, pem(nightlyKey.privateKey, 'pkcs8'));
     const keysPath = join(dir, 'keys.json');
     writeFileSync(keysPath, JSON.stringify(KEYS));
     const manifestPath = join(dir, 'manifest.json');
@@ -902,7 +921,7 @@ describe('release manifest assemble (#2675)', () => {
       '--private-key',
       privatePath,
       '--key-id',
-      'fixture-release',
+      'fixture-nightly',
       '--allow-unpinned-key',
       '--output',
       manifestPath,
@@ -919,7 +938,7 @@ describe('release manifest assemble (#2675)', () => {
     expect(JSON.parse(verified.stdout)).toEqual(payload);
     const envelope = JSON.parse(readFileSync(manifestPath, 'utf8'));
     expect(
-      verifyReleaseManifest(envelope, KEYS, { expectedChannel: 'preview' }),
+      verifyReleaseManifest(envelope, KEYS, { expectedChannel: 'nightly' }),
     ).toEqual(payload);
   });
 
@@ -1038,7 +1057,7 @@ describe('release manifest assemble (#2675)', () => {
     list[0] = { ...list[0], release: { ...list[0].release, ...edit } };
     return list;
   };
-  const VERSIONED = `v${PREVIEW.version}`;
+  const VERSIONED = `v${ASSEMBLY.version}`;
   const REFUSALS: Array<{
     name: string;
     descriptors: () => ReturnType<typeof descriptor>[];
@@ -1107,17 +1126,17 @@ describe('release manifest assemble (#2675)', () => {
     {
       name: 'an archive built from another commit',
       descriptors: withRelease({ sha: 'e'.repeat(40) }),
-      error: `station-server-darwin-arm64.tar.gz.json: built for ${VERSIONED} (preview) at ${'e'.repeat(40)}, not ${VERSIONED} (preview) at ${PREVIEW.sha}`,
+      error: `station-server-darwin-arm64.tar.gz.json: built for ${VERSIONED} (nightly) at ${'e'.repeat(40)}, not ${VERSIONED} (nightly) at ${ASSEMBLY.sha}`,
     },
     {
       name: 'an archive built for another tag at the same commit',
-      descriptors: withRelease({ ref: 'v0.7.0-preview.2' }),
-      error: `station-server-darwin-arm64.tar.gz.json: built for v0.7.0-preview.2 (preview) at ${PREVIEW.sha}, not ${VERSIONED} (preview) at ${PREVIEW.sha}`,
+      descriptors: withRelease({ ref: 'v0.7.0-nightly.2' }),
+      error: `station-server-darwin-arm64.tar.gz.json: built for v0.7.0-nightly.2 (nightly) at ${ASSEMBLY.sha}, not ${VERSIONED} (nightly) at ${ASSEMBLY.sha}`,
     },
     {
       name: 'an archive built for another ring at the same commit',
       descriptors: withRelease({ releaseChannel: 'stable' }),
-      error: `station-server-darwin-arm64.tar.gz.json: built for ${VERSIONED} (stable) at ${PREVIEW.sha}, not ${VERSIONED} (preview) at ${PREVIEW.sha}`,
+      error: `station-server-darwin-arm64.tar.gz.json: built for ${VERSIONED} (stable) at ${ASSEMBLY.sha}, not ${VERSIONED} (nightly) at ${ASSEMBLY.sha}`,
     },
     {
       name: 'an unsupported target',
@@ -1145,7 +1164,7 @@ describe('release manifest assemble (#2675)', () => {
       descriptors: all,
       options: {
         '--base-url':
-          'https://github.com/kontourai/station/releases/download/v0.7.0-preview.2/',
+          'https://github.com/kontourai/station/releases/download/v0.7.0-nightly.2/',
       },
       error: `--base-url must name the versioned release ${VERSIONED}, not a rolling pointer`,
     },

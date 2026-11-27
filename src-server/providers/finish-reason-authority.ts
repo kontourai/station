@@ -4,8 +4,7 @@ import type { TurnCompletedEvent } from '@kontourai/station-contracts/runtime-ev
  * The finish reasons that PROVE a provider ran a turn to a genuine,
  * self-reported outcome — the clear-authority allowlist.
  *
- * Two independent trust decisions consume this set, and membership grants
- * BOTH authorities at once:
+ * Membership grants clear authority in these projections:
  *
  * - `runtime-auth-health-monitor.ts` (`clearsRuntimeAuthHealth`): a
  *   `turn.completed` with one of these reasons clears a recorded runtime
@@ -15,6 +14,8 @@ import type { TurnCompletedEvent } from '@kontourai/station-contracts/runtime-ev
  *   `turn.completed` with one of these reasons, strictly after a
  *   session-scoped `runtime.error`, supersedes that error — the session
  *   stops projecting `failed`.
+ * - `projectReadTurnOutcomes`: a completion for the exact same turn can
+ *   supersede its recorded terminal failure.
  *
  * archive#3509 fix round MEDIUM 2 (recorded when this set lived inside the
  * auth-health monitor): this is deliberately an ALLOWLIST, not "every
@@ -28,7 +29,7 @@ import type { TurnCompletedEvent } from '@kontourai/station-contracts/runtime-ev
  * the monitor's separate well-formedness set — this allowlist is exactly why
  * that addition granted `'other'` no clear authority. A new vocabulary
  * member starts with NO clear authority; granting it is a decision the next
- * fixer must make here, explicitly, knowing it widens BOTH consumers.
+ * fixer must make here for every consumer.
  */
 type ProviderFinishReason = NonNullable<TurnCompletedEvent['finishReason']>;
 

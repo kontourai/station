@@ -100,7 +100,7 @@ describe('approval card whose bound call arrived spilled after the request', () 
         onApprove={vi.fn()}
       />,
     );
-    expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
   });
 });
@@ -117,7 +117,7 @@ describe('approval card with content stored out of line', () => {
     expect(screen.getByRole('status').textContent).toContain(
       'Loading the full request',
     );
-    expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
   });
 
@@ -127,8 +127,8 @@ describe('approval card with content stored out of line', () => {
     expect(
       screen.getByText('The full request could not be loaded'),
     ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(query.refetch).toHaveBeenCalled();
   });
 
@@ -149,7 +149,7 @@ describe('approval card with content stored out of line', () => {
       },
     };
     const view = card();
-    expect(screen.getByRole('button', { name: 'Allow Once' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Allow once' })).toBeTruthy();
     expect(recorded).toHaveBeenCalledWith(
       'thread-1',
       'open-big',
@@ -214,10 +214,10 @@ describe('approval card with content stored out of line', () => {
         onApprove={vi.fn()}
       />,
     );
-    expect(screen.getByRole('button', { name: 'Allow Once' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Allow once' })).toBeTruthy();
     expect(query.inputs).toHaveLength(0);
     act(() => requestContentRefreshForTest('thread-1', 'open-fc'));
-    expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
     expect(query.inputs.at(-1)).toMatchObject({ requestId: 'req-fc' });
     view.unmount();
   });

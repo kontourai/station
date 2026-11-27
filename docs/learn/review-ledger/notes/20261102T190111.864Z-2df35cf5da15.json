@@ -1,7 +1,0 @@
-{
-  "revision": "817732d57e86534ed2245d162a346166fd2e7df2",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Added the conflict-deferral paragraph (PR source admission): only an explicit admitted=false defers, uncertainty admits, rerun-failed-jobs supersedes via the newest-attempt source policy. Checked it against ci.yml, scripts/pr-source-admission.mjs and the job-graph tests.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/__tests__/pr-ci-supersession.test.ts","scripts/actionlint-gate.mjs","scripts/ci-workflow-governance.mjs","scripts/pr-ci-supersession.mjs","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

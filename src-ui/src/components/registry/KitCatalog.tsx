@@ -259,9 +259,9 @@ export function KitCatalog() {
             }}
           >
             {createLayout.isPending
-              ? 'Adding layout...'
+              ? 'Adding layout…'
               : projectLayoutsLoading
-                ? 'Checking project layouts...'
+                ? 'Checking project layouts…'
                 : projectLayoutsError
                   ? 'Project layout check required'
                   : alreadyApplied

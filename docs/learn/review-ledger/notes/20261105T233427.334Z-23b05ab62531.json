@@ -1,7 +1,0 @@
-{
-  "revision": "751a9cf872c2743b66356d6431a524755d049441",
-
-  "notes": [
-    {"path":"docs/guides/native-releases.md","note":"desktop-server-runtime.mjs added two koffi prune rules (build sources dropped everywhere; koffi and its @koromix platform package reduced to metadata and license off Windows). I re-read this doc's runtime-staging, budget and release-input claims; none describes koffi or the changed rules, and the 512 MiB budget and staging flow are unchanged.","inputs":["docs/guides/native-releases.md","scripts/lib/desktop-server-runtime.mjs"]}
-  ]
-}

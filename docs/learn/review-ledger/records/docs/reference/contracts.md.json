@@ -408,7 +408,15 @@
 
     "packages/contracts/src/managed-policy-controls.ts",
 
-    "packages/contracts/src/managed-policy-status.ts"
+    "packages/contracts/src/managed-policy-status.ts",
+
+    "src-server/providers/adapters/muse-serve-schema.ts",
+
+    "packages/contracts/src/workspace-home-role.ts",
+
+    "src-ui/src/views/home/home-role-projection.ts",
+
+    "packages/contracts/src/project-room-coordinator.ts"
   ],
 
   "checks": [

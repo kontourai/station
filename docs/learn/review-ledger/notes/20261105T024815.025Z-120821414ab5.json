@@ -1,7 +1,0 @@
-{
-  "revision": "23aa27c119144072e28ecf1429d9476b70d23609",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Added the shared viewport/zoom/appearance ownership sentence and decision link under Browser callers and lifecycle, checked against browser-session-registry.ts setViewport/setZoom and BrowserPane.tsx. Other claims unaffected.","inputs":["docs/architecture/module-map.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]}
-  ]
-}

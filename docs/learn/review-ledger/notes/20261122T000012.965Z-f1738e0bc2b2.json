@@ -1,0 +1,15 @@
+{
+  "revision": "890350c950d21e0cf22ee45cacba2280a2ada1f2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only change since the last review: ConversationPredecessorEngineLiveError is no longer exported (no caller outside the module). These pages describe its refusal code, not the class export, and remain accurate.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Only change since the last review: ConversationPredecessorEngineLiveError is no longer exported (no caller outside the module). These pages describe its refusal code, not the class export, and remain accurate.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Only change since the last review: ConversationPredecessorEngineLiveError is no longer exported (no caller outside the module). These pages describe its refusal code, not the class export, and remain accurate.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Only change since the last review: ConversationPredecessorEngineLiveError is no longer exported (no caller outside the module). These pages describe its refusal code, not the class export, and remain accurate.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Only change since the last review: ConversationPredecessorEngineLiveError is no longer exported (no caller outside the module). These pages describe its refusal code, not the class export, and remain accurate.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]}
+  ]
+}

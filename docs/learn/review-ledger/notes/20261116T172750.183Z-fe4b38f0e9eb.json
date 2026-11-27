@@ -1,0 +1,11 @@
+{
+  "revision": "8ea5e664bdebcf99c6cfebb31884d6e8ca450e2c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"MessageBubble moved the Basis chip after the hover-revealed actions in the answer's footer bar so it sits at the bubble's edge at rest; still visible at rest and beside, not inside, the row. Citing claims (inventory host, checkpoints, settings) are unaffected.","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"MessageBubble moved the Basis chip after the hover-revealed actions in the answer's footer bar so it sits at the bubble's edge at rest; still visible at rest and beside, not inside, the row. Citing claims (inventory host, checkpoints, settings) are unaffected.","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"MessageBubble moved the Basis chip after the hover-revealed actions in the answer's footer bar so it sits at the bubble's edge at rest; still visible at rest and beside, not inside, the row. Citing claims (inventory host, checkpoints, settings) are unaffected.","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

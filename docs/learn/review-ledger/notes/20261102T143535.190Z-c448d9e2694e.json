@@ -1,7 +1,0 @@
-{
-  "revision": "5f8ec7faed94fca201d05c05fc7df26d656962e9",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Re-read the 'version and documentation digest identify shipped content' claim against station-docs-mcp-server.ts: documentationDigest is now SHA-256 over STATION_DOCS_TOPICS computed at runtime (Web Crypto) instead of a committed constant in the generated file; same value as stationDocsDigest() and still returned by every tool. No prose change needed.","inputs":["docs/reference/station-docs.md","scripts/generate-station-docs.mjs","src-server/tools/__tests__/station-docs-mcp-server.test.ts","src-server/tools/station-docs-content.ts","src-server/tools/station-docs-mcp-server.ts"]}
-  ]
-}

@@ -1,6 +1,7 @@
 import {
   type ConnectionFailureReason,
   type ConnectionHealthCheckResult,
+  type ConnectionHealthFailureEvidence,
   classifyHttpFailureResponse,
   classifyNativeTransportRefusal,
   HEALTH_PROBE_TIMEOUT_MS,
@@ -17,6 +18,11 @@ import { isBlockingCompatibility } from './compatibilityLoader';
 import { isStationUiProxyUnavailableResponse } from './station-ui-proxy';
 
 type HealthRoute =
+  | {
+      kind: 'native-direct';
+      identityTransport: typeof fetch;
+      isCurrent(): boolean;
+    }
   | {
       kind: 'relay';
       transport: typeof fetch;
@@ -46,7 +52,11 @@ function relayAuthorityFailure(
     code === 'station_application_authority_required' ||
     code === 'station_application_authority_invalid'
   )
-    return { ok: false, reason: 'authentication-failed' };
+    return {
+      ok: false,
+      reason: 'authentication-failed',
+      evidence: { kind: 'local-authority', code },
+    };
   if (code === 'station_relay_route_stale')
     return { ok: false, reason: 'undetermined' };
   return null;
@@ -58,6 +68,7 @@ let healthRouteResolver:
       authenticated?: boolean,
     ) => HealthRoute | Promise<HealthRoute>)
   | undefined;
+const nativeHealthResponseBindings = new WeakMap<Response, () => boolean>();
 
 /** Installed by the active Station owner, never by broker discovery. */
 export function setStationHealthRouteResolver(
@@ -81,6 +92,9 @@ async function healthFetch(
     return Promise.reject(new Error('Station broker route is not ready'));
   if (route?.kind === 'reject')
     return Promise.reject(new Error('Station route is not ready'));
+  if (route?.kind === 'native-direct') {
+    if (!route.isCurrent()) throw new Error('Station route is retired');
+  }
   if (route?.kind === 'native-relay') {
     if (!route.isCurrent()) throw new Error('Station route is retired');
     return route.transport(url, init);
@@ -119,6 +133,13 @@ async function stationAuthenticatedFetch(
     return Promise.reject(new Error('Station broker route is not ready'));
   if (route?.kind === 'reject')
     return Promise.reject(new Error('Station route is not ready'));
+  if (route?.kind === 'native-direct') {
+    if (!route.isCurrent()) throw new Error('Station route is retired');
+    const response = await route.identityTransport(url, init);
+    if (!route.isCurrent()) throw new Error('Station route is retired');
+    nativeHealthResponseBindings.set(response, route.isCurrent);
+    return response;
+  }
   if (route?.kind === 'native-relay') {
     if (!route.identityTransport || !route.isCurrent())
       throw Object.assign(
@@ -190,16 +211,25 @@ async function readStationErrorCode(
  * archive#3297 — the single derivation both probes below use for a non-OK
  * HTTP response, so they can never disagree again about what a status means.
  */
-async function reasonForFailedResponse(
+async function failedResponse(
   response: Response,
-): Promise<ConnectionFailureReason> {
-  if (await isStationUiProxyUnavailableResponse(response)) {
-    return 'host-unavailable';
-  }
-  return classifyHttpFailureResponse(
-    response.status,
-    await readStationErrorCode(response),
-  );
+  phase: Extract<ConnectionHealthFailureEvidence, { kind: 'http' }>['phase'],
+): Promise<ConnectionHealthCheckResult> {
+  const { status } = response;
+  const proxyUnavailable = await isStationUiProxyUnavailableResponse(response);
+  const code = await readStationErrorCode(response);
+  return {
+    ok: false,
+    reason: proxyUnavailable
+      ? 'host-unavailable'
+      : classifyHttpFailureResponse(status, code),
+    evidence: {
+      kind: 'http',
+      phase,
+      status,
+      ...(code === undefined ? {} : { code }),
+    },
+  };
 }
 
 export function checkServerHealth(
@@ -237,15 +267,7 @@ export async function checkServerHealthDetailed(
       credential,
     );
     if (response.ok) return { ok: true };
-    // archive#3297: both probes now share one derivation
-    // (`classifyHttpFailureResponse`), and it reads the coded body rather
-    // than guessing from the status. The comment that used to sit here said
-    // this server "returns 403 for origin policy, never for a rejected
-    // credential" — that was incomplete: `runtime-http.ts` also answers 403
-    // `insufficient_scope` for a credential it recognizes but will not
-    // accept, which IS a device-credential outcome. Keying on the number
-    // alone could not tell the two apart in either direction.
-    return { ok: false, reason: await reasonForFailedResponse(response) };
+    return await failedResponse(response, 'authenticated');
   } catch (error) {
     const relayFailure = relayAuthorityFailure(error);
     if (relayFailure) return relayFailure;
@@ -280,28 +302,68 @@ export async function probeServerConnection(
   // Station. From then on, a deadline or a saturated native queue on the
   // identity read is a Station that is slow to give this device a turn — the
   // address demonstrably answers — not one that cannot be reached.
-  let handshakeAnswered = false;
+  const progress = { handshakeAnswered: false };
+  // The deadline has to end the probe itself, not only the requests that
+  // honour its signal. The route resolver (host IPC for a native relay route)
+  // and the lazily loaded compatibility check take no signal, and a probe that
+  // never settles leaves the health coordinator queueing every later trigger
+  // behind it.
+  const stopped = new Promise<ConnectionHealthCheckResult>((resolve) => {
+    const settle = () =>
+      resolve({
+        ok: false,
+        reason: stoppedProbeReason(controller.signal, progress),
+      });
+    if (controller.signal.aborted) settle();
+    else controller.signal.addEventListener('abort', settle, { once: true });
+  });
+  try {
+    return await Promise.race([
+      probeUntilAnswered(
+        url,
+        credential,
+        expectedEnvironmentId,
+        controller.signal,
+        progress,
+        brokerRoute,
+      ),
+      stopped,
+    ]);
+  } finally {
+    clearTimeout(timeout);
+    parentSignal.removeEventListener('abort', abort);
+  }
+}
+
+/** Why a probe that its deadline or its caller stopped did not answer. */
+function stoppedProbeReason(
+  signal: AbortSignal,
+  progress: { handshakeAnswered: boolean },
+): ConnectionFailureReason {
+  if (signal.reason !== 'timeout') return 'unreachable';
+  return progress.handshakeAnswered ? 'busy' : 'timeout';
+}
+
+async function probeUntilAnswered(
+  url: string,
+  credential: string | undefined,
+  expectedEnvironmentId: string | null,
+  signal: AbortSignal,
+  progress: { handshakeAnswered: boolean },
+  brokerRoute?: BrokerRoute,
+): Promise<ConnectionHealthCheckResult> {
   const observeProtocol = beginClientProtocolObservation(url);
   try {
     const handshakeResponse = await healthFetch(
       new URL(PUBLIC_STATION_HANDSHAKE_PATH, url),
       {
         headers: { Accept: 'application/json' },
-        signal: controller.signal,
+        signal,
       },
       brokerRoute,
     );
-    // archive#3297: this line was the defect the issue was filed about. The
-    // public handshake answering 401 — or 403, or 404 — proves the address
-    // answered, and collapsing all three into 'unreachable' told a phone
-    // whose credential had gone stale that its Station "may be off, asleep,
-    // or on another network". Forty lines above, `checkServerHealthDetailed`
-    // had the mapping right; the two probes now share one derivation.
     if (!handshakeResponse.ok) {
-      return {
-        ok: false,
-        reason: await reasonForFailedResponse(handshakeResponse),
-      };
+      return await failedResponse(handshakeResponse, 'handshake');
     }
     let handshake: {
       schemaVersion?: unknown;
@@ -346,7 +408,7 @@ export async function probeServerConnection(
     }
     // Only a verified handshake restores cross-origin header acceptance.
     observeProtocol(handshake.compatibility);
-    handshakeAnswered = true;
+    progress.handshakeAnswered = true;
     const identityResponse = await stationAuthenticatedFetch(
       new URL('/api/system/identity', url),
       credential,
@@ -357,16 +419,15 @@ export async function probeServerConnection(
       // It is carried as an untyped init field on purpose: the native
       // transport reads it (`authenticatedTransport.ts`), and nothing else is
       // meant to set it. Plain `fetch` ignores unknown init members.
-      { signal: controller.signal, livenessProbe: true } as RequestInit,
+      { signal, livenessProbe: true } as RequestInit,
       brokerRoute,
     );
     if (!identityResponse.ok) {
-      return {
-        ok: false,
-        reason: await reasonForFailedResponse(identityResponse),
-      };
+      return await failedResponse(identityResponse, 'authenticated');
     }
     const identity = (await identityResponse.json()) as { bootId?: unknown };
+    if (nativeHealthResponseBindings.get(identityResponse)?.() === false)
+      throw new Error('Station route is retired');
     return typeof identity.bootId === 'string' && identity.bootId
       ? { ok: true, bootId: identity.bootId }
       : { ok: false, reason: 'unsupported-capability-version' };
@@ -379,20 +440,9 @@ export async function probeServerConnection(
     // other transport failure here.
     const nativeRefusal = classifyNativeTransportRefusal(error);
     if (nativeRefusal) return { ok: false, reason: nativeRefusal };
-    if (
-      handshakeAnswered &&
-      (controller.signal.reason === 'timeout' ||
-        isNativeTransportSaturation(error))
-    ) {
+    if (progress.handshakeAnswered && isNativeTransportSaturation(error)) {
       return { ok: false, reason: 'busy' };
     }
-    return {
-      ok: false,
-      reason:
-        controller.signal.reason === 'timeout' ? 'timeout' : 'unreachable',
-    };
-  } finally {
-    clearTimeout(timeout);
-    parentSignal.removeEventListener('abort', abort);
+    return { ok: false, reason: stoppedProbeReason(signal, progress) };
   }
 }

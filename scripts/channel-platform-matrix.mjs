@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const channels = ['stable', 'beta', 'nightly'];
+const channels = ['stable', 'nightly'];
 const typescriptPath =
   'packages/connect/src/core/pairingDeepLinkChannels.generated.ts';
 const rustPath = 'src-desktop/src/pairing_deep_link_channels_generated.rs';
@@ -18,10 +18,7 @@ export function readChannelPlatformMatrix(rootDir = root) {
 }
 export function pairingSchemeForChannel(matrix, channel) {
   const scheme = matrix[channel]?.pairingDeepLinkScheme;
-  if (
-    typeof scheme !== 'string' ||
-    !/^station-(stable|beta|nightly)$/.test(scheme)
-  )
+  if (!channels.includes(channel) || scheme !== `station-${channel}`)
     throw new Error(`Channel ${channel} has no valid release pairing scheme.`);
   return scheme;
 }
@@ -49,9 +46,8 @@ export function renderPairingDeepLinkTypeScript(matrix) {
 }
 export function renderPairingDeepLinkRust(matrix) {
   const stable = pairingSchemeForChannel(matrix, 'stable');
-  const beta = pairingSchemeForChannel(matrix, 'beta');
   const nightly = pairingSchemeForChannel(matrix, 'nightly');
-  return `// Generated from config/channel-platform-matrix.json by scripts/channel-platform-matrix.mjs.\npub fn normalize_dev_pairing_deep_link_suffix(value: &str) -> String {\n    let mut output = String::new();\n    for character in value.chars().flat_map(char::to_lowercase) {\n        if character.is_ascii_alphanumeric() {\n            output.push(character);\n        } else if !output.is_empty() && !output.ends_with('-') {\n            output.push('-');\n        }\n    }\n    let output = output.trim_end_matches('-').to_string();\n    if output.is_empty() {\n        "instance".to_string()\n    } else {\n        output\n    }\n}\n\npub fn native_pairing_deep_link_scheme(identifier: &str, dev_build: bool, channel: &str) -> String {\n    if dev_build {\n        let suffix = identifier\n            .strip_prefix("io.kontourai.station.dev.")\n            .unwrap_or("instance");\n        return format!(\n            "station-dev-{}",\n            normalize_dev_pairing_deep_link_suffix(suffix)\n        );\n    }\n    match channel {\n        "beta" => "${beta}".to_string(),\n        "nightly" => "${nightly}".to_string(),\n        _ => "${stable}".to_string(),\n    }\n}\n`;
+  return `// Generated from config/channel-platform-matrix.json by scripts/channel-platform-matrix.mjs.\npub fn normalize_dev_pairing_deep_link_suffix(value: &str) -> String {\n    let mut output = String::new();\n    for character in value.chars().flat_map(char::to_lowercase) {\n        if character.is_ascii_alphanumeric() {\n            output.push(character);\n        } else if !output.is_empty() && !output.ends_with('-') {\n            output.push('-');\n        }\n    }\n    let output = output.trim_end_matches('-').to_string();\n    if output.is_empty() {\n        "instance".to_string()\n    } else {\n        output\n    }\n}\n\npub fn native_pairing_deep_link_scheme(identifier: &str, dev_build: bool, channel: &str) -> String {\n    if dev_build || channel == "dev" {\n        let suffix = identifier\n            .strip_prefix("io.kontourai.station.dev.")\n            .unwrap_or("instance");\n        return format!(\n            "station-dev-{}",\n            normalize_dev_pairing_deep_link_suffix(suffix)\n        );\n    }\n    match channel {\n        "nightly" => "${nightly}".to_string(),\n        "stable" => "${stable}".to_string(),\n        _ => String::new(),\n    }\n}\n`;
 }
 export function generatedChannelPlatformOutputs(matrix) {
   return new Map([

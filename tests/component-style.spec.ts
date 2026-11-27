@@ -27,6 +27,8 @@ function Controls() {
     <ActionRow overflowLabel="More actions" primary={<Button pending={pending} pendingLabel="Saving" onClick={() => {setCount(count+1);setPending(true);}}>Save</Button>} secondary={<Button onClick={() => setConfirming(true)}>Remove server</Button>} />
     <SdkButton loading={pending} onClick={() => setCount(count+1)}>SDK save</SdkButton>
     {['primary', 'secondary', 'danger', 'danger-outline', 'success', 'link', 'ghost'].map(variant => <Button key={variant} variant={variant} aria-label={'Shared '+variant}>{variant}</Button>)}
+    <Button variant="primary" disabled>Create</Button>
+    <Button variant="primary" pending pendingLabel="Creating…">Create</Button>
     <NoticeAction className="notice-action--primary" onClick={() => setCount(count+1)}>Allow</NoticeAction>
     <NoticeAction className="notice-action--danger" onClick={() => setCount(count+1)}>Deny</NoticeAction>
     <a className="button notice-action notice-action--secondary" href="#details">Open session</a>
@@ -106,6 +108,48 @@ test('shared primary actions keep instant press and faster release motion', asyn
 });
 
 for (const theme of ['light', 'dark']) {
+  test(`a disabled or pending primary keeps its label under the pointer in ${theme}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 820 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.setContent(
+      `<!doctype html><html data-theme="${theme}"><body><div id="root"></div></body></html>`,
+    );
+    await page.addStyleTag({ content: css });
+    await page.addScriptTag({ content: js });
+    // The pending action is named by its pending label, so the button is
+    // never announced or drawn without words while the request runs.
+    const pending = page.getByRole('button', {
+      name: 'Creating…',
+      exact: true,
+    });
+    await expect(pending).toBeDisabled();
+    await expect(pending).toHaveAttribute('aria-busy', 'true');
+    for (const action of [
+      page.getByRole('button', { name: 'Create', exact: true }),
+      pending,
+    ]) {
+      await expect(action).toBeDisabled();
+      await page.mouse.move(0, 0);
+      const rest = await action.evaluate(
+        (node) => getComputedStyle(node).backgroundColor,
+      );
+      // The app shell's element-level `button:hover` used to outrank the
+      // variant class on a disabled button, replacing the fill with a pale
+      // surface the white label vanished into.
+      await action.hover();
+      await action.evaluate(async (node) => {
+        getComputedStyle(node).backgroundColor;
+        await Promise.all(
+          node.getAnimations().map((animation) => animation.finished),
+        );
+      });
+      expect(
+        await action.evaluate((node) => getComputedStyle(node).backgroundColor),
+      ).toBe(rest);
+    }
+  });
   for (const width of [390, 1280]) {
     test(`shared actions and confirmation remain usable in ${theme} at ${width}px`, async ({
       page,
@@ -162,12 +206,17 @@ for (const theme of ['light', 'dark']) {
             top: style.paddingTop,
             right: style.paddingRight,
             fontSize: style.fontSize,
+            textSm: getComputedStyle(document.documentElement)
+              .getPropertyValue('--k-text-sm')
+              .trim(),
           };
         });
       expect(retryStyle.top).toBe('6px');
       expect(retryStyle.right).toBe('12px');
-      // #4403: a control is at least 12px.
-      if (width === 1280) expect(retryStyle.fontSize).toBe('12.5px');
+      // #4403: a control is at least 12px. It reads the shared small text
+      // size, which the person's density sets (tokens.css).
+      expect(Number.parseFloat(retryStyle.fontSize)).toBeGreaterThanOrEqual(12);
+      if (width === 1280) expect(retryStyle.fontSize).toBe(retryStyle.textSm);
       if (width === 390) {
         const header = page.getByLabel('Collapsed dock geometry');
         const control = page.getByRole('button', { name: 'Open dock' });
@@ -189,7 +238,7 @@ for (const theme of ['light', 'dark']) {
       const trigger = page.getByRole('button', { name: 'Remove server' });
       await trigger.click();
       const dialog = page.getByRole('alertdialog', {
-        name: 'Delete Tool Server',
+        name: 'Delete tool server',
       });
       await expect(dialog).toBeVisible();
       await expect(

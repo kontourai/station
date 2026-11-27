@@ -1,0 +1,115 @@
+{
+  "revision": "51556b0f11f694bd1c08210daf776688e47c950c",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the managed Events poll against the shared HTTP client, negotiated capability and named request header. The live isolated server accepted cursor reuse. Continuous delivery remains a separate lifecycle.","inputs":["docs/design/mcp-ui-host.md","packages/shared/src/mcp-connection.ts","src-server/routes/agents/__tests__/tools.routes.test.ts","src-server/routes/agents/tools.ts","src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Verified the bounded poll request and response, re-admission after upload, shared-account restriction, signal propagation and cursor fields against the tested route.","inputs":["docs/reference/api.md","packages/contracts/src/tool.ts","src-server/routes/agents/tools.ts","src-server/security/pairing-route-scopes.ts","src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The Events capability row now has a managed polling operation. The MCP App frame and connection lifetime guidance retain their previous contract.","inputs":["docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"The Events capability row now has a managed polling operation. The MCP App frame and connection lifetime guidance retain their previous contract.","inputs":["docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/shared.md","note":"The Events capability row now has a managed polling operation. The MCP App frame and connection lifetime guidance retain their previous contract.","inputs":["docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The Events capability row now has a managed polling operation. The MCP App frame and connection lifetime guidance retain their previous contract.","inputs":["docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/design/terminal.md","note":"The added Events polling leaf does not alter existing capture, terminal, tool or account routes.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The added Events polling leaf does not alter existing capture, terminal, tool or account routes.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the integration contract consumers. Poll input and page types are additive and do not alter stored integration definitions or probe state.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the integration contract consumers. Poll input and page types are additive and do not alter stored integration definitions or probe state.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the integration contract consumers. Poll input and page types are additive and do not alter stored integration definitions or probe state.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the integration contract consumers. Poll input and page types are additive and do not alter stored integration definitions or probe state.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the integration contract consumers. Poll input and page types are additive and do not alter stored integration definitions or probe state.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the integration contract consumers. Poll input and page types are additive and do not alter stored integration definitions or probe state.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the integration contract consumers. Poll input and page types are additive and do not alter stored integration definitions or probe state.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed negotiated MCP and custody boundaries. The poll-only fetch wrapper derives the event name, bounds bytes before decoding and preserves the underlying guarded fetch.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed negotiated MCP and custody boundaries. The poll-only fetch wrapper derives the event name, bounds bytes before decoding and preserves the underlying guarded fetch.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed negotiated MCP and custody boundaries. The poll-only fetch wrapper derives the event name, bounds bytes before decoding and preserves the underlying guarded fetch.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed negotiated MCP and custody boundaries. The poll-only fetch wrapper derives the event name, bounds bytes before decoding and preserves the underlying guarded fetch.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed negotiated MCP and custody boundaries. The poll-only fetch wrapper derives the event name, bounds bytes before decoding and preserves the underlying guarded fetch.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed negotiated MCP and custody boundaries. The poll-only fetch wrapper derives the event name, bounds bytes before decoding and preserves the underlying guarded fetch.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed negotiated MCP and custody boundaries. The poll-only fetch wrapper derives the event name, bounds bytes before decoding and preserves the underlying guarded fetch.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the shared operator guard around catalog and polling reads. The poll rechecks admission after a bounded body read and before upstream dispatch. Existing MCP Apps routes are unchanged.","inputs":["src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed the shared operator guard around catalog and polling reads. The poll rechecks admission after a bounded body read and before upstream dispatch. Existing MCP Apps routes are unchanged.","inputs":["src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the shared operator guard around catalog and polling reads. The poll rechecks admission after a bounded body read and before upstream dispatch. Existing MCP Apps routes are unchanged.","inputs":["src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the shared operator guard around catalog and polling reads. The poll rechecks admission after a bounded body read and before upstream dispatch. Existing MCP Apps routes are unchanged.","inputs":["src-server/routes/agents/tools.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed the shared operator guard around catalog and polling reads. The poll rechecks admission after a bounded body read and before upstream dispatch. Existing MCP Apps routes are unchanged.","inputs":["src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Reviewed the single new Events poll route under integration operate. The runtime also requires the current operator. Existing pairing and broker route classifications are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed custody for bounded polling within the existing integration connection. Cold setup checks cancellation before connection, and captured authority and custody are checked before publication.","inputs":["src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed custody for bounded polling within the existing integration connection. Cold setup checks cancellation before connection, and captured authority and custody are checked before publication.","inputs":["src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed custody for bounded polling within the existing integration connection. Cold setup checks cancellation before connection, and captured authority and custody are checked before publication.","inputs":["src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Reviewed custody for bounded polling within the existing integration connection. Cold setup checks cancellation before connection, and captured authority and custody are checked before publication.","inputs":["src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed custody for bounded polling within the existing integration connection. Cold setup checks cancellation before connection, and captured authority and custody are checked before publication.","inputs":["src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed custody for bounded polling within the existing integration connection. Cold setup checks cancellation before connection, and captured authority and custody are checked before publication.","inputs":["src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed independent currentness evidence. The route fixture holds the poll upload, loses operator access and confirms Station makes no upstream call.","inputs":["src-server/routes/agents/__tests__/tools.routes.test.ts"]}
+  ]
+}

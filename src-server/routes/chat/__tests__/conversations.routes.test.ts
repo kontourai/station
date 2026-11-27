@@ -2,11 +2,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { CONVERSATION_FORK_REFUSAL_CODES } from '@kontourai/station-contracts/orchestration';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createForkContextWriter } from '../../../__test-utils__/fork-context-writer.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
@@ -16,6 +19,8 @@ import {
   FileConversationAcknowledgementStore,
   PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY,
 } from '../../../services/orchestration/conversation-acknowledgement-store.js';
+import { ConversationForkContextError } from '../../../services/orchestration/conversation-fork-context.js';
+import { ConversationWorkStateStore } from '../../../services/orchestration/conversation-work-state-store.js';
 import { resolveRuntimeAgent } from '../../agents/runtime-agent-resolver.js';
 
 vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
@@ -79,11 +84,8 @@ vi.mock('../../../runtime/conversation/conversation-manager.js', () => ({
   }),
 }));
 
-const {
-  createConversationRoutes,
-  createGlobalConversationRoutes,
-  readCompleteForkConversationWindow,
-} = await import('../conversations.js');
+const { createConversationRoutes, createGlobalConversationRoutes } =
+  await import('../conversations.js');
 const { FileMemoryAdapter } = await import(
   '../../../adapters/file/memory-adapter.js'
 );
@@ -1894,6 +1896,65 @@ describe('Conversation Routes', () => {
     });
   });
 
+  test("DELETE /:slug/conversations/:id prunes every person's settled and hidden records for it", async () => {
+    const home = makeForkDir('station-delete-prune-');
+    const workState = new ConversationWorkStateStore(home);
+    workState.set('personal:owner', 'c1', true, '2026-11-01T00:00:00.000Z');
+    workState.set('personal:owner', 'kept', true, '2026-11-01T00:00:00.000Z');
+    workState.set(
+      'human:tailnet:other',
+      'c1',
+      true,
+      '2026-11-02T00:00:00.000Z',
+    );
+    workState.setHidden(
+      'personal:owner',
+      'c1',
+      true,
+      '2026-11-03T00:00:00.000Z',
+    );
+    workState.setHidden(
+      'personal:owner',
+      'thread',
+      true,
+      '2026-11-03T00:00:00.000Z',
+    );
+    const adapter = createMockAdapter();
+    const app = createConversationRoutes(
+      new Map([['default', adapter]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      { getProjectHomeDir: () => home } as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => 'delete-user',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { read: vi.fn(), write: vi.fn(), dismiss: vi.fn() },
+    );
+    const response = await app.request('/station/conversations/c1', {
+      method: 'DELETE',
+    });
+    expect(response.status).toBe(200);
+    expect(adapter.deleteConversation).toHaveBeenCalledWith('c1');
+    const after = new ConversationWorkStateStore(home);
+    expect(after.read('personal:owner')).toEqual({
+      kept: '2026-11-01T00:00:00.000Z',
+    });
+    expect(after.read('human:tailnet:other')).toEqual({});
+    expect(after.readHidden('personal:owner')).toEqual({
+      thread: '2026-11-03T00:00:00.000Z',
+    });
+  });
+
   // archive#1566: a rename always stamps `titleSource: 'user'` into
   // metadata (merged with whatever metadata already existed on the
   // conversation), even though this PATCH body carries no `metadata` field
@@ -2168,195 +2229,6 @@ describe('Conversation Routes', () => {
     },
   );
 
-  test('bounded conversation pager fails closed on a stalled cursor and reauthorizes every page', async () => {
-    const authority = alphaAuthority();
-    const readConversationEventWindow = vi.fn(
-      async (_conversationId: string, _options: { authority: unknown }) => ({
-        watermark: 1,
-        events: [],
-        hasMore: true,
-        nextCursor: 'same-cursor',
-      }),
-    );
-    const result = await readCompleteForkConversationWindow(
-      { readConversationEventWindow } as any,
-      'conversation',
-      authority,
-    );
-    expect(result).toEqual({
-      status: 'incomplete',
-      reason: 'conversation cursor stalled',
-    });
-    expect(readConversationEventWindow).toHaveBeenCalledTimes(2);
-    expect(
-      readConversationEventWindow.mock.calls.every(
-        ([, options]) => options.authority === authority,
-      ),
-    ).toBe(true);
-  });
-
-  test.each([
-    [
-      'thrown read',
-      async () => {
-        throw new Error('cursor decode failed');
-      },
-      'conversation page read failed',
-    ],
-    [
-      'numeric cursor',
-      async () => ({ watermark: 1, events: [], hasMore: true, nextCursor: 42 }),
-      'conversation cursor stalled',
-    ],
-    [
-      'overlong cursor',
-      async () => ({
-        watermark: 1,
-        events: [],
-        hasMore: true,
-        nextCursor: 'x'.repeat(513),
-      }),
-      'conversation cursor stalled',
-    ],
-  ])(
-    'bounded conversation pager classifies %s as incomplete',
-    async (_name, implementation, reason) => {
-      const result = await readCompleteForkConversationWindow(
-        { readConversationEventWindow: vi.fn(implementation) } as any,
-        'conversation',
-        alphaAuthority(),
-      );
-      expect(result).toEqual({ status: 'incomplete', reason });
-    },
-  );
-
-  test('bounded conversation pager times out a hung page read', async () => {
-    const result = await readCompleteForkConversationWindow(
-      {
-        readConversationEventWindow: vi.fn(() => new Promise(() => {})),
-      } as any,
-      'conversation',
-      alphaAuthority(),
-    );
-    expect(result).toEqual({
-      status: 'incomplete',
-      reason: 'conversation history read timed out',
-    });
-  }, 5_000);
-
-  test.each(['events', 'bytes', 'pages'])(
-    'bounded conversation pager enforces the %s limit',
-    async (limit) => {
-      let call = 0;
-      const event = {
-        eventId: 'e',
-        provider: 'codex',
-        threadId: 'session',
-        method: 'turn.completed',
-        createdAt: '2026-01-01T00:00:00Z',
-        ...(limit === 'bytes'
-          ? { outputText: 'x'.repeat(2 * 1024 * 1024) }
-          : {}),
-      };
-      const readConversationEventWindow = vi.fn(async () => {
-        call += 1;
-        return {
-          watermark: call,
-          events:
-            limit === 'events'
-              ? Array.from({ length: 3_201 }, (_, sequence) => ({
-                  sequence,
-                  event: { ...event, eventId: `e-${sequence}` },
-                }))
-              : [{ sequence: call, event }],
-          hasMore: limit === 'pages',
-          ...(limit === 'pages' ? { nextCursor: `page-${call}` } : {}),
-        };
-      });
-      const result = await readCompleteForkConversationWindow(
-        { readConversationEventWindow } as any,
-        'conversation',
-        alphaAuthority(),
-      );
-      expect(result.status).toBe('incomplete');
-      expect((result as { reason: string }).reason).toMatch(
-        limit === 'pages' ? /page limit/ : /exceeds fork limits/,
-      );
-    },
-  );
-
-  test.each([
-    ['missing', undefined, 'conversation event sequence is malformed'],
-    ['NaN', Number.NaN, 'conversation event sequence is malformed'],
-  ])(
-    'bounded conversation pager rejects %s global sequence',
-    async (_name, sequence, reason) => {
-      const result = await readCompleteForkConversationWindow(
-        {
-          readConversationEventWindow: vi.fn(async () => ({
-            watermark: 1,
-            events: [
-              {
-                sequence,
-                event: {
-                  eventId: 'e1',
-                  provider: 'codex',
-                  threadId: 's',
-                  method: 'turn.completed',
-                  createdAt: '2026-01-01T00:00:00Z',
-                },
-              },
-            ],
-            hasMore: false,
-          })),
-        } as any,
-        'conversation',
-        alphaAuthority(),
-      );
-      expect(result).toEqual({ status: 'incomplete', reason });
-    },
-  );
-
-  test('bounded conversation pager dedupes overlap but rejects distinct IDs sharing a sequence', async () => {
-    let page = 0;
-    const event = (eventId: string) => ({
-      sequence: 1,
-      event: {
-        eventId,
-        provider: 'codex',
-        threadId: 's',
-        method: 'turn.completed',
-        createdAt: '2026-01-01T00:00:00Z',
-      },
-    });
-    const reader = {
-      readConversationEventWindow: vi.fn(async () => {
-        page += 1;
-        return page === 1
-          ? {
-              watermark: 2,
-              events: [event('same')],
-              hasMore: true,
-              nextCursor: 'next',
-            }
-          : {
-              watermark: 2,
-              events: [event('same'), event('conflict')],
-              hasMore: false,
-            };
-      }),
-    };
-    const result = await readCompleteForkConversationWindow(
-      reader as any,
-      'conversation',
-      alphaAuthority(),
-    );
-    expect(result).toEqual({
-      status: 'incomplete',
-      reason: 'conversation event sequence conflicts',
-    });
-  });
-
   test.each([
     '550e8400-e29b-41d4-a716-446655440000',
     'user:fork:abcdef',
@@ -2427,6 +2299,76 @@ describe('Conversation Routes', () => {
       undefined,
     );
     let unresolvedCaller = false;
+    const handoffEvents: { event: CanonicalRuntimeEvent }[] = [
+      {
+        event: {
+          eventId: 'e1',
+          provider: 'codex',
+          threadId: 'session-codex',
+          turnId: 'turn-codex',
+          method: 'turn.started',
+          createdAt: '2026-01-01T00:00:00Z',
+          prompt: 'before',
+        },
+      },
+      {
+        event: {
+          eventId: 'e2',
+          provider: 'codex',
+          threadId: 'session-codex',
+          turnId: 'turn-codex',
+          method: 'content.text-delta',
+          createdAt: '2026-01-01T00:00:01Z',
+          itemId: 'a1',
+          delta: 'codex answer',
+        },
+      },
+      {
+        event: {
+          eventId: 'e3',
+          provider: 'codex',
+          threadId: 'session-codex',
+          turnId: 'turn-codex',
+          method: 'turn.completed',
+          createdAt: '2026-01-01T00:00:02Z',
+          outputText: 'codex answer',
+        },
+      },
+      {
+        event: {
+          eventId: 'e4',
+          provider: 'claude',
+          threadId: 'session-claude',
+          turnId: 'turn-claude',
+          method: 'turn.started',
+          createdAt: '2026-01-01T00:00:03Z',
+          prompt: 'after',
+        },
+      },
+      {
+        event: {
+          eventId: 'e5',
+          provider: 'claude',
+          threadId: 'session-claude',
+          turnId: 'turn-claude',
+          method: 'content.text-delta',
+          createdAt: '2026-01-01T00:00:04Z',
+          itemId: 'a2',
+          delta: 'claude answer',
+        },
+      },
+      {
+        event: {
+          eventId: 'e6',
+          provider: 'claude',
+          threadId: 'session-claude',
+          turnId: 'turn-claude',
+          method: 'turn.completed',
+          createdAt: '2026-01-01T00:00:05Z',
+          outputText: 'claude answer',
+        },
+      },
+    ];
     const adapter = createMockAdapter();
     adapter.getConversation.mockResolvedValue(null);
     adapter.getMessages.mockResolvedValue([]);
@@ -2442,91 +2384,22 @@ describe('Conversation Routes', () => {
             },
       ),
       readSessionMessages: vi.fn(() => []),
-      readConversationEventWindow: vi.fn(async (_id, options) =>
-        options.authority.userId !== principal.id
+      readConversationForkSource: vi.fn(async (_id, authority) =>
+        authority.userId !== principal.id
           ? null
           : {
-              watermark: 6,
-              currentSessionId: 'session-claude',
-              session: { displayTitle: 'Handoff conversation' },
-              sessionLineage: [
-                { sessionId: 'session-codex', agentSlug: 'codex' },
-                { sessionId: 'session-claude', agentSlug: 'claude' },
-              ],
-              events: [
-                {
-                  event: {
-                    eventId: 'e1',
-                    provider: 'codex',
-                    threadId: 'session-codex',
-                    turnId: 'turn-codex',
-                    method: 'turn.started',
-                    createdAt: '2026-01-01T00:00:00Z',
-                    prompt: 'before',
-                  },
-                },
-                {
-                  event: {
-                    eventId: 'e2',
-                    provider: 'codex',
-                    threadId: 'session-codex',
-                    turnId: 'turn-codex',
-                    method: 'content.text-delta',
-                    createdAt: '2026-01-01T00:00:01Z',
-                    itemId: 'a1',
-                    delta: 'codex answer',
-                  },
-                },
-                {
-                  event: {
-                    eventId: 'e3',
-                    provider: 'codex',
-                    threadId: 'session-codex',
-                    turnId: 'turn-codex',
-                    method: 'turn.completed',
-                    createdAt: '2026-01-01T00:00:02Z',
-                    outputText: 'codex answer',
-                  },
-                },
-                {
-                  event: {
-                    eventId: 'e4',
-                    provider: 'claude',
-                    threadId: 'session-claude',
-                    turnId: 'turn-claude',
-                    method: 'turn.started',
-                    createdAt: '2026-01-01T00:00:03Z',
-                    prompt: 'after',
-                  },
-                },
-                {
-                  event: {
-                    eventId: 'e5',
-                    provider: 'claude',
-                    threadId: 'session-claude',
-                    turnId: 'turn-claude',
-                    method: 'content.text-delta',
-                    createdAt: '2026-01-01T00:00:04Z',
-                    itemId: 'a2',
-                    delta: 'claude answer',
-                  },
-                },
-                {
-                  event: {
-                    eventId: 'e6',
-                    provider: 'claude',
-                    threadId: 'session-claude',
-                    turnId: 'turn-claude',
-                    method: 'turn.completed',
-                    createdAt: '2026-01-01T00:00:05Z',
-                    outputText: 'claude answer',
-                  },
-                },
-              ]
-                .map((item, index) => ({ ...item, sequence: index + 1 }))
-                .slice(options.cursor ? 0 : 2, options.cursor ? 3 : 6),
-              hasMore: !options.cursor,
-              ...(options.cursor ? {} : { nextCursor: 'page-2' }),
+              title: 'Handoff conversation',
+              // Each Session projects on its own, as the lineage reader
+              // projects `readSessionSeedMessages` per Session.
+              messages: ['session-codex', 'session-claude'].flatMap(
+                (sessionId) =>
+                  projectRuntimeEventsToMessages(
+                    handoffEvents
+                      .map((item) => item.event)
+                      .filter((event) => event.threadId === sessionId),
+                    { stableIds: true },
+                  ),
+              ),
             },
       ),
     };
@@ -2581,7 +2454,7 @@ describe('Conversation Routes', () => {
     expect(claude.status).toBe(404);
     expect(forks).toHaveLength(0);
     forkAuthority = principalAuthority;
-    reader.readConversationEventWindow.mockClear();
+    reader.readConversationForkSource.mockClear();
     const authorizedClaude = await request('claude', 'turn-claude');
     expect(
       authorizedClaude.status,
@@ -2589,12 +2462,10 @@ describe('Conversation Routes', () => {
     ).toBe(200);
     expect((await request('codex', 'turn-claude')).status).toBe(409);
     expect((await request('codex', 'turn-codex')).status).toBe(200);
+    expect(reader.readConversationForkSource).toHaveBeenCalledTimes(3);
     expect(
-      reader.readConversationEventWindow.mock.calls.length,
-    ).toBeGreaterThan(3);
-    expect(
-      reader.readConversationEventWindow.mock.calls.every(
-        ([, options]) => options.authority.userId === principal.id,
+      reader.readConversationForkSource.mock.calls.every(
+        ([, authority]) => authority.userId === principal.id,
       ),
     ).toBe(true);
     forkAuthority = sessionReadAuthorityFromRequest(
@@ -2607,9 +2478,9 @@ describe('Conversation Routes', () => {
     expect(forks).toHaveLength(factsBeforeOtherOwner);
     unresolvedCaller = true;
     const factCount = forks.length;
-    reader.readConversationEventWindow.mockClear();
+    reader.readConversationForkSource.mockClear();
     expect((await request('codex', 'turn-codex')).status).toBe(403);
-    expect(reader.readConversationEventWindow).not.toHaveBeenCalled();
+    expect(reader.readConversationForkSource).not.toHaveBeenCalled();
     expect(forks).toHaveLength(factCount);
   });
 
@@ -2705,6 +2576,185 @@ describe('Conversation Routes', () => {
       }).toEqual(before);
     },
   );
+
+  function boundedForkRoutes(reader: Record<string, unknown>) {
+    const source = createMockAdapter();
+    source.getConversation.mockResolvedValue(null);
+    const eventStore = {
+      appendConversationFork: vi.fn(),
+      appendConversationForkIfAbsent: vi.fn(),
+      readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
+    };
+    const app = createForkConversationRoutes(
+      new Map([['codex', source]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => source as any,
+      { ...emptyHistoryReader(), ...reader } as any,
+      () => 'user',
+      undefined,
+      undefined,
+      eventStore,
+      () => true,
+    );
+    return { app, eventStore };
+  }
+
+  test('a fork whose history is past the read bound answers its stable code', async () => {
+    const { app, eventStore } = boundedForkRoutes({
+      readConversationForkSource: vi.fn(async () => {
+        throw new ConversationForkContextError(
+          'This conversation is too long to fork in one piece.',
+          CONVERSATION_FORK_REFUSAL_CODES.historyTooLarge,
+        );
+      }),
+    });
+    const response = await app.request('/codex/conversations/huge/fork', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetAgent: 'codex' }),
+    });
+    expect(response.status).toBe(409);
+    expect(await json(response)).toMatchObject({
+      code: CONVERSATION_FORK_REFUSAL_CODES.historyTooLarge,
+      error: 'This conversation is too long to fork in one piece.',
+    });
+    expect(eventStore.appendConversationForkIfAbsent).not.toHaveBeenCalled();
+  });
+
+  test('a fork body that fails its schema answers the invalid-request code', async () => {
+    const { app } = boundedForkRoutes({});
+    const response = await app.request('/codex/conversations/any/fork', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetAgent: 'codex', unexpected: true }),
+    });
+    expect(response.status).toBe(400);
+    expect(await json(response)).toMatchObject({
+      code: CONVERSATION_FORK_REFUSAL_CODES.invalidRequest,
+    });
+  });
+
+  test('a fork past the lineage read bound is refused before its history is read', async () => {
+    const source = createMockAdapter();
+    source.getConversation.mockResolvedValue(null);
+    const reader = {
+      ...emptyHistoryReader(),
+      conversationSessionIds: vi.fn(() =>
+        Array.from({ length: 65 }, (_, index) => `session-${index}`),
+      ),
+      readConversationForkSource: vi.fn(),
+    };
+    const app = createForkConversationRoutes(
+      new Map([['codex', source]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => source as any,
+      reader as any,
+      () => 'user',
+      undefined,
+      undefined,
+      {
+        appendConversationFork: vi.fn(),
+        appendConversationForkIfAbsent: vi.fn(),
+        readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
+      },
+      () => true,
+    );
+    const response = await app.request(
+      '/codex/conversations/long-lineage/fork',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetAgent: 'codex' }),
+      },
+    );
+    expect(response.status).toBe(422);
+    expect(await json(response)).toMatchObject({
+      code: 'conversation_lineage_too_long',
+    });
+    expect(reader.readConversationForkSource).not.toHaveBeenCalled();
+  });
+
+  test('named runtime reads refuse when the request cannot resolve the Session owner', async () => {
+    const adapter = createMockAdapter();
+    adapter.getConversation.mockResolvedValue({
+      id: 'c1',
+      userId: 'human:fixture:owner',
+      resourceId: 'default',
+    });
+    const readSessionMessages = vi.fn();
+    const app = createConversationRoutes(
+      new Map([['default', adapter]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        isRuntimeConversation: () => true,
+        readSessionConversation: vi.fn().mockResolvedValue(null),
+        readSessionMessages,
+      } as any,
+      () => 'human:fixture:reader',
+    );
+    for (const endpoint of ['messages', 'export']) {
+      const response = await app.request(
+        `/station/conversations/c1/${endpoint}`,
+      );
+      expect(response.status).toBe(404);
+      expect(await json(response)).toEqual({
+        success: false,
+        error: 'Conversation not found',
+      });
+    }
+    expect(readSessionMessages).not.toHaveBeenCalled();
+    expect(adapter.getMessages).not.toHaveBeenCalled();
+  });
+
+  test('named runtime reads refuse a different recorded Agent even in the same visible Session', async () => {
+    const adapter = createMockAdapter();
+    const readSessionMessages = vi.fn();
+    const app = createConversationRoutes(
+      new Map([['default', adapter]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        isRuntimeConversation: () => true,
+        readSessionConversation: vi
+          .fn()
+          .mockResolvedValue({ agentSlug: 'alpha' }),
+        readSessionMessages,
+      } as any,
+    );
+    for (const endpoint of ['messages', 'export']) {
+      const response = await app.request(
+        `/station/conversations/c1/${endpoint}`,
+      );
+      expect(response.status).toBe(404);
+      expect(await json(response)).toEqual({
+        success: false,
+        error: 'Conversation not found',
+      });
+    }
+    expect(readSessionMessages).not.toHaveBeenCalled();
+    expect(adapter.getMessages).not.toHaveBeenCalled();
+  });
 
   test('GET /:slug/conversations/:id/messages returns messages', async () => {
     const adapters = new Map([['default', createMockAdapter()]]);
@@ -3075,9 +3125,12 @@ describe('Global Conversation Routes', () => {
         },
       ],
     });
+    // The caller's own request travels with the query: the remote part is
+    // admitted per caller (remote-station-read-authority.ts).
     expect(searchRemoteMessages).toHaveBeenCalledWith(
       'cobalt',
       expect.any(AbortSignal),
+      expect.any(Request),
     );
   });
 
@@ -3242,6 +3295,62 @@ describe('Global Conversation Routes', () => {
       ]);
     },
   );
+
+  test('projects workspace observations in one batch per inventory page', async () => {
+    const observed = vi.fn(
+      () => new Map([['thread-1', { branch: 'feature' }]]),
+    );
+    const items = ['thread-1', 'thread-2'].map((id) => ({
+      id,
+      source: 'runtime',
+      agentSlug: 'claude',
+      projectSlug: 'project-alpha',
+      title: id,
+      createdAt: '2026-07-23T00:00:00Z',
+      updatedAt: '2026-07-23T00:01:00Z',
+      messageCount: 2,
+      mutable: false,
+      answerability: { answerable: true },
+    }));
+    const app = createGlobalConversationRoutes(
+      new Map(),
+      { getConversation: () => null },
+      mockLogger,
+      undefined,
+      {
+        readSessionConversation: vi.fn(),
+        searchSessionMessages: vi.fn(),
+        listConversationHistoryPage: vi
+          .fn()
+          .mockResolvedValue({ items, hasMore: false }),
+      },
+      () => 'bound-user',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      observed,
+    );
+    const body = await json(await app.request('/'));
+    expect(observed).toHaveBeenCalledExactlyOnceWith(
+      expect.anything(),
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'thread-1' }),
+        expect.objectContaining({ id: 'thread-2' }),
+      ]),
+    );
+    expect(body.data.items).toEqual([
+      expect.objectContaining({ id: 'thread-2' }),
+      expect.objectContaining({
+        id: 'thread-1',
+        observedWorkspace: { branch: 'feature' },
+      }),
+    ]);
+    expect(body.data.items[0]).not.toHaveProperty('observedWorkspace');
+  });
 
   // S2 of archive#1302: the global conversation-inventory endpoint. Folds the
   // orchestration session leg (across every agent) and every registered
@@ -3969,6 +4078,73 @@ describe('Global Conversation Routes', () => {
       } else {
         expect(response.status).toBe(404);
       }
+    },
+  );
+
+  test.each([
+    ['reader', 200],
+    ['parent-only-reader', 404],
+    ['session-only-reader', 404],
+  ])(
+    'GET /:id follows a notification Session for %s only with access to both records',
+    async (user, status) => {
+      const conversation = {
+        id: 'durable-chat',
+        agentSlug: agentId('current-agent'),
+        projectSlug: 'station',
+        title: 'Continue the history fix',
+        createdAt: '2026-07-23T00:00:00Z',
+        updatedAt: '2026-07-23T00:01:00Z',
+        messageCount: 2,
+      };
+      const app = createGlobalConversationRoutes(
+        new Map(),
+        { getConversation: () => null },
+        mockLogger,
+        undefined,
+        {
+          ...emptyHistoryReader(),
+          isRuntimeConversation: () => true,
+          successorConversationId: (id) =>
+            id === 'notification-session' ? conversation.id : undefined,
+          readSessionConversation: async (id, authority) =>
+            id === 'notification-session' &&
+            authority.userId !== 'parent-only-reader'
+              ? { ...conversation, agentSlug: 'previous-agent', mutable: false }
+              : null,
+          resolveConversationOpen: async (id, authority) =>
+            id === conversation.id && authority.userId !== 'session-only-reader'
+              ? {
+                  status: 'resolved',
+                  conversation: {
+                    ...conversation,
+                    source: 'runtime',
+                    mutable: false,
+                    answerability: { answerable: true },
+                  },
+                  currentSessionId: 'current-session',
+                  transcript: {
+                    available: true,
+                    owner: 'runtime',
+                    messageCount: 2,
+                  },
+                  canContinue: false,
+                  answerability: { answerable: true },
+                  recoveryActions: [],
+                }
+              : null,
+        },
+        () => user,
+      );
+      const response = await app.request('/notification-session');
+      expect(response.status).toBe(status);
+      if (status === 200)
+        expect((await json(response)).data).toMatchObject(conversation);
+      else
+        expect(await json(response)).toEqual({
+          success: false,
+          error: 'Conversation not found',
+        });
     },
   );
 

@@ -5,6 +5,8 @@ import {
   claudeInputRequest,
   codexAnswers,
   codexInputRequest,
+  grokInputRequest,
+  grokQuestionResponse,
 } from '../adapters/harness-questions.js';
 
 /**
@@ -155,5 +157,88 @@ describe('codexInputRequest', () => {
     expect(JSON.parse(JSON.stringify(answers))).toEqual({
       constructor: { answers: ['abc'] },
     });
+  });
+});
+
+describe('Grok `_x.ai/ask_user_question`', () => {
+  /** The live grok 1.0.77 shape (`ask-user-question-*` in the capture). */
+  const params = (questions: unknown[]) => ({
+    sessionId: 's',
+    toolCallId: 'call-1',
+    questions,
+    mode: 'default',
+  });
+  const color = {
+    question: 'Which color do you prefer?',
+    options: [
+      { label: 'red', description: 'Prefer red' },
+      { label: 'blue', description: 'Prefer blue' },
+    ],
+    multiSelect: null,
+  };
+
+  test('each question is a choice; the answer goes back as labels keyed by question text', () => {
+    const form = grokInputRequest(
+      params([
+        color,
+        { ...color, question: 'And which shapes?', multiSelect: true },
+      ]),
+      'Grok Lab',
+    );
+    expect(form).toMatchObject({
+      source: 'harness:grok',
+      requester: 'Grok Lab',
+      body: {
+        fields: [
+          { kind: 'choice', title: 'Which color do you prefer?' },
+          { kind: 'multi-choice', title: 'And which shapes?' },
+        ],
+      },
+    });
+    if (!form) throw new Error('no form');
+    const [one, many] = form.body.fields;
+    const content = validateInputRequestContent(form, {
+      [one!.name]: '1',
+      [many!.name]: ['0', '1'],
+    });
+    expect(grokQuestionResponse('accept', form, content)).toEqual({
+      outcome: 'accepted',
+      answers: {
+        'Which color do you prefer?': ['blue'],
+        'And which shapes?': ['red', 'blue'],
+      },
+    });
+    expect(grokQuestionResponse('decline', form, undefined)).toEqual({
+      outcome: 'cancelled',
+    });
+    expect(grokQuestionResponse('cancel', form, content)).toEqual({
+      outcome: 'cancelled',
+    });
+  });
+
+  test('refuses what could not be answered back faithfully', () => {
+    // The answer is keyed by question text.
+    expect(grokInputRequest(params([color, color]), 'G')).toBeNull();
+    // Only a chosen label was observed coming back.
+    expect(
+      grokInputRequest(params([{ ...color, options: [] }]), 'G'),
+    ).toBeNull();
+    expect(
+      grokInputRequest(params([{ ...color, multiSelect: 'yes' }]), 'G'),
+    ).toBeNull();
+    expect(grokInputRequest(params([]), 'G')).toBeNull();
+    expect(
+      grokInputRequest(
+        params(
+          Array.from({ length: 17 }, (_, i) => ({
+            ...color,
+            question: `q${i}`,
+          })),
+        ),
+        'G',
+      ),
+    ).toBeNull();
+    expect(grokInputRequest({ questions: 'x' }, 'G')).toBeNull();
+    expect(grokInputRequest(params([viaJsonProto(color)]), 'G')).toBeNull();
   });
 });

@@ -1,0 +1,7 @@
+{
+  "revision": "9508901e176a71703673bbdb16c68fc6110dab98",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Only points to docs/reference/contracts.md as the contracts reference; the Muse schema-check sentence edit changes no instruction here; no edit needed.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

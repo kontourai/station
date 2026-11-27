@@ -1,0 +1,7 @@
+{
+  "revision": "016f5106e259573caeba7474046ebf6fd3fa0b39",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"No vocabulary change: existing pairing words kept; the new note reuses the existing secure-context sentence.","inputs":["docs/glossary.md","docs/reference/connect.md"]}
+  ]
+}

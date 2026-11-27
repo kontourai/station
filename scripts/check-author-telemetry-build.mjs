@@ -9,7 +9,7 @@ import { createPackagedReleaseManifest } from './lib/container-release-metadata.
 
 const root = resolve(import.meta.dirname, '..');
 const directory = mkdtempSync(join(tmpdir(), 'station-author-build-'));
-const endpoint = 'https://telemetry.example.invalid/station';
+const endpoint = 'https://telemetry.kontourai.io/v1/lite/station';
 const inherited = Object.fromEntries(
   Object.entries(process.env).filter(
     ([key]) => !key.startsWith('GITHUB_') && !key.startsWith('STATION_'),
@@ -85,7 +85,7 @@ function workflowChannels(name, jobPrefix, context) {
       undefined,
       'Channel must be scoped to a build step',
     );
-    for (const step of job.steps) {
+    for (const step of job.steps ?? []) {
       const channel = step.env?.STATION_CHANNEL;
       if (channel === undefined) continue;
       const expression = /^\$\{\{(.*)\}\}$/.exec(channel);
@@ -102,20 +102,26 @@ try {
   build({ ...official, STATION_AUTHOR_TELEMETRY_ENDPOINT: '' }, '', 'stable');
   build(official, endpoint, 'stable');
   // Resolve the real workflow channel expressions, then inspect actual bundles.
-  const preview = {
+  // A release candidate is a Stable build at its own tag (#4929).
+  const candidate = {
     ...official,
-    GITHUB_REF: 'refs/tags/v1.2.3-preview.1',
+    GITHUB_REF: 'refs/tags/v1.2.3-rc.1',
     GITHUB_WORKFLOW_REF:
-      'kontourai/station/.github/workflows/release.yml@refs/tags/v1.2.3-preview.1',
+      'kontourai/station/.github/workflows/release.yml@refs/tags/v1.2.3-rc.1',
   };
   const desktop = workflowChannels('release.yml', 'desktop-', {
-    needs: { preflight: { outputs: { channel: 'preview' } } },
+    needs: { preflight: { outputs: { channel: 'stable' } } },
   });
+  const macStore = workflowChannels(
+    'macos-store-delivery.yml',
+    'macos-testflight',
+    {},
+  );
   const portable = workflowChannels('portable-server-archives.yml', 'archive', {
-    inputs: { ring: 'preview' },
+    inputs: { ring: 'stable' },
   });
   const packaged = createPackagedReleaseManifest({
-    tag: 'v1.2.3-preview.1',
+    tag: 'v1.2.3-rc.1',
     sha: 'a'.repeat(40),
     createdAt: '2026-10-17T00:00:00.000Z',
   });
@@ -125,12 +131,21 @@ try {
     'Every desktop producer needs a build-scoped channel',
   );
   assert.deepEqual(
-    [...desktop, ...portable, packaged.channel],
-    Array(6).fill('beta'),
-    'Desktop preview and portable preview must stamp the same runtime channel (beta)',
+    macStore,
+    ['stable'],
+    'The Mac App Store producer needs a build-scoped Stable channel',
   );
-  build({ ...preview, STATION_CHANNEL: desktop[0] }, endpoint, 'beta');
-  build({ ...preview, STATION_CHANNEL: packaged.channel }, endpoint, 'beta');
+  assert.deepEqual(
+    [...desktop, ...portable, packaged.channel],
+    Array(6).fill('stable'),
+    'Desktop and portable release candidates must stamp the Stable runtime channel',
+  );
+  build({ ...candidate, STATION_CHANNEL: macStore[0] }, endpoint, 'stable');
+  build(
+    { ...candidate, STATION_CHANNEL: packaged.channel },
+    endpoint,
+    'stable',
+  );
   build(
     {
       ...official,
@@ -177,14 +192,22 @@ try {
       GITHUB_WORKFLOW_REF:
         'kontourai/station/.github/workflows/build-android.yml@refs/heads/main',
     },
+    // Retired Beta tags are no longer official release builds (#4929).
+    {
+      ...official,
+      STATION_CHANNEL: 'beta',
+      GITHUB_REF: 'refs/tags/v1.2.3-preview.1',
+      GITHUB_WORKFLOW_REF:
+        'kontourai/station/.github/workflows/release.yml@refs/tags/v1.2.3-preview.1',
+    },
   ]) {
     const result = child(['esbuild.config.mjs'], env);
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stderr, /forbidden outside official release builds/);
   }
   const ringChannel = child(['esbuild.config.mjs'], {
-    ...preview,
-    STATION_CHANNEL: 'preview',
+    ...candidate,
+    STATION_CHANNEL: 'beta',
   });
   assert.equal(ringChannel.status, 1, ringChannel.stderr);
   assert.match(ringChannel.stderr, /existing build channel to match/);
@@ -211,7 +234,7 @@ try {
   );
   assert.equal(source.status, 0, source.stderr);
   console.log(
-    'Author telemetry build guard: PASS (real server bundles, empty/default, stable/preview/nightly, invalid URLs, non-official contexts, channel mismatch, source runtime)',
+    'Author telemetry build guard: PASS (real server bundles, empty/default, stable/candidate/nightly, retired preview, invalid URLs, non-official contexts, channel mismatch, source runtime)',
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

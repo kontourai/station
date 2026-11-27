@@ -257,6 +257,9 @@ function localService() {
     currentConversationSessionId: vi.fn(
       (conversationId: string) => conversationId,
     ),
+    // Every conversation a test names already has a Session, unless a test
+    // says it is new.
+    conversationSessionIds: vi.fn((conversationId: string) => [conversationId]),
     // #4512: an ordinary conversation's Session works for its person.
     sessionDispatchFacts: vi.fn((_threadId: string) => ({
       taskBound: false,
@@ -711,6 +714,130 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(JSON.stringify(catalog)).not.toContain('must-not-leak');
   });
 
+  // #2266: a Muse connection whose catalog is empty can still apply an
+  // explicit selector. Discovery reads that from the adapter's declared
+  // launch capability, carried on the connection view the real inspector
+  // builds over a real (serve) MuseAdapter whose `model/list` was empty.
+  test('a Muse target with an empty live catalog still offers model selection (#2266)', async () => {
+    const { MuseAdapter } = await import(
+      '../../providers/adapters/muse-adapter.js'
+    );
+    const { FakeMuseServeHost, loadMuseServeCapture } = await import(
+      '../../providers/__tests__/muse-serve-replay.js'
+    );
+    const { createConnectionInspector } = await import(
+      '../../services/connections/connection-inspector.js'
+    );
+    const { setProviderAdapterRegistrationProvenance } = await import(
+      '../../providers/adapter-shape.js'
+    );
+    const { engineConnectionId } = await import(
+      '@kontourai/station-contracts/agent-identity'
+    );
+    const initialize = loadMuseServeCapture('steer').find(
+      (frame) =>
+        frame.dir === 's2c' &&
+        (frame.msg.result as { schema?: unknown } | undefined)?.schema,
+    )!.msg.result;
+    const muse = new MuseAdapter({
+      serve: {
+        spawnHost: () => {
+          const host = new FakeMuseServeHost(['serve']);
+          void (async () => {
+            const consumed = new Set<unknown>();
+            for (const [method, result] of [
+              ['initialize', initialize],
+              [
+                'model/list',
+                {
+                  providerId: 'meta',
+                  profileId: null,
+                  source: 'bundledCatalog',
+                  models: [],
+                },
+              ],
+            ] as const) {
+              const request = await host.nextRequest(
+                method,
+                consumed as Set<never>,
+              );
+              consumed.add(request);
+              host.writeFrame({ jsonrpc: '2.0', id: request.id, result });
+            }
+          })().catch(() => {});
+          return { process: host };
+        },
+        terminateHost: async (spawned) => {
+          (spawned.process as InstanceType<typeof FakeMuseServeHost>).exit(0);
+        },
+      },
+      findBinary: () => '/usr/local/bin/muse',
+      runCommand: async () => ({ code: 0, stdout: 'muse 1.4.18', stderr: '' }),
+      credentialFileExists: () => true,
+      env: {},
+    });
+    setProviderAdapterRegistrationProvenance(muse, 'builtin');
+    const inspection = (await createConnectionInspector({
+      adapters: () => [muse],
+      appConfig: () => ({ agentConnections: {} }) as never,
+      acpConnections: () => [],
+      acpStatus: () => ({}),
+      publicConnection: (runtimeId) => ({
+        id: engineConnectionId('muse'),
+        engineId: runtimeId,
+      }),
+      now: () => Date.parse('2026-11-13T00:00:00.000Z'),
+    }).inspect({ kind: 'runtime-capability-inventory' })) as unknown as {
+      connections: Array<Record<string, unknown>>;
+    };
+    const view = inspection.connections[0]!;
+    expect(view.runtimeCatalog).toMatchObject({ source: 'live', models: [] });
+    expect(view.modelLaunch).toMatchObject({ overrideAtStart: true });
+
+    const discover = async (connection: Record<string, unknown>) => {
+      installRemoteStationFetch(
+        '/api/orchestration/delegations',
+        {},
+        { workingDirectory: '/srv/station' },
+      );
+      const original = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url === `${REMOTE_API}/api/connections/agents`)
+          return json({
+            success: true,
+            data: [{ ...connection, status: 'ready', enabled: true }],
+          });
+        if (url === `${REMOTE_API}/api/agents`)
+          return json({
+            success: true,
+            data: [
+              {
+                slug: 'muse',
+                name: 'Muse',
+                execution: { agentConnectionId: 'muse' },
+              },
+            ],
+          });
+        return original(input, init);
+      });
+      const { discoverDelegationOptions } = await import(
+        '../station-control-delegation.js'
+      );
+      return (
+        await discoverDelegationOptions({ environmentId: 'environment-remote' })
+      ).targets[0];
+    };
+    const viewJson = JSON.parse(JSON.stringify(view));
+    const target = await discover(viewJson);
+    expect(target?.models).toEqual([]);
+    expect(target?.capabilities.modelSelection).toBe(true);
+    // An older host's view carries no declaration: the catalog decides.
+    const { modelLaunch: _absent, ...olderView } = viewJson;
+    const older = await discover(olderView);
+    expect(older?.capabilities.modelSelection).toBe(false);
+  });
+
   test('rejects a tilde suffix collision while discovering remote delegation options', async () => {
     installRemoteStationFetch(
       '/api/orchestration/delegations',
@@ -1043,6 +1170,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       input: {
         threadId: 'task:11111111-1111-4111-8111-111111111111',
         provider: 'station-agent',
+        persistSession: true,
         metadata: {
           agentId: 'reviewer',
           targetKind: 'agent',
@@ -1624,6 +1752,25 @@ describe('Station Control canonical Environment + Agent execution', () => {
         String(url) === `${REMOTE_API}/api/orchestration/chat/delegated`,
     );
     expect(bodyOf(call!)).toMatchObject({ delegation });
+
+    fetchMock.mockClear();
+    const restricted = { ...delegation, toolAllowlistConstraints: [[]] };
+    const { delegateTask } = await import('../station-control-delegation.js');
+    await expect(
+      delegateTask({
+        target: savedTarget(),
+        prompt: 'Delegated remote work',
+        delegation: restricted,
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    await expect(
+      executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'Delegated remote work',
+        delegation: restricted,
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test('preserves detail-less remote foreground indeterminacy and ambiguous responses', async () => {
@@ -2051,6 +2198,82 @@ describe('Station Control canonical Environment + Agent execution', () => {
   // only the project shape was rebuilt. Swapping the session-cwd read for a
   // field nothing writes leaves the pure tests green and restores the bug, so
   // the seam needs its own proof.
+  test.each([
+    ['opencode', 'opencode'],
+    ['acp', 'acp'],
+  ] as const)(
+    'a follow-up keeps the provider its current session runs on (stored %s, R2)',
+    async (stored, expected) => {
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === `${CURRENT_API}/.well-known/station/v1`)
+          return json({ environmentId: 'environment-current' });
+        if (url === `${CURRENT_API}/api/agents/opencode-agent`)
+          return json({
+            success: true,
+            data: {
+              slug: 'opencode-agent',
+              available: true,
+              execution: { agentConnectionId: 'opencode' },
+            },
+          });
+        if (url === `${CURRENT_API}/api/connections/opencode`)
+          return json({
+            success: true,
+            data: {
+              id: 'opencode',
+              kind: 'agent',
+              type: 'acp',
+              name: 'OpenCode',
+              enabled: true,
+              status: 'ready',
+              capabilities: ['agent-runtime', 'acp'],
+              prerequisites: [],
+              // The preview is now off: a new chat would get `acp`.
+              config: { engineId: 'acp', provider: 'acp' },
+            },
+          });
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      const orchestrationService = localService();
+      const resolveConversationContinuation = vi.fn(async () => ({
+        sessionId: 'conversation:opencode:session:2',
+        startRequired: true,
+      }));
+      Object.assign(orchestrationService, { resolveConversationContinuation });
+      orchestrationService.readSession.mockResolvedValue({
+        session: { cwd: '/srv/scratch', provider: stored },
+        events: [
+          {
+            method: 'session.configured',
+            metadata: {
+              environmentId: 'environment-current',
+              targetKind: 'agent',
+              targetId: 'opencode-agent',
+              connectionId: 'opencode',
+            },
+          },
+        ],
+      } as never);
+      const { continueExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await continueExecutionTargetMessage(
+        {
+          userId: 'test-user',
+          conversationId: 'conversation:opencode',
+          message: 'Keep going',
+        },
+        orchestrationService as never,
+      ).catch(() => undefined);
+      expect(resolveConversationContinuation).toHaveBeenCalledWith(
+        'conversation:opencode',
+        expect.anything(),
+        expect.objectContaining({ provider: expected }),
+      );
+    },
+  );
+
   test('continues local work for a conversation bound to a directory rather than a project', async () => {
     fetchMock.mockImplementation(async (input) => {
       const url = String(input);
@@ -2425,6 +2648,68 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(sendTurn?.[2]).toMatchObject({ dispatchOrigin: 'delegation' });
   });
 
+  test('#4830: a delegated send naming a fresh conversation id is delegation, not unknown', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    // No Session holds the id yet: the send starts the delegated child.
+    service.conversationSessionIds.mockImplementation(() => []);
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await executeExecutionTargetMessage(
+      {
+        userId: 'test-user',
+        target: currentTarget(),
+        message: 'Delegated to a named new conversation',
+        conversationId: 'conversation-fresh',
+        delegation: {
+          mode: 'isolated-child',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'parent' as never,
+          rootAgentSlug: 'root' as never,
+        },
+        delegationProvenance: 'caller-derived',
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn?.[2]).toMatchObject({ dispatchOrigin: 'delegation' });
+  });
+
+  test("#4830: a delegated send into a person's existing chat keeps that chat the person's", async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await executeExecutionTargetMessage(
+      {
+        userId: 'test-user',
+        target: currentTarget(),
+        message: 'A message into a person chat',
+        conversationId: 'conversation-person',
+        delegation: {
+          mode: 'isolated-child',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'parent' as never,
+          rootAgentSlug: 'root' as never,
+        },
+        delegationProvenance: 'caller-derived',
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn?.[2]).toMatchObject({ dispatchOrigin: 'unknown' });
+  });
+
   test("#4512: a requester's own delegation claim does not classify the turn as delegation", async () => {
     installCurrentStationFetch();
     const service = localService();
@@ -2456,6 +2741,12 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(
       (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
         ?.dispatchOrigin,
+    ).toBeUndefined();
+    // #4568: a foreground send names no respawn intent; the service derives
+    // it from who caused the turn.
+    expect(
+      (sendTurn?.[2] as { resourceAdmissionIntent?: string } | undefined)
+        ?.resourceAdmissionIntent,
     ).toBeUndefined();
   });
 
@@ -2490,6 +2781,10 @@ describe('Station Control canonical Environment + Agent execution', () => {
       (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
         ?.dispatchOrigin,
     ).toBeUndefined();
+    // #4568: the send's own respawn of a cold Session stays background too.
+    expect(sendTurn?.[2]).toMatchObject({
+      resourceAdmissionIntent: 'queued_background',
+    });
   });
 
   test('refuses a foreground start without fabricating a session when provider creation is uncertain', async () => {
@@ -5297,7 +5592,9 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       serviceTier: 'standard',
       contextTokens: 62000,
       contextWindowTokens: 200000,
+      contextPercent: 31,
       reportedCostUsd: 0.42,
+      reportedCost: { amount: 0.07, unit: 'credit', scope: 'turn' },
       pricingSnapshot: {
         id: 'catalog-1',
         capturedAt: '2026-10-11T00:00:00.000Z',
@@ -5325,7 +5622,11 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       serviceTier: 'standard',
       contextTokens: 62000,
       contextWindowTokens: 200000,
+      contextPercent: 31,
     });
+    expect(
+      projectDelegatedTaskEvent(11, { ...usageEvent, contextPercent: 100.5 }),
+    ).not.toHaveProperty('contextPercent');
 
     const longTier = projectDelegatedTaskEvent(8, {
       ...usageEvent,
@@ -5469,6 +5770,28 @@ describe('readRelayingLocalRefusal', () => {
     expect(error.cause).toBeInstanceOf(LocalStationRefusal);
     expect(error.cause).toMatchObject({
       refusalCode: 'delegation_depth_exceeded',
+    });
+  });
+
+  test('delegated_tool_blocked reaches the MCP caller as a coded error result', async () => {
+    const { delegationToolResult } = await import(
+      '../station-control-shared.js'
+    );
+    const error = await failed(
+      'current',
+      new StationHttpError(403, "'delegate_task' is not allowed here.", {
+        code: 'delegated_tool_blocked',
+      }),
+    );
+
+    const result = await delegationToolResult(async () => {
+      throw error;
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]!.text)).toMatchObject({
+      success: false,
+      code: 'delegated_tool_blocked',
     });
   });
 
@@ -5796,5 +6119,565 @@ describe('bound answers to a delegated input request (delegatedInputAnswers)', (
         expectedInputRequest: PEER_BINDING,
       }),
     ).rejects.toMatchObject({ code: 'input_request_changed' });
+  });
+});
+
+describe('#5051 a session-list request folds the read model once', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fetchMock.mockReset();
+  });
+
+  // Through the REAL route, the REAL refresh it starts, and a REAL
+  // OrchestrationService over a real EventStore: the refresh reads only the
+  // caller's peer delegation records, so the request pays for one full
+  // read-model build, and the refresh still advances peer Activity.
+  test('GET /sessions/read-model builds one full read model and still reconciles readable peer Activity', async () => {
+    const eventStore = new EventStore(
+      join(makeTempDir('delegation-peer-refresh-'), 'orchestration.sqlite'),
+    );
+    const service = new OrchestrationService({
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      service.initialize();
+      const authorityFor = (userId: string) =>
+        sessionReadAuthorityFromRequest(userId, undefined, undefined);
+      const dispatch = (taskId: string, userId: string) =>
+        service.recordPeerDelegationActivityDispatch({
+          taskId,
+          conversationId: taskId,
+          prompt: `Work on ${taskId}`,
+          userId,
+          environment: {
+            id: 'environment-remote',
+            name: 'Station B',
+            kind: 'peer',
+          },
+          target: { kind: 'agent', id: 'codex' },
+        });
+      const at = new Date().toISOString();
+      for (const threadId of ['owner-chat-1', 'owner-chat-2']) {
+        eventStore.upsertSession({
+          provider: 'codex',
+          threadId,
+          status: 'ready',
+          createdAt: at,
+          updatedAt: at,
+        });
+        eventStore.appendEvent({
+          eventId: `${threadId}-started`,
+          provider: 'codex',
+          threadId,
+          createdAt: at,
+          method: 'session.started',
+          sessionId: threadId,
+          metadata: { userId: 'owner-user' },
+        });
+      }
+      dispatch('task-peer-5051-mine', 'owner-user');
+      // Another person's record on the same peer: the owner's refresh must
+      // neither read it nor ask the peer about it.
+      dispatch('task-peer-5051-theirs', 'other-user');
+
+      const peerReads: string[] = [];
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === `${CURRENT_API}/.well-known/station/v1`)
+          return json({ environmentId: 'environment-current' });
+        const prefix = `${REMOTE_API}/api/orchestration/delegations/`;
+        if (url.startsWith(prefix)) {
+          const taskId = decodeURIComponent(url.slice(prefix.length));
+          peerReads.push(taskId);
+          return json({
+            success: true,
+            data: {
+              conversationId: taskId,
+              taskId,
+              sessionId: taskId,
+              currentSessionId: taskId,
+              status: 'running',
+              environment: {
+                id: 'environment-remote',
+                name: 'Station B',
+                kind: 'peer',
+              },
+              target: { kind: 'agent', id: 'codex' },
+              eventCount: 1,
+              canInterrupt: false,
+              resumable: false,
+            },
+          });
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+
+      const reads: Array<{ purpose: string; scoped: boolean }> = [];
+      const listSessionReadModel = service.listSessionReadModel.bind(service);
+      vi.spyOn(service, 'listSessionReadModel').mockImplementation(
+        (authority, options) => {
+          reads.push({
+            purpose: options.purpose,
+            scoped: options.threadIds !== undefined,
+          });
+          return listSessionReadModel(authority, options);
+        },
+      );
+      const { refreshPeerDelegationActivity } = await import(
+        '../station-control-delegation.js'
+      );
+      const { createOrchestrationRoutes } = await import(
+        '../../routes/orchestration/orchestration.js'
+      );
+      const refreshes: Promise<void>[] = [];
+      const app = createOrchestrationRoutes(service, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        getUserId: () => 'owner-user',
+        refreshDelegatedTaskActivity: (input) => {
+          const refresh = refreshPeerDelegationActivity(
+            { ...input, readAuthority: authorityFor(input.userId) },
+            service,
+          );
+          refreshes.push(refresh);
+          return refresh;
+        },
+      });
+
+      const response = await app.request('/sessions/read-model');
+      expect(response.status).toBe(200);
+      expect(refreshes).toHaveLength(1);
+      await refreshes[0];
+
+      // One full build for the request; the refresh's read is scoped.
+      expect(reads.filter((read) => !read.scoped)).toEqual([
+        { purpose: 'session-list', scoped: false },
+      ]);
+      expect(reads.filter((read) => read.scoped)).toEqual([
+        { purpose: 'peer-delegation-refresh', scoped: true },
+      ]);
+      const byPurpose = service.sessionReadModelMeasurement().byPurpose;
+      expect(byPurpose['session-list']).toMatchObject({
+        reads: 1,
+        threadScopedReads: 0,
+      });
+      expect(byPurpose['peer-delegation-refresh']).toMatchObject({
+        reads: 1,
+        threadScopedReads: 1,
+        threadsConsidered: 1,
+      });
+
+      // The refresh asked the peer about the caller's own record only, and
+      // advanced it; the unreadable record is untouched.
+      expect(peerReads).toEqual(['task-peer-5051-mine']);
+      const stateOf = async (userId: string, taskId: string) =>
+        (
+          await listSessionReadModel(authorityFor(userId), {
+            purpose: 'session-list',
+          })
+        ).find((session) => session.delegation?.taskId === taskId)
+          ?.lifecycleState;
+      expect(await stateOf('owner-user', 'task-peer-5051-mine')).toBe(
+        'running',
+      );
+      expect(await stateOf('owner-user', 'task-peer-5051-theirs')).toBe(
+        undefined,
+      );
+      expect(await stateOf('other-user', 'task-peer-5051-theirs')).toBe(
+        'queued',
+      );
+    } finally {
+      await service.shutdown();
+      eventStore.close();
+    }
+  });
+});
+
+describe('#5077 task event cursors are bounded by the per-thread high water', () => {
+  const TASK_ID = 'task-events-gap';
+  const authority = sessionReadAuthorityFromRequest(
+    'shared-user',
+    undefined,
+    undefined,
+  );
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fetchMock.mockReset();
+  });
+
+  /**
+   * A real EventStore + OrchestrationService holding one delegated task whose
+   * thread sequences run 1..8: session.started, the launch binding, then six
+   * text deltas (`delta-1`..`delta-6` at sequences 3..8).
+   */
+  async function withDelegatedTask(
+    run: (fixture: {
+      eventStore: EventStore;
+      service: OrchestrationService;
+      deleteEvents: (...eventIds: string[]) => void;
+    }) => Promise<void>,
+  ) {
+    const eventStore = new EventStore(
+      join(makeTempDir('task-events-gap-'), 'orchestration.sqlite'),
+    );
+    const service = new OrchestrationService({
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      service.initialize();
+      const at = '2026-11-16T00:00:00.000Z';
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId: TASK_ID,
+        status: 'ready',
+        createdAt: at,
+        updatedAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: 'gap-started',
+        provider: 'claude',
+        threadId: TASK_ID,
+        sessionId: TASK_ID,
+        method: 'session.started',
+        metadata: { userId: 'shared-user' },
+        createdAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: 'gap-configured',
+        provider: 'claude',
+        threadId: TASK_ID,
+        sessionId: TASK_ID,
+        method: 'session.configured',
+        metadata: {
+          taskId: TASK_ID,
+          conversationId: TASK_ID,
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+          userId: 'shared-user',
+        },
+        createdAt: at,
+      });
+      for (let index = 1; index <= 6; index += 1) {
+        eventStore.appendEvent({
+          eventId: `delta-${index}`,
+          provider: 'claude',
+          threadId: TASK_ID,
+          method: 'content.text-delta',
+          itemId: 'item-1',
+          delta: `part ${index}`,
+          createdAt: at,
+        });
+      }
+      const deleteEvents = (...eventIds: string[]) => {
+        const remove = eventStore['db'].prepare(
+          'DELETE FROM orchestration_events WHERE id = ?',
+        );
+        for (const eventId of eventIds) remove.run(eventId);
+      };
+      await run({ eventStore, service, deleteEvents });
+    } finally {
+      await service.shutdown();
+      eventStore.close();
+    }
+  }
+
+  async function pageThrough(
+    read: (cursor: string | undefined) => Promise<{
+      events: Array<{ sequence: number; eventId?: string }>;
+      eventCount: number;
+      nextCursor: string;
+      hasMore: boolean;
+    }>,
+  ) {
+    const seen: Array<{ sequence: number; eventId?: string }> = [];
+    const cursors: string[] = [];
+    let cursor: string | undefined;
+    for (let pages = 0; pages < 20; pages += 1) {
+      const page = await read(cursor);
+      seen.push(
+        ...page.events.map(({ sequence, eventId }) => ({ sequence, eventId })),
+      );
+      cursors.push(page.nextCursor);
+      cursor = page.nextCursor;
+      if (!page.hasMore) return { seen, cursors, eventCount: page.eventCount };
+    }
+    throw new Error('task event paging did not finish');
+  }
+
+  test('pages every remaining event in order across per-thread sequence gaps', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    await withDelegatedTask(async ({ eventStore, service, deleteEvents }) => {
+      // Sequences 4 and 6 go; 8 (the thread's high water) stays. Six events
+      // remain, so the final page's nextSequence (8) exceeds the count.
+      deleteEvents('delta-2', 'delta-4');
+      expect(eventStore.countEventsByThread(TASK_ID)).toBe(6);
+
+      const { seen, cursors, eventCount } = await pageThrough((cursor) =>
+        observeDelegatedTaskEvents(
+          { taskId: TASK_ID, cursor, limit: 2, readAuthority: authority },
+          service as never,
+        ),
+      );
+
+      expect(seen).toEqual([
+        { sequence: 1, eventId: 'gap-started' },
+        { sequence: 2, eventId: 'gap-configured' },
+        { sequence: 3, eventId: 'delta-1' },
+        { sequence: 5, eventId: 'delta-3' },
+        { sequence: 7, eventId: 'delta-5' },
+        { sequence: 8, eventId: 'delta-6' },
+      ]);
+      expect(cursors).toEqual([
+        'station-task-events:v1:2',
+        'station-task-events:v1:5',
+        'station-task-events:v1:8',
+      ]);
+      expect(eventCount).toBe(6);
+
+      // A cursor above the count but within the high water is a valid resume.
+      await expect(
+        observeDelegatedTaskEvents(
+          {
+            taskId: TASK_ID,
+            cursor: 'station-task-events:v1:7',
+            readAuthority: authority,
+          },
+          service as never,
+        ),
+      ).resolves.toMatchObject({
+        events: [{ sequence: 8, eventId: 'delta-6' }],
+        nextCursor: 'station-task-events:v1:8',
+        hasMore: false,
+      });
+    });
+  });
+
+  test('still refuses a cursor beyond the high water of a gapped thread', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    await withDelegatedTask(async ({ service, deleteEvents }) => {
+      deleteEvents('delta-2', 'delta-4');
+      await expect(
+        observeDelegatedTaskEvents(
+          {
+            taskId: TASK_ID,
+            cursor: 'station-task-events:v1:9',
+            readAuthority: authority,
+          },
+          service as never,
+        ),
+      ).rejects.toThrow(
+        'The task event cursor is ahead of the available task history; restart without a cursor',
+      );
+    });
+  });
+
+  test('pages a gap-free thread exactly as before', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    await withDelegatedTask(async ({ service }) => {
+      const { seen, cursors, eventCount } = await pageThrough((cursor) =>
+        observeDelegatedTaskEvents(
+          { taskId: TASK_ID, cursor, limit: 3, readAuthority: authority },
+          service as never,
+        ),
+      );
+      expect(seen.map(({ sequence }) => sequence)).toEqual([
+        1, 2, 3, 4, 5, 6, 7, 8,
+      ]);
+      expect(cursors).toEqual([
+        'station-task-events:v1:3',
+        'station-task-events:v1:6',
+        'station-task-events:v1:8',
+      ]);
+      expect(eventCount).toBe(8);
+      await expect(
+        observeDelegatedTaskEvents(
+          {
+            taskId: TASK_ID,
+            cursor: 'station-task-events:v1:9',
+            readAuthority: authority,
+          },
+          service as never,
+        ),
+      ).rejects.toThrow('ahead of the available task history');
+    });
+  });
+
+  // Every Station since the founding commit answers a remote task-events read
+  // through its own `/delegations/:taskId/events` route and validates the page
+  // against its own store; the calling client only relays the canonical page.
+  // So a client of any version paging a newer, gapped host never applies the
+  // count check itself. This drives the client's canonical path against the
+  // real route over a gapped store.
+  test('a client reading a gapped host through the canonical route pages without a client-side bound', async () => {
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    const { createOrchestrationRoutes } = await import(
+      '../../routes/orchestration/orchestration.js'
+    );
+    await withDelegatedTask(async ({ service, deleteEvents }) => {
+      deleteEvents('delta-2', 'delta-4');
+      const host = createOrchestrationRoutes(service, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        getUserId: () => 'shared-user',
+        observeDelegatedTaskEvents: (input) =>
+          observeDelegatedTaskEvents(
+            { ...input, readAuthority: authority },
+            service as never,
+          ),
+      });
+      const routed: string[] = [];
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === `${CURRENT_API}/.well-known/station/v1`)
+          return json({ environmentId: 'environment-current' });
+        const prefix = `${CURRENT_API}/api/orchestration`;
+        if (url.startsWith(`${prefix}/delegations/`)) {
+          routed.push(url.slice(prefix.length));
+          return host.request(url.slice(prefix.length));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+
+      // No local service: this is the relaying client, not the host.
+      const { seen, cursors } = await pageThrough((cursor) =>
+        observeDelegatedTaskEvents({ taskId: TASK_ID, cursor, limit: 2 }),
+      );
+      expect(seen.map(({ sequence }) => sequence)).toEqual([1, 2, 3, 5, 7, 8]);
+      expect(cursors.at(-1)).toBe('station-task-events:v1:8');
+      expect(routed).toHaveLength(3);
+    });
+  });
+
+  // A newer client reading a page from a host that predates
+  // `highWaterSequence` falls back to the count, which is that host's high
+  // water because its log has no gaps.
+  test('falls back to the event count for a page without a high water', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    const binding = {
+      method: 'session.configured',
+      createdAt: '2026-11-16T00:00:00.000Z',
+      metadata: {
+        taskId: TASK_ID,
+        environmentId: 'environment-current',
+        environmentName: 'Current environment',
+        targetKind: 'agent',
+        targetId: 'reviewer',
+      },
+    };
+    const olderHost = (page: {
+      eventCount: number;
+      nextSequence: number;
+      sequences: number[];
+      highWaterSequence?: number;
+    }) => {
+      const session = {
+        threadId: TASK_ID,
+        lifecycleState: 'completed',
+        eventCount: page.eventCount,
+        delegation: {
+          taskId: TASK_ID,
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+        },
+      };
+      const detail = { session, events: [binding] };
+      return {
+        readSession: vi.fn(async () => detail),
+        readCurrentConversationSession: vi.fn(async () => detail),
+        readSessionEventPage: vi.fn(async () => ({
+          session,
+          events: page.sequences.map((sequence) => ({
+            sequence,
+            event: binding,
+          })),
+          nextSequence: page.nextSequence,
+          hasMore: false,
+          ...(page.highWaterSequence === undefined
+            ? {}
+            : { highWaterSequence: page.highWaterSequence }),
+        })),
+      };
+    };
+
+    await expect(
+      observeDelegatedTaskEvents(
+        { taskId: TASK_ID, readAuthority: authority },
+        olderHost({
+          eventCount: 2,
+          nextSequence: 2,
+          sequences: [1, 2],
+        }) as never,
+      ),
+    ).resolves.toMatchObject({ nextCursor: 'station-task-events:v1:2' });
+    await expect(
+      observeDelegatedTaskEvents(
+        {
+          taskId: TASK_ID,
+          cursor: 'station-task-events:v1:3',
+          readAuthority: authority,
+        },
+        olderHost({ eventCount: 2, nextSequence: 3, sequences: [] }) as never,
+      ),
+    ).rejects.toThrow('ahead of the available task history');
+    await expect(
+      observeDelegatedTaskEvents(
+        { taskId: TASK_ID, readAuthority: authority },
+        olderHost({
+          eventCount: 2,
+          nextSequence: 3,
+          sequences: [1, 3],
+        }) as never,
+      ),
+    ).rejects.toThrow('The selected Station returned invalid task event state');
+    // The same page with a high water is a valid gapped page.
+    await expect(
+      observeDelegatedTaskEvents(
+        { taskId: TASK_ID, readAuthority: authority },
+        olderHost({
+          eventCount: 2,
+          nextSequence: 3,
+          sequences: [1, 3],
+          highWaterSequence: 3,
+        }) as never,
+      ),
+    ).resolves.toMatchObject({
+      events: [{ sequence: 1 }, { sequence: 3 }],
+      nextCursor: 'station-task-events:v1:3',
+    });
   });
 });

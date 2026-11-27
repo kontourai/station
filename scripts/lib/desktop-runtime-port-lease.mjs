@@ -11,18 +11,21 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  probeExactProcessIdentity,
+  probeExactProcessIdentityAsync,
   resolveOwnProcessIdentity,
 } from '../../packages/shared/src/process-identity.mjs';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let verifiedOwner;
 
 function ownerIdentity(pid) {
+  if (verifiedOwner?.pid === pid) return verifiedOwner;
   const result = resolveOwnProcessIdentity(pid);
   if (result.state !== 'exact') {
     throw new Error('Cannot prove this process identity for a listener lease');
   }
-  return result.identity;
+  verifiedOwner = result.identity;
+  return verifiedOwner;
 }
 
 function lockPath() {
@@ -43,20 +46,21 @@ function readLease(path) {
   }
 }
 
-function ownerIsDead(lease) {
+async function leaseOwnerState(lease, currentOwner) {
   const owner = lease?.owner;
   if (!Number.isInteger(owner?.pid) || typeof owner?.start !== 'string') {
-    return false;
+    return 'unknown';
   }
-  const probe = probeExactProcessIdentity(owner.pid);
-  return (
-    probe.state === 'dead' ||
-    (probe.state === 'exact' && probe.identity.start !== owner.start)
-  );
+  if (owner.pid === currentOwner.pid) {
+    return owner.start === currentOwner.start ? 'live' : 'dead';
+  }
+  const probe = await probeExactProcessIdentityAsync(owner.pid);
+  if (probe.state === 'dead') return 'dead';
+  if (probe.state !== 'exact') return 'unknown';
+  return probe.identity.start === owner.start ? 'live' : 'dead';
 }
 
 function reclaimDeadOwner(path, lease) {
-  if (!ownerIsDead(lease)) return false;
   const retired = `${path}.retired-${randomUUID()}`;
   try {
     renameSync(path, retired);
@@ -146,10 +150,23 @@ export async function withDesktopRuntimeListenerLease(work, options = {}) {
       )
         throw error;
       const existing = readLease(path);
-      if (existing && reclaimDeadOwner(path, existing)) continue;
+      const ownerState = await leaseOwnerState(existing, owner);
+      if (ownerState === 'dead' && reclaimDeadOwner(path, existing)) continue;
       if (Date.now() >= deadline) {
+        let holder = 'unknown';
+        if (ownerState === 'live') {
+          const current = readLease(path)?.owner;
+          const { pid, start, nonce } = existing.owner;
+          if (
+            current?.pid === pid &&
+            current.start === start &&
+            current.nonce === nonce
+          ) {
+            holder = `PID ${pid}`;
+          }
+        }
         throw new Error(
-          'Timed out waiting for the packaged-runtime listener lease',
+          `Timed out waiting for the packaged-runtime listener lease (wait budget: ${waitMs}ms, holder: ${holder})`,
         );
       }
       await delay(pollMs);

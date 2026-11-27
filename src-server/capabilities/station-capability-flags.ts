@@ -21,7 +21,14 @@ import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   peerChatTunnelV1: true,
   delegationLocalConversationV1: true,
+  // Cross-Station conversation handoff: the source route in
+  // src-server/routes/environments/peer-chat-routes.ts and the receiver's
+  // import in src-server/routes/chat/conversations.ts. Hosted deployments
+  // withdraw it: see servesConversationStationHandoff.
+  conversationStationHandoff: true,
   childWorkSteering: true,
+  // The personal Station serves these routes when its Session groups preview is enabled.
+  cliSessionGroups: true,
   privateOperationalOutcomes: true,
   // Automation targets: src-server/routes/operations/scheduler.ts accepts a
   // job `target` and the built-in scheduler runs it through the conversation
@@ -31,6 +38,11 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // SSH environment management: src-server/services/ssh/, /api/ssh-environments
   // routes, packages/sdk/src/query-domains/sshEnvironments.ts.
   sshEnvironments: true,
+  // Read-only history of a session on a connected SSH environment's Station:
+  // src-server/routes/operations/ssh-environments.ts
+  // `/sessions/:environmentId/:threadId/history`. Hosted deployments withdraw
+  // it: see servesRemoteSessionReads.
+  remoteSessionHistory: true,
   // Private memory review, recall and briefing: src-server/routes/knowledge/
   // memory-routes.ts. Hosted deployments withdraw it: see servesPrivateMemory.
   privateMemoryReview: true,
@@ -54,6 +66,23 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // from a denied read, so clients gate the drill-down on this flag. Hosted
   // deployments withdraw it (#4177): see servesSessionInventoryInputRead.
   sessionInventoryInputRead: true,
+  // Server-kept read state (#3075): src-server/routes/read-markers/
+  // read-marker-routes.ts. Served in both modes; hosted reads are keyed by
+  // the tenant, as the conversation inventory's own acknowledgements are.
+  readMarkers: true,
+  // Reactions, edits, deletes and files on Project room messages (#4796,
+  // #4797, #4812): src-server/routes/projects/project-room-routes.ts. Served
+  // wherever Project rooms are; the room's own access check decides each call.
+  projectRoomMessageActions: true,
+  // One live connection for a Project's rooms, typing and the member
+  // directory (#4798, #4799): `GET /:slug/rooms/live`, `POST …/typing` and
+  // `GET …/members` in src-server/routes/projects/project-room-routes.ts.
+  // Served wherever Project rooms are; each room's own read check decides.
+  projectRoomLive: true,
+  // #5063: the `#general` coordinator's routes (`…/room/coordinator…` in
+  // project-room-routes.ts, `PUT /:slug/room-coordinator` in projects.ts).
+  // Served wherever Project rooms are; the preview decides if they answer.
+  projectRoomCoordinator: true,
   // Scoped pairing (archive#1098): pairing grants/device sessions carry an
   // OAuth-style scope string, enforced by one route -> required-scope table.
   // src-server/security/pairing-route-scopes.ts,
@@ -117,7 +146,8 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   delegatedInputAnswers: true,
   // #3628: the person's coordinator Session, src-server/routes/orchestration/
   // coordinator.ts. Hosted deployments withdraw it: see
-  // servesCoordinatorSession.
+  // servesCoordinatorSession. Like `sessionPersonReads`, a static fact: the
+  // off `coordinator-session` preview answers with its own typed refusal.
   coordinatorSession: true,
   // #3427: the person-facing Session reads under
   // `/api/orchestration/session-reads` (`station sessions wait|digest`,
@@ -136,6 +166,37 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // own typed code, so an older host's 404 and an off preview stay
   // distinguishable. Hosted deployments withdraw it: see servesTaskResume.
   taskResume: true,
+  // #4710: GET /api/analytics/usage-rollup (src-server/routes/operations/
+  // analytics.ts) filters by `connectionId`/`modelConnectionId` and accepts
+  // every declared usage provider. An older host ignores the connection filters and would
+  // answer unfiltered totals, so clients send them only on this flag.
+  usageConnectionFilters: true,
+  // A busy `/chat` send with files is held in the conversation inbox
+  // (src-server/routes/orchestration/orchestration.ts `inboxFollowUpOf`),
+  // its bytes in the attachment blob store. Hosted deployments withdraw it:
+  // they build no thread inbox (servesFollowUpAttachments).
+  followUpAttachments: true,
+  // Pull request agent feedback: /api/pull-request-feedback
+  // (src-server/routes/pull-requests/pull-request-feedback.ts). A static
+  // fact; the off `pull-request-agent-feedback` preview answers 404. Hosted
+  // deployments withdraw it: see servesPullRequestFeedback.
+  pullRequestFeedback: true,
+  // Project schedules (#5070): src-server/routes/operations/scheduler.ts
+  // accepts a job `projectId` and the built-in scheduler runs each run as a
+  // Task in that Project. An older host strips the field and would create a
+  // plain job, so a client offers Project schedules only on this flag.
+  // Hosted deployments withdraw it: they compose no Project runner.
+  projectSchedules: true,
+  // A job's display name: src-server/routes/operations/scheduler.ts accepts
+  // `displayName` on create and edit and derives the slug when a create
+  // names none. An older host drops the field and reports success, so a
+  // client offers renaming only on this flag. Hosted deployments withdraw
+  // it: see servesSchedulerRoutes.
+  schedulerJobDisplayName: true,
+  // #5067: the Project Library, `/api/projects/:slug/library…`
+  // (src-server/routes/projects/project-library-routes.ts). Hosted
+  // deployments withdraw it: see servesProjectLibrary.
+  projectLibrary: true,
 };
 
 /** Deployment facts that decide whether a build-supported route can serve. */
@@ -143,6 +204,7 @@ export interface StationCapabilityDeployment {
   /** A hosted tenant registry is configured (`STATION_HOSTED_TENANT_REGISTRY_FILE`). */
   hosted: boolean;
   peerChatEnabled?: boolean;
+  sharedProjectRooms?: boolean;
 }
 
 /**
@@ -187,8 +249,33 @@ function servesPrivateMemory(deployment: StationCapabilityDeployment): boolean {
   return !deployment.hosted;
 }
 
+/**
+ * Scheduler storage is not tenant-bound, so every `/scheduler` route answers
+ * 404 to a hosted request, whatever the body: no job field it accepts is
+ * served there.
+ */
+function servesSchedulerRoutes(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Scheduler storage is not tenant-bound, so hosted routes refuse these targets. */
 function servesScheduledConversationTarget(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
+/** Coordinator results may include output from a private Task Session. */
+export function servesProjectRoomCoordinator(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted && !deployment.sharedProjectRooms;
+}
+
+/** Session groups keep their plan and Flow run in the personal Station home. */
+export function servesCliSessionGroups(
   deployment: StationCapabilityDeployment,
 ): boolean {
   return !deployment.hosted;
@@ -208,6 +295,49 @@ export function servesTaskResume(
   return !deployment.hosted;
 }
 
+/** Hosted Stations build no conversation inbox to hold a follow-up's files in. */
+export function servesFollowUpAttachments(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
+/** Hosted Stations have no host forge login and no conversation inbox. */
+function servesPullRequestFeedback(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
+/**
+ * Reads of another Station's sessions present this Station's Station-wide
+ * outbound peer bearer, which no hosted tenant binds, so a hosted Station
+ * serves neither the remote-sessions list nor a remote history page.
+ */
+export function servesRemoteSessionReads(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
+/**
+ * Whether the cross-Station handoff routes serve. Peer credentials and fork
+ * contexts have no durable tenant ownership, so a hosted deployment refuses
+ * both routes.
+ */
+function servesConversationStationHandoff(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
+/** Library uploads and Task outputs are personal-home stores; hosted mounts neither. */
+function servesProjectLibrary(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Flags whose route serves only in some deployment modes. */
 const DEPLOYMENT_SERVED_FLAGS: Readonly<
   Partial<
@@ -220,6 +350,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   peerChatTunnelV1: (deployment) =>
     !deployment.hosted && deployment.peerChatEnabled === true,
   delegationLocalConversationV1: (deployment) => !deployment.hosted,
+  conversationStationHandoff: servesConversationStationHandoff,
   sessionInventoryInputRead: servesSessionInventoryInputRead,
   webPushNotifications: servesWebPushNotifications,
   connectionRoutes: servesConnectionRoutes,
@@ -227,6 +358,14 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   scheduledConversationTarget: servesScheduledConversationTarget,
   coordinatorSession: servesCoordinatorSession,
   taskResume: servesTaskResume,
+  followUpAttachments: servesFollowUpAttachments,
+  pullRequestFeedback: servesPullRequestFeedback,
+  projectSchedules: servesScheduledConversationTarget,
+  schedulerJobDisplayName: servesSchedulerRoutes,
+  projectRoomCoordinator: servesProjectRoomCoordinator,
+  cliSessionGroups: servesCliSessionGroups,
+  remoteSessionHistory: servesRemoteSessionReads,
+  projectLibrary: servesProjectLibrary,
 };
 
 /**

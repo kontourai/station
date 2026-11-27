@@ -189,6 +189,8 @@ describe('ResourcesSection — one arm per state (§3.6)', () => {
     expect(screen.getByText('/Users/dev/code/api')).toBeTruthy();
     expect(container.querySelector('input')).toBeNull();
     expect(container.querySelector('button')).toBeNull();
+    // The section title stands alone, without an eyebrow restating it.
+    expect(container.querySelector('.page-section__eyebrow')).toBeNull();
   });
 
   it('unbound: names the resource and the reason, offers the point-at-a-checkout form, and names NO path', () => {
@@ -474,7 +476,7 @@ describe('the repair action is an explicit operator act', () => {
   it('tells the operator that Station checks before it records', () => {
     renderResource(MISSING);
     expect(
-      screen.getByText(/checks the directory before it records anything/),
+      screen.getByText('Station checks the folder before saving it.'),
     ).toBeTruthy();
     // "never silently re-bind" — the copy must not promise Station will fix it.
     const form = screen

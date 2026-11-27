@@ -10,7 +10,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
   parseTenantExecutionContext,
@@ -164,6 +167,97 @@ describe('AttachedSessionFollowService', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test('slows quiet discovery and stops scheduling on shutdown', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const resolveProjectRoots = vi.fn(async () => []);
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi.fn(async () => ({ outcome: 'ok' as const, sessions: [] })),
+      read: vi.fn(),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [],
+      resolveProjectRoots,
+    });
+    try {
+      service.start(5_000);
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(source.discover).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(source.discover).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(3_999);
+      expect(source.discover).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(source.discover).toHaveBeenCalledTimes(2);
+      expect(resolveProjectRoots).not.toHaveBeenCalled();
+      await service.stop();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(source.discover).toHaveBeenCalledTimes(2);
+    } finally {
+      await service.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  test('stops scanning older external conversations beyond metadata until an explicit browse', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const read = vi.fn();
+    const locateProjects = vi.fn(async () => []);
+    const sources: AttachedSessionSource[] = [
+      'claude',
+      'codex',
+      'opencode',
+      'grok',
+    ].map((provider) => ({
+      provider,
+      kind: `${provider}-disk`,
+      discover: async () => ({
+        outcome: 'ok',
+        sessions: [
+          {
+            ...session,
+            provider,
+            threadId: `external:${provider}:historical`,
+            modifiedAtMs: Date.now() - 3_600_000,
+          },
+        ],
+      }),
+      read,
+    }));
+    const service = new AttachedSessionFollowService({
+      sources,
+      eventStore: store,
+      eventBus,
+      listProjects: () => [],
+      resolveProjectRoots: locateProjects,
+    });
+    try {
+      service.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(locateProjects).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+      expect(store.readSessions()).toHaveLength(0);
+      const archive = await service.listArchive(
+        { offset: 0, search: '' },
+        () => {},
+      );
+      expect(archive.sessions.map((entry) => entry.provider).sort()).toEqual([
+        'claude',
+        'codex',
+        'grok',
+        'opencode',
+      ]);
+      expect(store.readSessions()).toHaveLength(0);
+    } finally {
+      await service.stop();
+      vi.useRealTimers();
+    }
+  });
+
   function auditWrites() {
     const probe = new DatabaseSync(join(dir, 'orchestration.sqlite'));
     probe.exec(`
@@ -206,6 +300,80 @@ describe('AttachedSessionFollowService', () => {
       events: store.listEvents(session.threadId).map((row) => row.payload),
     });
   }
+
+  // Review item 1: a source written without new events (a step still
+  // streaming, a subagent's transcript) keeps the attachment's last write
+  // current, so the summary reads an open turn as active.
+  test("records the source's own newest write, at 30-second steps, and the summary reads it", async () => {
+    const started = new Date(Date.now() - 20 * 60_000).toISOString();
+    const at = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
+    const firstWrite = at(60_000);
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi.fn().mockResolvedValue({ sessions: [session] }),
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [
+            {
+              eventId: 'turn-1',
+              provider: 'claude',
+              threadId: session.threadId,
+              createdAt: started,
+              method: 'turn.started',
+              turnId: 'turn-1',
+              prompt: 'long job',
+            },
+          ],
+          cursor: 10,
+          sourceWriteAt: firstWrite,
+        })
+        // Ten seconds later: not worth a row write.
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [],
+          cursor: 10,
+          sourceWriteAt: at(50_000),
+        })
+        // A source write dated past the skew allowance is not recorded.
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [],
+          cursor: 10,
+          sourceWriteAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+        })
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [],
+          cursor: 10,
+          sourceWriteAt: at(5_000),
+        }),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+    await service.pollNow();
+    expect(persistedAttachment().attachedSource?.lastWriteAt).toBe(firstWrite);
+    expect(summary().attachedSourceActivity).toEqual({
+      state: 'active',
+      lastWriteAt: firstWrite,
+    });
+    await service.pollNow();
+    expect(persistedAttachment().attachedSource?.lastWriteAt).toBe(firstWrite);
+    await service.pollNow();
+    expect(persistedAttachment().attachedSource?.lastWriteAt).toBe(firstWrite);
+    await service.pollNow();
+    expect(
+      Date.parse(persistedAttachment().attachedSource!.lastWriteAt!),
+    ).toBeGreaterThan(Date.parse(firstWrite) + 30_000);
+  });
 
   test('uses the documented default and bounds an invalid poll override', () => {
     expect(resolveAttachedSessionPollInterval(undefined)).toBe(2_000);
@@ -1238,6 +1406,17 @@ describe('AttachedSessionFollowService', () => {
     });
     const before = persistedAttachment();
     const audit = auditWrites();
+    const refreshes: unknown[] = [];
+    const unsubscribe = eventBus.subscribe((frame) => {
+      if (
+        frame.event !== SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
+      )
+        return;
+      refreshes.push({
+        threadId: frame.data?.threadId,
+        boundary: persistedAttachment().attachedSource?.completedBoundary,
+      });
+    });
     try {
       cursor = {
         offset: 20,
@@ -1283,6 +1462,7 @@ describe('AttachedSessionFollowService', () => {
         turnId: 'native-turn',
         finishReason: 'stop',
       };
+      expect(refreshes).toEqual([]);
       events = [completed];
       await service.pollNow();
       expect(persistedAttachment().attachedSource?.completedBoundary).toEqual({
@@ -1295,7 +1475,18 @@ describe('AttachedSessionFollowService', () => {
       const after = audit.counts();
       await service.pollNow();
       expect(audit.counts()).toEqual(after);
+      expect(refreshes).toEqual([
+        {
+          threadId: session.threadId,
+          boundary: {
+            kind: 'completed-turn',
+            providerTurnId: completed.turnId,
+            observedEventId: completed.eventId,
+          },
+        },
+      ]);
     } finally {
+      unsubscribe();
       audit.close();
     }
   });
@@ -1445,30 +1636,31 @@ describe('AttachedSessionFollowService', () => {
       undefined,
       undefined,
     );
-    const publicHistory = () => reader.list({ authority, limit: 10 }).items;
-    const order = () => publicHistory().map((row) => row.id);
+    const publicHistory = async () =>
+      (await reader.list({ authority, limit: 10 })).items;
+    const order = async () => (await publicHistory()).map((row) => row.id);
     const service = new AttachedSessionFollowService(options);
     await service.pollNow();
-    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    expect(await order()).toEqual([newerDescriptor.threadId, session.threadId]);
     oldEvents = [];
     // A real metadata repair also corrects an old inflated timestamp, without a sweep.
     store.upsertSession({
       ...persistedAttachment(),
       updatedAt: '2026-10-11T00:00:00.000Z',
     });
-    expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+    expect(await order()).toEqual([session.threadId, newerDescriptor.threadId]);
     descriptor = { ...descriptor, sourceHandle: 'order-replacement-handle' };
     await service.pollNow();
-    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    expect(await order()).toEqual([newerDescriptor.threadId, session.threadId]);
     cursor = 21;
     await service.pollNow();
-    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    expect(await order()).toEqual([newerDescriptor.threadId, session.threadId]);
     descriptor = {
       ...descriptor,
       affinity: { kind: 'fixture-source-home', ref: 'order-home' },
     };
     await service.pollNow();
-    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    expect(await order()).toEqual([newerDescriptor.threadId, session.threadId]);
     // A stale metadata boundary is repaired from the already durable source event.
     store.upsertSession({
       ...persistedAttachment(),
@@ -1485,9 +1677,10 @@ describe('AttachedSessionFollowService', () => {
     expect(
       persistedAttachment().attachedSource?.completedBoundary?.observedEventId,
     ).toBe(older.eventId);
-    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    expect(await order()).toEqual([newerDescriptor.threadId, session.threadId]);
     expect(
-      publicHistory().find((row) => row.id === session.threadId)?.updatedAt,
+      (await publicHistory()).find((row) => row.id === session.threadId)
+        ?.updatedAt,
     ).toBe(older.createdAt);
 
     const advanced = {
@@ -1500,7 +1693,10 @@ describe('AttachedSessionFollowService', () => {
     const emit = vi.spyOn(eventBus, 'emit');
     try {
       await service.pollNow();
-      expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+      expect(await order()).toEqual([
+        session.threadId,
+        newerDescriptor.threadId,
+      ]);
       expect(persistedAttachment()).toEqual(before);
       expect(audit.counts()).toEqual({ session: 0, history: 1 });
       const committed = {
@@ -1515,12 +1711,18 @@ describe('AttachedSessionFollowService', () => {
         'post-commit publication fault',
       );
       emit.mockRestore();
-      expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
-      expect(publicHistory()[0]?.updatedAt).toBe(committed.createdAt);
+      expect(await order()).toEqual([
+        session.threadId,
+        newerDescriptor.threadId,
+      ]);
+      expect((await publicHistory())[0]?.updatedAt).toBe(committed.createdAt);
       expect(summary().lastEventAt).toBe(committed.createdAt);
       expect(persistedAttachment()).toEqual(before);
       await new AttachedSessionFollowService(options).pollNow();
-      expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+      expect(await order()).toEqual([
+        session.threadId,
+        newerDescriptor.threadId,
+      ]);
       expect(persistedAttachment()).toEqual(before);
       expect(audit.counts()).toEqual({ session: 0, history: 2 });
       // The original follower still has its pre-failure cached clock.
@@ -1530,8 +1732,11 @@ describe('AttachedSessionFollowService', () => {
         resumeCursor: { cursor: 40 },
         updatedAt: committed.createdAt,
       });
-      expect(publicHistory()[0]?.updatedAt).toBe(committed.createdAt);
-      expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+      expect((await publicHistory())[0]?.updatedAt).toBe(committed.createdAt);
+      expect(await order()).toEqual([
+        session.threadId,
+        newerDescriptor.threadId,
+      ]);
       expect(
         store
           .listEvents(session.threadId)
@@ -2268,6 +2473,88 @@ describe('AttachedSessionFollowService', () => {
     }
 
     const app = () => join(dir, 'repository', 'app');
+
+    test.each(['project', 'unattributed'] as const)(
+      'a capped cold-read window preserves durable attribution when the next observation is %s',
+      async (observation) => {
+        const projectsFor = (slug: string) => [
+          { slug, workingDirectory: app() },
+        ];
+        let projects = projectsFor('alpha');
+        const original = followService(() => projects);
+        await original.pollNow();
+        projects = projectsFor('beta');
+        await original.pollNow();
+        expect(summarize().projectSlug).toBe('beta');
+
+        for (let index = 0; index < 64; index += 1) {
+          store.appendEvent({
+            eventId: `legacy-owner-only-${index}`,
+            provider: 'claude',
+            method: 'session.configured',
+            sessionId: session.threadId,
+            threadId: session.threadId,
+            createdAt: '2026-07-22T00:00:02.000Z',
+            metadata: {
+              userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+              controlMode: 'read-only-attached',
+            },
+          });
+        }
+        const count = store.listEvents(session.threadId).length;
+        projects = observation === 'project' ? projectsFor('alpha') : [];
+        store.close();
+        store = new EventStore(join(dir, 'orchestration.sqlite'));
+        const readWindow = vi.spyOn(
+          store,
+          'listRecentConfiguredEventsByThread',
+        );
+        await followService(() => projects).pollNow();
+        expect(readWindow.mock.calls).toEqual([[session.threadId, 64]]);
+        const expectedSlug = observation === 'project' ? 'alpha' : 'beta';
+        const expectedLength = observation === 'project' ? count + 2 : count;
+        expect(summarize().projectSlug).toBe(expectedSlug);
+        expect(store.listEvents(session.threadId)).toHaveLength(expectedLength);
+        const persisted = store.readSessionByThread(session.threadId);
+        if (!persisted)
+          throw new Error('the attached session was not persisted');
+        expect(
+          buildOrchestrationSessionSummary({
+            answerability: OBSERVATION,
+            persisted,
+            events: store
+              .listSessionProjectionEvents(session.threadId)
+              .map(({ payload }) => payload),
+          }).projectSlug,
+        ).toBe(expectedSlug);
+
+        store.close();
+        store = new EventStore(join(dir, 'orchestration.sqlite'));
+        await followService(() => projects).pollNow();
+        expect(summarize().projectSlug).toBe(expectedSlug);
+        expect(store.listEvents(session.threadId)).toHaveLength(expectedLength);
+      },
+    );
+
+    test('a suppressed repeat leaves the last committed Project in the warm follower', async () => {
+      const alpha = [{ slug: 'alpha', workingDirectory: app() }];
+      const beta = [{ slug: 'beta', workingDirectory: app() }];
+      let projects = alpha;
+      const service = followService(() => projects);
+      for (const next of [alpha, beta, alpha, beta]) {
+        projects = next;
+        await service.pollNow();
+      }
+      expect(summarize().projectSlug).toBe('alpha');
+      const count = store.listEvents(session.threadId).length;
+
+      const elsewhere = join(dir, 'elsewhere');
+      mkdirSync(elsewhere);
+      projects = [{ slug: 'alpha', workingDirectory: elsewhere }];
+      await service.pollNow();
+      expect(summarize().projectSlug).toBe('alpha');
+      expect(store.listEvents(session.threadId)).toHaveLength(count);
+    });
 
     test('adding a second project on the same directory clears the stamped slug, and survives a restart', async () => {
       let projects: AttachedProjectRoot[] = [

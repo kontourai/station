@@ -1,0 +1,17 @@
+{
+  "revision": "1d21bdde5e4db4a3e94d042fb2769a68fbc0a1e5",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-checked this page's citations of testing.md after the PR Gallery excuse paragraph changed (exact error matching, complete capture, trust limit, re-run base): it states nothing about the PR Gallery capture or its attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-checked this page's citations of testing.md after the PR Gallery excuse paragraph changed (exact error matching, complete capture, trust limit, re-run base): it states nothing about the PR Gallery capture or its attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-checked this page's citations of testing.md after the PR Gallery excuse paragraph changed (exact error matching, complete capture, trust limit, re-run base): it states nothing about the PR Gallery capture or its attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-checked this page's citations of testing.md after the PR Gallery excuse paragraph changed (exact error matching, complete capture, trust limit, re-run base): it states nothing about the PR Gallery capture or its attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-checked this page's citations of testing.md after the PR Gallery excuse paragraph changed (exact error matching, complete capture, trust limit, re-run base): it states nothing about the PR Gallery capture or its attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-checked this page's citations of testing.md after the PR Gallery excuse paragraph changed (exact error matching, complete capture, trust limit, re-run base): it states nothing about the PR Gallery capture or its attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]}
+  ]
+}

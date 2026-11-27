@@ -1,7 +1,0 @@
-{
-  "revision": "6e145619be3c7248162f5784395a9e2e3e6b65c7",
-
-  "notes": [
-    {"path":"docs/reference/play-data-safety.md","note":"Corrected adoption wording: conversations taken over from an outside Codex CLI session contribute no daily tokens because codex-adapter.ts withholds every token-usage update for sessions running from the outside CLI home (codex-adapter-adoption.test.ts asserts none are published); the first-figure baseline sentence now covers native resumes only. Generated artifacts regenerated from privacy-inventory.ts and pinned by privacy-inventory.test.ts.","inputs":["docs/reference/play-data-safety.md","src-server/services/__tests__/privacy-inventory.test.ts","src-server/services/privacy-inventory.ts"]}
-  ]
-}

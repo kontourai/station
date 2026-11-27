@@ -1,0 +1,7 @@
+{
+  "revision": "4f101ab0f8de657ae1782cf97535fc02e19c1715",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Cites api.md for S3 sources and as a general reference; neither section changed.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

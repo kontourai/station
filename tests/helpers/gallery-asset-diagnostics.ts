@@ -13,6 +13,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import type { Request, Response } from '@playwright/test';
+import type { DocumentTracker } from './gallery-document-tracker';
 
 type AssetRequest = Pick<
   Request,
@@ -22,7 +23,15 @@ type AssetResponse = Pick<
   Response,
   'status' | 'headerValue' | 'fromServiceWorker'
 > & { request(): AssetRequest };
-const MAX_SCREENS = 128;
+/**
+ * Scopes (every screen plus the setup scope) the collector accepts. Beyond it
+ * `createGalleryAssetDiagnostics` throws instead of folding later screens into
+ * one bucket, and the spec checks the whole declared gallery against it at
+ * startup, so a growing gallery fails loudly rather than silently losing
+ * per-screen buckets (128 once covered 127 of 242 screens). The summary's
+ * 512 KiB check below is what bounds a scope's size.
+ */
+export const GALLERY_ASSET_MAX_SCOPES = 1024;
 const MAX_ASSETS = 4096;
 const MAX_ACTIVE = 1024;
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
@@ -46,6 +55,13 @@ function assetPath(raw: string, origin: string): string | null {
 }
 function failureCode(raw: string | undefined): string | null {
   return raw?.match(/\b(?:net::ERR_[A-Z_]+|NS_ERROR_[A-Z_]+)\b/)?.[0] ?? null;
+}
+/** Refuses a declared gallery that does not fit one scope per screen. */
+export function assertGalleryAssetScopeCapacity(screens: number) {
+  if (screens + 1 > GALLERY_ASSET_MAX_SCOPES)
+    throw new Error(
+      `Gallery asset diagnostics hold ${GALLERY_ASSET_MAX_SCOPES - 1} screens; ${screens} are declared. Raise GALLERY_ASSET_MAX_SCOPES and re-check the summary budget.`,
+    );
 }
 function newScope(name: string, ordinal: number) {
   return {
@@ -99,24 +115,33 @@ type Receipt = {
     responseStart: number;
     responseEnd: number;
   } | null;
+  /** Wall-clock milliseconds since the epoch at the request event. */
+  requestedAt: number;
+  /** Wall-clock milliseconds since the epoch at the failure event. */
+  failedAt: number | null;
+  /**
+   * At failure: whether the requesting document was still the one showing.
+   * An abort of a `previous` document's request is navigation teardown.
+   */
+  document: 'current' | 'previous' | null;
+  resourceType: string | null;
 };
 
 /** Complete scoped counters are independent from intentionally sampled detail. */
 export function createGalleryAssetDiagnostics(
   origin: string,
   declaredScreens: readonly string[],
+  now: () => number = Date.now,
+  documents?: Pick<DocumentTracker, 'classify'>,
 ) {
-  const startedAt = Date.now();
-  let incomplete =
-    declaredScreens.length + 1 > MAX_SCREENS ||
-    new Set(declaredScreens).size !== declaredScreens.length;
+  assertGalleryAssetScopeCapacity(declaredScreens.length);
+  const startedAt = now();
+  let incomplete = new Set(declaredScreens).size !== declaredScreens.length;
   const setup = newScope('setup-or-unattributed', 0);
   setup.entered = 1;
   const scopes = [
     setup,
-    ...declaredScreens
-      .slice(0, MAX_SCREENS - 1)
-      .map((name, index) => newScope(name, index + 1)),
+    ...declaredScreens.map((name, index) => newScope(name, index + 1)),
   ];
   let current = setup;
   const enteredOrder: number[] = [];
@@ -217,6 +242,8 @@ export function createGalleryAssetDiagnostics(
     completed.set(request, receipt.scope);
     increment(receipt.scope, failed ? 'failed' : 'finished');
     if (failed) {
+      receipt.failedAt = now();
+      receipt.document = documents?.classify(request) ?? null;
       assets[receipt.asset].failed++;
       mask(receipt.scope.failedAssets, receipt.asset);
       if (receipt.responded) increment(receipt.scope, 'failedWithResponse');
@@ -327,8 +354,15 @@ export function createGalleryAssetDiagnostics(
           failure: null,
           metadataError: null,
           timing: null,
+          requestedAt: now(),
+          failedAt: null,
+          document: null,
+          resourceType: null,
         };
         active.set(request, receipt);
+        observe(current, () => {
+          receipt.resourceType = request.resourceType();
+        });
         let selected = samples.get(current);
         if (!selected) {
           selected = { normal: null, anomalies: [] };
@@ -427,14 +461,29 @@ export function createGalleryAssetDiagnostics(
       if (timer !== undefined) clearTimeout(timer);
       accepting = false;
       setup.ended = 1;
+      // Compact per scope: one bucket per screen across a 242-screen
+      // gallery has to fit the 512 KiB summary check below. Statuses are
+      // sparse ({ "200": n }) and each asset bitmask keeps only the bytes the
+      // dictionary uses (asset id n is bit n & 7 of byte n >> 3).
+      const maskBytes = Math.ceil(assets.length / 8);
       const summaryRows = scopes.map((scope) => ({
         ...scope,
-        statuses: [...scope.statuses],
+        statuses: Object.fromEntries(
+          scope.statuses
+            .map((count, status) => [String(status), count] as const)
+            .filter(([, count]) => count > 0),
+        ),
         mime: [...scope.mime],
         serviceWorker: [...scope.serviceWorker],
-        requestedAssets: scope.requestedAssets.toString('base64'),
-        respondedAssets: scope.respondedAssets.toString('base64'),
-        failedAssets: scope.failedAssets.toString('base64'),
+        requestedAssets: scope.requestedAssets
+          .subarray(0, maskBytes)
+          .toString('base64'),
+        respondedAssets: scope.respondedAssets
+          .subarray(0, maskBytes)
+          .toString('base64'),
+        failedAssets: scope.failedAssets
+          .subarray(0, maskBytes)
+          .toString('base64'),
       }));
       const balanced = scopes.every(
         (scope) =>
@@ -484,6 +533,10 @@ export function createGalleryAssetDiagnostics(
           metadataError: receipt.metadataError,
           terminal: receipt.terminal,
           timing: receipt.timing,
+          resourceType: receipt.resourceType,
+          requestedAt: receipt.requestedAt,
+          failedAt: receipt.failedAt,
+          document: receipt.document,
         }));
       const retained = rows.filter((row) => sizeOf(row) <= 768).slice(0, 384);
       const total = scopes.reduce((sum, scope) => sum + scope.requested, 0);
@@ -497,7 +550,7 @@ export function createGalleryAssetDiagnostics(
       const dictionary = { complete: dictionaryOverflows === 0, assets };
       if (sizeOf(dictionary) > 768 * 1024) dictionary.complete = false;
       return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         startedAt,
         summary,
         dictionary,
@@ -781,7 +834,7 @@ export function retainGalleryAssetDiagnostics(
   after: Inventory | null,
   provenance: { complete: boolean; [key: string]: unknown },
 ) {
-  const output = 'asset-network-v2.json';
+  const output = 'asset-network-v3.json';
   const prior = inspectDiagnosticFolder(directory);
   if (prior.incomplete || prior.rootIdentity === null)
     return {
@@ -906,7 +959,7 @@ export function retainGalleryAssetDiagnostics(
   if (body.length > room || prior.incomplete || componentOverflow) {
     body = Buffer.from(
       JSON.stringify({
-        schemaVersion: 2,
+        schemaVersion: 3,
         incomplete: true,
         reason: 'DIAGNOSTIC_BUDGET_OR_INSPECTION',
         priorBytes: prior.bytes,

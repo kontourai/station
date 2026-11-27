@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked: tool-policy delivery and the ACP header token are untouched; adapter changes are steer, reattach and usage only. No claim changed.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/acp-adapter-events.ts","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

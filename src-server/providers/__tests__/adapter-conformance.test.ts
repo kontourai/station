@@ -49,7 +49,6 @@ const terminal = (event: CanonicalRuntimeEvent) =>
 // #3834 asks whether concurrent sends must refuse, supersede, or overwrite.
 // Until decided, pin each adapter's actual behavior without calling it a defect.
 const concurrent = {
-  codex: 'overwrite',
   bedrock: 'supersede',
   ollama: 'supersede',
 } as const;
@@ -69,7 +68,7 @@ interface GapObservation {
 /** Only this exact assertion may be inverted; setup/other failures must stay red. */
 function knownGap(
   category: 'DEFECT' | 'HARDENING',
-  issue: '#3835' | '#3836' | '#3837',
+  issue: '#3837',
   name: string,
   failure: string,
   observe: () => Promise<GapObservation>,
@@ -357,11 +356,15 @@ for (const { name, label, transport } of registrations) {
       // error_during_execution result; ACP resolves prompt(stopReason:cancelled).
       engine.settleInterrupt();
       await quiet();
-      if (name !== 'codex')
-        expect(
-          terminals().filter((event) => event.turnId === turn.turnId),
-        ).toHaveLength(1);
-      // Codex's duplicate after its captured response is isolated below.
+      expect(
+        terminals().filter((event) => event.turnId === turn.turnId),
+      ).toHaveLength(1);
+      if (name === 'codex') {
+        expect((await engine.adapter.listSessions())[0]).toMatchObject({
+          status: 'ready',
+          resumeCursor: { turnId: turn.turnId },
+        });
+      }
       if (name !== 'claude' && name !== 'codex' && name !== 'acp') {
         // These transports already suppress old-turn output after stopping.
         // Keep their passing guard outside every known-gap inversion.
@@ -394,207 +397,158 @@ for (const { name, label, transport } of registrations) {
         expect(
           terminals().filter((event) => event.turnId === turn.turnId),
         ).toHaveLength(1);
+        const successorOffset = texts().length;
+        engine.late(turn.turnId);
+        engine.settleInterrupt(turn.turnId);
+        engine.text('new reply continues');
+        await expect
+          .poll(() => texts().at(-1))
+          .toMatchObject({
+            turnId: started()[1].turnId,
+            delta: 'new reply continues',
+          });
+        expect(
+          texts()
+            .slice(successorOffset)
+            .map((event) => event.delta),
+        ).toEqual(['new reply continues']);
         engine.complete();
         await settle(2);
       });
       for (const origin of ['client-dispatched', 'engine-opened'] as const) {
-        knownGap(
-          'DEFECT',
-          '#3835',
-          `Claude ${origin} text in the interrupt-ack/result window`,
-          `Claude must not publish text on the aborted ${origin} turn between interrupt acknowledgement and result`,
-          async () => {
-            if (origin === 'engine-opened') {
-              // Match the capture's task-notification turn after a client result.
-              await send();
-              engine.text('setup');
-              engine.complete();
-              await settle(1);
-              engine.text('before-stop');
-              await expect.poll(() => started().length).toBe(2);
-              await expect.poll(() => texts().length).toBe(2);
-            } else {
-              await send();
-              engine.text('before-stop');
-              await expect.poll(() => texts().length).toBe(1);
-            }
-            const interruptedStart = started().at(-1)!;
-            const turn = { turnId: interruptedStart.turnId! };
-            const result = await engine.adapter.interruptTurn(
-              THREAD,
-              turn.turnId,
-            );
-            const offset = published().length;
-            engine.late();
-            await quiet(); // The old message is still open: result withheld.
-            const late = published()
-              .slice(offset)
-              .filter((event) => event.method === 'content.text-delta');
-            engine.settleInterrupt();
-            await quiet();
-            return {
-              satisfied: textAttributionIsValid(late, turn.turnId),
-              healthy: () => {
-                expect(result).toEqual({
-                  outcome: 'cancelled',
-                  turnId: turn.turnId,
-                });
-                if (origin === 'engine-opened')
-                  expect(interruptedStart.metadata?.trigger).toBe('provider');
-                else expect(started()).toHaveLength(1);
-                expect(engine.inputs()).toHaveLength(1);
-                expect(engine.stopped()).toBe(true);
-                expect(
-                  terminals().filter((event) => event.turnId === turn.turnId),
-                ).toHaveLength(1);
-                expect(
-                  terminals().find((event) => event.turnId === turn.turnId),
-                ).toMatchObject({
-                  method: 'turn.aborted',
-                  turnId: turn.turnId,
-                });
-              },
-            };
-          },
-        );
-      }
-    }
-    if (name === 'codex') {
-      knownGap(
-        'DEFECT',
-        '#3836',
-        'Codex duplicate terminal after captured interrupted notification',
-        'Codex must publish only one terminal for the captured client interrupt sequence',
-        async () => {
-          const { turn, result } = await stop();
-          const before = terminals().filter(
-            (event) => event.turnId === turn.turnId,
-          );
-          engine.settleInterrupt();
-          await quiet();
-          const after = terminals().filter(
-            (event) => event.turnId === turn.turnId,
-          );
-          return {
-            satisfied: after.length === 1,
-            healthy: () => {
-              expect(result).toEqual({
-                outcome: 'cancelled',
-                turnId: turn.turnId,
-              });
-              expect(
-                engine.stopped(),
-                'stop reached the engine transport',
-              ).toBe(true);
-              expect(before).toEqual([
-                expect.objectContaining({
-                  method: 'turn.aborted',
-                  turnId: turn.turnId,
-                }),
-              ]);
-              expect(after.every((event) => event.turnId === turn.turnId)).toBe(
-                true,
-              );
-            },
-          };
-        },
-      );
-    }
-    if (name === 'codex') {
-      knownGap(
-        'HARDENING',
-        '#3835',
-        'Codex adapter has no guard if the engine sends a late delta (not present in the three client-interrupt captures)',
-        'Codex must suppress an engine delta for an already aborted turn',
-        async () => {
-          const { turn, result } = await stop();
-          const initial = terminals().filter(
-            (event) => event.turnId === turn.turnId,
-          );
-          engine.settleInterrupt();
-          await quiet();
-          const offset = published().length;
+        it(`suppresses ${origin} text while the stopped Claude turn awaits settlement`, async () => {
+          await send();
+          if (origin === 'engine-opened') {
+            engine.text('setup');
+            engine.complete();
+            await settle(1);
+          }
+          engine.text('before-stop');
+          await expect.poll(() => texts().at(-1)?.delta).toBe('before-stop');
+          const start = started().at(-1)!;
+          const turnId = start.turnId!;
+          if (origin === 'engine-opened') {
+            expect(start.metadata?.trigger).toBe('provider');
+            expect(started()).toHaveLength(2);
+          } else {
+            expect(started()).toHaveLength(1);
+          }
+          await expect(
+            engine.adapter.interruptTurn(THREAD, turnId),
+          ).resolves.toEqual({
+            outcome: 'cancelled',
+            turnId,
+          });
+          expect(engine.stopped()).toBe(true);
           engine.late();
           await quiet();
-          const late = published()
-            .slice(offset)
-            .filter((event) => event.method === 'content.text-delta');
-          return {
-            satisfied: textAttributionIsValid(late, turn.turnId),
-            healthy: () => {
-              expect(result).toEqual({
-                outcome: 'cancelled',
-                turnId: turn.turnId,
-              });
-              expect(
-                engine.stopped(),
-                'stop reached the engine transport',
-              ).toBe(true);
-              expect(initial).toHaveLength(1);
-              expect(terminals()[0]).toMatchObject({
-                method: 'turn.aborted',
-                turnId: turn.turnId,
-              });
-            },
-          };
-        },
-      );
-    }
-    if (name === 'acp') {
-      for (const phase of [
-        'before prompt resolves',
-        'after prompt resolves',
-      ] as const) {
-        knownGap(
-          'DEFECT',
-          '#3835',
-          `ACP unscoped post-cancel text ${phase}`,
-          `ACP must attribute or suppress post-cancel text ${phase}`,
-          async () => {
-            const { turn, result } = await stop();
-            if (phase === 'after prompt resolves') {
-              engine.settleInterrupt();
-              await quiet();
-            }
-            const offset = published().length;
-            engine.late();
-            await quiet();
-            const late = published()
-              .slice(offset)
-              .filter((event) => event.method === 'content.text-delta');
-            if (phase === 'before prompt resolves') {
-              engine.settleInterrupt();
-              await quiet();
-            }
-            return {
-              satisfied:
-                phase === 'before prompt resolves'
-                  ? late.every((event) => event.turnId === turn.turnId)
-                  : late.every(
-                      (event) =>
-                        event.turnId &&
-                        started().some(
-                          (start) => start.turnId === event.turnId,
-                        ),
-                    ),
-              healthy: () => {
-                expect(result).toEqual({
-                  outcome: 'cancelled',
-                  turnId: turn.turnId,
-                });
-                expect(engine.stopped()).toBe(true);
-                expect(
-                  terminals().filter((event) => event.turnId === turn.turnId),
-                ).toHaveLength(1);
-                expect(terminals()[0]).toMatchObject({
-                  method: 'turn.aborted',
-                  turnId: turn.turnId,
-                });
-              },
-            };
-          },
-        );
+          engine.settleInterrupt();
+          await quiet();
+          expect(
+            texts().some((event) => event.delta === 'late-after-stop'),
+          ).toBe(false);
+          expect(
+            terminals().filter((event) => event.turnId === turnId),
+          ).toEqual([
+            expect.objectContaining({ method: 'turn.aborted', turnId }),
+          ]);
+        });
       }
+    }
+
+    if (name === 'codex') {
+      it('keeps one terminal for the stopped Codex turn and isolates the successor', async () => {
+        const { turn, result } = await stop();
+        expect(result).toEqual({ outcome: 'cancelled', turnId: turn.turnId });
+        expect(engine.stopped()).toBe(true);
+        await expect
+          .poll(() => terminals())
+          .toEqual([
+            expect.objectContaining({
+              method: 'turn.aborted',
+              turnId: turn.turnId,
+            }),
+          ]);
+
+        const next = await send();
+        engine.late(turn.turnId);
+        engine.settleInterrupt(turn.turnId);
+        engine.text('successor-only');
+        await expect
+          .poll(() => texts().at(-1))
+          .toMatchObject({
+            turnId: next.turnId,
+            delta: 'successor-only',
+          });
+        expect((await engine.adapter.listSessions())[0]).toMatchObject({
+          status: 'running',
+        });
+        engine.complete();
+        await expect
+          .poll(() => terminals().find((event) => event.turnId === next.turnId))
+          .toMatchObject({
+            method: 'turn.completed',
+            outputText: 'successor-only',
+          });
+        expect(texts().some((event) => event.delta === 'late-after-stop')).toBe(
+          false,
+        );
+        expect(
+          terminals().filter((event) => event.turnId === turn.turnId),
+        ).toHaveLength(1);
+      });
+    }
+
+    if (name === 'acp') {
+      it('drops ACP text without an active prompt after a Stop settles', async () => {
+        const { turn, result } = await stop();
+        expect(result).toEqual({ outcome: 'cancelled', turnId: turn.turnId });
+        expect(engine.stopped()).toBe(true);
+        engine.late();
+        engine.settleInterrupt();
+        await quiet();
+        engine.late();
+        await quiet();
+        expect(texts().some((event) => event.delta === 'late-after-stop')).toBe(
+          false,
+        );
+        expect(
+          terminals().filter((event) => event.turnId === turn.turnId),
+        ).toEqual([
+          expect.objectContaining({
+            method: 'turn.aborted',
+            turnId: turn.turnId,
+          }),
+        ]);
+      });
+
+      it('keeps ambiguous ACP output off the successor until the old prompt settles', async () => {
+        const { turn } = await stop();
+        const next = await send();
+        engine.late();
+        await quiet();
+        engine.settleInterrupt();
+        await quiet();
+        engine.text('successor-only');
+        await expect
+          .poll(() => texts().at(-1))
+          .toMatchObject({
+            turnId: next.turnId,
+            delta: 'successor-only',
+          });
+        engine.complete();
+        await expect
+          .poll(() => terminals().find((event) => event.turnId === next.turnId))
+          .toMatchObject({
+            method: 'turn.completed',
+          });
+        expect(texts().some((event) => event.delta === 'late-after-stop')).toBe(
+          false,
+        );
+        expect(
+          terminals().filter((event) => event.turnId === turn.turnId),
+        ).toHaveLength(1);
+      });
     }
 
     it(`concurrent send — #3834 actual behavior: ${name in concurrent ? concurrent[name as keyof typeof concurrent] : 'refuse'}`, async () => {
@@ -617,23 +571,27 @@ for (const { name, label, transport } of registrations) {
         expect(terminals()).toHaveLength(0);
         engine.complete();
         await settle(1);
+        expect(terminals()).toEqual([
+          expect.objectContaining({
+            method: 'turn.completed',
+            turnId: first.turnId,
+          }),
+        ]);
       } else {
         expect(second.error).toBeUndefined();
         await expect.poll(() => started().length).toBe(2);
         expect(engine.inputs()).toHaveLength(2);
         const secondId = started()[1].turnId;
         expect(secondId).not.toBe(first.turnId);
-        if (behavior === 'supersede')
-          expect(terminals()).toEqual([
-            expect.objectContaining({
-              method: 'turn.aborted',
-              turnId: first.turnId,
-              reason: 'superseded',
-            }),
-          ]);
-        else expect(terminals()).toHaveLength(0); // Codex overwrites its active pointer.
+        expect(terminals()).toEqual([
+          expect.objectContaining({
+            method: 'turn.aborted',
+            turnId: first.turnId,
+            reason: 'superseded',
+          }),
+        ]);
         engine.complete();
-        await settle(behavior === 'supersede' ? 2 : 1);
+        await settle(2);
         expect(terminals().at(-1)).toMatchObject({
           method: 'turn.completed',
           turnId: secondId,
@@ -750,7 +708,7 @@ for (const { name, label, transport } of registrations) {
       });
     }
 
-    if (name === 'bedrock' || name === 'ollama') {
+    if (name === 'bedrock' || name === 'ollama' || name === 'copilot-sdk') {
       exempt(
         name,
         'EXEMPT declared image-input — adapter does not declare image-input; session-lifecycle is exercised by the shared lifecycle check',
@@ -861,7 +819,7 @@ for (const { name, label, transport } of registrations) {
       await expect(pending).resolves.toMatchObject({ done: true });
     });
 
-    if (name === 'muse') {
+    if (name === 'muse' || name === 'opencode') {
       it('interrupt uncertainty — adapter-shape.ts ProviderInterruptTurnResult: termination-unconfirmed is never cancelled', async () => {
         const turn = await send();
         engine.unconfirmTermination!();

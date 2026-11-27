@@ -164,8 +164,10 @@ local refusal naming the configured R, never a redirect or metadata alias.
 An origin/issuer change revokes existing grants and requires new registration
 and approval. Do not silently retarget tokens or redirect bearer requests.
 
-`C` is the existing `STATION_TRUSTED_CONSENT_ORIGIN`, a separate HTTPS origin
-that reaches only the consent listener. It may share O's DNS name on a different
+`C` is the trusted approval HTTPS origin, provided by the legacy
+`STATION_TRUSTED_CONSENT_ORIGIN` setting or the enabled
+[dynamic publication preview](station-routes.md#dynamic-https-publications-preview).
+It reaches only the consent listener. It may share O's DNS name on a different
 port, as in S3/S4; it must remain a different origin. Operator cookies reaching
 both ports do not authorize ceremonies on O. Browser approval on C requires
 the already paired Device and operator session used by S3. The OAuth client
@@ -722,12 +724,16 @@ approval bypass.
 | Authorization code | `oac_` + 32 random bytes, base64url; hash stored with client, actual redirect, S256 challenge, R, request/approval-intent version and exchanged family ID | 60 seconds; atomically consume after successful verifier and binding checks. Correctly bound reuse refuses and revokes the issued family/grant. |
 | Access token | `oat_` + 32 random bytes, base64url; opaque, hash stored with issuer/station, R, grant ID/version, client, subject, family and scopes | 60 minutes (`expires_in: 3600` when not capped), capped by grant expiry; valid only as `/mcp` Authorization bearer. |
 | Refresh token | `ort_` + 32 random bytes, base64url; hash with client/R/grant/family/sequence, issued/used timestamps | Rotate on first use; 7 days idle, capped by the grant's absolute expiry. Any reuse revokes its only family and grant (`refresh_replay`); idle expiry expires both (`idle`); no grace. |
-| Grant | Random ID; active/revoked/expired (approval intent is separate); delegator, approval actor, immutable client/redirect/R, Project ID or explicit global, originally requested scopes, selected level/scopes, version, created/last-use/expiry | Default 30 days absolute, selectable shorter, maximum 30 days in v1. No automatic extension or refresh beyond expiry. |
+| Authorization request | ID `oar_` + 32 random bytes, base64url (47 characters); an opaque identifier, not a token or credential; pending/approved/coded/active/denied/expired/replaced | Pending until approved, denied, replaced or expired. The host CLI takes the ID as an operand. |
+| Grant | ID `oag_` + 32 random bytes, base64url (47 characters); an opaque identifier, not a token or credential; active/revoked/expired (approval intent is separate); delegator, approval actor, immutable client/redirect/R, Project ID or explicit global, originally requested scopes, selected level/scopes, version, created/last-use/expiry | Default 30 days absolute, selectable shorter, maximum 30 days in v1. No automatic extension or refresh beyond expiry. |
 | MCP session | Random opaque ID bound to grant, family, version, issuer and transport | At most 30 minutes since the last HTTP request, including an open GET stream, and never beyond grant expiry; ID alone grants nothing. Reauthenticate each request. |
 
 Hash all high-entropy secrets using domain-separated SHA-256; perform constant-time
 comparison when comparing secret-derived bytes. Prefixes are format separation,
-not authority. Keep token responses `Cache-Control: no-store`; tokens never
+not authority. The request and grant prefixes also keep an ID from starting
+with `--`, which the host CLI's argument parser would read as a flag. A request
+or grant created before these prefixes, in a private or development store, can
+still have such an ID and cannot be addressed by the CLI; it is not migrated. Keep token responses `Cache-Control: no-store`; tokens never
 appear in URLs, logs, traces, analytics, audit or Connections. The client is
 responsible for its own token custody. Store no verifier; retain only the S256
 challenge and binding digests needed for exchange/replay checks as specified
@@ -1368,9 +1374,13 @@ SSE response ends without further content. Both paths release the request's
 call reservation. Revoke, in-place narrowing, CORS removal and same-grant
 DELETE all end the old session. The 30-minute inactivity clock is refreshed by
 HTTP requests, not by an open GET channel; clients must reconnect before this
-cap, still subject to token/grant expiry. Token admission and the one-second
-session recheck are read-only; lifecycle mutation/pruning remains with its
-existing owners, and outward emission still rechecks under the decision lock.
+cap, still subject to token/grant expiry. The token lookup and one-second
+session recheck are read-only. The request charges durable ingress budgets
+before authentication, and outward emission rechecks under the decision lock.
+The budget check returns HTTP 503 immediately when the database has another
+writer. If revocation is observed before a POST response is returned, the client
+receives the session error. Once the router has returned a response, revocation
+or an unavailable decision lock closes the stream before any further data.
 
 The negative audience middleware ships live even while the outside router is
 compiled off. It recognizes the full outside-artifact shape: `oat_`, `ort_` or

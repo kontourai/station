@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+
+import {
+  AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE,
+  AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE,
+} from '@kontourai/station-contracts/managed-model-binding';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -11,6 +16,7 @@ import {
   translateChatError,
   translateProjectedRuntimeError,
 } from '../chatErrorTranslation';
+import { describeProviderDefaultFailure } from '../providerDefaultFailure';
 
 // Fixture-based per the plan's Stop-short risks: the real AWS Bedrock
 // "model not enabled" exception text could not be captured live in
@@ -61,8 +67,41 @@ describe('translateChatError', () => {
       message: 'The requested conversation is unavailable.',
     });
     expect(result.retryable).toBe(false);
-    expect(result.title).toMatch(/could not be resumed/);
+    expect(result.title).toMatch(/couldn’t be resumed/);
     expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
+  });
+
+  it.each([
+    "This agent's settings changed while the chat was still working. That work can no longer use tools. When it finishes, send your message again: the chat continues this conversation with the new settings.",
+    "This agent's settings changed and this chat's engine can't pick up where it left off. Send your message again: the chat continues this conversation in a new session with the new settings.",
+    "This agent's settings changed again before your message was sent, so nothing was sent. Send it again: the chat continues with the new settings.",
+  ])(
+    'shows a replaced-configuration refusal as the server wrote it, with no hint repeating it: %s',
+    (message) => {
+      const result = translateChatError({
+        status: 409,
+        code: 'session_configuration_replaced',
+        message,
+      });
+      expect(result.title).toBe("This agent's settings changed");
+      expect(result.body).toBe(message);
+      expect(result.hint).toBeUndefined();
+      expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
+      expect(result.title).not.toBe('Error');
+    },
+  );
+
+  it('falls back to a one-sentence hint when the server sent no text for a replaced configuration', () => {
+    const result = translateChatError({
+      status: 409,
+      code: 'session_configuration_replaced',
+      message: '',
+    });
+    expect(result.title).toBe("This agent's settings changed");
+    expect(result.body).toBe('');
+    expect(result.hint).toBe(
+      'Send your message again once any work still running has finished: the chat continues this conversation with the new settings.',
+    );
   });
 
   it('classifies an ended-session refusal by backend code as a Station-side end, not an error', () => {
@@ -126,7 +165,7 @@ describe('translateChatError', () => {
       message: 'Synthetic provider failure',
     });
 
-    expect(result.title).toBe("Can't resume");
+    expect(result.title).toBe('This chat can’t continue');
     expect(result.body).toBe('Synthetic provider failure');
     expect(result.hint).not.toMatch(/Model connection settings/i);
   });
@@ -230,6 +269,14 @@ describe('translateChatError', () => {
       // The client cannot know a retry helps here (archive#3297: the underlying
       // cause in the observed instance was a stale credential).
       expect(result.hint).not.toBe('Retry your request.');
+      // That cause is this device's credential at Station, not the model
+      // connection, so the hint points at the device's connection.
+      expect(result.hint).toBe(
+        'This can be temporary. If it keeps happening, check this device’s connection to this Station.',
+      );
+      expect(result.body).toBe(
+        'The response ended before the reply finished, so nothing more arrived for this turn.',
+      );
     });
 
     it('REPRO: a bare "Unexpected end of JSON input" (no stream-controller wrapper) classifies the same way', () => {
@@ -608,7 +655,7 @@ describe('formatChatErrorDisplay', () => {
     const rendered = formatChatErrorDisplay({
       title: "This conversation's history is gone",
       body: "Can't reach native session.",
-      hint: 'New chat.',
+      hint: 'Start a new chat.',
       disclosureRaw: true,
     });
 
@@ -735,5 +782,43 @@ describe('model refusal (model_not_advertised)', () => {
     expect(translated.hint).not.toContain('temporary');
     expect(translated.hint).not.toContain('may already have started');
     expect(translated.retryable).toBe(false);
+  });
+});
+
+// One fixture per server sentence: the provider service's ("application
+// default") and an unbound agent's ("explicit default"), each as the
+// station-agent relay records it.
+const AMBIGUITY_CASES = [
+  ['the provider service', AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE],
+  ['an unbound agent', AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE],
+] as const;
+
+describe('describeProviderDefaultFailure (slice 0.17)', () => {
+  const expected = {
+    summary:
+      'Couldn’t start: more than one model connection is turned on and Station can’t tell which one to use.',
+    actionLabel: 'Open model connections',
+    actionHref: '/connections/models',
+  };
+
+  it.each(AMBIGUITY_CASES)(
+    'names the refusal thrown for %s, wrapped by the relay or bare',
+    (_source, message) => {
+      expect(
+        describeProviderDefaultFailure(
+          `Station agent did not accept the task turn: ${message}`,
+        ),
+      ).toEqual(expected);
+      expect(describeProviderDefaultFailure(message)).toEqual(expected);
+    },
+  );
+
+  it('leaves every other cause alone', () => {
+    expect(
+      describeProviderDefaultFailure(
+        'An application default LLM provider and model must be configured.',
+      ),
+    ).toBeNull();
+    expect(describeProviderDefaultFailure('ECONNREFUSED host:8443')).toBeNull();
   });
 });

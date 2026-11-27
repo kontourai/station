@@ -1,12 +1,19 @@
 /**
- * Shared git-tracked-file helpers for the checked-in-baseline "ratchet" gate family
- * (state-primitives-ratchet.mjs, shell-conformance-ratchet.mjs, claim-fixture-ratchet.mjs).
- * Extracted after `listGitTrackedFiles`/`assertClaimSurfacesAreGitTracked` in
- * claim-fixture-ratchet.mjs turned out to be the second line-for-line duplicate of
- * shell-conformance-ratchet.mjs's `listGitTrackedFiles`/`assertTrackedViewsAreGitTracked` (a third
- * copy counting state-primitives-ratchet.mjs's own `listTrackedTsxFiles`, which shares the same
- * `git ls-files` + encoding/windowsHide + trim/split/filter boilerplate even though it scans a glob
- * rather than verifying an explicit list) — this is the threshold where extraction pays for itself.
+ * Shared git-tracked-file helpers for the gates that scope themselves with `git ls-files`.
+ *
+ * Extracted when `listGitTrackedFiles`/`assertClaimSurfacesAreGitTracked` in
+ * claim-fixture-ratchet.mjs turned out to be a line-for-line duplicate of the same pair in
+ * shell-conformance-ratchet.mjs, with a third copy of the `git ls-files` + encoding/windowsHide +
+ * trim/split/filter boilerplate in state-primitives-ratchet.mjs. Those two ratchets now list
+ * through `lib/gate-scope.mjs`, which builds its extension-filtered listing on `gitLsFiles` here.
+ *
+ * `gitLsFiles` is the one listing primitive. The gates that scan a pathspec call it directly:
+ * random-uuid-guard, lazy-boundary-ratchet, sdk-error-message-ratchet, dialog-surface-class-guard,
+ * font-origin-ratchet, ui-glyph-coverage-ratchet, knowledge-kit-import-gate, unsaved-guard-gate,
+ * native-platform-boundary, station-vocabulary-gate and proof-repo-guardrails.
+ * `assertFilesAreGitTracked` serves claim-fixture-ratchet, which verifies that a declared list of
+ * surfaces is actually tracked. A gate the guardrail test harness copies into a scratch repository
+ * must name this module in that fixture's `libs`.
  */
 import { execFileSyncBounded } from './bounded-capture.mjs';
 

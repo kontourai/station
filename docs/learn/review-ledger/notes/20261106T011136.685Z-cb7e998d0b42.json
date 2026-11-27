@@ -1,7 +1,0 @@
-{
-  "revision": "72153f62b836e53c3318eb42ca46308373e215f9",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Follow-up type-only repair: the runner now declares the status/signal/error shape it consumes; the process fixture supplies nullable signals and no longer casts its fake against Node overloads. Runtime preload, sequencing, diagnostic fields and verdict rules are unchanged. Six focused cases and scripts typecheck passed after the correction. Physical Windows previously passed the same runtime preload with 36 focused tests plus 13 retention cases; coordinator fork records were retained. This does not identify the unresolved hosted crash cause.","inputs":["docs/guides/testing.md","scripts/__tests__/windows-portable-floor.test.ts","scripts/windows-portable-floor.mjs"]}
-  ]
-}

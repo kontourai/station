@@ -1,6 +1,10 @@
 import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
 import {
+  ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+  ACP_SESSION_REWOUND_CODE,
+  ACP_SESSION_REWOUND_LATE_CODE,
+  ACP_SESSION_STARTED_FRESH_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
@@ -15,7 +19,10 @@ import {
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
 } from '@kontourai/station-contracts/runtime-events';
-import { agentMessageInput } from '@kontourai/station-shared/agent-message-frame';
+import {
+  agentMessageInput,
+  stationTurnOrigin,
+} from '@kontourai/station-shared/agent-message-frame';
 import { isStationRestartContinuationTurn } from '@kontourai/station-shared/conversation-message';
 import {
   outboundStationIdentity,
@@ -34,6 +41,7 @@ import { withDeliveryCheck } from '../../utils/messageDeliveryState';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
+  pendingNonModelOptions,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import {
@@ -172,6 +180,7 @@ export function handleTurnStartedEvent(
         timestamp: Date.parse(event.createdAt) || undefined,
         turnId: event.turnId,
         sessionId: event.threadId,
+        steer: true,
         ...(event.steerInterruptedRun ? { steerInterruptedRun: true } : {}),
       });
     }
@@ -247,6 +256,9 @@ export function handleTurnStartedEvent(
           : {}),
         ...(isStationRestartContinuationTurn(event)
           ? { stationRestartContinuation: true }
+          : {}),
+        ...(stationTurnOrigin(event)
+          ? { stationOrigin: stationTurnOrigin(event) }
           : {}),
       });
     }
@@ -374,7 +386,11 @@ export function handleTurnStartedEvent(
             currentChat?.requestedProviderOptions,
             effectiveModelOptions,
           )
-            ? { requestedProviderOptions: undefined }
+            ? {
+                requestedProviderOptions: pendingNonModelOptions(
+                  currentChat?.requestedProviderOptions,
+                ),
+              }
             : {}),
           ...(currentChat?.requestedModel !== null
             ? { modelSource: currentChat?.requestedModelSource }
@@ -713,10 +729,15 @@ export function handleRuntimeErrorEvent(
   const priorMessages = [
     ...pruneStaleFailureMarkers(chat?.messages || [], failedTurnId),
   ];
+  const isSameTurnMarker = (message: (typeof priorMessages)[number]) =>
+    failedTurnId !== undefined &&
+    message.turnId === failedTurnId &&
+    isChatErrorMarker(message);
   // Keep content that was already visible when the turn failed. The error
   // card owns the explanation; it must not replace the partial answer/tools.
   if (
     !repeatsCurrentTurn &&
+    !priorMessages.some(isSameTurnMarker) &&
     (streamingMessage.content?.trim() ||
       streamingMessage.contentParts?.some(
         (part) =>
@@ -752,7 +773,7 @@ export function handleRuntimeErrorEvent(
           },
         ]
       : [
-          ...priorMessages,
+          ...priorMessages.filter((message) => !isSameTurnMarker(message)),
           {
             role: 'user' as const,
             content: markerPrefix,
@@ -824,6 +845,23 @@ export function handleRuntimeErrorEvent(
 const SESSION_POSTURE_WARNING_CODES: ReadonlySet<string> = new Set([
   MUSE_SERVE_UNAVAILABLE_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+  // The engine runs its own default agent rather than the one this chat was
+  // started with: part of the conversation, not a passing toast.
+  ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
+  // The engine could not reload this conversation and runs a new session:
+  // what it holds differs from the transcript from here on.
+  ACP_SESSION_STARTED_FRESH_CODE,
+]);
+
+/**
+ * Warnings the transcript projection itself draws, from the stored event, as
+ * a marker row: an in-place engine rewind (`sessionRewoundMarker`), which
+ * also marks the turns it hid. Neither a toast nor a second notice.
+ */
+const TRANSCRIPT_DRAWN_WARNING_CODES: ReadonlySet<string> = new Set([
+  ACP_SESSION_REWOUND_CODE,
+  // A rewind applied late: the projection draws its own marker row.
+  ACP_SESSION_REWOUND_LATE_CODE,
 ]);
 
 /**
@@ -856,6 +894,11 @@ export function handleRuntimeWarningEvent(
   station?: StationStateScope,
 ) {
   const chatStore = activeChatsStore.forStation(station);
+  if (
+    event.code !== undefined &&
+    TRANSCRIPT_DRAWN_WARNING_CODES.has(event.code)
+  )
+    return;
   if (
     !isReplayThread(event.threadId) &&
     !(

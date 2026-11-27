@@ -116,7 +116,7 @@ test('an intervening scope refresh cannot replace the editor’s captured compar
     <DeviceScopeEditor {...props} currentScope={openedScope} />,
   );
   fireEvent.click(
-    screen.getByRole('radio', { name: /Collaborator management/ }),
+    screen.getByRole('radio', { name: /Participate in shared Projects/ }),
   );
   rerender(<DeviceScopeEditor {...props} currentScope="orchestration:read" />);
   apply();
@@ -302,7 +302,7 @@ test.each([
 test('collaborator management applies exactly read+operate, never terminal or device management', () => {
   const onApply = openEditor('orchestration:read');
   fireEvent.click(
-    screen.getByRole('radio', { name: /Collaborator management/ }),
+    screen.getByRole('radio', { name: /Participate in shared Projects/ }),
   );
   apply();
   expect(onApply).toHaveBeenCalledWith(
@@ -320,7 +320,7 @@ test('a stored read+operate scope still initialises as Delegation, not the colla
   expect(
     (
       screen.getByRole('radio', {
-        name: /Collaborator management/,
+        name: /Participate in shared Projects/,
       }) as HTMLInputElement
     ).checked,
   ).toBe(false);
@@ -361,7 +361,7 @@ test('selecting collaborator management from a broader grant narrows visibly, wi
   ).toBe(true);
 
   fireEvent.click(
-    screen.getByRole('radio', { name: /Collaborator management/ }),
+    screen.getByRole('radio', { name: /Participate in shared Projects/ }),
   );
 
   // The previously ticked capability is cleared, not silently kept, and
@@ -386,7 +386,7 @@ test('an account-bound exact read+operate grant reopens as the collaborator choi
   expect(
     (
       screen.getByRole('radio', {
-        name: /Collaborator management/,
+        name: /Participate in shared Projects/,
       }) as HTMLInputElement
     ).checked,
   ).toBe(true);

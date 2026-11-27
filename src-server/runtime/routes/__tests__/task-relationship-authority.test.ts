@@ -24,7 +24,10 @@ const closers: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of closers.splice(0)) await close();
 });
-async function fixture(current: () => boolean = () => true) {
+async function fixture(
+  current: () => boolean = () => true,
+  readable: () => boolean = () => true,
+) {
   const home = temp('relationship-authority-');
   const storage = new FileStorageAdapter(home);
   const project = {
@@ -94,7 +97,7 @@ async function fixture(current: () => boolean = () => true) {
         undefined,
       ),
     current: () => live && current(),
-    mayRead: () => live,
+    mayRead: () => live && readable(),
     mayEdit: () => live,
   });
   const work = new TaskRoomWorkModule(join(home, 'room-requests.json'));
@@ -458,4 +461,32 @@ test('Task list groups authorized independent room requests and linked chats wit
     },
   );
   expect((await read('owner')).workChatConversationIds).toEqual([]);
+});
+
+test('task list omits chats whose Task admission disappeared and propagates unexpected failures', async () => {
+  let readable = true;
+  const h = await fixture(
+    () => true,
+    () => readable,
+  );
+  expect((await h.link('chat')).status).toBe(200);
+  readable = false;
+  const response = await h.app.request('/api/tasks');
+  expect(response.status).toBe(200);
+  expect(((await response.json()) as { data: unknown[] }).data).toEqual([
+    expect.objectContaining({ id: h.task.id, workChatConversationIds: [] }),
+  ]);
+  readable = true;
+  const prepare = vi.spyOn(h.adapters, 'authorityForRequest');
+  prepare.mockRejectedValueOnce(new Error('store unreadable'));
+  expect((await h.app.request('/api/tasks')).status).toBe(500);
+  prepare.mockRestore();
+  const restored = await h.app.request('/api/tasks');
+  expect(restored.status).toBe(200);
+  expect(((await restored.json()) as { data: unknown[] }).data).toEqual([
+    expect.objectContaining({
+      id: h.task.id,
+      workChatConversationIds: ['chat'],
+    }),
+  ]);
 });

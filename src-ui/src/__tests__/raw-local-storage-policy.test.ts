@@ -17,16 +17,18 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'lastProjectLayout', // Navigation restore pointer to the last visited layout.
   'recentAgents', // Derived MRU used for picker ordering, not a setting.
   'recentLayouts', // Derived MRU used for picker ordering, not a setting.
+  'station.room.recent-emoji', // Derived MRU of this viewer's reaction picks (bounded to 8) for the room reaction picker's ordering; not a setting.
   'station.switcher.recent', // Derived MRU of saved Station ids for switcher ordering (bounded to 20), not a setting.
   'station-device-settings-v1', // The versioned device-settings envelope itself.
   'station.turnAttention.settled', // Bounded (500) memory of turns whose finish already toasted, so a reload does not re-toast them (#4396); notification bookkeeping, not a setting.
   'station-attached-session-continuations-v1', // Exact Attached Session continuation evidence.
+  'station.staged-handoff-recovery.v1', // Authority-partitioned pointers to exact staged Send attempts. Payloads remain in IndexedDB.
   'station-browser-relay-account-scope-event-v1', // Transient cross-tab relay account-scope signal; written and removed, never a setting or credential.
   'station-outbound-unlocked-renderers', // Cross-window runtime signal: boot ids of renderers whose outbox liveness lock could not be taken, so other windows read them as unknown rather than gone (lib/outboundQueueLease.ts). Bounded to 32 ids; never a setting or credential.
   'station.background-tasks.sections', // Ephemeral panel disclosure state.
-  'station.agents-pane.scope', // Ephemeral Agents pane scope (this conversation / all), view state not a setting.
+  'station.agents-pane.scope', // Ephemeral Agents pane scope (this chat / all chats), view state not a setting.
+  'station.agents-pane.collapsed-chats', // Agents pane chat groups this viewer collapsed; disclosure view state, not a setting.
   'station.chatDock.snap', // Ephemeral dock geometry/snap state.
-  'station.release-notes.last-version', // Last observed installed app version; one-time presentation bookkeeping, not a preference.
   'station.dockFirstRunSeen', // One-time affordance marker.
   // archive#3122's `station.home.variant` used to sit here. It was written by
   // one deletable module and read by nothing else, exactly so that retiring
@@ -46,6 +48,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station-accent-color', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
   'station-branding-theme-v1', // Validated branding cache for first paint; re-validated on read. Server data, not a device setting.
   'station-appearance-v1', // The mode and color theme this device last rendered and whether the account supplied them, so startup-theme.js can paint a signed-in person's appearance before first paint. A render cache, not a setting: nothing edits it and the account's answer replaces it (lib/appearance-cache.ts).
+  'station-custom-appearance-v1', // The person's custom appearance text the server last accepted, so main.tsx can paint it before first render. Re-parsed and re-sanitized on read, and the server's answer replaces it. Server data, not a device setting (lib/custom-appearance/controller.ts).
   'station-startup-mark', // The channel mark the native host last reported, so startup-theme.js can paint the splash before the report arrives. Host identity, not a setting.
 ] as const;
 
@@ -56,11 +59,13 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
 // their storage keys internally, so the allowlist cannot be laundered through
 // a re-exported raw-key writer.
 const ALLOWED_COMPUTED_KEY_FILES = new Set([
+  'utils/retired-activity-storage.ts', // Module-private prefix; removes only legacy Activity keys, with no caller-supplied keys.
   'lib/project-onboarding-recovery.ts', // Exact Project creation/import recovery pointers derive keys from Station authority and Project/request identities; no public raw-key writer.
   'components/chat-dock/conversationContextBoundaryUiState.ts', // Boundary UI state is scoped by conversation id; `key` is module-private and every export takes the semantic id, never a raw key.
   'components/SplitPaneLayout.tsx', // Pane geometry is scoped by the caller-provided pane id.
   'components/split-pane-metrics.ts', // Shared pane restoration reads the same pane-id-scoped geometry key.
   'contexts/ToastContext.tsx', // Recent messages use a module-private prefix plus Station scope; only bounded caller-approved recall text persists, never actions or raw diagnostics.
+  'components/updates/usePostUpdateChangelog.ts', // Last observed installed app version (module-private `station.release-notes.last-version`), optionally suffixed by the connected server identity; presentation bookkeeping only, and the hook accepts a server identity, never a raw key.
   'core/remotePluginBundleConsent.ts', // Consent is scoped by the normalized remote plugin origin.
   'platform/native/deliveryFeed.ts', // The alert cursor is scoped by the feed's scope key; the prefix is module-private and only the default deps read or write it.
   'utils/activity-snooze-store.ts', // Authority-partitioned snooze map; storageKey is private and exported operations accept work-item identity and namespace, never a raw key.

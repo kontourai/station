@@ -72,7 +72,7 @@ function activityRightRecord(
       right: {
         visible: true,
         size: 517,
-        occupant: { kind: 'surface', id: 'activity' },
+        occupant: { kind: 'surface', id: 'workspace-agents' },
         maximized: false,
       },
       bottom: {
@@ -169,6 +169,23 @@ afterEach(() => {
 });
 
 describe('RegionModelProvider reads the regionArrangement record at mount', () => {
+  test('a plain Home launch starts with the saved Devices pane collapsed', async () => {
+    seedEnvelope({
+      regionArrangement: activityRightRecord({
+        right: {
+          visible: true,
+          size: 517,
+          occupant: { kind: 'surface', id: 'device' },
+          maximized: false,
+        },
+      }),
+    });
+    render(<Harness />);
+    await waitFor(() => expect(model?.regions.right.occupant).toBe('device'));
+    expect(model?.regions.right.visible).toBe(false);
+    expect(model?.regions.right.size).toBe(517);
+  });
+
   test('a record with Activity in right mounts with Activity in right (the reload case)', async () => {
     seedEnvelope({ regionArrangement: activityRightRecord() });
     setUrl('/');
@@ -179,8 +196,8 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     expect(model?.regions.right).toEqual({
       visible: true,
       size: 517,
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       maximized: false,
     });
     expect(model?.regions.bottom.occupant).toBe('chat');
@@ -213,7 +230,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
         right: {
           visible: false,
           size: 517,
-          occupant: { kind: 'surface', id: 'activity' },
+          occupant: { kind: 'surface', id: 'workspace-agents' },
           maximized: false,
         },
       }),
@@ -234,8 +251,8 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     expect(model?.regions.right).toEqual({
       visible: false,
       size: 517,
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       maximized: false,
     });
     // The initializer did this, not a mount-time correction that then
@@ -259,7 +276,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     // — a placement link that landed Chat behind another pane's tab named
     // a pane the reader could not see.
     expect(model?.regions.right).toMatchObject({
-      panes: ['activity', 'chat'],
+      panes: ['workspace-agents', 'chat'],
       occupant: 'chat',
       visible: true,
     });
@@ -279,7 +296,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
         left: {
           visible: false,
           size: 400,
-          occupant: { kind: 'surface', id: 'activity' },
+          occupant: { kind: 'surface', id: 'workspace-agents' },
           maximized: false,
         },
         right: {
@@ -306,7 +323,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
       occupant: 'chat',
       maximized: false,
     });
-    expect(model?.regions.left.occupant).toBe('activity');
+    expect(model?.regions.left.occupant).toBe('workspace-agents');
   });
 
   test('a record naming a retired surface in right mounts with right empty', async () => {
@@ -352,7 +369,7 @@ describe('RegionModelProvider persists every arrangement write as the record', (
     expect(regionArrangementWrites(setSpy)).toHaveLength(0);
 
     act(() => {
-      model?.placeSurface('activity', 'left');
+      model?.placeSurface('workspace-agents', 'left');
       model?.setRegion('left', { size: 333 });
     });
     // Trailing edge: nothing has been written in the same tick.
@@ -367,7 +384,7 @@ describe('RegionModelProvider persists every arrangement write as the record', (
             left: {
               visible: true,
               size: 333,
-              occupant: { kind: 'surface', id: 'activity' },
+              occupant: { kind: 'surface', id: 'workspace-agents' },
               maximized: false,
             },
           }),
@@ -380,13 +397,13 @@ describe('RegionModelProvider persists every arrangement write as the record', (
     expect(deviceSettingsStore.get('regionArrangement').regions.left).toEqual({
       visible: true,
       size: 333,
-      occupant: { kind: 'surface', id: 'activity' },
+      occupant: { kind: 'surface', id: 'workspace-agents' },
       maximized: false,
     });
     // The store's echo of this tab's own write is not adopted as a change.
     await settle();
     expect(regionArrangementWrites(setSpy)).toHaveLength(1);
-    expect(model?.regions.left.occupant).toBe('activity');
+    expect(model?.regions.left.occupant).toBe('workspace-agents');
   });
 
   test('a mount is not a write: no setter is reached until the user changes something', async () => {
@@ -414,7 +431,7 @@ describe('RegionModelProvider persists every arrangement write as the record', (
         left: {
           visible: false,
           size: 400,
-          occupant: { kind: 'surface', id: 'activity' },
+          occupant: { kind: 'surface', id: 'workspace-agents' },
           maximized: false,
         },
         right: {
@@ -435,7 +452,7 @@ describe('RegionModelProvider persists every arrangement write as the record', (
     await settle();
 
     expect(model?.regions.right.occupant).toBe('chat');
-    expect(model?.regions.left.occupant).toBe('activity');
+    expect(model?.regions.left.occupant).toBe('workspace-agents');
     expectNoWrites(spies);
     expect(deviceSettingsStore.get('dockSlotPlacement')).toBe('left');
     expect(window.location.search).toBe('');
@@ -465,7 +482,9 @@ describe('RegionModelProvider adopts another tab’s record without re-persistin
     });
     act(() => writeFromAnotherTab(incoming));
 
-    await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
+    await waitFor(() =>
+      expect(model?.regions.right.occupant).toBe('workspace-agents'),
+    );
     expect(model?.regions.right.size).toBe(517);
     // Adoption is a read. Its only writes are the Chat mirror's: the other
     // tab's Chat is open, so this tab's navigation now says so too.
@@ -489,9 +508,80 @@ describe('RegionModelProvider adopts another tab’s record without re-persistin
 
     act(() => writeFromAnotherTab(activityRightRecord()));
 
-    await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
+    await waitFor(() =>
+      expect(model?.regions.right.occupant).toBe('workspace-agents'),
+    );
     expect(model?.regions.bottom.visible).toBe(false);
     expect(model?.lastShownRegion).toBe('right');
+  });
+
+  test('another tab’s maximize does not maximize this tab, and leaves its URL without maximize (#5397)', async () => {
+    setUrl('/?dock=open');
+    render(<Harness />);
+    await waitFor(() => expect(model?.regions.bottom.visible).toBe(true));
+    const spies = spyOnEverySetter();
+
+    // An earlier build in another tab still wrote its maximize into the record.
+    act(() =>
+      writeFromAnotherTab(
+        activityRightRecord({
+          bottom: {
+            visible: true,
+            size: 320,
+            occupant: { kind: 'surface', id: 'chat' },
+            maximized: true,
+          },
+        }),
+      ),
+    );
+
+    // The rest of the record is adopted; the maximize is not.
+    await waitFor(() =>
+      expect(model?.regions.right.occupant).toBe('workspace-agents'),
+    );
+    await settle();
+    expect(model?.regions.bottom).toMatchObject({
+      visible: true,
+      maximized: false,
+    });
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
+    expect(
+      new URLSearchParams(window.location.search).get('maximize'),
+    ).toBeNull();
+    expect(spies.setDockState).not.toHaveBeenCalledWith(true, true);
+  });
+
+  test('another tab’s record does not restore this tab’s maximized dock, unless it hides that region', async () => {
+    setUrl('/?dock=open&maximize=true');
+    render(<Harness />);
+    await waitFor(() => expect(model?.regions.bottom.maximized).toBe(true));
+
+    // The other tab resized the dock; its record, like every record, says
+    // nothing is maximized.
+    act(() =>
+      writeFromAnotherTab(
+        activityRightRecord({
+          bottom: {
+            visible: true,
+            size: 360,
+            occupant: { kind: 'surface', id: 'chat' },
+            maximized: false,
+          },
+        }),
+      ),
+    );
+    await waitFor(() => expect(model?.regions.bottom.size).toBe(360));
+    await settle();
+    expect(model?.regions.bottom.maximized).toBe(true);
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+    expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+      'true',
+    );
+
+    // A region the other tab hid cannot stay maximized here.
+    act(() => writeFromAnotherTab(activityRightRecord()));
+    await waitFor(() => expect(model?.regions.bottom.visible).toBe(false));
+    expect(model?.regions.bottom.maximized).toBe(false);
   });
 
   test('an unrelated setting’s write re-materializes an equal record and changes nothing', async () => {
@@ -536,13 +626,13 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     expectNoWrites(spies);
   });
 
-  test('a record with right.maximized and Activity in right mounts maximized, and the URL says nothing', async () => {
+  test('a record that holds a maximized region mounts every region at normal size when the URL does not maximize', async () => {
     seedEnvelope({
       regionArrangement: activityRightRecord({
         right: {
           visible: true,
           size: 517,
-          occupant: { kind: 'surface', id: 'activity' },
+          occupant: { kind: 'surface', id: 'workspace-agents' },
           maximized: true,
         },
       }),
@@ -556,14 +646,47 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     expect(model?.regions.right).toEqual({
       visible: true,
       size: 517,
-      panes: ['activity'],
-      occupant: 'activity',
-      maximized: true,
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
+      maximized: false,
     });
     expect(model?.regions.bottom.maximized).toBe(false);
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
     await settle();
     expectNoWrites(spies);
+  });
+
+  test('a dock maximized on one page opens at normal size on a freshly loaded page', async () => {
+    setUrl('/?dock=open');
+    const first = render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+
+    act(() => model?.setRegion('bottom', { maximized: true }));
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true),
+    );
+    expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+      'true',
+    );
+    await settle();
+    // The maximize is this page's: the device record does not carry it.
+    expect(
+      deviceSettingsStore.get('regionArrangement').regions.bottom.maximized,
+    ).toBe(false);
+    first.unmount();
+    const mountedModel = () => model;
+    model = null;
+
+    // Another page, loaded fresh: no `maximize` in its URL.
+    setUrl('/automations?dock=open');
+    render(<Harness />);
+    await waitFor(() => expect(mountedModel()).not.toBeNull());
+
+    expect(mountedModel()?.regions.bottom).toMatchObject({
+      visible: true,
+      maximized: false,
+    });
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
   });
 
   test('the URL’s maximize=true beats a record maximizing another region', async () => {
@@ -572,7 +695,7 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
         right: {
           visible: true,
           size: 517,
-          occupant: { kind: 'surface', id: 'activity' },
+          occupant: { kind: 'surface', id: 'workspace-agents' },
           maximized: true,
         },
       }),
@@ -592,11 +715,13 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     expect(model?.regions.right.maximized).toBe(false);
   });
 
-  test('maximizing Activity through setRegion persists the record and never calls setDockState', async () => {
+  test('maximizing Activity through setRegion writes no record and never calls setDockState', async () => {
     seedEnvelope({ regionArrangement: activityRightRecord() });
     setUrl('/');
     render(<Harness />);
-    await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
+    await waitFor(() =>
+      expect(model?.regions.right.occupant).toBe('workspace-agents'),
+    );
     const spies = spyOnEverySetter();
     // The store's memory is a module singleton an earlier test may have
     // raised; lower it so "untouched" below is observable.
@@ -604,23 +729,16 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
 
     act(() => model?.setRegion('right', { maximized: true }));
 
-    await waitFor(() =>
-      expect(
-        deviceSettingsStore.get('regionArrangement').regions.right,
-      ).toEqual({
-        visible: true,
-        size: 517,
-        occupant: { kind: 'surface', id: 'activity' },
-        maximized: true,
-      }),
-    );
-    expect(model?.regions.right.maximized).toBe(true);
+    await waitFor(() => expect(model?.regions.right.maximized).toBe(true));
+    await settle();
+    // A maximize is the page's, not the device's (#5397): nothing to save.
+    expect(regionArrangementWrites(spies.set)).toHaveLength(0);
     expect(spies.setDockState).not.toHaveBeenCalled();
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
     expect(navigationStore.lastDockMaximized).toBe(false);
   });
 
-  test('maximizing Chat’s region calls setDockState(true, true) exactly once and persists', async () => {
+  test('maximizing Chat’s region calls setDockState(true, true) exactly once and writes no record', async () => {
     setUrl('/?dock=open');
     render(<Harness />);
     await waitFor(() => expect(model?.regions.bottom.visible).toBe(true));
@@ -632,15 +750,11 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     expect(spies.setDockState).toHaveBeenCalledWith(true, true);
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
     expect(navigationStore.lastDockMaximized).toBe(true);
-    await waitFor(() =>
-      expect(
-        deviceSettingsStore.get('regionArrangement').regions.bottom.maximized,
-      ).toBe(true),
-    );
     // Settled: the inbound sync saw a navigation that already agrees, so no
-    // second write.
+    // second write; and the maximize lives in this page's URL, not the record.
     await settle();
     expect(spies.setDockState).toHaveBeenCalledTimes(1);
+    expect(regionArrangementWrites(spies.set)).toHaveLength(0);
 
     // Restore: an explicit un-maximize clears the memory (an explicit
     // non-maximized open, navigation-store.ts).
@@ -677,10 +791,9 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
 
     await waitFor(() => expect(model?.regions.bottom.maximized).toBe(true));
     // The seed is inbound: the mirror does not replay it as a user write,
-    // but the arrangement did change, so the record persists it.
-    await waitFor(() =>
-      expect(regionArrangementWrites(setSpy)).toHaveLength(1),
-    );
+    // and a maximize is not part of the record, so nothing is saved.
+    await settle();
+    expect(regionArrangementWrites(setSpy)).toHaveLength(0);
 
     act(() => navigationStore.collapseMaximizedDock());
     await waitFor(() => expect(model?.regions.bottom.maximized).toBe(false));

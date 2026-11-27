@@ -1,0 +1,7 @@
+{
+  "revision": "b874f58bf7d818e014de42f96836d8e312f96fdf",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked the outside-Station section against codex-rollout-session-source.ts (default home first, configured homes from configuredEngineHomes, earliest-home dedupe, exclusive source-root override, 128 candidates across all Codex homes) and acp-session-list-source.ts/acp-probe.ts (opt-in env, probe cadence, list-only, no continuation, Grok/OpenCode and probe sessions excluded); agent list from the captured frames fixture.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

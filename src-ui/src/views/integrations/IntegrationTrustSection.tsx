@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-contracts/tool';
 import type { IntegrationViewModel } from '@kontourai/station-sdk';
 import { StatusBadge } from '@kontourai/ui/react';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 const ENGINE_LABEL = {
   claude: 'Claude Code',
@@ -28,6 +29,7 @@ export function IntegrationTrustSection({
     updater: (form: IntegrationViewModel) => IntegrationViewModel,
   ) => void;
 }) {
+  useDecisionSurface('integration-trust-settings');
   const names = [
     ...new Set([
       ...(form.probe?.tools?.map((tool) => tool.name) ??

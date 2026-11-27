@@ -57,10 +57,6 @@
   content: url("/favicon-dev.png");
 }
 
-:root[data-startup-mark="beta"] .station-startup__logo {
-  content: url("/favicon-beta.png");
-}
-
 :root[data-startup-mark="nightly"] .station-startup__logo {
   content: url("/favicon-nightly.png");
 }

@@ -186,7 +186,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       expect(
         screen.queryByText('Add a model connection to power chats and agents.'),
       ).toBeNull();
-      expect(screen.queryByText('Select a model connection')).toBeNull();
+      expect(screen.queryByText('Nothing selected')).toBeNull();
       // The quickstart/detected-actions panel still stands alone.
       expect(
         screen.getByRole('button', { name: /Add detected Ollama/ }),
@@ -207,7 +207,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         ),
       ).toBeNull();
       // What the panel is for when nothing exists: the way out.
-      expect(screen.getByText('Quick Setup')).toBeTruthy();
+      expect(screen.getByText('Quick setup')).toBeTruthy();
       expect(screen.getAllByText('No model connections yet')).toHaveLength(1);
     });
 
@@ -240,9 +240,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     test('the model-connections description does not point at the page it is on', () => {
       render(<ProviderSettingsView onNavigate={onNavigate} />);
 
-      const description = screen.getByText(/Connections used by Station/);
+      const description = screen.getByText(/Used by Station's engine/);
       expect(description.textContent).toContain(
-        'Engine connections are under the Engines tab.',
+        'Other engines are on the Engines tab.',
       );
       // Review L8: the JSX-newline form could never appear in rendered text,
       // so asserting its absence proved nothing. The rendered sentence is what
@@ -278,9 +278,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         ),
       ).toBeTruthy();
       // a connection exists but is filtered off the list, so the detail
-      // panel's "Select a model connection" is ALSO suppressed now — it
+      // panel's "Nothing selected" is ALSO suppressed now — it
       // would otherwise be a second message on top of FilteredEmpty.
-      expect(screen.queryByText('Select a model connection')).toBeNull();
+      expect(screen.queryByText('Nothing selected')).toBeNull();
       // The (always-useful, unfiltered) provider stack overview still
       // shows the real connection regardless of the list's search.
       expect(
@@ -288,7 +288,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       ).toBeTruthy();
     });
 
-    test('populated, nothing selected: the detail panel says "Select a model connection" exactly once', () => {
+    test('populated, nothing selected: the detail panel says "Nothing selected" exactly once', () => {
       modelConnections = [
         {
           id: 'bedrock-prod',
@@ -305,7 +305,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       render(<ProviderSettingsView onNavigate={onNavigate} />);
 
       expect(screen.queryByText('No model connections yet')).toBeNull();
-      expect(screen.getAllByText('Select a model connection')).toHaveLength(1);
+      expect(screen.getAllByText('Nothing selected')).toHaveLength(1);
     });
 
     // modelConnections is EMPTY (nothing exists regardless of the
@@ -417,9 +417,20 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         },
       },
     ];
-    render(<ProviderSettingsView onNavigate={onNavigate} />);
+    const { container } = render(
+      <ProviderSettingsView onNavigate={onNavigate} />,
+    );
 
-    expect(screen.getByText(/Saved — not verified · LLM/)).toBeTruthy();
+    // The readiness is the row's badge; the subtitle holds facts only, and
+    // the row no longer paints an inline status dot as its icon.
+    const row = container.querySelector('.split-pane__item')!;
+    expect(row.querySelector('.resource-status__badge')?.textContent).toBe(
+      'Saved — not verified',
+    );
+    const subtitle = row.querySelector('.split-pane__item-subtitle');
+    expect(subtitle?.textContent).toContain('LLM');
+    expect(subtitle?.textContent).not.toContain('Saved');
+    expect(row.querySelector('.split-pane__item-icon')).toBeNull();
   });
 
   // RT-17 — agent delete has always opened a confirm modal; provider delete
@@ -679,6 +690,141 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       type: 'connections-model-edit',
       id: created.connection.id,
     });
+  });
+
+  test('Create stays unavailable, with the reason, while an OpenAI-compatible connection has no server URL', async () => {
+    render(
+      <ProviderSettingsView selectedProviderId="new" onNavigate={onNavigate} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /OpenAI-Compatible/ }));
+    await screen.findByRole('heading', { name: 'Connect OpenAI-Compatible' });
+
+    const create = screen.getByRole('button', {
+      name: 'Create',
+    }) as HTMLButtonElement;
+    const reason = 'A server URL is required to save this connection.';
+    expect(create.disabled).toBe(true);
+    expect(create.closest('header')?.textContent).toContain(reason);
+    const describedBy = (create.getAttribute('aria-describedby') ?? '').split(
+      ' ',
+    );
+    const fieldReasonId = screen
+      .getByLabelText('Server URL')
+      .getAttribute('aria-describedby');
+    expect(fieldReasonId).toBeTruthy();
+    expect(document.getElementById(fieldReasonId!)?.textContent).toBe(reason);
+    expect(describedBy).toContain(fieldReasonId);
+    fireEvent.click(create);
+    expect(saveMutate).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Server URL'), {
+      target: { value: '   ' },
+    });
+    expect(create.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Server URL'), {
+      target: { value: 'http://localhost:8080/v1' },
+    });
+    expect(create.disabled).toBe(false);
+    expect(screen.queryByText(reason)).toBeNull();
+    fireEvent.click(create);
+    expect(saveMutate).toHaveBeenCalledOnce();
+  });
+
+  test('an already-saved OpenAI-compatible connection with no server URL cannot be saved until one is entered', () => {
+    modelConnections = [
+      {
+        id: 'compat-broken',
+        kind: 'model',
+        type: 'openai-compat',
+        name: 'OpenAI-Compatible',
+        config: { baseUrl: '' },
+        enabled: true,
+        capabilities: ['llm', 'embedding'],
+        status: 'missing_prerequisites',
+        prerequisites: [],
+        lastCheckedAt: null,
+      },
+    ];
+    render(
+      <ProviderSettingsView
+        selectedProviderId="compat-broken"
+        onNavigate={onNavigate}
+      />,
+    );
+    const save = screen.getByRole('button', {
+      name: 'Save',
+    }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    // The same sentence sits in the header beside Save, not only under the
+    // Server URL field, which a phone shows below the fold.
+    const header = save.closest('header');
+    expect(header).toBeTruthy();
+    expect(header?.textContent).toContain(
+      'A server URL is required to save this connection.',
+    );
+    expect(
+      document.getElementById(save.getAttribute('aria-describedby') ?? '')
+        ?.textContent,
+    ).toBe('A server URL is required to save this connection.');
+  });
+
+  test('a saved OpenAI-compatible connection with no server URL can be turned off and saved without one', () => {
+    modelConnections = [
+      {
+        id: 'compat-broken',
+        kind: 'model',
+        type: 'openai-compat',
+        name: 'OpenAI-Compatible',
+        config: { baseUrl: '' },
+        enabled: true,
+        capabilities: ['llm', 'embedding'],
+        status: 'missing_prerequisites',
+        prerequisites: [],
+        lastCheckedAt: null,
+      },
+    ];
+    render(
+      <ProviderSettingsView
+        selectedProviderId="compat-broken"
+        onNavigate={onNavigate}
+      />,
+    );
+    const save = screen.getByRole('button', {
+      name: 'Save',
+    }) as HTMLButtonElement;
+    const enabled = screen.getByRole('checkbox', { name: 'Enabled' });
+    expect(save.disabled).toBe(true);
+
+    fireEvent.click(enabled);
+    const turnOn = 'A server URL is required to turn this connection on.';
+    expect(save.disabled).toBe(false);
+    expect(save.closest('header')?.textContent).toContain(turnOn);
+    expect(
+      document.getElementById(
+        screen.getByLabelText('Server URL').getAttribute('aria-describedby')!,
+      )?.textContent,
+    ).toBe(turnOn);
+
+    fireEvent.click(save);
+    expect(saveMutate).toHaveBeenCalledOnce();
+    const sent = saveMutate.mock.calls[0]?.[0] as {
+      connection: { id: string; enabled: boolean; config: { baseUrl: string } };
+      isNew: boolean;
+    };
+    expect(sent.isNew).toBe(false);
+    expect(sent.connection).toMatchObject({
+      id: 'compat-broken',
+      enabled: false,
+      config: { baseUrl: '' },
+    });
+
+    // Turning it back on needs the address again.
+    fireEvent.click(enabled);
+    expect(save.disabled).toBe(true);
+    expect(save.closest('header')?.textContent).toContain(
+      'A server URL is required to save this connection.',
+    );
   });
 
   test('defers a dirty draft selection change until discard is confirmed', () => {

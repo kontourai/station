@@ -4,17 +4,18 @@
  * Every request the runtime auth boundary (`runtime-http.ts`) stamped
  * `kind:'internal'` — the per-boot internal token, presented from a direct
  * loopback socket with the `local` proxy marker — resolved to the Station
- * operator, whoever sent it. That is every station-control tool call (stdio
- * child, pooled child, in-process HTTP MCP, in-process Claude), so every
- * agent reached Station as the operator. This guard runs right after that
+ * operator, whoever sent it. That is every station-control tool call
+ * (in-process HTTP MCP, in-process Claude, Station's own engine in-process),
+ * so every agent reached Station as the operator. This guard runs right after that
  * boundary and before any route, and decides internal requests from the
  * station-control authority table (`tools/station-control-policy.ts`) and the
  * VERIFIED caller the request forwards (`resolveStationControlCallerForRequest`):
  *
  * - a route no tool reaches is refused (`station_control_route_unmapped`),
  *   so a new route cannot become agent-reachable by default;
- * - a caller-less request may reach only read-only routes whose answers
- *   belong to no person (decision 4, read with decision 2);
+ * - a caller-less request is refused (decision 4, slice D: Station's own
+ *   engine now calls as its session, so only a copied internal token or a
+ *   stray child is caller-less);
  * - assurance, the operator role, a recorded owner for principal-scoped
  *   actions, and person-only actions follow the table.
  *
@@ -46,9 +47,11 @@
  */
 import type { MiddlewareHandler } from 'hono';
 import { PrincipalUnresolvedError } from '../services/identity/principal-resolver.js';
+import { DELEGATED_RESULT_TOOLS } from '../services/plugins/untrusted-content-policy.js';
 import {
   authorizeStationControlRequest,
   matchStationControlRoute,
+  restrictedNetworkRouteWithheld,
   SCOPED_THREAD_COMMAND_FIELD,
   type StationControlDispatchTarget,
   type StationControlRefusal,
@@ -152,6 +155,20 @@ export interface StationControlAuthorityGuardOptions {
     conversationIds: readonly (string | undefined)[];
     toolNames: readonly string[];
   }): Promise<string | undefined>;
+  /**
+   * #4828: an admitted call by a tool that returns a delegated child's
+   * output (`DELEGATED_RESULT_TOOLS`), with every id the caller's
+   * conversation is known by. A child that read untrusted content marks the
+   * caller then. Absent: nothing is carried. A throw is ignored.
+   */
+  delegatedResultRead?(conversationIds: readonly (string | undefined)[]): void;
+  /**
+   * #4769: whether a session's latest start ran with a restricted network.
+   * Such a caller is refused every route whose tools are all withheld from
+   * restricted sessions (`restrictedNetworkRouteWithheld`). Absent: no
+   * session is restricted. A throw refuses.
+   */
+  networkRestrictedSession?(sessionId: string): boolean;
   /** Called once per refusal, for the operator's logs. */
   onRefusal?(
     refusal: StationControlRefusal,
@@ -464,6 +481,30 @@ export function createStationControlAuthorityGuard(
         body,
       ),
     });
+    if (
+      !refusal &&
+      caller &&
+      options.networkRestrictedSession &&
+      restrictedNetworkRouteWithheld(method, path)
+    ) {
+      // Fail closed: a reader that throws refuses this call, also for a
+      // session that started unrestricted. Only routes whose tools are all
+      // withheld reach here, and the caller resolver above already read the
+      // same store, so a broken store has normally failed before this.
+      let restricted = true;
+      try {
+        restricted = options.networkRestrictedSession(caller.sessionId);
+      } catch {
+        // Unknown: refused.
+      }
+      if (restricted) {
+        const withheld = stationControlRefusal(
+          'station_control_network_restricted',
+        );
+        options.onRefusal?.(withheld, method, path);
+        return c.json(stationControlRefusalBody(withheld), 403);
+      }
+    }
     if (!refusal && caller && options.untrustedContentGate) {
       const toolNames = untrustedContentGatedTools(method, path);
       if (toolNames.length > 0) {
@@ -488,11 +529,24 @@ export function createStationControlAuthorityGuard(
           );
       }
     }
+    if (!refusal && caller && options.delegatedResultRead) {
+      const owners = matchStationControlRoute(method, path)?.owners ?? [];
+      if (owners.some((owner) => DELEGATED_RESULT_TOOLS.has(owner)))
+        try {
+          options.delegatedResultRead([
+            caller.conversationId,
+            caller.sessionId,
+          ]);
+        } catch {
+          // Carrying the mark is best effort; the call itself is unaffected.
+        }
+    }
     if (!refusal) {
       if (
-        method === 'POST' &&
-        path === '/api/orchestration/commands' &&
-        (body as { type?: unknown } | undefined)?.type === 'steerChildWork'
+        (method === 'GET' && path === '/api/diagnostics/logs') ||
+        (method === 'POST' &&
+          path === '/api/orchestration/commands' &&
+          (body as { type?: unknown } | undefined)?.type === 'steerChildWork')
       ) {
         const original = JSON.stringify(caller);
         bindStationControlRequestCurrent(request, () => {

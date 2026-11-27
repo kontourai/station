@@ -12,6 +12,8 @@ export interface AttachedSessionDescriptor {
   threadId: string;
   cwd: string;
   createdAt: string;
+  /** Source write time observed during discovery. Used only to schedule work. */
+  modifiedAtMs?: number;
   sourceHandle: string;
   affinity?: ProviderSessionSourceAffinity;
 }
@@ -27,16 +29,30 @@ export type AttachedSessionSourceOutcome =
   | 'rejected_candidate'
   | 'unknown_source';
 
+export interface AttachedSessionDiscoveryPage {
+  offset: number;
+  limit: number;
+}
+
 export interface AttachedSessionDiscoveryResult {
   outcome: AttachedSessionSourceOutcome;
   sessions: AttachedSessionDescriptor[];
+  nextOffset?: number;
 }
 
 export interface AttachedSessionReadResult {
   outcome: AttachedSessionSourceOutcome;
   events: CanonicalRuntimeEvent[];
+  /** More records were available when this bounded read stopped. */
+  hasMore?: true;
   /** Opaque, bounded continuation position within the source transcript. */
   cursor: AttachedSessionCursor;
+  /**
+   * The newest write to this session the source can see, including writes
+   * that produce no event (a step still streaming, a subagent's own
+   * transcript). Absent when the source cannot tell or nothing changed.
+   */
+  sourceWriteAt?: string;
 }
 
 export type AttachedSessionCursor =
@@ -75,6 +91,8 @@ export interface AttachedSessionSource {
    * provider name.
    */
   readonly kind: string;
+  /** The source lists conversations without a read-only transcript API. */
+  readonly metadataOnly?: true;
   /** Declared only when completed canonical turn IDs are native fork positions. */
   readonly continuationBoundary?: 'completed-turn';
   /**
@@ -87,7 +105,9 @@ export interface AttachedSessionSource {
     provider: string;
     resumeCursor?: unknown;
   }): string | undefined;
-  discover(): Promise<AttachedSessionDiscoveryResult>;
+  discover(
+    page?: AttachedSessionDiscoveryPage,
+  ): Promise<AttachedSessionDiscoveryResult>;
   /**
    * Sources with a moving cold-read window must pin its start before read().
    * The follower persists this bounded cursor before observing any events.

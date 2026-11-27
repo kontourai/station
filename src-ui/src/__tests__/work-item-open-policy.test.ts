@@ -433,3 +433,83 @@ describe('focusChatEventDetailForAction', () => {
     expect(focusChatEventDetailForAction({ kind: 'none' })).toBeNull();
   });
 });
+
+describe('remote sessions open a read-only reader, not a local chat', () => {
+  // Built by the real producer, so the id shape is the one Home emits.
+  async function remoteItem(threadId: string) {
+    const { buildHomeWorkItems } = await import(
+      '../views/home/home-view-model'
+    );
+    const [item] = buildHomeWorkItems({
+      chats: {},
+      agents: [],
+      sessions: [],
+      remoteEnvironments: [
+        {
+          environmentId: 'env-a',
+          environmentName: 'Home media',
+          sessions: [
+            {
+              threadId,
+              provider: 'claude',
+              controlMode: 'read-only-attached',
+              lifecycleState: 'completed',
+              status: 'completed',
+              createdAt: '2026-11-01T00:00:00.000Z',
+              updatedAt: '2026-11-01T00:00:00.000Z',
+              answerability: { answerable: true },
+            } as any,
+          ],
+        },
+      ],
+    } as any);
+    return item!;
+  }
+
+  it('resolves to the remote action with the full (colon-bearing) remote thread id', async () => {
+    const item = await remoteItem(
+      'external:claude:0123456789abcdef0123456789abcdef',
+    );
+    expect(item.kind).toBe('remote-session');
+    // Still no local identity key on a remote row.
+    expect(item.orchestrationThreadId).toBeUndefined();
+    expect(resolveWorkItemOpenAction(item)).toEqual({
+      kind: 'remote',
+      environmentId: 'env-a',
+      environmentLabel: 'Home media',
+      threadId: 'external:claude:0123456789abcdef0123456789abcdef',
+      title: item.title,
+    });
+  });
+
+  it('openWorkItem opens the reader for that environment and thread', async () => {
+    const { remoteSessionReaderStore } = await import(
+      '../contexts/remote-session-reader-store'
+    );
+    const item = await remoteItem('external:codex:feedface');
+    const handlers = {
+      onFocusChat: vi.fn(),
+      onOpenConversation: vi.fn(),
+      onOpenSession: vi.fn(),
+    };
+    expect(await openWorkItem(item, handlers)).toBe('opened');
+    expect(remoteSessionReaderStore.getSnapshot()).toMatchObject({
+      environmentId: 'env-a',
+      environmentLabel: 'Home media',
+      threadId: 'external:codex:feedface',
+    });
+    expect(handlers.onOpenSession).not.toHaveBeenCalled();
+    expect(handlers.onOpenConversation).not.toHaveBeenCalled();
+    remoteSessionReaderStore.close(remoteSessionReaderStore.getSnapshot()!);
+  });
+
+  it('a remote row whose id does not carry its own environment opens nothing', () => {
+    const item = baseItem({
+      id: 'remote:env-b:thread-x',
+      kind: 'remote-session',
+      environmentId: 'env-a',
+      environmentLabel: 'Home media',
+    });
+    expect(resolveWorkItemOpenAction(item)).toEqual({ kind: 'none' });
+  });
+});

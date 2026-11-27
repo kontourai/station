@@ -1,0 +1,7 @@
+{
+  "revision": "03608b8d8a6389c15557e84d850bce1b120f7dee",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the row changes (#5398): touch and hover row anatomy described here is unchanged; a flagged row adds one line under its status, which takes its own line on touch rows.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/inbox-row/InboxRowStatus.tsx","src-ui/src/views/home/work-facts.ts"]}
+  ]
+}

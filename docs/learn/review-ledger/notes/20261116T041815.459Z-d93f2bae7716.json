@@ -1,0 +1,7 @@
+{
+  "revision": "16e88eff3858c698bd785254d4e7a7573581a6fe",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Polish round: Continue in Station now sits next to the origin; the picker description still holds (switch now with draft or catch-up).","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/hooks/useChatInput.ts","src-ui/src/index.css"]}
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "revision": "28da2d2db2b5b749e8673fbc35f7fc241ca00c65",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/architecture.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked the default queue controls inside their shared conversation owner. The edit draft is scoped to its conversation and the connected Station still owns request authority and availability.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"The Session API now lists additive queue mutations. The same orchestration route and authenticated Session boundary still own foreground chat.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/architecture/abstraction-review.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the acknowledged steer marker through the transcript fold. Tool request delivery and approval projection use the same recorded event owners.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/runtime-event-projection.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked the ACP guide link and live steering declaration. The default is Queue and the available steer effect follows the declared integration mechanism.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked the pending steer slot below live transcript content. Acknowledged steers use the existing persisted message projection and child-work, approval and transcript placement rules remain in their owners.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/design/channel-home-authority.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the default composer, mobile reveal tray, draft restoration, multiline text, reorder and receipt transition in the Station Browser and Chromium touch regression.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/design/connections-onboarding.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked the steer marker on merged persisted and live transcript rows. MCP app and tool content remain anchored to their original projected events.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/hooks/orchestration/conversationTranscriptParts.ts"]},
+
+    {"path":"docs/design/motion.md","note":"Checked the reveal tray against Inbox motion. The row translates on the shared gesture offset, follows touch during dragging, and uses the existing motion duration and easing on settle.","inputs":["docs/design/motion.md","src-ui/src/components/chat/QueuedMessages.css"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Checked foreground send and offline continuity around explicit steering. Refused or ended steers leave the draft in the composer and ordinary sends keep their existing binding, carry-through, command and outbox paths.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/design/orchestration-decomposition-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the composer treatment and message layout against the shared Station owner. Queue and Steer mode colors and icons live in the split Send control and pending steer layout is local to the transcript.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/design/portable-project-identity.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Checked Queue as the default across engines and reviewed how the steer input marker enters the persisted transcript without opening another turn.","inputs":["docs/design/session-tape-replay.md","src-ui/src/contexts/active-chats-state.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked foreground send and offline continuity around explicit steering. Refused or ended steers leave the draft in the composer and ordinary sends keep their existing binding, carry-through, command and outbox paths.","inputs":["docs/design/settings-architecture.md","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked the default queue controls inside their shared conversation owner. The edit draft is scoped to its conversation and the connected Station still owns request authority and availability.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked the default queue controls inside their shared conversation owner. The edit draft is scoped to its conversation and the connected Station still owns request authority and availability.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat/chat.css","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/design/task-room-agent-requests.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked the composer default against the live app and ACP adapter cases. Queue is the default. A selected steer can use native ACP delivery or the declared cancel-and-reprompt path.","inputs":["docs/guides/acp.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/guides/agent-configuration.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Checked the additive inbox capability callback and edit, move and promote requests against the mounted route. Existing list, direct steering and foreground execution signatures retain their earlier authority and receipt semantics.","inputs":["docs/guides/agent-development.md","packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Checked foreground send and offline continuity around explicit steering. Refused or ended steers leave the draft in the composer and ordinary sends keep their existing binding, carry-through, command and outbox paths.","inputs":["docs/guides/commands.md","src-ui/src/__tests__/useActiveChatSessionMessaging.test.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/guides/connections.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked the documented Monument boundary against its exported inbox helper. Station remains the host for admission and placement while the engine-neutral kernel owns the persisted fence.","inputs":["docs/guides/development.md","packages/monument/src/index.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The SDK reference now describes the additive queue actions through the existing inbox. The cited integration and authoring guidance still leads to the same SDK and authority boundaries.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Checked the inbox query against Station-scoped authority and stale-read handling. The additional queue-controls receipt is scoped to the same connected inbox and is discarded when its read becomes unavailable.","inputs":["docs/guides/mobile-release.md","src-ui/src/__tests__/useConversationInbox.test.tsx","src-ui/src/hooks/useConversationInbox.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Checked the referenced inbox fixture change. It selects the inbox query by exact authority-scoped key and retains the native path and unavailable-state assertions.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/__tests__/useConversationInbox.test.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the composer treatment and message layout against the shared Station owner. Queue and Steer mode colors and icons live in the split Send control and pending steer layout is local to the transcript.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/guides/self-configuring-agent.md","packages/shared/src/conversation-message.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/learn/walkthroughs.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/reference/agent-smoke-confidence.md","packages/sdk/src/client/execution.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/reference/api.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/contexts/active-chats-state.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/reference/config.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/reference/contracts.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/reference/env-vars.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the additive inbox capability callback and edit, move and promote requests against the mounted route. Existing list, direct steering and foreground execution signatures retain their earlier authority and receipt semantics.","inputs":["docs/reference/sdk.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/reference/skill-experiences.md","src-server/routes/orchestration/orchestration.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/reference/usage-telemetry.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the outlined unconfirmed steer and original-receipt recheck. A renewed send requires an explicit new intent.","inputs":["docs/user/concepts.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"The reviewed workflow uses Queue by default and preserves the original draft when editing a queued message. Touch swipe reveals the same Cancel action as More.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/orchestration-service.ts","src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["docs/user/workspace-checkpoints.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The mounted conversation inbox adds edit, move and promote to its existing POST. Current readable-conversation, local-execution and sender checks still govern it. The reviewed route changes are scoped to inbox actions and leave the cited foreground, delegation, staging, SSE and authority contracts applicable.","inputs":["examples/self-configuring-agent/README.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Checked the added edit and move inbox commands and retired-key option. The kernel compares the original kept payload or adjacent key before writing and holds the replacement key fence without taking a provider effect.","inputs":["packages/agent-runtime/CONTEXT.md","packages/monument/src/commands.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked that adjacent moves and in-place edits act on queued records and that a replacement retires the original key through ordinary retention.","inputs":["packages/monument/CONTEXT.md","packages/monument/src/commands.ts","packages/monument/src/index.ts","packages/monument/src/sqlite.ts","packages/monument/src/step.ts","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked retention against the persisted replacement fence. Retired keys survive ordinary settled-row pruning until inbox deletion.","inputs":["packages/monument/README.md","packages/monument/src/__tests__/participants.test.ts","packages/monument/src/commands.ts","packages/monument/src/index.ts","packages/monument/src/sqlite.ts","packages/monument/src/step.ts","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The SDK reference now describes the additive queue actions through the existing inbox. The cited integration and authoring guidance still leads to the same SDK and authority boundaries.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/README.md","note":"Checked foreground send and offline continuity around explicit steering. Refused or ended steers leave the draft in the composer and ordinary sends keep their existing binding, carry-through, command and outbox paths.","inputs":["packages/sdk/README.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked the pending-input lookup before foreground placement. A waiting key retired by promotion conflicts before any new provider invocation.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

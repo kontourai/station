@@ -8,6 +8,7 @@ import type {
 } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { isTerminalConnectionStatus } from '@kontourai/station-contracts/http';
 import type {
+  CliPresenceEvidence,
   DevicePresentation,
   ExternalEngineReadinessProjection,
   HomeRecoveryDisclosure,
@@ -25,7 +26,7 @@ import {
 } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { _getApiBase } from '../api';
-import { StationHttpError } from '../client/http';
+import { StationHttpError, StationRequestAuthorityError } from '../client/http';
 import { prepareTroubleshoot } from '../client/troubleshoot';
 import {
   type MutationOptions,
@@ -147,6 +148,7 @@ export interface SystemStatus {
     };
   };
   clis: Record<string, boolean>;
+  cliPresence?: Record<string, CliPresenceEvidence>;
   /**
    * Which machine is reading this status (station#3843 §1). Optional only
    * because an older route host does not serve it; a consumer that gets
@@ -588,7 +590,7 @@ export function useDevicePresentation(
  * never-connected, still-pending case behind Station's connect screen — has no
  * data, so a mid-flight `refetch()` falls through to `continueRetry()` and
  * simply re-attaches to the attempt already running. No new request is made.
- * A "Try again" button wired straight to `refetch()` is therefore a no-op in
+ * A "Retry" button wired straight to `refetch()` is therefore a no-op in
  * exactly the state a user is most likely to press it, while the label
  * cheerfully reads "Retrying...".
  *
@@ -733,11 +735,10 @@ export interface CoreUpdateStatusScope {
    */
   scopeKey?: string;
   /**
-   * Checked immediately before the request is issued and again after it
-   * resolves. Throw to reject: an obsolete scope's completion must never
-   * resolve as current data for the scope that superseded it.
+   * Checked immediately before dispatch and again after the response.
+   * Return false or throw to reject an obsolete scope.
    */
-  assertCurrent?: () => void;
+  assertCurrent?: () => boolean | void;
 }
 
 export function useCoreUpdateStatusQuery(
@@ -745,16 +746,18 @@ export function useCoreUpdateStatusQuery(
   config?: QueryConfig<CoreUpdateStatus>,
   scope?: CoreUpdateStatusScope,
 ) {
-  // Read once per render; the callback identity is the caller's concern.
-  const assertCurrent = scope?.assertCurrent;
+  const assertCurrent = () => {
+    if (scope?.assertCurrent?.() === false)
+      throw new StationRequestAuthorityError();
+  };
   return useQuery({
     queryKey: ['core-update-check', apiBase, scope?.scopeKey ?? null],
     queryFn: async ({ signal }) => {
-      assertCurrent?.();
+      assertCurrent();
       // PR2 added the signal parameter: an aborted/superseded fetch rejects
       // here instead of settling a result nobody current asked for.
       const result = await requestCoreUpdateStatus(apiBase, signal);
-      assertCurrent?.();
+      assertCurrent();
       return result;
     },
     enabled: !!apiBase && (config?.enabled ?? true),

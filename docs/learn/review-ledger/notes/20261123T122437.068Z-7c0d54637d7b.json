@@ -1,0 +1,7 @@
+{
+  "revision": "fa92f2845f50b4d1c818cc765c5d05bc92e27881",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Added Missed to the automation state row: a one-time automation whose time came while Station was off and was recorded missed instead of run; neither Done nor Missed runs again.","inputs":["docs/glossary.md"]}
+  ]
+}

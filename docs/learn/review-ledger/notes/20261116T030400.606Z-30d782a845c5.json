@@ -1,0 +1,15 @@
+{
+  "revision": "491a8f90a2032365f573dd05937db853806a7604",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"isCanonicalPathWithin and isCanonicalPathStrictlyWithin gain an optional path-semantics parameter (node:path by default) so the cross-drive case is testable with path.win32; the default behaviour, including the existing isAbsolute guard, is unchanged, so citing claims hold.","inputs":["src-server/utils/path-containment.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"isCanonicalPathWithin and isCanonicalPathStrictlyWithin gain an optional path-semantics parameter (node:path by default) so the cross-drive case is testable with path.win32; the default behaviour, including the existing isAbsolute guard, is unchanged, so citing claims hold.","inputs":["src-server/utils/path-containment.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"isCanonicalPathWithin and isCanonicalPathStrictlyWithin gain an optional path-semantics parameter (node:path by default) so the cross-drive case is testable with path.win32; the default behaviour, including the existing isAbsolute guard, is unchanged, so citing claims hold.","inputs":["src-server/utils/path-containment.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"isCanonicalPathWithin and isCanonicalPathStrictlyWithin gain an optional path-semantics parameter (node:path by default) so the cross-drive case is testable with path.win32; the default behaviour, including the existing isAbsolute guard, is unchanged, so citing claims hold.","inputs":["src-server/utils/path-containment.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"isCanonicalPathWithin and isCanonicalPathStrictlyWithin gain an optional path-semantics parameter (node:path by default) so the cross-drive case is testable with path.win32; the default behaviour, including the existing isAbsolute guard, is unchanged, so citing claims hold.","inputs":["src-server/utils/path-containment.ts"]}
+  ]
+}

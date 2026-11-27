@@ -123,6 +123,31 @@
       "description": "Agent framework runtime. Default: voltagent",
       "default": "voltagent"
     },
+    "confinedNetwork": {
+      "description": "Network a confined session may reach (#4769). full: open, as before. restricted: only the engine's model endpoint and allowedHosts, through Station's loopback egress broker; a start whose mechanism cannot restrict the network is refused. Default: full",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "mode": { "const": "full" } },
+          "required": ["mode"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": { "const": "restricted" },
+            "allowedHosts": {
+              "type": "array",
+              "maxItems": 256,
+              "items": { "type": "string", "minLength": 1, "maxLength": 261 },
+              "description": "Entries: host, host:port, *.domain (subdomains only) or an IP literal (IPv6 in brackets); port 443 unless named"
+            }
+          },
+          "required": ["mode", "allowedHosts"],
+          "additionalProperties": false
+        }
+      ]
+    },
     "approvalGuardian": {
       "type": "object",
       "description": "Optional AI review layer for approval-bound tool calls",
@@ -246,6 +271,11 @@
       "type": "boolean",
       "default": false,
       "description": "Publish the bound API listener to nearby private LAN devices through DNS-SD. Disabled by default; discovery never grants access."
+    },
+    "trustedConsentOrigin": {
+      "type": "string",
+      "maxLength": 267,
+      "description": "Approval HTTPS DNS origin for the Dynamic HTTPS routes Feature Preview. Empty selects automatic discovery; absent preserves the legacy environment fallback. Changing it requires the local operator."
     },
     "telemetryEnabled": {
       "type": "boolean",

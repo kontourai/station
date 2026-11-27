@@ -3,7 +3,6 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
-import { InfoTip } from '../../components/InfoTip';
 import { PlusGlyph, SettingsGlyph } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Toggle } from '../../components/Toggle';
@@ -174,6 +173,28 @@ export function AgentEditorToolsTab({
           );
         })}
       </div>
+      <section className="editor-field" aria-label="Unattended approvals">
+        <span className="editor-label">Unattended approvals</span>
+        {form.tools.unattendedAutoApprove.length > 0 ? (
+          <>
+            <p className="editor-hint">
+              Configured for Station runs with nobody available to approve.
+            </p>
+            <ul className="agent-tools__approval-patterns">
+              {[...new Set(form.tools.unattendedAutoApprove)].map((pattern) => (
+                <li key={pattern}>
+                  <code>{pattern}</code>
+                  {pattern === '*' && ' (all tools)'}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="editor-hint">
+            No unattended approval patterns configured.
+          </p>
+        )}
+      </section>
       {browsing && !disabled && (
         <Dialog
           title="Add tools"
@@ -211,12 +232,7 @@ export function AgentEditorToolsTab({
       />
       <div className="editor-field">
         <div className="editor-label-row">
-          <span className="editor-label">
-            Browser access
-            <InfoTip label="Browser access">
-              Let this agent view and interact with the Project browser.
-            </InfoTip>
-          </span>
+          <span className="editor-label">Browser access</span>
           {engineId === 'claude' && (
             <Toggle
               checked={form.tools.browser !== false}
@@ -233,8 +249,8 @@ export function AgentEditorToolsTab({
         </div>
         <p className="editor-hint">
           {engineId === 'claude'
-            ? 'Uses this Project’s Station browser.'
-            : 'Station browser access is currently available with Claude Code.'}
+            ? 'Lets this agent use the Project’s browser.'
+            : 'Browser access works only with Claude Code.'}
         </p>
       </div>
       <details className="agent-tools__advanced">

@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Routing note only; the added scheduler field and constant are pure contract shapes consistent with its rules.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

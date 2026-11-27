@@ -16,6 +16,7 @@
  */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -218,6 +219,109 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
       blocks.map((block) => ('text' in block ? block.text : '')).join(''),
     );
 
+  test.each(['live', 'after upgrading the index'])(
+    'indexes and opens a streamed ACP reply for its owner %s',
+    async (mode) => {
+      await service.dispatch(
+        {
+          type: 'startSession',
+          input: {
+            threadId: THREAD,
+            provider: 'acp',
+            cwd: tmp,
+            metadata: { connectionId: CONNECTION_ID, userId: OWNER },
+          },
+        },
+        { userId: OWNER },
+      );
+      await waitFor(
+        methods,
+        (seen) => seen.includes('session.started'),
+        'session.started',
+      );
+      await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: THREAD, input: 'Write a reply' },
+        },
+        { userId: OWNER },
+      );
+      await waitFor(prompts, (seen) => seen.length === 1, 'the first prompt');
+      const child = processes[0]!;
+      for (const text of ['distinctive ', 'alpaca']) {
+        await child.client.sessionUpdate({
+          sessionId: child.sessionId!,
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text },
+          },
+        });
+      }
+      child.resolvePrompt('end_turn');
+      await waitFor(
+        methods,
+        (seen) => seen.includes('turn.completed'),
+        'turn.completed',
+      );
+
+      let searchStore = store;
+      if (mode === 'after upgrading the index') {
+        const databasePath = join(tmp, 'orchestration.sqlite');
+        const db = new DatabaseSync(databasePath);
+        try {
+          db.exec(`
+          BEGIN IMMEDIATE;
+          DELETE FROM orchestration_message_search_v2 WHERE role = 'assistant';
+          DELETE FROM orchestration_message_search_v3 WHERE role = 'assistant';
+          DELETE FROM orchestration_message_search_projection
+            WHERE event_id IN (SELECT id FROM orchestration_events WHERE method = 'turn.completed');
+          DELETE FROM orchestration_message_search_projection_v3
+            WHERE event_id IN (SELECT id FROM orchestration_events WHERE method = 'turn.completed');
+          INSERT OR REPLACE INTO orchestration_message_search_backfill
+            SELECT 1, max(global_sequence), max(created_at) FROM orchestration_events;
+          INSERT OR REPLACE INTO orchestration_message_search_backfill_v3
+            SELECT 1, max(global_sequence), max(created_at) FROM orchestration_events;
+          DROP TABLE IF EXISTS orchestration_message_search_acp_backfill;
+          COMMIT;
+        `);
+        } finally {
+          db.close();
+        }
+        searchStore = new EventStore(databasePath);
+      }
+
+      const reads = searchStore.createIsolatedTranscriptReads();
+      try {
+        await reads.whenReady();
+        const search = { query: 'distinctive alpaca', limit: 5 };
+        const matches = await reads.search({ ...search, ownerUserId: OWNER });
+        expect(matches).toHaveLength(1);
+        const match = matches[0]!;
+        expect(match).toMatchObject({
+          role: 'assistant',
+          conversationId: THREAD,
+        });
+        expect(
+          await reads.search({ ...search, ownerUserId: 'other-owner' }),
+        ).toEqual([]);
+        const exact = {
+          threadId: THREAD,
+          matchedEventId: match.matchedEventId,
+          ownerUserId: OWNER,
+        };
+        expect(await reads.readMessage(exact)).toMatchObject({
+          matchedEventId: match.matchedEventId,
+        });
+        expect(await reads.readMessagePage(exact)).toMatchObject({
+          text: 'distinctive alpaca',
+        });
+      } finally {
+        await reads.close();
+        if (searchStore !== store) searchStore.close();
+      }
+    },
+  );
+
   test('the turn that scheduled it ends, the check-back fires, and the engine is prompted with it', async () => {
     await service.dispatch(
       {
@@ -331,6 +435,7 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
   const summary = async () =>
     (
       await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+        purpose: 'session-list',
         threadIds: [THREAD],
       })
     ).find((session) => session.threadId === THREAD);

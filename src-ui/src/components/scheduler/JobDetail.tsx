@@ -1,5 +1,4 @@
 import type { RunStatus, RunSummary } from '@kontourai/station-contracts/runs';
-import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import {
@@ -10,6 +9,7 @@ import {
   useSchedulerJobs,
 } from '../../hooks/useScheduler';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
+import { relativeTimeAgo } from '../../utils/relativeTime';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import {
@@ -19,6 +19,7 @@ import {
   WarningGlyph,
 } from '../icons/Glyph';
 import { Empty, SkeletonBlock } from '../state';
+import { jobLabel } from './jobName';
 
 /**
  * `RunStatus` is a 7-member tri-state, not a boolean: only `completed` is a
@@ -69,17 +70,12 @@ function runStatusVisual(status: RunStatus): {
   }
 }
 
+/** The shared sentence form ("5m ago"); "never" before a first run. */
 export function relTime(iso: string | null) {
   if (!iso) return 'never';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const diff = Date.now() - d.getTime();
-  const mins = Math.floor(diff / MS_PER_MINUTE);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return iso;
+  return relativeTimeAgo(at, Date.now());
 }
 
 /**
@@ -103,31 +99,6 @@ export function localTime(iso: string | null) {
     minute: '2-digit',
     timeZoneName: 'short',
   });
-}
-
-function rateColor(rate: number) {
-  if (rate >= 90) return 'high';
-  if (rate >= 50) return 'mid';
-  return 'low';
-}
-
-export function RateCell({ rate }: { rate: number | undefined }) {
-  if (rate == null || rate < 0)
-    return <span className="schedule__td--muted">—</span>;
-  const tier = rateColor(rate);
-  return (
-    <span className="schedule__rate">
-      <span className={`schedule__rate-value schedule__rate-value--${tier}`}>
-        {rate}%
-      </span>
-      <span className="schedule__rate-bar">
-        <span
-          className={`schedule__rate-fill schedule__rate-fill--${tier}`}
-          style={{ width: `${rate}%` }}
-        />
-      </span>
-    </span>
-  );
 }
 
 export function JobDetail({
@@ -165,8 +136,9 @@ export function JobDetail({
     () => [...scheduleRuns].reverse(),
     [scheduleRuns],
   );
-  const monitor = jobs.find((job) => job.name === name)?.monitor;
-  const monitorState = jobs.find((job) => job.name === name)?.monitorState;
+  const thisJob = jobs.find((job) => job.name === name);
+  const monitor = thisJob?.monitor;
+  const monitorState = thisJob?.monitorState;
   const taskHref = monitorState?.triggeredTaskId
     ? `/tasks/${encodeURIComponent(monitorState.triggeredTaskId)}`
     : null;
@@ -285,9 +257,8 @@ export function JobDetail({
       {monitorState?.usageKnown === false ? (
         <>
           <p className="schedule__monitor-resolution" role="status">
-            Task usage is indeterminate. Station will resolve only the stored
-            Task/session/turn receipt once its authoritative terminal usage is
-            available.
+            This run’s usage wasn’t reported, so the monitor is paused. Resolve
+            it from Task evidence to continue.
           </p>
           {monitorState.triggerId ? (
             <Button
@@ -330,7 +301,7 @@ export function JobDetail({
       <table className="schedule__logs">
         <thead>
           <tr>
-            <th>Started At</th>
+            <th>Started at</th>
             <th>Status</th>
             <th>Duration</th>
             <th>Missed</th>
@@ -424,7 +395,7 @@ export function JobDetail({
         // gets all three, plus the one dialog chrome (SHELL-02).
         <Dialog
           eyebrow="Automations"
-          title={`${name} — Run Output`}
+          title={`${thisJob ? jobLabel(thisJob) : name} — Run Output`}
           closeLabel="Close run output"
           onClose={() => setViewIdx(null)}
           size="lg"

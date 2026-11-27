@@ -31,6 +31,8 @@ import {
   test,
   vi,
 } from 'vitest';
+import { publishDockNewChatDraftOpen } from '../components/chat-dock/dockNewChatDraftPresence';
+import { StartComposer } from '../components/chat-start/StartComposer';
 import { displayableProjectIcon } from '../components/icons/ProjectIcon';
 import { projectAccents } from '../components/project-sidebar/projectAccent';
 import type { AgentData } from '../contexts/AgentsContext';
@@ -40,7 +42,10 @@ import {
   buildLastChosenModelBindingKey,
   trackLastChosenModel,
 } from '../hooks/lastChosenModel';
-import { resetStartChoicesForTests } from '../hooks/useStartSelection';
+import {
+  resetStartChoicesForTests,
+  seedHomeStartProjectForTests,
+} from '../hooks/useStartSelection';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 /** jsdom runs `history.back()` as chained 0ms tasks; let queued ones land. */
@@ -74,6 +79,8 @@ vi.mock('../contexts/ConfigContext', () => ({
 
 const state = vi.hoisted(() => ({
   dockOpen: false,
+  /** The chat the dock shows (`?chat=`), or null for an empty dock. */
+  activeChat: null as string | null,
   agents: [] as unknown[],
   projects: [] as unknown[],
   projectsLoading: false,
@@ -229,6 +236,7 @@ vi.mock('../components/session/SessionModelPicker', () => ({
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     isDockOpen: state.dockOpen,
+    activeChat: state.activeChat,
     selectedProject: null,
     selectedProjectLayout: null,
     setDockState: vi.fn(),
@@ -282,6 +290,8 @@ beforeAll(() => {
 });
 beforeEach(() => {
   state.dockOpen = false;
+  state.activeChat = null;
+  publishDockNewChatDraftOpen(false);
   resetStartChoicesForTests();
   localStorage.clear();
   sessionStorage.clear();
@@ -314,6 +324,41 @@ afterEach(async () => {
   for (const listener of dockListeners.splice(0))
     window.removeEventListener('station:open-new-chat', listener);
 });
+
+/**
+ * The dock is bound to `slug` and Home's own chip picked it too, under the
+ * Station access `renderBoth` renders (`ns-1`).
+ */
+function rememberProject(slug: string) {
+  deviceSettingsStore.set('chatDockProjectSlug', slug);
+  seedHomeStartProjectForTests(slug, 'ns-1');
+}
+
+/** Home alone, under the Station access `namespace`. */
+function renderHomeUnder(namespace: string) {
+  return render(
+    <AuthorityPersistenceContext.Provider
+      value={{ status: 'verified', namespace, observation: null }}
+    >
+      <div data-testid="home">
+        <HomeStartComposer />
+      </div>
+    </AuthorityPersistenceContext.Provider>,
+  );
+}
+
+/** Picks `slug` (a context value) in `root`'s project chip. */
+async function pickProject(root: HTMLElement, slug: string) {
+  fireEvent.click(projectChip(root));
+  const menu = await screen.findByRole(
+    'dialog',
+    { name: 'Choose project' },
+    { timeout: 15_000 },
+  );
+  fireEvent.click(
+    menu.querySelector<HTMLButtonElement>(`[data-context-value="${slug}"]`)!,
+  );
+}
 
 function renderBoth(projectSlug?: string) {
   const dockSelect = vi.fn();
@@ -372,8 +417,14 @@ function renderBoth(projectSlug?: string) {
 
 const formOf = (root: HTMLElement) =>
   within(root).getByRole('form', { name: 'Start work' });
+function setupOf(root: HTMLElement) {
+  const trigger = within(formOf(root)).getByTestId('run-setup-trigger');
+  if (trigger.getAttribute('aria-expanded') !== 'true')
+    fireEvent.click(trigger);
+  return document.getElementById(trigger.getAttribute('aria-controls')!)!;
+}
 const agentChip = (root: HTMLElement) =>
-  within(formOf(root)).getByRole('button', { name: /^Agent:/ });
+  within(setupOf(root)).getByRole('button', { name: /^Agent:/ });
 const projectChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Project:/ });
 
@@ -395,7 +446,8 @@ function HomeWithDockToggle() {
   );
 }
 
-test('Home yields its start surface to the open dock and restores the held draft', () => {
+test('Home yields its start surface to an open dock showing a chat and restores the held draft', () => {
+  state.activeChat = 'chat-1';
   render(<HomeWithDockToggle />);
   fireEvent.change(
     screen.getByRole('textbox', { name: 'What would you like done?' }),
@@ -415,6 +467,31 @@ test('Home yields its start surface to the open dock and restores the held draft
   ).toBe('Keep my Home draft');
 });
 
+// #5493: an open dock with no chat in it has no composer of its own, so Home
+// keeps its start surface rather than leaving the page with none.
+test('Home keeps its start surface beside an open dock with no chat in it', () => {
+  render(<HomeWithDockToggle />);
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle dock' }));
+  expect(state.dockOpen).toBe(true);
+  const box = screen.getByRole('textbox', {
+    name: 'What would you like done?',
+  });
+  expect(box.closest('[hidden]')).toBeNull();
+  expect(screen.getByRole('form', { name: 'Start work' })).toBeTruthy();
+});
+
+// …and steps aside again for the dock's own New chat draft opened from that
+// empty dock, so the page never shows two start composers.
+test('Home yields to a New chat draft opened in an empty dock, and returns when it closes', () => {
+  render(<HomeWithDockToggle />);
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle dock' }));
+  expect(screen.getByRole('form', { name: 'Start work' })).toBeTruthy();
+  act(() => publishDockNewChatDraftOpen(true));
+  expect(screen.queryByRole('form', { name: 'Start work' })).toBeNull();
+  act(() => publishDockNewChatDraftOpen(false));
+  expect(screen.getByRole('form', { name: 'Start work' })).toBeTruthy();
+});
+
 test('a draft can choose an unavailable profile to configure another execution Station', async () => {
   state.agents = [{ ...CLAUDE, available: false }];
   const { dock, dockSelect } = renderBoth();
@@ -424,6 +501,85 @@ test('a draft can choose an unavailable profile to configure another execution S
   fireEvent.click(row);
   expect(agentChip(dock()).textContent).toContain('Claude');
   expect(dockSelect).not.toHaveBeenCalled();
+});
+
+describe('an Agent that is not set up is never selected for you', () => {
+  const MUSE = {
+    slug: 'muse',
+    name: 'Muse Code',
+    available: false,
+    unavailableReason:
+      "Agent 'muse' has no authored Agent definition, so Station cannot start new sessions.",
+    unavailableFix: { kind: 'unknown' },
+  } as unknown as AgentData;
+  const remember = (slug: string) =>
+    localStorage.setItem(
+      'station.newChat.lastAgentByContext',
+      JSON.stringify({ [JSON.stringify(['ns-1', '__global__'])]: slug }),
+    );
+  const remembered = () =>
+    JSON.parse(
+      localStorage.getItem('station.newChat.lastAgentByContext') ?? '{}',
+    )[JSON.stringify(['ns-1', '__global__'])];
+
+  test('a remembered Agent that cannot start yields to one that can, with no setup panel', async () => {
+    state.agents = [MUSE, CLAUDE];
+    remember('muse');
+    const { dock, home } = renderBoth();
+    expect(agentChip(dock()).textContent).toContain('Claude');
+    expect(agentChip(screen.getByTestId('home')).textContent).toContain(
+      'Claude',
+    );
+    expect(
+      within(dock()).queryByRole('region', { name: 'Set up an engine' }),
+    ).toBeNull();
+    expect(
+      home().queryByRole('region', { name: 'Set up an engine' }),
+    ).toBeNull();
+  });
+
+  test('picking an Agent that cannot start shows it in this tab but does not remember it', async () => {
+    state.agents = [CLAUDE, MUSE];
+    const { dock } = renderBoth();
+    fireEvent.click(agentChip(dock()));
+    await screen.findAllByRole('button', { name: /Muse Code/ });
+    const rows = document.querySelectorAll<HTMLButtonElement>(
+      'button[data-agent-slug="muse"]',
+    );
+    expect(rows).toHaveLength(1);
+    fireEvent.click(rows[0]);
+    expect(agentChip(dock()).textContent).toContain('Muse Code');
+    expect(remembered()).toBeUndefined();
+  });
+
+  test('Home shows no setup card when nothing can start: its Start prepares one', async () => {
+    state.agents = [MUSE];
+    const { home, dock } = renderBoth();
+    await within(dock()).findByRole(
+      'region',
+      { name: 'Set up an engine' },
+      { timeout: 15_000 },
+    );
+    expect(
+      home().queryByRole('region', { name: 'Set up an engine' }),
+    ).toBeNull();
+  }, 30_000);
+
+  test('when nothing can start, setup is one compact card with the reason folded away', async () => {
+    state.agents = [MUSE];
+    const { dock } = renderBoth();
+    const card = await within(dock()).findByRole(
+      'region',
+      { name: 'Set up an engine' },
+      { timeout: 15_000 },
+    );
+    expect(within(card).getByText('Not set up')).toBeTruthy();
+    const reason = within(card).getByText(/no authored Agent definition/);
+    expect(reason.closest('details')?.open).toBe(false);
+    expect(
+      within(card).getByRole('button', { name: 'Set up an engine' }),
+    ).toBeTruthy();
+  }, 30_000);
 });
 
 describe('a Project’s new-chat defaults preselect the composer', () => {
@@ -491,14 +647,14 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: lastUsed('last-used', 'sonnet') };
     const ui = renderBoth();
     const dock = ui.dock();
-    const model = await within(formOf(dock)).findByRole('button', {
+    const model = await within(setupOf(dock)).findByRole('button', {
       name: /^Model: Sonnet/,
     });
     expect(model.getAttribute('title')).toBe(
       'The model your last chat in this project started with.',
     );
     // The Project layer replaces the account default (Full access here).
-    expect(within(formOf(dock)).getByText('Auto')).toBeTruthy();
+    expect(within(setupOf(dock)).getByText('Auto')).toBeTruthy();
     startInDock(dock);
     expect(ui.dockSelect).toHaveBeenCalledTimes(1);
     expect(ui.dockSelect.mock.calls[0][1]).toBe('station');
@@ -512,11 +668,11 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: lastUsed('fixed', 'sonnet') };
     const ui = renderBoth();
     const dock = ui.dock();
-    const model = await within(formOf(dock)).findByRole('button', {
+    const model = await within(setupOf(dock)).findByRole('button', {
       name: /^Model: Opus/,
     });
     expect(model.getAttribute('title')).toBeNull();
-    expect(within(formOf(dock)).getByText('Full access')).toBeTruthy();
+    expect(within(setupOf(dock)).getByText('Full access')).toBeTruthy();
     startInDock(dock);
     expect(ui.dockSelect.mock.calls[0][4]).toBe('opus');
     ui.cleanupListener();
@@ -528,7 +684,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: null };
     const ui = renderBoth();
     expect(
-      await within(formOf(ui.dock())).findByText('Full access'),
+      await within(setupOf(ui.dock())).findByText('Full access'),
     ).toBeTruthy();
     ui.cleanupListener();
     cleanup();
@@ -536,7 +692,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = {};
     const unread = renderBoth();
     expect(
-      await within(formOf(unread.dock())).findByText('Set at start'),
+      await within(setupOf(unread.dock())).findByText('Set at start'),
     ).toBeTruthy();
     unread.cleanupListener();
   });
@@ -551,7 +707,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: lastUsed('last-used', 'retired-model') };
     const ui = renderBoth();
     const dock = ui.dock();
-    const model = await within(formOf(dock)).findByRole('button', {
+    const model = await within(setupOf(dock)).findByRole('button', {
       name: /^Model: Opus/,
     });
     expect(model.getAttribute('title')).toBe(
@@ -586,12 +742,12 @@ describe('Home and the dock start the same way', () => {
     ];
     const ui = renderBoth();
     expect(
-      await within(formOf(screen.getByTestId('home'))).findByText(
+      await within(setupOf(screen.getByTestId('home'))).findByText(
         'Full access',
       ),
     ).toBeTruthy();
     expect(
-      await within(formOf(ui.dock())).findByText('Full access'),
+      await within(setupOf(ui.dock())).findByText('Full access'),
     ).toBeTruthy();
   });
 
@@ -636,13 +792,13 @@ describe('Home and the dock start the same way', () => {
 
     // Home: Ask, chosen in the picker, is what the start sends.
     fireEvent.click(
-      await within(formOf(home)).findByRole('button', {
+      await within(setupOf(home)).findByRole('button', {
         name: /^Permissions: Full access/,
       }),
     );
     fireEvent.click(await screen.findByRole('radio', { name: /^Ask first/ }));
     expect(
-      await within(formOf(home)).findByRole('button', {
+      await within(setupOf(home)).findByRole('button', {
         name: /^Permissions: Ask\. Chosen for this chat/,
       }),
     ).toBeTruthy();
@@ -654,10 +810,10 @@ describe('Home and the dock start the same way', () => {
 
     // Default delegates to engine settings and explains the unknown startup mode.
     fireEvent.click(
-      within(formOf(home)).getByRole('button', { name: /^Permissions: Ask/ }),
+      within(setupOf(home)).getByRole('button', { name: /^Permissions: Ask/ }),
     );
     fireEvent.click(await screen.findByRole('radio', { name: /^Default/ }));
-    const engineDefault = await within(formOf(home)).findByRole('button', {
+    const engineDefault = await within(setupOf(home)).findByRole('button', {
       name: /^Permissions: Default/,
     });
     expect(within(engineDefault).getByText('Permissions')).toBeTruthy();
@@ -672,19 +828,17 @@ describe('Home and the dock start the same way', () => {
 
     // The dock: full access takes its confirmation, then reaches onSelect.
     fireEvent.click(
-      within(formOf(ui.dock())).getByRole('button', {
+      within(setupOf(ui.dock())).getByRole('button', {
         name: /^Permissions: /,
       }),
     );
     fireEvent.click(await screen.findByRole('radio', { name: /^Auto/ }));
     fireEvent.click(
-      within(formOf(ui.dock())).getByRole('button', {
+      within(setupOf(ui.dock())).getByRole('button', {
         name: /^Permissions: Auto/,
       }),
     );
-    fireEvent.click(
-      await screen.findByRole('radio', { name: /^Never ask \(full access\)/ }),
-    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Full access/ }));
     fireEvent.click(
       await screen.findByRole('button', { name: 'Enable full access' }),
     );
@@ -703,7 +857,7 @@ describe('Home and the dock start the same way', () => {
       'Project: No project',
     );
     expect(
-      within(formOf(home)).getByRole('button', {
+      within(setupOf(home)).getByRole('button', {
         name: 'Model: Opus',
       }),
     ).toBeTruthy();
@@ -797,20 +951,36 @@ describe('Home and the dock start the same way', () => {
     ui.cleanupListener();
   });
 
-  test('with the dock bound to a project both open on that project', () => {
+  test('with the dock bound to a project Home still starts in No project', async () => {
+    // Opening a project rebinds the dock silently; the chip on Home says No
+    // project, and so does the chat Start sends.
     deviceSettingsStore.set('chatDockProjectSlug', 'station');
     const ui = renderBoth();
     const home = screen.getByTestId('home');
     const dock = ui.dock();
     expect(projectChip(home).getAttribute('aria-label')).toBe(
-      'Project: Station',
+      'Project: No project',
     );
     expect(projectChip(dock).getAttribute('aria-label')).toBe(
       'Project: Station',
     );
-    expect(agentChip(home).getAttribute('aria-label')).toBe(
-      agentChip(dock).getAttribute('aria-label'),
+    fireEvent.change(
+      within(formOf(home)).getByRole('textbox', {
+        name: 'What would you like done?',
+      }),
+      { target: { value: 'Hello' } },
     );
+    const start = within(formOf(home)).getByRole('button', { name: 'Start' });
+    await waitFor(() =>
+      expect((start as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(start);
+    expect(ui.starts.at(-1)?.detail.selection).toMatchObject({
+      context: '__global__',
+    });
+    expect(ui.starts.at(-1)?.detail.selection.context).not.toBe('station');
+    // Starting did not rewrite what the dock remembers.
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('station');
     ui.cleanupListener();
   });
 
@@ -1041,7 +1211,7 @@ describe('Home and the dock start the same way', () => {
     ui.cleanupListener();
   }, 30_000);
 
-  test("Home's project pick yields when the dock is rebound elsewhere", async () => {
+  test("Home's project pick stays when the dock is rebound elsewhere", async () => {
     const ui = renderBoth();
     const home = screen.getByTestId('home');
     fireEvent.click(projectChip(home));
@@ -1058,43 +1228,112 @@ describe('Home and the dock start the same way', () => {
         'Project: Station',
       ),
     );
+    // Navigating into another project rebinds the dock; the chip the person
+    // chose on Home does not move under them.
     act(() => deviceSettingsStore.set('chatDockProjectSlug', null));
-    await waitFor(() =>
-      expect(projectChip(home).getAttribute('aria-label')).toBe(
-        'Project: No project',
-      ),
+    expect(projectChip(home).getAttribute('aria-label')).toBe(
+      'Project: Station',
     );
     ui.cleanupListener();
   }, 30_000);
 
-  test('the project chip rebinds the dock, and No workspace clears the binding', async () => {
+  // Home's pick is Home's own: the dock never follows it, in either
+  // direction (a project picked on Home, or No project declining the one
+  // the dock remembers).
+  test("Home's project pick writes nothing the dock reads", async () => {
+    deviceSettingsStore.set('chatDockProjectSlug', 'notes');
+    state.projects = [
+      STATION,
+      { id: 'p2', slug: 'notes', name: 'Notes', workingDirectory: '/w/n' },
+    ];
     const ui = renderBoth();
     const home = screen.getByTestId('home');
-    fireEvent.click(projectChip(home));
-    const menu = await screen.findByRole('dialog', { name: 'Choose project' });
-    fireEvent.click(
-      menu.querySelector<HTMLButtonElement>('[data-context-value="station"]')!,
-    );
-    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('station');
+    await pickProject(home, 'station');
     await waitFor(() =>
       expect(projectChip(home).getAttribute('aria-label')).toBe(
         'Project: Station',
       ),
     );
-    fireEvent.click(projectChip(home));
-    const again = await screen.findByRole('dialog', { name: 'Choose project' });
-    fireEvent.click(
-      again.querySelector<HTMLButtonElement>(
-        '[data-context-value="__global__"]',
-      )!,
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('notes');
+    await pickProject(home, '__global__');
+    await waitFor(() =>
+      expect(projectChip(home).getAttribute('aria-label')).toBe(
+        'Project: No project',
+      ),
     );
-    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBeNull();
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('notes');
+    expect(projectChip(ui.dock()).getAttribute('aria-label')).toBe(
+      'Project: Notes',
+    );
     ui.cleanupListener();
-  });
+  }, 30_000);
+
+  test("the dock's project chip rebinds the dock, and No workspace clears the binding", async () => {
+    const ui = renderBoth();
+    const dock = ui.dock();
+    await pickProject(dock, 'station');
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('station');
+    await waitFor(() =>
+      expect(projectChip(dock).getAttribute('aria-label')).toBe(
+        'Project: Station',
+      ),
+    );
+    await pickProject(dock, '__global__');
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBeNull();
+    // Home did not follow either choice.
+    expect(
+      projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+    ).toBe('Project: No project');
+    ui.cleanupListener();
+  }, 30_000);
+
+  // Leaving Home unmounts its composer; navigating into a project rebinds
+  // the dock. Neither moves the project the person picked on Home.
+  test('a Home pick holds across navigation within the tab', async () => {
+    state.projects = [
+      STATION,
+      { id: 'p2', slug: 'notes', name: 'Notes', workingDirectory: '/w/n' },
+    ];
+    renderHomeUnder('ns-1');
+    await pickProject(screen.getByTestId('home'), 'station');
+    await waitFor(() =>
+      expect(
+        projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+      ).toBe('Project: Station'),
+    );
+    cleanup();
+    act(() => deviceSettingsStore.set('chatDockProjectSlug', 'notes'));
+    renderHomeUnder('ns-1');
+    expect(
+      projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+    ).toBe('Project: Station');
+  }, 30_000);
+
+  // Like the Agent choices beside it, a pick belongs to the Station access
+  // it was made under: switching Station in the same tab does not carry it.
+  test('a Home pick does not carry into another Station access in the same tab', async () => {
+    renderHomeUnder('ns-1');
+    await pickProject(screen.getByTestId('home'), 'station');
+    await waitFor(() =>
+      expect(
+        projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+      ).toBe('Project: Station'),
+    );
+    cleanup();
+    renderHomeUnder('ns-2');
+    expect(
+      projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+    ).toBe('Project: No project');
+    cleanup();
+    renderHomeUnder('ns-1');
+    expect(
+      projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+    ).toBe('Project: Station');
+  }, 30_000);
 
   // #3350 item 1, on Home: the dock names a project the list has not loaded.
   test('Home holds its chips and Start while the bound project list loads', () => {
-    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    rememberProject('station');
     state.projectsLoading = true;
     render(
       <AuthorityPersistenceContext.Provider
@@ -1135,10 +1374,6 @@ describe('Home and the dock start the same way', () => {
       starts.push(event as CustomEvent);
     };
     window.addEventListener('station:open-new-chat', listener);
-    localStorage.setItem(
-      'station.newChat.lastAgentByContext',
-      JSON.stringify({ [JSON.stringify(['ns-1', '__global__'])]: 'claude' }),
-    );
     render(
       <AuthorityPersistenceContext.Provider
         value={{ status: 'verified', namespace: 'ns-1', observation: null }}
@@ -1150,6 +1385,14 @@ describe('Home and the dock start the same way', () => {
     fireEvent.change(
       within(form).getByRole('textbox', { name: 'What would you like done?' }),
       { target: { value: 'Keep this' } },
+    );
+    // Home offers setup only for an Agent picked from the menu.
+    fireEvent.click(agentChip(document.body));
+    await screen.findAllByRole('button', { name: /Claude/ });
+    fireEvent.click(
+      document.querySelector<HTMLButtonElement>(
+        'button[data-agent-slug="claude"]',
+      )!,
     );
     // The setup guidance is a lazy chunk; a cold transform can be slow.
     const connect = await screen.findByRole(
@@ -1205,7 +1448,6 @@ describe('Home and the dock start the same way', () => {
         ?.getAttribute('title'),
     ).toBe('Runs in your home folder (~)');
     fireEvent.click(notes);
-    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('notes');
     await waitFor(() =>
       expect(
         projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
@@ -1214,9 +1456,13 @@ describe('Home and the dock start the same way', () => {
     expect(projectChip(screen.getByTestId('home')).getAttribute('title')).toBe(
       'Runs in your home folder (~)',
     );
+    // The dock remembers its own choice (Home's is not written to it).
+    await pickProject(first.dock(), 'notes');
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('notes');
     first.cleanupListener();
     cleanup();
-    // Remounted: both read the remembered binding the same way.
+    // Remounted: Home keeps its pick for the tab and the dock reads its
+    // binding, and both name it the same way.
     const second = renderBoth();
     for (const root of [screen.getByTestId('home'), second.dock()]) {
       expect(projectChip(root).getAttribute('aria-label')).toBe(
@@ -1303,7 +1549,7 @@ describe('Home and the dock start the same way', () => {
   // Review FI-B: an errored project list is not a loaded one. Home must not
   // resolve the dock's bound project to No project and start there.
   test('an errored project list holds Home rather than starting in No project', async () => {
-    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    rememberProject('station');
     state.projectsError = true;
     const taken: CustomEvent[] = [];
     window.addEventListener('station:open-new-chat', (event) => {
@@ -1344,7 +1590,7 @@ describe('Home and the dock start the same way', () => {
       STATION,
       { id: 'p2', slug: 'notes', name: 'Notes', workingDirectory: '' },
     ];
-    deviceSettingsStore.set('chatDockProjectSlug', 'notes');
+    rememberProject('notes');
     const ui = renderBoth();
     const home = screen.getByTestId('home');
     await waitFor(() =>
@@ -1854,7 +2100,7 @@ test("the dock's draft reports its text as it changes, so a dismissal can return
 // text. Home keeps its start box with the hero above it.
 describe("the dock's New chat is a draft, not a dialog", () => {
   test('Home and New Chat put the Project in the heading and the Station below the composer', async () => {
-    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    rememberProject('station');
     state.device = { hostName: 'Kontour' };
     const ui = renderBoth();
     const dock = ui.dock();
@@ -1879,7 +2125,7 @@ describe("the dock's New chat is a draft, not a dialog", () => {
   });
 
   test('the inline Project remains available while drafting', async () => {
-    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    rememberProject('station');
     const dock = renderBoth().dock();
     const heading = await within(dock).findByRole('heading', {
       name: /What would you like to do.*Station/,
@@ -2169,7 +2415,7 @@ describe('project icons in the start composer', () => {
     ['legacy', { img: null, glyph: null, dot: true }],
   ])('the chip on both surfaces draws %s', async (slug, expected) => {
     state.projects = iconProjects;
-    deviceSettingsStore.set('chatDockProjectSlug', slug);
+    rememberProject(slug);
     const ui = renderBoth();
     for (const root of [screen.getByTestId('home'), ui.dock()]) {
       await waitFor(() => expect(markOf(projectChip(root))).toEqual(expected));
@@ -2241,7 +2487,7 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
     state.runLocations = {
       mono: { kind: 'execution-root', path: '/work/mono/packages/app' },
     };
-    deviceSettingsStore.set('chatDockProjectSlug', 'mono');
+    rememberProject('mono');
     const ui = renderBoth();
     for (const root of [screen.getByTestId('home'), ui.dock()]) {
       await waitFor(() =>
@@ -2281,7 +2527,7 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
         workingDirectory: '/work/mono',
       },
     ] as ProjectMetadata[];
-    deviceSettingsStore.set('chatDockProjectSlug', 'mono');
+    rememberProject('mono');
     const before = renderBoth();
     for (const root of [screen.getByTestId('home'), before.dock()])
       await waitFor(() =>
@@ -2317,7 +2563,7 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
       },
     ] as ProjectMetadata[];
     state.runLocations = { slow: { kind: 'unchecked', reason } };
-    deviceSettingsStore.set('chatDockProjectSlug', 'slow');
+    rememberProject('slow');
     const ui = renderBoth();
     const home = screen.getByTestId('home');
     await waitFor(() =>
@@ -2357,7 +2603,7 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
       },
     ] as ProjectMetadata[];
     state.runLocations = { gone: { kind: 'unavailable', reason } };
-    deviceSettingsStore.set('chatDockProjectSlug', 'gone');
+    rememberProject('gone');
     const ui = renderBoth();
     const home = screen.getByTestId('home');
     await waitFor(() =>
@@ -2379,4 +2625,70 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
     expect(menu.querySelector('.start-menu__hint')?.textContent).toBe(reason);
     ui.cleanupListener();
   }, 30_000);
+});
+
+test('start setup exposes an execution override independently of approval state', () => {
+  render(
+    <StartComposer
+      prompt=""
+      onPromptChange={vi.fn()}
+      agent={{
+        status: 'ready',
+        needsSetup: false,
+        agent: {
+          slug: 'profile',
+          name: 'Writer',
+          engineId: 'station-agent',
+        } as AgentData,
+        executionAgentId: 'other-engine',
+      }}
+      onOpenAgents={vi.fn()}
+      project={{ status: 'ready', label: 'No project', isGlobal: true }}
+      onOpenProject={vi.fn()}
+      canStart={false}
+      pending={false}
+      onStart={vi.fn()}
+    />,
+  );
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(trigger.textContent).not.toContain('⚠');
+  expect(trigger.textContent).toContain('·');
+  expect(trigger.getAttribute('aria-label')).toContain(
+    'changed for this conversation',
+  );
+});
+
+test('start setup names the requested effort on the trigger and the Model row', () => {
+  render(
+    <StartComposer
+      prompt=""
+      onPromptChange={vi.fn()}
+      agent={{
+        status: 'ready',
+        needsSetup: false,
+        agent: {
+          slug: 'claude-code',
+          name: 'Claude Code',
+          engineId: 'claude',
+        } as AgentData,
+        modelLabel: 'Opus',
+        effortLabel: 'High',
+      }}
+      onOpenAgents={vi.fn()}
+      onOpenModel={vi.fn()}
+      project={{ status: 'ready', label: 'No project', isGlobal: true }}
+      onOpenProject={vi.fn()}
+      canStart={false}
+      pending={false}
+      onStart={vi.fn()}
+    />,
+  );
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(
+    trigger.querySelector('.composer-run-control__label')?.textContent,
+  ).toBe('Opus · High');
+  fireEvent.click(trigger);
+  expect(
+    screen.getByRole('button', { name: /^Model: Opus · High/ }),
+  ).toBeTruthy();
 });

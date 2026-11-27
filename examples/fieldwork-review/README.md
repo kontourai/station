@@ -61,13 +61,16 @@ four per project; project mutations are serialized, while different projects
 can run concurrently. Each open schedules a close after 30 minutes, with a
 30-second retry after a failed close. A successful close first awaits the
 service close, then persists `open: false`; disposal reports incomplete closes.
-The browser polls availability while a review is open. The server obtains
-Fieldwork's reviewed output and discards its contents, returning only a boolean;
-an unclassified facade error also becomes `available: false`.
+Choose **Check reviewed output** to ask Fieldwork for its reviewed export.
+The Station route returns only whether that read succeeded. Opening, closing,
+and selecting a run do not request an export. Fieldwork's public facade emits
+its normal export event on success. An unreadable output is shown as a failed
+check. The public facade does not classify an unfinished review separately
+from other export failures.
 
-The browser query keys contain the project and run, but not the selected
-Station. Switching Stations with matching IDs needs separate cache and state
-qualification, as well as the transport qualification above.
+The run list is keyed to the API base and project. The output check also
+includes the run ID. A change of API base remounts the project view. See the
+transport limits above for remote Stations.
 
 ## Verification
 

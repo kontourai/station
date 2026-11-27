@@ -38,10 +38,14 @@ import {
   type WorkloadEventMessage,
   type WorkloadRequest,
 } from '@kontourai/station-supervisor/protocol';
+import { errorMessage } from '../../utils/error-message.js';
+import { isRecord } from '../../utils/is-record.js';
+import { sleep } from '../../utils/sleep.js';
 
 /** Stable listeners the supervisor holds across generations. */
 const SUPERVISOR_LISTENER_NAMES = Object.freeze([
   'api',
+  'api-local',
   'voice',
   'consent',
 ] as const);
@@ -199,10 +203,6 @@ interface ClosableHandle {
   close(): void;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function isClosable(value: unknown): value is ClosableHandle {
   return (
     typeof value === 'object' &&
@@ -218,10 +218,6 @@ function closeQuietly(handle: unknown): void {
   } catch {
     // Already closed.
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isListenerName(name: string): name is SupervisorListenerName {
@@ -710,9 +706,7 @@ export class SupervisorLink implements ListenerLink {
       // Node's false return can mean queued under backpressure, not rejected.
       return true;
     } catch (error) {
-      this.log(
-        `send ${message.type} failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.log(`send ${message.type} failed: ${errorMessage(error)}`);
       return false;
     }
   }
@@ -780,7 +774,7 @@ export class SupervisorLink implements ListenerLink {
   ): Promise<void> {
     for (;;) {
       const now = Date.now();
-      const quietFor = now - this.lastAcceptAt;
+      const quietFor = now - Math.max(started, this.lastAcceptAt);
       if (quietFor >= DRAIN_QUIET_CLOSE_MS) break;
       if (now - started >= capMs) {
         this.log(

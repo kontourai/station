@@ -225,6 +225,62 @@ describe('fast-checks aggregate verdict', () => {
     expect(notes).toHaveLength(FAST_CHECKS_SHARD_COUNT);
   });
 
+  test('passes ordinary provisional evidence but blocks the same execution after discovery timed out', () => {
+    const subject = {
+      ...SEVEN_FILES,
+      deferredLanes: [{ id: 'ci-fast', reasons: ['expanded scope'] }],
+    };
+    const overrides = Object.fromEntries(
+      Array.from({ length: subject.shardCount }, (_, index) => [
+        index + 1,
+        { status: 'provisional' },
+      ]),
+    );
+    const pass = verify({ subject, overrides });
+    expect(pass.findings).toEqual([]);
+    expect(pass.suiteDeferrals).toEqual(['ci-fast']);
+
+    const timedOut = {
+      ...subject,
+      relatedDiscovery: {
+        timedOut: true,
+        milliseconds: 65000,
+        timeoutMilliseconds: 60000,
+      },
+    };
+    const blocked = verify({ subject: timedOut, overrides });
+    expect(blocked.findings).toEqual([
+      'related discovery timed out; the retained exact suites cannot complete source verification',
+    ]);
+    expect(
+      blocked.notes.filter((note) => note.includes('test(s) executed')),
+    ).toHaveLength(subject.shardCount);
+  });
+
+  test('refuses provisional success over a group that executed no tests', () => {
+    const subject = {
+      ...SEVEN_FILES,
+      deferredLanes: [{ id: 'ci-fast', reasons: ['expanded scope'] }],
+    };
+    const result = verify({
+      subject,
+      overrides: {
+        1: {
+          status: 'provisional',
+          counts: {
+            executed: 0,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 0,
+          },
+        },
+      },
+    });
+    expect(result.findings.join('\n')).toContain(
+      'a passing nonempty shard requires passing execution evidence',
+    );
+  });
+
   test('passes a deferred plan whose shards are all empty, and says so', () => {
     const { findings, notes } = verify({
       subject: plan([], { deferred: true }),
@@ -314,7 +370,17 @@ describe('fast-checks aggregate verdict', () => {
     ],
     [
       'called a non-empty slice empty',
-      { 1: { status: 'empty' } },
+      {
+        1: {
+          status: 'empty',
+          counts: {
+            executed: 0,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 0,
+          },
+        },
+      },
       "shard 1/4 reported 'empty' for a 2-file slice",
     ],
   ])('fails when a shard %s', (_name, overrides, message) => {

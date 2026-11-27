@@ -603,7 +603,7 @@ describe('the nightly workflow keeps its promises', () => {
       callerWorkflow.indexOf(
         'name: Bind the published CLI receipt to npm registry provenance',
       ),
-      callerWorkflow.indexOf('id: ledger_token'),
+      callerWorkflow.indexOf('name: Retain the Nightly CLI provider receipt'),
     );
     expect(receipt).toContain(
       'until npm view --prefer-online "@kontourai/station-cli@$CLI_VERSION" gitHead --json',
@@ -809,11 +809,8 @@ describe('the nightly workflow keeps its promises', () => {
     expect(tagStep).toContain('git/ref/tags/nightly');
   });
 
-  it('records ledger ships independently of the tag advance, gated on each publish outcome', () => {
+  it('records native ledger ships independently of the tag advance after protected finalization', () => {
     expect(workflow).toContain("needs.protected-finalize.result == 'success'");
-    expect(callerWorkflow).toContain(
-      "always() && steps.cli_npm_publish.outcome == 'success'",
-    );
   });
 
   it('checks out full history in both publishing jobs', () => {

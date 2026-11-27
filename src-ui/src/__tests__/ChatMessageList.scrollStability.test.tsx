@@ -31,6 +31,10 @@ vi.mock('../components/chat/SessionSummaryCard', () => ({
 }));
 
 import { ChatMessageList } from '../components/chat/ChatMessageList';
+import {
+  focusRenderedApprovalCard,
+  revealApprovalCard,
+} from '../components/status/approvalReveal';
 
 /*
  * Transcript scroll stability (tests/transcript-load-stability.spec.ts owns
@@ -96,7 +100,6 @@ function session(messageCount = 10) {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle' as const,
     createdAt: 1,
     updatedAt: 1,
@@ -236,21 +239,28 @@ describe('Scroll to bottom', () => {
     expect(scroller.scrollTop).toBe(2_500);
   });
 
-  test('reader input cancels the glide where it is and brings the control back', () => {
-    stubMotion(false);
-    const { scroller } = renderList();
-    readerScrollsTo(scroller, 1_300);
-    advanceFrames(1_000);
-    fireEvent.click(scrollToBottomButton()!);
-    advanceFrames(48);
-    const stopped = scroller.scrollTop;
-    expect(stopped).toBeGreaterThan(1_300);
-    expect(stopped).toBeLessThan(1_600);
-    fireEvent.wheel(scroller);
-    advanceFrames(500);
-    expect(scroller.scrollTop).toBe(stopped);
-    expect(scrollToBottomButton()).not.toBeNull();
-  });
+  test.each(['wheel', 'touchStart', 'pointerDown', 'keyDown'] as const)(
+    'fresh %s input cancels the glide where it is and brings the control back',
+    (input) => {
+      stubMotion(false);
+      const { scroller } = renderList();
+      readerScrollsTo(scroller, 1_300);
+      advanceFrames(1_000);
+      fireEvent.click(scrollToBottomButton()!);
+      advanceFrames(48);
+      const stopped = scroller.scrollTop;
+      expect(stopped).toBeGreaterThan(1_300);
+      expect(stopped).toBeLessThan(1_600);
+      fireEvent[input](scroller, {
+        key: 'ArrowUp',
+        pointerType: 'mouse',
+        button: 0,
+      });
+      advanceFrames(500);
+      expect(scroller.scrollTop).toBe(stopped);
+      expect(scrollToBottomButton()).not.toBeNull();
+    },
+  );
 
   test("a scroll past the glide's own write is not the reader: no history load, the glide carries on", () => {
     stubMotion(false);
@@ -270,37 +280,89 @@ describe('Scroll to bottom', () => {
     expect(scrollToBottomButton()).toBeNull();
   });
 
-  test('a scroll against the glide (momentum the reader started) ends it and is theirs', () => {
-    stubMotion(false);
-    const { scroller } = renderList();
-    readerScrollsTo(scroller, 1_300);
-    advanceFrames(1_000);
-    fireEvent.click(scrollToBottomButton()!);
-    advanceFrames(32);
-    const glided = scroller.scrollTop;
-    // No input event: iOS momentum keeps moving up after the tap.
-    scroller.scrollTop = glided - 120;
-    fireEvent.scroll(scroller);
-    advanceFrames(500);
-    expect(scroller.scrollTop).toBe(glided - 120);
-    expect(scrollToBottomButton()).not.toBeNull();
-  });
+  test.each([2_000, 2_200])(
+    'pre-existing momentum cannot cancel an explicit return to latest at height %i',
+    (height) => {
+      stubMotion(false);
+      const { scroller, geometry } = renderList();
+      readerScrollsTo(scroller, 1_300);
+      advanceFrames(1_000);
+      fireEvent.click(scrollToBottomButton()!);
+      advanceFrames(32);
+      const glided = scroller.scrollTop;
+      geometry.scrollHeight = height;
+      // No input event: iOS momentum keeps moving up after the tap.
+      scroller.scrollTop = glided - 120;
+      fireEvent.scroll(scroller);
+      advanceFrames(500);
+      expect(scroller.scrollTop).toBe(height);
+      expect(scrollToBottomButton()).toBeNull();
+    },
+  );
 
-  test('content that shrinks under the glide still lands the reader at the new end', () => {
-    stubMotion(false);
-    const { scroller, geometry } = renderList();
-    readerScrollsTo(scroller, 1_300);
-    advanceFrames(1_000);
-    fireEvent.click(scrollToBottomButton()!);
-    advanceFrames(64);
-    // A streaming row is replaced by a shorter saved one: the browser clamps.
-    geometry.scrollHeight = 1_600;
-    scroller.scrollTop = 1_200;
-    fireEvent.scroll(scroller);
-    advanceFrames(500);
-    expect(scroller.scrollTop).toBe(1_600);
-    expect(scrollToBottomButton()).toBeNull();
-  });
+  test.each([
+    { change: 'shrinks', height: 1_600 },
+    { change: 'shrinks then grows before its scroll event', height: 1_735 },
+    { change: 'shrinks then returns to its original height', height: 2_000 },
+  ])(
+    'content that $change under the glide still lands the reader at the new end',
+    ({ height }) => {
+      stubMotion(false);
+      const { scroller, geometry } = renderList();
+      readerScrollsTo(scroller, 1_300);
+      advanceFrames(1_000);
+      fireEvent.click(scrollToBottomButton()!);
+      advanceFrames(64);
+      // A streaming row is replaced by a shorter saved one: the browser clamps.
+      geometry.scrollHeight = height;
+      scroller.scrollTop = 1_200;
+      fireEvent.scroll(scroller);
+      advanceFrames(500);
+      expect(scroller.scrollTop).toBe(height);
+      expect(scrollToBottomButton()).toBeNull();
+    },
+  );
+
+  test.each(['End', 'PageDown', 'ArrowDown', ' '])(
+    'an external reader %j command reaches the tail without the glide pulling it back',
+    (key) => {
+      stubMotion(false);
+      const scroller = document.createElement('div');
+      document.body.append(scroller);
+      Object.defineProperties(scroller, {
+        clientHeight: { configurable: true, value: 400 },
+        scrollHeight: { configurable: true, value: 2_000 },
+      });
+      render(
+        <ChatMessageList
+          activeSession={session()}
+          fontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+          externalScrollContainerRef={{ current: scroller }}
+          renderOverride={(message) => <>{message.content}</>}
+        />,
+        { container: scroller },
+      );
+      deliverResize(scroller);
+      readerScrollsTo(scroller, 1_300);
+      advanceFrames(1_000);
+      fireEvent.click(scrollToBottomButton()!);
+      advanceFrames(160);
+      expect(scroller.scrollTop).toBeLessThan(1_600);
+      expect(scroller.scrollTop).toBeGreaterThan(1_560);
+      fireEvent.keyDown(scroller, { key });
+      expect(scroller.scrollTop).toBe(2_000);
+      advanceFrames(16);
+      expect(scroller.scrollTop).toBe(2_000);
+      advanceFrames(16);
+      expect(scroller.scrollTop).toBe(2_000);
+      advanceFrames(16);
+      expect(scroller.scrollTop).toBe(2_000);
+      advanceFrames(500);
+      expect(scroller.scrollTop).toBe(2_000);
+    },
+  );
 
   test('reduced motion lands at once', () => {
     stubMotion(true);
@@ -309,6 +371,98 @@ describe('Scroll to bottom', () => {
     fireEvent.click(scrollToBottomButton()!);
     expect(scroller.scrollTop).toBe(2_000);
     expect(scrollToBottomButton()).toBeNull();
+  });
+
+  test.each([
+    ['status pill', revealApprovalCard],
+    ['approval queue', focusRenderedApprovalCard],
+  ] as const)(
+    'a mounted approval reveal from the %s supersedes the glide',
+    async (_source, reveal) => {
+      stubMotion(false);
+      const base = session();
+      const { scroller } = renderList({
+        activeSession: {
+          ...base,
+          messages: base.messages.map((message, index) =>
+            index === 3
+              ? {
+                  ...message,
+                  contentParts: [
+                    {
+                      type: 'tool-invocation',
+                      toolCallId: 'reveal-call',
+                      toolName: 'Bash',
+                      args: { command: 'echo approved' },
+                      state: 'awaiting-approval',
+                      needsApproval: true,
+                      approvalId: 'reveal-request',
+                      approvalThreadId: 'reveal-thread',
+                    },
+                  ],
+                }
+              : message,
+          ),
+        },
+        renderOverride: (message, index) =>
+          index === 3 ? (
+            <div
+              data-approval-id="reveal-request"
+              data-approval-thread="reveal-thread"
+            >
+              <button type="button" className="tool-call__approve-btn">
+                Allow
+              </button>
+            </div>
+          ) : (
+            <>{message.content}</>
+          ),
+      });
+      const card = scroller.querySelector<HTMLElement>('[data-approval-id]')!;
+      card.getBoundingClientRect = () =>
+        ({ width: 300, height: 100 }) as DOMRect;
+      card.scrollIntoView = vi.fn(() => {
+        scroller.scrollTop = 400;
+      });
+      readerScrollsTo(scroller, 1_300);
+      advanceFrames(1_000);
+      fireEvent.click(scrollToBottomButton()!);
+      advanceFrames(48);
+      await act(async () => {
+        expect(
+          await reveal(
+            { requestId: 'reveal-request', threadId: 'reveal-thread' },
+            scroller,
+          ),
+        ).toBe(true);
+      });
+      advanceFrames(500);
+      expect(scroller.scrollTop).toBe(400);
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Allow' }),
+      );
+    },
+  );
+
+  test('a new message link supersedes a running glide', () => {
+    stubMotion(false);
+    const { scroller } = renderList();
+    const row = scroller.querySelectorAll<HTMLElement>(
+      '[data-chat-message-key]',
+    )[3]!;
+    row.scrollIntoView = vi.fn(() => {
+      scroller.scrollTop = 400;
+    });
+    readerScrollsTo(scroller, 1_300);
+    advanceFrames(1_000);
+    fireEvent.click(scrollToBottomButton()!);
+    advanceFrames(48);
+    act(() => {
+      window.location.hash = '#station-message=3%3Auser%3Amessage%203';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    advanceFrames(500);
+    expect(scroller.scrollTop).toBe(400);
   });
 
   test('a followed message link releases its hold when the reader asks for the bottom', () => {
@@ -539,23 +693,98 @@ describe('a finger on the transcript', () => {
     expect(scrollToBottomButton()).not.toBeNull();
   });
 
+  const withDisclosure = {
+    renderOverride: (message: { content?: string }, index: number) =>
+      index === 9 ? (
+        <button type="button" aria-expanded="false">
+          {message.content}
+        </button>
+      ) : (
+        <>{message.content}</>
+      ),
+  } as Props;
+  /** The last row reports `height` from now on. */
+  function lastRowGrowsTo(scroller: HTMLElement, height: number) {
+    const rows = scroller.querySelectorAll<HTMLElement>('.chat-message-anchor');
+    const last = rows[rows.length - 1]!;
+    last.getBoundingClientRect = () => {
+      const top = (rows.length - 1) * 100 - scroller.scrollTop;
+      return { top, bottom: top + height, height } as DOMRect;
+    };
+    return last;
+  }
+
   test('a row the reader opens near the end opens in place', () => {
-    const { scroller, geometry } = renderList();
+    const { scroller, geometry, base, rerender } = renderList(withDisclosure);
     vi.advanceTimersByTime(2_000);
     scroller.scrollTop = 1_600;
     fireEvent.scroll(scroller);
-    // A press inside the transcript expands a tool card: content grows below.
-    fireEvent.pointerDown(scroller, { pointerType: 'mouse', button: 0 });
+    // A press on the last row's disclosure expands it: content grows below.
+    fireEvent.pointerDown(screen.getByRole('button', { expanded: false }), {
+      pointerType: 'mouse',
+      button: 0,
+    });
     fireEvent.pointerUp(window, { pointerType: 'mouse' });
     // Past the press's own scroll grace: only the interaction window holds.
     vi.advanceTimersByTime(500);
     geometry.scrollHeight = 2_300;
-    deliverResize(scroller.querySelector('.chat-message-anchor')!);
+    deliverResize(lastRowGrowsTo(scroller, 400));
     expect(scroller.scrollTop).toBe(1_600);
-    // Growth well after the interaction is the content's own: followed.
+    // What it opened can finish rendering well after the interaction (a
+    // code-split detail): the reader's row still stays where it is.
     vi.advanceTimersByTime(2_000);
     geometry.scrollHeight = 2_400;
-    deliverResize(scroller.querySelector('.chat-message-anchor')!);
+    deliverResize(lastRowGrowsTo(scroller, 500));
+    expect(scroller.scrollTop).toBe(1_600);
+    // A new answer arriving while held is not followed either.
+    geometry.scrollHeight = 2_500;
+    const answer = { role: 'assistant' as const, timestamp: 99 };
+    rerender({
+      ...withDisclosure,
+      activeSession: {
+        ...base,
+        messages: [...base.messages, { ...answer, content: 'a new answer' }],
+      },
+    });
+    expect(scroller.scrollTop).toBe(1_600);
+    // Back at the end, new content is followed again.
+    scroller.scrollTop = 2_500 - geometry.clientHeight;
+    fireEvent.scroll(scroller);
+    geometry.scrollHeight = 2_700;
+    rerender({
+      ...withDisclosure,
+      activeSession: {
+        ...base,
+        messages: [
+          ...base.messages,
+          { ...answer, content: 'a new answer' },
+          { ...answer, content: 'another answer', timestamp: 100 },
+        ],
+      },
+    });
+    expect(scroller.scrollTop).toBe(2_700);
+  });
+
+  test('untouched late growth is followed, after an incidental press too', () => {
+    const { scroller, geometry } = renderList(withDisclosure);
+    vi.advanceTimersByTime(2_000);
+    scroller.scrollTop = 1_600;
+    fireEvent.scroll(scroller);
+    // A press on text, not a disclosure.
+    fireEvent.pointerDown(scroller.querySelector('.chat-message-anchor')!, {
+      pointerType: 'mouse',
+      button: 0,
+    });
+    fireEvent.pointerUp(window, { pointerType: 'mouse' });
+    vi.advanceTimersByTime(500);
+    geometry.scrollHeight = 2_300;
+    deliverResize(lastRowGrowsTo(scroller, 400));
+    // Inside the interaction window nothing moves...
+    expect(scroller.scrollTop).toBe(1_600);
+    // ...and growth after it is the content's own: followed.
+    vi.advanceTimersByTime(2_000);
+    geometry.scrollHeight = 2_400;
+    deliverResize(lastRowGrowsTo(scroller, 500));
     expect(scroller.scrollTop).toBe(2_400);
   });
 });

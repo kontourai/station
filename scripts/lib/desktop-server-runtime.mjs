@@ -19,6 +19,7 @@ export const DESKTOP_SERVER_RUNTIME_PACKAGES = STATION_SERVER_EXTERNALS;
  * light.exe` (station#2424). The file budget must therefore sit BELOW the
  * ceiling, not above it — at 80,000 this gate stayed green while the tree
  * grew to 68,828 files and Windows packaging became impossible.
+ * @type {Readonly<{ maxBytes: number, maxFiles: number }>}
  */
 export const DESKTOP_SERVER_RUNTIME_BUDGET = Object.freeze({
   maxBytes: 512 * 1024 * 1024,
@@ -33,63 +34,94 @@ const OPTIONAL_DESKTOP_SERVER_RUNTIME_PACKAGES = new Set(['fsevents']);
 export const WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR =
   'dist-desktop-wix-resources';
 export const WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG = 'tauri-config.json';
+const WINDOWS_INSTALL_ROOT_MIN_LENGTH = 45;
 
 function readPackage(packageRoot) {
   return JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
 }
 
-function resolvePackageRoot(packageName, fromRoot) {
+/**
+ * The package a declared dependency installs. An npm alias
+ * (`"zod-from-json-schema-v3": "npm:zod-from-json-schema@^0.0.5"`) installs
+ * under the alias directory but keeps the real name in its package.json, so
+ * the identity to verify comes from the declaring package's own spec rather
+ * than from a list of known aliases.
+ */
+function declaredPackageName(dependencyName, spec) {
+  if (typeof spec !== 'string' || !spec.startsWith('npm:'))
+    return dependencyName;
+  const target = spec.slice('npm:'.length);
+  const versionAt = target.indexOf('@', target.startsWith('@') ? 1 : 0);
+  const name = versionAt === -1 ? target : target.slice(0, versionAt);
+  if (!/^(?:@[^/@\s]+\/)?[^/@\s]+$/.test(name)) {
+    throw new Error(
+      `Dependency ${dependencyName} declares an unreadable npm alias: ${spec}`,
+    );
+  }
+  return name;
+}
+
+function resolvePackageRoot(
+  packageName,
+  fromRoot,
+  expectedName = packageName,
+  work,
+) {
+  if (work) work.resolutionCalls += 1;
   let current = realpathSync(fromRoot);
   while (true) {
+    if (work) work.resolutionCandidates += 1;
     const candidate = join(current, 'node_modules', ...packageName.split('/'));
     const manifest = join(candidate, 'package.json');
     if (existsSync(manifest)) {
       const packageRoot = realpathSync(candidate);
-      const pkg = readPackage(packageRoot);
-      // npm aliases install under the alias name (e.g. zod-from-json-schema-v3
-      // -> npm:zod-from-json-schema) but keep the real package name inside
-      // package.json. Accept that mapping so alias dependencies resolve.
-      if (
-        pkg.name === packageName ||
-        (packageName === 'zod-from-json-schema-v3' &&
-          pkg.name === 'zod-from-json-schema')
-      ) {
-        return packageRoot;
-      }
+      if (readPackage(packageRoot).name === expectedName) return packageRoot;
     }
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;
   }
-  throw new Error(`Could not locate installed package ${packageName}`);
+  throw new Error(
+    expectedName === packageName
+      ? `Could not locate installed package ${packageName}`
+      : `Could not locate installed package ${packageName} (alias of ${expectedName})`,
+  );
 }
 
-function installedRuntimeDependencies(pkg, packageRoot) {
-  const dependencies = {
+function declaredDependencySpecs(pkg) {
+  const specs = {
     ...pkg.dependencies,
     ...pkg.optionalDependencies,
   };
   for (const [name, version] of Object.entries(pkg.peerDependencies ?? {})) {
     if (pkg.peerDependenciesMeta?.[name]?.optional) continue;
-    dependencies[name] = version;
+    specs[name] = version;
   }
+  return specs;
+}
+
+/** The installed runtime dependencies of a package, as `[name, realName]`. */
+function installedRuntimeDependencies(pkg, packageRoot, work) {
   const excluded = new Set(
     RUNTIME_DEPENDENCY_EXCLUSIONS.filter(
       (rule) => rule.package === pkg.name,
     ).map((rule) => rule.dependency),
   );
-  return Object.keys(dependencies).filter((name) => {
-    if (excluded.has(name)) return false;
+  const dependencies = [];
+  for (const [name, spec] of Object.entries(declaredDependencySpecs(pkg))) {
+    if (excluded.has(name)) continue;
+    const realName = declaredPackageName(name, spec);
     try {
-      resolvePackageRoot(name, packageRoot);
-      return true;
+      resolvePackageRoot(name, packageRoot, realName, work);
     } catch {
-      if (pkg.optionalDependencies?.[name]) return false;
+      if (pkg.optionalDependencies?.[name]) continue;
       throw new Error(
         `Runtime dependency ${name} required by ${pkg.name} is not installed`,
       );
     }
-  });
+    dependencies.push([name, realName]);
+  }
+  return dependencies;
 }
 
 function targetPackageRoot(
@@ -98,27 +130,40 @@ function targetPackageRoot(
   parentTargetRoot,
   outputRoot,
   planned,
+  resolutions,
 ) {
-  // Match Node's nearest node_modules lookup. A different nearer version
-  // shadows the root, even when the root has the requested version.
+  const candidates = [];
+  let target;
   let current = parentTargetRoot;
   while (true) {
-    const candidate = join(current, 'node_modules', packageName);
-    const visible = planned.get(candidate);
-    if (visible) {
-      return visible === sourceRoot
-        ? candidate
-        : join(parentTargetRoot, 'node_modules', packageName);
+    if (current === outputRoot || planned.has(current)) {
+      const candidate = join(current, 'node_modules', packageName);
+      const visible = planned.get(candidate);
+      const required = resolutions.get(candidate);
+      if (visible) {
+        if (visible === sourceRoot) target = candidate;
+        break;
+      }
+      if (required && required !== sourceRoot) break;
+      candidates.push(candidate);
     }
     if (current === outputRoot) break;
     current = dirname(current);
   }
-  return join(outputRoot, 'node_modules', packageName);
+  target ??= candidates.at(-1);
+  if (!target) {
+    throw new Error(
+      `Cannot preserve runtime dependency ${packageName} from ${parentTargetRoot}`,
+    );
+  }
+  for (const candidate of candidates) resolutions.set(candidate, sourceRoot);
+  return target;
 }
 
-function planRuntimePackages(packageNames, projectRoot, outputRoot) {
+function planRuntimePackages(packageNames, projectRoot, outputRoot, work) {
   outputRoot = resolve(outputRoot);
   const planned = new Map();
+  const resolutions = new Map();
   const queue = [];
   const add = (target, source) => {
     const existing = planned.get(target);
@@ -132,10 +177,20 @@ function planRuntimePackages(packageNames, projectRoot, outputRoot) {
   };
   // Root imports must retain the versions selected by the server, regardless
   // of which transitive dependency happens to be traversed first.
+  // A root import may itself be an alias the project declares.
+  const projectManifest = join(projectRoot, 'package.json');
+  const projectSpecs = existsSync(projectManifest)
+    ? declaredDependencySpecs(readPackage(projectRoot))
+    : {};
   for (const name of packageNames) {
     let source;
     try {
-      source = resolvePackageRoot(name, projectRoot);
+      source = resolvePackageRoot(
+        name,
+        projectRoot,
+        declaredPackageName(name, projectSpecs[name]),
+        work,
+      );
     } catch (error) {
       if (OPTIONAL_DESKTOP_SERVER_RUNTIME_PACKAGES.has(name)) continue;
       throw error;
@@ -146,13 +201,22 @@ function planRuntimePackages(packageNames, projectRoot, outputRoot) {
     const { target, source } = queue[index];
     // Reserve all siblings before visiting their descendants. Otherwise a
     // later sibling can silently shadow a dependency already hoisted for a child.
-    for (const name of installedRuntimeDependencies(
+    for (const [name, realName] of installedRuntimeDependencies(
       readPackage(source),
       source,
+      work,
     )) {
-      const dependency = resolvePackageRoot(name, source);
+      if (work) work.dependencyEdges += 1;
+      const dependency = resolvePackageRoot(name, source, realName, work);
       add(
-        targetPackageRoot(name, dependency, target, outputRoot, planned),
+        targetPackageRoot(
+          name,
+          dependency,
+          target,
+          outputRoot,
+          planned,
+          resolutions,
+        ),
         dependency,
       );
     }
@@ -183,6 +247,34 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
 // `.pdb` is Windows debug-symbol data read only by a debugger, never by the
 // loader: node-pty ships one beside every Windows binary (~27 MB per arch).
 
+const SEMANTIC_CONVENTIONS_NODE_EXPORTS = Object.freeze({
+  '.': './build/src/index.js',
+  './incubating': './build/src/index-incubating.js',
+});
+const SEMANTIC_CONVENTIONS_BUNDLER_CONDITIONS = new Set([
+  'esnext',
+  'module',
+  'types',
+  'default',
+]);
+
+function hasReviewedSemanticConventionNodeExports(pkg) {
+  const exports = pkg.exports ?? {};
+  return (
+    pkg.main === 'build/src/index.js' &&
+    (!pkg.type || pkg.type === 'commonjs') &&
+    Object.keys(exports).length === 2 &&
+    Object.entries(exports).every(
+      ([subpath, conditions]) =>
+        Object.hasOwn(SEMANTIC_CONVENTIONS_NODE_EXPORTS, subpath) &&
+        conditions?.default === SEMANTIC_CONVENTIONS_NODE_EXPORTS[subpath] &&
+        Object.keys(conditions).every((condition) =>
+          SEMANTIC_CONVENTIONS_BUNDLER_CONDITIONS.has(condition),
+        ),
+    )
+  );
+}
+
 /**
  * Package-scoped subtrees the packaged server never reads (#2694). Each rule
  * names one package and the top-level entries of it that are dropped; the
@@ -199,23 +291,14 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
  * - RxJS's published exports choose dist/cjs under Node for both import and
  *   require, including internal/* and testing. Keep that shared identity and
  *   package metadata/licenses; omit browser distributions and TypeScript input.
- * - `@kontourai/flow-agents/dist/<runtime>` are the per-harness install
- *   bundles its `init`/`kit`/`workflow doctor` CLI verbs copy into a project.
- *   Station runs none of those verbs; it imports the package's exports, spawns
- *   `build/src/cli/{assignment-provider,effective-backlog-settings,
- *   pull-work-provider}.js`, loads `scripts/hooks/*`, and reads `skills/`,
- *   `kits/`, `schemas/` and `context/`. In the static closure of those
- *   entries the package's own `dist/` is read only by `workflow doctor`, a
- *   CLI verb Station never runs (workflow-steering's `dist/` check reads the
- *   project checkout, not the package). ~102 MB.
- * - `@kontourai/flow-agents/src` and `/evals` are the package's TypeScript
- *   input and its own test harness (~19 MB together). Everything Station reads
- *   from the package is under `build/`, `scripts/`, `skills/`, `kits/`,
- *   `schemas/` and `context/`; a kit's own `kits/<kit>/evals/` is kept.
  * - OTLP transformer's Node entry is build/src/index.js for both import and
  *   require. Its build/esm and build/esnext trees are alternate bundler
  *   distributions, including duplicate generated protobuf code. Keep the
  *   Node implementation, package metadata and license; omit those variants.
+ * - Semantic conventions' stable and incubating exports likewise choose
+ *   build/src under normal Node import and require. Only prune its bundler
+ *   distributions while the manifest retains the reviewed default targets
+ *   and conditions; a new Node import/require condition keeps every variant.
  * - koffi (#4524) is the FFI the managed policy's Windows registry and ACL
  *   reader loads with `require('koffi')` on first use, and only on Windows
  *   (packages/shared/src/managed-policy-windows.ts). Keep `src/`: the public
@@ -224,6 +307,13 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
  *   runtime binary comes from `lib/native` or the `@koromix/koffi-<os>-<arch>`
  *   package. Off Windows nothing requires it at all, so koffi and its
  *   platform package keep only their metadata and license there.
+ * - flow-agents 9.14 ships its per-harness install bundles as one pack,
+ *   `bundles/flow-agents-bundles.pack` (~7 MB). Only its own CLI reads it:
+ *   `lib/bundle-store` expands it for `init`, `kit activate` and `workflow
+ *   doctor`, and `scripts/install-codex-home.sh` for a Codex home install.
+ *   Station imports none of those entrypoints and spawns no flow-agents CLI;
+ *   `bundle-store` is only loaded (inert) through the root index. Without the
+ *   pack, `resolveBundle` returns null and those commands report it.
  */
 export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
   Object.freeze({
@@ -259,6 +349,13 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
       segments[0] === 'build' && ['esm', 'esnext'].includes(segments[1]),
   }),
   Object.freeze({
+    id: 'semantic-conventions-node-runtime-only',
+    package: '@opentelemetry/semantic-conventions',
+    appliesTo: hasReviewedSemanticConventionNodeExports,
+    excludes: (segments) =>
+      segments[0] === 'build' && ['esm', 'esnext'].includes(segments[1]),
+  }),
+  Object.freeze({
     id: 'node-pty-foreign-prebuilds',
     package: 'node-pty',
     excludes: (segments, target) =>
@@ -272,6 +369,14 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
     excludes: (segments) => ['vendor', 'doc'].includes(segments[0]),
   }),
   Object.freeze({
+    id: 'flow-agents-harness-bundle-pack',
+    package: '@kontourai/flow-agents',
+    excludes: (segments) =>
+      segments.length === 2 &&
+      segments[0] === 'bundles' &&
+      segments[1] === 'flow-agents-bundles.pack',
+  }),
+  Object.freeze({
     id: 'koffi-off-windows',
     package: '*',
     excludes: (segments, target, packageName) =>
@@ -279,28 +384,15 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
       (packageName === 'koffi' || packageName.startsWith('@koromix/koffi-')) &&
       !/^(?:package\.json|LICENSE(?:\.txt|\.md)?)$/i.test(segments.join('/')),
   }),
-  Object.freeze({
-    id: 'flow-agents-harness-bundles',
-    package: '@kontourai/flow-agents',
-    excludes: (segments) => segments[0] === 'dist',
-  }),
-  Object.freeze({
-    id: 'flow-agents-development-sources',
-    package: '@kontourai/flow-agents',
-    // Top-level only: `src/` is the TypeScript input of `build/` (the package's
-    // main and bin point into `build/`; its other exports point at `build/`,
-    // schemas, metadata and `integrations/`, never at `src/`) and `evals/` is the
-    // package's own acceptance and integration harness. Each kit's own
-    // `kits/<kit>/evals/` is a different directory and stays.
-    excludes: (segments) => segments[0] === 'src' || segments[0] === 'evals',
-  }),
 ]);
 
 /**
  * Dependency edges the stager does not follow (#2694). flow-agents depends
- * on esbuild only for `build-universal-bundles`, which regenerates the
- * `dist/` bundles pruned above; its runtime modules are written to load
- * without it ("unavailable in a stripped install", lib/local-artifact-root).
+ * on esbuild only for `build-universal-bundles` and its own build scripts,
+ * which regenerate per-harness `dist/` bundles the published package no longer
+ * ships (9.14 dropped `dist/`, `src/` and `evals/`, retiring the prune rules
+ * that removed them); its runtime modules are written to load without it
+ * ("unavailable in a stripped install", lib/local-artifact-root).
  * The edge pinned a second, nested esbuild (~21 MB) beside the root copy
  * Station itself externalizes, which stays staged, so a stray import still
  * resolves by ordinary node_modules lookup.
@@ -313,25 +405,37 @@ export const RUNTIME_DEPENDENCY_EXCLUSIONS = Object.freeze([
   }),
 ]);
 
-function packageCopyOptions(sourceRoot, target) {
-  const packageName = readPackage(sourceRoot).name;
+function packageCopyOptions(sourceRoot, target, work) {
+  const pkg = readPackage(sourceRoot);
+  const packageName = pkg.name;
   const rules = RUNTIME_PACKAGE_PRUNE_RULES.filter(
-    (rule) => rule.package === packageName || rule.package === '*',
+    (rule) =>
+      (rule.package === packageName || rule.package === '*') &&
+      (!rule.appliesTo || rule.appliesTo(pkg)),
   );
   return {
     recursive: true,
     dereference: true,
     filter: (source) => {
       const segments = relative(sourceRoot, source).split(sep);
+      if (work) {
+        work.filterEntries += 1;
+        work.lastCopyEntry = source;
+      }
       if (segments.length === 1 && segments[0] === '') return true;
-      if (segments.includes('node_modules')) return false;
-      if (rules.some((rule) => rule.excludes(segments, target, packageName)))
+      if (
+        segments.includes('node_modules') ||
+        rules.some((rule) => rule.excludes(segments, target, packageName))
+      ) {
+        if (work) work.filterRejected += 1;
         return false;
+      }
       // Match files only: a directory whose name ends in one of these
       // extensions would otherwise drop everything beneath it.
-      return (
-        !NON_RUNTIME_ARTIFACT.test(source) || lstatSync(source).isDirectory()
-      );
+      const included =
+        !NON_RUNTIME_ARTIFACT.test(source) || lstatSync(source).isDirectory();
+      if (work && !included) work.filterRejected += 1;
+      return included;
     },
   };
 }
@@ -351,10 +455,12 @@ function stageWindowsWixPackage(
   outputRoot,
   windowsWixResources,
   target,
+  work,
 ) {
   const alias = `package-${String(windowsWixResources.entries.length).padStart(4, '0')}`;
   const aliasRoot = join(windowsWixResources.root, alias);
-  cpSync(sourceRoot, aliasRoot, packageCopyOptions(sourceRoot, target));
+  cpSync(sourceRoot, aliasRoot, packageCopyOptions(sourceRoot, target, work));
+  if (work) work.wixCopies += 1;
   windowsWixResources.entries.push({
     aliasRoot,
     target: join(
@@ -367,6 +473,7 @@ function stageWindowsWixPackage(
 function writeWindowsWixTauriConfig(
   windowsTauriConfigRoot,
   windowsWixResources,
+  maxInstallRootLength,
 ) {
   const resources = {
     // JSON merge-patch removes the ordinary deep runtime resource entry from
@@ -383,6 +490,10 @@ function writeWindowsWixTauriConfig(
   const configPath = join(
     windowsWixResources.root,
     WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG,
+  );
+  writeFileSync(
+    join(windowsWixResources.root, 'installer-path-budget.nsh'),
+    `!define STATION_WINDOWS_MAX_INSTALL_ROOT ${maxInstallRootLength}\n`,
   );
   writeFileSync(
     configPath,
@@ -404,21 +515,37 @@ function writeWindowsWixTauriConfig(
 export function inspectDesktopServerRuntime(
   runtimeRoot,
   budget = DESKTOP_SERVER_RUNTIME_BUDGET,
+  platform = process.platform,
+  work,
 ) {
   let bytes = 0;
   let files = 0;
+  let maxInstallRootLength = 259;
   const pending = [join(runtimeRoot, 'node_modules')];
   while (pending.length > 0) {
     const current = pending.pop();
     if (!current || !existsSync(current)) continue;
+    if (work) work.inspectedDirectories += 1;
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const entryPath = join(current, entry.name);
+      if (platform === 'win32') {
+        maxInstallRootLength = windowsInstallRootLimit(
+          maxInstallRootLength,
+          relative(runtimeRoot, entryPath),
+          entry.isDirectory(),
+        );
+      }
       if (entry.isDirectory()) {
         pending.push(entryPath);
         continue;
       }
       files += 1;
-      bytes += lstatSync(entryPath).size;
+      const size = lstatSync(entryPath).size;
+      bytes += size;
+      if (work) {
+        work.inspectedFiles += 1;
+        work.inspectedBytes += size;
+      }
     }
   }
   if (bytes > budget.maxBytes || files > budget.maxFiles) {
@@ -426,7 +553,67 @@ export function inspectDesktopServerRuntime(
       `Desktop server runtime exceeds its release budget: ${bytes} bytes/${files} files (maximum ${budget.maxBytes} bytes/${budget.maxFiles} files)`,
     );
   }
-  return { bytes, files };
+  return { bytes, files, maxInstallRootLength };
+}
+
+function windowsInstallRootLimit(currentLimit, installedPath, isDirectory) {
+  const maximum = isDirectory ? 247 : 259;
+  const limit = Math.min(currentLimit, maximum - 1 - installedPath.length);
+  if (limit < WINDOWS_INSTALL_ROOT_MIN_LENGTH) {
+    throw new Error(
+      `Windows installer path exceeds MAX_PATH with a ${WINDOWS_INSTALL_ROOT_MIN_LENGTH}-character install root: ${installedPath} (maximum install root ${limit})`,
+    );
+  }
+  return limit;
+}
+
+export function finalizeWindowsDesktopResourcePaths({
+  projectRoot,
+  resourceRoot = join(projectRoot, WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR),
+}) {
+  const header = join(resourceRoot, 'installer-path-budget.nsh');
+  rmSync(header, { force: true });
+  const configRoot = join(projectRoot, 'src-desktop');
+  const platformConfig = JSON.parse(
+    readFileSync(join(configRoot, 'tauri.windows.conf.json'), 'utf8'),
+  );
+  const overlay = JSON.parse(
+    readFileSync(
+      join(resourceRoot, WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG),
+      'utf8',
+    ),
+  );
+  const resources = {
+    ...platformConfig.bundle.resources,
+    ...overlay.bundle.resources,
+  };
+  let maxInstallRootLength = 259;
+  for (const [source, target] of Object.entries(resources)) {
+    if (target === null) continue;
+    const pending = [{ source: resolve(configRoot, source), target }];
+    while (pending.length > 0) {
+      const current = pending.pop();
+      const isDirectory = lstatSync(current.source).isDirectory();
+      maxInstallRootLength = windowsInstallRootLimit(
+        maxInstallRootLength,
+        current.target,
+        isDirectory,
+      );
+      if (isDirectory) {
+        for (const entry of readdirSync(current.source)) {
+          pending.push({
+            source: join(current.source, entry),
+            target: join(current.target, entry),
+          });
+        }
+      }
+    }
+  }
+  writeFileSync(
+    header,
+    `!define STATION_WINDOWS_MAX_INSTALL_ROOT ${maxInstallRootLength}\n`,
+  );
+  return { maxInstallRootLength };
 }
 
 export function stageDesktopServerRuntime({
@@ -439,6 +626,79 @@ export function stageDesktopServerRuntime({
   platform = process.platform,
   arch = process.arch,
 } = {}) {
+  const diagnostic = process.env.STATION_DESKTOP_BUILD_DIAGNOSTICS === '1';
+  const startedAt = diagnostic ? performance.now() : 0;
+  const work = diagnostic
+    ? {
+        resolutionCalls: 0,
+        resolutionCandidates: 0,
+        dependencyEdges: 0,
+        plannedPackages: 0,
+        uniqueSources: 0,
+        runtimeCopies: 0,
+        wixCopies: 0,
+        filterEntries: 0,
+        filterRejected: 0,
+        inspectedDirectories: 0,
+        inspectedFiles: 0,
+        inspectedBytes: 0,
+      }
+    : undefined;
+  const slowPackages = [];
+  let currentPackage;
+  const phase = (name, action) => {
+    if (!diagnostic) return action();
+    const phaseStartedAt = performance.now();
+    const cpuStarted = process.cpuUsage();
+    const before = { ...work };
+    console.error(
+      '[desktop-runtime stage]',
+      JSON.stringify({
+        phase: name,
+        event: 'start',
+        elapsedMs: Math.round(phaseStartedAt - startedAt),
+      }),
+    );
+    let failure;
+    try {
+      return action();
+    } catch (error) {
+      failure = error;
+      throw error;
+    } finally {
+      const cpu = process.cpuUsage(cpuStarted);
+      console.error(
+        '[desktop-runtime stage]',
+        JSON.stringify({
+          phase: name,
+          event: failure ? 'failed' : 'end',
+          elapsedMs: Math.round(performance.now() - startedAt),
+          durationMs: Math.round(performance.now() - phaseStartedAt),
+          parentCpuMicros: cpu,
+          work: Object.fromEntries(
+            Object.entries(work)
+              .filter(([, value]) => typeof value === 'number')
+              .map(([key, value]) => [key, value - before[key]]),
+          ),
+          ...(name === 'copy' ? { slowPackages } : {}),
+          ...(failure
+            ? {
+                error: {
+                  message: failure.message,
+                  code: failure.code,
+                  syscall: failure.syscall,
+                  path: failure.path,
+                  dest: failure.dest,
+                },
+              }
+            : {}),
+          ...(failure && name === 'copy'
+            ? { currentPackage, lastCopyEntry: work.lastCopyEntry }
+            : {}),
+        }),
+      );
+    }
+  };
   const runtimeTarget = { platform, arch };
   const windowsWixResources = windowsWixResourceRoot
     ? { root: resolve(windowsWixResourceRoot), entries: [] }
@@ -448,29 +708,68 @@ export function stageDesktopServerRuntime({
       'Windows WiX resource root must differ from runtime output',
     );
   }
-  rmSync(outputRoot, { recursive: true, force: true });
-  if (windowsWixResources) {
-    rmSync(windowsWixResources.root, { recursive: true, force: true });
-    mkdirSync(windowsWixResources.root, { recursive: true });
-  }
-  mkdirSync(outputRoot, { recursive: true });
-  const planned = planRuntimePackages(packages, projectRoot, outputRoot);
-  for (const [target, source] of planned) {
-    mkdirSync(dirname(target), { recursive: true });
-    cpSync(source, target, packageCopyOptions(source, runtimeTarget));
+  phase('prepare output', () => {
+    rmSync(outputRoot, { recursive: true, force: true });
     if (windowsWixResources) {
-      stageWindowsWixPackage(
-        source,
-        target,
-        outputRoot,
-        windowsWixResources,
-        runtimeTarget,
-      );
+      rmSync(windowsWixResources.root, { recursive: true, force: true });
+      mkdirSync(windowsWixResources.root, { recursive: true });
     }
-  }
-  inspectDesktopServerRuntime(outputRoot, budget);
+    mkdirSync(outputRoot, { recursive: true });
+  });
+  const planned = phase('planning', () => {
+    const result = planRuntimePackages(packages, projectRoot, outputRoot, work);
+    if (work) {
+      work.plannedPackages = result.size;
+      work.uniqueSources = new Set(result.values()).size;
+    }
+    return result;
+  });
+  phase('copy', () => {
+    for (const [target, source] of planned) {
+      const copyStartedAt = diagnostic ? performance.now() : 0;
+      const entriesBefore = work?.filterEntries;
+      currentPackage = diagnostic ? { source, target } : undefined;
+      let completed = false;
+      try {
+        mkdirSync(dirname(target), { recursive: true });
+        cpSync(source, target, packageCopyOptions(source, runtimeTarget, work));
+        if (work) work.runtimeCopies += 1;
+        if (windowsWixResources) {
+          stageWindowsWixPackage(
+            source,
+            target,
+            outputRoot,
+            windowsWixResources,
+            runtimeTarget,
+            work,
+          );
+        }
+        completed = true;
+      } finally {
+        if (diagnostic) {
+          slowPackages.push({
+            ...currentPackage,
+            durationMs: Math.round(performance.now() - copyStartedAt),
+            filterEntries: work.filterEntries - entriesBefore,
+            completed,
+          });
+          slowPackages.sort(
+            (left, right) => right.durationMs - left.durationMs,
+          );
+          if (slowPackages.length > 10) slowPackages.pop();
+        }
+      }
+    }
+  });
+  const { maxInstallRootLength } = phase('inspection', () =>
+    inspectDesktopServerRuntime(outputRoot, budget, platform, work),
+  );
   if (windowsWixResources) {
-    writeWindowsWixTauriConfig(windowsTauriConfigRoot, windowsWixResources);
+    writeWindowsWixTauriConfig(
+      windowsTauriConfigRoot,
+      windowsWixResources,
+      maxInstallRootLength,
+    );
   }
   return outputRoot;
 }

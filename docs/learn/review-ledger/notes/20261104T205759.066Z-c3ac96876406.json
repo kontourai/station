@@ -1,7 +1,0 @@
-{
-  "revision": "ef1438036f115dc3f4b433735feddb6141b75432",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts delta: regenerated only to carry the module-map wording fix about the fixture audit; no tool, topic list or delivery behavior changed. This reference describes the docs MCP tools and generation, which stay accurate.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

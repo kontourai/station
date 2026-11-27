@@ -71,17 +71,28 @@ const PRINCIPAL_FILE = 'tool-server-principal-credentials.json';
  */
 const ENGINE_FILE = 'engine-credentials.json';
 
+/**
+ * Credentials Station holds to issue to engines that delegate their sign-in
+ * to the host (`services/engine-host-auth`), and engine-held secrets it keeps
+ * for them: a fourth trust domain, its own document, so neither an engine key
+ * nor a tool-server credential can ever be read through it.
+ */
+const ENGINE_HOST_AUTH_FILE = 'engine-host-auth.json';
+
 export type ToolServerCredentialStoreScope =
   | 'instance'
   | 'principal'
-  | 'engine';
+  | 'engine'
+  | 'engine-host-auth';
 
 function credentialFileFor(scope: ToolServerCredentialStoreScope): string {
   return scope === 'principal'
     ? PRINCIPAL_FILE
     : scope === 'engine'
       ? ENGINE_FILE
-      : FILE;
+      : scope === 'engine-host-auth'
+        ? ENGINE_HOST_AUTH_FILE
+        : FILE;
 }
 
 /** The non-instance owner shapes a person-owned bucket can name. */
@@ -338,6 +349,42 @@ export class ToolServerCredentialStore {
   }
   async remove(serverId: string, name: string): Promise<void> {
     await this.removeMany(serverId, [name]);
+  }
+  /**
+   * Remove one credential only if it is still exactly the observed value,
+   * under the store lock. Returns whether it was removed. A value another
+   * writer stored since the observation is left in place.
+   */
+  async compareAndRemove(
+    serverId: string,
+    name: string,
+    expected: string,
+  ): Promise<boolean> {
+    assertCredentialKey(serverId, 'server id');
+    assertCredentialKey(name, 'env name');
+    let removed = false;
+    await this.#mutate((document) => {
+      const current = document.credentials[serverId];
+      if (current?.[name] !== expected) return document;
+      removed = true;
+      const credentials = Object.assign(
+        dictionary<Record<string, string>>(),
+        document.credentials,
+      );
+      const serverCredentials = Object.assign(dictionary<string>(), current);
+      delete serverCredentials[name];
+      if (Object.keys(serverCredentials).length > 0)
+        credentials[serverId] = serverCredentials;
+      else delete credentials[serverId];
+      return { ...document, credentials };
+    });
+    return removed;
+  }
+  /** One credential, or undefined when absent. Never throws for a missing value. */
+  read(serverId: string, name: string): string | undefined {
+    assertCredentialKey(serverId, 'server id');
+    assertCredentialKey(name, 'env name');
+    return this.#read().credentials[serverId]?.[name];
   }
   /**
    * Remove one logical migration batch with one credential-store publication.

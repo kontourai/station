@@ -1,0 +1,7 @@
+{
+  "revision": "d8e26c2f23cf6a96978d592b007346bc484d9131",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"Re-checked after the chat-24 fix round in ChatMessageList.tsx and MessageBubble.tsx (switch rows drawn only for a switch that ran, model pill compared on what ran and drawn as its own item, phone exchange rule suppressed after a marker). This document makes no claim about those rows; its claims are unaffected.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

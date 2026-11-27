@@ -1,0 +1,7 @@
+{
+  "revision": "4232d0d8069e6bceceb2d9787492820550b4f12b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the running-turn composer and incoming-row changes. Updated the follow-up mode paragraph: the Steer/Queue picker now appears only once the composer holds something to send on every screen, not only on phones; the Queue default is unchanged. Delegated briefs and Automation runs (internal actor, dispatchOrigin delegation/automation, no sender) now label their unattributed row by origin; the document states nothing about that label. Checked with ChatInputArea, running-turn capability, composer room browser, agent-message transcript and live turnHandlers tests, each fix reverted to a failing assertion.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/contexts/active-chats-state.ts"]}
+  ]
+}

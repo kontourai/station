@@ -20,7 +20,10 @@ export function useProjectIcons(): ReadonlyMap<string, string> {
   return useMemo(() => {
     const icons = new Map<string, string>();
     for (const project of projects) {
-      const icon = displayableProjectIcon(project.icon);
+      const icon = displayableProjectIcon(
+        project.icon ??
+          (project.iconDisabled ? undefined : project.derivedIcon),
+      );
       if (icon) icons.set(project.slug, icon);
     }
     return icons.size > 0 ? icons : NO_ICONS;

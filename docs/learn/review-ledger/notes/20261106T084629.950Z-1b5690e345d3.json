@@ -1,7 +1,0 @@
-{
-  "revision": "a812fa5db0f9029049331ff5f7e3944a2bf6c32b",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Reviewed the delivery-recovery source delta from #4629 against MessageDeliveryNote and useDockDeliveryPort: three failed lookups pause while preserving the saved message; Check asks once without resending, same-key Retry requires a not-received answer, Copy message is in More delivery actions, and Discard requires risk confirmation. Corrected inherited label/menu wording to the shared owner. Focused Windows queue/control/route suites passed 257/257; clipboard success and refused-write actions passed in the 28/28 control suite, and complete typed reconciliation fixtures passed 52/52. This review covers this delivery paragraph and its changed source owner; previous installer, device and physical-provider limits remain unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx"]}
-  ]
-}

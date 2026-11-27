@@ -125,15 +125,18 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
     >();
   return {
     ...actual,
-    UsageTelemetryDisclosure: (props: { firstRun?: boolean }) =>
+    UsageTelemetryDisclosure: (props: {
+      firstRun?: boolean;
+      offerOnHome?: boolean;
+    }) =>
       realTelemetryDisclosure ? (
         <actual.UsageTelemetryDisclosure {...props} />
       ) : null,
   };
 });
 
-// Provider ordering is covered against the real application entrypoint in
-// main-provider-order.test.ts. This component suite isolates onboarding
+// NativeRelayEntryBoundary.test.tsx exercises provider placement through
+// the real application entrypoint. This suite isolates onboarding
 // behavior from the toast implementation while retaining the hook contract.
 vi.mock('../contexts/ToastContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../contexts/ToastContext')>()),
@@ -481,7 +484,10 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 import { MobileWelcomeBoundary } from '../components/MobileWelcomeBoundary';
 import { OnboardingGate } from '../components/OnboardingGate';
-import { resetUsageTelemetryDisclosureDismissal } from '../components/UsageTelemetryDisclosure';
+import {
+  resetUsageTelemetryDisclosureDismissal,
+  UsageTelemetryDisclosure,
+} from '../components/UsageTelemetryDisclosure';
 import { onboardingSetupStore } from '../contexts/onboarding-setup-store';
 import { RecoveryQueryBoundary } from '../contexts/RecoveryQueryBoundary';
 import {
@@ -591,7 +597,7 @@ describe('OnboardingGate', () => {
   }
 
   test.each(['off', 'lite', 'full'] as const)(
-    'the app-wide DNT Save closes across remounts and re-prompts only pending Full: %s',
+    'the optional Home DNT choice returns only for pending Full or a new revision: %s',
     async (tier) => {
       realTelemetryDisclosure = true;
       currentStatus = chatReadyStatus();
@@ -660,6 +666,7 @@ describe('OnboardingGate', () => {
           <RecoveryQueryBoundary>
             <OnboardingGate>
               <div>App</div>
+              <UsageTelemetryDisclosure firstRun offerOnHome />
             </OnboardingGate>
             <PendingReads />
           </RecoveryQueryBoundary>,
@@ -669,6 +676,9 @@ describe('OnboardingGate', () => {
         reads.mock.calls.filter(([url]) => String(url).includes('/disclosure'))
           .length;
       let view = mount();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Review choices' }),
+      );
       fireEvent.click(await screen.findByRole('radio', { name: label }));
       fireEvent.click(
         screen.getByRole('button', {
@@ -710,18 +720,24 @@ describe('OnboardingGate', () => {
         ).toBe('0'),
       );
       if (tier === 'full') {
-        expect(screen.getByRole('dialog')).toBeTruthy();
+        expect(screen.queryByRole('dialog')).toBeNull();
         expect(
-          screen.getByRole('button', { name: 'Save choice' }),
+          screen.getByRole('button', { name: 'Review choices' }),
         ).toBeTruthy();
       } else {
         expect(screen.queryByRole('dialog')).toBeNull();
+        expect(
+          screen.queryByRole('button', { name: 'Review choices' }),
+        ).toBeNull();
       }
       expect(writes).toHaveBeenCalledTimes(1);
       view.unmount();
       dnt = true;
       inventoryRevision = 'next-dnt-gate-revision';
       view = mount();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Review choices' }),
+      );
       expect(await screen.findByRole('radio', { name: label })).toBeTruthy();
       view.unmount();
     },
@@ -775,7 +791,28 @@ describe('OnboardingGate', () => {
     );
   });
 
-  test('does not report a bootstrap recovery error outside desktop', async () => {
+  test('reports a mobile launch recovery error once the shell is available', async () => {
+    platformProfile = {
+      ...platformProfile,
+      isTauri: true,
+      isMobile: true,
+      isDesktop: false,
+      target: 'ios',
+    };
+    bootstrapRecoveryError =
+      'Station couldn’t reconnect to your saved Station. Open Connections to pair this device again.';
+    render(
+      <OnboardingGate>
+        <div>App</div>
+      </OnboardingGate>,
+    );
+    await waitFor(() =>
+      expect(toastMocks.showToast).toHaveBeenCalledWith(bootstrapRecoveryError),
+    );
+    expect(toastMocks.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not report a bootstrap recovery error outside a native shell', async () => {
     bootstrapRecoveryError = 'The local credential could not be stored.';
     render(
       <OnboardingGate>
@@ -840,7 +877,9 @@ describe('OnboardingGate', () => {
     );
     const launcher = screen.getByTestId('setup-launcher');
     expect(launcher.getAttribute('aria-label')).toBe('Setup reminder');
-    expect(launcher.textContent).toContain('Setup needed');
+    expect(
+      launcher.querySelector('.onboarding-setup-launcher__eyebrow'),
+    ).toBeNull();
     expect(launcher.textContent).not.toContain('First run');
     unmount();
 
@@ -865,7 +904,7 @@ describe('OnboardingGate', () => {
     expect(screen.getByTestId('setup-launcher')).toBeTruthy();
     expect(screen.getByText('Choose what powers Station')).toBeTruthy();
 
-    fireEvent.click(screen.getByLabelText('Dismiss setup launcher'));
+    fireEvent.click(screen.getByLabelText('Dismiss setup reminder'));
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
 
     currentStatus = createStatus({
@@ -976,7 +1015,7 @@ describe('OnboardingGate', () => {
       </OnboardingGate>,
     );
 
-    fireEvent.click(screen.getByLabelText('Dismiss setup launcher'));
+    fireEvent.click(screen.getByLabelText('Dismiss setup reminder'));
 
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
     // Dismissal now persists through the device-settings store (archive#
@@ -1341,7 +1380,7 @@ describe('OnboardingGate', () => {
       </OnboardingGate>,
     );
 
-    fireEvent.click(screen.getByText('View All Connections'));
+    fireEvent.click(screen.getByText('All connections'));
 
     expect(navigate).toHaveBeenCalledWith('/connections');
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
@@ -1608,7 +1647,7 @@ describe('OnboardingGate', () => {
       recallText: 'The local Station could not restart.',
     });
     // archive#4512: sticky until dismissed — a 5s default would
-    // vanish this toast, "Try again" and all, while the reader was still
+    // vanish this toast, "Retry" and all, while the reader was still
     // reading the first sentence of a restart failure.
     // Re-tappable: nothing about the control (never disabled to begin with)
     // stops a second attempt from reaching the same request again.
@@ -1623,7 +1662,7 @@ describe('OnboardingGate', () => {
    * deleted the whole `actions` argument from the `showToast` call stayed
    * green against all 79 tests in this file, because nothing invoked it.
    * This drives the action's `onClick` directly, the way a reader clicking
-   * "Try again" IN THE TOAST (not back on the original control) would.
+   * "Retry" IN THE TOAST (not back on the original control) would.
    */
   test.each([
     'sequential retry',
@@ -1713,7 +1752,7 @@ describe('OnboardingGate', () => {
         ).toBeTruthy();
 
         expect(toastAfter?.actions).toHaveLength(1);
-        expect(toastAfter?.actions?.[0]?.label).toBe('Try again');
+        expect(toastAfter?.actions?.[0]?.label).toBe('Retry');
         if (scenario !== 'sequential retry') {
           const latestSucceeds = scenario === 'older overlapping failure';
           restartBundledServerMock.mockResolvedValue(latestSucceeds);
@@ -1750,7 +1789,7 @@ describe('OnboardingGate', () => {
                   expect.objectContaining({
                     id: toastBefore?.id,
                     occurrences: 2,
-                    actions: [expect.objectContaining({ label: 'Try again' })],
+                    actions: [expect.objectContaining({ label: 'Retry' })],
                   }),
                 ],
           );
@@ -1910,8 +1949,8 @@ describe('OnboardingGate', () => {
     );
 
     expect(screen.queryByText('App')).toBeNull();
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain(
-      'Your work',
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+      'Connect to your Station',
     );
     fireEvent.click(
       screen.getByRole('button', { name: 'Scan pairing QR code' }),
@@ -2725,7 +2764,7 @@ describe('OnboardingGate', () => {
       [
         'while stopped',
         bundled({ phase: 'stopped' }),
-        /local Station is stopped/,
+        'Local Station stopped. Restart it to use local server actions.',
       ],
       [
         'after a service error',
@@ -2846,7 +2885,7 @@ describe('OnboardingGate', () => {
         expect(
           await screen.findByText(/couldn.t restart the local Station/i),
         ).toBeTruthy();
-        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
         await waitFor(() =>
           expect(restartBundledServerMock).toHaveBeenCalledTimes(2),
         );

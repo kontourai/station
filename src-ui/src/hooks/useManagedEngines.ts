@@ -18,7 +18,16 @@ import {
   managedEnginePin,
 } from '@kontourai/station-contracts/managed-policy-engines';
 import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy-status';
+import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
+import { useCallback } from 'react';
 import { useManagedPolicySummary } from '../contexts/ManagedPolicyContext';
+import { connectionEngineId } from '../utils/execution';
+import {
+  type ACPConnectionInfo,
+  type ACPConnectionRegistryEntry,
+  useACPConnectionRegistry,
+  useACPConnections,
+} from './useACPConnections';
 
 export interface ManagedEnginesView {
   organization: string;
@@ -85,4 +94,44 @@ export function managedEngineState(
 
 export function useManagedEngines(): ManagedEnginesView | null {
   return managedEnginesView(useManagedPolicySummary());
+}
+
+/**
+ * The managed-policy state of one engine connection, as the Engines list,
+ * the engine detail and the section rail all read it: an ACP connection is
+ * the policy engine `acp`, and a public-registry ACP agent is refused when the
+ * policy turns registry agents off — while its status still reads `ready`.
+ */
+export function useManagedEngineStateFor(): (
+  connection: AgentConnectionView,
+) => ManagedEngineState | null {
+  const managedEngines = useManagedEngines();
+  const { data: acpBridgeConnections = [] } = useACPConnections() as {
+    data?: ACPConnectionInfo[];
+  };
+  const { data: acpRegistryEntries = [] } = useACPConnectionRegistry() as {
+    data?: ACPConnectionRegistryEntry[];
+  };
+  return useCallback(
+    (connection: AgentConnectionView) => {
+      const isAcp = acpBridgeConnections.some(
+        (entry) => entry.id === connection.id,
+      );
+      return managedEngineState(
+        managedEngines,
+        managedEngineIdFor(connectionEngineId(connection), isAcp),
+        {
+          registryAgent:
+            isAcp &&
+            acpRegistryEntries.some(
+              (entry) =>
+                entry.id === connection.id &&
+                entry.installed === true &&
+                entry.source === 'registry',
+            ),
+        },
+      );
+    },
+    [managedEngines, acpBridgeConnections, acpRegistryEntries],
+  );
 }

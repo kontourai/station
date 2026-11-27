@@ -1,0 +1,7 @@
+{
+  "revision": "addca25a1d54ffbf217f41e0caed3b7ddbff52f1",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Landing bullet: full run before arming is the label plus push or Re-run all jobs; Re-run failed jobs repeats the earlier decision.","inputs":["docs/guides/development.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
+  ]
+}

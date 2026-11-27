@@ -1,0 +1,7 @@
+{
+  "revision": "02ae529b1412c6e032a2afd6d32caae6451a8bc0",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Amended (#5398 delta): the inbox row, not the chat, keeps the status its conversation gives it and adds Last message may not have arrived with Check; the chat's own state shows the message as pending. The rest of the paragraph (Check asks once, never resends, Retry uses the same key) matches the outbox code.","inputs":["docs/user/concepts.md"]}
+  ]
+}

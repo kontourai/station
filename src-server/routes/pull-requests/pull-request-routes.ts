@@ -9,6 +9,7 @@ import { z } from 'zod/v3';
 import type { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
 import { reviewGuideFailureDetail } from '../../services/pull-requests/pull-request-review-guide-errors.js';
 import { pullRequestOps } from '../../telemetry/metrics.js';
+import { boundedIntQuery } from '../../utils/bounded-int-query.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 
 const mergeInputSchema = z
@@ -121,6 +122,46 @@ export function createPullRequestRoutes(
       result.effectiveMergeMethods,
     ),
   });
+  const list = async (
+    provider: IPullRequestProvider,
+    checkout: Parameters<IPullRequestProvider['listPullRequests']>[0],
+    state: string | undefined,
+    limit?: number,
+  ) => {
+    pullRequestOps.add(1, {
+      operation: 'list',
+      repo: `${checkout.repository.owner}/${checkout.repository.name}`,
+    });
+    return narrow(
+      provider,
+      await provider.listPullRequests(checkout, { state, limit }),
+    );
+  };
+  const checkoutList = async (
+    provider: IPullRequestProvider,
+    checkout: Parameters<IPullRequestProvider['listPullRequests']>[0],
+    state: string,
+    cursor: string | undefined,
+  ) => {
+    if (!provider.listPullRequestPage)
+      return list(provider, checkout, state, 30);
+    pullRequestOps.add(1, {
+      operation: 'list',
+      repo: `${checkout.repository.owner}/${checkout.repository.name}`,
+    });
+    const { data, ...availability } = await provider.listPullRequestPage(
+      checkout,
+      {
+        state,
+        cursor,
+        limit: 30,
+      },
+    );
+    return {
+      ...narrow(provider, { ...availability, data: data?.items }),
+      ...(data?.nextCursor ? { nextCursor: data.nextCursor } : {}),
+    };
+  };
   app.get('/context', async (c) => {
     const resolution = await context(c, { requireBranchState: false });
     if (!resolution?.available) {
@@ -145,11 +186,45 @@ export function createPullRequestRoutes(
         data: { available: false, reason: 'Provider unavailable' },
       });
     }
+    const state = c.req.query('list');
+    if (
+      state !== undefined &&
+      !['OPEN', 'MERGED', 'CLOSED', 'ALL'].includes(state)
+    ) {
+      return c.json(
+        { success: false, error: 'Invalid pull request state' },
+        400,
+      );
+    }
+    const cursor = c.req.query('cursor');
+    if (
+      cursor !== undefined &&
+      (!state ||
+        !provider.listPullRequestPage ||
+        !cursor ||
+        cursor.length > 512)
+    ) {
+      return c.json(
+        { success: false, error: 'Invalid pull request page cursor' },
+        400,
+      );
+    }
+    const pullRequests =
+      state === undefined
+        ? undefined
+        : await checkoutList(provider, resolution.context, state, cursor);
     return c.json({
       success: true,
       data: {
         available: true,
+        ...(pullRequests ? { pullRequests } : {}),
         provider: provider.id,
+        providerLabel: provider.displayName,
+        automation: {
+          feedback: typeof provider.getFeedbackObservation === 'function',
+          taskBranchDiscovery:
+            typeof provider.findOpenPullRequestsByHead === 'function',
+        },
         host: provider.getHost(resolution.context),
         repository: {
           owner: resolution.context.repository.owner,
@@ -168,18 +243,14 @@ export function createPullRequestRoutes(
     const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
-    pullRequestOps.add(1, {
-      operation: 'list',
-      repo: `${x.context.repository.owner}/${x.context.repository.name}`,
-    });
     return c.json({
       success: true,
-      data: narrow(
+      data: await list(
         x.provider,
-        await x.provider.listPullRequests(x.context, {
-          state: c.req.query('state'),
-          limit: Number(c.req.query('limit')) || undefined,
-        }),
+        x.context,
+        c.req.query('state'),
+        boundedIntQuery(c.req.query('limit'), { min: 0, max: 100 }) ||
+          undefined,
       ),
     });
   });

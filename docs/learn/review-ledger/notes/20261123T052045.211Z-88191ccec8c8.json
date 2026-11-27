@@ -1,0 +1,7 @@
+{
+  "revision": "436b4ca4dbab9500c5051b403e99a9d236715639",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Automation Deliveries: outcome is AUTOMATION_DELIVERY_OUTCOMES, interrupted means a person stopped the turn; other stops read failed. Checked against contracts automation.ts and the runtime reconcile.","inputs":["docs/reference/api.md","packages/contracts/src/runtime-events.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

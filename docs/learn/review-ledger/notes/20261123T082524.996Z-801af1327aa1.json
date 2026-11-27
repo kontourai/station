@@ -1,0 +1,7 @@
+{
+  "revision": "74ed7fc59de962d2f038d76b78282a7ff3028e15",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed against the Automations fix round: the run-count flag and the paused-itself notice now say \"didn't work\" (the count includes runs whose outcome is unknown), a one-time automation that has run reads Done, and the e2e specs test the row menu; nothing this page states is changed by it.","inputs":["docs/guides/starter-work.md","src-server/services/scheduling/builtin-scheduler.ts"]}
+  ]
+}

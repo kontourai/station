@@ -158,7 +158,7 @@ test.each(['passive effect', 'layout effect', 'first update'] as const)(
       ).toBeTruthy();
       expect(signal).not.toHaveBeenCalled();
       await act(async () =>
-        fireEvent.click(screen.getByRole('button', { name: 'Try again' })),
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' })),
       );
       expect(signal).not.toHaveBeenCalled();
       // Chat’s Close clears the conversation, then remounts the empty Chat.
@@ -174,7 +174,7 @@ test.each(['passive effect', 'layout effect', 'first update'] as const)(
         reason: 'repeated-render-failure',
       });
       await act(async () =>
-        fireEvent.click(screen.getByRole('button', { name: 'Try again' })),
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' })),
       );
       expect(signal).toHaveBeenCalledTimes(1);
     } finally {
@@ -217,7 +217,7 @@ test('three crashes more than one second after each mount still diagnose once', 
       ).toBeTruthy();
       expect(signal).toHaveBeenCalledTimes(catchCount < 3 ? 0 : 1);
       await act(async () =>
-        fireEvent.click(screen.getByRole('button', { name: 'Try again' })),
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' })),
       );
     }
     expect(signal).toHaveBeenCalledExactlyOnceWith({

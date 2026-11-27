@@ -1,0 +1,15 @@
+{
+  "revision": "dd3c05c31cef1f8266534c87c1b4bbbcebb6daeb",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Delta since the last note: docs-index-reachability.test.ts gains a first-line triple-slash reference to src-server/corpus-search.d.ts so the scripts typecheck project sees the @kontourai/corpus/search declarations (the same pattern scripts/lib/local-collaboration-endpoint.ts uses for veritas-engine.d.ts). No test case or assertion changes. This document describes no such reference or declaration; nothing it states changes.","inputs":[".veritas/README.md","scripts/__tests__/docs-index-reachability.test.ts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Delta since the last note: docs-index-reachability.test.ts gains a first-line triple-slash reference to src-server/corpus-search.d.ts so the scripts typecheck project sees the @kontourai/corpus/search declarations (the same pattern scripts/lib/local-collaboration-endpoint.ts uses for veritas-engine.d.ts). No test case or assertion changes. This document describes no such reference or declaration; nothing it states changes.","inputs":["docs/guides/code-quality.md","scripts/__tests__/docs-index-reachability.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Delta since the last note: docs-index-reachability.test.ts gains a first-line triple-slash reference to src-server/corpus-search.d.ts so the scripts typecheck project sees the @kontourai/corpus/search declarations (the same pattern scripts/lib/local-collaboration-endpoint.ts uses for veritas-engine.d.ts). No test case or assertion changes. This document describes no such reference or declaration; nothing it states changes.","inputs":["docs/guides/development.md","scripts/__tests__/docs-index-reachability.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Delta since the last note: docs-index-reachability.test.ts gains a first-line triple-slash reference to src-server/corpus-search.d.ts so the scripts typecheck project sees the @kontourai/corpus/search declarations (the same pattern scripts/lib/local-collaboration-endpoint.ts uses for veritas-engine.d.ts). No test case or assertion changes. This document describes no such reference or declaration; nothing it states changes.","inputs":["docs/guides/testing.md","scripts/__tests__/docs-index-reachability.test.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Delta since the last note: station-docs-mcp-server.ts gains a first-line triple-slash reference to ../corpus-search.d.ts, the type declarations for @kontourai/corpus/search, so every typecheck project that reaches the server sees them. No runtime behaviour, tool or import changes; the manual's description of the docs tools still holds.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-mcp-server.ts"]}
+  ]
+}

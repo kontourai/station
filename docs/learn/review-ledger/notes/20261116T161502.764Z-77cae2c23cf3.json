@@ -1,0 +1,7 @@
+{
+  "revision": "acef3efc2b6b5faad35c0fc425e53ce32bc3f8cb",
+
+  "notes": [
+    {"path":"docs/design/verified-action-replay.md","note":"#2376 slice 2: the decision gained the Station Control on the Codex bound channel section and the 0.167.0 resume schema note. Checked this page for claims about the Codex bound channel or Station Control custody; none conflict.","inputs":["docs/decisions/browser-agent-actions-and-bound-channel.md"]}
+  ]
+}

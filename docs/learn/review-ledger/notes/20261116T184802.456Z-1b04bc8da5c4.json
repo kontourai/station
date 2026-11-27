@@ -1,0 +1,7 @@
+{
+  "revision": "382eb00677f99b2c727952fc724f921d5fc8bc9c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed for #5056: metric-reference.test.ts gains real-git merge tests in temp repos and stays classified as process-heavy in the resource manifest. No testing-guide claim about lanes, focused runs or resource classes changes.","inputs":["docs/guides/testing.md","scripts/__tests__/metric-reference.test.ts","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

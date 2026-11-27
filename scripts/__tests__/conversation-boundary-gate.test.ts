@@ -1,11 +1,14 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   conversationBoundaryCommands,
   discoverConversationFiles,
   evaluateConversationBaseline,
   scanConversationSources,
 } from '../conversation-boundary-gate.mjs';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 
 const surface = 'src-ui/src/components/RenamedConversation.tsx';
 function fixtureManifest() {
@@ -516,5 +519,140 @@ describe('real manifest and scope sentinels', () => {
     expect(scanConversationSources(removed, manifest).errors).toEqual(
       expect.arrayContaining([expect.stringContaining('missing owner export')]),
     );
+  });
+});
+
+describe('conversation boundary CLI acceptance and refusal', () => {
+  const makeTempDir = trackTempDirs();
+
+  test('executes the real CLI against a complete scope and rejects a missing body owner', () => {
+    const gate = resolve('scripts/conversation-boundary-gate.mjs');
+    const root = makeTempDir('conversation-boundary-cli-');
+    const owners = (
+      [
+        [
+          'body',
+          'src-ui/src/components/conversation/ConversationBody.tsx',
+          'ConversationBody',
+        ],
+        [
+          'composer',
+          'src-ui/src/components/chat/ChatInputArea.tsx',
+          'ChatInputArea',
+        ],
+        [
+          'stop',
+          'src-ui/src/components/conversation/ConversationStopControl.tsx',
+          'ConversationStopControl',
+        ],
+        [
+          'approval',
+          'src-ui/src/components/conversation/ApprovalControl.tsx',
+          'ApprovalControl',
+        ],
+        [
+          'delivery',
+          'src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx',
+          'MessageDeliveryNote',
+        ],
+        [
+          'history',
+          'src-ui/src/components/conversation/SharedTaskHistoryList.tsx',
+          'SharedTaskHistoryList',
+        ],
+        [
+          'inbox',
+          'src-ui/src/components/chat-dock/MobileInboxPanel.tsx',
+          'MobileInboxPanel',
+        ],
+        [
+          'failure',
+          'src-ui/src/utils/stationFailure.ts',
+          'describeStationFailure',
+        ],
+        [
+          'initialDraft',
+          'src-ui/src/components/chat-start/StartComposer.tsx',
+          'StartComposer',
+        ],
+      ] as const
+    ).map(([concern, file, symbol]) => ({
+      concern,
+      file,
+      symbol,
+      reason: 'Fixture shared owner.',
+    }));
+    const files: Record<string, string> = {
+      'src-ui/src/components/chat-dock/ChatDockBody.tsx': 'export {};',
+      'src-ui/src/components/conversation/ConversationBody.tsx': 'export {};',
+      'src-ui/src/components/chat/ChatInputArea.tsx': 'export {};',
+      'src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx':
+        'export {};',
+      'src-ui/src/components/session-detail/AttachedSessionDetail.tsx':
+        'export {};',
+      'src-ui/src/components/chat-dock/MobileInboxPanel.tsx': 'export {};',
+      'src-ui/src/utils/stationFailure.ts': 'export {};',
+    };
+    for (const owner of owners)
+      files[owner.file] =
+        `export function ${owner.symbol}() { return null; }\n`;
+    for (const [file, source] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, file)), { recursive: true });
+      writeFileSync(join(root, file), source);
+    }
+    const manifest = {
+      version: 1,
+      roots: ['src-ui/src'],
+      owners,
+      surfaces: [],
+      // Keep the body file registered when only its ownership is removed.
+      modules: owners.map((owner) => owner.file),
+      contracts: [],
+    };
+    mkdirSync(join(root, 'scripts'));
+    const manifestPath = join(root, 'scripts/conversation-surfaces.json');
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    writeFileSync(
+      join(root, 'scripts/conversation-boundary-baseline.json'),
+      JSON.stringify({ version: 1, exceptions: [] }),
+    );
+    const childOptions = {
+      cwd: root,
+      encoding: 'utf8' as const,
+      windowsHide: true,
+      timeout: 10_000,
+      maxBuffer: 1024 * 1024,
+    };
+    const initialized = spawnSyncBounded('git', ['init', '--quiet'], {
+      ...childOptions,
+      timeout: 5_000,
+    });
+    expect(initialized.error, initialized.stderr).toBeUndefined();
+    expect(initialized.signal).toBeNull();
+    expect(initialized.status, initialized.stderr).toBe(0);
+
+    const accepted = spawnSyncBounded(process.execPath, [gate], childOptions);
+    expect(accepted.error, accepted.stderr).toBeUndefined();
+    expect(accepted.signal).toBeNull();
+    expect(accepted.status, accepted.stderr).toBe(0);
+    expect(accepted.stderr).toBe('');
+    expect(Object.keys(files)).toHaveLength(11);
+    expect(accepted.stdout.trim()).toBe(
+      'OK: conversation boundaries G1–G5; 11 source files, 0 inherited P2 sites; 0 new violations.',
+    );
+
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        ...manifest,
+        owners: owners.filter((owner) => owner.concern !== 'body'),
+      }),
+    );
+    const refused = spawnSyncBounded(process.execPath, [gate], childOptions);
+    expect(refused.error, refused.stderr).toBeUndefined();
+    expect(refused.signal).toBeNull();
+    expect(refused.status, refused.stderr).toBe(1);
+    expect(refused.stdout).toBe('');
+    expect(refused.stderr.trim()).toBe('exactly one owner required: body');
   });
 });

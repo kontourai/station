@@ -19,7 +19,14 @@ import {
   useToast,
 } from '../../contexts/ToastContext';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
+import {
+  PRESENCE_FALLBACK_MS,
+  usePresenceList,
+} from '../../hooks/usePresenceList';
+import { useSwipeToDismiss } from '../../hooks/useSwipeToDismiss';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
+import { relativeTime } from '../../utils/relativeTime';
+import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { WarningGlyph } from '../icons/Glyph';
 import {
@@ -30,23 +37,17 @@ import {
 } from '../status/approvalReveal';
 import { TroubleshootAction } from '../troubleshoot/TroubleshootAction';
 import './NotificationContainer.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { selectToastStackItems } from './toast-stack-layout';
 
 type Notification = ReturnType<typeof useNotificationHistory>[number];
 
-function formatTimestamp(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
+function notificationKey(item: Notification) {
+  return item.id;
+}
 
-  if (seconds < 60) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+function belongsToApprovalQueue(item: Notification) {
+  return item.type === 'tool-approval' || item.type === 'pairing-request';
 }
 
 function ToastCard({
@@ -57,6 +58,9 @@ function ToastCard({
   handleAction,
   onActivate,
   clickable,
+  swipeToDismiss = false,
+  queueKey,
+  onMenuOpenChange,
 }: {
   notification: Notification;
   dismissToast: (id: string) => void;
@@ -75,12 +79,41 @@ function ToastCard({
   handleAction?: (notificationId: string, actionId: string) => void;
   onActivate?: () => void;
   clickable: boolean;
+  /** Transient toasts only: a touch swipe sideways dismisses the card. */
+  swipeToDismiss?: boolean;
+  /**
+   * Approval queue only: the requests in the queue. A change closes an open
+   * session-grant menu, so its fixed-position list never sits over a card that
+   * arrived or moved under it.
+   */
+  queueKey?: string;
+  /** Approval queue only: whether this card's session-grant menu is open. */
+  onMenuOpenChange?: (open: boolean) => void;
 }) {
   const isApproval = notification.type === 'tool-approval';
   const isActivity = notification.type === 'tool-activity';
   const isTurn = notification.type === 'turn-activity';
   const isPairing = notification.type === 'pairing-request';
+  const eyebrow = isApproval
+    ? 'Approval request'
+    : isActivity
+      ? 'Tool activity'
+      : isTurn
+        ? 'Agent turn'
+        : isPairing
+          ? 'Pairing request'
+          : null;
+  // Any notification that carries actions can be a decision (a tool approval,
+  // a pairing request, or a decision a newer server sends), so all of them
+  // hold custom CSS off while shown.
+  useDecisionSurface(
+    'approval-toast',
+    isApproval || isPairing || (notification.actions?.length ?? 0) > 0,
+  );
   const cardRef = useRef<HTMLElement>(null);
+  const swipe = useSwipeToDismiss(swipeToDismiss, () =>
+    dismissToast(notification.id),
+  );
   useEffect(() => {
     if (isApproval || isPairing) return;
     const element = cardRef.current;
@@ -130,10 +163,38 @@ function ToastCard({
     notification.type === 'error' &&
     (notification.actions?.length ?? 0) < 2 &&
     !notification.dedupeKey?.startsWith('troubleshoot-');
+  // One handler for a labelled button and a menu item, so the two cannot
+  // answer differently.
+  const runToastAction = (index: number) => {
+    const action = notification.actions?.[index];
+    if (!action || !toastStore.isCurrentScope(notification.stationScope))
+      return;
+    if (isApproval || isPairing) {
+      action.onClick();
+      dismissToast(notification.id);
+    } else toastStore.runAction(notification.id, index);
+  };
+  const menuActions: OverflowAction[] = (notification.actions ?? []).flatMap(
+    (action, index) =>
+      action.inMenu
+        ? [
+            {
+              key: `${action.label}-${index}`,
+              label: action.label,
+              disabled: notification.pendingAction !== undefined,
+              onSelect: () => runToastAction(index),
+            },
+          ]
+        : [],
+  );
   const message = notification.message.trim();
   const firstLine = message.split(/\r?\n/, 1)[0] ?? message;
   const headline =
     firstLine.length > 160 ? `${firstLine.slice(0, 157)}…` : firstLine;
+  const attribution =
+    typeof notification.metadata?.attribution === 'string'
+      ? notification.metadata.attribution
+      : undefined;
   const details = [
     headline !== message ? message : undefined,
     notification.metadata?.detail
@@ -173,11 +234,21 @@ function ToastCard({
         isPairing ? 'toast-card--pairing' : '',
         isTurn ? 'toast-card--turn' : '',
         clickable ? 'toast-card--clickable' : '',
+        swipeToDismiss ? 'toast-card--swipe' : '',
+        swipe.dragging ? 'toast-card--dragging' : '',
+        swipe.leaving ? 'toast-card--leaving' : '',
       ]
         .filter(Boolean)
         .join(' ')}
       data-testid="toast-card"
       ref={cardRef}
+      style={swipeToDismiss ? swipe.style : undefined}
+      onPointerDown={swipe.onPointerDown}
+      onPointerMove={swipe.onPointerMove}
+      onPointerUp={swipe.onPointerUp}
+      onPointerCancel={swipe.onPointerCancel}
+      onLostPointerCapture={swipe.onLostPointerCapture}
+      onClickCapture={swipe.onClickCapture}
       onMouseEnter={() => toastStore.pause(notification.id, 'hover', true)}
       onMouseLeave={() => toastStore.pause(notification.id, 'hover', false)}
       onFocusCapture={() => toastStore.pause(notification.id, 'focus', true)}
@@ -196,26 +267,11 @@ function ToastCard({
     >
       <div className="toast-card__header">
         <div className="toast-card__content">
-          {(isApproval || isPairing || isActivity || isTurn) && (
+          {eyebrow && (
             <div className="toast-card__meta">
-              {isApproval && (
-                <span className="toast-card__eyebrow">
-                  Tool Approval Request
-                </span>
-              )}
-              {isActivity && (
-                <span className="toast-card__eyebrow">Tool Activity</span>
-              )}
-              {isTurn && (
-                <span className="toast-card__eyebrow">Agent turn</span>
-              )}
-              {isPairing && (
-                <span className="toast-card__eyebrow">
-                  Device Pairing Request
-                </span>
-              )}
+              <span className="toast-card__eyebrow">{eyebrow}</span>
               <time className="toast-card__time">
-                {formatTimestamp(notification.timestamp)}
+                {relativeTime(notification.timestamp, Date.now())}
               </time>
             </div>
           )}
@@ -249,6 +305,9 @@ function ToastCard({
               {notification.toolPreview}
             </div>
           ) : null}
+          {attribution && (
+            <div className="toast-card__conversation">{attribution}</div>
+          )}
           {details ? (
             <details
               className="toast-card__diagnostics"
@@ -297,27 +356,34 @@ function ToastCard({
       {((notification.actions && notification.actions.length > 0) ||
         troubleshootable) && (
         <div className="toast-card__actions">
-          {(notification.actions ?? []).map((action, index) => (
-            <Button
-              key={`${action.label}-${index}`}
-              variant={action.variant || 'secondary'}
-              size="sm"
-              className={`toast-card__action toast-card__action--${action.variant || 'secondary'}`}
-              disabled={notification.pendingAction !== undefined}
-              aria-busy={notification.pendingAction === index || undefined}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (!toastStore.isCurrentScope(notification.stationScope))
-                  return;
-                if (isApproval || isPairing) {
-                  action.onClick();
-                  dismissToast(notification.id);
-                } else toastStore.runAction(notification.id, index);
-              }}
-            >
-              {notification.pendingAction === index ? 'Working…' : action.label}
-            </Button>
-          ))}
+          {(notification.actions ?? []).map((action, index) =>
+            action.inMenu ? null : (
+              <Button
+                key={`${action.label}-${index}`}
+                variant={action.variant || 'secondary'}
+                size="sm"
+                className={`toast-card__action toast-card__action--${action.variant || 'secondary'}`}
+                disabled={notification.pendingAction !== undefined}
+                aria-busy={notification.pendingAction === index || undefined}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  runToastAction(index);
+                }}
+              >
+                {notification.pendingAction === index
+                  ? 'Working…'
+                  : action.label}
+              </Button>
+            ),
+          )}
+          {menuActions.length > 0 && (
+            <ActionOverflowMenu
+              closeWhen={queueKey}
+              onOpenChange={onMenuOpenChange}
+              label={notification.actionsMenuLabel ?? 'More actions'}
+              actions={menuActions}
+            />
+          )}
           {troubleshootable && (
             <TroubleshootAction
               size="sm"
@@ -411,6 +477,26 @@ export function NotificationContainer() {
   // withheld on a coarse primary pointer rather than shown as dead text.
   const coarsePointer = useCoarsePointer();
   const { navigate } = useNavigationActions();
+  const measureStack = useCallback((container: HTMLDivElement | null) => {
+    if (!container) return;
+    const { style } = container.ownerDocument.documentElement;
+    const property = '--notification-stack-clearance';
+    const update = () =>
+      style.setProperty(
+        property,
+        `calc(${container.offsetHeight}px + var(--k-space-2))`,
+      );
+    update();
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(update);
+    observer?.observe(container);
+    return () => {
+      observer?.disconnect();
+      style.removeProperty(property);
+    };
+  }, []);
   const approvalQueueRef = useRef<HTMLDivElement>(null);
   const approvalQueueTriggerRef = useRef<HTMLButtonElement>(null);
   const [approvalQueueOpen, setApprovalQueueOpen] = useState(false);
@@ -439,9 +525,7 @@ export function NotificationContainer() {
   }, []);
 
   const activeNotifications = history.filter((item) => !item.dismissed);
-  const allApprovals = activeNotifications.filter(
-    (item) => item.type === 'tool-approval' || item.type === 'pairing-request',
-  );
+  const allApprovals = activeNotifications.filter(belongsToApprovalQueue);
   // A chat pane presenting its own approval in its status pill claims its
   // threads; the queue does not float a second copy of those over the pane.
   // Asked to open from that pill (its card could not be brought on screen),
@@ -457,6 +541,17 @@ export function NotificationContainer() {
   );
   const approvals =
     showAllApprovals && approvalQueueOpen ? allApprovals : unclaimedApprovals;
+  const approvalQueueKey = approvals.map(notificationKey).join(' ');
+  // How many approval cards have their session-grant menu open. A ref, not
+  // state: the queue's document listeners read it in the same event the
+  // menu's own listener handles, whichever runs first.
+  const openToastMenus = useRef(0);
+  const trackToastMenu = useCallback((open: boolean) => {
+    openToastMenus.current = Math.max(
+      0,
+      openToastMenus.current + (open ? 1 : -1),
+    );
+  }, []);
   useEffect(() => {
     const open = () => {
       returnFocusRef.current = captureReturnFocus(
@@ -474,19 +569,39 @@ export function NotificationContainer() {
     if (!approvalQueueOpen) setShowAllApprovals(false);
   }, [approvalQueueOpen]);
   const transientNotifications = activeNotifications.filter(
-    (item) => item.type !== 'tool-approval' && item.type !== 'pairing-request',
+    (item) => !belongsToApprovalQueue(item),
   );
   const stackedTransients = selectToastStackItems(transientNotifications);
+  const toastPresence = usePresenceList(
+    stackedTransients,
+    notificationKey,
+    PRESENCE_FALLBACK_MS,
+  );
+  const activeToastIds = new Set(transientNotifications.map(notificationKey));
+  const renderedToasts = toastPresence.list.filter(
+    ({ key, phase }) => phase !== 'exiting' || !activeToastIds.has(key),
+  );
   useEffect(() => {
     if (!approvalQueueOpen) return;
 
+    // A card's open session-grant menu owns Escape and outside presses
+    // first: it closes itself and returns focus to its trigger. The queue
+    // closes on the next one.
     const handlePointerDown = (event: PointerEvent) => {
+      if (openToastMenus.current > 0) return;
       if (!approvalQueueRef.current?.contains(event.target as Node)) {
         closeApprovalQueue();
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      // An open menu handles this Escape: it marks it handled, and the count
+      // covers the moment before its listener has run.
+      if (
+        event.key !== 'Escape' ||
+        event.defaultPrevented ||
+        openToastMenus.current > 0
+      )
+        return;
       event.preventDefault();
       event.stopPropagation();
       closeApprovalQueue();
@@ -586,12 +701,19 @@ export function NotificationContainer() {
    * `/notifications` is a routed destination reachable at zero notifications.
    * An overlay with nothing to show must render nothing.
    */
-  if (activeNotifications.length === 0) return null;
+  if (activeNotifications.length === 0 && renderedToasts.length === 0)
+    return null;
 
   const approvalCountLabel = `${approvals.length} pending approval${approvals.length === 1 ? '' : 's'}`;
 
   return (
-    <div className="notification-container" aria-live="polite">
+    <div
+      ref={
+        approvals.length || stackedTransients.length ? measureStack : undefined
+      }
+      className="notification-container"
+      aria-live="polite"
+    >
       {approvals.length > 0 && (
         <div className="notification-approval-queue" ref={approvalQueueRef}>
           <button
@@ -648,6 +770,8 @@ export function NotificationContainer() {
                 handleNavigateTo={handleNavigateTo}
                 handleAction={handleAction}
                 clickable={false}
+                queueKey={approvalQueueKey}
+                onMenuOpenChange={trackToastMenu}
               />
             ))}
           </section>
@@ -679,24 +803,37 @@ export function NotificationContainer() {
         </button>
       )}
 
-      {stackedTransients.length > 0 && (
+      {renderedToasts.length > 0 && (
         <div
           className="toast-stack"
           data-testid="toast-stack"
           data-count={stackedTransients.length}
+          data-exit-only={stackedTransients.length === 0 || undefined}
         >
-          {stackedTransients.map((notification) => {
+          {renderedToasts.map(({ key, item: notification, phase }) => {
+            const exiting = phase === 'exiting';
             const canNavigate =
               Boolean(notification.onNavigate) ||
               notification.metadata?.navigateTo != null;
             return (
-              <div key={notification.id} className="toast-stack__item">
+              <div
+                key={key}
+                className={
+                  exiting ? 'toast-stack__item is-exiting' : 'toast-stack__item'
+                }
+                inert={exiting}
+                onAnimationEnd={(event) => {
+                  if (exiting && event.target === event.currentTarget)
+                    toastPresence.settle(key);
+                }}
+              >
                 <ToastCard
                   notification={notification}
                   dismissToast={dismissToast}
                   getSessionShortcut={getSessionShortcut}
                   handleNavigateTo={handleNavigateTo}
                   clickable={canNavigate}
+                  swipeToDismiss
                   onActivate={
                     canNavigate
                       ? () => activateNotification(notification)

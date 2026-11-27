@@ -7,7 +7,15 @@ vi.mock('../query-core', () => ({
   useApiQuery: mocks.useApiQuery,
 }));
 
+vi.mock('@tanstack/react-query', () => ({
+  useQueryClient: () => ({ getQueryState: () => undefined }),
+}));
+
+import { useApiMutation } from '../query-core';
 import {
+  useApprovePullRequestMutation,
+  useMergePullRequestMutation,
+  useOpenPullRequestMutation,
   usePullRequestContextQuery,
   usePullRequestQuery,
 } from '../query-domains/pullRequests';
@@ -69,4 +77,53 @@ describe('usePullRequestQuery', () => {
       '/repos/b',
     ]);
   });
+});
+
+test('a merge invalidates every Task board’s pull request facts', () => {
+  vi.mocked(useApiMutation).mockReset();
+  useMergePullRequestMutation('github', 'github.com', 'acme', 'app', '7', {
+    project: 'demo',
+  });
+  const keys = vi.mocked(useApiMutation).mock.calls[0]?.[1]?.invalidateKeys;
+  // The prefix of `taskQueries.pullRequestFacts(projectId)`, so it matches
+  // every Project's facts query.
+  expect(keys).toContainEqual(['task-pull-request-facts']);
+});
+
+test.each([
+  [
+    'open',
+    () =>
+      useOpenPullRequestMutation('github', 'github.com', 'acme', 'app', {
+        project: 'demo',
+      }),
+  ],
+  [
+    'approve',
+    () =>
+      useApprovePullRequestMutation(
+        'github',
+        'github.com',
+        'acme',
+        'app',
+        '7',
+        { project: 'demo' },
+      ),
+  ],
+  [
+    'merge',
+    () =>
+      useMergePullRequestMutation('github', 'github.com', 'acme', 'app', '7', {
+        project: 'demo',
+      }),
+  ],
+])('%s invalidates both checkout list caches', (_action, mutation) => {
+  vi.mocked(useApiMutation).mockClear();
+  mutation();
+  expect(vi.mocked(useApiMutation).mock.calls[0]?.[1]?.invalidateKeys).toEqual(
+    expect.arrayContaining([
+      ['checkout-pull-requests'],
+      ['checkout-pull-request-page', 'demo'],
+    ]),
+  );
 });

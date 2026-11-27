@@ -88,8 +88,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   }),
 }));
 
-vi.mock('../../views/SessionsView', () => ({
-  SessionsView: () => <div data-testid="sessions-view" />,
+vi.mock('../../workspace-panes/AgentsWorkspacePane', () => ({
+  AgentsWorkspacePane: () => <div data-testid="sessions-view" />,
 }));
 vi.mock('../../components/chat-dock/ChatDock', () => ({
   ChatDock: () => null,

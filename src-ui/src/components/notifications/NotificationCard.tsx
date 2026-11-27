@@ -7,12 +7,17 @@ import {
 import { notificationCategoryLabel } from '../../utils/notificationLabels';
 import {
   formatNotificationTime,
+  notificationBody,
   notificationDetail,
+  notificationSessionTitle,
 } from '../../utils/notifications';
-import { DISMISS_NOTIFICATION_ACTION } from '../attention/notificationRowActions';
+import { DISMISS_ACTIVITY_ACTION } from '../attention/notificationRowActions';
 import { InboxContextLine, type InboxContextPart } from './inboxContext';
 import { InboxMarkTile, notificationMark } from './inboxPresentation';
-import { NotificationEnvelopeControls } from './NotificationEnvelopeControls';
+import {
+  NotificationEnvelopeControls,
+  NotificationTitle,
+} from './NotificationEnvelopeControls';
 import { RowMenu, type RowMenuItem } from './RowMenu';
 
 /**
@@ -50,6 +55,9 @@ export function NotificationCard({
     if (focused) cardRef.current?.focus();
   }, [focused]);
   const detail = notificationDetail(notification);
+  const body = notificationSessionTitle(notification)
+    ? undefined
+    : notificationBody(notification);
   const notice =
     answerability.status === 'unanswerable' ||
     answerability.status === 'unknown'
@@ -82,33 +90,34 @@ export function NotificationCard({
              * `actioned` is still something to clear — an `expired` or
              * still-`pending` notification included.
              *
-             * archive#3779: the label is read from the shared action model.
-             * `DELETE /notifications/:id` does NOT delete — it sets `status:
-             * 'dismissed'` and keeps the record — so the word stays "Dismiss".
+             * archive#3779: the label is read from the shared action model and
+             * reads "Dismiss". `DELETE /notifications/:id` does NOT delete —
+             * it sets `status: 'dismissed'` and keeps the record.
              */}
             <RowMenu
               items={[
-                ...menuItems,
                 ...(dismissible
                   ? [
                       {
                         id: 'dismiss',
-                        label: DISMISS_NOTIFICATION_ACTION.label,
+                        label: DISMISS_ACTIVITY_ACTION.label,
                         onSelect: () => onDismiss(notification.id),
                       },
                     ]
                   : []),
+                ...menuItems,
               ]}
             />
           </span>
         </div>
-        <div className="notification-card__message">{notification.title}</div>
-        {notification.body && (
-          <div className="notification-card__detail">{notification.body}</div>
-        )}
+        <div className="notification-card__message">
+          <NotificationTitle notification={notification} />
+        </div>
+        {body && <div className="notification-card__detail">{body}</div>}
         {detail && <div className="notification-card__detail">{detail}</div>}
         <NotificationEnvelopeControls
           notification={notification}
+          showAttribution={!context.some((part) => part.kind === 'agent')}
           detailClassName="notification-card__detail"
           actionsClassName="notice-actions"
           actionClassName="notice-action--ghost"

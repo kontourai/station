@@ -42,6 +42,7 @@
  * an engine adapter to carry a denial reason to the user verbatim.
  */
 
+import { redactSecrets } from '@kontourai/station-shared/redaction';
 import type { ToolCallDenial } from '../types.js';
 
 /**
@@ -187,6 +188,11 @@ function boundQuotedDenialText(text: string): string {
     .replace(/\s+/g, ' ')
     .trim();
   return capCodePoints(flattened, DENIAL_QUOTED_TEXT_MAX_LENGTH);
+}
+
+/** A guardian's words are a quoted reason, separate from tool-authored text. */
+export function approvalGuardianReason(text: string): string | undefined {
+  return boundQuotedDenialText(redactSecrets(text)) || undefined;
 }
 
 /**

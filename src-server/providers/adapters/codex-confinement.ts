@@ -1,4 +1,3 @@
-import { isAbsolute, relative, resolve } from 'node:path';
 import type {
   ConfinementPlan,
   ConfinementPosture,
@@ -11,6 +10,7 @@ import {
   type ConfinementProvider,
   requiredConfinementLevel,
 } from '../../security/confinement/confinement-provider.js';
+import { isCanonicalPathWithin } from '../../utils/path-containment.js';
 import type {
   CodexSandboxMode,
   CodexSandboxPolicy,
@@ -83,11 +83,6 @@ function profileApplied(evidence: CodexSandboxEvidence): boolean {
   );
 }
 
-function within(root: string, path: string): boolean {
-  const rel = relative(resolve(root), resolve(path));
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-}
-
 /**
  * Whether every extra writable root Codex reports lies inside the workspace
  * or a Station-owned root. Codex's own implicit roots (the cwd, `TMPDIR` and
@@ -104,7 +99,9 @@ function rootsConfined(
     ...(evidence.workspace ? [evidence.workspace] : []),
     ...(evidence.permittedRoots ?? []),
   ];
-  return roots.every((root) => allowed.some((base) => within(base, root)));
+  return roots.every((root) =>
+    allowed.some((base) => isCanonicalPathWithin(base, root)),
+  );
 }
 
 /**
@@ -194,7 +191,7 @@ export function describeCodexSandboxGap(
       ...(evidence.permittedRoots ?? []),
     ];
     const outside = reported.writableRoots.filter(
-      (root) => !allowed.some((base) => within(base, root)),
+      (root) => !allowed.some((base) => isCanonicalPathWithin(base, root)),
     );
     return outside.length > 0
       ? `Codex reported writable roots outside the workspace: ${outside.join(', ')}. Remove them from Codex's \`sandbox_workspace_write.writable_roots\` configuration, or run the session as the operator (a host session).`
@@ -270,6 +267,11 @@ export const codexSandboxConfinementProvider: ConfinementProvider<CodexSandboxEv
     supportedIsolationModes: ['shared', 'worktree'],
     engagement: 'engine-native',
     engines: [PROVIDER_CODEX],
+    // #4769: Codex's sandbox allows the network or not, by its own
+    // configuration; it cannot send the agent through Station's broker.
+    restrictsNetwork: false,
+    networkRestrictionUnavailable:
+      "Codex's own sandbox cannot route the session through Station's egress broker, so a restricted network is not available for Codex sessions",
     availability: () => ({
       available: true,
       reason:

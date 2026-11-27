@@ -21,7 +21,7 @@ describe('protected browser stream inventory', () => {
     },
   );
 
-  it('uses one module-stable UUID header for the primary event stream', () => {
+  it('mints the shared stream document UUID outside cloned tab storage', () => {
     // station#2301: the per-document id lives in its own module so the
     // orchestration stream sends the SAME id; it is still minted once, at
     // module scope, by randomCorrelationId — never sessionStorage (a cloned
@@ -45,9 +45,8 @@ describe('protected browser stream inventory', () => {
         /'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID/g,
       ),
     ).toHaveLength(2);
-    expect(streamSource).toMatch(
-      /fetchSSE\(`\$\{apiBase\}\/events`,\s*\{[^}]*?headers:\s*\{\s*'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID/,
-    );
+    // Actual primary/general/resync headers and the observed bearer are
+    // exercised through the real SDK in the recovery owner's general table.
     expect(streamSource).not.toContain('sessionStorage.');
     expect(streamSource).not.toContain('crypto.randomUUID()');
     expect(idModule).not.toContain('sessionStorage.');

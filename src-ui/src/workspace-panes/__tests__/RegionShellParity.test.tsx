@@ -625,51 +625,41 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(shortcutEntries('dock.toggle')).toHaveLength(1);
   });
 
-  test('the Activity chord places into a free region without evicting Chat, then toggles visibility', async () => {
-    seedPlacement('right', 'open');
+  test('the retired Activity chord is not registered, and supported panes still place through the model', async () => {
     await renderShellsSettled();
-    const activityToggle = shortcutEntries('activity.toggle')[0];
-    if (!activityToggle) throw new Error('activity.toggle must be registered');
-
-    act(() => activityToggle.handler());
+    expect(shortcutEntries('activity.toggle')).toHaveLength(0);
+    act(() => currentRegionModel().placeSurface('workspace-agents', 'bottom'));
     await waitFor(() =>
-      expect(currentRegionModel().regions.bottom.occupant).toBe('activity'),
+      expect(currentRegionModel().regions.bottom.occupant).toBe(
+        'workspace-agents',
+      ),
     );
-    expect(currentRegionModel().regions.right.occupant).toBe('chat');
-
-    act(() => shortcutEntries('activity.toggle')[0]?.handler());
-    await waitFor(() =>
-      expect(currentRegionModel().regions.bottom.visible).toBe(false),
-    );
-    act(() => shortcutEntries('activity.toggle')[0]?.handler());
-    await waitFor(() =>
-      expect(currentRegionModel().regions.bottom.visible).toBe(true),
-    );
+    expect(currentRegionModel().regions.bottom.panes).toContain('chat');
   });
 
   /**
-   * #2046 2a, decision 3: the retired "Swap in Activity" under the Bottom
-   * heading no longer relocates Chat. Activity JOINS `bottom`'s panes,
+   * #2046 2a, decision 3: the retired "Swap in Agents" under the Bottom
+   * heading no longer relocates Chat. Agents JOINS `bottom`'s panes,
    * selected, and Chat stays behind its tab in the same region — the shell
    * node is the same `bottom` shell, and navigation's placement is unchanged
    * (no `setDockMode`). #2046 2b: the shell is Chat's whichever tab shows
    * (D3 — it keeps `#chat-dock` and the "Dock" landmark), the region bar
-   * renders both tabs with Activity's pressed, and ⌘D selects Chat's tab
+   * renders both tabs with Agents's pressed, and ⌘D selects Chat's tab
    * back. Reverting to displacement fails the `right` assertion (it would
    * hold Chat) and the `setDockMode` one (it would be called with 'right');
    * reverting D3 fails the `#chat-dock` assertion after the join.
    */
-  test('the default Bottom placement joins Activity to Chat’s region; ⌘D selects Chat’s tab back', async () => {
+  test('the default Bottom placement joins Agents to Chat’s region; ⌘D selects Chat’s tab back', async () => {
     seedPlacement('bottom', 'open');
     const chatShell = await renderShellsSettled();
     const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
 
-    placeThroughModel('activity', 'bottom');
+    placeThroughModel('workspace-agents', 'bottom');
 
     await waitFor(() =>
       expect(currentRegionModel().regions.bottom).toMatchObject({
-        panes: ['chat', 'activity'],
-        occupant: 'activity',
+        panes: ['chat', 'workspace-agents'],
+        occupant: 'workspace-agents',
         visible: true,
       }),
     );
@@ -677,7 +667,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     await waitFor(() =>
       expect(
         within(chatShell)
-          .getByRole('tab', { name: 'Activity' })
+          .getByRole('tab', { name: 'Agents' })
           .getAttribute('aria-selected'),
       ).toBe('true'),
     );
@@ -773,10 +763,10 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     );
   });
 
-  test('Chat and Activity occupy independent desktop regions with distinct shell ownership', async () => {
+  test('Chat and Agents occupy independent desktop regions with distinct shell ownership', async () => {
     seedPlacement('bottom', 'open');
     await renderShellsSettled();
-    act(() => currentRegionModel().placeSurface('activity', 'right'));
+    act(() => currentRegionModel().placeSurface('workspace-agents', 'right'));
 
     await waitFor(() => expect(shells()).toHaveLength(2));
     expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
@@ -784,7 +774,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       document.querySelectorAll('section[aria-label="Dock"]'),
     ).toHaveLength(1);
     expect(
-      document.querySelectorAll('section[aria-label="Activity"]'),
+      document.querySelectorAll('section[aria-label="Agents"]'),
     ).toHaveLength(1);
     expect(shortcutEntries('dock.maximize')).toHaveLength(1);
     await waitFor(() =>
@@ -794,10 +784,10 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
 
     const chatShell = document.querySelector<HTMLElement>('#chat-dock');
     const activityShell = document.querySelector<HTMLElement>(
-      'section[aria-label="Activity"]',
+      'section[aria-label="Agents"]',
     );
-    if (!activityShell) throw new Error('Activity shell never rendered');
-    // #928 slice iii: Activity gets the maximize control, but ⌘M is Chat's
+    if (!activityShell) throw new Error('Agents shell never rendered');
+    // #928 slice iii: Agents gets the maximize control, but ⌘M is Chat's
     // shell's registration and acts on Chat's region, so it is not
     // advertised here.
     expect(
@@ -805,23 +795,19 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     ).toBeTruthy();
     expect(within(activityShell).queryByText('⌘M')).toBeNull();
     expect(
-      within(activityShell)
-        .getByLabelText('Hide Activity')
-        .getAttribute('title'),
-    ).toContain('Ctrl+Shift+A');
-    expect(
-      within(activityShell).getByLabelText('Resize Activity'),
-    ).toBeTruthy();
+      within(activityShell).getByLabelText('Hide Agents').getAttribute('title'),
+    ).not.toContain('Ctrl+Shift+A');
+    expect(within(activityShell).getByLabelText('Resize Agents')).toBeTruthy();
 
     window.localStorage.setItem('station.chatDock.snap', 'half');
-    fireEvent.click(within(activityShell).getByLabelText('Hide Activity'));
+    fireEvent.click(within(activityShell).getByLabelText('Hide Agents'));
     await waitFor(() =>
       expect(activityShell.classList.contains('is-collapsed')).toBe(true),
     );
     // Asserted mid-cycle: after the expand below the key would read 'half'
-    // again even if Activity had written it.
+    // again even if Agents had written it.
     expect(window.localStorage.getItem('station.chatDock.snap')).toBe('half');
-    fireEvent.click(within(activityShell).getByLabelText('Show Activity'));
+    fireEvent.click(within(activityShell).getByLabelText('Show Agents'));
     await waitFor(() =>
       expect(activityShell.classList.contains('is-collapsed')).toBe(false),
     );
@@ -831,16 +817,16 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       currentRegionModel().setRegion('right', { visible: false, size: 600 });
     });
     const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
-    // The retired "Swap in Activity" under the BOTTOM heading — Chat holds
-    // `bottom` here and Activity holds `right`. Since #2046 2a choosing it
-    // JOINS Activity to `bottom` (selected) and vacates `right`: nothing is
-    // swapped, Chat stays in `bottom` behind Activity's tab, and Chat's
+    // The retired "Swap in Agents" under the BOTTOM heading — Chat holds
+    // `bottom` here and Agents holds `right`. Since #2046 2a choosing it
+    // JOINS Agents to `bottom` (selected) and vacates `right`: nothing is
+    // swapped, Chat stays in `bottom` behind Agents's tab, and Chat's
     // mirror has nothing to say (its region did not move).
-    placeThroughModel('activity', 'bottom');
+    placeThroughModel('workspace-agents', 'bottom');
     await waitFor(() =>
       expect(currentRegionModel().regions.bottom).toMatchObject({
-        panes: ['chat', 'activity'],
-        occupant: 'activity',
+        panes: ['chat', 'workspace-agents'],
+        occupant: 'workspace-agents',
         visible: true,
       }),
     );
@@ -851,12 +837,12 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       size: 600,
     });
     await waitFor(() => expect(shells()).toHaveLength(1));
-    // `bottom`'s host is the same node, now showing Activity behind a tab
+    // `bottom`'s host is the same node, now showing Agents behind a tab
     // strip; `right`'s host unmounted with its last pane. The one shell is
     // still Chat's (#2046 2b, D3): `#chat-dock`, "Dock".
     expect(chatShell?.isConnected).toBe(true);
     expect(activityShell.isConnected).toBe(false);
-    expect(document.querySelector('section[aria-label="Activity"]')).toBeNull();
+    expect(document.querySelector('section[aria-label="Agents"]')).toBeNull();
     expect(document.querySelector('#chat-dock')).toBe(chatShell);
     expect(chatShell?.getAttribute('aria-label')).toBe('Dock');
     if (!chatShell) throw new Error('chat shell must render');
@@ -866,7 +852,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
         .map((tab) => [tab.textContent, tab.getAttribute('aria-selected')]),
     ).toEqual([
       ['Chat', 'false'],
-      ['Activity', 'true'],
+      ['Agents', 'true'],
     ]);
     expect(navigationStore.getSnapshot().dockMode).toBe('bottom');
     await act(async () => Promise.resolve());
@@ -875,24 +861,24 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(deviceSettingsStore.get('chatDockWidth')).toBe(400);
   });
 
-  // #1385: Chat maximized in `bottom`, Activity placed into it. Maximize used
+  // #1385: Chat maximized in `bottom`, Agents placed into it. Maximize used
   // to be Chat's navigation flag, so Chat's shell — re-propped by the swap —
-  // kept rendering `width: 100%` on a fixed side panel, over the Activity
+  // kept rendering `width: 100%` on a fixed side panel, over the Agents
   // shell the user had just asked for. Maximize is now the region's attribute
   // and `placeSurface` clears it in the region a surface enters; since #2046
-  // 2a Activity JOINS `bottom` rather than displacing Chat, and the one
-  // shell — `bottom`'s, showing Activity — comes out restored.
-  test('the #1385 repro: placing Activity into a maximized Chat region leaves nothing maximized', async () => {
+  // 2a Agents JOINS `bottom` rather than displacing Chat, and the one
+  // shell — `bottom`'s, showing Agents — comes out restored.
+  test('the #1385 repro: placing Agents into a maximized Chat region leaves nothing maximized', async () => {
     seedPlacement('bottom', 'maximized');
     const chatShell = await renderShellsSettled();
     await waitFor(() =>
       expect(chatShell.classList.contains('is-maximized')).toBe(true),
     );
     expect(currentRegionModel().regions.bottom.maximized).toBe(true);
-    act(() => currentRegionModel().placeSurface('activity', 'right'));
+    act(() => currentRegionModel().placeSurface('workspace-agents', 'right'));
     await waitFor(() => expect(shells()).toHaveLength(2));
 
-    act(() => currentRegionModel().placeSurface('activity', 'bottom'));
+    act(() => currentRegionModel().placeSurface('workspace-agents', 'bottom'));
 
     // One shell: `bottom`, which now holds both panes; the vacated `right`
     // hid with its last pane (#2153: a move is not a close). It is Chat's —
@@ -906,13 +892,13 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     await waitFor(() =>
       expect(
         within(activityShell)
-          .getByRole('tab', { name: 'Activity' })
+          .getByRole('tab', { name: 'Agents' })
           .getAttribute('aria-selected'),
       ).toBe('true'),
     );
     expect(currentRegionModel().regions.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
       maximized: false,
     });
@@ -936,7 +922,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     );
   });
 
-  test('a maximized Activity renders the geometry a maximized Chat does, and only one region is maximized at a time', async () => {
+  test('a maximized Agents renders the geometry a maximized Chat does, and only one region is maximized at a time', async () => {
     // Oracle: Chat maximized in `right`, through the same harness.
     seedPlacement('right', 'maximized');
     const chatRight = await renderShellsSettled();
@@ -955,12 +941,12 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     await waitFor(() =>
       expect(chatShell.classList.contains('is-maximized')).toBe(true),
     );
-    act(() => currentRegionModel().placeSurface('activity', 'right'));
+    act(() => currentRegionModel().placeSurface('workspace-agents', 'right'));
     await waitFor(() => expect(shells()).toHaveLength(2));
     const activityShell = document.querySelector<HTMLElement>(
-      'section[aria-label="Activity"]',
+      'section[aria-label="Agents"]',
     );
-    if (!activityShell) throw new Error('Activity shell never rendered');
+    if (!activityShell) throw new Error('Agents shell never rendered');
 
     fireEvent.click(
       within(activityShell).getByLabelText('Expand dock region to workspace'),
@@ -972,12 +958,12 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(classTokens(activityShell)).toEqual(expected.classes);
     expect(activityShell.style.width).toBe(expected.width);
     expect(currentRegionModel().regions.right.maximized).toBe(true);
-    // Maximizing Activity restored Chat: one maximized region at a time.
+    // Maximizing Agents restored Chat: one maximized region at a time.
     expect(currentRegionModel().regions.bottom.maximized).toBe(false);
     await waitFor(() =>
       expect(chatShell.classList.contains('is-maximized')).toBe(false),
     );
-    // Activity's maximize is not Chat's: the URL and memory are Chat's mirror.
+    // Agents's maximize is not Chat's: the URL and memory are Chat's mirror.
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
     expect(
       within(activityShell).getByLabelText('Restore dock region size'),
@@ -1015,16 +1001,18 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     );
     expect(clearance('--region-right-size')).toBe('');
 
-    // Activity JOINS Chat's region (#2046 2a): one shell, still Chat's
+    // Agents JOINS Chat's region (#2046 2a): one shell, still Chat's
     // (#2046 2b, D3 — `#chat-dock` stays whichever tab shows), no tab strip
-    // on a coarse device, Activity selected.
-    act(() => currentRegionModel().placeSurface('activity', 'right'));
+    // on a coarse device, Agents selected.
+    act(() => currentRegionModel().placeSurface('workspace-agents', 'right'));
     await waitFor(() =>
-      expect(currentRegionModel().regions.right.occupant).toBe('activity'),
+      expect(currentRegionModel().regions.right.occupant).toBe(
+        'workspace-agents',
+      ),
     );
     expect(shells()).toHaveLength(1);
     expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
-    expect(document.querySelector('section[aria-label="Activity"]')).toBeNull();
+    expect(document.querySelector('section[aria-label="Agents"]')).toBeNull();
     expect(shell.getAttribute('aria-label')).toBe('Dock');
     expect(within(shell).queryByRole('tablist')).toBeNull();
     // #917: at this width the toolbar renders no region control at all, so the
@@ -1038,69 +1026,73 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       expect(currentRegionModel().regions.right.occupant).toBe('chat'),
     );
     expect(shells()).toHaveLength(1);
-    selectRegionCommand('Show Activity in the dock');
+    selectRegionCommand('Show Agents in the dock');
     await waitFor(() =>
-      expect(currentRegionModel().regions.right.occupant).toBe('activity'),
+      expect(currentRegionModel().regions.right.occupant).toBe(
+        'workspace-agents',
+      ),
     );
     expect(shells()).toHaveLength(1);
-    // Activity joined Chat's region above (#2046 2a), and on a phone the
+    // Agents joined Chat's region above (#2046 2a), and on a phone the
     // "Show" opened it OVER Chat (the phone layer). Its "Hide" used to hide
     // that one region — Chat with it, since the region is Chat's. Review M1
     // made hiding the layer's own pane the way back to Chat instead: the
-    // region stays open, Chat selected, Activity's tab kept (the user placed
-    // it; the layer did not mint it). Showing Activity selects it again.
-    selectRegionCommand('Hide Activity from the dock');
+    // region stays open, Chat selected, Agents's tab kept (the user placed
+    // it; the layer did not mint it). Showing Agents selects it again.
+    selectRegionCommand('Hide Agents from the dock');
     await waitFor(() =>
       expect(currentRegionModel().regions.right).toMatchObject({
-        panes: ['chat', 'activity'],
+        panes: ['chat', 'workspace-agents'],
         occupant: 'chat',
         visible: true,
       }),
     );
     expect(shell.classList.contains('is-collapsed')).toBe(false);
-    selectRegionCommand('Show Activity in the dock');
+    selectRegionCommand('Show Agents in the dock');
     await waitFor(() =>
-      expect(currentRegionModel().regions.right.occupant).toBe('activity'),
+      expect(currentRegionModel().regions.right.occupant).toBe(
+        'workspace-agents',
+      ),
     );
     expect(shell.classList.contains('is-collapsed')).toBe(false);
 
     /**
      * #1386. The `⋯` row and the docked shell's own visibility control are
      * both on screen here, and they used to carry the SAME accessible name:
-     * two buttons called "Hide Activity", one in `.chat-dock__icon-btn` and
+     * two buttons called "Hide Agents", one in `.chat-dock__icon-btn` and
      * one in `.menu-row`. The row now says which shell it means, in the same
      * "… the dock" vocabulary as the `Move <title> to the dock` row beside
      * it, so the shell's control — the one a user points at — keeps the bare
      * name to itself.
      *
      * Asserted by CLASS as well as by count: a rename that merely changed
-     * which of the two answers to "Hide Activity" would keep a count of one.
+     * which of the two answers to "Hide Agents" would keep a count of one.
      */
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
     expect(
       screen
-        .getAllByRole('button', { name: 'Hide Activity' })
+        .getAllByRole('button', { name: 'Hide Agents' })
         .map((button) => button.className),
     ).toEqual(['chat-dock__icon-btn']);
     expect(
-      screen.getByRole('button', { name: 'Hide Activity from the dock' })
+      screen.getByRole('button', { name: 'Hide Agents from the dock' })
         .className,
     ).toBe('menu-row');
   });
 
-  // #928 slice C retired Activity's standalone placement, so the route-side
-  // away state that used to drive this ("Activity is hidden from the bottom
+  // #928 slice C retired Agents's standalone placement, so the route-side
+  // away state that used to drive this ("Agents is hidden from the bottom
   // bar" + its Show action) is gone with it. The fold behaviour it was proving
   // is the shell's, not the route's, so it is driven here through the region
   // command every surviving surface offers — no matchMedia stub, so
   // `availablePlacements` reads the real coarse provider, which is the half
   // the old name was about.
-  // Was "re-showing a hidden Activity region folds Chat out": before the
+  // Was "re-showing a hidden Agents region folds Chat out": before the
   // phone layer, the show made `right` the one visible dock region and
-  // Chat's shell unmounted. The layer opens Activity OVER Chat instead — it
+  // Chat's shell unmounted. The layer opens Agents OVER Chat instead — it
   // leaves `right` for Chat's region and renders in Chat's shell — so the
   // same command now proves the coarse provider takes the layer path.
-  test('re-showing a hidden Activity region opens it over Chat through the real coarse provider', async () => {
+  test('re-showing a hidden Agents region opens it over Chat through the real coarse provider', async () => {
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       value: 390,
@@ -1112,22 +1104,20 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       </Providers>,
     );
     act(() => {
-      currentRegionModel().placeSurface('activity', 'right');
+      currentRegionModel().placeSurface('workspace-agents', 'right');
       currentRegionModel().setRegion('right', { visible: false });
     });
     // Hidden: neither occupant renders a shell on a folded device.
     await waitFor(() =>
-      expect(
-        document.querySelector('section[aria-label="Activity"]'),
-      ).toBeNull(),
+      expect(document.querySelector('section[aria-label="Agents"]')).toBeNull(),
     );
 
-    selectRegionCommand('Show Activity in the dock');
+    selectRegionCommand('Show Agents in the dock');
 
     await waitFor(() =>
       expect(currentRegionModel().regions.bottom).toMatchObject({
-        panes: ['chat', 'activity'],
-        occupant: 'activity',
+        panes: ['chat', 'workspace-agents'],
+        occupant: 'workspace-agents',
         visible: true,
       }),
     );
@@ -1138,7 +1128,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       ),
     ).toBe('bottom');
     expect(currentRegionModel().regions.right.panes).toEqual([]);
-    // One shell, Chat's: Activity is a pane in it, not a second dock.
+    // One shell, Chat's: Agents is a pane in it, not a second dock.
     await waitFor(() =>
       expect(document.querySelector('#chat-dock')).not.toBeNull(),
     );
@@ -1161,7 +1151,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     );
     seedPlacement('bottom', 'open');
     await renderShellsSettled();
-    act(() => currentRegionModel().placeSurface('activity', 'right'));
+    act(() => currentRegionModel().placeSurface('workspace-agents', 'right'));
     await waitFor(() => expect(shells()).toHaveLength(2));
 
     Object.defineProperty(window, 'innerWidth', {
@@ -1172,7 +1162,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
 
     await waitFor(() => expect(shells()).toHaveLength(1));
     expect(
-      document.querySelector('section[aria-label="Activity"]'),
+      document.querySelector('section[aria-label="Agents"]'),
     ).not.toBeNull();
     expect(document.querySelector('#chat-dock')).toBeNull();
   });
@@ -1200,10 +1190,10 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(currentRegionModel().regions.right.occupant).toBe('chat');
     expect(shell.dataset.region).toBe('bottom');
     expect(shell.classList.contains('chat-dock--bottom')).toBe(true);
-    act(() => currentRegionModel().placeSurface('activity', 'left'));
+    act(() => currentRegionModel().placeSurface('workspace-agents', 'left'));
     await waitFor(() => expect(shells()).toHaveLength(1));
     expect(
-      document.querySelector('section[aria-label="Activity"]'),
+      document.querySelector('section[aria-label="Agents"]'),
     ).not.toBeNull();
   });
 });

@@ -13,7 +13,7 @@ const captured = vi.hoisted(() => ({
     isDesktop: false,
     supervisesBundledServer: false,
     isDevBuild: false,
-    channel: 'beta',
+    channel: 'nightly',
     mobileDefaultEndpoint: 'https://station.example.test:8442',
   } as {
     isTauri: boolean;

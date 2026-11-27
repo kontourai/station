@@ -150,9 +150,7 @@ test('marks a cached list whose background refresh failed, with Retry, and keeps
   expect(
     within(dialog).getByRole('list', { name: 'Workspace panes' }),
   ).toBeTruthy();
-  expect(
-    within(dialog).queryByText('Could not load workspace panes'),
-  ).toBeNull();
+  expect(within(dialog).queryByText('Couldn’t load panes')).toBeNull();
   fireEvent.click(within(marker).getByRole('button', { name: 'Retry' }));
   expect(onRetry).toHaveBeenCalledTimes(1);
 });
@@ -181,9 +179,7 @@ test('a cached EMPTY list whose refresh failed gets the marker, not "Could not l
     />,
   );
   const dialog = screen.getByRole('dialog', { name: 'Add workspace pane' });
-  expect(
-    within(dialog).queryByText('Could not load workspace panes'),
-  ).toBeNull();
+  expect(within(dialog).queryByText('Couldn’t load panes')).toBeNull();
   const marker = within(dialog).getByRole('status', {
     name: 'Pane list not refreshed',
   });
@@ -206,7 +202,7 @@ test('a list that never loaded still reads as an error (#2345)', () => {
       canExecuteAction={vi.fn(() => false)}
     />,
   );
-  expect(screen.getByText('Could not load workspace panes')).toBeTruthy();
+  expect(screen.getByText('Couldn’t load panes')).toBeTruthy();
   expect(
     screen.queryByRole('status', { name: 'Pane list not refreshed' }),
   ).toBeNull();

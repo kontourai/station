@@ -55,10 +55,15 @@ describe('#3163 Claude subagent transcript', () => {
     expect(outcome.page.entries[1]).toMatchObject({
       kind: 'tool-call',
       name: 'Agent',
+      toolCallId: 'toolu_012ztKCBZn9mbB8MgGPTuHan',
       input: expect.stringContaining('Reply with exactly INNER DONE'),
     });
     expect(outcome.page.entries[2]).toEqual(
-      expect.objectContaining({ kind: 'tool-result', text: 'INNER DONE' }),
+      expect.objectContaining({
+        kind: 'tool-result',
+        toolCallId: 'toolu_012ztKCBZn9mbB8MgGPTuHan',
+        text: 'INNER DONE',
+      }),
     );
     expect(outcome.page.entries[3]).toMatchObject({
       kind: 'text',
@@ -87,6 +92,85 @@ describe('#3163 Claude subagent transcript', () => {
     // Message indexes run on across pages.
     expect(messages).toEqual([...messages].sort((a, b) => a - b));
     expect(second.page.entries.at(-1)).toMatchObject({ text: 'INNER DONE' });
+  });
+
+  test('mid-run user records keep their shape: an interrupt is user text, hook text sits in the tool result’s message', () => {
+    // The records Claude Code writes when the person stops a tool use, and
+    // when a hook adds text beside a tool result.
+    expect(
+      claudeTranscriptEntries(
+        {
+          type: 'user',
+          message: {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: '[Request interrupted by user for tool use]',
+              },
+            ],
+          },
+        },
+        4,
+      ),
+    ).toEqual([
+      {
+        message: 4,
+        kind: 'text',
+        role: 'user',
+        text: '[Request interrupted by user for tool use]',
+      },
+    ]);
+    expect(
+      claudeTranscriptEntries(
+        {
+          type: 'user',
+          message: {
+            role: 'user',
+            content: [
+              { type: 'tool_result', tool_use_id: 'toolu_9', content: 'ok' },
+              { type: 'text', text: 'PostToolUse hook: formatted 1 file' },
+            ],
+          },
+        },
+        5,
+      ),
+    ).toEqual([
+      { message: 5, kind: 'tool-result', toolCallId: 'toolu_9', text: 'ok' },
+      {
+        message: 5,
+        kind: 'text',
+        role: 'user',
+        text: 'PostToolUse hook: formatted 1 file',
+      },
+    ]);
+  });
+
+  test('a tail read returns the last messages with where they start and end', async () => {
+    ({ restore } = installClaudeSubagentTranscript(makeTempDir));
+    const tail = await readClaudeSubagentTranscriptPage(ref, {
+      offset: 0,
+      limit: 3,
+      tail: true,
+    });
+    if (tail.status !== 'found') throw new Error(tail.status);
+    // Messages 2–4; message 1 is thinking only and maps to no entry.
+    expect(
+      tail.page.entries.map((entry) => [entry.kind, entry.message]),
+    ).toEqual([
+      ['tool-call', 2],
+      ['tool-result', 3],
+      ['text', 4],
+    ]);
+    expect(tail.page).toMatchObject({ offset: 2, endOffset: 5 });
+    expect(tail.page.nextOffset).toBeUndefined();
+    const whole = await readClaudeSubagentTranscriptPage(ref, {
+      offset: 0,
+      limit: 30,
+      tail: true,
+    });
+    if (whole.status !== 'found') throw new Error(whole.status);
+    expect(whole.page).toMatchObject({ offset: 0, endOffset: 5 });
   });
 
   test('the ref’s config home wins over the server’s: a profile session reads its own transcript', async () => {

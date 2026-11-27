@@ -157,6 +157,54 @@
   color: var(--k-text-muted);
 }
 
+/* #4830: what the agent wrote, apart from Station's own sentences and
+   marked as the agent's: a dashed rule and a label, its values verbatim. */
+.agent-schedule-card__agent {
+  display: grid;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-thin, 1px) dashed var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+}
+
+.agent-schedule-card__agent-label {
+  margin: 0;
+  color: var(--k-text-muted);
+  /* 11px is reserved for metadata (#4403); a label a person reads is sm. */
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.agent-schedule-card__verbatim {
+  font-family: var(--k-font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-schedule-card__conditions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-schedule-card__instructions {
+  display: grid;
+  gap: var(--k-space-1);
+}
+
+/* #4830: the proposing chat had read content written by others. */
+.agent-schedule-card__untrusted {
+  margin: 0;
+  padding: var(--k-space-2);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-caution-soft);
+  color: var(--k-text);
+  border-left: 3px solid var(--k-caution);
+}
+
 .agent-schedule-card__error {
   margin: 0;
   color: var(--k-negative);

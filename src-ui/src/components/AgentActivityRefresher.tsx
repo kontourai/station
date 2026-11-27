@@ -1,6 +1,6 @@
 import { useConnections } from '@kontourai/station-connect';
 import { useEffect } from 'react';
-import { useNavigationActions } from '../contexts/NavigationContext';
+import { requestNotificationOpen } from '../lib/notificationStationOpen';
 import type { NativeEventSubscription } from '../platform/native/types';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 
@@ -49,20 +49,19 @@ export function AgentActivityRefresher() {
 
 /**
  * Opens the session an agent-activity card or alert tap names (#2515). The
- * Android plugin holds the tap's route until asked: on start (a tap that
+ * Android plugin (card and alert taps) and the iOS plugin (alert taps) hold
+ * the tap's route until asked: on start (a tap that
  * launched the app) and on its `launchRoute` nudge (a tap while the app
- * runs). The route is navigated to only when it is for the connected
- * Station and well formed (`agentActivitySessionTarget`); otherwise the tap
- * just opened the app.
+ * runs). A well-formed route (`agentActivitySessionTarget`) goes to the
+ * notification opener with its Station id, which switches to that saved
+ * Station first when another one is connected and says so when it is not
+ * saved here (`notificationStationOpen.ts`).
  */
 export function AgentActivityLaunchRoutes() {
   const { target } = usePlatformProfile();
-  const { activeConnection } = useConnections();
-  const { navigate } = useNavigationActions();
-  const environmentId = activeConnection?.environmentId ?? null;
 
   useEffect(() => {
-    if (target !== 'android' || !environmentId) return;
+    if (target !== 'android' && target !== 'ios') return;
     let disposed = false;
     let subscription: NativeEventSubscription | undefined;
     const adapter = import('../platform/native').then(
@@ -72,10 +71,12 @@ export function AgentActivityLaunchRoutes() {
       void Promise.all([adapter, import('../platform/native/agentActivity')])
         .then(([native, module]) => {
           if (disposed) return;
-          return module.openAgentActivityLaunchRoute(
-            native,
-            environmentId,
-            navigate,
+          return module.openAgentActivityLaunchRoute(native, (route) =>
+            requestNotificationOpen({
+              pathname: route.pathname,
+              params: route.params,
+              stationId: route.stationId,
+            }),
           );
         })
         .catch((error: unknown) => {
@@ -96,7 +97,7 @@ export function AgentActivityLaunchRoutes() {
       disposed = true;
       subscription?.dispose();
     };
-  }, [target, environmentId, navigate]);
+  }, [target]);
 
   return null;
 }

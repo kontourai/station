@@ -3,6 +3,7 @@
  */
 
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { FOCUSABLE_SELECTOR } from '../../src-ui/src/utils/focusable';
 import { mockEmptyKnowledgeRegistry } from '../helpers/knowledge-setup';
 import { dismissSetupLauncher } from '../helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from '../helpers/touch-target';
@@ -324,20 +325,41 @@ test.describe('Android — Mobile Layout', () => {
       name: 'Mobile navigation',
     });
     await expect(navigation).toBeVisible();
-    await expect(navigation.locator('.sidebar__nav-btn').first()).toBeVisible();
+    await expect(
+      navigation.getByRole('button', { name: 'Home', exact: true }),
+    ).toBeVisible();
     expect(await navigation.ariaSnapshot()).toContain(
       '- navigation "Mobile navigation"',
     );
     await expect(navigation.getByTitle('Close navigation')).toBeFocused();
 
+    // Shift+Tab from Close reaches the drawer's first control, the brand
+    // home button. Another must wrap to its last control rather than leave
+    // the drawer, and Tab from there must come back to the first. The edges
+    // are read from the drawer's own tab stops: with a control added ahead of
+    // the home button, the same key presses would pass without ever reaching
+    // an edge.
+    const atEdge = (edge: 'first' | 'last') =>
+      navigation.evaluate(
+        (element, [selector, which]) => {
+          const stops = Array.from(
+            element.querySelectorAll<HTMLElement>(selector),
+          ).filter((stop) => stop.getClientRects().length > 0);
+          return (
+            document.activeElement ===
+            (which === 'first' ? stops[0] : stops.at(-1))
+          );
+        },
+        [FOCUSABLE_SELECTOR, edge] as const,
+      );
+    const firstControl = navigation.locator('.sidebar__home-button');
     await page.keyboard.press('Shift+Tab');
-    await expect
-      .poll(() =>
-        navigation.evaluate((element) =>
-          element.contains(document.activeElement),
-        ),
-      )
-      .toBe(true);
+    await expect(firstControl).toBeFocused();
+    expect(await atEdge('first')).toBe(true);
+    await page.keyboard.press('Shift+Tab');
+    await expect.poll(() => atEdge('last')).toBe(true);
+    await page.keyboard.press('Tab');
+    await expect(firstControl).toBeFocused();
 
     await page.keyboard.press('Escape');
     await expect(navigation).not.toBeVisible();
@@ -389,13 +411,53 @@ test.describe('Android — Mobile Layout', () => {
       return {
         candidates: visible.length,
         tooSmall: visible
-          .filter((el) => {
-            const rect = el.getBoundingClientRect();
-            return rect.width < minimumTarget || rect.height < minimumTarget;
-          })
           .map((el) => {
             const rect = el.getBoundingClientRect();
-            return `${el.tagName}.${el.className.toString().slice(0, 50)} ${rect.width.toFixed(3)}x${rect.height.toFixed(3)}`;
+            // The touch target is the region that answers a tap, not the
+            // border box: compact controls may extend a centred hit area past
+            // the drawn box (InfoTip.css, the compact brief-choice input —
+            // "a 44px press area centred on the Npx box"). Real hit tests
+            // measure it: walk outward from the box centre symmetrically and
+            // stop where taps stop resolving to the control, so an overlay,
+            // a one-sided pad or a plain undersized box earns no credit.
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const resolves = (x: number, y: number) => {
+              const hit = document.elementFromPoint(x, y);
+              return hit !== null && (hit === el || el.contains(hit));
+            };
+            const extent = (axis: 'x' | 'y') => {
+              const half = axis === 'x' ? rect.width / 2 : rect.height / 2;
+              let reach = half;
+              for (let d = Math.ceil(half); d < minimumTarget; d += 1) {
+                const px = axis === 'x' ? cx + d : cx;
+                const py = axis === 'y' ? cy + d : cy;
+                if (
+                  px < 0 ||
+                  py < 0 ||
+                  px >= window.innerWidth ||
+                  py >= window.innerHeight
+                )
+                  break;
+                if (!resolves(px, py) || !resolves(2 * cx - px, 2 * cy - py))
+                  break;
+                reach = d;
+              }
+              return 2 * reach;
+            };
+            return {
+              el,
+              rect,
+              width: Math.max(rect.width, extent('x')),
+              height: Math.max(rect.height, extent('y')),
+            };
+          })
+          .filter(
+            ({ width, height }) =>
+              width < minimumTarget || height < minimumTarget,
+          )
+          .map(({ el, rect, width, height }) => {
+            return `${el.tagName}.${el.className.toString().slice(0, 50)} box ${rect.width.toFixed(3)}x${rect.height.toFixed(3)} target ${width.toFixed(0)}x${height.toFixed(0)}`;
           })
           .slice(0, 20),
       };

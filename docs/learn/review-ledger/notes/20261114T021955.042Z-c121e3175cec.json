@@ -1,0 +1,7 @@
+{
+  "revision": "143b79324c107321bec79375a67e3ac03ac7d2a3",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Windows Authenticode paragraphs re-read against release.yml desktop-windows (Import step records thumbprint; Observe step only writes Get-AuthenticodeSignature status/signer/MSI sha256; provenance in its own step; stage step builds the receipt from the observation) and scripts/lib/windows-release-signing.mjs decideWindowsAuthenticode: certificate mode accepts only Valid signed by the imported certificate, unsigned only NotSigned with no signer, every other status refuses. Executed: windows-release-signing.test.ts (49) locally; windows-release-authenticode.process.test.ts 8/8 under real pwsh 7.6 on a Windows 11 host. Other claims in the guide were not re-audited.","inputs":["docs/guides/native-releases.md",".github/workflows/release.yml","scripts/__tests__/release-artifacts.test.ts","scripts/__tests__/release-workflow.test.ts"]}
+  ]
+}

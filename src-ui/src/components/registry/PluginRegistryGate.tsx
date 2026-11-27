@@ -37,6 +37,10 @@ export function PluginRegistryBootstrap() {
     checkHealth: checkServerHealth,
     probeEndpoint: probeServerConnection,
     pollInterval: 10_000,
+    // A healthy probe completing is the cue to re-read an inventory that
+    // could not be read while the connection stayed up; the registry decides
+    // whether and how often.
+    onHealthyProbe: () => pluginRegistry.retryUnavailableInventory(),
   });
   const queryClient = useQueryClient();
   const loadStatus = useSyncExternalStore(

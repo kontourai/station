@@ -1,0 +1,7 @@
+{
+  "revision": "1d21bdde5e4db4a3e94d042fb2769a68fbc0a1e5",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-reviewed the PR Gallery paragraph after the excuse fixes, against gallery-pr-check.yml and gallery-main-attribution.mjs at this commit: complete-capture requirement, report-only comparison over rendered screens, the exact normalisation (ANSI, console-error line, call log, loopback ports, runner paths, Received numbers) and what must match, the remaining gaps, the re-run-keeps-github.sha note, and that the base judge is not a security boundary and nothing trusts the conclusion. Contract-test edits only add pins. Not run: the hosted capture.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml","scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

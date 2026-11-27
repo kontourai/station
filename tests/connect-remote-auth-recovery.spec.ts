@@ -46,7 +46,7 @@ async function openConnections(page: Page) {
     name: 'Station access required',
   });
   const requestAccess = accessRequired.getByRole('button', {
-    name: 'Enter a host address',
+    name: 'Enter Station address',
     exact: true,
   });
   const otherWays = accessRequired.getByText('Other ways to connect', {
@@ -290,7 +290,7 @@ for (const fixture of [
       .getByText('Other ways to connect', { exact: true })
       .click();
     const pairingAction = page
-      .getByRole('button', { name: 'Enter a host address' })
+      .getByRole('button', { name: 'Enter Station address' })
       .first();
     await expect(pairingAction).toBeVisible({ timeout: 15_000 });
     // The access gate must not probe protected routes before a credential is

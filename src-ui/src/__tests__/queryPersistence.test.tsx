@@ -142,6 +142,50 @@ describe('setupQueryPersistence — save/restore round trip (simulated reload)',
     expect(clientB.getQueryData(['agents'])).toEqual([{ slug: 'writer' }]);
   });
 
+  it('restores checkout lists with their age and forces a refresh even within the live freshness window', async () => {
+    const { storage, data } = createMemoryStorage();
+    const key = [
+      'checkout-pull-requests',
+      'OPEN',
+      'station',
+      '',
+      '/repos/station',
+    ];
+    const list = {
+      available: true,
+      provider: 'github',
+      pullRequests: { available: true, data: [] },
+    };
+    const source = new QueryClient();
+    const save = setupQueryPersistence(source, { storage, throttleTime: 0 });
+    await save.restored;
+    const updatedAt = Date.now();
+    source.setQueryData(key, list, { updatedAt });
+    await waitFor(() => expect(data.size).toBeGreaterThan(0));
+    save.unsubscribe();
+
+    const restored = new QueryClient();
+    const handle = setupQueryPersistence(restored, {
+      storage,
+      throttleTime: 0,
+    });
+    await handle.restored;
+    expect(restored.getQueryState(key)).toMatchObject({
+      data: list,
+      dataUpdatedAt: updatedAt,
+      isInvalidated: true,
+      dataUpdateCount: 0,
+    });
+    const queryFn = vi.fn(async () => ({ ...list }));
+    await restored.fetchQuery({ queryKey: key, queryFn, staleTime: Infinity });
+    expect(queryFn).toHaveBeenCalledOnce();
+    expect(restored.getQueryState(key)).toMatchObject({
+      isInvalidated: false,
+      dataUpdateCount: 1,
+    });
+    handle.unsubscribe();
+  });
+
   it('does not restore a non-whitelisted/sensitive query (auth-status) even though it shared the cache', async () => {
     const { storage, data } = createMemoryStorage();
 

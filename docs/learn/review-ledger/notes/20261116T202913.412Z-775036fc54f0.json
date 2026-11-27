@@ -1,0 +1,13 @@
+{
+  "revision": "7467aa41b32c4505e5809a5aed5a7e5baec3fad6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"useChildWorkTranscriptTailQuery only: legacy (no endOffset) pages forward by nextOffset with the old re-read polling, refetch rebuilds pages forward from the first, and a cursor behind a shrunk transcript resets to a tail read. Composer, placement and station-docs claims unaffected; sdk.md documents the hook.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"useChildWorkTranscriptTailQuery only: legacy (no endOffset) pages forward by nextOffset with the old re-read polling, refetch rebuilds pages forward from the first, and a cursor behind a shrunk transcript resets to a tail read. Composer, placement and station-docs claims unaffected; sdk.md documents the hook.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"useChildWorkTranscriptTailQuery only: legacy (no endOffset) pages forward by nextOffset with the old re-read polling, refetch rebuilds pages forward from the first, and a cursor behind a shrunk transcript resets to a tail read. Composer, placement and station-docs claims unaffected; sdk.md documents the hook.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"useChildWorkTranscriptTailQuery only: legacy (no endOffset) pages forward by nextOffset with the old re-read polling, refetch rebuilds pages forward from the first, and a cursor behind a shrunk transcript resets to a tail read. Composer, placement and station-docs claims unaffected; sdk.md documents the hook.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]}
+  ]
+}

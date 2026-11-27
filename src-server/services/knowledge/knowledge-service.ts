@@ -39,6 +39,14 @@ import { searchKnowledgeDocuments } from './knowledge-search.js';
 import { DEFAULT_KNOWLEDGE_NAMESPACE } from './knowledge-storage.js';
 
 const DEFAULT_NS = DEFAULT_KNOWLEDGE_NAMESPACE;
+/** The built-in `rules` namespace (`project-rules.md`), superseded by the Project brief. */
+const BUILTIN_RULES_NAMESPACE = 'rules';
+/** Where "Index directory" puts the project's files when no namespace is named. */
+const DEFAULT_SCAN_NAMESPACE: KnowledgeNamespaceConfig = {
+  id: 'code',
+  label: 'Code',
+  behavior: 'rag',
+};
 
 // ── Service ────────────────────────────────────────────────────────
 
@@ -49,6 +57,17 @@ export class KnowledgeService {
     private dataDir: string,
     private storageAdapter?: IStorageAdapter,
   ) {}
+
+  /**
+   * #5062: whether a Project's brief now carries its legacy rules (the
+   * `project-coordination` preview is on and the rules were copied). Set by
+   * runtime composition; absent means the rules inject as before.
+   */
+  private briefCarriesRules?: (projectSlug: string) => boolean;
+
+  setBriefCarriesRules(predicate: (projectSlug: string) => boolean): void {
+    this.briefCarriesRules = predicate;
+  }
 
   // ── Storage resolution ──
 
@@ -297,8 +316,18 @@ export class KnowledgeService {
    * Returns formatted string for system prompt prepending, or null if empty.
    */
   async getInjectContext(projectSlug: string): Promise<string | null> {
+    // #5062: once a Project's rules were copied into its brief, the brief
+    // carries them on every engine, so the `rules` namespace stops injecting.
+    let rulesInBrief = false;
+    try {
+      rulesInBrief = this.briefCarriesRules?.(projectSlug) === true;
+    } catch {
+      rulesInBrief = false;
+    }
     const namespaces = this.listNamespaces(projectSlug).filter(
-      (n) => n.behavior === 'inject',
+      (n) =>
+        n.behavior === 'inject' &&
+        !(rulesInBrief && n.id === BUILTIN_RULES_NAMESPACE),
     );
     if (namespaces.length === 0) return null;
 
@@ -320,13 +349,26 @@ export class KnowledgeService {
 
   // ── Directory scanning ──
 
+  /**
+   * Index the project's directory. With no namespace named, the files go to
+   * the `code` namespace, which is registered on the project before the first
+   * file is written (not when there is nothing to write): the
+   * project-wide document list, status counts and search read registered
+   * namespaces only, so an unregistered `code` held every scanned file out of
+   * sight while the scan reported them indexed.
+   */
   async scanDirectories(
     projectSlug: string,
     extensions?: string[],
     includePatterns?: string[],
     excludePatterns?: string[],
-    namespace: string = 'code',
-  ): Promise<{ indexed: number; skipped: number }> {
+    explicitNamespace?: string,
+  ): Promise<{ indexed: number; alreadyIndexed: number; skipped: number }> {
+    const namespace = explicitNamespace ?? DEFAULT_SCAN_NAMESPACE.id;
+    const registerDefault =
+      !explicitNamespace &&
+      this.storageAdapter &&
+      !this.getNamespaceConfig(projectSlug, namespace);
     return scanKnowledgeDirectories({
       projectSlug,
       namespace,
@@ -350,6 +392,12 @@ export class KnowledgeService {
         targetNamespace,
       ) =>
         this.uploadDocument(slug, filename, content, source, targetNamespace),
+      ...(registerDefault
+        ? {
+            prepareNamespace: () =>
+              this.registerNamespace(projectSlug, DEFAULT_SCAN_NAMESPACE),
+          }
+        : {}),
     });
   }
 

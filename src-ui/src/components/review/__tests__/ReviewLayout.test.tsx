@@ -95,6 +95,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { NavigationProvider } from '../../../contexts/NavigationContext';
+import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision-surfaces';
 import { ReviewLayout } from '../ReviewLayout';
 
 function renderLayout(projectSlug = 'project-a') {
@@ -328,6 +329,8 @@ describe('the review layout kind', () => {
     expect(within(detail).getByText('const value = 1;')).toBeTruthy();
     expect(within(detail).getByText('const value = 2;')).toBeTruthy();
 
+    // Custom CSS is held off while this decision is on screen.
+    expect(mountedDecisionSurfaces()).toContain('proposed-change');
     fireEvent.click(within(detail).getByRole('button', { name: 'Approve' }));
     // The recorded reason names the surface that decided, the same way the
     // inbox's own test pins "from notifications" — two surfaces, one payload
@@ -387,10 +390,10 @@ describe('the review layout kind', () => {
 
     renderLayout('project-a');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approve All' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve all' }));
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Approve All',
+        name: 'Approve all',
       }),
     );
 
@@ -558,7 +561,9 @@ describe('the review layout kind', () => {
     const { unmount } = renderLayout();
 
     let detail = screen.getByTestId('independent-review-receipt-detail');
-    expect(detail.textContent).toContain('Review evidence is incomplete.');
+    expect(detail.textContent).toContain(
+      "Not every reviewer finished, so no findings doesn't mean a clean review.",
+    );
     expect(detail.textContent).not.toContain('All reviewers completed');
     unmount();
 
@@ -571,8 +576,8 @@ describe('the review layout kind', () => {
 
     detail = screen.getByTestId('independent-review-receipt-detail');
     expect(detail.textContent).toContain(
-      'All reviewers completed; no concrete findings were recorded.',
+      'All reviewers finished with no findings.',
     );
-    expect(detail.textContent).not.toContain('Review evidence is incomplete.');
+    expect(detail.textContent).not.toContain('Not every reviewer finished');
   });
 });

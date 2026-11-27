@@ -320,3 +320,17 @@
   display: grid;
   margin-block: -0.5rem 1rem;
 }
+
+.account-entry__guest-home--task > .button {
+  justify-self: start;
+}
+.account-entry__guest-home--task
+  :is(
+    .account-entry__project-detail,
+    .account-entry__shared-tasks,
+    .account-entry__shared-task-detail
+  ) {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}

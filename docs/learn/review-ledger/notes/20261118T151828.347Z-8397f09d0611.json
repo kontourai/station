@@ -1,0 +1,7 @@
+{
+  "revision": "f99cb99897b0afdaae3178b85e2cd8591cfc566f",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the phone control evidence for both Station notice states. The browser observes ordinary section controls, stored writes and confirmations, scoped account and pairing handoffs, list filters, model visibility, and the declared access and input prerequisites. A credential-dependent control may only be exercised through its handoff or refusal in this fixture. Independent devices and external provider operation remain separate.","inputs":["tests/connect-reconnect-banner.spec.ts"]}
+  ]
+}

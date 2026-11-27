@@ -193,7 +193,7 @@ describe('StreamingMessage', () => {
     expect(screen.queryByText('Avatar')).toBeNull();
     expect(screen.queryByText('Codex')).toBeNull();
     expect(view.container.textContent).not.toContain('Elapsed');
-    expect(view.container.textContent).toContain('0:00');
+    expect(view.container.textContent).toContain('0s');
   });
 
   test('the ordinary renderer is a true pass-through with no frame callback', () => {
@@ -646,7 +646,7 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
   /** The working line with no duration: the label, and no m:ss anywhere. */
   function expectNoDuration(view: { container: HTMLElement }) {
     expect(view.container.textContent).toContain('Working…');
-    expect(view.container.textContent).not.toMatch(/\d+:\d\d/u);
+    expect(view.container.textContent).not.toMatch(/\d+(?:h|m|s)\b/u);
   }
 
   function stampTurn() {
@@ -662,16 +662,16 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     return activeChatsStore.getSnapshot()[chatId]?.openTurnStartedAt;
   }
 
-  test('a row mounted 12 minutes into the turn reads 12:00, and a remount keeps counting', () => {
+  test('a row mounted 12 minutes into the turn reads 12m 0s, and a remount keeps counting', () => {
     const turnStartedAt = stampTurn();
     expect(turnStartedAt).toBe(Date.parse(serverStart));
 
     const first = renderRow(turnStartedAt);
-    expect(first.container.textContent).toContain('Working for 12:00');
+    expect(first.container.textContent).toContain('Working for 12m 0s');
     act(() => {
       vi.advanceTimersByTime(3_000);
     });
-    expect(first.container.textContent).toContain('Working for 12:03');
+    expect(first.container.textContent).toContain('Working for 12m 3s');
     first.unmount();
 
     act(() => {
@@ -680,8 +680,8 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     const remounted = renderRow(
       activeChatsStore.getSnapshot()[chatId]?.openTurnStartedAt,
     );
-    expect(remounted.container.textContent).toContain('Working for 12:05');
-    expect(remounted.container.textContent).not.toContain('0:00');
+    expect(remounted.container.textContent).toContain('Working for 12m 5s');
+    expect(remounted.container.textContent).not.toContain('Working for 0s');
     remounted.unmount();
   });
 
@@ -693,9 +693,9 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     ).toBeUndefined();
   });
 
-  test('a server start ahead of this clock reads 0:00, never negative time', () => {
+  test('a server start ahead of this clock reads 0s, never negative time', () => {
     const view = renderRow(now + 30_000);
-    expect(view.container.textContent).toContain('Working for 0:00');
+    expect(view.container.textContent).toContain('Working for 0s');
     expect(view.container.textContent).not.toContain('-');
     view.unmount();
   });
@@ -711,10 +711,8 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     act(() => {
       vi.advanceTimersByTime(4_000);
     });
-    expect(view.container.textContent).toMatch(
-      /Waiting for approval · \d+:\d\d/u,
-    );
-    expect(view.container.textContent).not.toContain('12:04');
+    expect(view.container.textContent).toContain('Waiting for approval · 4s');
+    expect(view.container.textContent).not.toContain('12m 4s');
     view.unmount();
   });
 
@@ -731,7 +729,7 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
   test('rule 3: a cleared start shows no duration until one returns, then the true duration', () => {
     // F2's shape: the row mounted an hour into turn 1.
     const view = renderRow(now - 3_600_000);
-    expect(view.container.textContent).toContain('Working for 60:00');
+    expect(view.container.textContent).toContain('Working for 1h');
     act(() => {
       vi.advanceTimersByTime(60_000);
     });
@@ -745,22 +743,22 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     expectNoDuration(view);
     // The reseed says the SAME turn is still running: its true duration.
     view.rerender(row(now - 3_600_000));
-    expect(view.container.textContent).toContain('Working for 61:30');
+    expect(view.container.textContent).toContain('Working for 1h 1m');
     view.rerender(row(undefined));
     // … or a different turn started 35s ago: that turn's duration.
     view.rerender(row(Date.now() - 35_000));
-    expect(view.container.textContent).toContain('Working for 0:35');
+    expect(view.container.textContent).toContain('Working for 35s');
     view.unmount();
   });
 
   test("rule 1: a mounted row that sees the next turn's start reads that turn", () => {
     const view = renderRow(Date.parse(serverStart));
-    expect(view.container.textContent).toContain('Working for 12:00');
+    expect(view.container.textContent).toContain('Working for 12m 0s');
     act(() => {
       vi.advanceTimersByTime(600_000);
     });
     view.rerender(row(Date.now() - 5_000));
-    expect(view.container.textContent).toContain('Working for 0:05');
+    expect(view.container.textContent).toContain('Working for 5s');
     view.unmount();
   });
 
@@ -773,11 +771,11 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     expectNoDuration(view);
     // turn.started lands with the server's start: counting begins there.
     view.rerender(row(Date.now()));
-    expect(view.container.textContent).toContain('Working for 0:00');
+    expect(view.container.textContent).toContain('Working for 0s');
     act(() => {
       vi.advanceTimersByTime(2_000);
     });
-    expect(view.container.textContent).toContain('Working for 0:02');
+    expect(view.container.textContent).toContain('Working for 2s');
     view.unmount();
   });
 
@@ -791,11 +789,13 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     act(() => {
       vi.advanceTimersByTime(2_000);
     });
-    expect(view.container.textContent).toMatch(
-      /Waiting for approval · \d+:\d\d/u,
+    expect(view.container.textContent).toContain(
+      'Waiting for approval · 5m 2s',
     );
-    expect(view.container.textContent).not.toMatch(/· 0:0\d/u);
-    expect(view.container.textContent).not.toContain('17:02');
+    expect(view.container.textContent).not.toContain(
+      'Waiting for approval · 0s',
+    );
+    expect(view.container.textContent).not.toContain('17m 2s');
     view.unmount();
   });
 });

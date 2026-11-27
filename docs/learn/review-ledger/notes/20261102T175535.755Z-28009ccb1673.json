@@ -1,7 +1,0 @@
-{
-  "revision": "abd9494ef793245ce398b9eea83d720f16c96e56",
-
-  "notes": [
-    {"path":"docs/guides/responsive-ui.md","note":"Reviewed shared popover layering, mobile predicate and 44px control-target claims. Mode-note uses existing spacing and muted/small-text tokens with margin zero; mode-option retains min-height 44px. No dialog owner, hit-target, media query, breakpoint or responsive geometry rule changed. No new physical-device or render qualification claimed.","inputs":["docs/guides/responsive-ui.md"]}
-  ]
-}

@@ -1,0 +1,37 @@
+{
+  "revision": "0b924faf370a40c1c5065593b893ffa3c791a6b1",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"#5081: checked the new paragraphs against workload-resources.ts: live kill log on every oom_kill rise with largestRemaining/largestAtPressure (512 pids, 500 ms bound), working-set pressure at STATION_WORKLOAD_PRESSURE_PERCENT with 5-point exit and info-level exit, workload_status exposure, +300 oom_score_adj for engine commands excluding the holder, OOMPolicy=continue/group kill rationale, and the env var row.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5081: workload launcher paragraph now states the poll's live kill log, pressure transitions and command oom_score_adj raise; matches workload-resources.ts.","inputs":["docs/architecture/module-map.md","docs/guides/development.md"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#5081: names STATION_WORKLOAD_PRESSURE_PERCENT and points to the development guide table for its default and range.","inputs":["docs/reference/env-vars.md"]},
+
+    {"path":"docs/reference/metrics.md","note":"Regenerated with docs:metrics:generate; adds station.workload.scope.oom_kills and station.workload.scope.memory_pressure, other rows only shift line numbers.","inputs":["docs/reference/metrics.md"]},
+
+    {"path":"docs/reference/api.md","note":"#5081: GET /api/system/workload scopes and the session read now document lastOomKillProcesses and pressure, matching workloadBudgetStatus and inspectSessionWorkload.","inputs":["docs/reference/api.md","packages/contracts/src/system-status.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5081: WorkloadBudgetStatus prose names lastOomKillProcesses, WorkloadScopePressure and WorkloadScopeProcess as added in system-status.ts.","inputs":["docs/reference/contracts.md","packages/contracts/src/system-status.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5081: the Linux service workload budgets section gained STATION_WORKLOAD_PRESSURE_PERCENT and paragraphs on live kill reports, near-cap pressure and command OOM scores; the anchors and claims citing pages rely on are unchanged.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"#5081: the Linux service workload budgets section gained STATION_WORKLOAD_PRESSURE_PERCENT and paragraphs on live kill reports, near-cap pressure and command OOM scores; the anchors and claims citing pages rely on are unchanged.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"#5081: the Linux service workload budgets section gained STATION_WORKLOAD_PRESSURE_PERCENT and paragraphs on live kill reports, near-cap pressure and command OOM scores; the anchors and claims citing pages rely on are unchanged.","inputs":["docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"#5081: the Linux service workload budgets section gained STATION_WORKLOAD_PRESSURE_PERCENT and paragraphs on live kill reports, near-cap pressure and command OOM scores; the anchors and claims citing pages rely on are unchanged.","inputs":["docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"#5081: the Linux service workload budgets section gained STATION_WORKLOAD_PRESSURE_PERCENT and paragraphs on live kill reports, near-cap pressure and command OOM scores; the anchors and claims citing pages rely on are unchanged.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/reference/api.md","note":"#5081: added optional WorkloadScopeProcess/WorkloadScopePressure and the scope fields lastOomKillProcesses and pressure to WorkloadBudgetStatus; existing shapes unchanged.","inputs":["packages/contracts/src/system-status.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5081: added optional WorkloadScopeProcess/WorkloadScopePressure and the scope fields lastOomKillProcesses and pressure to WorkloadBudgetStatus; existing shapes unchanged.","inputs":["packages/contracts/src/system-status.ts"]},
+
+    {"path":"docs/glossary.md","note":"#5081: contracts reference describes the new optional workload scope fields; the contracts scope guidance is unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#5081: contracts reference describes the new optional workload scope fields; the contracts scope guidance is unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"#5081: contracts reference describes the new optional workload scope fields; the contracts scope guidance is unaffected.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

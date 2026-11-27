@@ -1,0 +1,7 @@
+{
+  "revision": "e0502b34cf5c64b289e724e99f1b7535286896bf",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Added that a skipped scheduled run leaves the repair episode and its run link unchanged and still counts for the health watchdog as a started, unqualified run; verified against qualification-repair.mjs corpusExecuted and qualification-health.mjs. Re-checked the failed-source paragraph (the newest executed run on the first source that has one decides) and the twelve required jobs against qualification-evidence.mjs and full-regression.yml.","inputs":["docs/guides/releasing.md","scripts/__tests__/qualification-evidence.test.ts","scripts/__tests__/qualification-repair.test.ts","scripts/qualification-evidence.mjs","scripts/qualification-repair.mjs"]}
+  ]
+}

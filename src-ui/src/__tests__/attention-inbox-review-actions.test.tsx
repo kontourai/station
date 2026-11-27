@@ -38,7 +38,21 @@ const snoozePreviews: { id: string; enabled: boolean }[] = [];
 const snoozeAttention = vi.fn();
 const unsnoozeAttention = vi.fn();
 const snoozeNotification = vi.fn();
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => [],
+}));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
+  // The page's For you section (#4799): this reader has no mentions.
+  usePersonNotificationsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
+  useMarkPersonNotificationReadMutation: () => ({ mutateAsync: vi.fn() }),
   useNotificationsQuery: () => ({ data: [], error: null, isLoading: false }),
   useAttentionQuery: () => ({ data: attention, isLoading: false }),
   useDevicePresentation: () => undefined,

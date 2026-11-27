@@ -217,6 +217,7 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
         toolCallId: 'toolu-a',
         description: 'Explore',
         subagentType: 'Explore',
+        workKind: 'agent',
         backgrounded: true,
         spawnDepth: 2,
         sessionThreadId: threadId,
@@ -227,6 +228,7 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
         taskId: 'b',
         toolCallId: 'toolu-b',
         description: 'Lint',
+        workKind: 'agent',
         backgrounded: false,
         sessionThreadId: threadId,
         stop: 'provider-task-stop',
@@ -283,9 +285,22 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     expect(announcements()).toEqual([
       'Background task failed — Deep dive\n\ncrashed',
     ]);
-    // The card renders the registry's own fields, not the prose above.
+    // The disclosure receives the registry result, independently of the prose.
     expect(notices()).toEqual([
-      { status: 'failed', title: 'Deep dive', summary: 'crashed' },
+      {
+        status: 'failed',
+        title: 'Deep dive',
+        summary: 'crashed',
+        child: expect.objectContaining({
+          producer: 'engine-subagent',
+          reporterThreadId: threadId,
+          childId: 'a',
+          status: 'failed',
+          title: 'Deep dive',
+          backgrounded: true,
+          result: { summary: 'crashed' },
+        }),
+      },
     ]);
   });
 
@@ -298,7 +313,21 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     });
     expect(announcements()).toEqual(['Background task stopped']);
     // No title and no summary were reported, so the notice carries neither.
-    expect(notices()).toEqual([{ status: 'cancelled' }]);
+    expect(notices()).toEqual([
+      {
+        status: 'cancelled',
+        child: expect.objectContaining({
+          producer: 'engine-subagent',
+          reporterThreadId: threadId,
+          childId: 'a',
+          status: 'cancelled',
+          backgrounded: true,
+          result: {
+            handle: { kind: 'transcript-file', path: '/tmp/a.jsonl' },
+          },
+        }),
+      },
+    ]);
   });
 
   test('#2459: a settle with no observed outcome is never announced as finished', () => {

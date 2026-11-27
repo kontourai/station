@@ -1,7 +1,0 @@
-{
-  "revision": "16dacc4c9755f1fdaf288fbdad2ea9a327b82e87",
-
-  "notes": [
-    {"path":"docs/conformance/tool-policy-delivery.md","note":"Only TURN_INTERRUPTED_CONTINUE_PROMPT's text changed in runtime-event-projection.ts; the doc makes no claim about that prompt and its tool-policy claims are unaffected.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/runtime-event-projection.ts"]}
-  ]
-}

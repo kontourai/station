@@ -1,7 +1,0 @@
-{
-  "revision": "a3173a4e562c7b1a79faf5231c0ff74d67c811e8",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Reviewed the unchanged terminal cleanup and verification claims against the retention fixture diagnostics. The fixture still uses real node-pty, the existing ShellHost and TerminalSessions paths, the same cleanup deadlines, and every original assertion. Windows-only loader observation records pipe/first-data/exit timing and emits bounded native scalar state only after failure. macOS retention: 13 pass. The prior exact c5ef86ce native Windows observation also passed 13 cases, while required hosted Windows failed at that head; these are separate results and the timeout remains unresolved. Diagnostic output is not successful cleanup or hosted qualification.","inputs":["docs/design/terminal.md","src-server/services/terminal/__tests__/terminal-retention.process.test.ts"]}
-  ]
-}

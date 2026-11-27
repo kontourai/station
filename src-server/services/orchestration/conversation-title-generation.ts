@@ -4,6 +4,7 @@ import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventBus } from './event-bus.js';
 import type { EventStore } from './event-store.js';
 
@@ -68,12 +69,13 @@ export function subscribeConversationTitleGeneration(
 export class ConversationTitleGeneration {
   private readonly attempted = new Set<string>();
   private readonly inflight = new Set<Promise<void>>();
+  private stopped = false;
 
   constructor(private readonly deps: ConversationTitleGenerationDeps) {}
 
   /** Called with every committed event. */
   observe(event: CanonicalRuntimeEvent): void {
-    if (event.method !== 'turn.completed') return;
+    if (this.stopped || event.method !== 'turn.completed') return;
     if (this.attempted.has(event.threadId)) return;
     if (!this.deps.enabled()) return;
     const candidate = this.deps.eventStore.conversationTitleGenerationCandidate(
@@ -93,11 +95,16 @@ export class ConversationTitleGeneration {
     const run = this.title(event, firstUserText).catch((error: unknown) =>
       this.deps.logger.warn('Conversation title generation failed', {
         threadId: event.threadId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       }),
     );
     this.inflight.add(run);
     void run.finally(() => this.inflight.delete(run));
+  }
+
+  /** Revokes title publication while allowing an in-flight model call to settle. */
+  stop(): void {
+    this.stopped = true;
   }
 
   /** Resolves when every generation started so far has finished. */
@@ -115,7 +122,7 @@ export class ConversationTitleGeneration {
         assistantText: this.replyText(event),
       })
     )?.trim();
-    if (!title || isLowContentPrompt(title)) return;
+    if (this.stopped || !title || isLowContentPrompt(title)) return;
     this.deps.eventStore.recordGeneratedConversationTitle(
       event.threadId,
       title,

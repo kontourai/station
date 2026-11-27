@@ -1,0 +1,13 @@
+{
+  "revision": "da9467e73458115a9d7ece2fca06673f1ea13569",
+
+  "notes": [
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"index.css change only hides empty chat-input metadata while editing on phones; the child tool-call text these captures show is unaffected.","inputs":["docs/learn/media/child-tool-text-before-390-dark.png","src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"index.css change only hides empty chat-input metadata while editing on phones; the child tool-call text these captures show is unaffected.","inputs":["docs/learn/media/child-tool-text-after-390-dark.png","src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"index.css change only hides empty chat-input metadata while editing on phones; the child tool-call text these captures show is unaffected.","inputs":["docs/learn/media/child-tool-text-before-1440-light.png","src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"index.css change only hides empty chat-input metadata while editing on phones; the child tool-call text these captures show is unaffected.","inputs":["docs/learn/media/child-tool-text-after-1440-light.png","src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx","src-ui/src/index.css"]}
+  ]
+}

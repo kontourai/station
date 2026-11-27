@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { Select } from '@kontourai/ui/react';
+import { type ReactNode, useId } from 'react';
 import { SectionNav, type SectionNavItem } from './SectionNav';
 
 /** One responsive section selector for Settings and diagnostic workspaces. */
@@ -19,14 +20,14 @@ export function SectionNavigation({
   children?: ReactNode;
   showSelection?: boolean;
 }) {
+  const pickerId = useId();
   return (
     <div className="section-navigation section-nav--rail">
-      {children}
-      <label className="section-navigation__picker">
-        {pickerLabel}
-        <select
-          aria-label={pickerLabel}
-          className="editor-select"
+      {children && <div className="section-navigation__tools">{children}</div>}
+      <div className="section-navigation__picker">
+        <label htmlFor={pickerId}>{pickerLabel}</label>
+        <Select
+          id={pickerId}
           value={activeKey}
           onChange={(event) => onNavigate(event.target.value)}
         >
@@ -38,8 +39,8 @@ export function SectionNavigation({
               {item.label}
             </option>
           ))}
-        </select>
-      </label>
+        </Select>
+      </div>
       <SectionNav
         className="section-navigation__links section-nav--rail"
         aria-label={label}

@@ -1,6 +1,6 @@
 # How Starter Work connects first steps to real work
 
-Starter Work is the small set of first-use actions offered by Home and the
+Starter Work is the small set of first-use actions used by Project Tasks and the
 attached-session view. Each action points to an ordinary Task, Session,
 approval, review receipt, or Scheduler run. It does not create another work
 system or treat completing a tutorial as proof that work passed a gate.
@@ -13,12 +13,13 @@ keeps the durable correlation. Runtime composition mounts this personal-home
 feature only where those owners are available. Hosted tenant execution has no
 personal-home Starter route.
 
-New Project's start intent is a separate setup choice. **Documents and
-knowledge** and **Connected tools** create a Project without a folder/starter
-prompt, then open Sources or Tools. **Repository or folder** keeps the existing
-starter recommendation; **Blank Project** may select a layout explicitly. The
-creation recovery pointer retains this intent alongside its selected starter.
-Neither an intent nor an installed layout is a dispatched Task or readiness proof.
+New Project starts with **Blank workspace** or **From a repository**. Both
+can choose an installed layout. Blank workspace puts that choice under **More
+options**. Selecting a Git checkout keeps the Coding
+recommendation when it is available. Add documents and connected tools after
+creation in **Files & connections**. Saved creation requests retain their
+original destination and starter, including earlier requests that open Sources
+or Tools. Creating a Project or choosing a layout does not dispatch a Task.
 All Starter launch routes require the home’s first-run status to be completed.
 
 The technical behavior below accompanies the shorter
@@ -28,13 +29,11 @@ See the [application walkthrough](../learn/walkthroughs.md#projects-and-tasks) f
 
 ## Start Your First Task
 
-When Home offers **Start your first task**, it appears only after the durable
-first-run decision is completed and Station has confirmed a real Project. The
-action opens that Project's guided Starter, retaining its focused title entry
-and saved launch identity. This separate onboarding path does not create a
-second Task type. General **New Task** entry points instead
+Open a Project to create a Task. General **New Task** entry points
 [shape an idea in chat](../reference/station-docs.md#tasks-and-the-task-workspace)
 and wait for proposal acceptance without dispatching implementation work.
+Existing guided Starter links retain their focused title entry and saved launch
+identity; they do not create a second Task type.
 Submitting the guided Starter calls the Starter launch API with a saved operation identity. The server checks readiness,
 creates or retrieves the exact Task idempotently, binds it to the Starter,
 then requests the ordinary Task dispatcher once. If the initial readiness check reports the Agent as deferred or
@@ -61,12 +60,18 @@ never creates another Task.
 4. Keep gate state, evidence, route-backs, and receipts with the work as it
    progresses.
 
-The Project’s **Tasks** list shows each local Task’s title, recorded status,
-and assigned Agent when known. Select its title or **Open Task** to enter its
-Task Room. **Details** opens inspection and dispatch controls; the optional board
-continues to group Tasks by status. The list separates **Now** (ready, active,
-blocked or awaiting review), **Backlog**, and **History**. These views do not
-change status. **Refresh tasks** reads current Task records.
+The Project’s **Tasks** section opens as a board that files each Task by what
+is true of it now (its run and its kept pull requests), not by its recorded
+status; see [Projects, Tasks, and Sessions](../user/concepts.md#projects-tasks-and-sessions).
+Each card has one next action, such as **Start**, **Open run**, **Open PR**,
+**Merge…** or **Mark done**. **List** shows each local Task's title, derived
+status word and assigned Agent when known; select its title or **Open Task**
+to enter its Task Room, and **Details** for inspection and dispatch controls.
+The list separates **Now** (ready, active, blocked or awaiting review),
+**Backlog**, and **History** by recorded status. Neither view changes status. A row or board card can also show its Session's agent-reported
+plan progress, which never changes status either; see
+[Getting started](../user/getting-started.md#start-your-first-task).
+**Refresh Tasks** reads current Task records.
 Status is not a percentage complete or proof that an Agent is running. A
 connected GitHub issue offers **Start Task**, which creates a Task with its
 description and latest comments in the shared document, or opens its existing
@@ -98,7 +103,7 @@ or approval. Those checks remain with the execution owners. A completed chat
 also does not establish a passed gate. Failed catalog reads hide the prior setup
 until a retry succeeds; no tools are installed or configured from this view.
 
-The Inbox presents a Task with its authorized work chats underneath, including
+The Chats list presents a Task with its authorized work chats underneath, including
 independent Agent requests from the Task Room. Selecting the Task reveals
 Overview; selecting a work chat opens that conversation. A conversation linked
 to multiple Tasks stays separate. Running counts reflect actual chats, so an
@@ -118,9 +123,9 @@ visible. Run `station doctor` for a local diagnosis.
 
 ## Continue an Attached Session
 
-Open the terminal Session in **Activity**, where it reads like any chat, then
-type a message and press Send. Chat asks once, **Continue here?**,
-and **Continue and send** continues it there with that message.
+Open the terminal Session from the **inbox**, where it reads like any chat, then
+press **Continue in Station**. No message is needed; a typed draft is sent once
+the continuation opens, and Send continues the same way.
 Claude and Codex create independent children, so the original terminal Session
 can keep running. Codex starts from the latest completed turn Station has
 observed; wait for a completed turn if the message box is unavailable. Station
@@ -133,12 +138,12 @@ confined to its folder once you confirm that choice, and only in a folder
 inside your home folder that Station allows (see
 [Continue an Attached Session](../user/getting-started.md#continue-an-attached-session)).
 
-Quick review hands its reply to the Chat reader on the same verified Station
-and API; the review does not adopt a Session itself. The reader's pending
-delivery is revoked when that Station, API, thread or mounted lifetime changes.
-A completed response is not permission to open or send in a later view. The
-server's durable continuation and retry identity remain separate from whether
-that particular reader is still allowed to present the result.
+Session links open the Chat reader on the verified Station. Attached continuation
+asks first only when the original is still mid-turn in its own app: Station
+refuses a launch for a source that reads as still running
+(`code: "continuation_source_active"`, `retrySafe: true`) until it is
+repeated with `continueWhileSourceActive`, which the reader's **Continue
+anyway** sends with the same operation identity.
 
 An attached terminal Session stays read only. The first eligible continuation
 launches the bounded `continue-session` Starter: Station
@@ -154,49 +159,18 @@ If Station cannot read the one-time correlation state, it starts no
 continuation; retry after that read recovers instead of guessing an owner path.
 
 
-## Inspect Approval And Review Evidence
+## Home and existing starter receipts
 
-After first run, Home shows inspection cards when **Developer tools** is enabled
-on this Device. An inspection action becomes available when Station identifies a
-real approval notification or independent-review receipt. The
-approval action opens that exact Notifications row without approving or
-denying it. The review action opens the exact Project and receipt tuple in
-that Project's Review layout at `/projects/<slug>/layouts/review?receipt=...`.
-Another Project's receipt with the same ID is never substituted. Older
-`/review-queue?receipt=...&project=...` links redirect there; the global
-`/review-queue` page itself was retired in favour of the per-Project layout,
-and a link that names no Project opens Notifications instead.
+Home no longer offers first-task, approval inspection, review inspection, or
+scheduled readiness cards. Create Tasks from a Project, inspect approvals in
+Notifications, inspect review evidence in the Project's Review layout, and
+manage scheduled jobs in Automations. Task creation remains available even if
+its one-time starter correlation is already bound.
 
-These are one-time Starter correlations, not completion checkboxes. Response
-loss reuses a deterministic operation identity, reopening a bound card keeps
-the original target, and every later observation reads Approval Inbox or
-ReviewEvidence again. Owner observations distinguish missing, stale, unavailable
-and `NOT_VERIFIED` states. The current Home card has no distinct label for a
-`stale` observation. A reviewed receipt is evidence input only and does not
-by itself satisfy a gate.
-
-
-## Run A Scheduled Readiness Check
-
-After first run, with **Developer tools** enabled on this Device, Home can create
-the canonical disabled `station-starter-check` job and run it once through the
-Scheduler. The job stays disabled unless you explicitly
-enable its daily schedule. Station binds the exact Scheduler run before the
-Agent can be invoked, so a lost response or retry opens the same receipt and
-never starts another check. If Station restarts after binding but before the
-Agent begins, **Resume exact check** reuses the operation identity stored in
-that binding; it does not create a replacement run. Failed or indeterminate
-checks offer **Inspect receipt**, not automatic retry. A completed check proves
-execution only; read
-its findings and decide what to do rather than treating completion as a passed
-gate.
-
-For example, open a repository as a Project, create a Task named “Update the
-documentation,” and choose a ready External agent. That work's first execution
-is a Session. Reopen the Task later to see its files, evidence, and receipts
-together. For a one-off question that does not need that durable history, use a
-direct chat instead.
-
+The starter catalog offers Task creation and attached-session continuation.
+Existing inspection and scheduled-check bindings and endpoints remain readable
+for compatibility; removing a Home offer does not erase a receipt or disable a
+job someone already created.
 
 ## Follow the implementation
 
@@ -214,3 +188,40 @@ These tests cover local state, caller behavior, and failure handling with test
 dependencies. They do not prove a live engine completed useful work or a
 particular device displayed it. Follow the exact Task, Session, or Scheduler
 receipt for that evidence.
+
+## Inspect Approval And Review Evidence
+
+Open approvals in Notifications and review receipts in the Project's Review
+layout. These replace the retired Home inspection cards. Opening a record does
+not decide an approval or establish that a gate passed. Existing exact-target
+starter bindings remain readable. Exact review links use
+`/projects/<slug>/layouts/review?receipt=...`.
+
+## Run A Scheduled Readiness Check
+
+Create and inspect jobs in Automations. Home no longer creates the disabled
+`station-starter-check` job. Existing jobs and their Scheduler receipts remain
+available; removing the Home card does not enable, disable or restart them.
+
+## Project display identity
+
+Operator Project list and detail reads return detected repository artwork as
+`derivedIcon`, separate from the saved `icon`. Shared display controls use it
+only when there is no saved icon and detection is enabled. Settings labels it
+as detected; choosing **No icon** saves `iconDisabled` and suppresses detection.
+Choosing an icon enables display again. Detection requires a repository root
+(including a worktree with a `.git` file), stops at the first valid image under
+12 KiB, and caches decoded candidates by real path, size and modification time.
+The explicit picker retains the larger stored-icon bound and multiple choices.
+Discovery includes bounded shallow `*/public`, `apps/*/public`, and
+`packages/*/public` paths. SVG remains unsupported.
+
+Workspace labels use `repositoryDisplay`, the portable manifest's primary Git
+resource, including Projects added by path. With no manifest, verified acquisition
+metadata remains a compatibility fallback. GitHub labels omit `github.com/`;
+other hosts remain visible. Tooltips retain the full remote and folder.
+These labels do not match Projects across Stations or change delegation by slug.
+
+An unchosen scope for Chats follows the current Project page and uses its display
+name. Outside Project pages it includes all work. Explicit scope choices,
+including **All work**, remain selected across navigation.

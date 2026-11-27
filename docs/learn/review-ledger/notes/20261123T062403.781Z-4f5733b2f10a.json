@@ -1,0 +1,7 @@
+{
+  "revision": "a05dfd19ed19335bcb9b470af227da6492be0175",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Updated for the Automations list change: the scheduler list read now carries recentOutcomes (last 12 finished runs by occurrence) and pausedItself, withheld with the other run-derived fields; checked the rest of the page against it.","inputs":["docs/reference/shared.md","packages/contracts/src/scheduler.ts"]}
+  ]
+}

@@ -11,6 +11,14 @@ import type {
   ConversationListItem,
   OrchestrationSessionDetail,
   OrchestrationSessionSummary,
+  StagedConversationHandoff,
+} from '@kontourai/station-contracts/orchestration';
+import {
+  CONVERSATION_FORK_REFUSAL_CODES,
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  CONVERSATION_HANDOFF_REFUSAL_CODES,
+  CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE,
+  type ConversationHandoffRefusalCode,
 } from '@kontourai/station-contracts/orchestration';
 import type {
   EngineId,
@@ -20,6 +28,7 @@ import type {
 import {
   NATIVE_RESUME_BINDING_METADATA_KEY,
   NATIVE_RESUME_IDENTITY_METADATA_KEY,
+  providerSessionBindingEnded,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -31,6 +40,10 @@ import {
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { isSessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
+import {
+  redactSecrets,
+  sanitizeFreeText,
+} from '@kontourai/station-shared/redaction';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { conversationContinuationOutcomes } from '../../telemetry/metrics.js';
 import {
@@ -76,7 +89,9 @@ import type { ConversationForkProvenance, EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
 import type { SessionReadScope } from './orchestration-service.js';
+import { digestTurn } from './session-digest.js';
 import { conversationTitle } from './session-query-module.js';
+import type { SessionReadModelReadOptions } from './session-read-model-purpose.js';
 
 const CONVERSATION_HISTORY_MAX_ENTRIES = 100;
 const CONTINUATION_TRANSCRIPT_HEADING =
@@ -169,13 +184,24 @@ function hasTurnFacts(detail: OrchestrationSessionDetail): boolean {
 function reservedTailRefusal(
   store: EventStore,
   tailSessionId: string,
-): string | undefined {
+): Error | undefined {
   if (store.conversationHandoffForSession(tailSessionId))
-    return 'This conversation has an explicit Agent/engine handoff awaiting its target session start.';
+    return handoffRefusal(
+      'This conversation has an explicit Agent/engine handoff awaiting its target session start.',
+      CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget,
+    );
   const boundary = store.conversationContextBoundaryForSuccessor(tailSessionId);
   if (boundary?.status === 'cancelled' || boundary?.status === 'indeterminate')
-    return 'This conversation context boundary is not startable.';
+    return new Error('This conversation context boundary is not startable.');
   return undefined;
+}
+
+/** A handoff refusal carrying its machine code, as the busy refusal does. */
+function handoffRefusal(
+  message: string,
+  code: ConversationHandoffRefusalCode,
+): Error {
+  return Object.assign(new Error(message), { code });
 }
 
 /**
@@ -194,14 +220,39 @@ function reservedTailRefusal(
 function sessionTakesNextTurn(
   session: OrchestrationSessionDetail['session'],
 ): boolean {
-  const bindingEnded =
-    session.status === 'closed' ||
-    session.status === 'dead' ||
-    session.status === 'error';
   return (
     !isSessionLifecycleStateTerminal(
       foldedSessionLifecycleState(session.lifecycleState),
-    ) && !bindingEnded
+    ) && !providerSessionBindingEnded(session.status)
+  );
+}
+
+/**
+ * A Session whose binding ended (`error`, `dead`, `closed`) while its engine
+ * process is still running: a failed stream with the process alive, before
+ * the adapter has stopped it. A successor would resume the same native
+ * conversation in a second engine beside it, so none is started.
+ */
+class ConversationPredecessorEngineLiveError extends Error {
+  readonly code = CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE;
+
+  constructor() {
+    super(
+      "This conversation's previous engine failed but its process has not stopped yet, so Station did not start a new one beside it and nothing was sent. Send again in a moment. If this keeps happening, restart Station, which stops that process.",
+    );
+    this.name = 'ConversationPredecessorEngineLiveError';
+  }
+}
+
+function bindingEndedWithEngineLive(
+  session: OrchestrationSessionDetail['session'],
+  engineStillRunning: ((threadId: string) => boolean) | undefined,
+): boolean {
+  return (
+    (session.status === 'closed' ||
+      session.status === 'dead' ||
+      session.status === 'error') &&
+    engineStillRunning?.(session.threadId) === true
   );
 }
 
@@ -251,6 +302,26 @@ interface ConversationLineageDeps {
     conversationId: string,
     detail: OrchestrationSessionDetail,
   ) => boolean;
+  /**
+   * True only when the adapter the Session is bound to reports its engine
+   * process still running (`engineEnded` false). Absent or unknown: false.
+   */
+  engineStillRunning?: (threadId: string) => boolean;
+  /**
+   * Whether this Session's launch configuration was replaced and its engine
+   * cannot restart in place (no resume cursor). Its engine cannot re-bind,
+   * so the next ordinary turn starts a successor under the current
+   * configuration. A resumable one is restarted in place by the turn's
+   * dispatch instead.
+   */
+  needsPolicySuccessor?: (threadId: string) => Promise<boolean>;
+  /**
+   * Stops the engine of the Session a policy successor replaced, when it is
+   * idle, so it does not stay resident under the configuration it was
+   * launched with. A busy one is left running; it does nothing for a
+   * predecessor whose launch was not replaced.
+   */
+  retireReplacedSession?: (threadId: string) => Promise<void>;
   nativeReturnSupported?: (provider: EngineId) => boolean;
   nativeMemoryOwnsTranscriptFor?: (provider: EngineId) => boolean;
   nativeIdentityRequiredFor?: (provider: EngineId) => boolean;
@@ -272,9 +343,20 @@ interface ConversationLineageDeps {
   ) => ConversationMessage[];
   listSessionReadModel: (
     authority: SessionReadScope,
+    options: SessionReadModelReadOptions,
   ) => Promise<OrchestrationSessionSummary[]>;
   canReadSession: (threadId: string, authority: SessionReadScope) => boolean;
 }
+
+/**
+ * The most history a fork reads in its one synchronous pass, decided from
+ * SQL before any payload loads. Measured on 40 tool-heavy Codex turns (2,563
+ * events, 1.7 MB stored: 58 ms to read, 156 ms for the whole fork) and on ten
+ * times that (25,603 events, 17.2 MB: 446 ms and 723 ms); these allow about
+ * nine times the first and keep the read well under a second.
+ */
+export const FORK_SOURCE_MAX_EVENTS = 32_000;
+export const FORK_SOURCE_MAX_BYTES = 16 * 1024 * 1024;
 
 /** Deliberately shared by absent, unauthorized, and cross-tenant requests. */
 export class ConversationContextBoundaryNotFoundError extends Error {
@@ -389,6 +471,7 @@ export class ConversationLineage {
       provider: EngineId;
       connectionId?: string;
       modelOverride?: string;
+      expectedInboxSessionId?: string;
     },
   ): Promise<{
     sessionId: string;
@@ -404,14 +487,14 @@ export class ConversationLineage {
     coordinatorToolsRestart?: boolean;
   }> {
     const store = this.deps.eventStore;
-    if (!store) {
+    const current = store?.conversationSessions(conversationId).at(-1);
+    const expected = requested.expectedInboxSessionId;
+    if (expected !== undefined && current?.sessionId !== expected)
+      throw new Error(
+        'The conversation changed while this message was waiting.',
+      );
+    if (!store || !current)
       return { sessionId: conversationId, startRequired: false };
-    }
-    const lineage = store.conversationSessions(conversationId);
-    if (lineage.length === 0) {
-      return { sessionId: conversationId, startRequired: false };
-    }
-    const current = lineage[lineage.length - 1]!;
     // #764: decide cursor-vs-seed BEFORE a child start. An observed ACP
     // capability absence (no loadSession) must take the transcriptSeed
     // fresh-child path here; the adapter's fail-closed start refusal stays
@@ -423,7 +506,7 @@ export class ConversationLineage {
       // by an ordinary continuation racing after the reservation. Once that
       // child exists, it is a normal current Session and may continue.
       const refusal = reservedTailRefusal(store, current.sessionId);
-      if (refusal) throw new Error(refusal);
+      if (refusal) throw refusal;
       const contextBoundary = store.conversationContextBoundaryForSuccessor(
         current.sessionId,
       );
@@ -431,6 +514,10 @@ export class ConversationLineage {
         const predecessor = current.predecessorSessionId
           ? await this.deps.readSession(current.predecessorSessionId, authority)
           : null;
+        // A reset (or any reserved successor) of a Session whose launch was
+        // replaced retires that engine too, as an ordinary successor does.
+        if (current.predecessorSessionId)
+          await this.deps.retireReplacedSession?.(current.predecessorSessionId);
         return {
           sessionId: current.sessionId,
           startRequired: true,
@@ -462,6 +549,8 @@ export class ConversationLineage {
       const predecessor = current.predecessorSessionId
         ? await this.deps.readSession(current.predecessorSessionId, authority)
         : null;
+      if (current.predecessorSessionId)
+        await this.deps.retireReplacedSession?.(current.predecessorSessionId);
       return {
         sessionId: current.sessionId,
         startRequired: true,
@@ -488,12 +577,19 @@ export class ConversationLineage {
         'This conversation is not writable under its current control state.',
       );
     }
-    const deliveryRefusal = await this.currentSessionDeliveryRefusal(
+    const delivery = await this.currentSessionDelivery(
       conversationId,
       detail,
       authority,
     );
-    if (deliveryRefusal) throw deliveryRefusal;
+    if (delivery instanceof Error) throw delivery;
+    if (
+      expected !== undefined &&
+      store.conversationSessions(conversationId).at(-1)?.sessionId !== expected
+    )
+      throw new Error(
+        'The conversation changed while this message was waiting.',
+      );
     // A successor is reserved only when the current Session cannot take the
     // turn (`sessionTakesNextTurn`, which the conversation-open read also
     // reports as `nextTurnStartsSession`), or for a model switch the live
@@ -508,14 +604,23 @@ export class ConversationLineage {
     const needsToolsSuccessor =
       this.deps.needsCoordinatorToolsSuccessor?.(conversationId, detail) ===
       true;
+    const needsPolicySuccessor =
+      (await this.deps.needsPolicySuccessor?.(detail.session.threadId)) ===
+      true;
     if (
+      delivery !== 'redeliver' &&
       sessionTakesNextTurn(detail.session) &&
       !needsModelRestart &&
-      !needsToolsSuccessor
+      !needsToolsSuccessor &&
+      !needsPolicySuccessor
     ) {
       observeConversationContinuation('current_open');
       return { sessionId: current.sessionId, startRequired: false };
     }
+    if (
+      bindingEndedWithEngineLive(detail.session, this.deps.engineStillRunning)
+    )
+      throw new ConversationPredecessorEngineLiveError();
     const child = store.reserveNextConversationSession({
       conversationId,
       predecessorSessionId: current.sessionId,
@@ -524,6 +629,13 @@ export class ConversationLineage {
       ...(needsToolsSuccessor ? { coordinatorToolsRestart: true } : {}),
     });
     observeConversationContinuation(child.outcome);
+    // Whatever reserved the child (a replaced launch, or an engine that
+    // ended its turn in error over a replaced policy), a predecessor engine
+    // still bound to a replaced configuration is retired here when it is
+    // idle. One still running work is not stopped (that would kill the
+    // work): it stays resident, its tools refused, until the idle sweep parks
+    // it (never, with idle parking turned off). A predecessor that was not replaced is never stopped here.
+    await this.deps.retireReplacedSession?.(current.sessionId);
     return {
       sessionId: child.lineage.sessionId,
       startRequired: true,
@@ -538,7 +650,15 @@ export class ConversationLineage {
         ? { retirePredecessorSessionId: current.sessionId }
         : {}),
       ...(await this.pinnedContinuationLaunchContext(
-        detail,
+        // A redelivery must not resume the native thread that never
+        // acknowledged the context: drop its cursor so the successor carries
+        // the pinned transcript seed instead.
+        delivery === 'redeliver'
+          ? {
+              ...detail,
+              session: { ...detail.session, resumeCursor: undefined },
+            }
+          : detail,
         requested,
         this.readConversationTranscriptMessages(conversationId, authority),
         resumeSupported,
@@ -596,35 +716,57 @@ export class ConversationLineage {
       return reservedTailRefusal(store, tail.sessionId) ? undefined : true;
     if (!isConversationContinuationControlEligible(described)) return undefined;
     // A delivery read that fails refuses the send too (it throws there).
-    const refused = await this.currentSessionDeliveryRefusal(
+    const delivery = await this.currentSessionDelivery(
       conversationId,
       described,
       authority,
-    ).then(
-      (refusal) => refusal !== undefined,
-      () => true,
+    ).catch((error: unknown) =>
+      error instanceof Error ? error : new Error(String(error)),
     );
-    if (refused) return undefined;
+    if (delivery instanceof Error) return undefined;
+    // That turn would be refused (no successor beside a live engine).
+    if (
+      bindingEndedWithEngineLive(
+        described.session,
+        this.deps.engineStillRunning,
+      )
+    )
+      return undefined;
     return (
+      delivery === 'redeliver' ||
       !sessionTakesNextTurn(described.session) ||
       this.deps.needsCoordinatorToolsSuccessor?.(conversationId, described) ===
+        true ||
+      (await this.deps.needsPolicySuccessor?.(described.session.threadId)) ===
         true
     );
   }
 
   /**
-   * Why an ordinary turn may not run in the current started Session, or
-   * succeed it, until a pinned context delivery is reconciled; undefined when
-   * it may. The delivery is a continuation seed, a fork seed, or a handoff
-   * seed that has not completed. `resolveConversationContinuation` throws
-   * this refusal; the open read's `nextTurnStartsSession` claims nothing
-   * while it stands.
+   * Whether an ordinary turn may run in the current started Session given its
+   * pinned context delivery (a continuation seed, a fork seed, or a handoff
+   * seed). Undefined when it may; an Error while it must be refused until the
+   * delivery is reconciled. `resolveConversationContinuation` throws that
+   * refusal; the open read's `nextTurnStartsSession` claims nothing while it
+   * stands.
+   *
+   * `'redeliver'` when a handoff's (not a native return's) or a plain
+   * continuation's (no context boundary) seed-bearing turn reached a
+   * definitive failure: `turn.aborted` or `runtime.error` for that exact
+   * turn, e.g. the user stopped the first turn after an engine switch, or
+   * stopped the redelivery's own first turn too.
+   * The context was provably not acknowledged, and refusing every later send
+   * would leave the conversation with no way forward, so the next ordinary
+   * turn reconciles it as a fresh handoff to the same target would: it starts
+   * a successor Session whose own pinned transcript seed carries the whole
+   * conversation, never the failed Session's native cursor. An open or
+   * uncertain seed turn is still refused: resending could duplicate it.
    */
-  private async currentSessionDeliveryRefusal(
+  private async currentSessionDelivery(
     conversationId: string,
     detail: OrchestrationSessionDetail,
     authority: SessionReadScope,
-  ): Promise<Error | undefined> {
+  ): Promise<Error | 'redeliver' | undefined> {
     const store = this.deps.eventStore!;
     const sessionId = detail.session.threadId;
     const startSeed = store.conversationStartContext(sessionId);
@@ -639,26 +781,43 @@ export class ConversationLineage {
         started?.method === 'session.started' ? started.metadata : undefined,
         startSeed,
       );
-      const delivered = carrier
-        ? hasCompletedConversationSeedTurn({
-            store,
-            threadId: sessionId,
-            clientTurnId: carrier.clientTurnId,
-            expected: {
-              kind: 'boundary',
-              contextId: sessionId,
-              contextDigest: startSeed.pinDigest,
-              seedDigest: startSeed.seedDigest,
-            },
-            requiresNativeIdentity:
-              this.deps.nativeIdentityRequiredFor?.(detail.session.provider) ===
-              true,
-          })
-        : undefined;
-      if (!delivered)
+      const seedTurn = carrier && {
+        store,
+        threadId: sessionId,
+        clientTurnId: carrier.clientTurnId,
+        expected: {
+          kind: 'boundary' as const,
+          contextId: sessionId,
+          contextDigest: startSeed.pinDigest,
+          seedDigest: startSeed.seedDigest,
+        },
+        requiresNativeIdentity:
+          this.deps.nativeIdentityRequiredFor?.(detail.session.provider) ===
+          true,
+      };
+      if (!seedTurn || !hasCompletedConversationSeedTurn(seedTurn)) {
+        // A plain continuation seed (no deliberate context boundary, which
+        // includes the seed a redelivery pins) whose turn definitively failed
+        // is redelivered by a fresh successor exactly as it was pinned. A
+        // boundary's policy is the user's choice a plain successor would
+        // not reproduce, so a failed boundary seed stays refused.
+        if (
+          seedTurn &&
+          !store.conversationContextBoundaryForSuccessor(sessionId) &&
+          (
+            await observeConversationSeedTurn({
+              ...seedTurn,
+              ...(this.deps.turnDeduplicator
+                ? { deduplicator: this.deps.turnDeduplicator }
+                : {}),
+            })
+          ).contextStatus === 'failed'
+        )
+          return 'redeliver';
         return new ConversationStartContextError(
           'Continuation context delivery has not completed. Reconcile the context before continuing.',
         );
+      }
     }
     const handoff = store.conversationHandoffForSession(sessionId);
     const forkDelivery = await this.deps.readForkContextDelivery?.(
@@ -690,7 +849,15 @@ export class ConversationLineage {
             delivery.nativeResumeIdentity === 'matched')
         : delivery?.status === 'completed';
       if (!completed) {
-        return new Error(
+        // A native return never resends its catch-up automatically (module
+        // map, ConversationSessionLineage); it stays refused.
+        if (
+          handoff.contextSeed &&
+          !handoff.nativeReturnSourceSessionId &&
+          delivery?.contextDelivery?.status === 'failed'
+        )
+          return 'redeliver';
+        return new ConversationStartContextError(
           `${handoff.nativeReturnSourceSessionId ? 'Native-return' : 'Handoff'} context delivery has not completed. Reconcile the handoff before continuing.`,
         );
       }
@@ -783,6 +950,34 @@ export class ConversationLineage {
     if (
       store.conversationHandoffForSession(tail.sessionId) ||
       store.conversationContextBoundaryForSuccessor(tail.sessionId)
+    )
+      return undefined;
+    return tail.predecessorSessionId;
+  }
+
+  /** The exact predecessor of a still-startable, unstarted empty reset. */
+  freshContextReservationPredecessor(
+    conversationId: string,
+    reservedSessionId: string,
+  ): string | undefined {
+    const store = this.deps.eventStore;
+    const tail = store?.conversationSessions(conversationId).at(-1);
+    if (
+      !store ||
+      tail?.sessionId !== reservedSessionId ||
+      !tail.predecessorSessionId ||
+      store.readSessionByThread(reservedSessionId) ||
+      store.conversationHandoffForSession(reservedSessionId)
+    )
+      return undefined;
+    const boundary =
+      store.conversationContextBoundaryForSuccessor(reservedSessionId);
+    if (
+      boundary?.status !== 'reserved' ||
+      boundary.policy !== 'empty-next-cold-start' ||
+      boundary.conversationId !== conversationId ||
+      boundary.successorSessionId !== reservedSessionId ||
+      boundary.predecessorSessionId !== tail.predecessorSessionId
     )
       return undefined;
     return tail.predecessorSessionId;
@@ -961,6 +1156,7 @@ export class ConversationLineage {
       idempotencyKey: string;
       messageDigest: string;
       provider?: EngineId;
+      stagedHandoff?: StagedConversationHandoff;
     },
   ): Promise<
     ReturnType<EventStore['reserveConversationHandoff']> & {
@@ -974,6 +1170,7 @@ export class ConversationLineage {
     if (!store)
       throw new Error('Conversation handoff requires durable storage');
     const hasTarget = (marker: {
+      predecessorSessionId: string;
       targetAgentId: string;
       targetExecutionAgentId?: string;
       targetEnvironmentId: string;
@@ -981,6 +1178,9 @@ export class ConversationLineage {
       targetModelId?: string;
       messageDigest: string;
     }) =>
+      (!target.stagedHandoff ||
+        marker.predecessorSessionId ===
+          target.stagedHandoff.expectedCurrentSessionId) &&
       marker.targetAgentId === target.agentId &&
       marker.targetExecutionAgentId === target.executionAgentId &&
       marker.targetEnvironmentId === target.environmentId &&
@@ -993,8 +1193,9 @@ export class ConversationLineage {
     );
     if (existing) {
       if (!hasTarget(existing)) {
-        throw new Error(
+        throw handoffRefusal(
           'The handoff idempotency key already names a different target or message.',
+          CONVERSATION_HANDOFF_REFUSAL_CODES.idempotencyConflict,
         );
       }
       const boundary = store.conversationContextBoundaryForSuccessor(
@@ -1058,12 +1259,32 @@ export class ConversationLineage {
     const current = lineage.at(-1);
     if (!current)
       throw new Error('Conversation handoff predecessor was not found');
+    if (
+      target.stagedHandoff &&
+      current.sessionId !== target.stagedHandoff.expectedCurrentSessionId
+    ) {
+      throw handoffRefusal(
+        'The current Session changed. Review the Agent change before sending again.',
+        CONVERSATION_HANDOFF_REFUSAL_CODES.sessionChanged,
+      );
+    }
     // A deliberate context replacement reserves the same successor the
     // handoff will start.  The policies compose at that shared child; neither
     // operation may allocate a competing lineage edge.
-    const boundary = store.conversationContextBoundaryForSuccessor(
+    const currentBoundary = store.conversationContextBoundaryForSuccessor(
       current.sessionId,
     );
+    if (
+      target.stagedHandoff &&
+      currentBoundary &&
+      currentBoundary.status !== 'consumed'
+    ) {
+      throw handoffRefusal(
+        'Finish the pending context change before switching Agents.',
+        CONVERSATION_HANDOFF_REFUSAL_CODES.contextChangePending,
+      );
+    }
+    const boundary = target.stagedHandoff ? undefined : currentBoundary;
     const predecessor = boundary
       ? lineage.find(
           (entry) => entry.sessionId === boundary.predecessorSessionId,
@@ -1072,10 +1293,14 @@ export class ConversationLineage {
     if (!predecessor)
       throw new Error('Conversation handoff predecessor was not found');
     if (store.conversationHandoffForPredecessor(predecessor.sessionId)) {
-      throw new Error(
+      throw handoffRefusal(
         'This conversation already has an explicit Agent/engine handoff awaiting its target session start.',
+        CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget,
       );
     }
+    const predecessorSequence = target.stagedHandoff
+      ? store.readSessionInventoryHighWater(predecessor.sessionId)
+      : undefined;
     const detail = await this.deps.readSession(
       predecessor.sessionId,
       authority,
@@ -1087,20 +1312,31 @@ export class ConversationLineage {
     );
     if (
       !isSessionLifecycleStateAtRest(lifecycle) ||
-      detail.session.hasActiveTurn
+      detail.session.hasActiveTurn ||
+      (target.stagedHandoff && detail.session.pendingReview === true)
     ) {
-      throw new Error(
-        'An Agent/engine handoff requires the predecessor Session to be terminal with no active turn.',
+      throw Object.assign(
+        new Error(
+          'An Agent/engine handoff requires the predecessor Session to be terminal with no active turn.',
+        ),
+        { code: CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE },
       );
     }
-    const nativeReturn = !boundary
-      ? await this.findNativeReturnContext(
-          conversationId,
-          authority,
-          target,
-          detail.session.cwd,
-        )
-      : undefined;
+    // A failed Session reads as at rest, but its engine may still run: the
+    // target would start beside it, as an ordinary successor would.
+    if (
+      bindingEndedWithEngineLive(detail.session, this.deps.engineStillRunning)
+    )
+      throw new ConversationPredecessorEngineLiveError();
+    const nativeReturn =
+      !boundary && !target.stagedHandoff
+        ? await this.findNativeReturnContext(
+            conversationId,
+            authority,
+            target,
+            detail.session.cwd,
+          )
+        : undefined;
     const transcriptContext =
       nativeReturn ??
       (await this.handoffTranscriptContext(
@@ -1109,34 +1345,56 @@ export class ConversationLineage {
         predecessor.sessionId,
         boundary ? projectConversationContextBoundary(boundary) : undefined,
       ));
-    const reservation = store.reserveConversationHandoff({
-      conversationId,
-      predecessorSessionId: predecessor.sessionId,
-      sessionId:
-        boundary?.successorSessionId ??
-        `${conversationId}:session:${crypto.randomUUID()}`,
-      idempotencyKey: target.idempotencyKey,
-      messageDigest: target.messageDigest,
-      ...(nativeReturn
-        ? {
-            nativeReturnSourceSessionId: nativeReturn.sourceSessionId,
-            nativeReturnSourceEventId: nativeReturn.sourceEventId,
-          }
-        : {}),
-      ...(transcriptContext.contextSeed
-        ? { contextSeed: transcriptContext.contextSeed }
-        : {}),
-      targetAgentId: target.agentId,
-      ...(target.executionAgentId
-        ? { targetExecutionAgentId: target.executionAgentId }
-        : {}),
-      targetEnvironmentId: target.environmentId,
-      ...(target.connectionId
-        ? { targetConnectionId: target.connectionId }
-        : {}),
-      ...(target.modelId ? { targetModelId: target.modelId } : {}),
-      createdAt: new Date().toISOString(),
-    });
+    const sourceEffect = target.stagedHandoff
+      ? store
+          .sessionTurnBoundaryAuthority()
+          .hasPossibleEffect(predecessor.sessionId)
+      : undefined;
+    if (
+      sourceEffect &&
+      (sourceEffect.kind !== 'available' ||
+        sourceEffect.active ||
+        predecessorSequence !==
+          store.readSessionInventoryHighWater(predecessor.sessionId))
+    ) {
+      throw Object.assign(
+        new Error(
+          'The current Session is busy or changed while preparing the Agent change. Try again when it is idle.',
+        ),
+        { code: CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE },
+      );
+    }
+    const reservation = store.reserveConversationHandoff(
+      {
+        conversationId,
+        predecessorSessionId: predecessor.sessionId,
+        sessionId:
+          boundary?.successorSessionId ??
+          `${conversationId}:session:${crypto.randomUUID()}`,
+        idempotencyKey: target.idempotencyKey,
+        messageDigest: target.messageDigest,
+        ...(nativeReturn
+          ? {
+              nativeReturnSourceSessionId: nativeReturn.sourceSessionId,
+              nativeReturnSourceEventId: nativeReturn.sourceEventId,
+            }
+          : {}),
+        ...(transcriptContext.contextSeed
+          ? { contextSeed: transcriptContext.contextSeed }
+          : {}),
+        targetAgentId: target.agentId,
+        ...(target.executionAgentId
+          ? { targetExecutionAgentId: target.executionAgentId }
+          : {}),
+        targetEnvironmentId: target.environmentId,
+        ...(target.connectionId
+          ? { targetConnectionId: target.connectionId }
+          : {}),
+        ...(target.modelId ? { targetModelId: target.modelId } : {}),
+        createdAt: new Date().toISOString(),
+      },
+      Boolean(target.stagedHandoff),
+    );
     return {
       ...reservation,
       // Never pass a provider cursor across an Agent boundary, even when two
@@ -1268,6 +1526,7 @@ export class ConversationLineage {
       sources,
       authority,
       'Conversation while this engine was away (context only, not a new request; the earlier native conversation is being resumed).',
+      { sessionId: throughSessionId, includeError: true },
     );
     return {
       sourceSessionId,
@@ -1315,6 +1574,7 @@ export class ConversationLineage {
       lineage.slice(0, throughIndex + 1),
       authority,
       CONTINUATION_TRANSCRIPT_HEADING,
+      { sessionId: throughSessionId, includeError: true },
     );
     return { transcriptSeed: contextSeed.text, contextSeed };
   }
@@ -1344,7 +1604,7 @@ export class ConversationLineage {
       detail,
       requested,
       messages,
-      resumeSupported,
+      boundary?.policy === 'continue-from-history' ? false : resumeSupported,
     );
     if (this.deps.nativeMemoryOwnsTranscriptFor?.(requested.provider))
       return launch;
@@ -1372,6 +1632,7 @@ export class ConversationLineage {
           sources,
           authority,
           CONTINUATION_TRANSCRIPT_HEADING,
+          { sessionId: sources.at(-1)?.sessionId },
         ),
       );
     }
@@ -1386,6 +1647,7 @@ export class ConversationLineage {
     sources: readonly { readonly sessionId: string }[],
     authority: SessionReadScope,
     heading: string,
+    recordedWorkSource?: { sessionId?: string; includeError?: boolean },
   ): Promise<ConversationContextSeedPin> {
     const filtered = this.contextSources(sources);
     sources = filtered.sources;
@@ -1394,9 +1656,12 @@ export class ConversationLineage {
         throw new ConversationStartContextError(
           'Retained summary source is no longer authorized.',
         );
+    let handoffSource: OrchestrationSessionDetail | undefined;
     for (const entry of sources) {
-      if (!(await this.deps.readSession(entry.sessionId, authority)))
-        throw new Error('Conversation context is not authorized.');
+      const detail = await this.deps.readSession(entry.sessionId, authority);
+      if (!detail) throw new Error('Conversation context is not authorized.');
+      if (entry.sessionId === recordedWorkSource?.sessionId)
+        handoffSource = detail;
     }
     const sourceCutoffs = sources.map((entry) => ({
       sessionId: entry.sessionId,
@@ -1422,6 +1687,13 @@ export class ConversationLineage {
     const seed = buildTranscriptSeed({
       heading,
       ...seedSource,
+      recordedWork: handoffSource
+        ? this.handoffRecordedWork(
+            sources.map((entry) => entry.sessionId),
+            handoffSource,
+            recordedWorkSource?.includeError === true,
+          )
+        : undefined,
     });
     return createConversationContextSeedPin({
       text: seed.text,
@@ -1434,6 +1706,53 @@ export class ConversationLineage {
         nonTextMessages: seedSource.nonTextMessages,
       },
     });
+  }
+
+  private handoffRecordedWork(
+    sessionIds: readonly string[],
+    source: OrchestrationSessionDetail,
+    includeError: boolean,
+  ): string | undefined {
+    const recent = this.deps.eventStore!.readTurnDigestFacts(
+      sessionIds.slice(-8),
+      { turnLimit: 4 },
+    );
+    const lines: string[] = [];
+    for (const facts of recent.turns) {
+      const turn = digestTurn(facts, []);
+      if (turn.outcome === 'open') continue;
+      const tools = turn.toolCalls.map(
+        ({ tool, calls }) => `${tool} (${calls})`,
+      );
+      const pullRequests = turn.pullRequests?.map(
+        ({ host, repository, ref }) => `${host}/${repository}#${ref}`,
+      );
+      const factsForTurn = [
+        `${facts.threadId} / ${turn.turnId}: ${turn.outcome}.`,
+      ];
+      if (tools.length)
+        factsForTurn.push(`Tool calls recorded: ${tools.join(', ')}.`);
+      if (turn.files?.length)
+        factsForTurn.push(
+          `Files reported edited, deleted or moved: ${turn.files.join(', ')}.`,
+        );
+      if (pullRequests?.length)
+        factsForTurn.push(
+          `Pull requests recorded: ${pullRequests.join(', ')}.`,
+        );
+      lines.push(factsForTurn.join(' '));
+    }
+    const error = includeError
+      ? source.events.filter((event) => event.method === 'runtime.error').at(-1)
+      : undefined;
+    if (error)
+      lines.unshift(
+        `Last source session error: ${sanitizeFreeText(error.message, 400)}`,
+      );
+    if (lines.length === 0) return undefined;
+    if (source.session.cwd)
+      lines.unshift(`Source working directory: ${source.session.cwd}`);
+    return quotedLines(redactSecrets(lines.join('\n')), 2_600).join('\n');
   }
 
   /**
@@ -1736,6 +2055,111 @@ export class ConversationLineage {
     ];
   }
 
+  /**
+   * The messages a handoff to another Station carries: the same lineage,
+   * context-boundary filtering, authorization and seed-message reads an
+   * Agent/engine handoff builds its transcript seed from. Only text survives
+   * the receiver's projection; the caller bounds what it sends.
+   */
+  async readConversationCarriedMessages(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): Promise<ConversationMessage[]> {
+    const lineage =
+      this.deps.eventStore?.conversationSessions(conversationId) ?? [];
+    if (lineage.length === 0)
+      throw new Error('The requested conversation was not found');
+    const filtered = this.contextSources(lineage);
+    for (const source of filtered.seed?.sourceCutoffs ?? [])
+      if (!(await this.deps.readSession(source.sessionId, authority)))
+        throw new ConversationStartContextError(
+          'Retained summary source is no longer authorized.',
+        );
+    if (!(await this.lineageReadable(filtered.sources, authority)))
+      throw new Error('Conversation context is not authorized.');
+    return [
+      ...this.summaryMessages(filtered.seed),
+      ...filtered.sources.flatMap((entry) =>
+        this.deps.readSessionSeedMessages(entry.sessionId, authority),
+      ),
+    ];
+  }
+
+  /**
+   * The source transcript a fork cuts at its branch point. It is read the way
+   * a handoff reads the history it carries (every lineage Session authorized,
+   * then `readSessionSeedMessages`: out-of-line content resolved, rows an
+   * earlier fork copied in included), so a fork costs the same as a handoff
+   * whatever the conversation's length; the seed it builds is budgeted later.
+   *
+   * Unlike a handoff it does not start at the latest context boundary: a fork
+   * may branch from any completed turn the conversation shows. A reserved
+   * successor that has not started holds no history and is passed over.
+   * Null when the conversation is absent here or the caller cannot read every
+   * Session of it, so neither discloses anything.
+   */
+  async readConversationForkSource(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): Promise<{
+    messages: ConversationMessage[];
+    title?: string;
+    projectSlug?: string;
+  } | null> {
+    const store = this.deps.eventStore;
+    if (!store) return null;
+    let lineage: readonly { sessionId: string }[] =
+      store.conversationSessions(conversationId);
+    if (lineage.length === 0) {
+      // A child Session is part of another conversation, never one itself.
+      if (store.conversationForSession(conversationId)) return null;
+      lineage = [{ sessionId: conversationId }];
+    } else if (
+      lineage.length > 1 &&
+      !store.readSessionByThread(lineage.at(-1)!.sessionId)
+    ) {
+      lineage = lineage.slice(0, -1);
+    }
+    if (!(await this.lineageReadable(lineage, authority))) return null;
+    // A fork reads from the first turn, so the whole history is loaded,
+    // resolved and projected in one synchronous pass. Its size is decided
+    // from SQL first, after authorization so it discloses nothing.
+    const footprint = store.readSessionsHistoryFootprint(
+      lineage.map((entry) => entry.sessionId),
+    );
+    if (
+      footprint.events > FORK_SOURCE_MAX_EVENTS ||
+      footprint.bytes > FORK_SOURCE_MAX_BYTES
+    )
+      throw new ConversationForkContextError(
+        'This conversation is too long to fork in one piece.',
+        CONVERSATION_FORK_REFUSAL_CODES.historyTooLarge,
+      );
+    const messages = lineage.flatMap((entry) =>
+      this.deps.readSessionSeedMessages(entry.sessionId, authority),
+    );
+    const current = await this.readSessionConversation(
+      lineage.at(-1)!.sessionId,
+      authority,
+    );
+    return {
+      messages,
+      ...(current?.title ? { title: current.title } : {}),
+      ...(current?.projectSlug ? { projectSlug: current.projectSlug } : {}),
+    };
+  }
+
+  /** Whether the caller may read every Session; a read is never partial. */
+  private async lineageReadable(
+    sources: readonly { sessionId: string }[],
+    authority: SessionReadScope,
+  ): Promise<boolean> {
+    for (const entry of sources)
+      if (!(await this.deps.readSession(entry.sessionId, authority)))
+        return false;
+    return true;
+  }
+
   private contextSources(sources: readonly { sessionId: string }[]) {
     let start = 0;
     let seed:
@@ -1931,7 +2355,9 @@ export class ConversationLineage {
     agentSlug: string,
     authority: SessionReadScope,
   ) {
-    const sessions = await this.deps.listSessionReadModel(authority);
+    const sessions = await this.deps.listSessionReadModel(authority, {
+      purpose: 'agent-conversations',
+    });
     const conversations = await Promise.all(
       sessions
         .filter(
@@ -1976,12 +2402,15 @@ export class ConversationLineage {
       this.deps.conversationHistoryReader &&
       isSessionReadAuthority(authority)
     ) {
-      return this.deps.conversationHistoryReader.list({
+      const page = await this.deps.conversationHistoryReader.list({
         authority,
         limit: CONVERSATION_HISTORY_MAX_ENTRIES,
-      }).items;
+      });
+      return page.items;
     }
-    const sessions = await this.deps.listSessionReadModel(authority);
+    const sessions = await this.deps.listSessionReadModel(authority, {
+      purpose: 'conversation-inventory',
+    });
     const capped = sessions
       .filter((session) => session.assignedAgentSlug !== undefined)
       .slice(-CONVERSATION_HISTORY_MAX_ENTRIES);

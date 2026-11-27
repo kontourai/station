@@ -1,0 +1,7 @@
+{
+  "revision": "3a418af60b22cec3aeabf950416fd18c0443d29f",
+
+  "notes": [
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Reviewed the serial fixture scheduler, shared evaluator, Playwright prerequisite failure and hosted receipt consumer. Early failures leave later eligible fixtures measuring. Pending, unavailable, or mismatched evidence stays distinguishable from measured budget failures. Unscaled reconnect and existing host, build, sampling, and thresholds retain their requirements.","inputs":["docs/reference/interactive-workspace-performance.md","scripts/__tests__/interactive-workspace-performance-host-gate.test.ts","scripts/interactive-workspace-performance.mjs","tests/interactive-workspace-performance-bridge.spec.ts"]}
+  ]
+}

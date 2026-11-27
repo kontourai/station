@@ -1,0 +1,27 @@
+{
+  "revision": "68ebc97ebfbc2c50779bd8bd6f364a0abdd6d187",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Traced projection and count outcome metrics through the existing read-model caller and EventStore. A scan above the cache capacity preserves reusable entries and returns the entire requested result. The 2,050-thread regression exercised the forced eviction and repeated-read outcomes. No installed latency claim.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the projection and event-count cache for wide reads, high-water invalidation, active transaction bypass, and attachment hydration. Holding already-read hits through result assembly preserves completeness. Oversized scans retain the existing cache budget; authorization, ledger ownership, paging and stored formats are unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed the projection and event-count cache for wide reads, high-water invalidation, active transaction bypass, and attachment hydration. Holding already-read hits through result assembly preserves completeness. Oversized scans retain the existing cache budget; authorization, ledger ownership, paging and stored formats are unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the projection and event-count cache for wide reads, high-water invalidation, active transaction bypass, and attachment hydration. Holding already-read hits through result assembly preserves completeness. Oversized scans retain the existing cache budget; authorization, ledger ownership, paging and stored formats are unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the projection and event-count cache for wide reads, high-water invalidation, active transaction bypass, and attachment hydration. Holding already-read hits through result assembly preserves completeness. Oversized scans retain the existing cache budget; authorization, ledger ownership, paging and stored formats are unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed the projection and event-count cache for wide reads, high-water invalidation, active transaction bypass, and attachment hydration. Holding already-read hits through result assembly preserves completeness. Oversized scans retain the existing cache budget; authorization, ledger ownership, paging and stored formats are unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed the projection and event-count cache for wide reads, high-water invalidation, active transaction bypass, and attachment hydration. Holding already-read hits through result assembly preserves completeness. Oversized scans retain the existing cache budget; authorization, ledger ownership, paging and stored formats are unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the projection and event-count cache for wide reads, high-water invalidation, active transaction bypass, and attachment hydration. Holding already-read hits through result assembly preserves completeness. Oversized scans retain the existing cache budget; authorization, ledger ownership, paging and stored formats are unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the projection and event-count cache for wide reads, high-water invalidation, active transaction bypass, and attachment hydration. Holding already-read hits through result assembly preserves completeness. Oversized scans retain the existing cache budget; authorization, ledger ownership, paging and stored formats are unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed the projection and event-count cache for wide reads, high-water invalidation, active transaction bypass, and attachment hydration. Holding already-read hits through result assembly preserves completeness. Oversized scans retain the existing cache budget; authorization, ledger ownership, paging and stored formats are unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed the projection and event-count cache for wide reads, high-water invalidation, active transaction bypass, and attachment hydration. Holding already-read hits through result assembly preserves completeness. Oversized scans retain the existing cache budget; authorization, ledger ownership, paging and stored formats are unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]}
+  ]
+}

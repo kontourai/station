@@ -1,9 +1,31 @@
 import * as fs from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
 const makeTempDir = trackTempDirs();
+
+const identityProbes = vi.hoisted(() => ({
+  own: vi.fn(),
+  sync: vi.fn(),
+  async: vi.fn(),
+}));
+
+vi.mock('../../packages/shared/src/process-identity.mjs', () => ({
+  resolveOwnProcessIdentity: identityProbes.own,
+  probeExactProcessIdentity: identityProbes.sync,
+  probeExactProcessIdentityAsync: identityProbes.async,
+}));
+
+beforeEach(() => {
+  vi.resetModules();
+  identityProbes.own.mockReset().mockReturnValue({
+    state: 'exact',
+    identity: { pid: process.pid, start: 'current-birth' },
+  });
+  identityProbes.sync.mockReset().mockReturnValue({ state: 'unavailable' });
+  identityProbes.async.mockReset().mockResolvedValue({ state: 'unavailable' });
+});
 
 /**
  * A waiter's claim attempt, run at a chosen instant inside the owner's
@@ -58,6 +80,147 @@ afterEach(() => {
 });
 
 describe('desktop runtime listener lease', () => {
+  it('lets a same-process owner finish while a waiter reuses its verified identity', async () => {
+    const { withDesktopRuntimeListenerLease } = await import(
+      '../lib/desktop-runtime-port-lease.mjs'
+    );
+    const path = join(makeTempDir('station-lease-progress-'), 'listeners.lock');
+    const order: string[] = [];
+    let releaseOwner!: () => void;
+    const held = new Promise<void>((resolve) => {
+      releaseOwner = resolve;
+    });
+    const owner = withDesktopRuntimeListenerLease(
+      async () => {
+        order.push('owner');
+        await held;
+        order.push('released');
+      },
+      { path },
+    );
+    const waiter = withDesktopRuntimeListenerLease(
+      async () => {
+        order.push('waiter');
+      },
+      { path },
+    );
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(order).toEqual(['owner']);
+      expect(identityProbes.own).toHaveBeenCalledTimes(1);
+      expect(identityProbes.sync).not.toHaveBeenCalled();
+      expect(identityProbes.async).not.toHaveBeenCalled();
+    } finally {
+      releaseOwner();
+      await Promise.all([owner, waiter]);
+    }
+    expect(order).toEqual(['owner', 'released', 'waiter']);
+    expect(fs.existsSync(path)).toBe(false);
+  });
+
+  it.each([
+    { state: 'unavailable', start: undefined, reclaimed: false },
+    { state: 'exact', start: 'foreign-birth', reclaimed: false },
+    { state: 'exact', start: 'replacement-birth', reclaimed: true },
+    { state: 'dead', start: undefined, reclaimed: true },
+  ])(
+    'awaits a foreign $state/$start probe before reclaim=$reclaimed',
+    async ({ state, start, reclaimed }) => {
+      const { withDesktopRuntimeListenerLease } = await import(
+        '../lib/desktop-runtime-port-lease.mjs'
+      );
+      const path = join(
+        makeTempDir('station-lease-foreign-'),
+        'listeners.lock',
+      );
+      const foreignPid = process.pid + 100_000;
+      const record = JSON.stringify({
+        owner: { pid: foreignPid, start: 'foreign-birth', nonce: 'foreign' },
+      });
+      fs.mkdirSync(path);
+      fs.writeFileSync(join(path, 'lease.json'), record);
+      let finishProbe!: (result: unknown) => void;
+      identityProbes.async.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishProbe = resolve;
+        }),
+      );
+      const work = vi.fn().mockResolvedValue('acquired');
+      const acquisition = withDesktopRuntimeListenerLease(work, {
+        path,
+        waitMs: 0,
+      });
+      const outcome = acquisition.then(
+        (value) => value,
+        (error) => error,
+      );
+      try {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(work).not.toHaveBeenCalled();
+        expect(fs.readFileSync(join(path, 'lease.json'), 'utf8')).toBe(record);
+        expect(identityProbes.async).toHaveBeenCalledWith(foreignPid);
+        expect(identityProbes.sync).not.toHaveBeenCalled();
+      } finally {
+        finishProbe({
+          state,
+          identity: start ? { pid: foreignPid, start } : undefined,
+        });
+        await outcome;
+      }
+      expect(work).toHaveBeenCalledTimes(reclaimed ? 1 : 0);
+      if (reclaimed) {
+        expect(await outcome).toBe('acquired');
+        expect(fs.existsSync(path)).toBe(false);
+      } else {
+        expect(await outcome).toBeInstanceOf(Error);
+        expect(await outcome).toMatchObject({
+          message: expect.stringContaining('Timed out waiting'),
+        });
+        expect(fs.readFileSync(join(path, 'lease.json'), 'utf8')).toBe(record);
+      }
+    },
+  );
+
+  it('reports the wait budget and an observed live holder without running the waiter', async () => {
+    const { withDesktopRuntimeListenerLease } = await import(
+      '../lib/desktop-runtime-port-lease.mjs'
+    );
+    const path = join(makeTempDir('station-lease-holder-'), 'listeners.lock');
+    const waiter = vi.fn();
+    await withDesktopRuntimeListenerLease(
+      async () => {
+        await expect(
+          withDesktopRuntimeListenerLease(waiter, { path, waitMs: 0 }),
+        ).rejects.toThrow(
+          `Timed out waiting for the packaged-runtime listener lease (wait budget: 0ms, holder: PID ${process.pid})`,
+        );
+        expect(waiter).not.toHaveBeenCalled();
+        expect(fs.existsSync(path)).toBe(true);
+      },
+      { path },
+    );
+    expect(fs.existsSync(path)).toBe(false);
+  });
+
+  it('reports an unknown holder without reclaiming a lease that has no proof', async () => {
+    const { withDesktopRuntimeListenerLease } = await import(
+      '../lib/desktop-runtime-port-lease.mjs'
+    );
+    const path = join(makeTempDir('station-lease-unknown-'), 'listeners.lock');
+    const waiter = vi.fn();
+    fs.mkdirSync(path);
+    fs.writeFileSync(join(path, 'lease.json'), 'unreadable lease');
+    await expect(
+      withDesktopRuntimeListenerLease(waiter, { path, waitMs: 0 }),
+    ).rejects.toThrow(
+      'Timed out waiting for the packaged-runtime listener lease (wait budget: 0ms, holder: unknown)',
+    );
+    expect(waiter).not.toHaveBeenCalled();
+    expect(fs.readFileSync(join(path, 'lease.json'), 'utf8')).toBe(
+      'unreadable lease',
+    );
+  });
+
   it('releases without leaving the lock path empty for a waiter to claim mid-delete (#2648)', async () => {
     const { withDesktopRuntimeListenerLease } = await import(
       '../lib/desktop-runtime-port-lease.mjs'

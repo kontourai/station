@@ -346,6 +346,23 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
     );
     expect(standard.status).toBe(200);
 
+    // A remote session's relayed history sits under the same leaf: a
+    // read-only device cannot read another Station's transcripts either.
+    const historyPath =
+      '/api/environments/ssh/sessions/22222222-2222-4222-8222-222222222222/external%3Aclaude%3Athread/history';
+    const readOnlyHistory = await request(
+      historyPath,
+      'GET',
+      READ_ONLY_CREDENTIAL,
+    );
+    expect(readOnlyHistory.status).toBe(403);
+    await expect(readOnlyHistory.json()).resolves.toEqual({
+      error: { code: 'insufficient_scope' },
+    });
+    expect(
+      (await request(historyPath, 'GET', STANDARD_CREDENTIAL)).status,
+    ).toBe(200);
+
     // The rest of the /api/environments/ssh family is unaffected by the
     // leaf override — a read-only credential can still read this Station's
     // own SSH profile/connection metadata.

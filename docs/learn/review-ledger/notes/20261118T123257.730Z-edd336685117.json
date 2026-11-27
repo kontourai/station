@@ -1,0 +1,29 @@
+{
+  "revision": "67ba891e37f14d2cc9be26a839eb2cd311be608d",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the Return to a decision guidance. The conversation Inbox row shows readable exact approval text and its shared decision controls when authorized. Otherwise, the row retains its status and opens the conversation.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the Station Agent registry and orchestration publishers. One relayed approval keeps one notification identity, and its exact request version owns the eventual decision. Legacy twin retirement requires exact live replay plus the observed open notification revision. Tool grants and escalation remain controlled by their existing owners.","inputs":["src-server/services/approvals/approval-inbox.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked the Station Agent registry and orchestration publishers. One relayed approval keeps one notification identity, and its exact request version owns the eventual decision. Legacy twin retirement requires exact live replay plus the observed open notification revision. Tool grants and escalation remain controlled by their existing owners.","inputs":["src-server/services/approvals/approval-inbox.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the internal revisioned snapshot and conditional status write. A held action lease, changed revision, different owner or terminal status blocks legacy twin retirement without cancelling its timer. HTTP and SDK notification shapes remain as documented, with no revision added to public delivery.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the internal revisioned snapshot and conditional status write. A held action lease, changed revision, different owner or terminal status blocks legacy twin retirement without cancelling its timer. HTTP and SDK notification shapes remain as documented, with no revision added to public delivery.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the internal revisioned snapshot and conditional status write. A held action lease, changed revision, different owner or terminal status blocks legacy twin retirement without cancelling its timer. HTTP and SDK notification shapes remain as documented, with no revision added to public delivery.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the internal revisioned snapshot and conditional status write. A held action lease, changed revision, different owner or terminal status blocks legacy twin retirement without cancelling its timer. HTTP and SDK notification shapes remain as documented, with no revision added to public delivery.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the conversation Inbox row and existing status/navigation owners. One local answerable approval can use the exact inspected action in place. Unavailable or unauthorized requests retain the row’s status and open behavior.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the conversation Inbox row and existing status/navigation owners. One local answerable approval can use the exact inspected action in place. Unavailable or unauthorized requests retain the row’s status and open behavior.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the conversation Inbox row and existing status/navigation owners. One local answerable approval can use the exact inspected action in place. Unavailable or unauthorized requests retain the row’s status and open behavior.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Checked the new approval footer spacing and existing row entrance and swipe transitions. The footer uses the same row spacing tokens and does not introduce a separate motion effect.","inputs":["src-ui/src/components/inbox-row/InboxRow.css"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked approval queue partition and toast labels. The same approval and pairing records are rendered with their existing labels and actions. The shorter presentation code keeps the existing entry budget.","inputs":["src-ui/src/components/notifications/NotificationContainer.tsx"]}
+  ]
+}

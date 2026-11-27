@@ -41,6 +41,18 @@ const snoozeNotification = vi.fn();
 
 import { chooseRowAction, openRowAction } from './helpers/row-menu';
 
+const identityCatalog = vi.hoisted(() => ({
+  agents: [] as { slug: string; name: string; icon?: string }[],
+  projects: [] as { slug: string; id: string; name: string; icon?: string }[],
+}));
+
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => identityCatalog.agents,
+}));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: identityCatalog.projects }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({
@@ -75,7 +87,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   useDismissNotificationMutation: () => ({
     isPending: false,
-    mutate: dismiss,
+    mutateAsync: async (id: string) => dismiss(id),
   }),
   useNotificationActionMutation: () => ({
     isPending: false,
@@ -115,6 +127,8 @@ import { NotificationHistory } from '../components/notifications/NotificationHis
  */
 beforeEach(() => {
   phone.isMobile = false;
+  identityCatalog.agents = [];
+  identityCatalog.projects = [];
   notifications = [];
   attention = { items: [], pendingCount: 0 };
   sessions = [];
@@ -232,7 +246,7 @@ describe('NotificationHistory', () => {
     expect(row?.textContent).toContain('Approval needed');
     expect(row?.textContent).not.toContain('Backup finished');
     // A refusal is not retried blindly; the way forward is the chat.
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   test('a network failure on a decision offers to try it again', () => {
@@ -262,7 +276,7 @@ describe('NotificationHistory', () => {
     expect(screen.getByTestId('decision-error').textContent).toMatch(
       /Couldn't reach Station/,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(action).toHaveBeenCalledTimes(2);
     expect(action.mock.calls[1]?.[0]).toEqual({
@@ -298,13 +312,13 @@ describe('NotificationHistory', () => {
     chooseRowAction('Dismiss');
 
     // The dismissal is held, not committed, and the panel stays open.
-    expect(screen.getByText('Dismissed')).toBeTruthy();
+    expect(screen.getByText('Notification dismissed')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
     expect(dismiss).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(screen.queryByText('Dismissed')).toBeNull();
+    expect(screen.queryByText('Notification dismissed')).toBeNull();
     expect(dismiss).not.toHaveBeenCalled();
   });
 
@@ -727,6 +741,52 @@ describe('NotificationHistory undo window', () => {
     }
   });
 
+  test('a focused dismissal keeps other notifications visible while the server saves it', async () => {
+    vi.useFakeTimers();
+    try {
+      const view = renderOne();
+      const close = vi.fn();
+      notifications = [
+        ...notifications,
+        {
+          ...notifications[0],
+          id: 'remaining',
+          title: 'Remaining notification',
+        },
+      ];
+      view.rerender(
+        <NotificationHistory isOpen onClose={close} onViewAll={vi.fn()} />,
+      );
+      let confirm: (() => void) | undefined;
+      dismiss.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            confirm = resolve;
+          }),
+      );
+      const menuItem = openRowAction('Dismiss', { index: 0 });
+      menuItem.focus();
+      fireEvent.click(menuItem);
+      expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+      expect(screen.getByText('Remaining notification')).toBeTruthy();
+      expect(close).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(screen.queryByText('Approval needed')).toBeNull();
+      expect(screen.getByText('Dismissing notification…')).toBeTruthy();
+      await act(async () => {
+        confirm?.();
+      });
+      expect(screen.queryByText('Approval needed')).toBeNull();
+      expect(screen.getByText('Remaining notification')).toBeTruthy();
+      expect(close).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('Undo cancels the commit permanently, not just until the timer fires', () => {
     vi.useFakeTimers();
     try {
@@ -888,7 +948,7 @@ describe('NotificationHistory answerability annotation', () => {
     const dismissItem = openRowAction('Dismiss');
     expect(dismissItem.disabled).toBe(false);
     fireEvent.click(dismissItem);
-    expect(screen.getByText('Dismissed')).toBeTruthy();
+    expect(screen.getByText('Notification dismissed')).toBeTruthy();
   });
 
   test('AC4 (self-heal): a later poll saying answerable re-enables with no repair step', () => {
@@ -1172,9 +1232,8 @@ describe('NotificationHistory snooze (Feature Preview)', () => {
     render(
       <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
     );
-    expect(screen.queryByRole('menuitem', { name: '1 hour' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
-    expect(screen.queryByRole('menuitem', { name: '1 hour' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Mark done' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
   });
 
   test('a preset snoozes the attention item until that instant', () => {
@@ -1184,7 +1243,7 @@ describe('NotificationHistory snooze (Feature Preview)', () => {
       <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
     );
 
-    chooseRowAction('1 hour');
+    chooseRowAction('In 1 hour');
 
     expect(snoozeAttention).toHaveBeenCalledTimes(1);
     const [vars] = snoozeAttention.mock.calls[0] ?? [];
@@ -1251,8 +1310,8 @@ test('dismissing an approval row holds it for Undo', () => {
     ],
   };
   render(<NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />);
-  chooseRowAction('Dismiss');
-  expect(screen.getByText('Dismissed')).toBeTruthy();
+  chooseRowAction('Mark done');
+  expect(screen.getByText('Marked done')).toBeTruthy();
   expect(screen.queryByText('Approve the deploy')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
   expect(screen.getByText('Approve the deploy')).toBeTruthy();
@@ -1272,7 +1331,7 @@ describe('NotificationHistory on a phone (#4404 A43)', () => {
     );
     const sheet = screen.getByRole('dialog', { name: 'Notifications' });
     expect(sheet.classList).toContain('notification-history--sheet');
-    fireEvent.mouseDown(screen.getByTestId('notification-history-backdrop'));
+    fireEvent.pointerDown(sheet.parentElement!);
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -1285,6 +1344,40 @@ describe('NotificationHistory on a phone (#4404 A43)', () => {
       />,
     );
     expect(screen.queryByRole('dialog', { name: 'Notifications' })).toBe(null);
-    expect(screen.queryByTestId('notification-history-backdrop')).toBe(null);
   });
+});
+
+test('shows the project and agent display identities beside a session failure', () => {
+  identityCatalog.agents = [{ slug: 'reviewer', name: 'Build reviewer' }];
+  identityCatalog.projects = [
+    { slug: 'station', id: 'station', name: 'Station' },
+  ];
+  const stamp = new Date().toISOString();
+  attention = {
+    pendingCount: 1,
+    items: [
+      {
+        id: 'session-failed:review',
+        kind: 'session-failed',
+        title: 'Run main qualification',
+        body: 'Command execution failed',
+        projectSlug: 'station',
+        agent: 'reviewer',
+        engine: 'claude',
+        openHref: '/?chat=review&dock=open',
+        source: { threadId: 'review' },
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    ],
+  };
+  render(<NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />);
+  expect(
+    screen.getByRole('link', { name: 'Run main qualification' }),
+  ).toBeTruthy();
+  expect(screen.getByText('Build reviewer')).toBeTruthy();
+  expect(screen.getByText('Station')).toBeTruthy();
+  expect(screen.getByTestId('attention-cause').textContent).toContain(
+    'Command execution failed',
+  );
 });

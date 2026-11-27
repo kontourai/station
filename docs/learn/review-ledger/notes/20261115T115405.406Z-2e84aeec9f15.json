@@ -1,0 +1,7 @@
+{
+  "revision": "37151b9c1a05751c14f8649e724ada5574e5dc53",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Pages source boundary unchanged: the builder still emits from index.html, styles.css, public-docs.json and the named baseline screens; only the generated docs header link (now How it works -> index.html#how) changed, and docs:pages:build still checks every emitted HTML file.","inputs":["docs/README.md","scripts/build-github-pages.mjs"]}
+  ]
+}

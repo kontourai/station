@@ -24,6 +24,11 @@ import {
 export interface ServiceInstallConfiguration {
   allowedOrigins?: unknown;
   baseDir?: unknown;
+  /**
+   * SUNSET(#3909): the `--features=` value of a registration installed before
+   * #3909. Repeated in the reinstall command so a Strands registration meets
+   * the CLI's refusal instead of silently losing it.
+   */
   features?: unknown;
   host?: unknown;
   instanceId?: unknown;
@@ -100,7 +105,8 @@ export function resolveServiceInstallRemedy(
     typeof configuration.serverPort !== 'number' ||
     typeof configuration.uiPort !== 'number' ||
     typeof configuration.host !== 'string' ||
-    (configuration.features !== null &&
+    (configuration.features !== undefined &&
+      configuration.features !== null &&
       typeof configuration.features !== 'string') ||
     !Array.isArray(configuration.allowedOrigins) ||
     configuration.allowedOrigins.some((origin) => typeof origin !== 'string') ||
@@ -155,9 +161,9 @@ export function resolveServiceInstallRemedy(
     `--port=${configuration.serverPort}`,
     `--ui-port=${configuration.uiPort}`,
     `--host=${shellArgument(configuration.host)}`,
-    ...(configuration.features === null
-      ? []
-      : [`--features=${shellArgument(configuration.features)}`]),
+    ...(typeof configuration.features === 'string'
+      ? [`--features=${shellArgument(configuration.features)}`]
+      : []),
     ...configuration.allowedOrigins.map(
       (origin) => `--allowed-origin=${shellArgument(origin)}`,
     ),

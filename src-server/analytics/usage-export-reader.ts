@@ -8,6 +8,7 @@ import type {
   UsageExportPage,
   UsageExportRequest,
 } from '@kontourai/station-contracts/usage-export';
+import type { UsageReceipt } from '@kontourai/station-contracts/usage-rollup';
 import type { EventStore } from '../services/orchestration/event-store.js';
 import { usageReceiptsForEventRow } from '../services/orchestration/session-transcript-reads.js';
 
@@ -109,6 +110,74 @@ export function usageExportOwnerIds(
   if (!members?.includes(authority.userId))
     throw new UsageExportRejected('usage_export_authority_changed', 403);
   return [...new Set(members)].sort();
+}
+
+function pickDefined<T extends object, K extends keyof T>(
+  source: T,
+  keys: readonly K[],
+): Partial<Pick<T, K>> {
+  const selected: Partial<Pick<T, K>> = {};
+  for (const key of keys) {
+    const value = source[key];
+    if (value !== undefined) selected[key] = value;
+  }
+  return selected;
+}
+
+// Keep this projection within the closed schema-1 receipt grammar.
+// New fields on local receipts do not extend the export contract.
+function usageExportV1Receipt(receipt: UsageReceipt): UsageReceipt {
+  const { id, stationId, provider, pricing, reportedCost, estimatedCost } =
+    receipt;
+  return {
+    id,
+    stationId,
+    provider,
+    ...pickDefined(receipt, [
+      'sourceEventId',
+      'sourceSequence',
+      'model',
+      'accountKey',
+      'threadId',
+      'turnId',
+      'conversationId',
+      'taskId',
+      'occurredAt',
+      'observedAt',
+      'inputTokens',
+      'outputTokens',
+      'cacheReadTokens',
+      'cacheWriteTokens',
+    ]),
+    ...(reportedCost && {
+      reportedCost: {
+        amount: reportedCost.amount,
+        currency: reportedCost.currency,
+      },
+    }),
+    ...(estimatedCost && {
+      estimatedCost: {
+        amount: estimatedCost.amount,
+        currency: estimatedCost.currency,
+        pricingSnapshotId: estimatedCost.pricingSnapshotId,
+        ...pickDefined(estimatedCost, [
+          'pricingSnapshotObservedAt',
+          'pricingSnapshotSource',
+        ]),
+      },
+    }),
+    pricing: {
+      status: pricing.status,
+      ...pickDefined(pricing, [
+        'pricingSnapshotId',
+        'pricingSnapshotCapturedAt',
+        'pricingSnapshotSource',
+        'provider',
+        'model',
+        'currency',
+      ]),
+    },
+  };
 }
 
 export function readAuthorizedUsageExport(input: {
@@ -250,7 +319,9 @@ export function readAuthorizedUsageExport(input: {
             }
           : {
               globalSequence: row.globalSequence,
-              receipts: usageReceiptsForEventRow(row.usage, stationId),
+              receipts: usageReceiptsForEventRow(row.usage, stationId).map(
+                usageExportV1Receipt,
+              ),
             },
       ),
       ...(next

@@ -226,8 +226,121 @@ export function automationRunClientTurnId(runId: string): string {
   return `scheduler:${runId}`;
 }
 
+/**
+ * Longest display name an automation may carry. The name a person reads is
+ * plain words; the job's `name` stays the internal slug every route, run and
+ * grant is keyed by, so renaming changes only this.
+ */
+export const SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS = 120;
+
+/**
+ * Characters a display name may not hold: controls, line and paragraph
+ * separators, the bidi embedding, override and isolate controls (they
+ * reorder what is shown), and the invisible fillers that make two names
+ * look identical (zero-width space, word joiner, byte-order mark, soft
+ * hyphen, combining grapheme joiner, Mongolian vowel separator, and the
+ * interlinear annotation marks). Tag characters are refused too, so
+ * subdivision flags (England, Scotland, Wales) are not accepted. Other
+ * format characters stay allowed:
+ * the zero-width non-joiner and joiner that Persian and Indic text and emoji
+ * sequences need, and the left-to-right and right-to-left marks.
+ */
+const HIDDEN_OR_REORDERING =
+  // U+034F is a combining mark, so it sits outside the class.
+  /[\p{Cc}\p{Zl}\p{Zp}\u202A-\u202E\u2066-\u2069\u200B\u2060\uFEFF\u00AD\u180E\uFFF9-\uFFFB\u{E0000}-\u{E007F}]|\u034F/u;
+
+/**
+ * Letters and symbols that draw nothing: the Hangul fillers and the braille
+ * blank. A name made only of them reads as empty, so they do not count as
+ * its visible character.
+ */
+const BLANK_GLYPHS = /[\u115F\u1160\u3164\uFFA0\u2800]/gu;
+
+/**
+ * Whether `value` (already trimmed) is a name a person can read: within the
+ * length bound, with at least one letter, digit, symbol or punctuation mark,
+ * and none of the characters that hide or reorder text.
+ */
+export function isSchedulerJobDisplayName(value: string): boolean {
+  if (value.length === 0 || value.length > SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS)
+    return false;
+  if (HIDDEN_OR_REORDERING.test(value)) return false;
+  return /[\p{L}\p{N}\p{S}\p{P}]/u.test(value.replace(BLANK_GLYPHS, ''));
+}
+
+/** Longest slug the scheduler derives from a display name. */
+const SCHEDULER_JOB_SLUG_MAX_CHARS = 60;
+
+/**
+ * The slug a display name suggests: lowercase ASCII letters, digits and
+ * hyphens. Accents are dropped ("Café crème" gives `cafe-creme`); a letter
+ * with no ASCII decomposition is a word break ("Straße" gives `stra-e`). A
+ * name with no ASCII letter or digit gives `automation-` and a short hash of
+ * the name, so different such names do not compete for one slug. The
+ * scheduler makes it unique (`schedulerJobSlugCandidates`).
+ */
+export function schedulerJobSlug(displayName: string): string {
+  const slug = displayName
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, SCHEDULER_JOB_SLUG_MAX_CHARS)
+    .replace(/-+$/, '');
+  if (slug) return slug;
+  // FNV-1a over the UTF-16 code units: stable and dependency-free.
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < displayName.length; index += 1) {
+    hash ^= displayName.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `automation-${hash.toString(36)}`;
+}
+
+/**
+ * How many slugs the scheduler tries for one display name before it refuses:
+ * the base slug, then `-2` up to this many.
+ */
+export const SCHEDULER_JOB_SLUG_ATTEMPTS = 50;
+
+/** The slugs tried for a display name, in order. */
+export function schedulerJobSlugCandidates(displayName: string): string[] {
+  const base = schedulerJobSlug(displayName);
+  return [
+    base,
+    ...Array.from(
+      { length: SCHEDULER_JOB_SLUG_ATTEMPTS - 1 },
+      (_, index) => `${base}-${index + 2}`,
+    ),
+  ];
+}
+
+/**
+ * The refusal code when a job's slug is taken: an explicit `name` another
+ * job has, or a display name whose every candidate slug is taken.
+ */
+export const SCHEDULER_JOB_NAME_TAKEN = 'job_name_taken';
+
+/**
+ * How many of a job's latest runs the list read carries in
+ * `SchedulerJob.recentOutcomes`.
+ */
+export const SCHEDULER_RECENT_OUTCOMES_LIMIT = 12;
+
+/**
+ * How one finished run ended, by occurrence (a run that retried is one):
+ * `worked`, `failed`, `skipped` (a late occurrence recorded missed instead
+ * of run, see `SchedulerLogEntry.skipped`), or `unknown` (Station cannot
+ * tell whether the run reached the engine).
+ */
+export type SchedulerRunOutcome = 'worked' | 'failed' | 'skipped' | 'unknown';
+
 export interface SchedulerJob {
+  /** Internal slug: the identity routes, runs and stats are keyed by. */
   name: string;
+  /** What a person calls it. Absent: show `name`. */
+  displayName?: string;
   provider: string;
   cron?: string;
   schedule?: SchedulerSchedule;
@@ -235,12 +348,48 @@ export interface SchedulerJob {
   agent?: string;
   /** Where each run lands; absent is a legacy Station-engine file run. */
   target?: SchedulerAutomationTarget;
-  /** Server-recorded creator a targeted run acts as. Read-only. */
+  /**
+   * #5070: the Project (`ProjectConfig.id`) the job belongs to. Each run is
+   * a new Task in that Project, started for `agent` with the job's prompt as
+   * its first message, so the Session gets the Task brief like any Task. No
+   * run is claimed while the Project is paused or archived. Exclusive with
+   * `target` and `monitor`. Set at create; it cannot move to another Project.
+   */
+  projectId?: string;
+  /**
+   * Server-recorded creator every run acts as (#2377 slice D: untargeted
+   * jobs too; #5126: a Project job's Task too). Who may change or run a job
+   * is decided by it for every job. Read-only.
+   */
   createdBy?: Readonly<{ userId: string }>;
+  /**
+   * #2377 slice D: present when the job has no recorded owner (a job created
+   * before owners were recorded, on a shared or hosted Station). Its runs
+   * have no Station tools until a person re-creates it; a Project job's
+   * runs start no Task at all (#5126). Read-only.
+   */
+  ownerNeeded?: string;
   /** Failed runs since the last success, newest first. Read-only. */
   consecutiveFailures?: number;
   /** When the last successful run completed. Read-only. */
   lastSuccessAt?: string;
+  /**
+   * The latest finished runs, oldest first, at most
+   * `SCHEDULER_RECENT_OUTCOMES_LIMIT`; `more` says older ones exist. Absent
+   * when the outcomes are not known to this reader (an older Station, or
+   * runs it may not read). Read-only.
+   */
+  recentOutcomes?: Readonly<{
+    outcomes: readonly SchedulerRunOutcome[];
+    more: boolean;
+  }>;
+  /**
+   * Present while Station keeps the job turned off because its last
+   * `failures` runs failed (`AUTOMATION_RUN_POLICY.fatigueFailureThreshold`),
+   * from `at` until a person turns it back on. Absent on a job a person
+   * turned off. Read-only.
+   */
+  pausedItself?: Readonly<{ failures: number; at: string }>;
   enabled: boolean;
   /** Accepted for compatibility and ignored: Station sends no start notice. */
   notifyStart?: boolean;
@@ -248,6 +397,8 @@ export interface SchedulerJob {
   retryDelaySecs?: number;
   lastRun?: string;
   nextRun?: string;
+  /** Forecast for the requested week, in UTC. Omitted on normal list reads. */
+  weekOccurrences?: { times: string[]; truncated: boolean };
   /** Read-only server-issued identity for an exact unattended-tool grant. */
   unattendedPrincipal?: { kind: 'scheduled-job'; jobId: string };
   /** Optional deterministic external observation run before an agent turn. */
@@ -287,13 +438,22 @@ export interface SchedulerLogEntry {
 }
 
 export interface AddJobOpts {
-  name: string;
+  /**
+   * The slug. Omit it and give `displayName` to have the scheduler derive an
+   * unused one (`schedulerJobSlugCandidates`); a slug given here that another
+   * job has is refused (`SCHEDULER_JOB_NAME_TAKEN`).
+   */
+  name?: string;
+  /** See {@link SchedulerJob.displayName}. */
+  displayName?: string;
   provider?: string;
   cron?: string;
   schedule?: SchedulerSchedule;
   prompt: string;
   agent?: string;
   target?: SchedulerAutomationTarget;
+  /** See {@link SchedulerJob.projectId}. */
+  projectId?: string;
   /** Server-only: the route records the admitted creator. */
   createdBy?: SchedulerAutomationCreator;
   notifyStart?: boolean;
@@ -305,8 +465,8 @@ export interface AddJobOpts {
 }
 
 /**
- * Who a targeted automation acts as when it runs: the admitted creator, as
- * the create route resolved them. Replayed exactly, never strengthened.
+ * Who an automation acts as when it runs: the admitted creator, as the
+ * create route resolved them. Replayed exactly, never strengthened.
  */
 export type SchedulerAutomationCreator = Readonly<{
   userId: string;
@@ -315,6 +475,8 @@ export type SchedulerAutomationCreator = Readonly<{
 }>;
 
 export interface UpdateJobOpts {
+  /** Renames the job for people; `null` removes it so `name` shows. */
+  displayName?: string | null;
   cron?: string;
   schedule?: SchedulerSchedule;
   prompt?: string;
@@ -341,7 +503,15 @@ export interface SchedulerProviderStats {
   }[];
 }
 
+export interface SchedulerRowIssue {
+  jobId: string;
+  name: string;
+  reason: 'invalid-json' | 'invalid-job';
+}
+
 export interface SchedulerProviderStatus {
+  /** Available only to the Station operator. */
+  rowIssues?: SchedulerRowIssue[];
   running: boolean;
   jobCount: number;
   lastTickAt?: string | null;
@@ -368,6 +538,16 @@ export interface SchedulerStatus {
 }
 
 export type SchedulerMutationResponse = Readonly<{ output: string }>;
+
+/**
+ * `POST /scheduler/jobs`'s answer. `name` is the slug the job was stored
+ * under, which the scheduler picks when the create named none; a host
+ * without `schedulerJobDisplayName` omits it.
+ */
+export type SchedulerCreateResponse = Readonly<{
+  output: string;
+  name?: string;
+}>;
 
 /**
  * The truthful terminal result of an authenticated manual scheduler request.

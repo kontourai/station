@@ -16,7 +16,7 @@ A replay is a normal dock chat under a **synthetic store key**. Recorded
 canonical events are rewritten onto that id and folded through
 `handleOrchestrationEvent`. The live `ChatDockBody` / `ChatMessageList` /
 streaming row path is unchanged. Developer tools gates the **entry point**
-only (`ChatSettingsPanel` → “Step through this conversation”).
+only (`ChatSettingsPanel` → “Step through this chat”).
 
 ## Isolation
 
@@ -104,7 +104,7 @@ reconnecting, catch-up, revoked credentials, multiple turns, incomplete history,
 virtualized long history, and reduced motion in both themes. This is browser
 evidence; native lifecycle and device delivery require separate verification.
 
-Chat activity uses one aligned phrase, `Working for m:ss`: the clock is the
+Chat activity uses elapsed duration words such as `2m 1s`: the clock is the
 open turn's, so the timed phrase names the turn, never its current phase.
 Without a clock the row names the phase instead (`Thinking…`, `Working…`), and
 the progress row beneath names a running or last tool. Active tool rows supply
@@ -115,8 +115,10 @@ estimate of completion.
 A replay renders these as inline rows, because that is what its scenarios pin.
 A live chat pane presents the same facts in one floating status pill
 ([`ChatStatusPill`](../../src-ui/src/components/status/ChatStatusPill.tsx)):
-approval first, then the live-update connection, then what the turn is doing,
-with the same turn clock. A live-update outage is shown only after it outlasts
+connection recovery first, then permission or input requests, then turn or
+background activity. Permission outranks input when both wait. A live turn
+uses its turn clock; background-only activity uses the oldest reported child
+start. A live-update outage is shown only after it outlasts
 one reconnect cycle (2.5s), so a phone blip does not flash a status.
 
 The separate [reasoning disclosure](../../src-ui/src/components/chat/ReasoningSection.tsx)
@@ -156,9 +158,11 @@ the adapter mechanisms below do not by themselves establish the dock capability:
 
 Send-while-busy uses `sessionAdapterSupportsSteering`, not a connection
 `capabilities` string. The dock currently enables native steering for Claude
-Code and Codex, and holds Station-owned steering for an observed post-tool
-boundary, otherwise a terminal. ACP uses a safe-waiting fallback because its
-capability matrix also admits interruptive cancel-and-reprompt. A steer fold appends a user row and
+Code, Codex, Muse and the GitHub Copilot (SDK) preview engine. Station-owned
+steering waits for an observed post-tool boundary in the accepted turn. ACP reports native channels from the live
+handshake; otherwise an explicit Steer uses cancel-and-reprompt after waiting
+for cancellation to finish, with a continuation instruction. Queue is the
+default across engines. A steer fold appends a user row and
 **does not** reset `streamingMessage`. The event-log projection
 (`projectRuntimeEventsToMessages`) keeps the turn open at a steer but emits
 what the engine produced before it as its own assistant row, so the steer
@@ -175,24 +179,31 @@ Adapter mappings, same Station event:
 | --- | --- |
 | Claude | `Query.streamInput` (additive) |
 | Codex | app-server `turn/steer` `{ threadId, input, expectedTurnId }` (additive; does not emit a Codex `turn/started`) |
+| Copilot SDK (preview) | SDK `send({ mode: 'immediate' })`, which joins the running turn (`steerTurn`) |
 | Any ACP declaring a native method | The declared ACP extension **method** (`_session/steer` or `_x.ai/interject`) named in its `initialize` capability `_meta` `extensionMethods` list |
 | Kiro | ACP extension **method** `_session/steer` (additive; not a notification). Kiro does not declare it; matched on its handshake's `agentInfo.name` `Kiro CLI Agent` or its `_meta.kiro` capability namespace, never on the command |
 | Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`), undeclared; matched on the handshake's `_meta.grokShell` flag. `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
+| Antigravity | A second core `session/prompt` on the same Station `turnId` (additive): the engine answers the running prompt with `end_turn` and carries the work on under the new one, so the turn settles on the new prompt (`prompt-handoff`). Matched on the handshake's `agentInfo.name` `Antigravity ACP Server`; recorded on CLI 1.5.8 and documented by Google. |
+| Goose | ACP extension **method** `_goose/unstable/session/steer` `{ sessionId, prompt, expectedRunId }` (additive), undeclared; matched on the handshake's `agentInfo.name` `goose`. `expectedRunId` is the run Goose announced for the running prompt as `_meta.goose.activeRunId` on a `session_info_update`; with no run announced (after Goose clears it with `null`, or once the prompt ends) or when Goose refuses the steer with -32602, Station uses the fallback below. A steer Goose accepted but had not read when the run ends is dropped unreported (`discard_pending_steers`). Read from Goose's source (v1.59.0), not a live run. |
+| OpenCode 2.x over ACP | ACP extension **method** `_session/steering` `{sessionId, prompt}`, undeclared as a method; matched on `_meta.steering.supported === true` in the handshake's `initialize` result (OpenCode 1.x names itself the same and declares nothing, so it keeps the fallback). An answer `{outcome: "promptRequired"}` means no turn was running, and the steer fails with `ProviderTurnEndedError` |
+| OpenCode 2.x native (`opencode` engine) | `POST /api/session/{id}/prompt` with `delivery: 'steer'`, acknowledged by the engine's `session.inbox.delivered`; if the execution ends first, the inbox item is withdrawn and the steer fails with `ProviderTurnEndedError` |
 | Any other ACP | Cancel + re-prompt fallback: `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive: it also cancels any tool the prompt was running). Also the fallback when the native method returns JSON-RPC -32601. Its steer `turn.started` carries `steerInterruptedRun: true`, and the steer row says it was sent by stopping the running step. |
-
-Muse can run one `muse serve` host per Session, with `muse exec` per-turn fallback where configured. Neither process mode establishes native mid-turn steering in the dock; supported input and control capabilities remain owned by the Muse adapter and capability matrix.
+| Muse | `muse serve` `turn/steer` `{ expectedTurnId }` (additive; #1952). A Session on the `muse exec` per-turn fallback has no live input channel and refuses a steer (`canSteerTurn`). |
 
 The pending-message section starts collapsed. Expanding it reveals each mode,
 status and its explicit Send now action. Send remains separate from Stop. The
-Send-mode picker defaults to Queue; native Steer is available for Claude Code
-and Codex. Other engines hold steering until a supported safe boundary can be
-proven, and currently wait for turn completion. Send now explicitly overrides
+Send-mode picker defaults to Queue for every engine (#5194); Steer is an
+explicit choice, additive on engines whose matrix declares native steering
+(Claude Code, Codex, Muse and the GitHub Copilot (SDK) preview engine). Other
+engines hold steering until a supported safe boundary can be proven, and
+currently wait for turn completion. Send now explicitly overrides
 that waiting, stopping immediately and sending after a settled receipt.
 
 Return uses the device preference and the selected Send mode. Desktop defaults
 to sending; touch devices default to a new line. Shift+Return adds a line and
-Ctrl/Cmd+Return sends, outside IME composition. Mobile submit controls are icons,
-revealed for a sendable draft while their space stays reserved. See the
+Ctrl/Cmd+Return sends, outside IME composition. Mobile submit controls are icons. They,
+and the Send-mode picker on every screen, appear once there is a sendable draft
+and take no room before. See the
 [composer contract](chat-composer.md#turn-activity-and-follow-up-delivery) for
 current interaction and delivery policy. The adapter table above describes
 explicit engine commands, not a promise of native steering on every ACP Session.

@@ -1,0 +1,25 @@
+{
+  "revision": "8ac71edd1d55068a5cbe61190ab9cbd21fdef1ee",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed existing Browser and Device contracts. The phone viewer hands the same live session to existing pane placement. Ownership, frame transport and Device placement stay unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed existing Browser and Device contracts. The phone viewer hands the same live session to existing pane placement. Ownership, frame transport and Device placement stay unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed existing Browser and Device contracts. The phone viewer hands the same live session to existing pane placement. Ownership, frame transport and Device placement stay unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed existing Browser and Device contracts. The phone viewer hands the same live session to existing pane placement. Ownership, frame transport and Device placement stay unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed existing Browser and Device contracts. The phone viewer hands the same live session to existing pane placement. Ownership, frame transport and Device placement stay unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed existing Browser and Device contracts. The phone viewer hands the same live session to existing pane placement. Ownership, frame transport and Device placement stay unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed existing Browser and Device contracts. The phone viewer hands the same live session to existing pane placement. Ownership, frame transport and Device placement stay unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed existing Browser and Device contracts. The phone viewer hands the same live session to existing pane placement. Ownership, frame transport and Device placement stay unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed existing Browser and Device contracts. The phone viewer hands the same live session to existing pane placement. Ownership, frame transport and Device placement stay unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed existing Browser and Device contracts. The phone viewer hands the same live session to existing pane placement. Ownership, frame transport and Device placement stay unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]}
+  ]
+}

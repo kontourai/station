@@ -27,6 +27,17 @@ const mocks = vi.hoisted(() => ({
   >(),
   roomStreamCalls: vi.fn(),
   roomCommand: vi.fn(),
+  activeConnectionName: 'bmedia' as string | undefined,
+}));
+
+vi.mock('@kontourai/station-connect', () => ({
+  useConnections: () => ({
+    apiBase: '',
+    activeConnection:
+      mocks.activeConnectionName === undefined
+        ? null
+        : { name: mocks.activeConnectionName },
+  }),
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -98,6 +109,7 @@ beforeEach(() => {
   mocks.roomStreamCalls.mockClear();
   mocks.roomCommand.mockReset();
   mocks.roomCommand.mockResolvedValue({ kind: 'unavailable' });
+  mocks.activeConnectionName = 'bmedia';
 });
 
 function liveSnapshot(
@@ -210,8 +222,62 @@ describe('ProjectLiveWorkSection', () => {
     expect(
       container.querySelector('.project-page__live-work-lane--running'),
     ).toBeTruthy();
-    expect(screen.getByText('Reply')).toBeTruthy();
-    expect(screen.getByText('Open')).toBeTruthy();
+    // Only the Needs-you row carries a call to action. The row is itself the
+    // control that opens it, so a Running row repeats no "Open" label.
+    const ctas = container.querySelectorAll('.project-page__live-work-cta');
+    expect([...ctas].map((cta) => cta.textContent)).toEqual(['Reply']);
+    expect(
+      container.querySelector(
+        '.project-page__live-work-lane--running .project-page__live-work-cta',
+      ),
+    ).toBeNull();
+    expect(screen.queryByText('Open')).toBeNull();
+  });
+
+  test('names the Station each row runs on', () => {
+    mocks.sessions.push(
+      session({
+        threadId: 'local',
+        lifecycleState: 'running',
+        hasActiveTurn: true,
+        displayTitle: 'Local run',
+      }),
+      session({
+        threadId: 'remote',
+        lifecycleState: 'running',
+        hasActiveTurn: true,
+        displayTitle: 'Remote run',
+        delegation: {
+          taskId: 'task:remote',
+          environmentId: 'environment-ssh',
+          environmentName: 'build-box',
+          environmentKind: 'ssh',
+          targetKind: 'agent',
+          targetId: 'station',
+        },
+      }),
+    );
+    const { container } = render(<ProjectLiveWorkSection slug="station" />);
+    const metaFor = (title: string) =>
+      [...container.querySelectorAll('.project-page__live-work-row')]
+        .find((row) => row.textContent?.includes(title))
+        ?.querySelector('.project-page__live-work-meta')?.textContent;
+    expect(metaFor('Local run')).toMatch(/^Station · on bmedia\b/);
+    expect(metaFor('Remote run')).toMatch(/· on build-box\b/);
+    expect(metaFor('Remote run')).not.toMatch(/bmedia/);
+  });
+
+  test('omits the Station rather than guessing when none is known', () => {
+    mocks.activeConnectionName = undefined;
+    mocks.sessions.push(
+      session({ lifecycleState: 'running', hasActiveTurn: true }),
+    );
+    const { container } = render(<ProjectLiveWorkSection slug="station" />);
+    const meta = container.querySelector(
+      '.project-page__live-work-meta',
+    )?.textContent;
+    expect(meta).toMatch(/^Station\b/);
+    expect(meta).not.toMatch(/ on /);
   });
 
   test('anchors every row with its agent’s icon, engine-named when no agent resolves', () => {
@@ -258,7 +324,7 @@ describe('ProjectLiveWorkSection', () => {
     const LANE_VOCABULARY: Record<string, string[]> = {
       needsYou: [
         'Needs approval',
-        'Needs answer',
+        'Needs input',
         'Waiting on you',
         'Interrupted',
         'Blocked',
@@ -460,8 +526,11 @@ describe('ProjectLiveWorkSection', () => {
       }),
     );
     const { container } = render(<ProjectLiveWorkSection slug="station" />);
-    const cta = container.querySelector('.project-page__live-work-cta');
-    expect(cta?.textContent).toBe('Open');
+    expect(container.querySelector('.project-page__live-work-cta')).toBeNull();
+    // It runs on the paired Station, not on the one serving this page.
+    expect(
+      container.querySelector('.project-page__live-work-meta')?.textContent,
+    ).toMatch(/· on Station B\b/);
     expect(screen.queryByRole('button', { name: 'Chat' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Jump in' }));
     // A `navigate` action: the thread alone, no conversation or agent to
@@ -497,8 +566,7 @@ describe('ProjectLiveWorkSection', () => {
     );
 
     render(<ProjectLiveWorkSection slug="station" />);
-    fireEvent.click(screen.getByRole('button', { name: 'All activity' }));
-    expect(mocks.showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(screen.queryByRole('button', { name: 'All activity' })).toBeNull();
     expect(mocks.showSurface).not.toHaveBeenCalled();
     // The retired surface name (archive#3280) renders no second affordance.
     expect(

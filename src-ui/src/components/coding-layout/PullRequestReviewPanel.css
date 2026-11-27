@@ -310,3 +310,36 @@ details[open] > .pull-request-review__summary .pull-request-review__caret {
   background: currentColor;
   flex-shrink: 0;
 }
+/* When agent feedback sent a failing check to the agent: muted, beside
+   the row's own tools, always shown (not dimmed with them). */
+.pull-request-review__sent-time {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  white-space: nowrap;
+}
+.pull-request-review__sent-time time {
+  font-variant-numeric: tabular-nums;
+}
+
+.pull-request-review--preview .pull-request-review__title {
+  flex: none;
+  font-size: var(--k-text-lg);
+}
+
+.pull-request-review__crumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--k-text-muted);
+}
+
+.pull-request-review--preview [role="tablist"] {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.pull-request-review--preview [role="tab"] {
+  flex: none;
+  white-space: nowrap;
+}

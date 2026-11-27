@@ -1,0 +1,7 @@
+{
+  "revision": "8126402168f8c220092ed24a029e0ccf4a408d11",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the phone conversation handoff against FloatOverChatHost and the focused caller test. Open browser uses the authorized Project, principal, and conversation session listing. Close dismisses the viewer and leaves the remote tab running.","inputs":["docs/guides/browser-workspace.md","src-ui/src/float-over-chat/FloatOverChatHost.tsx","tests/inline-browser-activity.spec.ts"]}
+  ]
+}

@@ -9,9 +9,15 @@ import { logFatalAndFlush } from '../../../runtime/bootstrap/crash-handlers.js';
 vi.mock('../../../telemetry/metrics.js', () => ({
   diagnosticsBundlesGenerated: { add: vi.fn() },
   diagnosticsBundleErrors: { add: vi.fn() },
+  sessionReadModelReads: { add: vi.fn() },
+  sessionReadModelDuration: { record: vi.fn() },
+  sessionReadModelThreads: { record: vi.fn() },
 }));
 
 const { DiagnosticsService } = await import('../diagnostics-service.js');
+const { SessionReadModelMeasurement } = await import(
+  '../../orchestration/session-read-model-measurement.js'
+);
 
 const makeTempDir = trackTempDirs();
 
@@ -137,6 +143,58 @@ describe('DiagnosticsService', () => {
       logsUnavailableReason:
         'no log file configured (start with --log or service mode)',
     });
+  });
+
+  // #4992: the read-model numbers are inspectable without a collector.
+  test('carries the session read model measurement, and omits it when unwired', async () => {
+    const measurement = new SessionReadModelMeasurement(
+      () => new Date('2026-07-20T12:00:00.000Z'),
+    );
+    measurement.record({
+      purpose: 'attention',
+      scope: 'all',
+      totalMs: 12.34,
+      buildMs: 10.01,
+      threadsConsidered: 141,
+      projection: { refreshed: 2, reused: 139 },
+      count: { refreshed: 2, reused: 139 },
+    });
+    const wired = new DiagnosticsService('/tmp/station-home', {
+      collectDoctor: async () => doctorReport('safe'),
+      readConfig: async () => ({}),
+      logPath: undefined,
+      instanceStatePath: undefined,
+      readSessionReadModelMeasurement: () => measurement.snapshot(),
+    });
+    expect((await wired.generateBundle()).sessionReadModel).toEqual({
+      since: '2026-07-20T12:00:00.000Z',
+      observedAt: '2026-07-20T12:00:00.000Z',
+      byPurpose: {
+        attention: {
+          reads: 1,
+          threadScopedReads: 0,
+          totalMs: 12.3,
+          maxTotalMs: 12.3,
+          buildMs: 10,
+          maxBuildMs: 10,
+          threadsConsidered: 141,
+          projectionRefolded: 2,
+          projectionReused: 139,
+          countRefreshed: 2,
+          countReused: 139,
+        },
+      },
+    });
+
+    const unwired = new DiagnosticsService('/tmp/station-home', {
+      collectDoctor: async () => doctorReport('safe'),
+      readConfig: async () => ({}),
+      logPath: undefined,
+      instanceStatePath: undefined,
+    });
+    expect(await unwired.generateBundle()).not.toHaveProperty(
+      'sessionReadModel',
+    );
   });
 
   test('reports supervisor build provenance exactly, field by field', async () => {

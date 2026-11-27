@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ACTIVE_RETIRED_USER_TERMS,
   BANNED_WORD_PATTERN,
   maskExpressions,
   RETIRED_NOUN_PATTERN,
   RETIRED_PRODUCT_NOUN_PATTERN,
+  RETIRED_USER_TERMS,
   runGate,
   SCAN_ROOTS,
+  scanCopySourceContent,
   scanFileContent,
   stripComments,
 } from '../noun-consistency-gate.mjs';
@@ -428,6 +431,203 @@ describe('noun-consistency-gate', () => {
       const result = runGate({ files, readFile, allowlist });
       expect(result.unallowlisted).toHaveLength(0);
       expect(result.staleEntries).toHaveLength(1);
+    });
+  });
+
+  // The 2026-11 UI copy pass and the first-release design retire these; the
+  // lanes that remove the last uses enforce them (RETIRED_USER_TERMS header).
+  describe('RETIRED_USER_TERMS', () => {
+    const VIOLATIONS: Record<string, string> = {
+      'AI app': 'Pick an AI app',
+      'device hub': 'Open the device hub',
+      'Station owner': 'Ask the Station owner',
+      'built-in assistant': 'Use the built-in assistant',
+      'default assistant': 'Set the default assistant',
+      'credential entry': 'Remove this credential entry',
+      'model connection': 'Add model connection',
+      'Connect through': 'Connect through',
+      'Pair a device': 'Pair a device',
+      'Workspace view': 'Choose a workspace view',
+      'Starter layout': 'Starter layout',
+      'Files and connections': 'Files and connections',
+      'Conversation stats': 'Conversation stats',
+      'Chat inventory': 'Chat inventory',
+      'Chat settings': 'Chat settings',
+      'Fork from here': 'Fork from here…',
+      'Branch from this answer': 'Branch from this answer',
+      'New chat from this message': 'New chat from this message',
+      'Rewind conversation': 'Rewind conversation to here?',
+      'Restore workspace': 'Restore workspace?',
+      'Reset agent context': 'Reset agent context',
+      'Settle conversation': 'Settle conversation',
+      'Dismiss from inbox': 'Dismiss from inbox',
+      'Hide from inbox': 'Hide from inbox',
+      'Restore to inbox': 'Restore to inbox',
+      'Discard unsent draft': 'Discard unsent draft',
+      Unsnooze: 'Unsnooze',
+      'Show inbox': 'Show inbox',
+      'Chat list': 'Chat list',
+      'Inbox chats': 'Inbox chats',
+    };
+    // Plural and lowercase forms of the same terms.
+    const VARIANTS: Record<string, string> = {
+      'AI app': 'connect your ai apps',
+      'device hub': 'Device Hubs nearby',
+      'Station owner': 'station owners can change this',
+      'built-in assistant': 'Built-in Assistants',
+      'default assistant': 'two default assistants',
+      'credential entry': 'Credential entries',
+      'model connection': 'Open model connections',
+      'Connect through': 'connect through a proxy',
+      'Pair a device': 'choose Pair phone',
+      'Workspace view': 'Workspace views',
+      'Starter layout': 'starter layouts',
+      'Files and connections': 'Files & connections',
+      'Conversation stats': 'Loading conversation statistics',
+      'Chat inventory': 'CHAT INVENTORY',
+      'Chat settings': 'More chat settings',
+      'Fork from here': 'fork from here',
+      'Branch from this answer': 'branch from this answer',
+      'New chat from this message': 'new chat from this message',
+      'Rewind conversation': 'rewind conversation',
+      'Restore workspace': 'restore workspace',
+      'Reset agent context': 'reset agent context',
+      'Settle conversation': 'settle conversations',
+      'Dismiss from inbox': 'dismiss from the inbox',
+      'Hide from inbox': 'hide from the inbox',
+      'Restore to inbox': 'restore to the inbox',
+      'Discard unsent draft': 'discard unsent drafts',
+      Unsnooze: 'Unsnoozing…',
+      'Show inbox': 'Hide inbox, 2 need you',
+      'Chat list': 'Hide chat list, 2 working',
+      'Inbox chats': 'inbox chats',
+    };
+    /** Retired by a slice that removed every use, so enforced now. */
+    const ACTIVE = [
+      'Settle conversation',
+      'Dismiss from inbox',
+      'Hide from inbox',
+      'Restore to inbox',
+      'Discard unsent draft',
+      'Unsnooze',
+      'Show inbox',
+      'Chat list',
+      'Inbox chats',
+    ];
+
+    it('pins the retired terms, independently of the script', () => {
+      expect(RETIRED_USER_TERMS.map(({ term }) => term)).toEqual(
+        Object.keys(VIOLATIONS),
+      );
+    });
+
+    it('keeps every other entry pending until the copy lanes merge', () => {
+      // Flip-on is deleting `pending`; when that happens this expectation
+      // changes with it, deliberately.
+      expect(ACTIVE_RETIRED_USER_TERMS.map(({ term }) => term)).toEqual(ACTIVE);
+      for (const [term, text] of Object.entries(VIOLATIONS)) {
+        expect(
+          scanFileContent('Pending.tsx', `<p>${text}</p>`),
+          text,
+        ).toHaveLength(ACTIVE.includes(term) ? 1 : 0);
+      }
+    });
+
+    it('each pending rule catches its term on every user-facing surface once enabled', () => {
+      for (const entry of RETIRED_USER_TERMS) {
+        const text = VIOLATIONS[entry.term];
+        const enabled = [{ ...entry, pending: false }];
+        for (const source of [
+          `export const V = () => <section><p>${text}</p></section>;`,
+          `export const V = () => <Row title="${text}" />;`,
+          `export const V = () => <Row title={'${text}'} />;`,
+          `export const STEPS = [{ label: '${text}' }];`,
+          `export const V = () => <section><p>${VARIANTS[entry.term]}</p></section>;`,
+        ]) {
+          expect(
+            scanFileContent('Enabled.tsx', source, enabled),
+            `${entry.term}: ${source}`,
+          ).toHaveLength(1);
+        }
+        const registry = scanCopySourceContent(
+          'packages/contracts/src/settings-registry.ts',
+          `defineSetting({ label: 'x', help: '${text}', description: 'd', placeholder: 'p' });`,
+          'defineSetting(',
+          enabled,
+        );
+        expect(registry.findings, entry.term).toHaveLength(1);
+        const gated = runGate({
+          files: ['Enabled.tsx'],
+          readFile: () => `export const V = () => <p>${text}</p>;`,
+          allowlist: [],
+          retiredTerms: enabled,
+        });
+        expect(gated.unallowlisted, entry.term).toHaveLength(1);
+      }
+    });
+
+    it('catches every pairing form the design retires once enabled', () => {
+      const pair = RETIRED_USER_TERMS.find(
+        ({ term }) => term === 'Pair a device',
+      );
+      if (!pair) throw new Error('Pair a device entry missing');
+      const enabled = [{ ...pair, pending: false }];
+      for (const text of [
+        'Pair a device',
+        'Open Connections to pair this device again',
+        'Pair another device',
+        'Pair your phone',
+        'Pair phone',
+        'Pair devices',
+      ]) {
+        expect(
+          scanFileContent('Pair.tsx', `<p>${text}</p>`, enabled),
+          text,
+        ).toHaveLength(1);
+      }
+    });
+
+    it('does not flag the replacement vocabulary or the terms in comments and identifiers', () => {
+      const all = RETIRED_USER_TERMS.map((entry) => ({
+        ...entry,
+        pending: false,
+      }));
+      for (const source of [
+        '<p>Pick an engine</p>',
+        '<p>Open the device helper</p>',
+        '<p>Ask the Station operator</p>',
+        "<p>Use Station's engine</p>",
+        '<p>Remove this account</p>',
+        '<p>Email the app owner</p>',
+        '// The device hub predates the device helper.\nconst x = <p>Saved</p>;',
+        'const deviceHub = useDeviceHub(); const x = <p>Saved</p>;',
+        '<div className="ai-app device-hub" />',
+        '<p>Mail apps and AI applications</p>',
+        // The first-release replacements and nearby legitimate copy.
+        '<p>Add a provider</p>',
+        '<p>Runs through: Claude subscription</p>',
+        '<p>Connect a device</p>',
+        '<p>Repair a device</p>',
+        '<p>Add a view</p>',
+        '<p>Files</p>',
+        '<p>Show chats</p>',
+        '<p>Hide chats, 2 working</p>',
+        '<p>Usage</p>',
+        '<p>Work</p>',
+        '<p>Setup</p>',
+        '<p>More in Settings, Chat and voice</p>',
+        '<p>New chat from here</p>',
+        '<p>Rewind chat to here</p>',
+        '<p>Restore files to here</p>',
+        '<p>Start fresh context</p>',
+        '<p>Mark done</p>',
+        '<p>Reopen</p>',
+        '<p>Wake now</p>',
+        '<p>Discard draft</p>',
+        'const unsnoozeAttention = useUnsnoozeAttentionItemMutation(); const x = <p>Saved</p>;',
+      ]) {
+        expect(scanFileContent('Clean.tsx', source, all), source).toEqual([]);
+      }
     });
   });
 });

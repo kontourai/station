@@ -61,11 +61,15 @@ import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import { publicAgentIdFromRuntimeKey } from '../../services/agents/runtime-agent-identity.js';
+import { boundLabelKeepingTail } from '../../services/orchestration/quoted-text.js';
 import {
   type StationControlDispatchTarget,
+  type StationControlOutOfScopeReason,
+  type StationControlRefusal,
   stationControlScopeRefusal,
 } from '../../tools/station-control-policy.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   clipSerialized,
@@ -151,10 +155,50 @@ const REFUSALS: Record<
   },
 };
 
-function refuse(c: Context, code: ConversationReadRefusalCode) {
+/**
+ * The copy for an out-of-scope cause that is not the Project. The explanation
+ * above would misstate these: a conversation can be in this Session's own
+ * Project and still be refused because of how or where it runs.
+ */
+const OUT_OF_SCOPE_BY_REASON: Partial<
+  Record<StationControlOutOfScopeReason, string>
+> = {
+  host: 'This conversation runs unconfined on the host, and this Session is not one Station hosts in-process, so it may not read it on its own. Ask the person to reference the conversation in a message to you.',
+  remote:
+    'This conversation is on another Station, which this Session may not reach. Ask the person to reference the conversation in a message to you.',
+  'target-unavailable':
+    'Station cannot confirm which Project this conversation is in, so it cannot tell whether this Session may read it. Ask the person to reference the conversation in a message to you.',
+  'unreadable-caller':
+    'Station cannot confirm which Project your own Session is in, so it cannot tell whether this Session may read this conversation. Ask the person to reference the conversation in a message to you.',
+};
+
+/**
+ * The scope rule refused without naming a Project: the conversation is on
+ * another Station this Session may not reach, or the person this Session acts
+ * for may not read it there.
+ */
+const NOT_ADMITTED =
+  'Station will not let this Session read this conversation on its own: it is on another Station, or the person this Session acts for may not read it there. Ask the person to reference the conversation in a message to you.';
+
+function refuse(
+  c: Context,
+  code: ConversationReadRefusalCode,
+  scope?: StationControlRefusal,
+) {
   const refusal = REFUSALS[code];
+  const reason =
+    scope?.code === 'station_control_out_of_scope' ? scope.reason : undefined;
+  const notAdmitted = Boolean(scope) && reason === undefined;
   return c.json(
-    { success: false, code, error: refusal.explanation },
+    {
+      success: false,
+      code,
+      error:
+        (reason && OUT_OF_SCOPE_BY_REASON[reason]) ||
+        (notAdmitted && NOT_ADMITTED) ||
+        refusal.explanation,
+      ...(reason ? { reason } : {}),
+    },
     refusal.status,
   );
 }
@@ -260,6 +304,15 @@ function compactMessage(
     ...(tools.length > 0 ? { tools } : {}),
     ...(typeof timestamp === 'number' && Number.isFinite(timestamp)
       ? { createdAt: new Date(timestamp).toISOString() }
+      : {}),
+    ...(typeof message.metadata?.importedFrom === 'string'
+      ? {
+          // Keep the end of the chain: its last hop is the verified one.
+          importedFrom: boundLabelKeepingTail(
+            message.metadata.importedFrom,
+            (label) => serializedBytes(label) <= 256,
+          ),
+        }
       : {}),
   };
 }
@@ -403,6 +456,18 @@ function readConversationPageAround(
 
 /** How the read was admitted, reported with the page. */
 export type ConversationReadAccess = 'own' | 'scope' | 'reference' | 'person';
+
+/**
+ * What the read admission decided. A refusal says why only for the owner's
+ * own conversation: anyone else's reads as not found, with nothing added.
+ */
+export type ConversationReadAdmission =
+  | { access: ConversationReadAccess; targetExists: boolean; refusal?: never }
+  | {
+      refusal: 'conversation_out_of_scope';
+      scope: StationControlRefusal;
+    }
+  | { refusal: 'conversation_not_found' };
 
 export interface ConversationReferenceReadDeps {
   readProvenance?(
@@ -635,7 +700,10 @@ export function createConversationReadAdmission(
     return false;
   };
 
-  return (caller: StationControlCaller | undefined, requestedId: string) => {
+  return (
+    caller: StationControlCaller | undefined,
+    requestedId: string,
+  ): ConversationReadAdmission => {
     const conversationId = deps.conversationIdOf(requestedId);
 
     let access: ConversationReadAccess = 'person';
@@ -660,21 +728,24 @@ export function createConversationReadAdmission(
           'view',
         );
         targetExists = target !== undefined;
-        if (!stationControlScopeRefusal(caller, target)) {
+        const scopeRefusal = stationControlScopeRefusal(caller, target);
+        if (!scopeRefusal) {
           // A bound operator passes the scope rule whatever the target,
           // even one Station has no record of; that still reads as absent
           // below unless the transcript holds something.
           access = 'scope';
         } else if (personReferenced(caller, requestedId, conversationId)) {
           access = 'reference';
-        } else {
+        } else if (ownsTarget(caller, target)) {
           // Out of scope only when it is this owner's; anyone else's reads
-          // exactly like a conversation that does not exist.
+          // exactly like a conversation that does not exist. The rule's own
+          // answer rides along, so the refusal can name the cause.
           return {
-            refusal: ownsTarget(caller, target)
-              ? ('conversation_out_of_scope' as const)
-              : ('conversation_not_found' as const),
+            refusal: 'conversation_out_of_scope' as const,
+            scope: scopeRefusal,
           };
+        } else {
+          return { refusal: 'conversation_not_found' as const };
         }
       }
     }
@@ -704,6 +775,8 @@ export function createConversationReferenceReadRoutes(
       authority?.kind === 'caller' ? authority.caller : undefined,
       requestedId,
     );
+    if (admission.refusal === 'conversation_out_of_scope')
+      return refuse(c, admission.refusal, admission.scope);
     if (admission.refusal) return refuse(c, admission.refusal);
     const { access, targetExists } = admission;
 
@@ -832,7 +905,7 @@ export function createConversationReferenceReadRoutes(
           422,
         );
       deps.logger.warn('Failed to read conversation', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return c.json(
         { success: false, error: 'Failed to read conversation' },

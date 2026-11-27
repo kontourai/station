@@ -21,7 +21,10 @@ describe('renderForkTranscript', () => {
     expect(rendered).toContain(
       'All 2 earlier user and assistant text messages are included',
     );
-    expect(rendered).toMatch(/\n\nUser: first\n\nAssistant: second$/);
+    // The transcript is closed, so a following request is not its tail.
+    expect(rendered).toMatch(
+      /\n\nUser: first\n\nAssistant: second\n\nEnd of the earlier transcript\. The new request follows\.$/,
+    );
   });
 
   test('drops whole older messages and counts them', () => {

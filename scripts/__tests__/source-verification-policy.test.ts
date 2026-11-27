@@ -1,9 +1,14 @@
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  CHEAP_ONLY_DESCRIPTION,
   FAST_CHECKS_PROVISIONAL_STEP,
+  HEAVY_DEFERRED_STEP,
+  HEAVY_RAN_STEP,
   reconcileSourceVerification,
 } from '../source-verification-policy.mjs';
 
@@ -38,6 +43,8 @@ const jobs = [
   name,
   status: 'completed',
   conclusion: name.startsWith('Fork') ? 'skipped' : 'success',
+  // The jobs API lists every job's steps; the policy reads the aggregate's.
+  steps: [] as Array<{ name: string; conclusion: string }>,
 }));
 // Observed run 38949134941: title bootstrap failed; all thirteen source jobs skipped.
 const legacyMetadataJobs = [
@@ -62,8 +69,9 @@ const legacyMetadataJobs = [
   conclusion: id === 0 ? 'failure' : 'skipped',
 }));
 
-type Job = Omit<(typeof jobs)[number], 'conclusion'> & {
+type Job = Omit<(typeof jobs)[number], 'conclusion' | 'steps'> & {
   conclusion: string | null;
+  steps?: unknown;
 };
 type Run = Omit<typeof run, 'conclusion'> & {
   conclusion: string | null;
@@ -79,6 +87,7 @@ function fixture() {
     runs: structuredClone([run]) as Run[],
     jobs: new Map<number, Job[]>([[10, structuredClone(jobs)]]),
     posts: [] as Array<{ state: string }>,
+    postPaths: [] as string[],
     comparison: { status: 'ahead', merge_base_commit: { sha: base } },
     comparisons: new Map<
       string,
@@ -90,6 +99,8 @@ function fixture() {
       object: { type: 'commit', sha: base },
     },
     error: '',
+    jobReadFailures: 0,
+    jobEvidenceReads: 0,
     truncate: false,
     reads: 0,
     mainRefReads: 0,
@@ -100,14 +111,14 @@ function fixture() {
       'utf8',
     ),
   };
-  const execute = async (eventName = 'workflow_dispatch', dryRun = false) => {
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+  const serve = async <T>(use: (apiUrl: string) => Promise<T>) => {
     const handle = async (url: string, options: RequestInit) => {
       const parsed = new URL(url);
       const path = parsed.pathname.replace('/repos/kontourai/station/', '');
       const json = (value: unknown) =>
         new Response(JSON.stringify(value), { status: 200 });
       if (options.method === 'POST') {
+        state.postPaths.push(path);
         state.posts.push(JSON.parse(String(options.body)));
         return json({});
       }
@@ -159,6 +170,9 @@ function fixture() {
         path,
       );
       if (jobRoute) {
+        state.jobEvidenceReads += 1;
+        if (state.jobEvidenceReads <= state.jobReadFailures)
+          return new Response('', { status: 502 });
         const selected = state.jobs.get(Number(jobRoute[1])) ?? [];
         return json({ total_count: selected.length, jobs: selected });
       }
@@ -186,7 +200,17 @@ function fixture() {
       const address = server.address();
       if (!address || typeof address === 'string')
         throw new Error('Missing fixture address');
-      return await reconcileSourceVerification({
+      return await use(`http://127.0.0.1:${address.port}`);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  };
+  const execute = async (eventName = 'workflow_dispatch', dryRun = false) => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    return serve((apiUrl) =>
+      reconcileSourceVerification({
         repository: 'kontourai/station',
         sourceSha: head,
         callerRunId: 10,
@@ -194,14 +218,52 @@ function fixture() {
         eventName,
         event: { workflow_run: { id: 10, head_sha: head } },
         token: 'fixture',
-        apiUrl: `http://127.0.0.1:${address.port}`,
-      });
-    } finally {
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
-    }
+        apiUrl,
+      }),
+    );
   };
+  /**
+   * The publisher exactly as the reusable workflow's step starts it: the
+   * script's own entry point, with the environment GitHub gives a called
+   * workflow (the caller's event name and run id) plus the step's env.
+   */
+  const executeCli = (env: Record<string, string>) =>
+    serve(
+      (apiUrl) =>
+        new Promise<{ status: number | null; stderr: string }>(
+          (resolve, reject) => {
+            const child = spawn(
+              process.execPath,
+              [
+                fileURLToPath(
+                  new URL('../source-verification-policy.mjs', import.meta.url),
+                ),
+              ],
+              {
+                env: {
+                  PATH: process.env.PATH ?? '',
+                  GITHUB_REPOSITORY: 'kontourai/station',
+                  GITHUB_API_URL: apiUrl,
+                  GH_TOKEN: 'fixture',
+                  ...env,
+                },
+                stdio: ['ignore', 'ignore', 'pipe'],
+                windowsHide: true,
+              },
+            );
+            let stderr = '';
+            child.stderr.on('data', (chunk) => {
+              stderr += chunk;
+            });
+            const timer = setTimeout(() => child.kill(), 20_000);
+            child.on('error', reject);
+            child.on('close', (status) => {
+              clearTimeout(timer);
+              resolve({ status, stderr });
+            });
+          },
+        ),
+    );
   const newer = (conclusion: string) => {
     state.runs.unshift({
       ...structuredClone(run),
@@ -218,17 +280,72 @@ function fixture() {
         : jobs.map((job) => ({ ...job, conclusion })),
     );
   };
-  return { state, execute, newer };
+  return { state, execute, executeCli, newer };
 }
 
 describe('source verification reconciler API boundary', () => {
   afterEach(() => vi.restoreAllMocks());
-  test('a successful diagnostic signer run cannot qualify a PR source', async () => {
+  // STATION_PR_HEAVY_CHECKS: only a run that ran the heavy checks verifies.
+  test.each([
+    [
+      'cheap-only',
+      [
+        [HEAVY_DEFERRED_STEP, 'success'],
+        [HEAVY_RAN_STEP, 'skipped'],
+      ],
+      { state: 'pending', description: CHEAP_ONLY_DESCRIPTION },
+    ],
+    [
+      'heavy',
+      [
+        [HEAVY_DEFERRED_STEP, 'skipped'],
+        [HEAVY_RAN_STEP, 'success'],
+      ],
+      { state: 'success' },
+    ],
+    [
+      'contradictory markers',
+      [
+        [HEAVY_DEFERRED_STEP, 'success'],
+        [HEAVY_RAN_STEP, 'success'],
+      ],
+      { state: 'pending' },
+    ],
+    [
+      'ran marker skipped alone',
+      [[HEAVY_RAN_STEP, 'skipped']],
+      { state: 'pending' },
+    ],
+    ['pre-switch run without markers', [], { state: 'success' }],
+  ] as const)(
+    'a %s aggregate publishes %j',
+    async (_name, markers, expected) => {
+      const { state, execute } = fixture();
+      const aggregate = state.jobs
+        .get(10)
+        ?.find((job) => job.name === 'Fast checks execution');
+      if (!aggregate) throw new Error('Expected the aggregate job.');
+      Object.assign(aggregate, {
+        steps: markers.map(([name, conclusion]) => ({ name, conclusion })),
+      });
+      expect(await execute()).toMatchObject(expected);
+    },
+  );
+  test('an aggregate without a step inventory never reads verified', async () => {
+    const { state, execute } = fixture();
+    const aggregate = state.jobs
+      .get(10)
+      ?.find((job) => job.name === 'Fast checks execution');
+    if (!aggregate) throw new Error('Expected the aggregate job.');
+    Object.assign(aggregate, { steps: 'unavailable' });
+    expect((await execute()).state).toBe('pending');
+  });
+  test('a successful run of a non-CI workflow cannot qualify a PR source', async () => {
     const { state, execute } = fixture();
     state.runs = [
       {
         ...run,
-        path: '.github/workflows/pr-conflict-signer-diagnostic.yml',
+        path: '.github/workflows/unrelated-manual-job.yml',
         event: 'workflow_dispatch',
       },
     ];
@@ -389,6 +506,24 @@ describe('source verification reconciler API boundary', () => {
       expect(state.posts.at(-1)?.state).toBe('pending');
     },
   );
+  test('recovers a transient jobs GET and still reconciles two complete snapshots', async () => {
+    const { state, execute } = fixture();
+    state.jobReadFailures = 2;
+
+    expect((await execute()).state).toBe('success');
+    expect(state.jobEvidenceReads).toBe(4);
+    expect(state.posts).toMatchObject([{ state: 'success' }]);
+  });
+
+  test('exhausted jobs GET recovery publishes only pending', async () => {
+    const { state, execute } = fixture();
+    state.jobReadFailures = 3;
+
+    await expect(execute()).rejects.toThrow('GitHub API 502');
+    expect(state.jobEvidenceReads).toBe(3);
+    expect(state.posts).toMatchObject([{ state: 'pending' }]);
+  });
+
   test('workflow lifecycle reconciles a later source completion after an earlier pending event', async () => {
     const { state, execute } = fixture();
     state.jobs.get(10)![2].status = 'in_progress';
@@ -404,6 +539,86 @@ describe('source verification reconciler API boundary', () => {
     expect((await execute()).state).toBe('success');
     state.runs[0].head_branch = 'feature';
     expect((await execute()).state).toBe('pending');
+  });
+  // The in-run merge-group publisher: ci.yml's source-policy job calls the
+  // reusable workflow from inside the still-running merge-group run, so
+  // GitHub hands the script the caller's event name (merge_group) and run id,
+  // and the step passes the queue head as SOURCE_SHA.
+  const mergeGroupRun = (state: ReturnType<typeof fixture>['state']) => {
+    state.owners = [];
+    Object.assign(state.runs[0], {
+      event: 'merge_group',
+      head_branch: `gh-readonly-queue/main/pr-42-${base}`,
+      status: 'in_progress',
+      conclusion: null,
+    });
+  };
+  const inRunEnv = {
+    GITHUB_EVENT_NAME: 'merge_group',
+    GITHUB_RUN_ID: '10',
+    SOURCE_SHA: head,
+  };
+  test('a merge-group caller publishes its own completed proof on the queue head while its run is still in progress', async () => {
+    const { state, executeCli } = fixture();
+    mergeGroupRun(state);
+    const result = await executeCli(inRunEnv);
+    expect(result.status, result.stderr).toBe(0);
+    expect(state.postPaths).toEqual([`statuses/${head}`]);
+    expect(state.posts).toEqual([
+      {
+        context: 'Source verification policy',
+        state: 'success',
+        description: 'All exact-owner source proofs succeeded',
+      },
+    ]);
+  });
+  test.each([
+    ['in_progress', 'pending'],
+    ['failure', 'failure'],
+    ['cancelled', 'failure'],
+  ] as const)(
+    'a merge-group caller whose aggregate is %s publishes %s, never success',
+    async (outcome, expected) => {
+      const { state, executeCli } = fixture();
+      mergeGroupRun(state);
+      const aggregate = state.jobs.get(10)![2];
+      if (outcome === 'in_progress')
+        Object.assign(aggregate, { status: 'in_progress', conclusion: null });
+      else aggregate.conclusion = outcome;
+      const result = await executeCli(inRunEnv);
+      expect(result.status, result.stderr).toBe(0);
+      expect(state.postPaths).toEqual([`statuses/${head}`]);
+      expect(state.posts.map((post) => post.state)).toEqual([expected]);
+    },
+  );
+  test('a merge-group caller cannot publish for a head its own run did not build', async () => {
+    const { state, executeCli } = fixture();
+    mergeGroupRun(state);
+    state.runs[0].head_sha = advanced;
+    const result = await executeCli(inRunEnv);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('Untrusted triggering run');
+    expect(state.posts.map((post) => post.state)).toEqual(['pending']);
+  });
+  test('the in-run merge-group verdict and the later lifecycle reconciles agree, so neither resets the other', async () => {
+    const { state, execute, executeCli } = fixture();
+    mergeGroupRun(state);
+    expect((await executeCli(inRunEnv)).status).toBe(0);
+    // A late `requested` reconcile reads the same completed proof jobs.
+    expect((await execute('workflow_run')).state).toBe('success');
+    // `completed` arrives after the run's tail (title, Merge-queue
+    // regression) finished; the proof jobs and so the verdict are unchanged.
+    Object.assign(state.runs[0], {
+      status: 'completed',
+      conclusion: 'success',
+    });
+    expect((await execute('workflow_run')).state).toBe('success');
+    expect(state.postPaths).toEqual(Array(3).fill(`statuses/${head}`));
+    expect(state.posts.map((post) => post.state)).toEqual([
+      'success',
+      'success',
+      'success',
+    ]);
   });
   test('source completion caller publishes before unrelated optional workflow jobs finish', async () => {
     const { state, execute } = fixture();
@@ -480,6 +695,43 @@ describe('source verification reconciler API boundary', () => {
     state.jobs.set(11, structuredClone(legacyMetadataJobs));
     expect((await execute()).state).toBe('success');
   });
+  // #4748: the actionlint artifact producer is a source job that runs before
+  // plan, statics and fork-smoke. When it is skipped the run is the usual
+  // metadata run; when it ran and failed, every consumer is skipped behind it
+  // and that must never read as metadata or as the older green.
+  test('a skipped actionlint artifact producer leaves a metadata run ignorable (control)', async () => {
+    const { state, execute, newer } = fixture();
+    newer('skipped');
+    state.runs[0].conclusion = 'failure';
+    state.jobs.set(11, [
+      ...structuredClone(legacyMetadataJobs),
+      {
+        id: 902,
+        name: 'Pinned actionlint artifact',
+        status: 'completed',
+        conclusion: 'skipped',
+      },
+    ]);
+    expect((await execute()).state).toBe('success');
+  });
+  test.each(['failure', 'cancelled', 'timed_out'])(
+    'an actionlint artifact producer that %s cannot hide behind skipped consumers or the older green',
+    async (conclusion) => {
+      const { state, execute, newer } = fixture();
+      newer('skipped');
+      state.runs[0].conclusion = 'failure';
+      state.jobs.set(11, [
+        ...structuredClone(legacyMetadataJobs),
+        {
+          id: 902,
+          name: 'Pinned actionlint artifact',
+          status: 'completed',
+          conclusion,
+        },
+      ]);
+      expect((await execute()).state).toBe('failure');
+    },
+  );
   test.each([
     'aggregate failure',
     'aggregate cancelled',
@@ -765,6 +1017,9 @@ describe('source verification reconciler API boundary', () => {
     });
     expect(workflow.on.workflow_run).toEqual({
       workflows: ['PR: CI'],
+      // `requested` publishes pending for a first attempt, `in_progress` for
+      // a re-run attempt (GitHub sends no `requested` for re-runs), and
+      // `completed` the verdict.
       types: ['requested', 'in_progress', 'completed'],
     });
     const steps = workflow.jobs.reconcile.steps;
@@ -776,5 +1031,370 @@ describe('source verification reconciler API boundary', () => {
       'persist-credentials': false,
     });
     expect(steps.some((step) => step.uses?.includes('artifact'))).toBe(false);
+  });
+
+  // GitHub keeps one pending run per concurrency group. At workflow level a
+  // run whose `reconcile` job its `if` skips still queued in the group and
+  // replaced (cancelled) a pending admitted run for the same head, which then
+  // never published. On the job, a skipped job never enters the group. This
+  // pins the shape only; only a hosted run can show the runtime effect.
+  test('publisher serializes on the reconcile job, so a skipped run never enters the group', () => {
+    const workflow = load(
+      readFileSync(
+        new URL(
+          '../../.github/workflows/source-verification-policy.yml',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+      { schema: JSON_SCHEMA },
+    ) as {
+      concurrency?: unknown;
+      jobs: Record<string, { concurrency?: unknown; if?: string }>;
+    };
+    expect(workflow).not.toHaveProperty('concurrency');
+    expect(Object.keys(workflow.jobs)).toEqual(['reconcile']);
+    expect(workflow.jobs.reconcile.if).toEqual(expect.any(String));
+    expect(workflow.jobs.reconcile.concurrency).toEqual({
+      group:
+        'source-verification-policy-${{ github.repository }}-${{ github.event.workflow_run.head_sha || inputs.source_sha }}',
+      'cancel-in-progress': false,
+    });
+  });
+});
+
+/**
+ * Evaluates a GitHub Actions expression made only of `github.*` properties,
+ * string, integer and boolean literals, ==, !=, >, !, &&, || and
+ * parentheses; anything else is refused so a richer guard fails loudly
+ * instead of evaluating wrongly. && and || return operand values, as
+ * GitHub's do.
+ */
+function evaluateGithubExpression(
+  expression: string,
+  github: Record<string, unknown>,
+  vars: Record<string, string> = {},
+) {
+  const body = expression.trim().replace(/^\$\{\{([\s\S]*)\}\}$/, '$1');
+  const stripped = body
+    .replace(/'[^']*'/g, '')
+    .replace(/(?:github|vars)(?:\.[A-Za-z_]+)+/g, '')
+    .replace(/\b(?:true|false|\d+)\b/g, '')
+    .replace(/==|!=|&&|\|\||[!()>\s]/g, '');
+  if (stripped) throw new Error(`unsupported expression syntax: ${stripped}`);
+  const js = body
+    .replace(
+      /(github|vars)((?:\.[A-Za-z_]+)+)/g,
+      (_m, root: string, path: string) =>
+        `${root}${path.replaceAll('.', '?.')}`,
+    )
+    .replace(/==/g, '===')
+    .replace(/!===/g, '!==');
+  // An unset repository variable reads as '' in GitHub expressions.
+  const variables = new Proxy(vars, {
+    get: (target, key) =>
+      typeof key === 'string' ? (target[key] ?? '') : undefined,
+  });
+  return new Function('github', 'vars', `return (${js});`)(
+    github,
+    variables,
+  ) as unknown;
+}
+
+describe('publisher admission for PR: CI lifecycle events', () => {
+  const guard = (
+    load(
+      readFileSync(
+        new URL(
+          '../../.github/workflows/source-verification-policy.yml',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+      { schema: JSON_SCHEMA },
+    ) as { jobs: { reconcile: { if: string } } }
+  ).jobs.reconcile.if;
+  const admits = (
+    action: string,
+    runAttempt: number,
+    displayTitle = 'Source verification',
+    event = 'pull_request_target',
+    vars: Record<string, string> = {},
+  ) =>
+    Boolean(
+      evaluateGithubExpression(
+        guard,
+        {
+          ref: 'refs/heads/main',
+          event_name: 'workflow_run',
+          event: {
+            action,
+            workflow_run: {
+              event,
+              run_attempt: runAttempt,
+              display_title: displayTitle,
+            },
+          },
+        },
+        vars,
+      ),
+    );
+
+  test.each([
+    // A first attempt gets pending from `requested`; its `in_progress` is
+    // redundant and takes no runner.
+    ['requested', 1, true],
+    ['in_progress', 1, false],
+    // GitHub sends no `requested` for a re-run, so the re-run attempt's
+    // start is what replaces the previous attempt's verdict with pending.
+    ['in_progress', 2, true],
+    ['in_progress', 3, true],
+    ['completed', 1, true],
+    ['completed', 2, true],
+  ] as const)(
+    'a source run %s on attempt %i runs the reconcile: %s',
+    (action, attempt, expected) => {
+      expect(admits(action, attempt)).toBe(expected);
+      expect(
+        admits(action, attempt, 'Source verification', 'merge_group'),
+      ).toBe(expected);
+    },
+  );
+
+  test.each([
+    ['requested', 1, false],
+    ['in_progress', 1, false],
+    ['in_progress', 2, false],
+    ['completed', 1, true],
+    ['completed', 2, true],
+  ] as const)(
+    'a metadata-only run %s on attempt %i runs the reconcile: %s',
+    (action, attempt, expected) => {
+      expect(admits(action, attempt, 'PR metadata')).toBe(expected);
+    },
+  );
+
+  // STATION_PR_HEAVY_CHECKS: an arming run publishes only its completed
+  // verdict and only under when-armed; with the switch off it ran nothing.
+  test.each([
+    ['requested', 1, {}, false],
+    ['completed', 1, {}, false],
+    ['completed', 1, { STATION_PR_HEAVY_CHECKS: 'every-push' }, false],
+    ['requested', 1, { STATION_PR_HEAVY_CHECKS: 'when-armed' }, false],
+    ['in_progress', 2, { STATION_PR_HEAVY_CHECKS: 'when-armed' }, false],
+    ['completed', 1, { STATION_PR_HEAVY_CHECKS: 'when-armed' }, true],
+    ['completed', 2, { STATION_PR_HEAVY_CHECKS: 'when-armed' }, true],
+  ] as const)(
+    'an arming run %s on attempt %i with %j runs the reconcile: %s',
+    (action, attempt, vars, expected) => {
+      expect(
+        admits(action, attempt, 'PR armed', 'pull_request_target', vars),
+      ).toBe(expected);
+    },
+  );
+
+  test('runs only for PR and merge-group CI runs on main', () => {
+    expect(admits('in_progress', 2, 'Source verification', 'push')).toBe(false);
+    expect(
+      Boolean(
+        evaluateGithubExpression(guard, {
+          ref: 'refs/heads/feature',
+          event_name: 'workflow_run',
+          event: {
+            action: 'in_progress',
+            workflow_run: {
+              event: 'pull_request_target',
+              run_attempt: 2,
+              display_title: 'Source verification',
+            },
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+});
+
+/**
+ * STATION_PR_HEAVY_CHECKS proof selection. Run 10 of the fixture is a
+ * completed, successful source run of the head (its aggregate has no heavy
+ * markers, so it ran everything, as every run did before the switch).
+ */
+describe('a verified head stays verified against cheap-only and arming runs', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const later = (
+    state: ReturnType<typeof fixture>['state'],
+    id: number,
+    shape: {
+      title?: string;
+      status?: string;
+      conclusion?: string | null;
+      jobs: Job[];
+      attempt?: number;
+    },
+  ) => {
+    state.runs.unshift({
+      ...structuredClone(run),
+      id,
+      run_attempt: shape.attempt ?? 1,
+      run_started_at: `2026-10-16T12:0${id - 10}:00Z`,
+      display_title: shape.title ?? 'Source verification',
+      name: shape.title ?? 'Source verification',
+      status: shape.status ?? 'completed',
+      conclusion: shape.conclusion === undefined ? 'success' : shape.conclusion,
+    });
+    state.jobs.set(id, shape.jobs);
+  };
+  const job = (
+    id: number,
+    name: string,
+    status: string,
+    conclusion: string | null,
+    steps?: Array<{ name: string; conclusion: string }>,
+  ): Job => ({ id, name, status, conclusion, ...(steps ? { steps } : {}) });
+  const source = (
+    aggregate: string,
+    markers: Array<[string, string]>,
+    admission = true,
+  ): Job[] => [
+    ...(admission
+      ? [job(90, 'PR source admission', 'completed', 'success')]
+      : []),
+    job(91, 'fast-checks plan', 'completed', 'success'),
+    job(
+      92,
+      'fast-checks statics',
+      'completed',
+      aggregate === 'success' ? 'success' : 'failure',
+    ),
+    job(93, 'Fork pull-request smoke', 'completed', 'skipped'),
+    job(
+      94,
+      'Fast checks execution',
+      'completed',
+      aggregate,
+      markers.map(([name, conclusion]) => ({ name, conclusion })),
+    ),
+  ];
+  const armedSkipped = [
+    'PR source admission',
+    'fast-checks plan',
+    'fast-checks statics',
+    'Fast checks execution',
+    'Fork pull-request smoke',
+  ].map((name, index) => job(80 + index, name, 'completed', 'skipped', []));
+
+  // Verifier case F1: the switch is off, the push run verified the head, and
+  // an arming run is created. Whenever a reconcile runs, the head reads
+  // success: while that run is queued with no jobs, while it is evaluated,
+  // and once every job skipped (no further event republishes it).
+  test.each([
+    ['queued with no jobs', 'queued', null, [] as Job[]],
+    [
+      'being evaluated',
+      'in_progress',
+      null,
+      [
+        job(80, 'PR source admission', 'completed', 'skipped'),
+        job(81, 'fast-checks plan', 'queued', null),
+        job(82, 'Fast checks execution', 'queued', null),
+      ],
+    ],
+    ['completed with every job skipped', 'completed', 'skipped', armedSkipped],
+  ] as const)(
+    'switch off: an arming run %s never displaces the verified push run',
+    async (_name, status, conclusion, jobs) => {
+      const { state, execute } = fixture();
+      later(state, 11, {
+        title: 'PR armed',
+        status,
+        conclusion,
+        jobs: [...jobs],
+      });
+      expect((await execute()).state).toBe('success');
+    },
+  );
+
+  test.each([
+    [
+      'a newer cheap re-run ("Re-run failed jobs" keeps heavy=false)',
+      {
+        jobs: source('success', [[HEAVY_DEFERRED_STEP, 'success']]),
+        attempt: 2,
+      },
+      'success',
+    ],
+    [
+      'a newer cheap run that failed (its deferral marker still ran)',
+      {
+        conclusion: 'failure',
+        jobs: source('failure', [[HEAVY_DEFERRED_STEP, 'success']]),
+      },
+      'success',
+    ],
+    [
+      "a newer run still in progress (it may be heavy: today's rule)",
+      {
+        status: 'in_progress',
+        conclusion: null,
+        jobs: [job(91, 'fast-checks plan', 'in_progress', null)],
+      },
+      'pending',
+    ],
+    [
+      "a newer non-arming run with every source job skipped (today's rule)",
+      { conclusion: 'skipped', jobs: armedSkipped.slice(1) },
+      'pending',
+    ],
+    [
+      'a newer heavy run that failed',
+      {
+        conclusion: 'failure',
+        jobs: source('failure', [
+          [HEAVY_DEFERRED_STEP, 'skipped'],
+          [HEAVY_RAN_STEP, 'skipped'],
+        ]),
+      },
+      'failure',
+    ],
+    [
+      'a newer cancelled run that never recorded a deferral',
+      { conclusion: 'cancelled', jobs: source('cancelled', []) },
+      'failure',
+    ],
+  ] as const)(
+    '%s leaves a verified head %s',
+    async (_name, shape, expected) => {
+      const { state, execute } = fixture();
+      later(state, 11, { ...shape, jobs: [...shape.jobs] });
+      expect((await execute()).state).toBe(expected);
+    },
+  );
+
+  test('without an earlier verified run, the newest cheap run still reads pending', async () => {
+    const { state, execute } = fixture();
+    state.jobs.set(10, source('success', [[HEAVY_DEFERRED_STEP, 'success']]));
+    later(state, 11, {
+      title: 'PR armed',
+      status: 'in_progress',
+      conclusion: null,
+      jobs: [
+        job(90, 'PR source admission', 'completed', 'success'),
+        job(91, 'fast-checks plan', 'in_progress', null),
+      ],
+    });
+    expect((await execute()).state).toBe('pending');
+  });
+
+  test('a verified proof on a base the live target no longer contains is not kept', async () => {
+    const { state, execute } = fixture();
+    state.comparison = {
+      status: 'diverged',
+      merge_base_commit: { sha: advanced },
+    };
+    state.owners[0].base.sha = advanced;
+    later(state, 11, {
+      jobs: source('success', [[HEAVY_DEFERRED_STEP, 'success']]),
+    });
+    expect((await execute()).state).toBe('pending');
   });
 });

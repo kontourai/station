@@ -1,0 +1,7 @@
+{
+  "revision": "572666760da6daef16a0af319c75c969e10b25e3",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Added the composer + menu paragraph (groups, Open terminal, Open in Coding, panel toggles in ⋯) and corrected Reference chat as a row of +, not a separate button. Re-read the ⋯ Chat inventory/Conversation stats and This chat passages; still accurate for ChatDockHeader.tsx and ChatDockMobileOverflowSheet.tsx.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

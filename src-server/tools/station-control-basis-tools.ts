@@ -131,7 +131,21 @@ export function registerBasisTools(registry: StationControlToolRegistry) {
   registry.appTool(
     STATION_BASIS_MCP_TOOL_NAME,
     'Read one exact authorized Station answer Basis projection.',
-    stationBasisToolInputSchema,
+    // Kiro's model endpoint rejects unions at the root of listed tool schemas.
+    z
+      .object({
+        scope: z.enum(['answer', 'task-answer']),
+        sessionId: identifier.optional().describe('Required for answer scope.'),
+        turnId: identifier.optional().describe('Required for answer scope.'),
+        taskId: identifier
+          .optional()
+          .describe('Required for task-answer scope.'),
+        answerReferenceId: identifier
+          .optional()
+          .describe('Required for task-answer scope.'),
+      })
+      .strict()
+      .pipe(stationBasisToolInputSchema),
     {
       _meta: {
         ...buildBasisPanelAppToolMeta(STATION_BASIS_MCP_RESOURCE_URI),

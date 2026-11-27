@@ -33,6 +33,10 @@ import type { BrowserProjectSettingsStore } from '../services/browser/browser-pr
 import type { BrowserSessionRecord } from '../services/browser/browser-session-registry.js';
 import type { ProjectTaskRoomRuntime } from '../services/orchestration/project-task-room-runtime.js';
 import {
+  browserOperationReadsPage,
+  markNativeWebRead,
+} from '../services/plugins/native-web-read-marks.js';
+import {
   type TaskBrowserCapture,
   TaskBrowserCaptureError,
   type TaskCaptureBrowserRegistry,
@@ -87,6 +91,11 @@ export interface BrowserAgentRoutesDeps {
   /** The current slug of a Project, by canonical id. */
   projectSlug(projectId: string): string | undefined;
   surfaceIdFor(browserSessionId: string): string | undefined;
+  /**
+   * #4828: records that the caller's conversation read a page; marks the
+   * shared untrusted-content ledger by default.
+   */
+  markPageRead?(conversationIds: readonly (string | undefined)[]): void;
 }
 
 type Body = Record<string, unknown>;
@@ -181,6 +190,14 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
     );
     if (!decided.ok) return c.json({ ok: false, ...decided.refusal });
     const authority = decided.authority;
+    // #4828: what a page returns, and what driving it shows, is written by
+    // others. An authorized call that reads or drives a page marks the
+    // caller's conversation before it runs, so a failed read still counts.
+    if (browserOperationReadsPage(c.req.param('operation')))
+      (deps.markPageRead ?? markNativeWebRead)([
+        caller?.conversationId,
+        caller?.sessionId,
+      ]);
     const automation = deps.automation;
     const id = body.browserSessionId;
 

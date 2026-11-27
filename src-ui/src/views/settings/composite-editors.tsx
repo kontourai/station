@@ -85,9 +85,14 @@ export const COMPOSITE_EDITORS: Readonly<
  *   re-applied and rechecked under the mutation authority
  *   (docs/design/registry-trust-policy.md). No row until the UI can show the
  *   applied decision beside the candidate.
+ * - `confinedNetwork` (#4769): the restricted-network policy for confined
+ *   sessions. Its allowed-host list needs an editor that shows what each
+ *   entry admits and the broker's refusals beside it; until then it is set
+ *   through `PUT /config/app`, `station config set` or a managed policy.
  */
 export const DEFERRED_COMPOSITE_KEYS: readonly string[] = [
   'agentConnections',
+  'confinedNetwork',
   'contribution',
   'firstRun',
   'fleetContribution',

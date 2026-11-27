@@ -18,9 +18,9 @@ publication interval, under its own applicationId — see
 
 Station's Android release build (signed universal APK + AAB) and iOS device
 release build (signed IPA, `--export-method app-store-connect`) already run inside `.github/workflows/release.yml`'s
-`android` and `ios-device` jobs, triggered by pushing an annotated `vMAJOR.MINOR.PATCH`
+`android` and `ios-device` jobs, triggered by an immutable annotated `vX.Y.Z-rc.N` or direct-final `vX.Y.Z`
 tag — see [native-releases.md](./native-releases.md#stage-inspect-publish-and-roll-back)
-and [release-rings.md](./release-rings.md#publish-a-preview) for that flow.
+and [release-rings.md](./release-rings.md#publish-a-release-candidate) for that flow.
 Both jobs have a required final store-upload step. A tagged Stable release
 fails closed when Play or App Store Connect credentials, signing material, or
 provider acceptance is unavailable; it cannot attach artifacts and quietly
@@ -67,15 +67,15 @@ polls once on return. Its constrained-network interval is 60 seconds, inside
 the existing 90-second host lease; the native desktop consumer still owns
 background delivery.
 
-Stable and Beta release builds exclude WebView inspection by default; Nightly
+Stable RC/final release builds exclude WebView inspection by default; Nightly
 opts into the diagnostic feature. See [inspection by
 channel](native-shell-verification.md#webview-inspection-by-build-channel).
 Feature selection is separate from installed inspector verification.
 
 ## Connection setup
 
-Mobile artifacts contain no default Station backend address. Dev, Nightly,
-Beta, and Stable builds use runtime pairing or an explicitly configured saved
+Mobile artifacts contain no default Station backend address. Dev, Nightly
+and Stable builds use runtime pairing or an explicitly configured saved
 connection. CI does not need access to a personal Station or tailnet to build
 the app, and a release variable must not supply a backend address.
 
@@ -87,8 +87,8 @@ to the device.
 
 ## Native app update feed
 
-**TestFlight/App Store is the authoritative iOS update path.** Stable, Beta,
-and Nightly TestFlight builds do not require a custom update feed; without its
+**TestFlight/App Store is the authoritative iOS update path.** Stable and
+Nightly TestFlight builds do not require a custom update feed; without its
 configuration the launch component sends no feed request. This does not prevent
 signing or upload. The
 selected Station's Core update endpoint is intentionally not evidence for an
@@ -152,17 +152,35 @@ change before it reaches a real release tag — they carry no store-upload step
 and no signing secret, and are unrelated to everything else in this doc.
 Android also runs on affected `main` pushes and `workflow_dispatch`. iOS runs
 through the reviewed base-controlled `pull_request_target` topology, through
-`merge_group`, and through `workflow_dispatch`. It has no push trigger: the
-merge queue fast-forwards `main` to the exact candidate it already built.
+`merge_group`, through `main` pushes, and through `workflow_dispatch`.
 Every pull request and queued merge candidate emits the stable
 `build-ios-verification` check so the main ruleset can require it. A reviewed
-hosted-Linux classifier runs the `macos-26` job only when the pull-request or
-merge-group diff changes iOS, native, frontend, or shared package inputs
-(test-only `__tests__/`, `*.test.*` and `*.spec.*` TypeScript files under
-`src-ui/`, and a package's top-level `src/__tests__/`, do not count: the app's
-builds never compile them);
-unrelated candidates receive a successful skipped job without consuming macOS
-capacity. The cancellation group supersedes stale runs for the same candidate.
+hosted-Linux classifier runs the `macos-26` job before landing only when the
+pull-request or merge-group diff changes native inputs: `src-desktop/`, Rust
+and Cargo files, dependency manifests, the runtime smoke, the workflow,
+`vite.config.ts` and every executed file named for iOS or the native client,
+and the native-shell slice of `src-ui/` (`src/platform/`, `public/`, and the
+boot entry). Everything else the app can contain or be built with is built
+after it lands: every source root the UI bundle imports (`src-ui/`,
+`src-shared/`, and the workspace packages it reaches) and the generic
+tooling the job runs. Two of those files sit on the native path and still
+build only after landing: `scripts/vite-ui-assets.ts` (its native
+`precompress: false` branch) and `scripts/lib/desktop-build-manifest.mjs`
+(imported by the native manifest writers). `scripts/classify-ci-change.mjs` owns both lists, and
+its test derives them from the job's commands and the UI's imports; files
+read only at run time are not derived. A `main` push builds when its range
+has a post-merge change and no native input, since the merge queue
+fast-forwards `main` to the candidate it already built whenever a native
+input was present. Post-merge builds coalesce to one running and one
+pending, and a red one opens a `main-health.yml` tracker. A commit pushed to
+`main` without the merge queue is the gap: if it has a native input, no
+build covers it until someone dispatches the workflow on `main`.
+Test-only `__tests__/`, `*.test.*` and `*.spec.*` TypeScript files under
+`src-ui/` and `src-shared/`, and a package's top-level `src/__tests__/`,
+never count: the app's builds never compile them. Unrelated candidates, drafts and the automation
+release PR receive a successful skipped job without consuming macOS capacity;
+the merge group still builds a relevant candidate. The cancellation group
+supersedes stale runs for the same candidate.
 The macOS job builds an unsigned iOS 26.5 simulator app, installs it on an
 iPhone 17 Pro simulator, and uses native XCUITest against the packaged
 WKWebView accessibility tree. A clean install must leave the startup surface
@@ -171,7 +189,7 @@ budget. The smoke checks that QR/manual welcome actions are hittable, at least
 44 points tall and inside the viewport, while protected workspace navigation is
 absent. It opens **Enter a pairing code**, checks the real address/code fields
 and title geometry before/after keyboard focus, closes that surface, then follows
-**Other ways to connect → Open connection manager → Connect a Station**. The
+**More ways to connect → Manage Stations → Connect a Station**. The
 existing address/title horizontal containment and focus-scale checks remain.
 It submits no pairing request and does not prove camera capture, host approval,
 credential persistence or physical-device behavior. Notification-sheet discovery
@@ -216,6 +234,17 @@ and their separate profiles. The owning
 sequence is [testflight-delivery.yml](../../.github/workflows/testflight-delivery.yml);
 a bare `tauri ios init` plus `ios build` does not reproduce it.
 
+Nightly and Release share the signing job on GitHub's `xcode-27` runner,
+with Xcode 27.1 selected explicitly. The job requires iOS SDK 27 or later
+before building and checks the exported app's `DTSDKName` before staging
+the IPA. Apple announced this minimum for App Store Connect uploads
+starting in April 2027.
+The separate TestFlight upload job uses the same hosted runner pool and
+consumes the audited IPA retained by the build job.
+The Rust setup includes `llvm-tools`: the pinned `swift-rs` uses its
+`llvm-objcopy` to export Swift `@_cdecl` bridges on Xcode 27. Without it,
+Tauri and plugin entry points can remain undefined at link time.
+
 For a separately authorized local archive, preserve that channel's preparation
 and validate the exported bytes. The profile checker accepts `--station`, not
 `--profile`. From the repository root after unpacking the IPA into an owned
@@ -228,7 +257,7 @@ node scripts/check-mobile-package.mjs ios --root /absolute/scratch/Payload
 
 Add expected team/bundle/profile constraints from the selected channel. A profile
 class check alone does not establish the full signed-app/extension contract.
-Beta and Nightly have source-configured delivery routes; their actual protected
+Stable and Nightly have source-configured delivery routes; their actual protected
 profiles, app records and provider acceptance must still be established.
 
 ## Channel app icon on iOS
@@ -296,6 +325,50 @@ package evidence.
 | Camera | Android `CAMERA` plus optional camera hardware; iOS camera rationale | Scan a pairing QR code. |
 | Microphone | Android `RECORD_AUDIO`/`MODIFY_AUDIO_SETTINGS` plus optional microphone hardware; iOS microphone rationale | Voice conversations with an agent. |
 | Notifications | Android `POST_NOTIFICATIONS` | Show requested Station attention on supported Android releases. |
+| Shared images | Android MainActivity `image/*` `SEND`/`SEND_MULTIPLE` intent filter; no permission | Receive images shared from another app into a conversation or a new chat. |
+
+Android keyboard image insertion uses Wry's `WRY_RUSTWEBVIEW_CLASS_EXTENSION`
+in `src-desktop/.cargo/config.toml`, not a hand edit to generated Kotlin.
+`KeyboardImageIntake` wraps the Chromium input connection on API 25+ and
+advertises PNG, JPEG, GIF and WebP for multiline editors. It requests a
+keyboard URI grant when supplied and releases it after the bounded native
+read, detach, or a 30-second deadline from grant creation (including capture
+and queue delays). WebView state is checked on the UI thread after the IME
+handoff. The
+selection-menu callback offers **Paste** only for an image-capable focused
+composer, and reuses Chromium's existing Paste item when present;
+ordinary text paste keeps Chromium's callback. Each prepare removes Station's
+item when the clipboard changes or Chromium supplies Paste. Station handles its
+own item directly; native Paste detection uses IDs/resource names, not translated
+menu labels. A receive-content listener alone
+is insufficient to ensure Chromium's own input connection and selection menu
+reach the app, so both entry points are explicitly wrapped.
+
+The media-intake plugin applies the same external-provider URI admission,
+image sniffing and count/byte limits as shared images. Its WebView bridge
+captures the focused composer before reading and dispatches files to that
+composer's existing paste handler. Blur, removal, disabling, navigation or a
+changed reply identity drops the pending delivery. Query and hash changes alone
+do not retarget a composer. The bridge runs only on the packaged app origin,
+`http://tauri.localhost`; remote pages cannot capture or receive images.
+The development server origin (`http://127.0.0.1:5173`) is deliberately outside
+this gate, so keyboard/menu image insertion is unavailable in devUrl sessions.
+Use a packaged-asset debug build for this acceptance sequence.
+WebView attachment rebinds the process-lived plugin after activity recreation. A field without attachment
+support does not accept the native payload. These paths do not submit a message.
+
+Physical acceptance remains separate from JVM and DOM checks. On a connected
+Android phone, build this checkout with `npm run build:android:arm64`, install
+its debug APK with `adb install -r <apk>`, and record the APK hash, app identifier,
+Android/WebView/Gboard versions and source SHA. In both a new-chat draft and an
+existing reply, focus the composer and insert an image from Gboard's clipboard
+and sticker picker. Confirm one attachment preview, no unsupported-paste toast,
+and no automatic send; send it and confirm the intended conversation receives
+it. Copy an image from another app and exercise long-press **Paste**, then test
+ordinary text Paste. During a slow read, switch conversations or blur the field
+and confirm no image attaches to the destination. Repeat with unsupported and
+over-limit images, permission denial, and foreground/background transitions.
+An APK build or a synthetic DOM paste does not establish these device outcomes.
 
 The Android activity uses the maintained Android platform contract
 `windowSoftInputMode="adjustResize"`.
@@ -349,7 +422,7 @@ active Tauri 2 Android+iOS maintenance before replacing that boundary.
 ## Secrets checklist
 
 Apple signing and delivery inputs belong to the selected channel environment:
-`native-release` for Stable, `ios-beta` for Beta and `ios-nightly` for Nightly.
+`native-release` for Stable RC/final and `ios-nightly` for Nightly.
 Read the environment declarations and current GitHub protection settings;
 this guide does not prove that reviewers, profiles or credentials are provisioned.
 Google's keyless upload and Secret Manager path is separate, as described below.
@@ -358,7 +431,7 @@ Google's keyless upload and Secret Manager path is separate, as described below.
 | --- | --- | --- | --- |
 | `APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64`, `APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`, `APPLE_DEVELOPMENT_TEAM`, `APPLE_IOS_SIGNING_IDENTITY`, `APPLE_PROVISIONING_PROFILE_BASE64` | iOS | Code-signs the release IPA | Required by the iOS build/sign job — see native-releases.md |
 | `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, `APPLE_API_PRIVATE_KEY` | iOS | Authenticates App Store Connect preflight, TestFlight upload, and processed-build receipt | Required; absence fails the Stable iOS release job before signing work |
-| `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` (push-enabled channel environments) | iOS | Signs the Live Activity widget extension | Required by push-enabled TestFlight builds; see [Live Activity in Beta and Nightly](#live-activity-in-beta-and-nightly) |
+| `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` (push-enabled channel environments) | iOS | Signs the Live Activity widget extension | Required by push-enabled TestFlight builds; see [Live Activity in Stable and Nightly](#live-activity-in-stable-and-nightly) |
 | `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64` (push-enabled channel environments) | iOS | Signs the Notification Service extension | Required separately from the app and Live Activity profiles |
 
 Google Play authentication deliberately has no secret row. GitHub's OIDC token
@@ -415,14 +488,14 @@ devices. If internal device distribution becomes a product requirement again,
 add a separately signed ad-hoc export and publish it as a distinct asset. Do
 not replace the App Store export with it.
 
-### Live Activity in Beta and Nightly
+### Live Activity in Stable and Nightly
 
-Beta and Nightly TestFlight builds declare both the Live Activity widget and
+Nightly TestFlight builds declare both the Live Activity widget and
 Notification Service extension. Stable can build the same pair, but defaults
 to neither: the owner must set the **environment** variable
 `STATION_IOS_STABLE_PUSH_ENABLED=true` in `native-release`. Empty or `false`
-keeps Stable off; any other value fails Stable configuration. Beta and Nightly
-ignore this switch. The reviewed identities and enablement resolver are in
+keeps Stable off; any other value fails Stable configuration. Nightly
+ignores this switch. The reviewed identities and enablement resolver are in
 [`ios-testflight-channel.mjs`](../../scripts/ios-testflight-channel.mjs).
 Both extensions, the native plugin, signing and IPA audits follow that single
 resolved answer. Missing profiles fail an enabled build; they never silently
@@ -495,9 +568,9 @@ name the app and both extensions. The exported IPA audit checks each embedded
 profile UUID against the imported profile, so preparing export options alone
 cannot count as successful signing.
 
-Each push-enabled environment (`ios-beta`, `ios-nightly`, and opted-in
+Each current push-enabled environment (`ios-nightly` and opted-in
 `native-release`) requires three provisioning-profile secrets. `<app id>` is
-`io.kontourai.station` for Stable and `io.kontourai.station.<channel>` for Beta/Nightly:
+`io.kontourai.station` for Stable and `io.kontourai.station.nightly` for Nightly:
 
 | Secret | Profile |
 | --- | --- |
@@ -595,7 +668,7 @@ production signing, App Store processing or physical push delivery.
    Set `ANDROID_UPLOAD_KEY_ALIAS` to the keystore alias.
 6. In [Play Console](https://play.google.com/console/) → **Users and
    permissions** → Invite new user, invite the service account's email. Grant
-   it **"Release apps to testing tracks"** for the Stable, Beta, and Nightly
+   it **"Release apps to testing tracks"** for the Stable and Nightly
    apps. Do not grant production-release or account-administration permission.
 
 The workflow pins `google-github-actions/auth` and
@@ -648,7 +721,7 @@ anti-abuse intent or claim that this review provisioned them.
 ## Nightly external TestFlight distribution
 
 Ordinary Nightly publication opts into external testing after the required
-upload, processing and internal-group readback succeed. Stable, Beta, staging,
+upload, processing and internal-group readback succeed. Stable RC/final, staging,
 and the dispatch-only internal TestFlight cohort do not opt in.
 
 Create an external tester group for the Nightly app, invite its testers, and
@@ -691,8 +764,8 @@ setting and cannot be forced by CI. See [Apple's TestFlight instructions](https:
 
 ## Cutting a release and verifying store upload landed
 
-Follow [release-rings.md](./release-rings.md#publish-a-preview) to tag and
-push (`git tag -s vX.Y.Z -m '...' && git push origin vX.Y.Z`), then:
+Follow [release-rings.md](./release-rings.md#publish-a-release-candidate) to tag and
+push an immutable RC at the qualified SHA, then:
 
 1. Watch the `Release: Stage` run. The `android` and `ios-device` jobs
    use their declared environments: Android uses `native-release`; iOS uses
@@ -718,6 +791,51 @@ push (`git tag -s vX.Y.Z -m '...' && git push origin vX.Y.Z`), then:
    jobs succeed. Store credential or upload failure therefore prevents the
    draft rather than producing a release whose declared delivery cell is
    silently absent.
+
+## Promote the accepted store builds
+
+After RC acceptance, `Release: Publish` with `mode=promote` and the public RC
+tag validates the attested `station-release-store-authority.json`. It keeps the
+original Android version code and Apple build number, including RC slot N.
+It does not rebuild at direct-final slot 99 or upload replacement binaries.
+
+The protected `native-release-publish` environment needs separate
+`GCP_PLAY_PROMOTION_WORKLOAD_IDENTITY_PROVIDER` /
+`GCP_PLAY_PROMOTION_SERVICE_ACCOUNT` variables for main-branch
+`publish-release.yml`, with the reviewed Stable production-track permission.
+Keep Stage's existing tag-scoped signing/testing identity unchanged. Add the
+three App Store Connect API-key secrets there as well. Variable/secret names
+in source do not establish live trust configuration.
+
+The workflow plans both providers before applying production operations. Play
+binds the acknowledged AAB digest and completed source track, then promotes the
+exact version code; the first production launch requires explicit
+`android_rollout_fraction=1`. Later staged rollouts may increase but never
+reduce an existing fraction. A completed rollout is a no-op; unrelated/newer
+rollouts and country-targeted completion without a reviewed geography
+disposition refuse. Planning and readback create bounded temporary Play edits
+and clean them up; they are provider operations even without a track commit.
+
+Apple requires the matching existing App Store version/listing and review
+metadata with `MANUAL` release. It selects the exact uploaded build and submits
+that version to App Review. Unknown or reconciled upload lineage cannot supply
+same-build authority. An accepted submission is not Apple approval or public
+availability; manual release after approval remains an owner operation.
+
+Every attempted mutation is durably recorded before the request. Lost responses
+retain unknown state; inspect the journal and provider readback before retry or
+reconcile. GitHub visibility, container aliases, Play production and App Review
+are separate effects. Re-drafting GitHub cannot undo store changes. See
+[store-entry.md](store-entry.md#same-build-production-promotion) for provisioning
+and [native recovery](native-releases.md#stage-inspect-publish-and-roll-back)
+for retained receipt requirements.
+
+An enabled App Store-action feed waits for authenticated readback of the exact
+released version and linked RC build. Other Stable artifacts may publish while
+that feed retains its older payload during review/manual-release waits. See
+[the held-feed procedure](https://github.com/kontourai/station/blob/main/docs/guides/store-entry.md#app-store-review-and-a-held-update-feed)
+for the explicit feed-only repair and the RC-authority scope. Store submission
+acknowledgement alone never advances that feed.
 
 ## What's NOT verified by this pipeline
 

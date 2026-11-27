@@ -48,6 +48,38 @@ export function devServerOrigin(address: AddressInfo): string {
   return `http://${address.address}:${address.port}`;
 }
 
+/**
+ * Installs the dependencies a plugin under development lacks, the way
+ * `station plugin install` would. `install` marks the process exit status for
+ * a dependency saved but not active, which is right for that command and
+ * wrong here: the dev server keeps running, so the status is put back and the
+ * dev process does not exit 2 later.
+ */
+export async function installDevDependencies(
+  manifest: { dependencies?: Array<{ id: string; source?: string }> },
+  installDependency: typeof install = install,
+  pluginsDir: string = PLUGINS_DIR,
+  lookup: (id: string) => string | null | undefined = lookupDepInRegistries,
+): Promise<void> {
+  for (const dep of manifest.dependencies ?? []) {
+    if (existsSync(join(pluginsDir, dep.id, 'plugin.json'))) continue;
+    const depSource = dep.source || lookup(dep.id);
+    if (!depSource) continue;
+    console.log(`📦 Installing dependency: ${dep.id}...`);
+    const exitCode = process.exitCode;
+    try {
+      // `install` is async: without the await a refused or failed install
+      // is an unhandled rejection instead of the warning below, and the
+      // dev page is generated before the dependency exists.
+      await installDependency(depSource, []);
+    } catch (e: any) {
+      console.warn(`  ⚠ Dep ${dep.id} failed: ${e.message}`);
+    } finally {
+      process.exitCode = exitCode;
+    }
+  }
+}
+
 export async function startDevServer(
   port: number,
   flags: DevFlags = {},
@@ -57,20 +89,7 @@ export async function startDevServer(
   const manifest = readManifest(INVOKED_CWD);
 
   // Resolve dependencies (install if missing, same as `station plugin install`)
-  if (manifest.dependencies?.length) {
-    for (const dep of manifest.dependencies) {
-      if (existsSync(join(PLUGINS_DIR, dep.id, 'plugin.json'))) continue;
-      const depSource = dep.source || lookupDepInRegistries(dep.id);
-      if (depSource) {
-        console.log(`📦 Installing dependency: ${dep.id}...`);
-        try {
-          install(depSource, []);
-        } catch (e: any) {
-          console.warn(`  ⚠ Dep ${dep.id} failed: ${e.message}`);
-        }
-      }
-    }
-  }
+  await installDevDependencies(manifest);
 
   const name = manifest.displayName || manifest.name;
   const { bundleJs, bundleCss, bundleCssFallback, reactBundle, sdkBundle } =

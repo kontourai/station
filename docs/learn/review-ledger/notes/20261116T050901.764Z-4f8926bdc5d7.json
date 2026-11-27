@@ -1,0 +1,7 @@
+{
+  "revision": "c6775beaa2f5024da07fae8b330aa2d193febaac",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Added the section on a person's session answer, full access and authority tools. Re-read 'What autoApprove never covers', the guardian limits and the Station browser server grant: patterns, guardian and the server-wide grant still answer plain calls only, unchanged.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/acp-adapter.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts","src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "revision": "32ec3dd523e649c0bbbb9e0f56e4e949962131cb",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Header help prompts now start on the Station Assistant (selectHelpPromptTarget). The brand link, Home reveal and menus these pages describe are unchanged, and none of them states which Agent an Ask Station prompt starts.","inputs":["src-ui/src/components/header/useHeaderViewModel.ts"]}
+  ]
+}

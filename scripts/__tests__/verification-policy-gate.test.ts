@@ -88,6 +88,7 @@ describe('verification policy gate', () => {
         'node scripts/verification-policy-gate.mjs',
         'node scripts/product-law-gate.mjs',
         'node scripts/test-temp-dir-ratchet.mjs',
+        'node scripts/windows-hide-ratchet.mjs',
         'node scripts/conversation-boundary-gate.mjs',
         'npm run test:fixtures:guard',
       ]),

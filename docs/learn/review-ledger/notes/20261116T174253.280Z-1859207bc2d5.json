@@ -1,0 +1,15 @@
+{
+  "revision": "bbd4ca4407ac2930c2f6863973e06ee8987780bf",
+
+  "notes": [
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"Mapper groups each run of assistant entries between user messages into one assistant row; keyed results still join their calls and unkeyed or empty results still read Text output unavailable, so the capture semantics hold.","inputs":["src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"Mapper groups each run of assistant entries between user messages into one assistant row; keyed results still join their calls and unkeyed or empty results still read Text output unavailable, so the capture semantics hold.","inputs":["src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"Mapper groups each run of assistant entries between user messages into one assistant row; keyed results still join their calls and unkeyed or empty results still read Text output unavailable, so the capture semantics hold.","inputs":["src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"Mapper groups each run of assistant entries between user messages into one assistant row; keyed results still join their calls and unkeyed or empty results still read Text output unavailable, so the capture semantics hold.","inputs":["src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Mapper groups each run of assistant entries between user messages into one assistant row; keyed results still join their calls and unkeyed or empty results still read Text output unavailable, so the capture semantics hold.","inputs":["src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"]}
+  ]
+}

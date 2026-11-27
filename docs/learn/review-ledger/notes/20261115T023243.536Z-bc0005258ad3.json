@@ -1,0 +1,7 @@
+{
+  "revision": "eed803222d9aa398bbe40ce4ffc7c40bd6f3fd35",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Only the provenance-step slice end changed (ends at the receipt upload step now that the ledger token left nightly-cli); the pinned registry retry claims are unchanged.","inputs":["scripts/__tests__/nightly-build-identity.test.ts"]}
+  ]
+}

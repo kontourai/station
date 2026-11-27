@@ -1,0 +1,7 @@
+{
+  "revision": "8b0fbd88dec82b671a3f322c0f1d9e8c11d9b94e",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked against the added sentence in agent-configuration.md (a failed or exited engine is never restarted in place over a replaced launch; a successor starts once its process has stopped). This page's claims about that guide remain accurate.","inputs":["docs/guides/agent-configuration.md"]}
+  ]
+}

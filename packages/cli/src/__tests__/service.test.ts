@@ -744,7 +744,6 @@ describe('station service dispatch', () => {
       {
         ...lifecycle(baseDir),
         allowedOrigins: ['https://station.example.test'],
-        features: 'agent-mode,voice',
         host: '0.0.0.0',
         serverPort: 4242,
         uiPort: 5275,
@@ -777,7 +776,7 @@ describe('station service dispatch', () => {
         'scheduling     stale (ProcessType=Background, expected ProcessType=Interactive)',
       );
       expect(log.mock.calls.flat().join('\n')).toContain(
-        `run: station service install --instance=service-test --base=${baseDir} --port=4242 --ui-port=5275 --host=0.0.0.0 --features=agent-mode,voice --allowed-origin=https://station.example.test`,
+        `run: station service install --instance=service-test --base=${baseDir} --port=4242 --ui-port=5275 --host=0.0.0.0 --allowed-origin=https://station.example.test`,
       );
       expect(installLaunchd).not.toHaveBeenCalled();
       expect(startLaunchd).not.toHaveBeenCalled();
@@ -802,6 +801,119 @@ describe('station service dispatch', () => {
       log.mockRestore();
     }
   });
+
+  // #3909: an install writes no `features`, while a unit installed earlier
+  // may still pass --features. The reinstall remedy repeats that value
+  // faithfully: pasted for a Strands registration it meets the CLI refusal;
+  // an inert value is ignored by the reinstall and so dropped.
+  test.each([
+    ['strands-runtime', true],
+    ['managed-chat-orchestration', false],
+  ])(
+    'the reinstall remedy for a pre-#3909 unit passing --features=%s repeats it',
+    async (features, refused) => {
+      const { runServiceCommand } = await import('../commands/service.js');
+      const { parseLifecycleArgs } = await import('../cli.js');
+      vi.stubEnv('STATION_ROOT', '');
+      const baseDir = makeTempDir('station-service-test-');
+      const unitPath = join(baseDir, 'installed.plist');
+      const registration = {
+        label: 'io.kontourai.station.service-test',
+        platform: 'darwin' as const,
+        unitPath,
+      };
+      launchdRegistration.mockReturnValue(registration);
+      const { renderLaunchdPlist } = await vi.importActual<
+        typeof import('../commands/service-launchd.js')
+      >('../commands/service-launchd.js');
+      installLaunchd.mockImplementation((instanceId, input) => {
+        writeFileSync(
+          unitPath,
+          renderLaunchdPlist({
+            ...input,
+            instanceId,
+            label: registration.label,
+          }),
+        );
+        return {
+          host: input.lifecycle.host,
+          installedAt: '',
+          instanceId,
+          label: registration.label,
+          nodePath: input.nodePath,
+          platform: 'darwin',
+          repoPath: input.repoPath,
+          serverPort: input.lifecycle.serverPort,
+          uiPort: input.lifecycle.uiPort,
+          unitPath,
+        };
+      });
+      const run = vi.fn((command: string, args: string[]) =>
+        command === 'plutil'
+          ? { status: 0, stdout: plutilJson(args.at(-1) as string) }
+          : { status: 0, stdout: '/usr/bin:/bin\n' },
+      );
+      await runServiceCommand(
+        ['install'],
+        {
+          ...lifecycle(baseDir),
+          host: '0.0.0.0',
+          serverPort: 4242,
+          uiPort: 5275,
+        },
+        { fs: serviceFs, platform: 'darwin', run },
+      );
+      const manifestPath = join(baseDir, 'service', 'service-test.json');
+      expect(JSON.parse(readFileSync(manifestPath, 'utf8'))).not.toHaveProperty(
+        'features',
+      );
+      // What the pre-#3909 writer produced: the option right after --host in
+      // the unit and the value in the manifest. Background scheduling makes
+      // status print the remedy.
+      const current = readFileSync(unitPath, 'utf8');
+      expect(current).not.toContain('--features');
+      writeFileSync(
+        unitPath,
+        current
+          .replace(
+            '<string>--host=0.0.0.0</string>',
+            `<string>--host=0.0.0.0</string>\n    <string>--features=${features}</string>`,
+          )
+          .replace(
+            '<key>ProcessType</key><string>Interactive</string>',
+            '<key>ProcessType</key><string>Background</string>',
+          ),
+      );
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          ...JSON.parse(readFileSync(manifestPath, 'utf8')),
+          features,
+        }),
+      );
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await runServiceCommand(['status'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'darwin',
+          run,
+        });
+        const reinstall = `station service install --instance=service-test --base=${baseDir} --port=4242 --ui-port=5275 --host=0.0.0.0 --features=${features}`;
+        expect(log.mock.calls.flat().join('\n')).toContain(`run: ${reinstall}`);
+        const parse = () => parseLifecycleArgs(reinstall.split(' ').slice(3));
+        if (refused) {
+          expect(parse).toThrow(
+            /^--features=strands-runtime no longer selects the Strands runtime .*station config set runtime strands/,
+          );
+        } else {
+          expect(parse()).toMatchObject({ baseDir, serverPort: 4242 });
+        }
+      } finally {
+        process.exitCode = undefined;
+        log.mockRestore();
+      }
+    },
+  );
 
   test('status --json never serializes registry secrets, only identity and allowed origins (#1983)', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
@@ -3566,100 +3678,110 @@ describe('what an installed service runs (#2675 slice C)', () => {
     ).toBe('// launcher v1\n');
   });
 
-  test('stops a Windows launcher service from its wrapper down, and waits for the launcher (#2675 W3)', async () => {
-    const { runServiceCommand } = await import('../commands/service.js');
-    const { resolveLifecycleCodeRoot } = await import(
-      '../commands/lifecycle-code-root.js'
-    );
-    const { installRoot, version } = installerArchive();
-    writeFileSync(join(version, 'runtime', 'node.exe'), 'node.exe v1');
-    const baseDir = makeTempDir('station-service-test-');
-    ensureStationHomeSchemaSync(baseDir);
-    const run = vi.fn(() => ({ status: 0, stdout: '' }));
-    installWindowsService.mockImplementationOnce((instanceId, input) => ({
-      host: input.lifecycle.host,
-      installedAt: '',
-      instanceId,
-      kind: input.kind,
-      installRoot: input.installRoot,
-      nodePath: input.nodePath,
-      platform: 'win32',
-      repoPath: input.repoPath,
-      serverPort: input.lifecycle.serverPort,
-      taskName: `\\KontourStation-${instanceId}`,
-      uiPort: input.lifecycle.uiPort,
-      unitPath: `/tmp/${instanceId}.cmd`,
-    }));
-    await runServiceCommand(['install'], lifecycle(baseDir), {
-      codeRoot: resolveLifecycleCodeRoot(version),
-      fs: serviceFs,
-      platform: 'win32',
-      run,
-    });
-
-    // A live launcher holds the lock, with its pid and start time.
-    const launcher = spawn(
-      process.execPath,
-      ['-e', 'setInterval(() => {}, 1000)'],
-      {
-        stdio: 'ignore',
-      },
-    );
-    const pid = launcher.pid as number;
-    const lock = join(installRoot, 'runtime', 'service-state.lock');
-    writeFileSync(
-      lock,
-      `${JSON.stringify({ pid, birth: lookupProcessBirthFingerprint(pid), token: 't' })}\n`,
-    );
-    const order: string[] = [];
-    // `/End` ends the wrapper; the launcher notices, stops Station in order
-    // and exits, releasing its lock, a little later.
-    stopWindowsService.mockImplementation(() => {
-      order.push('end-task');
-      setTimeout(() => {
-        nodeFs.rmSync(lock, { force: true });
-        launcher.kill('SIGKILL');
-      }, 300);
-    });
-    stop.mockImplementation(() => {
-      order.push(nodeFs.existsSync(lock) ? 'stop-while-launcher-runs' : 'stop');
-    });
-    windowsServiceStatus.mockReturnValue({
-      active: true,
-      enabled: true,
-      present: true,
-    });
-    stopWindowsService.mockClear();
-    stop.mockClear();
-    order.length = 0;
-    const sleep = vi.fn(
-      (ms: number) =>
-        new Promise<void>((resolve) => setTimeout(resolve, Math.min(ms, 50))),
-    );
-    windowsServiceStatus
-      .mockReturnValueOnce({ active: true, enabled: true, present: true })
-      .mockReturnValue({ active: false, enabled: true, present: true });
-    collectInstanceStatus.mockResolvedValue({
-      found: false,
-      healthy: false,
-      instanceId: 'service-test',
-      server: { pid: null, reachable: false },
-      ui: { pid: null, reachable: false },
-    });
-    try {
-      await runServiceCommand(['stop'], lifecycle(baseDir), {
+  test.each(['stop', 'uninstall'] as const)(
+    'Windows archive service %s waits for the launcher before lifecycle cleanup',
+    async (action) => {
+      const { runServiceCommand } = await import('../commands/service.js');
+      const { resolveLifecycleCodeRoot } = await import(
+        '../commands/lifecycle-code-root.js'
+      );
+      const { installRoot, version } = installerArchive();
+      writeFileSync(join(version, 'runtime', 'node.exe'), 'node.exe v1');
+      const baseDir = makeTempDir('station-service-test-');
+      ensureStationHomeSchemaSync(baseDir);
+      const run = vi.fn(() => ({ status: 0, stdout: '' }));
+      installWindowsService.mockImplementationOnce((instanceId, input) => ({
+        host: input.lifecycle.host,
+        installedAt: '',
+        instanceId,
+        kind: input.kind,
+        installRoot: input.installRoot,
+        nodePath: input.nodePath,
+        platform: 'win32',
+        repoPath: input.repoPath,
+        serverPort: input.lifecycle.serverPort,
+        taskName: `\\KontourStation-${instanceId}`,
+        uiPort: input.lifecycle.uiPort,
+        unitPath: `/tmp/${instanceId}.cmd`,
+      }));
+      await runServiceCommand(['install'], lifecycle(baseDir), {
+        codeRoot: resolveLifecycleCodeRoot(version),
         fs: serviceFs,
         platform: 'win32',
         run,
-        sleep,
       });
-    } finally {
-      launcher.kill('SIGKILL');
-    }
-    // Stopping Station first would read to the launcher as a crash, which
-    // it answers by starting Station again.
-    expect(order).toEqual(['end-task', 'stop']);
-  });
+
+      // A live launcher holds the lock, with its pid and start time.
+      const launcher = spawn(
+        process.execPath,
+        ['-e', 'setInterval(() => {}, 1000)'],
+        {
+          stdio: 'ignore',
+        },
+      );
+      const pid = launcher.pid as number;
+      const lock = join(installRoot, 'runtime', 'service-state.lock');
+      writeFileSync(
+        lock,
+        `${JSON.stringify({ pid, birth: lookupProcessBirthFingerprint(pid), token: 't' })}\n`,
+      );
+      const order: string[] = [];
+      // `/End` ends the wrapper; the launcher notices, stops Station in order
+      // and exits, releasing its lock, a little later.
+      let taskActive = true;
+      stopWindowsService.mockImplementationOnce(() => {
+        taskActive = false;
+        order.push('end-task');
+      });
+      if (action === 'uninstall') {
+        uninstallWindowsService.mockImplementationOnce(() => {
+          order.push('delete-task');
+        });
+      }
+      stop.mockImplementationOnce(() => {
+        order.push(
+          nodeFs.existsSync(lock) ? 'stop-while-launcher-runs' : 'stop',
+        );
+      });
+      const sleep = vi.fn(async () => {
+        order.push('launcher-exit');
+        const exited = once(launcher, 'exit');
+        launcher.kill('SIGKILL');
+        await exited;
+        nodeFs.rmSync(lock, { force: true });
+      });
+      windowsServiceStatus.mockImplementation(() => ({
+        active: taskActive,
+        enabled: true,
+        present: true,
+      }));
+      collectInstanceStatus.mockResolvedValue({
+        found: false,
+        healthy: false,
+        instanceId: 'service-test',
+        server: { pid: null, reachable: false },
+        ui: { pid: null, reachable: false },
+      });
+      try {
+        await runServiceCommand([action], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'win32',
+          run,
+          sleep,
+        });
+      } finally {
+        launcher.kill('SIGKILL');
+      }
+      // Stopping Station first would read to the launcher as a crash, which
+      // it answers by starting Station again.
+      expect(order).toEqual([
+        'end-task',
+        'launcher-exit',
+        'stop',
+        ...(action === 'uninstall' ? ['delete-task'] : []),
+      ]);
+    },
+  );
 
   test('ends a launcher that outlived its stop budget only when its start time proves the pid (#2675 W3)', async () => {
     const { waitForServiceLauncherExit } = await import(
@@ -4073,7 +4195,8 @@ describe('service status remedy reproduces the installed unit (#4189)', () => {
           label: 'io.kontourai.station.default',
           lifecycle: {
             ...installedSettings(installedHome),
-            features: "a&b,<c>,'d'",
+            // Characters the plist must escape.
+            allowedOrigins: ["https://a&b.example.test/<c>'d'"],
             stationRoot: root,
           },
           servicePath: '/usr/bin:/bin',

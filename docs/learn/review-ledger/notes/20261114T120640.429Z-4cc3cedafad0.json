@@ -1,0 +1,27 @@
+{
+  "revision": "7a661b797e244280d80a94a3c094adad521388db",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Scoped review at 7a661b797e244280d80a94a3c094adad521388db. The contributor lab index still correctly describes opt-in kernel/channel prerequisite, owned cleanup and authority limits; the guide now documents same-live-owner lost-create recovery and four create-only controls. No ordinary Session or provider authority is claimed.","inputs":["docs/README.md","docs/guides/native-model-channel-lab.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Scoped review at 7a661b797e244280d80a94a3c094adad521388db. Reviewed NativeModelContainer section against close, recovery discovery, daemon/image/full-ID/nonce checks, journal-before-remove and retained uncertainty. The existing single-owner namespace and unconfirmed-obligation explanation remains accurate. Channel byte delivery/accounting claims are unchanged and six process cases pass.","inputs":["docs/architecture/module-map.md","docs/guides/native-model-channel-lab.md","src-server/services/connections/native-model-container.ts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Scoped review at 7a661b797e244280d80a94a3c094adad521388db. Reviewed complete guide against native container owner and new create-only lab: lost create reply recovery validates daemon, image, nonce and full ID; absence and foreign nonce refuse; failed close allows explicit retry without reopening startup. At 7a661b797e244280d80a94a3c094adad521388db all four real Docker controls pass with zero model requests and cleanup failures; six channel process cases pass. Prior nonce mutation remains revision-bound. No controller-death/lost-removal or paid-native qualification.","inputs":["docs/guides/native-model-channel-lab.md","src-server/services/connections/native-model-container.ts"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Scoped review at 7a661b797e244280d80a94a3c094adad521388db. The only manifest change adds opt-in lab:native-container-lifecycle using existing tsx. Managed pnpm/version/workspace/lifecycle/hook ownership is unchanged; no dependency or lockfile delta.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Scoped review at 7a661b797e244280d80a94a3c094adad521388db. The added opt-in lab script changes no suppression, ownership marker or hygiene enforcement. Existing native container UNWIRED #91 remains because issuance and qualification are incomplete.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Scoped review at 7a661b797e244280d80a94a3c094adad521388db. The added opt-in lab script leaves pre-push lint/governance/scoped checks, transfer baselines and hosted integration ownership unchanged. Lab execution uses the normal heavy slot; no gate is weakened.","inputs":["docs/guides/code-quality.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Scoped review at 7a661b797e244280d80a94a3c094adad521388db. The added lab command uses existing tsx; no package version, dependency lifecycle allowance, override, native artifact or lockfile changed. Managed installer and lifecycle capability explanation remains accurate.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"Scoped review at 7a661b797e244280d80a94a3c094adad521388db. The opt-in lab command does not change managed install, hooks, focused-test or typecheck routes. It requires explicit execution flag, exact committed source SHA and captured Docker bindings; no default development runtime is started.","inputs":["docs/guides/development.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Scoped review at 7a661b797e244280d80a94a3c094adad521388db. The package script addition neither changes graph exporter inputs/semantics nor makes a module node production qualification. Existing references and source-review versus executed evidence boundaries remain accurate.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/testing.md","note":"Scoped review at 7a661b797e244280d80a94a3c094adad521388db. The added lab acquires normal heavy-check capacity and keeps source-head binding. It is diagnostic create-only lifecycle evidence, not a cataloged regression/promotion receipt or native authority qualification. Existing focused-test and unchanged-deadline rules remain intact.","inputs":["docs/guides/testing.md","package.json#/scripts"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Scoped review at 7a661b797e244280d80a94a3c094adad521388db. The added opt-in lab script changes no receipt schema, lane catalog, provenance, coordinator settlement or promotion contract. Its private JSON artifact is bounded diagnostic evidence and is not represented as a canonical verification receipt.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]}
+  ]
+}

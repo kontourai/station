@@ -49,11 +49,62 @@ The chip beside the address bar shows who is driving: **Agent** or **You**.
 - Agents cannot run JavaScript in your pages until someone allows it with
   **Let agents run JavaScript in this Project's pages** in **Settings →
   Advanced → Browser & devices**. Only allow it for pages you trust.
+  Even then, Station refuses an agent's JavaScript on a blank tab (a new
+  tab, or one you or an agent sent to `about:blank`), so the agent opens a
+  page first. On Chrome 158, a script there that adds a sandboxed frame makes
+  the browser quit, closing every tab in the pane. The refusal applies on
+  every Chrome version, so an agent cannot write its own HTML into a blank
+  tab to show it to you; it shows generated HTML with `html_preview` or
+  `html_render` instead, where those tools are available.
 
 Codex Agents get the same tools when the **Codex browser and device tools**
 Feature Preview is on. See
 [Agent tools and approvals](../reference/browser-and-devices.md#agent-authority-and-human-input)
 for the full rules.
+
+## Browser activity in a conversation
+
+On a phone-sized conversation, **Open browser** opens the latest live tab
+bound to that conversation. **Close browser** returns to chat and leaves
+the tab running. **Open in Browser pane** selects that same live tab in the
+Project's Browser pane. In the pane's **Sessions** list, toggle **From this
+chat** to find tabs associated with the active chat or the selected tab's
+conversation.
+
+Enable **Inline browser activity** in **Settings → Advanced → Feature
+previews** to try a browser view beside its tool calls. It is off by default.
+The card uses the existing browser session, profile and control checks. It
+does not open a second browser or grant an agent more access.
+
+Browser actions for the same session share one card throughout the agent's
+turn, including pauses for commentary or other tools. The live page and its
+action strip stay together; the current action is highlighted. Tool results,
+failures and pending approvals keep their normal controls in reading order.
+The inline view follows an exact session named by those calls, and only when
+the session belongs to the conversation and your Project profile. Missing
+identity or unavailable access leaves the calls visible without choosing a
+different browser. Conversation adapters without matching Station authority
+do not offer the view.
+
+Use **Float** to keep watching while scrolling, **Bring back** to return to
+the card, or **Open in pane** for the Browser workspace. These placements
+show the same page and login. A visible pane takes precedence over the
+inline view. Hiding a viewer ends its frame subscription, not its browser
+session.
+
+A card's **Take control**, **Release control** and **Full screen** actions use
+the shared live-view controls. When a viewer disappears, it releases its own
+held keys and buttons without ending the browser session or releasing another
+viewer's newer input. If neutral cleanup fails, further input is refused until
+cleanup succeeds; changing placement is not evidence that the page is ready.
+
+A finished activity folds to a compact summary of its actions. Opening the
+current session is separate from inspecting those results; it does not present
+the current page as a historical screenshot. Recording is a separate, explicit action
+with the existing [Browser recording](#record-a-task-walkthrough) controls
+and limits. This preview does not automatically retain a per-turn screen
+replay. See the [implementation plan](../plans/browser-activity-inline.md)
+for the shared owners and promotion evidence.
 
 ## The ⋯ menu
 
@@ -132,6 +183,11 @@ Hiding or closing the pane does not stop the page; an Agent may keep working.
 Choose **⋯ → Close session** to stop it. If the browser or Station
 restarts, the session shows **needs reopen**; reopening starts a fresh browser
 for it.
+
+A session can also be closed elsewhere, for example by an Agent closing the page
+it opened. The pane then keeps its tab, dimmed with its address bar, and says
+**This session was closed**. **Reopen** opens a new session at the last
+address; **Open a new session** starts from a blank page.
 
 ## Troubleshooting
 

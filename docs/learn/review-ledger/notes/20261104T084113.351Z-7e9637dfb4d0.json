@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/reference/usage-telemetry.md","note":"#4517 managed settings. Changed: station-runtime.ts: StationRuntime installs the loaded managed policy settings before config loads; config.ts: PUT /config/app refuses a locked managed setting first (403 managed_setting_locked), GET /config/app returns managed values with managed provenance, log-level and first-run map the refusal to 403; config-loader-app.ts: observeAppConfigFile applies the managed overlay; config.routes.test.ts: the route test mock gains loadStoredAppConfig. telemetryFeedbackReason on PUT /config/app is unchanged; a locked telemetryTier would be refused before it, as documented in the API reference.","inputs":["docs/reference/usage-telemetry.md","src-server/domain/config-loader-app.ts","src-server/routes/system/__tests__/config.routes.test.ts","src-server/routes/system/config.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

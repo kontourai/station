@@ -109,8 +109,6 @@ const CSS_PATHS = [
   resolve(HERE, '../components/badges/EngineChip.css'),
   resolve(HERE, '../components/icons/BrandIcon.css'),
   resolve(HERE, '../components/status/StatusGlyph.css'),
-  resolve(HERE, '../views/activity/ActivityRowMenu.css'),
-  resolve(HERE, '../views/SessionsView.css'),
 ];
 
 Object.defineProperty(window, 'matchMedia', {

@@ -1,0 +1,13 @@
+{
+  "revision": "13a91562bf7eb7d2842370ebbb28fe39b7d52878",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Reviewed the input delta: station-home-store-registry.ts only adds the remote-task-engines home root as 'state' (backed up and restored on an update rollback). This document does not enumerate home roots or their rollback classes (searched), so its claims stand without a prose change.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Reviewed the input delta: station-home-store-registry.ts only adds the remote-task-engines home root as 'state' (backed up and restored on an update rollback). This document does not enumerate home roots or their rollback classes (searched), so its claims stand without a prose change.","inputs":["docs/guides/local-speech.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the input delta: station-home-store-registry.ts only adds the remote-task-engines home root as 'state' (backed up and restored on an update rollback). This document does not enumerate home roots or their rollback classes (searched), so its claims stand without a prose change.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the input delta: station-home-store-registry.ts only adds the remote-task-engines home root as 'state' (backed up and restored on an update rollback). This document does not enumerate home roots or their rollback classes (searched), so its claims stand without a prose change.","inputs":["docs/reference/config.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

@@ -1,7 +1,0 @@
-{
-  "revision": "3114c734e52526593611b43ac13482e7fbb9d455",
-
-  "notes": [
-    {"path":"docs/guides/release-rings.md","note":"Replaced the one-ring caveat: the sender URL is https://telemetry.kontourai.io/v1/lite/station and one URL serves every ring. Checked telemetry-publisher-service.ts (posts to the baked endpoint unchanged), lite-core.ts admitLiteObservation (accepts any channel the source lists) and the Worker README provisioning (station source lists nightly, preview, stable).","inputs":["docs/guides/release-rings.md"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "b7f23d732b4b6d45ad53d3c6e675809a24f6e36a",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Scoped review of fixture-fidelity/known-bad gate contract against scripts/__tests__/guardrail-known-bad-fixtures.test.ts atb7f23d732b4b6d45ad53d3c6e675809a24f6e36a. Root retained hosted79127 run41807436574 shard2 fourstate-primitives failures at moduleload(node package_json reader), not accountUI or intended gate refusal. Production scanner imports realtypescript-api while scratchcopy lacked dependency. OwnerlocalrunStatePrimitives now links realpath installedcompiler alias into four scratchrepos(dirPOSIX/junctionWindows) then unchangedrunGuardrail. Allassertions/sharedscratchcleanup/keepbehavior/scanner/ceilings/skips/timeouts/resources unchanged; no fallbackinstall/stubs. Exact936227owner ONEfocused46/46PASS39.30s reaches cleanEXIT0 and three actualnamedrejections; other42PASS, compilerstillpresentaftercleanup. Log75C9C64F0719698D917CA490E4141B2010212E8B8726DFABB66BF1723C7DA172. This qualifies fixture dependencyrepair only, not newhostedCI/browsergeometry. Existing testingguide fixturefidelity and independentknownbad diagnostic requirements remain accurate; no prosechange justified, no blanket corpus recertification. Diffreview/deslop no extra cleanup; visible922F/A96 proof and v4functional/offscreenvisualcounterevidence remainhistorical withnewnativegeometryOPEN.","inputs":["docs/guides/testing.md"]}
-  ]
-}

@@ -141,10 +141,6 @@ html[data-color-theme]:where([data-color-theme="nord"][data-color-theme-flavor][
   --k-brand: #935203;
   --k-brand-contrast: #ffffff;
 }
-:root[data-app-channel="beta"][data-color-theme="nord"][data-color-theme-flavor][data-theme="light"] {
-  --k-brand: #4954cd;
-  --k-brand-contrast: #ffffff;
-}
 :root[data-app-channel="nightly"][data-color-theme="nord"][data-color-theme-flavor][data-theme="light"] {
   --k-brand: #7733e7;
   --k-brand-contrast: #ffffff;
@@ -287,10 +283,6 @@ html[data-color-theme]:where([data-color-theme="nord"][data-color-theme-flavor="
 :root.is-dev-build[data-color-theme="nord"][data-color-theme-flavor="polar-night"]:not([data-theme="light"]) {
   --k-brand: #ffa850;
   --k-brand-contrast: #1b1205;
-}
-:root[data-app-channel="beta"][data-color-theme="nord"][data-color-theme-flavor="polar-night"]:not([data-theme="light"]) {
-  --k-brand: #acb7ff;
-  --k-brand-contrast: #06080b;
 }
 :root[data-app-channel="nightly"][data-color-theme="nord"][data-color-theme-flavor="polar-night"]:not([data-theme="light"]) {
   --k-brand: #c1b1ff;

@@ -1,4 +1,5 @@
 import { reduceDeliveryAvailability } from './issue-availability.mjs';
+import { parseReleaseTag } from './lib/release-tag.mjs';
 
 const SHA = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -8,6 +9,30 @@ const predicates = Object.freeze({
   mobile: 'npm/runtime,rust/native',
   container: 'container/image',
 });
+
+/** The driver authenticates the receipt before supplying this unchanged inventory lineage. */
+function matchesPublication(evidence) {
+  if (!evidence?.promotion) return evidence?.inventory?.tag === evidence?.tag;
+  const lineage = evidence.promotion;
+  try {
+    const producer = parseReleaseTag(lineage.producerTag);
+    const publication = parseReleaseTag(evidence.tag);
+    return (
+      evidence.channel === 'stable' &&
+      producer.kind === 'rc' &&
+      publication.kind === 'final' &&
+      producer.baseVersion === publication.baseVersion &&
+      lineage.publicationTag === evidence.tag &&
+      lineage.sourceSha === evidence.sourceSha &&
+      lineage.version === evidence.version &&
+      lineage.inventorySha === evidence.inventorySha &&
+      evidence.inventory?.tag === producer.tag &&
+      evidence.inventory?.version === producer.baseVersion
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Pure Slice-B projector. Its caller supplies only completed provider receipts;
@@ -26,7 +51,7 @@ export function projectReleaseAvailability(labels, evidence) {
     !SHA.test(evidence?.sourceSha ?? '') ||
     evidence?.tag !== `v${evidence?.version}` ||
     evidence?.inventory?.schemaVersion !== 2 ||
-    evidence.inventory?.tag !== evidence.tag ||
+    !matchesPublication(evidence) ||
     evidence.inventory?.sourceSha !== evidence.sourceSha ||
     evidence.inventory?.channel !== evidence.channel ||
     !SHA256.test(evidence?.inventorySha ?? '') ||

@@ -53,7 +53,6 @@ const queuedMessagesPropsMock = vi.hoisted(() => ({
   current: null as Record<string, any> | null,
 }));
 const realControlsMock = vi.hoisted(() => ({ enabled: false }));
-const realQueueControlsMock = vi.hoisted(() => ({ enabled: false }));
 const steerOrchestrationTurnMock = vi.hoisted(() => vi.fn());
 const inspectOrchestrationSteerInputMock = vi.hoisted(() => vi.fn());
 
@@ -218,7 +217,7 @@ vi.mock('../components/chat/QueuedMessages', async (importOriginal) => {
     QueuedMessages: (props: Record<string, any>) => {
       queuedMessagesPropsMock.current = props;
       const Actual = actual.QueuedMessages;
-      return realControlsMock.enabled || realQueueControlsMock.enabled ? (
+      return realControlsMock.enabled ? (
         <Actual {...(props as React.ComponentProps<typeof Actual>)} />
       ) : (
         <div data-testid="queued-messages" />
@@ -281,7 +280,6 @@ function buildSession(overrides: Partial<ChatSession> = {}): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -311,15 +309,17 @@ function renderDock({
   onNewChat,
   onRetryConversationOpen,
   loadingEscapeDelayMs = 0,
+  chatInputOverrides = {},
 }: {
   orchestrationSession?: any;
   session?: ChatSession;
   events?: any[];
   read?: 'pending' | 'error' | 'present' | 'absent';
   onRetryOrchestrationSessions?: () => void;
-  onNewChat?: (input?: string) => void;
+  onNewChat?: (input?: string, attachments?: unknown[]) => void;
   onRetryConversationOpen?: () => void;
   loadingEscapeDelayMs?: number;
+  chatInputOverrides?: Record<string, unknown>;
 } = {}) {
   const resolvedRead = read ?? (orchestrationSession ? 'present' : 'absent');
   transcriptMock.events = events;
@@ -347,7 +347,7 @@ function renderDock({
         modelSupportsAttachments={false}
         fileAttachmentsSupported={false}
         availableModels={[]}
-        chatInput={buildChatInput() as any}
+        chatInput={{ ...buildChatInput(), ...chatInputOverrides } as any}
         setShowStatsPanel={vi.fn()}
       />
     </QueryClientProvider>
@@ -406,7 +406,6 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     chatInputPropsMock.current = null;
     queuedMessagesPropsMock.current = null;
     realControlsMock.enabled = false;
-    realQueueControlsMock.enabled = false;
     steerOrchestrationTurnMock.mockReset();
     inspectOrchestrationSteerInputMock.mockReset();
     inspectOrchestrationSteerInputMock.mockResolvedValue({
@@ -536,7 +535,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   ] as const)(
     'a mounted uncertain steering retry inspects delivery before any engine action: %s',
     async (inspection) => {
-      realQueueControlsMock.enabled = true;
+      realControlsMock.enabled = true;
       const metadata = [
         {
           id: 'held-steer-id',
@@ -584,7 +583,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       });
       fireEvent.click(
         await screen.findByRole('button', {
-          name: '1 pending message, needs review',
+          name: 'Queue · 1 pending',
         }),
       );
       fireEvent.click(screen.getByRole('button', { name: 'Retry steering' }));
@@ -624,7 +623,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   );
 
   test('a mounted queued steer cannot affect the engine when saving its delivery marker fails', async () => {
-    realQueueControlsMock.enabled = true;
+    realControlsMock.enabled = true;
     const metadata = [{ id: 'queued-protected-id', mode: 'queue' as const }];
     activeChatsStore.initChat('thread-alpha', {
       agentSlug: 'claude',
@@ -657,7 +656,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
     fireEvent.click(
-      await screen.findByRole('button', { name: '1 pending message' }),
+      await screen.findByRole('button', { name: 'Queue · 1 pending' }),
     );
     const write = vi
       .spyOn(Storage.prototype, 'setItem')
@@ -682,7 +681,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   });
 
   test('a rendered legacy row without a delivery identity never uses legacy native steering', async () => {
-    realQueueControlsMock.enabled = true;
+    realControlsMock.enabled = true;
     activeChatsStore.initChat('thread-alpha', {
       agentSlug: 'claude',
       agentName: 'Claude',
@@ -709,7 +708,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
     fireEvent.click(
-      await screen.findByRole('button', { name: '1 pending message' }),
+      await screen.findByRole('button', { name: 'Queue · 1 pending' }),
     );
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Send as steer' }));
@@ -795,7 +794,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   });
 
   test('a native acknowledgement retires B before a terminal SSE microtask can drain A', async () => {
-    realQueueControlsMock.enabled = true;
+    realControlsMock.enabled = true;
     const metadata = [
       { id: 'a-race-id', mode: 'queue' as const },
       { id: 'b-race-id', mode: 'queue' as const },
@@ -840,7 +839,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
     fireEvent.click(
-      await screen.findByRole('button', { name: '2 pending messages' }),
+      await screen.findByRole('button', { name: 'Queue · 2 pending' }),
     );
     ensureOrchestrationEventStream('http://localhost:3242');
     expect(nativeRaceTransport.onMessage).not.toBeNull();
@@ -881,8 +880,15 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     });
     try {
       await act(async () => {
+        const queuedSteer = within(
+          screen.getByRole('dialog', { name: 'Queue' }),
+        )
+          .getByRole('button', { name: 'Edit message: confirmed B' })
+          .closest('fieldset');
+        if (!queuedSteer)
+          throw new Error('Confirmed B is missing its queue row');
         fireEvent.click(
-          screen.getAllByRole('button', { name: 'Send as steer' })[0],
+          within(queuedSteer).getByRole('button', { name: 'Send as steer' }),
         );
       });
       expect(delivered).toBe(true);
@@ -1470,7 +1476,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     );
     const announcement = screen.getByTestId('chat-dock-loading-announcement');
     expect(announcement.textContent, 'the wait is announced').toBe(
-      'Loading chat',
+      'Opening conversation',
     );
     expect(announcement.getAttribute('role')).toBe('status');
     // ...and not drawn: no visible panel under the rows.
@@ -1479,6 +1485,38 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     // No status region nests another.
     for (const region of screen.getAllByRole('status'))
       expect(region.querySelector('[role="status"]')).toBeNull();
+  });
+
+  // Rows a failed read dropped stay dropped: Retry (or any reload) must not
+  // redraw the last kept copy while it reads, with approval answers live.
+  test('rows dropped by a failed read do not come back while Retry reads', async () => {
+    transcriptMock.enabled = true;
+    transcriptMock.messages = [
+      { role: 'user', content: 'earlier question', timestamp: 1 },
+      { role: 'assistant', content: 'earlier answer', timestamp: 2 },
+    ];
+    const session = buildSession({ conversationId: 'cool', messages: [] });
+    const view = renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session,
+    });
+    expect(await screen.findByText('earlier answer')).toBeTruthy();
+    // The re-read fails and the reader drops the rows.
+    transcriptMock.messages = [];
+    transcriptMock.error = new Error('history read failed');
+    view.rerenderSession({ ...session });
+    await waitFor(() =>
+      expect(screen.queryByText('earlier answer')).toBeNull(),
+    );
+    // Retry: the reader is reading again, with no rows yet.
+    transcriptMock.error = null;
+    transcriptMock.settled = false;
+    view.rerenderSession({ ...session });
+    await act(async () => {});
+    expect(screen.queryByText('earlier answer')).toBeNull();
   });
 
   /*
@@ -1525,7 +1563,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         loadingEscapeDelayMs: 60_000,
       });
       announcer = screen.getByTestId('chat-dock-loading-announcement');
-      await waitFor(() => expect(announcer!.textContent).toBe('Loading chat'));
+      await waitFor(() =>
+        expect(announcer!.textContent).toBe('Opening conversation'),
+      );
       // Flush the observer's queued records.
       for (const record of observer.takeRecords()) {
         if (record.target === announcer)
@@ -1541,7 +1581,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(
       insertedText.map((node) => node.textContent),
       'text added to the already-mounted region',
-    ).toContain('Loading chat');
+    ).toContain('Opening conversation');
   });
 
   test('the loading announcement says the wait once, adds the long-wait words, then goes quiet', () => {
@@ -1562,7 +1602,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         loadingEscapeDelayMs: 1_500,
       });
       const announcer = screen.getByTestId('chat-dock-loading-announcement');
-      expect(announcer.textContent).toBe('Loading chat');
+      expect(announcer.textContent).toBe('Opening conversation');
 
       // A re-render with nothing new to say writes nothing into the region.
       const writes: MutationRecord[] = [];
@@ -1586,16 +1626,18 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         announcer,
       );
       expect(announcer.textContent).toBe(
-        'This conversation is taking longer to load. Waiting for Station.',
+        'Taking longer than usual. Waiting on Station.',
       );
       // The visible copy of those words is not a second live region.
       const visible = screen
-        .getAllByText(
-          'This conversation is taking longer to load. Waiting for Station.',
-        )
+        .getAllByText('Taking longer than usual. Waiting on Station.')
         .filter((node) => node !== announcer);
       expect(visible).toHaveLength(1);
-      expect(visible[0].closest('[role="status"], [aria-live]')).toBeNull();
+      // It sits in the filler's status region, so it is hidden from the
+      // accessibility tree: the announcement region alone speaks it.
+      expect(visible[0].closest('[aria-hidden="true"]')).not.toBeNull();
+      // One escape, on the stage: the under-composer row does not repeat it.
+      expect(document.querySelector('.session-history-controls')).toBeNull();
 
       // The load ends: the same region empties and says nothing more.
       view.rerenderSession({ ...loading, conversationOpenPending: false });
@@ -1612,9 +1654,11 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     }
   });
 
-  // The history read failing during a long load hides the skeleton but not
-  // the visible long-wait row; the announcement follows the row.
-  test('a history failure during a long load still announces the longer wait', async () => {
+  // The history read failing during a long load replaces the stage with the
+  // failure notice (its Retry is the exit, and it announces itself as an
+  // alert). The loading announcer goes quiet rather than calling a failure a
+  // long wait, and no new-chat escape appears under the composer.
+  test('a history failure during a long load is not announced as a long wait', async () => {
     transcriptMock.enabled = true;
     transcriptMock.settled = false;
     transcriptMock.error = new Error('history read failed');
@@ -1630,16 +1674,13 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
       onNewChat: vi.fn(),
     });
-    const row = document.querySelector('.session-history-controls');
-    expect(row?.textContent).toContain(
-      'This conversation is taking longer to load. Waiting for Station.',
-    );
+    expect(document.querySelector('.session-history-controls')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
+    await screen.findByRole('button', { name: 'Retry' });
     await waitFor(() =>
       expect(
         screen.getByTestId('chat-dock-loading-announcement').textContent,
-      ).toBe(
-        'This conversation is taking longer to load. Waiting for Station.',
-      ),
+      ).toBe(''),
     );
   });
 
@@ -1702,18 +1743,12 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(chatInputPropsMock.current?.sendBlockedReason).toBeUndefined();
   });
 
-  // Review L1. The resolving phase disables the composer for up to the SDK's
-  // 30s request timeout. Before this, the red banner it replaced at least
-  // offered "Start new chat" — so removing the banner removed the only way out
-  // of the wait. Retry is deliberately absent: it would re-ask a question the
-  // resolver is already asking.
   /**
-   * D3 (design round 2026-10): a reopened chat showed a "Loading
-   * conversation" skeleton, a "Start new chat" button and a live composer
-   * at once. One state at a time: the escape joins the skeleton only once a
-   * load has run past `loadingEscapeDelayMs`.
+   * D3 (design round 2026-10), revised 2026-11: a slow load is not a failed
+   * one, so it offers no "Start new chat" at any point. Past
+   * `loadingEscapeDelayMs` the stage adds only its quieter long-wait line.
    */
-  test('D3 while a conversation loads, the skeleton stands alone until the escape delay passes', () => {
+  test('D3 a slow load adds a long-wait line, never a new-chat escape', () => {
     vi.useFakeTimers();
     try {
       renderDock({
@@ -1734,24 +1769,61 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       expect(
         screen.queryByRole('button', { name: 'Start new chat' }),
       ).toBeNull();
+      expect(
+        document.querySelector('.conversation-loading__long')?.textContent,
+      ).toBe('');
       act(() => {
         vi.advanceTimersByTime(1_500);
       });
       expect(
-        screen.getByRole('button', { name: 'Start new chat' }),
-      ).toBeTruthy();
+        document.querySelector('.conversation-loading__long')?.textContent,
+      ).toContain('Taking longer than usual. Waiting on Station.');
       expect(
-        document.querySelector('.session-history-controls')?.textContent,
-      ).toContain(
-        'This conversation is taking longer to load. Waiting for Station.',
-      );
+        screen.queryByRole('button', { name: 'Start new chat' }),
+      ).toBeNull();
+      expect(document.querySelector('.session-history-controls')).toBeNull();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  test('#1582 E3 a resolving conversation still offers a way out', async () => {
-    const onNewChat = vi.fn();
+  // The stage names only the read that is in flight: the open point-read
+  // first, then the transcript's first read once the open has landed.
+  test('the loading stage names the step the load is on', () => {
+    transcriptMock.enabled = true;
+    transcriptMock.settled = false;
+    const view = renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+        messages: [],
+      }),
+      loadingEscapeDelayMs: 60_000,
+    });
+    const stage = () => document.querySelector('.conversation-loading');
+    expect(stage()?.getAttribute('data-step')).toBe('opening');
+    expect(stage()?.textContent).toContain('Opening conversation');
+    view.rerenderSession(
+      buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: false,
+        messages: [],
+      }),
+    );
+    expect(stage()?.getAttribute('data-step')).toBe('reading');
+    expect(stage()?.textContent).toContain('Loading messages');
+    expect(stage()?.textContent).not.toContain('Taking longer');
+  });
+
+  // Revised 2026-11 (owner): the resolving phase keeps Send disabled for up
+  // to the SDK's 30s request timeout, but the way through that wait is the
+  // draft, not abandoning the chat the user opened. Retry stays absent: it
+  // would re-ask a question the resolver is already asking.
+  test('#1582 E3 a resolving conversation keeps the draft open instead of offering a new chat', async () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
         status: 'idle',
@@ -1762,23 +1834,66 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         conversationOpenPending: true,
         messages: [],
       }),
-      onNewChat,
-      // Supplied so the Retry assertion below is a real one: without a handler
-      // the notice omits Retry anyway, and the absence proved nothing.
+      onNewChat: vi.fn(),
       onRetryConversationOpen: vi.fn(),
     });
-
-    const startNew = await screen.findByRole('button', {
-      name: 'Start new chat',
-    });
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
-    fireEvent.click(startNew);
-    expect(onNewChat).toHaveBeenCalled();
-    // The composer stays refused — the way out is a NEW chat, not a write into
-    // the one whose continuation is unproven.
     await waitFor(() =>
-      expect(chatInputPropsMock.current?.disabled).toBe(true),
+      expect(chatInputPropsMock.current?.loadingConversation).toBe(true),
     );
+    // Send stays refused while the continuation is unproven...
+    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    // ...but the draft stays editable for the send that follows.
+    expect(chatInputPropsMock.current?.allowDraftWhileDisabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  // A draft hides the placeholder that named the wait, so while the open read
+  // is pending Send says why it is not live; with no draft it stays quiet.
+  test('a draft typed while the chat opens is told when it can send', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+        messages: [],
+      }),
+      chatInputOverrides: { input: 'typed while opening' },
+    });
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.loadingConversation).toBe(true),
+    );
+    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    expect(chatInputPropsMock.current?.sendBlockedReason).toBe(
+      'You can send once this chat opens.',
+    );
+  });
+
+  // A draft typed while the chat opened must not be stranded when the open
+  // fails: the recovery notice's Start new chat carries it.
+  test('a failed open carries the draft into Start new chat', async () => {
+    const onNewChat = vi.fn();
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenFailed: true,
+        messages: [],
+      }),
+      onNewChat,
+      onRetryConversationOpen: vi.fn(),
+      chatInputOverrides: { input: 'typed while opening' },
+    });
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Start new chat' }),
+    );
+    expect(onNewChat).toHaveBeenCalledWith('typed while opening', undefined);
   });
 
   // Delta-review L1. The two states are not exclusive: a reload whose

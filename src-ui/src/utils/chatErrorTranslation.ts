@@ -1,8 +1,16 @@
+import { CLAUDE_PROXY_VERSION_FAILURE } from '@kontourai/station-contracts/connection';
 import {
   CONTINUATION_WORKSPACE_REFUSAL_CODES,
   EXECUTION_ENGINE_CHANGED_CODE,
 } from '@kontourai/station-contracts/execution-target';
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE,
+  SESSION_CONFIGURATION_REPLACED_CODE,
+  TURN_START_BUSY_CODE,
+  TURN_START_HELD_CODE,
+  TURN_START_HELD_UNTIL_RESTART_CODE,
+} from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
@@ -166,8 +174,8 @@ function engineAuthTranslation(text: string): ChatErrorTranslation | null {
   if (!ENGINE_AUTH_PATTERN.test(text)) return null;
   return {
     title: 'This engine needs to be signed in',
-    body: 'The computer running this Station could not refresh its login, so this turn did not run.',
-    hint: 'Sign in on that computer, then try again — or switch to another agent.',
+    body: 'The computer running Station couldn’t refresh this engine’s login, so this turn didn’t run.',
+    hint: 'Sign in on that computer and try again, or switch to another agent.',
     callerHints: {
       noSend:
         'It needs signing in on that computer. You can switch to another agent in a new chat.',
@@ -246,9 +254,9 @@ const STREAM_BODY_ENDED_PATTERN =
  * causes VERBATIM and may rewrite only text with no user-meaningful content.
  */
 const STREAM_BODY_ENDED_TRANSLATION: ChatErrorTranslation = {
-  title: 'The reply stream ended early',
-  body: 'This Station’s connection returned an incomplete response instead of a reply, so nothing more arrived for this turn.',
-  hint: 'This can be temporary — if it keeps happening, check this Station’s connection and credentials.',
+  title: 'The reply ended early',
+  body: 'The response ended before the reply finished, so nothing more arrived for this turn.',
+  hint: 'This can be temporary. If it keeps happening, check this device’s connection to this Station.',
   callerHints: { noSend: true, noNewChat: true, neither: true },
   disclosureRaw: true,
 };
@@ -378,9 +386,9 @@ export function translateChatError(
 
   if (text === 'The requested conversation is unavailable.') {
     return {
-      title: 'This chat could not be resumed',
-      body: 'Station could not access the saved session needed to continue this chat.',
-      hint: 'Repeating Send will not repair the session. If a message has uncertain delivery, use Refresh delivery before sending a copy.',
+      title: 'This chat couldn’t be resumed',
+      body: 'Station couldn’t open the saved session for this chat.',
+      hint: 'Sending again won’t fix this. If a message may not have been delivered, use Refresh delivery before sending a copy.',
       retryable: false,
     };
   }
@@ -405,7 +413,7 @@ export function translateChatError(
         translateChatError({ status, message: cause }))
       : {
           title: "The chat's start wasn't confirmed",
-          body: 'The engine answered, but Station could not record that this session started.',
+          body: 'The engine answered, but Station couldn’t record that this chat started.',
         };
     return {
       ...translated,
@@ -425,6 +433,38 @@ export function translateChatError(
     };
   }
 
+  // A send refused because an earlier start on this Session blocks it.
+  // Nothing was sent, and "try again in a moment" would be wrong: each code
+  // says what actually clears it, and only that (the engine decides whether
+  // Station can see it stop).
+  if (
+    code === TURN_START_HELD_CODE ||
+    code === TURN_START_HELD_UNTIL_RESTART_CODE
+  )
+    return {
+      title: 'Your earlier message may still be running',
+      body: 'Station cannot tell whether your earlier message reached the agent, so this one was not sent.',
+      hint:
+        code === TURN_START_HELD_CODE
+          ? 'Wait for that turn to finish. If the agent has stopped, send again: the earlier turn is then recorded as interrupted.'
+          : 'This agent does not report when it stops. To send now, restart Station (quit and reopen the app): the earlier turn is then interrupted.',
+      retryable: false,
+    };
+  if (code === CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE)
+    return {
+      title: 'The previous agent is still stopping',
+      body: 'This chat’s agent failed, and its process has not stopped yet, so Station did not start a new one beside it. This message was not sent.',
+      hint: 'Send again in a moment. If this keeps happening, restart Station (quit and reopen the app), which stops that process.',
+      retryable: false,
+    };
+  if (code === TURN_START_BUSY_CODE)
+    return {
+      title: 'Another start is still in progress',
+      body: 'Another message or the agent’s own start has not finished on this chat, so this one was not sent.',
+      hint: 'Send again once it has finished.',
+      retryable: false,
+    };
+
   // A dispatch refused because the session's lifecycle already ended — a
   // Station-side refusal, not an agent failure. The server's message is
   // already user-readable, but the structured code is what lets this branch
@@ -438,6 +478,29 @@ export function translateChatError(
       hint: 'Start a new chat to continue.',
       callerHints: { noSend: true, noNewChat: null, neither: null },
       terminalSession: true,
+    };
+  }
+
+  // The agent's configuration (its Agent, tool servers or engine connection)
+  // changed under this chat's engine. Nothing was sent. Either the engine is
+  // still running work it started before the change (that work can no longer
+  // use tools, so it ends; sending again after it restarts the engine in
+  // place), or the engine cannot resume (sending again starts a new session
+  // from this conversation). The server's text says which; the hint is true
+  // of both.
+  if (code === SESSION_CONFIGURATION_REPLACED_CODE) {
+    return {
+      title: "This agent's settings changed",
+      // The server's text already says what to do; the hint stands in only
+      // when it sent none.
+      body: text || '',
+      ...(text
+        ? {}
+        : {
+            hint: 'Send your message again once any work still running has finished: the chat continues this conversation with the new settings.',
+          }),
+      // A caller that may not send here has nothing true to be told.
+      callerHints: { noNewChat: true, noSend: null, neither: null },
     };
   }
 
@@ -581,27 +644,33 @@ export function translateChatError(
     return {
       title: "This Station couldn't verify who's asking",
       body: "This device isn't authorized to chat on this Station yet. It needs to be paired and approved before it can send messages.",
-      hint: 'This will not resolve on its own by retrying — pair (or re-pair) this device and try again.',
+      hint: 'Retrying won’t fix this. Pair this device, then try again.',
     };
   }
 
   if (code && CONTINUATION_WORKSPACE_CODES.has(code)) {
     return {
-      title: "Can't resume",
-      body: text || 'Unsafe workspace.',
-      hint: 'New chat.',
+      title: 'This chat can’t continue',
+      body: text || 'This chat’s workspace isn’t safe to continue in.',
+      hint: 'Start a new chat.',
       callerHints: { noSend: true, noNewChat: null, neither: null },
       terminalSession: true,
     };
   }
 
   if (code === ENGINE_TURN_FAILED_CODE) {
+    if (text === CLAUDE_PROXY_VERSION_FAILURE) {
+      return {
+        title: 'This turn did not complete',
+        body: text,
+      };
+    }
     const auth = engineAuthTranslation(text);
     if (auth) return auth;
     return {
       title: 'This turn did not complete',
       body: 'The engine reported an error for this turn.',
-      hint: 'Open Details if you want the engine message.',
+      hint: 'Open Details to see the engine’s message.',
       callerHints: { noSend: true, noNewChat: true, neither: true },
       disclosureRaw: true,
     };
@@ -621,7 +690,7 @@ export function translateChatError(
       hint:
         classifiedReason[1] === 'rejected the credentials'
           ? "Check the model connection's credentials, then send your message again."
-          : 'Your message was kept — send it again to retry.',
+          : 'Your message was kept. Send it again to retry.',
       callerHints:
         classifiedReason[1] === 'rejected the credentials'
           ? {
@@ -639,7 +708,8 @@ export function translateChatError(
     return {
       title: 'Sign in to this tool integration',
       body: text,
-      hint: 'Open Connections → Tools, sign in to the integration, then start the session again.',
+      // "→" matches the server's own sign-in body this hint sits under.
+      hint: 'Open Connections → Tools, sign in to the integration, then try again.',
       retryable: false,
     };
 
@@ -666,7 +736,7 @@ export function translateChatError(
     return {
       title: 'This turn did not complete',
       body: 'The Station agent could not finish this turn.',
-      hint: 'Your message was kept — send it again to retry.',
+      hint: 'Your message was kept. Send it again to retry.',
       callerHints: { noNewChat: true, noSend: null, neither: null },
     };
   }
@@ -683,13 +753,13 @@ export function translateChatError(
     // when no trustworthy cursor exists. So "send it again" is a true claim
     // now, where the pre-#765 copy could only honestly offer a new chat.
     return {
-      title: "This conversation's engine session was lost",
-      body: 'The engine could not reopen the native session behind this conversation, so this turn failed.',
-      hint: 'Send your message again — the conversation continues in a fresh engine session — or start a new chat.',
+      title: 'This chat’s engine session was lost',
+      body: 'The engine couldn’t reopen its session for this chat, so this turn failed.',
+      hint: 'Send your message again to continue in a new engine session, or start a new chat.',
       callerHints: {
         noSend: null,
         noNewChat:
-          'Send your message again — the conversation continues in a fresh engine session.',
+          'Send your message again to continue in a new engine session.',
         neither: null,
       },
       disclosureRaw: true,
@@ -751,16 +821,16 @@ export function translateChatError(
   if (ABORTED_PATTERN.test(text)) {
     return {
       title: 'Response stopped before it finished',
-      body: 'The connection to this Station ended mid-response. Your Model connection is fine.',
-      hint: 'Your message was kept — send it again to retry.',
+      body: 'The connection to this Station ended mid-response. Your model connection is fine.',
+      hint: 'Your message was kept. Send it again to retry.',
     };
   }
 
   if (STALLED_PATTERN.test(text)) {
     return {
       title: 'Station stopped responding',
-      body: 'No response arrived for a while, likely a dropped connection or Station restart. Your Model connection is fine.',
-      hint: 'Your message was kept — Retry to reconnect and resend it.',
+      body: 'No response arrived for a while, likely a dropped connection or Station restart. Your model connection is fine.',
+      hint: 'Your message was kept. Retry to reconnect and resend it.',
     };
   }
 
@@ -768,7 +838,7 @@ export function translateChatError(
     return {
       title: 'Model connection credentials were rejected',
       body: 'The credentials for this Model connection are invalid or have expired.',
-      hint: 'Open Connections → Models and update the access key, secret, or token for this connection, then retry.',
+      hint: 'Open Connections › Models, update the access key, secret, or token for this connection, then retry.',
     };
   }
 
@@ -776,7 +846,7 @@ export function translateChatError(
     return {
       title: 'Model is not enabled for this account/region',
       body: "This model isn't enabled for your AWS account in the selected region yet.",
-      hint: 'Open the AWS Bedrock console for this region, request or verify model access, then retry — or choose a different Model connection.',
+      hint: 'In the AWS Bedrock console for this region, request or verify model access and retry, or choose a different model connection.',
     };
   }
 
@@ -812,7 +882,7 @@ export function translateChatError(
 
   return {
     title: 'Error',
-    body: 'Station could not complete this request.',
+    body: 'Station couldn’t complete this request.',
     disclosureRaw: true,
     // archive#3299: the fallback classified nothing, so it must not assert
     // that retrying helps \u2014 that is a claim about a cause it does not know.
@@ -870,7 +940,7 @@ export function translateProjectedRuntimeError(
 
 /** The memory-kill card once Station has continued on its own. */
 export const MEMORY_EXHAUSTION_CONTINUING_DISPLAY =
-  '**The engine ran out of memory and was restarted — continuing**\n\nStation started it again with a note of the commands that were interrupted.';
+  '**The engine ran out of memory and was restarted. Continuing.**\n\nStation started it again with a note of the commands that were interrupted.';
 
 /** What the Continue action sends after a memory kill; Station adds the rest. */
 export const MEMORY_EXHAUSTION_CONTINUE_TEXT =

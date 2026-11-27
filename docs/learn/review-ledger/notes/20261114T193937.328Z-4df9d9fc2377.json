@@ -1,0 +1,7 @@
+{
+  "revision": "b1e62cc105903cf03db81840488cce164052d8c5",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Rechecked: the Muse adapter test now imports its schema fixture instead of reading it by path; the Muse workflow subagent usage row it cites is unchanged.","inputs":["docs/guides/monitoring.md","packages/shared/src/usage-fold.ts","src-server/monitoring/emitter.ts","src-server/providers/__tests__/muse-serve-adapter.test.ts","src-server/runtime/conversation/runtime-event-log.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-monitoring-bridge.ts","src-ui/src/views/developer/TelemetryTab.tsx"]}
+  ]
+}

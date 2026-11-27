@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Automation entry now says name is the internal slug and people read and rename displayName, falling back to the slug; matches the contract and the UI jobLabel helper.","inputs":["docs/glossary.md","docs/reference/contracts.md"]}
+  ]
+}

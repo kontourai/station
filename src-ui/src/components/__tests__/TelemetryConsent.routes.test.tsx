@@ -10,7 +10,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
-  getConfig,
   render,
   screen,
   waitFor,
@@ -121,7 +120,6 @@ const { setGrantedPairingScope } = await import(
 
 import type { RecoveryScope } from '../../contexts/RecoveryQueryBoundary';
 import { StationConfigSection } from '../../views/settings/StationConfigSection';
-import { FirstRunHomeChapter } from '../first-run/FirstRunHomeChapter';
 import { firstRunStore } from '../first-run/first-run-store';
 import { SHARING_LABELS } from '../UsageSharingChoices';
 import {
@@ -276,6 +274,34 @@ function mountChoice(client: QueryClient, advance = vi.fn(), dialog = false) {
 
 const calls = (suffix: string) =>
   bridge.request.mock.calls.filter(([url]) => String(url).endsWith(suffix));
+
+test('first run offers anonymous counts and Off when Kontour has a Lite-only receiver', async () => {
+  build.endpoint = 'https://telemetry.kontourai.io/v1/lite/station';
+  const { client, loader, service } = await publisherFixture();
+  const advance = vi.fn();
+  const view = mountChoice(client, advance);
+  try {
+    const save = await screen.findByRole('button', { name: 'Save choice' });
+    await waitFor(() => expect(save).toHaveProperty('disabled', false));
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.full }),
+    ).toHaveProperty('disabled', true);
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.off }),
+    ).toHaveProperty('disabled', false);
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.lite }),
+    ).toHaveProperty('checked', true);
+    fireEvent.click(save);
+    await waitFor(() => expect(advance).toHaveBeenCalledOnce());
+    expect((await loader.loadAppConfig()).telemetryTier?.kontour).toBe('lite');
+    expect(calls('/acknowledgements')).toHaveLength(0);
+  } finally {
+    view.unmount();
+    client.clear();
+    await service.shutdown();
+  }
+});
 
 test.each(['off', 'lite', 'full'] as const)(
   'the shared choice saves %s through real routes; detailed consent precedes activation',
@@ -1009,15 +1035,7 @@ test('fresh choices preselect Anonymous and initially focus that radio', async (
 test.each(['off', 'dismiss'] as const)(
   'reading a visible dialog past the daily flush does not send; interaction %s',
   async (action) => {
-    vi.useFakeTimers({
-      toFake: [
-        'Date',
-        'setInterval',
-        'clearInterval',
-        'requestAnimationFrame',
-        'cancelAnimationFrame',
-      ],
-    });
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
     vi.setSystemTime('2026-10-12T10:00:00Z');
     const { client, loader, service, sent } = await publisherFixture();
     await service.track('client_connected', {
@@ -1042,41 +1060,13 @@ test.each(['off', 'dismiss'] as const)(
       y: 100,
       toJSON: () => ({}),
     });
-    const request = bridge.request.getMockImplementation()!;
-    let disclosureFrame: number | undefined;
-    let releaseDisclosure: (() => void) | undefined;
-    // A cold disclosure reply must settle even while this case owns the clock.
-    const disclosureReady = new Promise<void>((resolve) => {
-      releaseDisclosure = resolve;
-      disclosureFrame = requestAnimationFrame(() => resolve());
-    });
-    bridge.request.mockImplementation(
-      async (url: string, init?: RequestInit) => {
-        if (
-          url.endsWith('/disclosure') &&
-          (init?.method === undefined || init.method === 'GET')
-        )
-          await disclosureReady;
-        return request(url, init);
-      },
-    );
     const view = mountChoice(client, vi.fn(), true);
     let resumeChoice: (() => void) | undefined;
+    const request = bridge.request.getMockImplementation()!;
     try {
-      await vi.waitFor(
-        async () => {
-          await act(async () => {
-            await vi.advanceTimersByTimeAsync(16);
-          });
-          expect(screen.getByRole('dialog')).toBeTruthy();
-        },
-        { timeout: getConfig().asyncUtilTimeout },
-      );
-      await vi.waitFor(() => expect(client.isFetching()).toBe(0));
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(40);
-      });
-      vi.setSystemTime('2026-10-13T10:00:00Z');
+      // The real disclosure requests and DOM settle before the service clock
+      // advances through the send interval.
+      await screen.findByRole('dialog', { name: 'Usage sharing' });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(12_000);
       });
@@ -1124,7 +1114,21 @@ test.each(['off', 'dismiss'] as const)(
         expect(sent).toHaveLength(0);
         resumeChoice!();
         expect((await writeResponse!).status).toBe(200);
-      } else fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+      } else {
+        const held = new Promise<void>((resolve) => {
+          resumeChoice = resolve;
+        });
+        bridge.request.mockImplementation(
+          async (url: string, init?: RequestInit) => {
+            if (url.endsWith('/lite-notices')) await held;
+            return request(url, init);
+          },
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect((await service.telemetryStatus()).liteNotices).toEqual({});
+        resumeChoice!();
+      }
       const now = new Date();
       vi.useRealTimers();
       vi.useFakeTimers({ toFake: ['Date'] });
@@ -1145,8 +1149,6 @@ test.each(['off', 'dismiss'] as const)(
         operator: action === 'off' ? 'off' : 'lite',
       });
     } finally {
-      if (disclosureFrame !== undefined) cancelAnimationFrame(disclosureFrame);
-      releaseDisclosure?.();
       bridge.request.mockImplementation(request);
       resumeChoice?.();
       view.unmount();
@@ -1301,10 +1303,13 @@ test.each(['close', 'escape', 'backdrop'] as const)(
     });
     const view = render(
       <QueryClientProvider client={client}>
-        <FirstRunHomeChapter intentFirst />
+        <UsageTelemetryDisclosure firstRun offerOnHome />
       </QueryClientProvider>,
     );
     try {
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Review choices' }),
+      );
       const dialog = await screen.findByRole('dialog');
       const anonymous = await screen.findByRole('radio', {
         name: /Anonymous usage counts/,
@@ -1312,7 +1317,9 @@ test.each(['close', 'escape', 'backdrop'] as const)(
       await waitFor(() => expect(document.activeElement).toBe(anonymous));
       expect(calls('/lite-notices')).toHaveLength(0);
       if (exit === 'close')
-        fireEvent.click(screen.getByRole('button', { name: 'Close setup' }));
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Close usage sharing' }),
+        );
       else if (exit === 'escape') fireEvent.keyDown(dialog, { key: 'Escape' });
       else fireEvent.pointerDown(screen.getByRole('presentation'));
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

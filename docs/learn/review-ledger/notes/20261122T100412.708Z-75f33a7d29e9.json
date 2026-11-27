@@ -1,0 +1,7 @@
+{
+  "revision": "f9f363a0bd261cbd0d883aaa4323c88587b39212",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"connect-reconnect-banner still covers the Connect Station dialog and Station manager at phone size; it now expects Scan QR to fall back to code entry in camera-less Chromium.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-reconnect-banner.spec.ts"]}
+  ]
+}

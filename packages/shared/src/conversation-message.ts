@@ -8,6 +8,7 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
+  ToolRequestRuleGrant,
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from './tool-request-preview.js';
@@ -71,6 +72,17 @@ export interface MessagePart {
   progressMessage?: string;
   /** A station-control refusal, whole (see `ToolCompletedEvent`). */
   stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
+  appearanceProposal?: import('@kontourai/station-contracts/custom-appearance').CustomAppearanceProposalReference;
+  /**
+   * On a `model.rerouted` marker line: which turn the engine moved onto
+   * another model and how far. Readers use it to stop comparing models
+   * across that turn (chat-24). Absent for a subagent's reroute.
+   */
+  modelReroute?: {
+    sessionId: string;
+    turnId?: string;
+    scope: 'turn' | 'session';
+  };
   /** When the call's `tool.started` was created (ISO); a running row's elapsed time. */
   startedAt?: string;
   /** Engine output was deliberately narrowed before publication. */
@@ -153,6 +165,16 @@ export interface MessagePart {
    */
   approvalServerGrant?: ToolRequestServerGrant;
   /**
+   * The command-prefix grant that request also offers
+   * (`toolRequestRuleGrantFromPayload`); absent offers nothing.
+   */
+  approvalRuleGrant?: ToolRequestRuleGrant;
+  /**
+   * Whether that request also offers the session-wide grant
+   * (`toolRequestAllGrantFromPayload`); absent offers nothing.
+   */
+  approvalAllGrant?: true;
+  /**
    * station#3117: `'policy-denied'` is set only from the runtime event's own
    * `policyDenied` marker (see `runtime-event-projection.ts`'s `tool.completed`
    * case) — never inferred from `state === 'error'` alone, so a rehydrated
@@ -179,6 +201,13 @@ export interface ConversationMessage {
     /** Immutable copied-context receipt; it is not an execution or read grant. */
     forkOrigin?: { eventId: string; digest: string };
     forkSourceMessageId?: string;
+    /**
+     * A row another Station sent (`conversation-imports`), named as that
+     * Station named itself when requesting pairing (the Device name this
+     * Station's operator approved). That Station's claim, not a row this
+     * Station recorded; every seed and memory copy quotes it.
+     */
+    importedFrom?: string;
     timestamp?: number;
     /** User input appended inside an already-running provider turn. */
     inputKind?: 'steer';
@@ -192,6 +221,7 @@ export interface ConversationMessage {
     sender?: ClientOriginSender;
     /** That steer was delivered by cancelling the running step (see `TurnStartedEvent`). */
     steerInterruptedRun?: true;
+    steer?: true;
     /**
      * A check-back Station sent (`isStationCheckBackTurn`): sent as the
      * person, written by nobody. Shown as Station's, not the person's.
@@ -207,6 +237,16 @@ export interface ConversationMessage {
      * (`isStationRestartContinuationTurn`). Shown as Station's.
      */
     stationRestartContinuation?: true;
+    /**
+     * A delegated Task's brief or an Automation's run (`stationTurnOrigin`):
+     * sent by a Station flow, not typed by the person.
+     */
+    stationOrigin?: 'delegation' | 'automation';
+    /**
+     * An in-place engine rewind hid this turn from the engine
+     * (`ACP_SESSION_REWOUND_CODE`). The row stays; it is shown as rewound.
+     */
+    rewound?: true;
     /**
      * The interrupted-turn boundary a `[TURN_INTERRUPTED]` banner row reports
      * (`SessionStateChangedEvent.interruptedTurnBoundary.boundaryId`). The
@@ -256,6 +296,13 @@ export interface ConversationMessage {
      * mid-turn (`recoveryTerminal`). Never inferred from `turnEndedReason`.
      */
     turnStoppedBy?: 'person' | 'stall' | 'restart';
+    /**
+     * Set on a turn's last row when the turn completed because the engine
+     * reached its output limit (`turn.completed` `finishReason:
+     * 'max-tokens'`): the reply stops mid-way. Absent for every other ending,
+     * including an engine that reports no finish reason.
+     */
+    turnCutOff?: 'max-tokens';
     /**
      * station#1410: the turn's provenance envelope, re-derived from the
      * durable orchestration event stream on every read. A projection, not a

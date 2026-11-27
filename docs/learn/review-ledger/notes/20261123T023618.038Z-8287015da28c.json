@@ -1,0 +1,7 @@
+{
+  "revision": "20fb4efe34438629b4fe2875cae38f20a93a213c",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the compaction section's /compact claims against builtins.ts: the change only turns the /stats answer's dynamic import of engineDisplayLabel into a static import; /compact registration and its precedence rules are untouched, so the page stays accurate.","inputs":["src-ui/src/slashCommands/builtins.ts"]}
+  ]
+}

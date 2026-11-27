@@ -65,7 +65,7 @@
         "owner": "repo-maintainers",
         "rollback_switch": null,
         "explain": {
-          "summary": "AGENTS.md (and its CLAUDE.md symlink) must carry the canonical marker-bounded governance block.",
+          "summary": "AGENTS.md must carry the canonical marker-bounded governance block exactly once; CLAUDE.md imports AGENTS.md, so it must not repeat the block.",
           "mustDo": [
             "Reapply the governance block (veritas apply governance-blocks) after editing instruction files."
           ],
@@ -81,8 +81,7 @@
         },
         "match": {
           "governance-block": [
-            "AGENTS.md",
-            "CLAUDE.md"
+            "AGENTS.md"
           ]
         }
       },

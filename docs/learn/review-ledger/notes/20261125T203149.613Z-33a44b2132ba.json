@@ -1,0 +1,21 @@
+{
+  "revision": "16bcfa3a3a027bf66b92ab905cd48bcc5a3ba67b",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Checked Scope for Chats against the device setting and current Project fallback. The default, explicit override and display label behavior remain as documented.","inputs":["docs/guides/starter-work.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The linked Starter work guide uses Chats for the existing Project-scoped dock list. The first-run and resume journeys retain their source support.","inputs":["docs/guides/starter-work.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the Chats scope, visibility, sections and sheet gesture labels against device setting keys, defaults and consumers. The persisted contract and key-based settings reference stay accurate.","inputs":["packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the Chats scope, visibility, sections and sheet gesture labels against device setting keys, defaults and consumers. The persisted contract and key-based settings reference stay accurate.","inputs":["packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Checked the Chats scope, visibility, sections and sheet gesture labels against device setting keys, defaults and consumers. The persisted contract and key-based settings reference stay accurate.","inputs":["packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the Chats scope, visibility, sections and sheet gesture labels against device setting keys, defaults and consumers. The persisted contract and key-based settings reference stay accurate.","inputs":["packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the Chats scope, visibility, sections and sheet gesture labels against device setting keys, defaults and consumers. The persisted contract and key-based settings reference stay accurate.","inputs":["packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/guides/ui-copy.md","note":"Checked the renamed Chats vocabulary against the gate and its independent expected-copy table. The gate rejects Chat list and permits Show chats and Hide chats.","inputs":["scripts/noun-consistency-gate.mjs"]}
+  ]
+}

@@ -34,6 +34,7 @@ interface TranscriptVirtualizerProps<Row extends VirtualTranscriptRow> {
   readonly followTick?: number | string;
   /** Monotonic scroll signal from the one owning transcript surface. */
   readonly anchorVersion?: number;
+  readonly preserveAnchor?: boolean;
   /** Stable transcript-row key requested by a route or palette result. */
   readonly revealRowId?: string;
   /** Owner-confirmed reader row and viewport offset to restore. */
@@ -80,6 +81,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   followTail = false,
   followTick,
   anchorVersion = 0,
+  preserveAnchor = true,
   revealRowId,
   restoreAnchor,
   restoreAnchorVersion,
@@ -134,9 +136,12 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   );
   const mountAnchorVersionRef = useRef(anchorVersion);
   useLayoutEffect(() => {
-    if (handoff && anchorVersion !== mountAnchorVersionRef.current)
+    if (
+      handoff &&
+      (!preserveAnchor || anchorVersion !== mountAnchorVersionRef.current)
+    )
       setHandoff(undefined);
-  }, [anchorVersion, handoff]);
+  }, [anchorVersion, handoff, preserveAnchor]);
   // Attaching the scroll element scrolls it to this offset (TanStack reads no
   // position before its first scroll event), so it must name where the
   // transcript already is: the handed-over row, the tail being followed, or
@@ -202,6 +207,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
     _delta,
     instance,
   ) => {
+    if (!preserveAnchor) return false;
     const anchor = virtualAnchorRef.current;
     // TanStack's own default rule (virtual-core 3.17.11): the fold is the
     // cached offset plus adjustments already queued in this batch; a first
@@ -326,7 +332,12 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
     : -1;
   useLayoutEffect(() => {
     void restoreAnchorVersion;
-    if (!restoreAnchorKey || restoreAnchorOffset === undefined) return;
+    if (
+      !preserveAnchor ||
+      !restoreAnchorKey ||
+      restoreAnchorOffset === undefined
+    )
+      return;
     const index = restoreAnchorIndex;
     const element = scrollElement.current;
     if (index < 0 || !element) return;
@@ -387,6 +398,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
     };
   }, [
     onProgrammaticScroll,
+    preserveAnchor,
     restoreAnchorIndex,
     restoreAnchorKey,
     restoreAnchorOffset,
@@ -401,17 +413,26 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   // intermediate measured position just before a prepend.
   useLayoutEffect(() => {
     void anchorVersion;
+    if (!preserveAnchor) {
+      virtualAnchorRef.current = undefined;
+      mountAnchorPendingRef.current = false;
+      return;
+    }
     if (mountAnchorPendingRef.current) {
       mountAnchorPendingRef.current = false;
       return;
     }
     captureVirtualAnchor();
-  }, [anchorVersion, captureVirtualAnchor]);
+  }, [anchorVersion, captureVirtualAnchor, preserveAnchor]);
 
   // Older window pages prepend before the current viewport. Restore the same
   // keyed virtual item plus its within-row offset before paint; measured row
   // corrections remain owned by TanStack's measureElement path.
   useLayoutEffect(() => {
+    if (!preserveAnchor) {
+      previousRowsRef.current = rows;
+      return;
+    }
     if (anchorVersion < 0) return;
     let measurementFrame: number | undefined;
     let correctionFrame: number | undefined;
@@ -522,7 +543,13 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
-  }, [rows, anchorVersion, scrollElement, onProgrammaticScroll]);
+  }, [
+    rows,
+    anchorVersion,
+    scrollElement,
+    onProgrammaticScroll,
+    preserveAnchor,
+  ]);
 
   // Estimates are corrected after rows enter the DOM. Scrolling to the final
   // keyed item on a new follow-tail request keeps that correction from leaving

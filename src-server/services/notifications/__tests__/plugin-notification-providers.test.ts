@@ -11,6 +11,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   notificationOps: { add: vi.fn() },
+  jsonFileStoreWriteBytes: { record: vi.fn() },
 }));
 
 const { NotificationService } = await import('../notification-service.js');

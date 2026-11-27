@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/guides/operator-passkeys.md","note":"#4517 managed settings. Changed: station-runtime.ts: StationRuntime installs the loaded managed policy settings before config loads. Searched it for claims about app config loading and writes, settings provenance, the managed policy, project overrides and workspace isolation; none describes the changed behavior, so it remains accurate.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

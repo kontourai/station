@@ -1,7 +1,0 @@
-{
-  "revision": "80f026e478932b2769c6c8905aac01a343b2ada9",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed only LocalSkillMutationAuthority and SetupImportEffectJournal claims against the existing setup import stepper repair at 80f026e478. Changing selections or target names now invalidates the reviewed witness, and a late review response cannot restore it. Source-read retry and visible uncertain Apply errors retain the server receipt contract without automatic replay. Five mounted UI regressions failed before repair and the repaired suite passed nine tests; controlled browser import-endpoint fixtures and 390/1440 light/dark renders were inspected. No live filesystem import, provider or native proof, and no unrelated module-map recertification.","inputs":["docs/architecture/module-map.md","src-ui/src/components/setup/ExistingSetupImportStepper.tsx"]}
-  ]
-}

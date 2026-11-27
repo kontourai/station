@@ -1,0 +1,9 @@
+{
+  "revision": "5e737647fd0be850dd8c83c0856558e5516d6a35",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"Reviewed the portable build dependency from the shared Biome command through the Station Docs generator into server bundling. The planner now selects portable packaging when that helper changes. The ordinary checkout, archive identity, installer validation and publication policies still apply.","inputs":["scripts/pr-delivery-paths.json"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed the portable build dependency from the shared Biome command through the Station Docs generator into server bundling. The planner now selects portable packaging when that helper changes. The ordinary checkout, archive identity, installer validation and publication policies still apply.","inputs":["scripts/pr-delivery-paths.json"]}
+  ]
+}

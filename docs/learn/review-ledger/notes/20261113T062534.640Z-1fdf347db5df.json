@@ -1,0 +1,7 @@
+{
+  "revision": "119c04ef9e16930c22692e67f26a091fff5373aa",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed eight current gallery baselines and their capture manifest: the mobile resync image now shows the closed trigger, six filled scenes cover 1440/390/412 in both themes, and a 412px scene shows full-access risk. PNGs opened and inspected. Partial baseline update preserves other entries; controlled browser captures do not qualify provider/device behavior. The direct isolated instance used production UI from 66362736; later source changes are tests/docs only.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

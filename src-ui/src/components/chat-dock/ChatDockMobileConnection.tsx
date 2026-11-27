@@ -53,21 +53,9 @@ function needsAttention(state: ConnectionIndicatorState): boolean {
 /**
  * Connection state on the mobile chat surface — station#3297 part 2.
  *
- * The app toolbar's own indicator is hidden while the dock is full-screen
- * (`app__main--mobile-dock-fullscreen`), and this bar replaced it. So on the
- * one surface where the owner actually met a stale credential, nothing showed
- * connection state at all and a paragraph-sized banner was doing the work.
+ * Hosts without a Station toolbar may offer the connection in their actions sheet.
+ * The main phone shell keeps its Station switcher in the app toolbar.
  *
- * station#1048: that "hidden while full-screen" premise used to be only a
- * CSS fact about the toolbar, not a fact about this component — this
- * component itself rendered on every mobile width regardless of dock state,
- * so it and the toolbar's chip coexisted (both visible, both in the a11y
- * tree, same accessible-name prefix) in the collapsed/half-open dock, which
- * is the default mobile state. `ChatDockMobileHeader` now mounts this only
- * when the toolbar is actually hidden (`showConnection`), matching what this
- * docblock always claimed.
- *
-
  * Three channels carry `needs-credential` (and, since station#4512 review
  * H1, `needs-repair` too), because a 7px dot can carry none of them alone: a
  * triangle instead of a disc (`ConnectionStatusDot`), a short word, and the

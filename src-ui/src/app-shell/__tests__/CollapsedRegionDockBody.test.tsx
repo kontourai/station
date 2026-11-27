@@ -1,3 +1,7 @@
+import {
+  REGION_HOST_WARM_TIMEOUT_MS,
+  warmRegionHostImports,
+} from '../../workspace-panes/__tests__/warmRegionHostImports';
 /** @vitest-environment jsdom */
 
 import { dirname, resolve } from 'node:path';
@@ -5,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
 import {
   assertNoImportsSurvive,
   chromiumIsInstalled,
@@ -20,8 +24,8 @@ import {
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { RegionShells } from '../RegionShells';
 
-vi.mock('../../views/SessionsView', () => ({
-  SessionsView: () => <div data-testid="sessions-view" />,
+vi.mock('../../workspace-panes/AgentsWorkspacePane', () => ({
+  AgentsWorkspacePane: () => <div data-testid="sessions-view" />,
 }));
 vi.mock('../../components/chat-dock/ChatDock', () => ({
   ChatDock: () => <div data-testid="chat-shell" />,
@@ -50,6 +54,8 @@ function Probe() {
   }, [value]);
   return null;
 }
+
+beforeAll(warmRegionHostImports, REGION_HOST_WARM_TIMEOUT_MS);
 
 beforeEach(() => {
   model = null;
@@ -102,11 +108,13 @@ test('a collapsed bottom dock’s non-chat body is hidden and the dock ends at i
   );
   await waitFor(() => expect(model).not.toBeNull());
 
-  act(() => model?.placeSurface('activity', 'bottom'));
+  act(() => model?.placeSurface('workspace-agents', 'bottom'));
   await act(async () => {
     await vi.dynamicImportSettled();
   });
-  await waitFor(() => expect(model?.regions.bottom.occupant).toBe('activity'));
+  await waitFor(() =>
+    expect(model?.regions.bottom.occupant).toBe('workspace-agents'),
+  );
   const occupant = await screen.findByTestId('sessions-view');
   const body = occupant.closest('.dock-slot__body');
   expect(

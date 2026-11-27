@@ -458,6 +458,7 @@ describe('Draft lifecycle derivation (#2310)', () => {
 
       const sessions = await instance.listSessionReadModel(
         INTERNAL_SESSION_READ_SCOPE,
+        { purpose: 'session-list' },
       );
       const owner = sessions.find((entry) => entry.threadId === ROOT);
       expect(owner?.draft).toBe(true);
@@ -659,6 +660,7 @@ describe('Draft lifecycle derivation (#2310)', () => {
 
     const sessions = await (await service()).listSessionReadModel(
       INTERNAL_SESSION_READ_SCOPE,
+      { purpose: 'session-list' },
     );
     expect(
       sessions.find((session) => session.threadId === child)?.conversationId,
@@ -685,6 +687,7 @@ describe('Draft lifecycle derivation (#2310)', () => {
     const instance = await service();
     const sessions = await instance.listSessionReadModel(
       INTERNAL_SESSION_READ_SCOPE,
+      { purpose: 'session-list' },
     );
     const draftOf = (threadId: string) =>
       sessions.find((session) => session.threadId === threadId)?.draft;
@@ -736,9 +739,11 @@ describe('Draft lifecycle derivation (#2310)', () => {
     async function listedIds(
       instance: OrchestrationService,
     ): Promise<string[]> {
-      return (await instance.listSessionReadModel(ownerRead())).map(
-        (session) => session.threadId,
-      );
+      return (
+        await instance.listSessionReadModel(ownerRead(), {
+          purpose: 'session-list',
+        })
+      ).map((session) => session.threadId);
     }
 
     async function refusal(promise: Promise<unknown>) {
@@ -795,7 +800,11 @@ describe('Draft lifecycle derivation (#2310)', () => {
 
       expect(error.message).toBe(`Session not found: ${ROOT}`);
       expect(await listedIds(instance)).toEqual([ROOT]);
-      const kept = (await instance.listSessionReadModel(ownerRead()))[0];
+      const kept = (
+        await instance.listSessionReadModel(ownerRead(), {
+          purpose: 'session-list',
+        })
+      )[0];
       expect(kept?.draft).toBe(true);
     });
 
@@ -884,9 +893,13 @@ describe('Draft lifecycle derivation (#2310)', () => {
       });
       const instance = await service();
       // Fixture guard: the fork fact does not end the source's Draft.
-      expect((await instance.listSessionReadModel(ownerRead()))[0]?.draft).toBe(
-        true,
-      );
+      expect(
+        (
+          await instance.listSessionReadModel(ownerRead(), {
+            purpose: 'session-list',
+          })
+        )[0]?.draft,
+      ).toBe(true);
 
       const error = await refusal(
         instance.dispatchWithReceipt(
@@ -943,9 +956,13 @@ describe('Draft lifecycle derivation (#2310)', () => {
       });
       const instance = await service();
       // Fixture guard: the row still reads Draft and the lineage has both.
-      expect((await instance.listSessionReadModel(ownerRead()))[0]?.draft).toBe(
-        true,
-      );
+      expect(
+        (
+          await instance.listSessionReadModel(ownerRead(), {
+            purpose: 'session-list',
+          })
+        )[0]?.draft,
+      ).toBe(true);
       expect(store.conversationSessions(ROOT)).toHaveLength(2);
 
       await instance.dispatchWithReceipt(

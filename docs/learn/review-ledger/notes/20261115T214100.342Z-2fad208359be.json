@@ -1,0 +1,69 @@
+{
+  "revision": "8540e3ecf82417ac8d8b0fa8af5702f16f5803dc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Delta review 2 on #5007: the finished-session park conditions now state the foreign-hook rule, the Claude Code version floor and the result-steer exception. Foreign hooks: ClaudeAdapter runs with includeHookEvents, and any hook_started marks a hook Station did not install, sticky for the engine. EXECUTED probe against the bundled Claude Code 2.1.322: an async or asyncRewake settings Stop hook reports hook_started before the result and hook_response when it ends, while an SDK callback reports none. Version floor: parseClaudeCodeVersion against 2.1.322. Result-steer exception: a steer with Station's internal actor and the delegation-result sender is excluded from hasPersonTurn. The remaining unseen mechanisms are listed. The delegation-result delivery section elsewhere on the page is unchanged. Covered by claude-adapter-early-park and finished-session-parking tests, fault-injected (H1-H4, S1-S2).","inputs":["docs/architecture/module-map.md","src-server/providers/adapters/claude-adapter-events.ts","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"The early-park clause of the STATION_IDLE_SESSION_PARK_AFTER_MS row now says the Claude session must also have only Station's own hooks, per ClaudeAdapter.earlyParkRefusal's foreign-hook refusal.","inputs":["docs/reference/env-vars.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Adds includeHookEvents to the session's SDK options, plus a version-floor and foreign-hook check in earlyParkRefusal. Citing pages re-read for SDK option and hook claims; none enumerate the options or describe hook-event reporting, and Station's PreToolUse/PostToolUse/Stop callback hooks are unchanged. They remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Adds includeHookEvents to the session's SDK options, plus a version-floor and foreign-hook check in earlyParkRefusal. Citing pages re-read for SDK option and hook claims; none enumerate the options or describe hook-event reporting, and Station's PreToolUse/PostToolUse/Stop callback hooks are unchanged. They remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Adds includeHookEvents to the session's SDK options, plus a version-floor and foreign-hook check in earlyParkRefusal. Citing pages re-read for SDK option and hook claims; none enumerate the options or describe hook-event reporting, and Station's PreToolUse/PostToolUse/Stop callback hooks are unchanged. They remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Adds includeHookEvents to the session's SDK options, plus a version-floor and foreign-hook check in earlyParkRefusal. Citing pages re-read for SDK option and hook claims; none enumerate the options or describe hook-event reporting, and Station's PreToolUse/PostToolUse/Stop callback hooks are unchanged. They remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Adds includeHookEvents to the session's SDK options, plus a version-floor and foreign-hook check in earlyParkRefusal. Citing pages re-read for SDK option and hook claims; none enumerate the options or describe hook-event reporting, and Station's PreToolUse/PostToolUse/Stop callback hooks are unchanged. They remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Adds includeHookEvents to the session's SDK options, plus a version-floor and foreign-hook check in earlyParkRefusal. Citing pages re-read for SDK option and hook claims; none enumerate the options or describe hook-event reporting, and Station's PreToolUse/PostToolUse/Stop callback hooks are unchanged. They remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Adds includeHookEvents to the session's SDK options, plus a version-floor and foreign-hook check in earlyParkRefusal. Citing pages re-read for SDK option and hook claims; none enumerate the options or describe hook-event reporting, and Station's PreToolUse/PostToolUse/Stop callback hooks are unchanged. They remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Adds includeHookEvents to the session's SDK options, plus a version-floor and foreign-hook check in earlyParkRefusal. Citing pages re-read for SDK option and hook claims; none enumerate the options or describe hook-event reporting, and Station's PreToolUse/PostToolUse/Stop callback hooks are unchanged. They remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Adds includeHookEvents to the session's SDK options, plus a version-floor and foreign-hook check in earlyParkRefusal. Citing pages re-read for SDK option and hook claims; none enumerate the options or describe hook-event reporting, and Station's PreToolUse/PostToolUse/Stop callback hooks are unchanged. They remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Adds includeHookEvents to the session's SDK options, plus a version-floor and foreign-hook check in earlyParkRefusal. Citing pages re-read for SDK option and hook claims; none enumerate the options or describe hook-event reporting, and Station's PreToolUse/PostToolUse/Stop callback hooks are unchanged. They remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Adds includeHookEvents to the session's SDK options, plus a version-floor and foreign-hook check in earlyParkRefusal. Citing pages re-read for SDK option and hook claims; none enumerate the options or describe hook-event reporting, and Station's PreToolUse/PostToolUse/Stop callback hooks are unchanged. They remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Adds includeHookEvents to the session's SDK options, plus a version-floor and foreign-hook check in earlyParkRefusal. Citing pages re-read for SDK option and hook claims; none enumerate the options or describe hook-event reporting, and Station's PreToolUse/PostToolUse/Stop callback hooks are unchanged. They remain accurate.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Records init's claude_code_version, and a hook_started as a foreign hook (otherwise ignored, as before). Citing pages' event-mapping claims remain accurate; only the module map describes the park use, with its own note.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Records init's claude_code_version, and a hook_started as a foreign hook (otherwise ignored, as before). Citing pages' event-mapping claims remain accurate; only the module map describes the park use, with its own note.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Records init's claude_code_version, and a hook_started as a foreign hook (otherwise ignored, as before). Citing pages' event-mapping claims remain accurate; only the module map describes the park use, with its own note.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Records init's claude_code_version, and a hook_started as a foreign hook (otherwise ignored, as before). Citing pages' event-mapping claims remain accurate; only the module map describes the park use, with its own note.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Records init's claude_code_version, and a hook_started as a foreign hook (otherwise ignored, as before). Citing pages' event-mapping claims remain accurate; only the module map describes the park use, with its own note.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The promptless SDK options shape assertion now includes includeHookEvents. Citing pages' claims about what that suite proves are unchanged.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The promptless SDK options shape assertion now includes includeHookEvents. Citing pages' claims about what that suite proves are unchanged.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"hasPersonTurn excludes a steer carrying Station's internal actor and the server-stamped delegation-result sender, and the unrecognised-origin rule now applies to non-steers only (every other steer still counts). Read-only; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"hasPersonTurn excludes a steer carrying Station's internal actor and the server-stamped delegation-result sender, and the unrecognised-origin rule now applies to non-steers only (every other steer still counts). Read-only; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"hasPersonTurn excludes a steer carrying Station's internal actor and the server-stamped delegation-result sender, and the unrecognised-origin rule now applies to non-steers only (every other steer still counts). Read-only; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"hasPersonTurn excludes a steer carrying Station's internal actor and the server-stamped delegation-result sender, and the unrecognised-origin rule now applies to non-steers only (every other steer still counts). Read-only; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"hasPersonTurn excludes a steer carrying Station's internal actor and the server-stamped delegation-result sender, and the unrecognised-origin rule now applies to non-steers only (every other steer still counts). Read-only; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"hasPersonTurn excludes a steer carrying Station's internal actor and the server-stamped delegation-result sender, and the unrecognised-origin rule now applies to non-steers only (every other steer still counts). Read-only; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"hasPersonTurn excludes a steer carrying Station's internal actor and the server-stamped delegation-result sender, and the unrecognised-origin rule now applies to non-steers only (every other steer still counts). Read-only; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"hasPersonTurn excludes a steer carrying Station's internal actor and the server-stamped delegation-result sender, and the unrecognised-origin rule now applies to non-steers only (every other steer still counts). Read-only; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"hasPersonTurn excludes a steer carrying Station's internal actor and the server-stamped delegation-result sender, and the unrecognised-origin rule now applies to non-steers only (every other steer still counts). Read-only; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"hasPersonTurn excludes a steer carrying Station's internal actor and the server-stamped delegation-result sender, and the unrecognised-origin rule now applies to non-steers only (every other steer still counts). Read-only; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated by docs:mcp:generate from the revised module map and env-var reference; no hand edits.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "c82ba3d49675194bce69cc87521f180a38d759ca",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Read full context and routing claims against the glossary duration correction and attention vocabulary. Context routes vocabulary to the glossary and distinguishes approvals from reviews/gates; neither context states a duration format or changes request authority. Session/surface boundaries and routes remain accurate. No prose change required; source review only.","inputs":["CONTEXT.md","docs/glossary.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Read full context and routing claims against the glossary duration correction and attention vocabulary. Context routes vocabulary to the glossary and distinguishes approvals from reviews/gates; neither context states a duration format or changes request authority. Session/surface boundaries and routes remain accurate. No prose change required; source review only.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]}
+  ]
+}

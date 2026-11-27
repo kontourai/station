@@ -8,6 +8,154 @@
     "src-ui/src/components/ServerOlderLaunchCheck.tsx"
   ],
   "screens": {
+    "external-history-dark-desktop": [
+      "src-ui/src/components/chat/ConversationHistory.tsx",
+      "src-ui/src/components/chat/ExternalSessionHistory.tsx"
+    ],
+    "external-history-light-desktop": [
+      "src-ui/src/components/chat/ConversationHistory.tsx",
+      "src-ui/src/components/chat/ExternalSessionHistory.tsx"
+    ],
+    "external-history-dark-mobile": [
+      "src-ui/src/components/chat/ConversationHistory.tsx",
+      "src-ui/src/components/chat/ExternalSessionHistory.tsx"
+    ],
+    "external-history-light-mobile": [
+      "src-ui/src/components/chat/ConversationHistory.tsx",
+      "src-ui/src/components/chat/ExternalSessionHistory.tsx"
+    ],
+    "member-project-channels-light": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/MemberProjectPage.tsx"
+    ],
+    "member-project-channels-dark": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/MemberProjectPage.tsx"
+    ],
+    "project-brief-dark-desktop": [
+      "src-ui/src/views/project-settings/BriefSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-brief-dark-mobile": [
+      "src-ui/src/views/project-settings/BriefSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-brief-light-desktop": [
+      "src-ui/src/views/project-settings/BriefSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-brief-light-mobile": [
+      "src-ui/src/views/project-settings/BriefSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-memory-dark-desktop": [
+      "src-ui/src/views/project-settings/MemorySection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-memory-dark-mobile": [
+      "src-ui/src/views/project-settings/MemorySection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-memory-light-desktop": [
+      "src-ui/src/views/project-settings/MemorySection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-memory-light-mobile": [
+      "src-ui/src/views/project-settings/MemorySection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-models-dark-desktop": [
+      "src-ui/src/views/project-settings/ProjectModelsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-models-dark-mobile": [
+      "src-ui/src/views/project-settings/ProjectModelsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-models-light-desktop": [
+      "src-ui/src/views/project-settings/ProjectModelsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-models-light-mobile": [
+      "src-ui/src/views/project-settings/ProjectModelsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-usage-dark-desktop": [
+      "src-ui/src/views/project-settings/ProjectUsageSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-usage-dark-mobile": [
+      "src-ui/src/views/project-settings/ProjectUsageSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-usage-light-desktop": [
+      "src-ui/src/views/project-settings/ProjectUsageSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-usage-light-mobile": [
+      "src-ui/src/views/project-settings/ProjectUsageSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "apps-details-dark-mobile": [
+      "src-ui/src/views/apps/AppDetailsDialog.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx"
+    ],
+    "apps-details-dark-desktop": [
+      "src-ui/src/views/apps/AppDetailsDialog.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx"
+    ],
+    "apps-details-light-mobile": [
+      "src-ui/src/views/apps/AppDetailsDialog.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx"
+    ],
+    "apps-details-light-desktop": [
+      "src-ui/src/views/apps/AppDetailsDialog.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx"
+    ],
+    "apps-library-dark-mobile": [
+      "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+      "src-ui/src/views/apps/AppsLibrary.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css"
+    ],
+    "apps-library-dark-desktop": [
+      "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+      "src-ui/src/views/apps/AppsLibrary.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css"
+    ],
+    "apps-library-light-mobile": [
+      "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+      "src-ui/src/views/apps/AppsLibrary.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css"
+    ],
+    "apps-library-light-desktop": [
+      "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+      "src-ui/src/views/apps/AppsLibrary.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css"
+    ],
     "task-capabilities-dark-desktop": [
       "src-ui/src/views/TaskWorkspaceView.tsx"
     ],
@@ -24,18 +172,54 @@
     "personal-board-projects-unavailable-mobile": [
       "src-ui/src/views/PersonalBoardView.tsx"
     ],
-    "telemetry-dialog-default-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-default-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-mixed-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-mixed-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-dnt-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-dnt-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-endpoint-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-endpoint-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-detailed-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-detailed-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-light-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-light-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-default-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-default-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-mixed-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-mixed-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-dnt-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-dnt-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-endpoint-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-endpoint-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-detailed-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-detailed-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-light-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-light-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
     "telemetry-settings-desktop": ["src-ui/src/views/SettingsView.tsx"],
     "telemetry-settings-mobile": ["src-ui/src/views/SettingsView.tsx"],
     "telemetry-settings-dnt-desktop": ["src-ui/src/views/SettingsView.tsx"],
@@ -49,10 +233,6 @@
     ],
     "telemetry-settings-detailed-expanded-mobile": [
       "src-ui/src/views/SettingsView.tsx"
-    ],
-    "mobile-activity-compact": [
-      "src-ui/src/views/HomeView.tsx",
-      "src-ui/src/app-shell/ActivityRegionShell.tsx"
     ],
     "mobile-http-consent-320": [
       "src-ui/src/views/SettingsView.tsx",
@@ -91,15 +271,18 @@
       "src-ui/src/views/ConnectionsSectionFrame.tsx",
       "src-ui/src/views/KnowledgeConnectionView.tsx"
     ],
-    "sessions": [
-      "src-ui/src/views/HomeView.tsx",
-      "src-ui/src/app-shell/ActivityRegionShell.tsx"
-    ],
     "plugins": ["src-ui/src/views/PluginManagementView.tsx"],
     "schedule": ["src-ui/src/views/ScheduleView.tsx"],
     "developer-telemetry": ["src-ui/src/views/DeveloperView.tsx"],
     "profile": ["src-ui/src/pages/ProfilePage.tsx"],
     "settings": ["src-ui/src/views/SettingsView.tsx"],
+    "appearance": [
+      "src-ui/src/pages/AppearancePage.tsx",
+      "src-ui/src/pages/CustomAppearanceSection.tsx",
+      "src-ui/src/pages/AppearanceStudio.tsx",
+      "src-ui/src/pages/AppearanceStudio.css",
+      "src-ui/src/lib/custom-appearance/visual-css.ts"
+    ],
     "settings-info-tip": ["src-ui/src/views/SettingsView.tsx"],
     "agent-editor": ["src-ui/src/views/AgentsView.tsx"],
     "agent-editor-not-runnable": ["src-ui/src/views/AgentsView.tsx"],
@@ -108,10 +291,6 @@
     "mobile-agent-editor-save-footer": ["src-ui/src/views/AgentsView.tsx"],
     "mobile-agent-editor-project-control": ["src-ui/src/views/AgentsView.tsx"],
     "mobile-settings-overview": ["src-ui/src/views/SettingsView.tsx"],
-    "sessions-filtered-empty": [
-      "src-ui/src/views/HomeView.tsx",
-      "src-ui/src/app-shell/ActivityRegionShell.tsx"
-    ],
     "agents-empty": ["src-ui/src/views/AgentsView.tsx"],
     "command-palette-empty": ["src-ui/src/views/HomeView.tsx"],
     "motion-reduced-navigation": ["src-ui/src/views/AgentsView.tsx"],
@@ -219,6 +398,15 @@
     "station-switcher-forget-dark-desktop": [
       "src-ui/src/components/header/StationSwitcherMenu.tsx"
     ],
+    "station-switcher-forget-after-keyboard-dark-desktop": [
+      "src-ui/src/components/header/StationSwitcherMenu.tsx"
+    ],
+    "station-switcher-forget-after-pointer-dark-mobile": [
+      "src-ui/src/components/header/StationSwitcherMenu.tsx"
+    ],
+    "station-switcher-forget-after-keyboard-six-dark-desktop": [
+      "src-ui/src/components/header/StationSwitcherMenu.tsx"
+    ],
     "new-chat-dark-desktop": [
       "src-ui/src/views/HomeView.tsx",
       "src-ui/src/components/chat-dock/ChatDock.tsx"
@@ -278,6 +466,779 @@
       "src-ui/src/views/project-settings/ProjectRepositoryAccess.tsx",
       "src-ui/src/views/project-settings/ProjectRepositorySources.tsx",
       "src-ui/src/views/project-settings/ProjectSourcesSection.css"
+    ],
+    "room-empty-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-empty-dark-mobile": ["src-ui/src/views/project-page/ProjectRoom.tsx"],
+    "room-empty-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-empty-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-short-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-short-dark-mobile": ["src-ui/src/views/project-page/ProjectRoom.tsx"],
+    "room-short-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-short-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-long-dark-desktop": ["src-ui/src/views/project-page/ProjectRoom.tsx"],
+    "room-long-dark-mobile": ["src-ui/src/views/project-page/ProjectRoom.tsx"],
+    "room-long-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-long-light-mobile": ["src-ui/src/views/project-page/ProjectRoom.tsx"],
+    "room-new-messages-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-new-messages-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-new-messages-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-new-messages-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-failed-send-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-failed-send-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-failed-send-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-failed-send-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-mention-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-mention-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-mention-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-mention-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-task-thread-dark-desktop": [
+      "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"
+    ],
+    "room-task-thread-dark-mobile": [
+      "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"
+    ],
+    "room-task-thread-light-desktop": [
+      "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"
+    ],
+    "room-task-thread-light-mobile": [
+      "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"
+    ],
+    "room-task-working-dark-desktop": [
+      "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"
+    ],
+    "room-task-working-dark-mobile": [
+      "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"
+    ],
+    "room-task-working-light-desktop": [
+      "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"
+    ],
+    "room-task-working-light-mobile": [
+      "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"
+    ],
+    "room-agent-pending-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-pending-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-pending-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-pending-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-abandon-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-abandon-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-abandon-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-abandon-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-reactions-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reactions-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reactions-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reactions-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reaction-picker-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reaction-picker-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reaction-picker-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reaction-picker-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-edited-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-edited-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-edited-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-edited-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-deleted-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-deleted-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-deleted-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-deleted-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-attachment-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAttachmentList.tsx"
+    ],
+    "room-attachment-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAttachmentList.tsx"
+    ],
+    "room-attachment-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAttachmentList.tsx"
+    ],
+    "room-attachment-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAttachmentList.tsx"
+    ],
+    "room-live-mention-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomMessageText.tsx",
+      "src-ui/src/components/room/roomMentions.ts"
+    ],
+    "room-live-mention-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomMessageText.tsx",
+      "src-ui/src/components/room/roomMentions.ts"
+    ],
+    "room-live-mention-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomMessageText.tsx",
+      "src-ui/src/components/room/roomMentions.ts"
+    ],
+    "room-live-mention-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomMessageText.tsx",
+      "src-ui/src/components/room/roomMentions.ts"
+    ],
+    "room-agent-working-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx",
+      "src-ui/src/components/room/RoomThreadSummary.tsx"
+    ],
+    "room-agent-working-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx",
+      "src-ui/src/components/room/RoomThreadSummary.tsx"
+    ],
+    "room-agent-working-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx",
+      "src-ui/src/components/room/RoomThreadSummary.tsx"
+    ],
+    "room-agent-working-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx",
+      "src-ui/src/components/room/RoomThreadSummary.tsx"
+    ],
+    "room-agent-outcome-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx"
+    ],
+    "room-agent-outcome-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx"
+    ],
+    "room-agent-outcome-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx"
+    ],
+    "room-agent-outcome-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx"
+    ],
+    "room-coordinator-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.css"
+    ],
+    "room-coordinator-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.css"
+    ],
+    "room-coordinator-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.css"
+    ],
+    "room-coordinator-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.css"
+    ],
+    "notifications-for-you-dark-desktop": [
+      "src-ui/src/pages/NotificationsPage.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.css"
+    ],
+    "notifications-for-you-dark-mobile": [
+      "src-ui/src/pages/NotificationsPage.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.css"
+    ],
+    "notifications-for-you-light-desktop": [
+      "src-ui/src/pages/NotificationsPage.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.css"
+    ],
+    "notifications-for-you-light-mobile": [
+      "src-ui/src/pages/NotificationsPage.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.css"
+    ],
+    "room-keyboard-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-keyboard-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-keyboard-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-keyboard-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-channels-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
+    ],
+    "room-channels-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
+    ],
+    "room-channels-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
+    ],
+    "room-channels-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
+    ],
+    "run-setup-dark-1440": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-dark-390": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-dark-412": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-light-1440": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-light-390": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-light-412": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-model-stacked-dark-412": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/ComposerRunControl.tsx"
+    ],
+    "run-setup-model-stacked-light-412": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/ComposerRunControl.tsx"
+    ],
+    "run-setup-full-access-390": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-full-access-412": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-filled-dark-1440": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-filled-dark-390": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-filled-dark-412": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-filled-light-1440": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-filled-light-390": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-filled-light-412": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "project-library-dark-desktop": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.css",
+      "src-ui/src/views/project-page/project-library-upload-plan.ts"
+    ],
+    "project-library-dark-mobile": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.css",
+      "src-ui/src/views/project-page/project-library-upload-plan.ts"
+    ],
+    "project-library-light-desktop": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.css",
+      "src-ui/src/views/project-page/project-library-upload-plan.ts"
+    ],
+    "project-library-light-mobile": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.css",
+      "src-ui/src/views/project-page/project-library-upload-plan.ts"
+    ],
+    "project-setup-dark-desktop": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.css",
+      "src-ui/src/views/project-page/setup-recommendations.ts",
+      "src-ui/src/lib/continue-in-project.ts"
+    ],
+    "project-setup-dark-mobile": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.css",
+      "src-ui/src/views/project-page/setup-recommendations.ts",
+      "src-ui/src/lib/continue-in-project.ts"
+    ],
+    "project-setup-light-desktop": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.css",
+      "src-ui/src/views/project-page/setup-recommendations.ts",
+      "src-ui/src/lib/continue-in-project.ts"
+    ],
+    "project-setup-light-mobile": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.css",
+      "src-ui/src/views/project-page/setup-recommendations.ts",
+      "src-ui/src/lib/continue-in-project.ts"
+    ],
+    "channel-nav-rail-dark-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx"
+    ],
+    "channel-nav-rail-light-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx"
+    ],
+    "channel-nav-attention-dark-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx"
+    ],
+    "channel-nav-attention-dark-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx"
+    ],
+    "channel-nav-attention-light-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx"
+    ],
+    "channel-nav-attention-light-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx"
+    ],
+    "channel-nav-list-dark-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-list-dark-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-list-light-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-list-light-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-conversation-dark-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-conversation-dark-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-conversation-light-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-conversation-light-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-thread-dark-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-thread-dark-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-thread-light-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-thread-light-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "reply-composer-dark-320-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-320-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-360-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-360-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-390-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-390-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-412-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-412-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-1440-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-1440-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-320-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-320-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-360-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-360-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-390-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-390-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-412-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-412-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-1440-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-1440-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "child-chat-dark-1440": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts",
+      "src-ui/src/components/chat/AppearanceProposalCard.tsx",
+      "src-ui/src/components/chat/AppearanceProposalCard.css",
+      "src-ui/src/lib/custom-appearance/proposal-actions.ts"
+    ],
+    "child-chat-light-1440": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts",
+      "src-ui/src/components/chat/AppearanceProposalCard.tsx",
+      "src-ui/src/components/chat/AppearanceProposalCard.css",
+      "src-ui/src/lib/custom-appearance/proposal-actions.ts"
+    ],
+    "child-chat-dark-412": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+    ],
+    "child-chat-light-412": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+    ],
+    "child-chat-dark-390": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts",
+      "src-ui/src/components/chat/AppearanceProposalCard.tsx",
+      "src-ui/src/components/chat/AppearanceProposalCard.css",
+      "src-ui/src/lib/custom-appearance/proposal-actions.ts"
+    ],
+    "child-chat-light-390": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts",
+      "src-ui/src/components/chat/AppearanceProposalCard.tsx",
+      "src-ui/src/components/chat/AppearanceProposalCard.css",
+      "src-ui/src/lib/custom-appearance/proposal-actions.ts"
+    ],
+    "new-chat-dark-phone": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "new-chat-light-phone": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "active-chat-phone": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat/AppearanceProposalCard.tsx",
+      "src-ui/src/components/chat/AppearanceProposalCard.css",
+      "src-ui/src/lib/custom-appearance/proposal-actions.ts"
+    ],
+    "detected-project-phone": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "detected-project-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "task-pr-watch-dark-desktop": ["src-ui/src/views/TaskWorkspaceView.tsx"],
+    "project-pull-requests-dark-desktop": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-pull-requests-no-repository-dark-desktop": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-pull-requests-no-repository-dark-mobile": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-pull-requests-no-repository-light-desktop": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-pull-requests-no-repository-light-mobile": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "task-pr-watch-dark-mobile": ["src-ui/src/views/TaskWorkspaceView.tsx"],
+    "project-pull-requests-dark-mobile": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "task-pr-watch-light-desktop": ["src-ui/src/views/TaskWorkspaceView.tsx"],
+    "project-pull-requests-light-desktop": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "task-pr-watch-light-mobile": ["src-ui/src/views/TaskWorkspaceView.tsx"],
+    "project-pull-requests-light-mobile": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-overview-groups-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectOverviewSection.tsx",
+      "src-ui/src/views/project-page/ProjectOverviewSection.css",
+      "src-ui/src/views/project-page/project-overview-model.ts",
+      "src-ui/src/views/project-page/ProjectWaitingOnYouSource.tsx",
+      "packages/contracts/src/task-overview.ts"
+    ],
+    "project-overview-settings-dark-desktop": [
+      "src-ui/src/views/project-settings/OverviewNotificationsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-overview-groups-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectOverviewSection.tsx",
+      "src-ui/src/views/project-page/ProjectOverviewSection.css",
+      "src-ui/src/views/project-page/project-overview-model.ts",
+      "src-ui/src/views/project-page/ProjectWaitingOnYouSource.tsx",
+      "packages/contracts/src/task-overview.ts"
+    ],
+    "project-overview-settings-dark-mobile": [
+      "src-ui/src/views/project-settings/OverviewNotificationsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-overview-groups-light-desktop": [
+      "src-ui/src/views/project-page/ProjectOverviewSection.tsx",
+      "src-ui/src/views/project-page/ProjectOverviewSection.css",
+      "src-ui/src/views/project-page/project-overview-model.ts",
+      "src-ui/src/views/project-page/ProjectWaitingOnYouSource.tsx",
+      "packages/contracts/src/task-overview.ts"
+    ],
+    "project-overview-settings-light-desktop": [
+      "src-ui/src/views/project-settings/OverviewNotificationsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-overview-groups-light-mobile": [
+      "src-ui/src/views/project-page/ProjectOverviewSection.tsx",
+      "src-ui/src/views/project-page/ProjectOverviewSection.css",
+      "src-ui/src/views/project-page/project-overview-model.ts",
+      "src-ui/src/views/project-page/ProjectWaitingOnYouSource.tsx",
+      "packages/contracts/src/task-overview.ts"
+    ],
+    "project-overview-settings-light-mobile": [
+      "src-ui/src/views/project-settings/OverviewNotificationsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx"
     ]
   }
 }

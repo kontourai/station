@@ -1,7 +1,0 @@
-{
-  "revision": "ebea8dff79ec6a1205e2fc724607c5837a774df4",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"Bounded merge review of incoming useIsMobile.ts: MOBILE_MEDIA_QUERY remains 768px or a short coarse-pointer viewport; useIsMobile delegates the same initial/read/change/cleanup behavior to useMediaQueryMatch. The new LIST_DETAIL_STACKED_QUERY is separate at 599px and used by list/detail layout, so it does not redefine Chat phone affordances or dock-placement policy. Checked the composer phone/header/embedded-Inbox claims against these unchanged predicates and preserved shelf CSS. Existing fold, Inbox geometry and swipe browser owners passed in the 120-test merge selection. No prose correction or physical-device qualification is implied; prior broader reviews remain applicable.","inputs":["docs/design/chat-composer.md","src-ui/src/hooks/useIsMobile.ts"]}
-  ]
-}

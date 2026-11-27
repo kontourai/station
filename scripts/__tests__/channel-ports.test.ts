@@ -19,7 +19,7 @@ type ChannelPortAllocation = {
   consentPort: number;
 };
 const channelPorts = CHANNEL_PORTS as Record<string, ChannelPortAllocation>;
-const releaseChannels = ['stable', 'beta', 'nightly'] as const;
+const releaseChannels = ['stable', 'nightly'] as const;
 
 const makeTempDir = trackTempDirs();
 
@@ -32,7 +32,6 @@ function generatedTreeCopy() {
     'packages/shared/src/release-manifest-keys.generated.ts',
     'src-desktop/src/channel_ports_generated.rs',
     'src-desktop/Info.stable.plist',
-    'src-desktop/Info.beta.plist',
     'src-desktop/Info.nightly.plist',
   ])
     cpSync(resolve(root, path), join(copy, path));
@@ -171,7 +170,6 @@ describe('channel port generation', () => {
     // published explicitly in the contract rather than silently derived.
     const expectedBlocks = {
       stable: [18141, 18142, 18143, 18144, 18000],
-      beta: [28141, 28142, 28143, 28144, 28000],
       nightly: [38141, 38142, 38143, 38144, 38000],
     };
     for (const channel of releaseChannels) {

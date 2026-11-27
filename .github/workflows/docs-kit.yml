@@ -11,14 +11,19 @@ name: "PR: Docs kit"
 # isExactDocsGateCall admits: it checks out the pull request's head
 # repository and SHA, persists no credentials, reads only contents, gets no
 # secrets, and runs setup-node with package-manager-cache: false. On merge
-# queue and main pushes both inputs resolve to this repository and github.sha.
+# queue and dispatch runs both inputs resolve to this repository and github.sha.
+#
+# No push trigger: the merge queue fast-forwards main to the exact candidate
+# its merge-group run already checked, and that run is a superset of a push
+# run (it adds freshness). Nothing consumes a main-push run of this advisory
+# gate. A commit that reaches main outside the queue is checked by the next
+# merge-group run, whose candidate contains it and whose corpus checks are
+# not diff-scoped; dispatch remains for an on-demand main check.
 on:
   pull_request_target:
     branches: [main]
   merge_group:
     types: [checks_requested]
-    branches: [main]
-  push:
     branches: [main]
   workflow_dispatch:
 
@@ -38,7 +43,7 @@ jobs:
     uses: kontourai/.github/.github/workflows/docs-gate.yml@ac67c2a7484cc79cc51f81fa8b68c855c3879f94
     with:
       # Reviewed Corpus 0.7 source, shared with Pages bundle publishing.
-      corpus-ref: b8ecf4cd4c6482bb804cdeea617ebe2d9b78ab05
+      corpus-ref: dfadba4e64883e6187fb42e32911ca9f091e0fa7
       repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
       ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
     permissions:

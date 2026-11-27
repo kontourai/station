@@ -8,6 +8,7 @@ import {
 } from '@kontourai/station-sdk/client';
 import { Button } from '../../components/Button';
 import { ErrorState, SkeletonBlock } from '../../components/state';
+import { TerminalCommandAction } from '../../components/TerminalCommandAction';
 import { errorText } from '../../utils/errorText';
 
 export function ProjectRepositoryAccess({
@@ -50,7 +51,13 @@ export function ProjectRepositoryAccess({
         authentication={data.authentication}
         signIn={data.signIn}
       />
-      {github && <StationSignInHelp stationName={stationName} />}
+      {data.signIn === 'failed' && (
+        <TerminalCommandAction
+          provider="github"
+          authority={authority}
+          stationName={stationName}
+        />
+      )}
     </section>
   );
 }
@@ -201,21 +208,6 @@ function AuthenticationFacts({
       )}
       <dt>Repository permissions</dt>
       <dd>Not checked by this sign-in check</dd>
-      <dt>Project or repository sign-in</dt>
-      <dd>Not available in this view</dd>
     </dl>
-  );
-}
-
-function StationSignInHelp({ stationName }: { stationName: string }) {
-  return (
-    <details className="project-sources__diagnostics">
-      <summary>Sign-in help for {stationName}</summary>
-      <p>Run on {stationName}:</p>
-      <code>gh auth status --hostname github.com</code>
-      <p>To sign in or replace the account, run:</p>
-      <code>gh auth login --hostname github.com</code>
-      <p>This view cannot start sign-in on another machine.</p>
-    </details>
   );
 }

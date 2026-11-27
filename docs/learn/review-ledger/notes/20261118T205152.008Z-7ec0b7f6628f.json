@@ -1,0 +1,7 @@
+{
+  "revision": "1b787280cfd29baaa7ac50a276955423d6fda9c1",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the post-snooze focus assertion imported from main. It still checks that focus lands on the intended visible Inbox row, using the stable title rather than duplicating the old accessible description. The real swipe actions, undo, and phone and desktop behavior remain covered.","inputs":["src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]}
+  ]
+}

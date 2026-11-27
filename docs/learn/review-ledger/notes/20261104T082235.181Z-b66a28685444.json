@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/design/process-supervisor.md","note":"#4517 managed settings. Changed: index.ts: startup checks managed setting values against the settings schema inside the existing fail-closed policy load. Searched it for claims about app config loading and writes, settings provenance, the managed policy, project overrides and workspace isolation; none describes the changed behavior, so it remains accurate.","inputs":["docs/design/process-supervisor.md","src-server/index.ts"]}
-  ]
-}

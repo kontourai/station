@@ -1,0 +1,7 @@
+{
+  "revision": "6f79b4bde6496a5dc171a5acd3f765548842c9d9",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed against MessageBubble, which now passes the row's stationOrigin to the incoming-message header, cause disclosure and accessible label. No settings behavior changed; no prose change. Checked with the ChatMessageList.agentMessages focused test.","inputs":["docs/design/settings-architecture.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

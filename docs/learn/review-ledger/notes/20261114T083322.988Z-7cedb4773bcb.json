@@ -1,0 +1,7 @@
+{
+  "revision": "6384b6d7e7af575f6cfedc176f6bf501337ef185",
+
+  "notes": [
+    {"path":".agents/skills/documentation-audit/SKILL.md","note":"Reworded the --input sentence: it writes the same ordinary note for every citing document after each is checked; an edited document or record still needs its own note. Checked against the record command's expansion into per-document notes.","inputs":[".agents/skills/documentation-audit/SKILL.md"]}
+  ]
+}

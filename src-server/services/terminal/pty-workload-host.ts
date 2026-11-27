@@ -20,9 +20,12 @@ import type {
   WorkloadSpawnRequest,
 } from '@kontourai/station-supervisor/protocol';
 import type { IPtyAdapter, IPtyProcess } from '../../domain/pty-adapter.js';
+import { createLogger } from '../../utils/logger.js';
 import { CommandSpawnError, spawnCommandProcess } from './command-process.js';
 import { spawnFirstShell } from './shell-host.js';
 import { TerminalJournal } from './terminal-journal.js';
+
+const logger = createLogger({ name: 'pty-workload-host' });
 
 /** Exited workloads kept for `list` and `attach`, oldest dropped first. */
 const EXITED_KEPT = 64;
@@ -45,6 +48,7 @@ interface Workload {
   process: IPtyProcess;
   journal: TerminalJournal;
   exited: Promise<void>;
+  deadline?: ReturnType<typeof setTimeout>;
 }
 
 export interface PtyWorkloadHostOptions {
@@ -58,6 +62,7 @@ export class PtyWorkloadHost {
   constructor(private readonly options: PtyWorkloadHostOptions) {}
 
   async handle(request: WorkloadRequest): Promise<unknown> {
+    if (request.op === 'capabilities') return { maxRuntimeMs: true };
     if (request.op === 'list')
       return [...this.workloads.values()].map((w) => ({ ...w.info }));
     if (request.op === 'spawn') return this.spawn(request);
@@ -82,6 +87,13 @@ export class PtyWorkloadHost {
         return null;
       case 'resize':
         workload.process.resize(request.cols, request.rows);
+        // In the same turn as the resize, so output the PTY writes for the
+        // new size follows the record (#4625). A failed journal is reported
+        // by the output path.
+        if (workload.info.kind === 'interactive')
+          workload.journal
+            .resize(request.cols, request.rows)
+            .catch(() => undefined);
         workload.info.cols = request.cols;
         workload.info.rows = request.rows;
         return null;
@@ -105,6 +117,13 @@ export class PtyWorkloadHost {
   }
 
   private async spawn(request: WorkloadSpawnRequest): Promise<WorkloadInfo> {
+    if (
+      request.maxRuntimeMs !== undefined &&
+      (!Number.isInteger(request.maxRuntimeMs) ||
+        request.maxRuntimeMs < 1 ||
+        request.maxRuntimeMs > 24 * 60 * 60_000)
+    )
+      throw new WorkloadFailure('bad-request', 'invalid workload lifetime');
     // An exited workload's id may run again: a restarted session keeps its
     // id and continues its journal in a new segment.
     if (this.workloads.get(request.workloadId)?.info.state === 'running')
@@ -145,7 +164,21 @@ export class PtyWorkloadHost {
     };
     this.workloads.delete(request.workloadId);
     this.workloads.set(request.workloadId, workload);
+    if (request.maxRuntimeMs !== undefined) {
+      workload.deadline = setTimeout(() => {
+        void this.terminate(workload).catch((error: unknown) =>
+          logger.error('Workload lifetime cleanup failed', {
+            workloadId: request.workloadId,
+            error,
+          }),
+        );
+      }, request.maxRuntimeMs);
+      workload.deadline.unref?.();
+    }
     this.trim();
+    // A shell's output is written for its size; a command's has none.
+    if (request.kind === 'interactive')
+      journal.resize(request.cols, request.rows).catch(() => undefined);
     // A command's output cap is enforced by its process (command-process.ts).
     let journalFailed = false;
     let paused = false;
@@ -178,6 +211,7 @@ export class PtyWorkloadHost {
       );
     });
     const unsubscribeExit = proc.onExit((event) => {
+      if (workload.deadline) clearTimeout(workload.deadline);
       unsubscribeExit();
       // Output delivered in the same turn as the exit still reaches the journal.
       setImmediate(() => {
@@ -239,16 +273,31 @@ export class PtyWorkloadHost {
   }
 
   /**
-   * Ends a workload and what it started: on POSIX its process groups (the
-   * PTY adapter's census for a shell, the command's own group otherwise),
-   * on Windows its process tree with `taskkill /T /F` before the PTY closes,
-   * so descendants are found while their parent links still hold. Resolves
-   * once it has exited and its journal is closed.
+   * Ends a workload and what it started. A command does it itself
+   * (`command-process.ts`: its process group on POSIX, its Job on Windows),
+   * and its failure fails this. A shell: on POSIX its process groups (the PTY
+   * adapter's census), on Windows its process tree with `taskkill /T /F`
+   * before the PTY closes, so descendants are found while their parent links
+   * still hold. Resolves once it has exited and its journal is closed.
    */
   private async terminate(workload: Workload): Promise<void> {
     if (workload.info.state === 'running') {
       const pid = workload.info.pid;
-      if (process.platform === 'win32') {
+      if (workload.info.kind === 'command' && workload.process.terminate) {
+        // A command ends what it started itself, on Windows its whole Job
+        // (#4624); a failure to confirm that is reported, never success.
+        try {
+          await workload.process.terminate();
+        } catch (error) {
+          this.quietly(() => workload.process.kill('SIGKILL'));
+          throw new WorkloadFailure(
+            'failed',
+            error instanceof Error
+              ? error.message
+              : 'the workload did not exit',
+          );
+        }
+      } else if (process.platform === 'win32') {
         const killed = spawnSync(
           'taskkill',
           ['/T', '/F', '/PID', String(pid)],

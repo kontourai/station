@@ -11,17 +11,21 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { PageFrame } from '../../components/page-frame';
 import { ErrorState, SkeletonList } from '../../components/state';
+import { clearTranscriptWindowCache } from '../../hooks/orchestration/transcriptWindowCache';
 import { clearOfflineReading } from '../../lib/offlineReading';
 import { errorText, userFacingErrorMessage } from '../../utils/errorText';
+import { formatDateTime } from '../../utils/relativeTime';
 import { StationUiError } from '../../utils/StationUiError';
 import {
   clearAccountEntryContinuation,
   readAccountEntryContinuation,
+  rememberSharedWork,
+  type SharedWorkDestination,
 } from './account-entry-continuation';
 import './account-entry.css';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
@@ -74,12 +78,21 @@ export function AccountEntryView({
   apiBase: string;
   initialFlow?: {
     invitation?: string;
+    invitationShareId?: string;
+    destination?: SharedWorkDestination;
     resetToken?: string;
     authenticationError?: boolean;
     invalidInvitation?: boolean;
   };
 }) {
   const client = useQueryClient();
+  const active = useRef(false);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   const [invitation, setInvitation] = useState(initialFlow.invitation);
   const [mode, setMode] = useState<
     'sign-in' | 'register' | 'recover' | 'reset'
@@ -93,6 +106,7 @@ export function AccountEntryView({
       ? 'Sign-in could not be completed. Try again, or contact this Station’s operator.'
       : undefined,
   );
+  const [destination, setDestination] = useState(initialFlow.destination);
   const [joined, setJoined] = useState(false);
   const entryId = useId();
   const descriptor = useQuery({
@@ -131,6 +145,8 @@ export function AccountEntryView({
   const passkey = useMutation({ gcTime: 0, mutationFn: runPasskeyCeremony });
   const busy = mutation.isPending || passkey.isPending;
   const login = descriptor.data?.login;
+  const createAndSignIn =
+    !!initialFlow.invitationShareId && login?.kind === 'username-password';
   const endpoint = (operation: string) =>
     descriptor.data?.endpoints.find(
       (candidate) =>
@@ -293,6 +309,13 @@ export function AccountEntryView({
               : 'Check your email to verify your account, then sign in here.',
           );
           setMode('sign-in');
+          if (createAndSignIn) {
+            await mutation.mutateAsync({
+              path: login.signInPath,
+              body: { username: email, password },
+            });
+            setNotice(undefined);
+          }
         }
       }
       await client.resetQueries({ queryKey: ['account', apiBase, 'session'] });
@@ -318,6 +341,21 @@ export function AccountEntryView({
         result.grantsDeviceAccess !== false
       )
         throw new StationUiError('Station did not confirm Project membership.');
+      if (!active.current) return;
+      if (
+        'scope' in result &&
+        result.scope &&
+        typeof result.scope === 'object' &&
+        'localProjectId' in result.scope &&
+        typeof result.scope.localProjectId === 'string'
+      ) {
+        const work = {
+          projectId: result.scope.localProjectId,
+          shareId: initialFlow.invitationShareId,
+        };
+        setDestination(work);
+        rememberSharedWork(work);
+      }
       setJoined(true);
       setInvitation(undefined);
       clearAccountEntryContinuation(invitation);
@@ -333,12 +371,15 @@ export function AccountEntryView({
     setError(undefined);
     try {
       await clearOfflineReading();
+      clearTranscriptWindowCache();
       await mutation.mutateAsync({ path, body: {} });
       // Signed out: a definite "no person", so this device's own appearance
       // replaces the account's cached one (lib/appearance-cache.ts).
       deviceSettingsStore.releaseBootAppearance();
       await client.resetQueries({ queryKey: ['account', apiBase, 'session'] });
       setJoined(false);
+      setDestination(undefined);
+      rememberSharedWork();
     } catch (cause) {
       setError(userFacingErrorMessage(cause));
     } finally {
@@ -389,6 +430,16 @@ export function AccountEntryView({
       </Button>
     ) : undefined;
 
+  const accountControls = (
+    <>
+      {passkeyPanel}
+      {endpoint('logout') && (
+        <Button disabled={busy} onClick={() => void signOut()}>
+          Sign out
+        </Button>
+      )}
+    </>
+  );
   // The joined shared-Project home (project detail plus People and
   // access) renders inside this same card: give it desktop width while the
   // sign-in, invitation-accept, and recovery flows keep the compact form.
@@ -407,19 +458,22 @@ export function AccountEntryView({
           routeIdentity="account-entry"
           spec={{
             eyebrow: 'Station',
-            title: joined
-              ? 'You joined the Project'
-              : mode === 'reset'
-                ? endpoint('passkey-recover')
-                  ? 'Recover your account'
-                  : 'Choose a new password'
-                : invitation
-                  ? invitationView
-                    ? `Join ${invitationView.projectName}`
-                    : 'Join your Project'
-                  : session.data
-                    ? 'Projects shared with you'
-                    : 'Sign in to Station',
+            title:
+              guestHome && destination?.shareId
+                ? 'Shared Task'
+                : joined
+                  ? 'You joined the Project'
+                  : mode === 'reset'
+                    ? endpoint('passkey-recover')
+                      ? 'Recover your account'
+                      : 'Choose a new password'
+                    : invitation
+                      ? invitationView
+                        ? `Join ${invitationView.projectName}`
+                        : 'Join your Project'
+                      : session.data
+                        ? 'Projects shared with you'
+                        : 'Sign in to Station',
             subtitle: `${descriptor.data?.displayName ?? 'Your Station account'} · ${new URL(apiBase).host}`,
             width: 'narrow',
             body: 'flow',
@@ -436,9 +490,7 @@ export function AccountEntryView({
                 </strong>
                 .
               </p>
-              <p>
-                Expires {new Date(invitationView.expiresAt).toLocaleString()}.
-              </p>
+              <p>Expires {formatDateTime(invitationView.expiresAt)}.</p>
               {invitationView.recipientEmail && (
                 <p>
                   Use an account with the verified email{' '}
@@ -459,9 +511,7 @@ export function AccountEntryView({
               title="Sign-in is unavailable"
               description="This Station’s account service could not be loaded. Contact its operator or try again."
               action={
-                <Button onClick={() => void descriptor.refetch()}>
-                  Try again
-                </Button>
+                <Button onClick={() => void descriptor.refetch()}>Retry</Button>
               }
             />
           ) : invitation && mode !== 'reset' && preview.isPending ? (
@@ -476,32 +526,6 @@ export function AccountEntryView({
                 </Button>
               }
             />
-          ) : joined && session.data ? (
-            <>
-              <LazyBoundary
-                key={`${apiBase}:${session.data?.principal.id ?? 'pending'}`}
-                load={loadGuestDeviceOnboarding}
-                componentProps={{
-                  apiBase,
-                  principalId: session.data.principal.id,
-                  onAccountRequired: () => {
-                    setJoined(false);
-                    void client.resetQueries({
-                      queryKey: ['account', apiBase, 'session'],
-                    });
-                  },
-                }}
-                pending={
-                  <SkeletonList count={2} label="Opening Device onboarding" />
-                }
-              />
-              {passkeyPanel}
-              {endpoint('logout') && (
-                <Button disabled={busy} onClick={() => void signOut()}>
-                  Sign out
-                </Button>
-              )}
-            </>
           ) : session.isPending ? (
             <SkeletonList count={1} />
           ) : session.isError ? (
@@ -509,19 +533,22 @@ export function AccountEntryView({
               title="Could not verify your account"
               description={errorText(session.error)}
               action={
-                <Button onClick={() => void session.refetch()}>
-                  Try again
-                </Button>
+                <Button onClick={() => void session.refetch()}>Retry</Button>
               }
             />
           ) : session.data && mode !== 'reset' ? (
             <>
-              <p>
-                Signed in as <strong>{session.data.principal.display}</strong>
-              </p>
-              {session.data.contacts.map((contact) => (
-                <p key={contact.value}>{contact.value}</p>
-              ))}
+              {(invitation || !destination?.shareId) && (
+                <>
+                  <p>
+                    Signed in as{' '}
+                    <strong>{session.data.principal.display}</strong>
+                  </p>
+                  {session.data.contacts.map((contact) => (
+                    <p key={contact.value}>{contact.value}</p>
+                  ))}
+                </>
+              )}
               {invitation ? (
                 <Button
                   variant="primary"
@@ -538,7 +565,10 @@ export function AccountEntryView({
                   componentProps={{
                     apiBase,
                     principalId: session.data.principal.id,
+                    destination,
+                    onWorkChange: setDestination,
                     onAccountRequired: () => {
+                      setJoined(false);
                       void client.resetQueries({
                         queryKey: ['account', apiBase, 'session'],
                       });
@@ -549,11 +579,13 @@ export function AccountEntryView({
                   }
                 />
               )}
-              {passkeyPanel}
-              {endpoint('logout') && (
-                <Button disabled={busy} onClick={() => void signOut()}>
-                  Sign out
-                </Button>
+              {destination?.shareId && !invitation ? (
+                <details>
+                  <summary>Account · {session.data.principal.display}</summary>
+                  {accountControls}
+                </details>
+              ) : (
+                accountControls
               )}
             </>
           ) : login?.kind === 'redirect' ? (
@@ -638,7 +670,9 @@ export function AccountEntryView({
                   pendingLabel="Working…"
                 >
                   {mode === 'register'
-                    ? 'Create account'
+                    ? createAndSignIn
+                      ? 'Create account and sign in'
+                      : 'Create account'
                     : mode === 'recover'
                       ? 'Send reset link'
                       : mode === 'reset'

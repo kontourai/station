@@ -14,7 +14,7 @@ Tauri 2.12.1 forwards its `devtools` Cargo feature to Wry 0.57. In a release
 build that makes the default WebView inspectable: Android enables WebView
 remote debugging, iOS enables Safari inspection, and desktop exposes its
 platform inspector. Station's default Cargo dependency no longer enables this
-feature. Stable and Beta release configurations therefore exclude release
+feature. Stable RC/final release configurations therefore exclude release
 inspection; ordinary development/debug builds retain it through Tauri's debug
 configuration.
 
@@ -28,11 +28,11 @@ Android development identity:
 npm run tauri -- android build --apk --target aarch64 --features native-devtools --config tauri.android.dev.conf.json
 ```
 
-The boundary reduces unintended inspection of shipped Stable/Beta WebViews by
+The boundary reduces unintended inspection of shipped Stable WebViews by
 someone with access to the OS/browser debugging connection. It does not defend
 against a hostile device owner, root access, or a separately modified build.
 Cargo/config checks establish feature selection; verify actual inspector
-absence on installed Stable/Beta release artifacts and availability on an
+absence on installed Stable RC/final release artifacts and availability on an
 installed Nightly or debug artifact before claiming packaged-platform proof.
 
 ## Build a development iOS simulator app
@@ -563,31 +563,48 @@ npm run test:tauri-shell -- --build --lane=plugin-host-security
 
 [`scripts/run-tauri-shell-e2e.mjs`](../../scripts/run-tauri-shell-e2e.mjs)
 selects [`tests/tauri-shell/plugin-host-security.e2e.ts`](../../tests/tauri-shell/plugin-host-security.e2e.ts).
-Its isolated fixture checks that the host has Tauri internals while a hostile
-cross-origin plugin frame has no own bridge and cannot reach the parent's
-bridge, storage or DOM. It also checks blocked network/API destinations and
-navigation containment. The default sweep runs this lane and `device-pane`;
+Its isolated fixture waits for the bundled server, navigates the WebView and
+awaits hydration of its seeded default remote Station. It does not reselect
+that Station while startup is already activating it. The fixture releases the
+hostile bundle only after its diagnostic observers are installed. The hostile plugin
+cannot reach the parent's bridge, storage or DOM. Where the child has no
+callable native bridge, the fixture observes its absence. WebView2 can inject
+Tauri internals into child frames; there the fixture invokes a read-only native
+command and requires an actual CSP violation for its native fetch transport,
+not merely an unanswered promise. This does not independently qualify Tauri's
+fallback message transport or every native command's origin authorization.
+The fixture also checks blocked network/API destinations and navigation
+containment. Unrelated, explicitly named services return unavailable errors;
+unknown requests fail the proof instead of receiving empty success responses.
+The default sweep runs this lane and `device-pane`;
 the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
 availability is source evidence, not an executed platform result. Record the
 exact binary, revision, host and completed lane result when running it.
 
-The desktop sidecar starts Node with a home-scoped compile cache. The first
+The desktop sidecar starts the server without a compile cache and removes
+any inherited `NODE_COMPILE_CACHE`
+([desktop build](desktop-build.md#startup-cost-and-linux-graphics)). The first
 [server bootstrap import](../../src-server/runtime/bootstrap/server-compile-cache.ts)
 loads `.env`, then removes `NODE_COMPILE_CACHE` from the server environment
-after Node has consumed its startup setting, so dotenv cannot restore it for
-generic child launchers.
+after Node has consumed any startup setting, so dotenv cannot restore it for
+generic child launchers. The server gives the home's cache directory only to
+the built-in station-control and station-knowledge children.
 Targeted child environment scrubs remain in place. The process supervisor keeps
 the setting when launching replacement Station server generations; each enters
 through the same server bootstrap. The
 [process regression](../../src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts)
 checks Node's active cache across two starts and executes real stdio MCP,
-Strands, Flow Agents, Veritas and login-shell child paths. Its first-import
+Strands, Flow Agents, Veritas and login-shell child paths. Through the real
+stdio transport, the built-in station-control environment carries the home's
+cache and a third-party server's does not. Its first-import
 ordering assertion is a source-only wiring guard, separate from packaged-shell
 startup evidence. A second regression builds the real server entry and runs it
 from a working directory whose `.env` contains the cache setting. It verifies
 that dotenv loaded, reaches a deliberate invalid-port refusal, and observes a
-real child without that variable, both with and without a startup cache.
-External ESM dependencies evaluate before the bundled bootstrap. The regression
+real child without that variable, both with and without a startup cache. It
+then runs the built station-control bundle: its cache is on disk while it still
+runs, before a signal ends it, and its own environment no longer carries the
+setting. External ESM dependencies evaluate before the bundled bootstrap. The regression
 observes no Node child-process launches during evaluation of the installed
 dependency graph; this evidence is specific to those dependency versions.
 
@@ -704,10 +721,13 @@ sidecar supervisor itself has no boot or handshake timeout; it waits for the
 generation-tagged handshake or child exit.
 
 On macOS, pending activation may present a native-owned cover so the WebView
-can render while the proof proceeds. It shows the application icon and
-**Starting Station**; when the epoch becomes overdue it switches in place to
-**Station is taking longer than usual to start.** with native **Restart**
-(default) and **Quit** buttons, replacing the former modal alert. The read-only
+can render while the proof proceeds. It is drawn like the renderer startup
+screen at rest (palette for the window's appearance, channel mark and Fraunces
+wordmark, river track) with **Starting Station**; when the epoch becomes
+overdue it switches in place to **Station is taking longer than usual to
+start.**, the detail **It opens on its own when ready. A one-time upgrade after
+an update can take a few minutes.**, and native **Restart** (default) and
+**Quit** buttons, replacing the former modal alert. The read-only
 `startup_window_admitted` observation waits for a visible window and, on macOS,
 checks the main-thread view hierarchy for actual cover removal and restored
 WebView opacity. The readiness phase alone can precede that cover task. The
@@ -796,6 +816,12 @@ contents are preserved. It refuses elevated execution so administrator
 privileges cannot hide the regression. This is helper evidence; native GUI
 startup and in-app installation/relaunch remain separate checks.
 
+On Windows the ACL and profile-lock helpers run without allocating a console.
+During packaged-shell verification, capture child process names and parent
+PIDs along with visible-window events. Exercise a fresh profile and a second
+launch with a profile lock. Capture process identities without command-line
+arguments, which can contain credentials.
+
 The desktop host writes its own log through `tauri-plugin-log`. The configured
 application identifier selects the shell log directory, so each release channel
 has a distinct path:
@@ -803,7 +829,6 @@ has a distinct path:
 | Channel | Tauri identifier | macOS | Linux | Windows |
 | --- | --- | --- | --- | --- |
 | Stable | `io.kontourai.station` | `~/Library/Logs/io.kontourai.station/station.log` | `$XDG_DATA_HOME/io.kontourai.station/logs/station.log`, or `~/.local/share/io.kontourai.station/logs/station.log` | `%LOCALAPPDATA%\io.kontourai.station\logs\station.log` |
-| Beta | `io.kontourai.station.beta` | `~/Library/Logs/io.kontourai.station.beta/station.log` | `$XDG_DATA_HOME/io.kontourai.station.beta/logs/station.log`, or `~/.local/share/io.kontourai.station.beta/logs/station.log` | `%LOCALAPPDATA%\io.kontourai.station.beta\logs\station.log` |
 | Nightly | `io.kontourai.station.nightly` | `~/Library/Logs/io.kontourai.station.nightly/station.log` | `$XDG_DATA_HOME/io.kontourai.station.nightly/logs/station.log`, or `~/.local/share/io.kontourai.station.nightly/logs/station.log` | `%LOCALAPPDATA%\io.kontourai.station.nightly\logs\station.log` |
 
 These are separate from installed service output. macOS LaunchAgents write
@@ -926,7 +951,7 @@ person separately before claiming fresh relay-only acceptance.
 | macOS packaged startup, overdue cover Restart/Quit, Finder/Dock/reopen | Rust/static/UI checks | Installed package, actual native window/cover, and launch-method record | **NOT_VERIFIED** |
 | Windows packaged startup, second launch, tray | Rust/static/UI checks | Installed package, actual shell/tray and service-backend record | **NOT_VERIFIED** |
 | Linux packaged startup and indicator behavior | Rust/static/UI checks | Installed package on a supported desktop shell, indicator result recorded | **NOT_VERIFIED** |
-| Android/iOS startup recovery | No equivalent desktop readiness harness | Real device and a defined mobile recovery contract | **NOT_VERIFIED** |
+| Android/iOS startup recovery | Renderer tests stall saved-Station hydration and the pairing chunk. An installed iOS development simulator build reached the welcome and pairing routes. A simulator-only delay at the profile IPC showed the named stage and Reload started a new attempt. | Physical evidence for release builds and installed Android stall recovery | **NOT_VERIFIED** on physical devices |
 | In-shell hostile plugin IPC denial | Separate browser spec and `plugin-host-security` Tauri-WebView lane | Completed exact-binary WebView lane; separate release-platform qualification | **NOT_VERIFIED** in this review (historical archive#2495) |
 | Renderer death and bounded reload | Window recreation source; no automatic renderer-death recovery proof established here | Native kill/boot-crash evidence and bounded recovery assertions | **NOT_VERIFIED** (archive#2006) |
 | EPIPE/closed stdio | Server stdout guard and synchronous/asynchronous fixture tests | Packaged Desktop-parent disappearance and closed-pipe recovery journey | **NOT_VERIFIED** on native shells (archive#2006) |
@@ -954,8 +979,11 @@ frames, microphone capture, and persistence still require runtime acceptance.
 
 The mobile `station-discovery` plugin uses iOS NWBrowser/NetService and Android
 NsdManager for `_station._tcp.local.` services with TXT `v=1` and `transport`.
-It returns resolved private host/port hints, never credentials or authenticated
-Station identity. Android requires API 34 for resolver cancellation; earlier
+It returns resolved private host/port hints and optional TXT `appOrigin`, never
+credentials or authenticated Station identity. With the default-off dynamic
+publication preview, the adapter prefers a valid canonical HTTPS DNS app hint
+while retaining private LAN endpoint validation and legacy LAN fallback.
+Android requires API 34 for resolver cancellation; earlier
 versions report unavailable. iOS declares the exact Bonjour service and local
 network usage description. A fixed declared service does not require the
 multicast entitlement.
@@ -969,8 +997,9 @@ existing bounded NSD path. iOS `prepare` does not start browsing or request acce
 
 Scans are bounded and cancelled on explicit cancellation, foreground loss and
 provider disposal. The adapter validates every result before passing it to the
-candidate registry. Selection enters the existing address review, explicit HTTP
-consent and host approval path. Discovery does not widen server binding or
+candidate registry. Selection enters the existing address review and host
+approval path, with explicit unencrypted consent when selecting HTTP.
+Discovery does not widen server binding or
 enable publication; the host's local-operator toggle owns publication.
 
 Unit checks cover adapter filtering, status mapping, late results and cancel
@@ -979,3 +1008,15 @@ real host's actual bound listener, exercise local-network permission, cancel,
 background and foreground recovery, and complete the intended pairing journey.
 iOS simulator compilation and Android builds alone do not establish physical
 LAN or permission behavior.
+
+### Same-Station native route admission
+
+The Rust host's `station_profile_refresh_routes` reads authenticated routes at
+the saved canonical anchor and admits only published HTTPS app origins with a
+matching fresh, credential-free public nonce proof. Nearby hints are not this
+authority. Admission stays in host memory for at most ten minutes, bound to the
+active binding epoch and profile revision; it does not rewrite the saved endpoint.
+See the [route threat boundary](../design/station-routes.md#native-host-authorized-alternate-origins).
+Rust fixtures and live host proof requests do not establish native IPC or
+physical-shell failover: those remain NOT_VERIFIED until exercised in an
+installed shell, including expiry, profile changes and unavailable-anchor recovery.

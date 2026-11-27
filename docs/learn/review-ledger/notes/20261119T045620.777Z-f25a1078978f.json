@@ -1,0 +1,9 @@
+{
+  "revision": "ee65bcc6084b7d1d8cf76a9cb383855f88877e2f",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Rechecked the Settings coverage after a real persisted-prompt round trip reached Settings but found the obsolete CSS selector. The fixture now waits on the live Settings sections landmark after reload, retains the real persisted sentinel check, and uses the same landmark for fit, mobile picker and close-guard assertions. The route, visible heading and filter checks remain.","inputs":["tests/settings.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Rechecked the first-run timing and route fixture. The real combined Coding Inbox has Station Assistant Chat, Idle, Station Assistant and Mobile Dogfood in the accessible name. The selection matches those exact ordered words and still continues through the named Chat actions and New chat surfaces. Timing allowances, read receipts and the real local streamed reply assertions remain.","inputs":["tests/first-run-live.spec.ts"]}
+  ]
+}

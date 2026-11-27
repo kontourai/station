@@ -1,5 +1,6 @@
-import { constants } from 'node:sqlite';
-import { expect, it } from 'vitest';
+import { constants, DatabaseSync } from 'node:sqlite';
+import { setImmediate } from 'node:timers/promises';
+import { expect, it, vi } from 'vitest';
 import { turnFixture } from './turn-fixture.js';
 import {
   retentionBacklog,
@@ -57,6 +58,108 @@ it('batched retention setup writes the same agent rows as individually committed
   }
 });
 
-it('retention bounds open and settle while draining 10 terminal turns with 80 effects each', async () => {
+it('retention bounds synchronous open and settle work excluding COMMIT while draining 10 terminal turns with 80 effects each', async () => {
   await retentionBacklog(10, 80);
+});
+
+it('settlement leaves small WAL writes durable without foreground checkpoints', async () => {
+  const f = await turnFixture();
+  try {
+    f.database.exec(
+      'PRAGMA wal_checkpoint(TRUNCATE); PRAGMA wal_autocheckpoint=1',
+    );
+    await f.lease.run(async () => {});
+    expect(
+      f.database.prepare('PRAGMA wal_autocheckpoint').get()?.wal_autocheckpoint,
+    ).toBe(1);
+    const wal = f.database.prepare('PRAGMA wal_checkpoint(NOOP)').get();
+    expect(Number(wal?.log)).toBeGreaterThan(0);
+    expect(wal?.checkpointed).toBe(0);
+    const reader = new DatabaseSync(f.database.location()!, { readOnly: true });
+    try {
+      expect(
+        reader.prepare('SELECT state FROM agent_steps_terminal').get()?.state,
+      ).toBe('completed');
+      expect(
+        reader.prepare('PRAGMA integrity_check').get()?.integrity_check,
+      ).toBe('ok');
+    } finally {
+      reader.close();
+    }
+    await setImmediate();
+    const idle = f.database.prepare('PRAGMA wal_checkpoint(NOOP)').get();
+    expect(idle?.checkpointed).toBe(0);
+    expect(f.database.prepare('PRAGMA synchronous').get()?.synchronous).toBe(2);
+  } finally {
+    await f.close();
+  }
+});
+
+it('a failed settlement commit rolls back terminal state and restores the host checkpoint policy', async () => {
+  const f = await turnFixture();
+  const execute = f.database.exec.bind(f.database);
+  try {
+    execute('PRAGMA wal_autocheckpoint=17');
+    const failure = vi.spyOn(f.database, 'exec').mockImplementation((sql) => {
+      if (
+        sql === 'COMMIT' &&
+        f.database.prepare('SELECT 1 FROM agent_steps_terminal').get()
+      )
+        throw new Error('injected settle commit failure');
+      execute(sql);
+    });
+    try {
+      await expect(f.lease.run(async () => {})).rejects.toThrow(
+        'injected settle commit failure',
+      );
+    } finally {
+      failure.mockRestore();
+    }
+    expect(f.database.isTransaction).toBe(false);
+    expect(
+      f.database.prepare('SELECT count(*) AS n FROM agent_steps_terminal').get()
+        ?.n,
+    ).toBe(0);
+    expect(
+      f.database.prepare('PRAGMA wal_autocheckpoint').get()?.wal_autocheckpoint,
+    ).toBe(17);
+    const recovered = await f.recover();
+    await recovered.run(async () => {});
+    expect(
+      f.database.prepare('SELECT state FROM agent_steps_terminal').get()?.state,
+    ).toBe('completed');
+  } finally {
+    await f.close();
+  }
+});
+
+it('a pinned WAL reader refuses more growth until checkpointing can resume', async () => {
+  const f = await turnFixture();
+  let reader: DatabaseSync | undefined;
+  try {
+    f.database.exec(
+      'PRAGMA wal_autocheckpoint=0; CREATE TABLE checkpoint_padding(bytes BLOB); INSERT INTO checkpoint_padding VALUES(1)',
+    );
+    reader = new DatabaseSync(f.database.location()!);
+    reader.exec('BEGIN');
+    reader.prepare('SELECT * FROM checkpoint_padding').all();
+    f.database
+      .prepare('INSERT INTO checkpoint_padding VALUES(?)')
+      .run(Buffer.alloc(5 * 1024 * 1024));
+    await expect(f.lease.assertCurrent()).rejects.toThrow(
+      'DURABLE_AGENT_CHECKPOINT_BUSY',
+    );
+    expect(
+      f.database.prepare('SELECT count(*) AS n FROM agent_steps_turns').get()
+        ?.n,
+    ).toBe(1);
+    reader.exec('ROLLBACK');
+    await f.lease.assertCurrent();
+    expect(
+      f.database.prepare('PRAGMA wal_autocheckpoint').get()?.wal_autocheckpoint,
+    ).toBe(0);
+  } finally {
+    reader?.close();
+    await f.close();
+  }
 });

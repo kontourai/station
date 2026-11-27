@@ -1,0 +1,7 @@
+{
+  "revision": "1d378f743f868c04f1610a52eefb3dee4886c260",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Re-read after the fix round: testing.md main-health row no longer lists the removed throughput workflow, ci:health examples use an issue placeholder, and the source-verification test was only renamed; this page's claims are unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "b94889a678d4cc312280ac4d58fa922cdd6e5e35",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Added the projectId paragraph to POST /scheduler/jobs (Project jobs, 503 without a runner, 404 while the project-schedules preview is off, the projectSchedules flag); checked against src-server/routes/operations/scheduler.ts and station-capability-flags.ts.","inputs":["docs/reference/api.md"]}
+  ]
+}

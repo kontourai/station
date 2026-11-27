@@ -7,7 +7,7 @@ describes the target behavior; an unchecked acceptance item is not shipped.
 Station has one workspace sidebar and three default content areas: Main,
 Related on the right, and Tools below. Left remains an advanced placement in
 Layout and pane controls. Saved arrangements and explicit plugin placements
-remain readable. Activity's list and Chat's inbox belong inside their surfaces.
+remain readable. Chat's inbox belongs inside its surface.
 Related and Tools are shell siblings of Main.
 
 ## Relationship and placement
@@ -20,9 +20,7 @@ Session or run ancestry are independent facts.
 
 One transient preview is reusable per exact opener selection. Keep and beginning
 an edit protect it. Opening an exact kept target focuses it. Target identity
-includes Station, Project, path and thread where applicable. Quick review moves
-through the source's filtered result set without changing its selection, search
-or scroll; Open deliberately promotes the reviewed destination.
+includes Station, Project, path and thread where applicable.
 
 Changing source hides its transient child and returning restores it. Kept work
 stays reachable with its captured scope visible. Replacement, close and source
@@ -36,53 +34,18 @@ does not fabricate a parent history entry. Reload restores the exact validated
 child. Resizing changes presentation without creating history or controllers.
 Loading, offline, missing, denied and wrong-Station outcomes remain distinct.
 
-### Activity quick review
+### Child transcripts in Chat
 
-Main Activity's row menu offers **Quick review** without selecting the row. The
-review is a Related destination using the existing SessionDetail reader and
-controls. It is a child screen on a phone, not a properties sheet. Its typed
-target captures the Session and Project; the occurrence's Station fence runs
-before any Session reader mounts. The shared Activity Review descriptor is
-available only in the dock and represents a nonce-keyed occurrence; catalogs
-never create a blank review or offer it inside a Project layout. Its canonical
-lazy renderer owns the same unsaved-guard identity and Station fence as the
-region reader.
+Activity Quick review is retired. A child transcript opens in the chat pane
+using the shared message renderer. Each chat pane keeps its own ancestor stack;
+choosing a breadcrumb, Back, or Escape returns to the parent reader. The parent
+stays mounted, preserving its draft and scroll state. Engine child records are
+read only and use the owning Station's transcript query, refreshing while running.
+Delegates read their own Session thread with the same conversation reader.
 
-Previous and Next follow the list owner's current visible ordered rows,
-including search, filters, conversation folds, pagination and collapsed groups.
-If the reviewed row leaves that set, both controls disable and disclose why;
-they never choose a row from the unfiltered inventory. Main's selection,
-search, filters and list scroll stay with Activity. **Open** keeps the exact
-review target as durable work, and **Open conversation**, when the canonical
-open policy offers it, uses that owner. Typing a reply protects the review
-through the existing draft store and unsaved guard. Related replies use a
-verified-Station/API/Session key, so an identically named Session on another
-Station does not inherit a reply. Closing the review asks
-its owner guard and returns focus to the invoking row control when it survives.
-
-The phone close also rechecks its captured layer after a guard answers. A
-replacement child or newly registered guard supersedes that close; an Activity
-close or Up additionally rechecks its Station and source. The chrome's Back
-caption uses every verified relation's captured opener label, including plugin
-openers; caption evidence does not qualify an opener's navigation route.
-
-Review Close watches new owner guards through its locked fresh-read commit;
-an old answer cannot remove a moved or disposed review. Open conversation and
-Up plan the actual reveal from the committed model and ask only owners that
-reveal hides. Ordinary phone dismissal asks the layer once. An attached review
-that transfers its unchanged reply skips only that reply guard's exact identity
-and owner; other dirty guards still ask, and new registrations supersede the
-exit. When Coding owns Chat in the centre, the caller requests that Chat page
-before restoring the phone layer. A missing or refusing Chat owner leaves the
-review in place. The same checks run after a guard delay, including Station,
-API, relation, source selection and new guards.
-
-An attached review hands its exact reply to Chat; it cannot adopt a Session
-itself. The Chat reader owns confirmation, adoption and canonical child opening.
-Handoff and draft keys include Station and API. That reader revokes pending
-delivery when its Station, API, thread or lifetime changes, and checks again
-after opening awaits before writing or sending a confirmed reply. An old
-response may describe completed server work; it must not retarget the UI.
+Legacy Activity URLs open their named Session in Chat, or the inbox without a
+Session. Home and the inbox supply the work list; no Activity list selection,
+filters, sibling Previous/Next traversal or Quick review pane remains.
 
 ## Persistence and authority
 

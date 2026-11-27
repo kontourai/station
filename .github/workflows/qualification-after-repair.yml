@@ -4,6 +4,10 @@ on:
   workflow_run:
     workflows: ["PR: CI"]
     types: [completed]
+    # The job acts only on push runs whose head branch is main; this filter
+    # (on the triggering run's head branch) skips PR and queue runs before a
+    # run starts.
+    branches: [main]
 
 permissions:
   contents: read

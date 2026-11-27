@@ -86,6 +86,53 @@ export interface AiSdkProviderConfig {
  * seen first (e.g. `'content-filter'`, ai-sdk's own `'other'`, or a future
  * value) — a well-formed unclassified terminal, not a dropped failure.
  */
+/**
+ * station#4738: the readable message a failed stream carried.
+ *
+ * ai-sdk's `error` part is not always an `Error`. An OpenAI-compatible server
+ * (Ollama, the scripted dev model) reports a mid-stream failure as an SSE
+ * frame `{ error: { message, type } }`, and ai-sdk forwards that `error`
+ * VALUE — a plain object — so `String()` of it read "[object Object]". A
+ * retried request-time failure arrives wrapped in `AI_RetryError`, whose own
+ * message hides the provider's under "Failed after N attempts"; its
+ * `lastError` is the response that actually failed.
+ */
+function providerStreamErrorCause(error: unknown): unknown {
+  if (
+    error instanceof Error &&
+    error.name === 'AI_RetryError' &&
+    'lastError' in error &&
+    (error as { lastError?: unknown }).lastError !== undefined
+  ) {
+    return (error as { lastError?: unknown }).lastError;
+  }
+  return error;
+}
+
+function providerStreamErrorMessage(
+  error: unknown,
+  depth = 0,
+): string | undefined {
+  if (typeof error === 'string') return error.trim() || undefined;
+  if (error instanceof Error) return error.message.trim() || undefined;
+  if (!error || typeof error !== 'object' || depth > 2) return undefined;
+  const record = error as { message?: unknown; error?: unknown };
+  return (
+    providerStreamErrorMessage(record.message, depth + 1) ??
+    providerStreamErrorMessage(record.error, depth + 1)
+  );
+}
+
+function providerStreamErrorChunk(error: unknown): LLMStreamChunk {
+  const cause = providerStreamErrorCause(error);
+  const status = providerHttpErrorStatus(cause);
+  return {
+    type: 'error',
+    error: providerStreamErrorMessage(cause) ?? 'The provider stream failed.',
+    ...(status === undefined ? {} : { errorStatus: status }),
+  };
+}
+
 function mapAiSdkFinishReason(
   reason: string | undefined,
 ): 'stop' | 'tool-calls' | 'max-tokens' | 'other' | undefined {
@@ -297,12 +344,7 @@ export abstract class AiSdkLLMProvider implements ILLMProvider {
           continue;
         }
         if (part.type === 'error') {
-          const status = providerHttpErrorStatus(part.error);
-          yield {
-            type: 'error',
-            error: String(part.error),
-            ...(status === undefined ? {} : { errorStatus: status }),
-          };
+          yield providerStreamErrorChunk(part.error);
           return;
         }
       }
@@ -357,12 +399,7 @@ export abstract class AiSdkLLMProvider implements ILLMProvider {
         ...(usage ? { usage } : {}),
       };
     } catch (e) {
-      const status = providerHttpErrorStatus(e);
-      yield {
-        type: 'error',
-        error: String(e),
-        ...(status === undefined ? {} : { errorStatus: status }),
-      };
+      yield providerStreamErrorChunk(e);
     }
   }
 

@@ -6,9 +6,18 @@ A merged PR is integration evidence. It does not establish release readiness.
 
 ## Release flow
 
-Preview is the Beta channel. Nightly publishes usable main-edge builds after
-its source and artifact gates. Full qualification on main tests the combined
-merged changes; Beta and Stable require its exact-source evidence.
+Nightly publishes usable main-edge builds after its source and artifact gates.
+Full qualification tests the combined merged changes. Stable release candidates
+and final publication require exact-source full qualification, signed artifact
+and provider checks, plus owner acceptance. Beta and its `preview` release ring
+are retired ([#4929](https://github.com/kontourai/station/issues/4929)).
+
+A `vX.Y.Z-rc.N` candidate builds Stable identity and bare product version
+`X.Y.Z`, then publishes as a GitHub prerelease with no Stable pointer changes.
+Promotion creates `vX.Y.Z` and copies the accepted RC's unchanged assets instead
+of rebuilding them. It also promotes the exact Play build and submits the exact
+Apple build for App Review. Provider approval and installed-device acceptance
+remain separate evidence.
 
 ```mermaid
 flowchart TD
@@ -23,12 +32,11 @@ flowchart TD
     MAIN --> DECIDE["Hourly Nightly decision: six-hour minimum publication interval"]
     DECIDE -->|Eligible| SMOKE["Exact-source lint, typecheck, native boundary and browser smoke"]
     SMOKE --> NIGHTLY["Build, sign, verify and publish Nightly"]
-    RECEIPT --> PREVIEW["Owner selects frozen source and signed Preview tag"]
-    PREVIEW --> STAGE["Stage Beta artifacts: qualification, signing and inventory"]
-    STAGE --> ACCEPT["Installation, startup, critical journeys, upgrade and rollback acceptance"]
-    ACCEPT --> BETA["Owner-approved Beta publication and dogfooding"]
-    BETA --> STABLE["Same reviewed source: Stable packaging and acceptance"]
-    STABLE --> PUBLISH["Owner-approved Stable publication"]
+    RECEIPT --> RC["Owner selects frozen source and immutable RC tag"]
+    RC --> STAGE["Stage Stable-identity bytes: signing, store testing and inventory"]
+    STAGE --> PRERELEASE["Owner-approved RC prerelease; no Stable pointers"]
+    PRERELEASE --> ACCEPT["Installation, critical journeys, upgrade and rollback acceptance"]
+    ACCEPT --> PUBLISH["Owner-approved same-byte final promotion and exact-build store operations"]
 ```
 
 The [qualification workflow](../../.github/workflows/main-qualification.yml),
@@ -47,7 +55,7 @@ central six-hourly scan owns disclosure tracking; its assigned owner and
 operational-versus-finding distinction are documented in
 [dependency security](dependency-security.md#where-the-scan-runs).
 
-Preview/Beta and Stable publication use the shared
+RC and final publication use the shared
 [release advisory gate](../../.github/workflows/release-advisory.yml) against the
 immutable candidate SHA and lockfile. The evaluator and exception records come
 from a trusted default-branch policy checkout with its own tooling install. A supplied
@@ -59,7 +67,7 @@ dependency digests and scan times. Registry errors, malformed results,
 incomplete scopes, patch mismatches and changed inputs block publication.
 
 Tagged staging gates its direct GHCR and store effects. Protected release and
-host-pointer publication, manual npm publication and independent Beta/Stable
+host-pointer publication, manual npm publication and independent Stable
 TestFlight upload retain the gate; pointer-repair break glass cannot skip it.
 New gate coverage applies to reviewed post-policy workflow definitions only;
 old tag staging/reruns remain tag-owned YAML. Protected publication/provider
@@ -78,10 +86,10 @@ publication or all-artifact acceptance.
 | Merge queue | Affected tests, static/browser invariants, security and relevant platform checks against the synthesized combined candidate | Blocks incompatible integration |
 | Main source qualification | Every full-regression phase and Android viewport tests | Opens or updates one repair episode; source remains unqualified |
 | Scheduled delivery validation | All five packaging/platform families after successful source qualification | Retains delivery failure; does not turn the source receipt into artifact proof |
-| Internal development | Local/dev build with focused and smoke evidence | Must be identified as unqualified; never advertised as Preview or Stable |
+| Internal development | Local/dev build with focused and smoke evidence | Must be identified as unqualified; never advertised as a qualified RC or Stable |
 | Nightly | Exact-source lint, typecheck, native boundary and critical browser smoke, then signed artifact and platform/provider gates | Failed source or artifact admission blocks publication |
-| Preview | Frozen qualified source, signed/staged inventory, installation and update evidence, owner-approved publication | Blocks publication |
-| Stable | The reviewed Preview source, qualified evidence and channel-specific packaging/provider checks | Blocks publication |
+| Release candidate | Frozen qualified source, Stable-identity signed/staged inventory, store test delivery, installation/update evidence and owner-approved prerelease | Blocks RC publication |
+| Stable | Authenticated transfer of accepted RC bytes and store builds, current qualification/advisory admission and verified public authorities; or a separately accepted direct-final draft | Blocks final publication |
 
 The authorities are [CI](../../.github/workflows/ci.yml),
 [manual integration diagnosis](../../.github/workflows/merge-queue-regression.yml), and
@@ -118,12 +126,10 @@ runner availability. Other repositories still consume the shared hosted pool.
 `release-pipeline.mjs profile` validates the execution envelope without polling
 GitHub. Its explicit `observe` command is a one-shot diagnostic snapshot; it
 allocates no work and grants no admission. The old fifteen-minute runner-held
-capacity loop is removed. A manual `hosted-capacity-probe.yml` can demonstrate
-native queue retention and non-overlap with a ten-second `ADMISSION_ONLY` job;
-it performs no source qualification, installs nothing and publishes nothing.
+capacity loop is removed.
 
 Pinned actionlint does not yet parse GitHub's queue field. The workflow gate
-validates the three reviewed workflow-level queues and the two PR source-job
+validates the two reviewed workflow-level queues and the two PR source-job
 queues, then removes that field
 from private lint copies. All other actionlint checks and the original-document
 security checks still run; unknown queue shapes fail rather than being ignored.
@@ -140,11 +146,10 @@ install → portable archives → native checks → desktop clean checkout → e
 packaging. A failed family does not cancel later selected families. Scheduled
 qualification runs every family after the full corpus succeeds.
 
-The five families use 15 jobs instead of 20: installer checks combine stable
-and preview exercises into six jobs instead of eight; native Rust/Kotlin checks
-share one job instead of four; all five portable targets remain, capped at two
-concurrent jobs. Installer jobs run in three waves of two; desktop uses two jobs
-and ecosystem one. Thus one delivery-validation invocation uses at most two
+The five families bound their own matrices: installer smoke uses Stable
+fixtures, native Rust/Kotlin checks share a job, and all five portable targets
+remain capped at two concurrent jobs. Desktop and ecosystem families retain
+their declared jobs. One delivery-validation invocation uses at most two
 runners at once. The shared background group serializes these invocations
 with background qualification; unrelated workloads and repositories still
 share hosted capacity. A trusted merged-close handler retires remaining optional
@@ -186,11 +191,17 @@ trusted evidence during rollout; do not manually write successful statuses.
 The event-driven publisher uses short jobs, not waiting runners. Metadata
 completion may reconcile a pending source result; metadata start events do not
 allocate a source publisher. Its status is
-not full release qualification and does not replace Beta/stable receipts.
+not full release qualification and does not replace RC/final receipts.
 
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs at
 each main push, minute 17 every six UTC hours, or by manual dispatch. It tests
 one exact workflow-event SHA from `main`, independently of platform publishing.
+A push that changes only `docs/reference/deploy-ledger.json` and `.md` (the
+release bot's ledger commits) starts no run, so it cannot displace a pending
+source run; that commit stays unqualified until a scheduled or manual run
+tests it. Tests read the ledger, so a pass on its parent is never reused for
+it; only a recent test failure on the parent can stop a scheduled re-run (see
+below).
 Push runs qualify source only; scheduled/manual success also runs delivery
 validation. Coalesced pending revisions remain unqualified. Matrices do not cancel siblings
 on failure, and the phase driver continues through failed phases. A prerequisite
@@ -204,7 +215,8 @@ The [evidence resolver](../../scripts/qualification-evidence.mjs) can reuse a
 successful run for the same exact source from an admitted main, release or
 manual `PR: CI` workflow, within 24 hours. Historical Nightly runs that actually
 completed full qualification remain eligible; the new usability gate is not.
-It requires all eleven canonical source jobs to have completed successfully in
+It requires all twelve canonical source jobs (including three process-heavy
+slices) to have completed successfully in
 the current run attempt, bound to the same source, plus an unexpired receipt
 artifact and a final run/attempt identity check. Trusted main and historical
 Nightly parents may still be queued, pending, waiting or running optional
@@ -216,9 +228,27 @@ lockfile, toolchain pins and phase plan. A newer commit or expired/missing
 evidence runs fresh qualification. A newer failed qualification invalidates
 prior green evidence for that source. An API lookup failure also runs fresh;
 it cannot admit publication.
+The source status publisher and the qualification evidence resolver share a
+30-second deadline per REST request. Evidence reads can make two additional
+attempts after HTTP 502, 503 or 504 within that deadline. If a read still fails,
+the source publisher reports pending and the qualification resolver requires
+fresh evidence. Writes, authentication failures and malformed evidence receive
+no transport retries.
 
-Quiet intervals therefore avoid rerunning successful unchanged source. Failed
-source is revisited on the next interval, with all available failure logs kept.
+Quiet intervals therefore avoid rerunning successful unchanged source. A
+scheduled run also declines to repeat the corpus on a source whose newest
+executed main qualification failed in a test step within 24 hours, looking
+through first-parent ancestors that differ from it only in the deploy ledger
+(up to 30 commits) when the source itself has no executed run: its gate
+fails with `Not re-run: run <id> already failed tests on this exact source`, so
+the source stays unqualified and the earlier run keeps the failure logs. The
+scheduled run executes the corpus when main has moved, when that run was
+cancelled, timed out or incomplete, when a job failed outside its test step
+(checkout, install, browser download or prerequisites), and once the 24 hours
+pass. Pushes and manual dispatches always execute. A lookup failure runs fresh.
+Such a skipped run leaves the open repair episode and its run link unchanged,
+since it ran no tests; the health watchdog still counts it as a started,
+unqualified run.
 Dispatch a fresh diagnostic when investigating environment changes or confirming
 a repair; a receipt is bounded source/environment evidence, not physical-device
 or provider publication proof:
@@ -232,14 +262,26 @@ qualification's source and age rather than treating the clock as evidence.
 See [GitHub's schedule behavior](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
 [Main qualification health](../../.github/workflows/qualification-health.yml)
-checks hourly and after a qualification run completes, without launching tests
-or retries. It maintains one P1 issue owned by repository release maintainers
-when no qualification job started within eight hours, no source qualification
-passed within fourteen hours, or the latest unqualified run has remained queued
-or running for more than three hours. The eight-hour start and fourteen-hour success bounds allow schedule and
-execution delay. It also reports a
-failed scheduled or manual Nightly delivery after its source gate passed. The
-passing gate's completion time and exact source identify qualification health;
+checks hourly, on manual dispatch, and when `Main: Qualification` or `Nightly`
+completes on `main`. It reads existing run evidence and maintains one P1 issue
+owned by repository release maintainers when no qualification job started within
+eight hours, no source qualification passed within fourteen hours, or the latest
+unqualified run has remained queued or running for more than three hours.
+The eight-hour start and fourteen-hour success bounds allow schedule and
+execution delay. It first selects the newest executed red run, downloads
+its failure manifests and classifies it; the body then says whether main is
+red only on known failures, owned by which open issues, with a line
+"red only on known failures since <run>" carried across observations, and
+that release qualification stays blocked. In report mode the alert
+decisions are unchanged. With `STATION_QUALIFICATION_SIGNAL=enforce`, a
+known-only run that completed within the 24-hour scheduled-skip window
+replaces the fourteen-hour staleness reason with that line, and a new
+failure is reported as its own reason. It also reports a
+failed scheduled or manual Nightly delivery after its source gate passed.
+A failure in the separate hosted delivery-validation jobs stays open until
+a later qualifying run passes all delivery families. A manual dispatch of
+`main-qualification.yml` can reuse current source qualification and run those
+checks. The passing gate's completion time and exact source identify qualification health;
 a long native build does not make qualification stale by itself.
 
 The same observer reports a missing scheduled Nightly request after four hours
@@ -276,7 +318,10 @@ command above; failed-source repair stays in its existing bounded episode.
 
 `STATION_QUALIFICATION_RUNNER_PROFILE` selects `free` (default), `expanded` or `custom`.
 Free runs at most two ordinary and one process-heavy corpus jobs concurrently;
-Expanded runs four and two. Every matrix leg and canonical phase remains.
+Expanded runs four and two. On Free the three process-heavy slices therefore
+run one after another, not side by side; each slice gets about a third of
+the files and its own 30-minute deadline. That headroom is unmeasured until
+a hosted run reports per-slice durations. Every matrix leg and canonical phase remains.
 Unknown profiles fail before fanout. Custom requires positive integer
 `STATION_QUALIFICATION_ORDINARY_SLOTS` (1–4),
 `STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS` (1–2), and
@@ -289,8 +334,31 @@ including after an earlier suite fails; the final receipt still requires every
 job to pass. Together with the corpus matrices, the Free peak is four runners
 and the integration planning reserve is twelve; Expanded uses seven and twenty. These are planning bounds,
 not a cross-workflow reservation or a guarantee that another repository will
-leave capacity unused. The merge queue builds one candidate at a time, with
-up to three entries per merge batch. Background callers share the native FIFO
+leave capacity unused. The merge queue builds up to two candidates at a time,
+each on top of the one ahead of it, with up to three entries per merge batch.
+One merge-group build peaked at seven concurrent jobs when measured on
+2026-11-13. Measured across all workflows from 06:46Z to 17:30Z on 2026-11-14,
+two concurrent builds peaked at eleven jobs, one of them on a macOS runner,
+inside the twelve-runner reserve; the reserve stays a planning bound. PR source
+computation is bounded separately at nine slots (five shard, three statics and
+one for the release-bot PR; see [testing](testing.md)). Eleven merge-group jobs,
+the Free qualification peak of four and those nine already total 24 before unbounded per-PR
+lanes, so the PR slots bound how many PR source jobs can wait for a runner
+ahead of a merge-group job, not a share of the twenty. GitHub has no priority
+between them. The slot counts were sized from the wait for a slot alone: they
+do not model the pool, and a job that used to be superseded while waiting
+for a slot can now start. The third statics slot followed a 2026-11-15
+measurement in which a PR waited 70 minutes for one of two statics slots while
+seven of the twenty runners were idle. A statics job takes about 13 minutes, so one slot clears
+about four and a half an hour. The slots are separate queues, not a pool: with PR numbers spread
+evenly the busiest slot (four of the ten digits) fills at about eleven PR pushes an hour, against
+about nine with two slots, and a PR can still wait in its own slot while another is idle. From 00:00Z to 03:00Z on 2026-11-14, before the
+heavy platform lanes left pull-request events, all twenty hosted runners were
+busy a quarter of the time and merge-group jobs waited a median of three
+minutes (p90 about fifteen) for a runner. If that wait rises, first return statics to
+two slots (digits 7 and 9 back to `odd`, 8 back to `even`, in `ci.yml`, its pin in
+`scripts/actionlint-gate.mjs` and the job-graph test's slot table), then lower the
+shard slot count. Background callers share the native FIFO
 group described above; integration uses source-specific groups and release
 qualification has its own group. The class input is validated before fanout.
 These groups do not reserve slots across other repositories.
@@ -308,8 +376,16 @@ The resolver validates its profile and exact-source reuse without waiting on
 an occupancy snapshot. `release-pipeline.mjs observe` remains available as a
 single diagnostic inventory of configured repositories; its output explicitly
 reports observed headroom, not admission. An API error fails the observation,
-with no retry loop or work allocation. Native staging uses two platform build
-slots and one macOS slot by ordering iOS after macOS and Windows after Android.
+with no retry loop or work allocation. Native staging starts Android, macOS
+and Windows from the same cohort plan. iOS waits for the macOS job to finish,
+so one Nightly requests only one hosted macOS runner at a time. This adds the
+iOS build to the macOS critical path. Other workflows still compete for the
+shared pool. An admitted iOS build can run after a failed macOS job if the
+workflow is still active. GitHub has cancelled macOS jobs it could not place
+on busy weekdays. A failed or cancelled build blocks native cohort
+publication. The npm Nightly CLI can still publish after source admission.
+Portable publication requires source admission and the native staging plan's
+reservation outputs. Recover a runner cancellation as a staging failure.
 
 `STATION_NIGHTLY_INTERVAL_HOURS` defaults to 6 and accepts integers 1–168.
 Admission under the Nightly delivery lock rechecks this interval, the
@@ -346,6 +422,15 @@ when they failed before creating a reservation.
 to completed canonical main-qualification runs. It keeps one P1 issue titled
 `Main qualification repair`, with failed source/run, job outcomes, an owner,
 state and a deadline 24 hours after the episode opens.
+
+Each prepare run downloads the run's `qualification-manifest-*` artifacts
+with the existing `actions: read` and writes the [failure
+classification](testing.md#known-qualification-failures) into the episode's
+report. In report mode (the default) that changes no decision. With
+`STATION_QUALIFICATION_SIGNAL=enforce`, a run red only on known failures
+whose issues are open opens no episode and only refreshes an open one;
+it never closes an episode, and a new failure still opens or updates it.
+Only a green qualification run or a person closes an episode.
 
 By default no automated repair agent runs: repository variable
 `QUALIFICATION_REPAIR_AGENT` is unset, and the issue is opened or updated with
@@ -401,7 +486,7 @@ integration incidents. The owner can set repository variable
 `STATION_INTEGRATION_PAUSED=true` to fail subsequent merge-integration candidates,
 coordinate a repair PR, and clear it after verification. A repair deadline that
 passes without green qualification requires owner escalation; the tracker
-remains P1; Beta and Stable publication still require full source qualification. Broader failures
+remains P1; RC and final publication still require full source qualification. Broader failures
 receive the repair sweep while unrelated fast-green work can continue.
 
 ## Landing without agent monitoring
@@ -413,7 +498,14 @@ label, then arms auto-merge once. Adding the label or marking a PR ready also
 triggers trusted-base automation, which first verifies successful CI for its
 current head. Both landing jobs load their helpers from the workflow's own
 trusted revision (`github.workflow_sha`), including when the PR event's base
-predates those helpers. Candidate code is never executed. It does not poll the queue, bypass checks,
+predates those helpers. The arm job, not the workflow, holds the
+concurrency group, keyed by the PR's head branch, so arm runs for one PR are
+serialized and other PRs' runs never queue behind them. An event the arm job
+skips (another label, a red or queue CI run, a dequeue) is meant not to take
+a pending arm run's place; that relies on GitHub queuing a job for its
+concurrency group only after its `if` admits it, which GitHub does not
+document; a hosted run has not yet confirmed it here. A dequeue run and a label arm run for
+the same PR can run at once; both arm only the head they read. Candidate code is never executed. It does not poll the queue, bypass checks,
 merge main into contributors' branches or wake an agent for status observation.
 Repair PRs opt in automatically. Maintainers can label their own ready PRs;
 unlabelled lanes remain under their owner's control.
@@ -454,30 +546,52 @@ publication retains the workflow credential for GitHub operations and npm's
 existing OIDC authentication. Checkout credentials remain non-persistent;
 trigger admission is not check success or publication proof.
 
-1. Choose a release-train base version from repository/provider state and freeze
-   a reviewed current-main SHA. Use the version authority in
-   [release rings](release-rings.md), not an arbitrary calendar bump.
-2. Run qualification for that source, or reuse an admitted exact-source receipt
-   within its original 24-hour lifetime. A green ancestor does not qualify the
-   candidate. A diagnostic test subset does not qualify it either.
-3. Create a new immutable signed `vX.Y.Z-preview.N` tag on that source. The
-   tag-triggered stage workflow qualifies the exact SHA and creates a draft
-   only after the platform, signing, provenance and inventory checks succeed.
-4. Inspect the draft and receipts. Exercise installation, startup, the critical
-   user journeys, upgrade and rollback on the supported release platforms.
-   Record unverified provider/device paths explicitly. Use
-   [native operations](native-releases.md) and [mobile release](mobile-release.md)
-   for their platform-specific authorities.
-5. Dispatch and approve `Release: Publish` for that draft tag. It validates
-   the draft, inventory and provenance, and re-admits exact-source qualification
-   before changing public release/update authorities. An old staged draft can
-   require fresh qualification; source qualification from an ancestor is refused. Confirm the actual public artifacts and installed behavior.
-6. Dogfood Preview. If a fix is required, create another immutable Preview tag
-   from the fixed source and repeat qualification and acceptance.
-7. Promote the same reviewed Preview commit with `vX.Y.Z`; source never changes
-   during promotion. Stable packaging may rebuild for channel identity/signing.
-   Source qualification can reuse the same valid receipt; artifact, installation,
-   update and external-provider evidence still has to match the Stable outputs.
+1. Choose an unused release-train product base from current repository and
+   provider state, then freeze a reviewed main SHA. The private root owns the
+   product number (`0.2.0` for the first planned full-release train); published
+   CLI/library packages keep independent versions. See
+   [version authority](native-releases.md#product-version-and-release-cut).
+2. Qualify that exact source, or reuse an admitted receipt within its original
+   24-hour lifetime. A green ancestor or diagnostic subset does not qualify it.
+3. Create an immutable signed `vX.Y.Z-rc.N` tag, N from 1 to 98. `Release: Stage`
+   builds Stable identity and bare `X.Y.Z`, delivers the store test builds, and
+   creates its draft only after platform, signing, advisory, provenance and
+   inventory gates pass. Retain failed tags and receipts; do not move them.
+4. Inspect the draft and receipts, then dispatch `Release: Publish` on main with
+   `mode=rc` and that tag. Its protected publication re-admits source and
+   advisory evidence. Confirm the public prerelease and unchanged Stable
+   pointers. Exercise installation, startup, critical journeys, upgrade and
+   rollback on supported release platforms; record unverified provider/device
+   paths explicitly. RC desktop testers reinstall later RCs manually because
+   all use `X.Y.Z`; portable testers replacing same-version bytes explicitly
+   allow rollback. A fix takes another immutable RC and matching evidence.
+5. Immediately after the cut, run the plan/apply
+   [release-cut command](native-releases.md#product-version-and-release-cut) in
+   a clean sibling delivery worktree and land main's next minor base through a
+   normal PR. Do not change the frozen release source. Nightly publication
+   independently refuses a base at or below the highest public RC/final base.
+6. After acceptance, dispatch `Release: Publish` on main with `mode=promote`
+   and the published RC tag. It creates the final ref without retriggering
+   producers, copies original assets/names/inventory/SBOMs with a digest-bound
+   attested transfer receipt, and retains RC store slot N. Do not push a final
+   tag that rebuilds slot 99 as a substitute for same-byte promotion.
+7. Before approving promotion, provision its dedicated Play production WIF and
+   App Store Connect publication secrets, and prepare the matching Apple
+   listing/version with manual release. First Play production launch requires
+   explicit `android_rollout_fraction=1`. Use only definite authenticated RC
+   upload authority. Set bootstrap inputs only for proven-empty initial
+   updater/host pointers and a successful no-prior-release availability result.
+   See [store setup](store-entry.md#same-build-production-promotion).
+8. Confirm final GitHub assets, container digest aliases, rolling updater/host
+   manifests, mobile feed when configured and exact store outcomes. Keep the
+   RC release/assets public while the unchanged host payload references them.
+   App Review submission is not Apple approval or public availability. Inspect
+   durable attempted/unknown journals and provider state after interruption;
+   no blanket retry or inferred rollback is authorized by a green source test.
+
+Direct-final `mode=stable` remains available for a separately built and accepted
+final-tag draft. Its build slot is 99 and it has its own artifact/installed
+acceptance; it does not establish that an earlier RC's bytes were promoted.
 
 Nightly has two entry points, both serialized on the `nightly` concurrency group:
 
@@ -509,14 +623,86 @@ publication incidents until actual native-ledger or CLI registry-provenance
 recovery, independently of source-qualification repair. Read provider receipts
 for the failed leg; a green or skipped later job does not prove recovery.
 
-Preview
-and Stable are evidence-driven owner decisions, not automatic calendar releases.
+A Nightly records its deploy-ledger rows in one commit to `main`. In run
+history, every ledger push made GitHub discard and rebuild the merge groups in
+flight. The CLI job no longer writes
+its `nightly-npm` row. When the native cohort reaches `record-native-completion`,
+that job writes the npm, Android and desktop rows in one commit through
+[`deploy-ledger-commit.mjs`](../../scripts/lib/deploy-ledger-commit.mjs). It
+includes the npm row only after the CLI's provider receipt from the same run
+names that run's version and source, and the registry still binds that version
+to the source. The `record-cli-ledger` job runs after the cohort ends, whether it
+succeeded, failed, was skipped or was cancelled. When the CLI publish was verified,
+it records the npm row alone unless `main` already holds it. Both writers pass
+`--if-absent`, so either order leaves exactly one row. The commit subject names
+the rows it adds (`docs(ledger): record nightly-npm …, nightly-android …,
+nightly-desktop … from run <id>`), and the helper refuses a subject that
+[`normalize-deploy-ledger-head.mjs`](../../scripts/normalize-deploy-ledger-head.mjs)
+would not peel. A failure of `record-cli-ledger` counts against the CLI leg in
+health monitoring. Stable releases and package publication still write one
+record per commit.
+
+If the combined commit fails for any reason, the record job falls back to the
+earlier behaviour. It records the Android and then the desktop row in their own
+commits, using exactly the earlier invocation, and leaves the npm row to
+`record-cli-ledger`. So one bad row cannot take the others with it, and the
+Android marker moves when the native rows land, as it did before. If a
+combined commit did land, these per-row writes are refused as duplicates rather
+than written twice.
+
+Roll this back workflows first. Revert `nightly.yml` and
+`nightly-native-cohort.yml`, and keep the script changes: `--if-absent`,
+`--record` and `--subject-run-id` are additive, and the single-record
+`--commit-subject … --` form the stable workflows use is unchanged. Never
+revert `scripts/deploy-ledger.mjs` while a run of the new workflow is in
+flight. The commit helper runs from the job's checkout, but the appender it
+spawns runs from `origin/main` after the detach, and the older appender
+rejects `--if-absent`. In that case the record job's per-row fallback still
+records the native rows, because it passes no new flag. `record-cli-ledger`
+fails, though, and the npm row is missing. To add a missing row by hand, take the version and `verifiedAt` from
+that run's `nightly-cli-provider-receipt-<run id>` artifact, or the native
+versions from its `nightly-cohort-final-<run id>` receipt. Then run the
+appender with the arguments the workflow passes, through
+`node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record <channel> <version> from run <run id>" -- node scripts/deploy-ledger.mjs …`
+on a checkout of `main`, with a token allowed to push there.
+
+RC publication
+and Stable promotion are evidence-driven owner decisions, not automatic calendar releases.
 No public release is created merely by merging a normal PR. Package-version
 PR maintenance runs on main pushes except those changing only the generated
 `docs/reference/deploy-ledger.json` and `docs/reference/deploy-ledger.md` outputs.
 Those receipt updates do not change the package release plan; regenerating the
-version PR would replace its scoped review notes and formatting corrections.
-Mixed pushes and every other changed path still trigger maintenance. Manual
+version PR would replace any review notes added to it. Its generated output
+needs none: `npm run version-packages` writes changelogs through
+[`changeset-changelog.mjs`](../../scripts/changeset-changelog.mjs), which drops
+upstream's trailing whitespace, and the review ledger's
+[release-versioning contract](documentation-review-ledger.md#generated-release-records-and-removed-notes)
+accepts the version bumps and the changelog sections built from consumed notes.
+A record that cites a version value still needs a note.
+Mixed pushes and every other changed path still trigger maintenance.
+Maintenance leaves the open version PR alone when regenerating would not change
+what it releases: [`version-pr-current.mjs`](../../scripts/version-pr-current.mjs)
+runs `npm run version-packages` on the pushed `main` (bounded at 3 minutes,
+without the job's GitHub token) and compares the tree with `git merge-tree` of
+that `main` and the PR head. It skips the action only for the
+`station-automation[bot]` PR (login, `Bot` type and user id) from this
+repository's `changeset-release/main`, whose head is one commit on an ancestor
+of `main`, merges cleanly to exactly that tree, still consumes only notes that
+are on `main` unchanged, and is not a no-op on `main` unless regenerating is
+empty too. The PR then keeps its checks and its merge-queue place. A new,
+removed or edited note, a manifest or lockfile change that alters the output,
+a release that already landed, a conflict, a timeout or any unreadable state
+regenerates as before; a dispatch never skips. The version script runs in its
+own process group, which the probe kills and waits out; if it cannot confirm
+the group is gone, the job fails rather than let the action commit a checkout
+something may still write to. A descendant that starts its own session leaves
+that group and is not covered; pnpm and the changesets tooling do not do that.
+Squashing the kept head onto
+the probed `main` gives the bytes a regeneration would have pushed. When the
+merge queue builds it behind other entries, it is squashed onto that later
+base instead, as a regenerated head would be; a note one of those entries adds
+stays pending for the next version PR, and the push that lands it probes again.
+On 2026-11-16, 28 of the 36 regenerations would have been skipped. Manual
 package publication remains available and requires exact-source qualification.
 The separately authorized published
 pointer-repair break glass retains its existing inventory/provenance checks and

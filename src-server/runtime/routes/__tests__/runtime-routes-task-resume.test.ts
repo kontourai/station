@@ -99,7 +99,9 @@ describe('POST /api/tasks/:taskId/resume through the runtime composition', () =>
     __resetStationServerSelfAttestationForTests();
 
     const store = new EventStore(join(homeDir, 'orchestration.sqlite'));
-    closers.push(() => store.close());
+    closers.push(() => {
+      store.close();
+    });
     const orchestration = new OrchestrationService({
       adapterRegistry: {
         register() {},

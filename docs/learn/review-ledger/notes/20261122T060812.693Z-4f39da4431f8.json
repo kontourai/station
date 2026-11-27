@@ -1,0 +1,7 @@
+{
+  "revision": "6e5db01edeac4b13532a43f6d6247b5c4061615a",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"No glossary term changes: the no-camera pairing fix adds no vocabulary and keeps existing pairing words.","inputs":["docs/glossary.md","docs/reference/connect.md"]}
+  ]
+}

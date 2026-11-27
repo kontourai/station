@@ -22,6 +22,11 @@ export interface UseConnectionStatusOptions {
   ) => Promise<ConnectionHealthCheckResult>;
   /** Healthy poll interval in ms (default: 10_000). Failures use bounded backoff. */
   pollInterval?: number;
+  /**
+   * Called once for each probe run that completes with the connection
+   * healthy, after this consumer mounted; never for a failed or aborted run.
+   */
+  onHealthyProbe?: () => void;
 }
 
 export interface ConnectionStatusResult {
@@ -48,6 +53,10 @@ export interface ConnectionStatusResult {
   }>;
   /** Per-route outcome of the last completed check (Station routes). */
   routes: ReadonlyArray<ConnectionRouteResult>;
+  /** When the last check finished (epoch ms); null until one has. */
+  checkedAt: number | null;
+  /** Completed probe runs on this connection's coordinator. */
+  completedProbes: number;
   recheck: () => void;
 }
 
@@ -94,6 +103,7 @@ export function useConnectionStatus({
   checkHealth,
   probeEndpoint,
   pollInterval = 10_000,
+  onHealthyProbe,
 }: UseConnectionStatusOptions): ConnectionStatusResult {
   const {
     apiBase,
@@ -146,7 +156,12 @@ export function useConnectionStatus({
           : [])
       ).map((endpoint) => ({
         ...endpoint,
-        priority: endpoint.id === selected ? -1 : endpoint.priority,
+        priority:
+          endpoint.id === selected
+            ? nativeShell && activeConnection?.hostOwnedCredential
+              ? Math.min(endpoint.priority ?? 100, -1)
+              : -1
+            : endpoint.priority,
       }));
     },
     compatibility: () => ({
@@ -214,6 +229,21 @@ export function useConnectionStatus({
     entry.coordinator.getSnapshot,
   );
 
+  const nativeRoutesKey =
+    nativeShell && activeConnection?.hostOwnedCredential
+      ? activeConnection.endpoints
+          .map((endpoint) => endpoint.url)
+          .sort()
+          .join('\n')
+      : '';
+  const previousNativeRoutes = useRef({ key, routes: nativeRoutesKey });
+  useEffect(() => {
+    const previous = previousNativeRoutes.current;
+    previousNativeRoutes.current = { key, routes: nativeRoutesKey };
+    if (previous.key === key && previous.routes !== nativeRoutesKey)
+      entry.coordinator.trigger();
+  }, [key, nativeRoutesKey, entry]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onOnline = () => entry.coordinator.trigger();
@@ -272,6 +302,18 @@ export function useConnectionStatus({
       entry.coordinator.trigger();
     }
   }, [key, authority, entry]);
+
+  const onHealthyProbeRef = useRef(onHealthyProbe);
+  onHealthyProbeRef.current = onHealthyProbe;
+  // Keyed by connection: another connection's coordinator keeps its own
+  // count, so a switch sets a new baseline instead of reading as a probe.
+  const seenProbesRef = useRef({ key, count: snapshot.completedProbes });
+  useEffect(() => {
+    const seen = seenProbesRef.current;
+    seenProbesRef.current = { key, count: snapshot.completedProbes };
+    if (seen.key !== key || seen.count === snapshot.completedProbes) return;
+    if (snapshot.status === 'connected') onHealthyProbeRef.current?.();
+  }, [key, snapshot.completedProbes, snapshot.status]);
 
   return { ...snapshot, recheck: entry.coordinator.trigger };
 }

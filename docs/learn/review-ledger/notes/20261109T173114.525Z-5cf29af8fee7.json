@@ -1,0 +1,7 @@
+{
+  "revision": "b962fe8d2c3eec8c50afa4cc7ae85c95521a82b1",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Re-read the Seatbelt profile-shape bullets against seatbelt.ts (seatbeltHiddenPaths, seatbeltGrants, seatbeltProfile, createSeatbeltSessionDir, seatbeltWriteGrantKinds, reapStaleSeatbeltSessionDirs) and its caller prepareConfinedClaudeLaunch in claude-seatbelt.ts. Checked: the short stn-<uid> roots are now read-hidden; the temp grant is the single session-<pid>-* directory (one mkdtemp per launch), never its root, /tmp or the system temp directory; placement is in-home when within SESSION_TMPDIR_MAX_BYTES (64), else the claimed short root, else in-home over budget; removal on stop and the dead-owner sweep over both roots. Executed claude-seatbelt, seatbelt, claude-adapter-seatbelt and session-tmpdir suites on Linux (130 passed). Limit: the macOS kernel behaviour (seatbelt.process.test.ts, including the new socket-listen and short-root read/write denial cases) was not run; this host is Linux.","inputs":["docs/design/approval-posture-server-ordered.md"]}
+  ]
+}

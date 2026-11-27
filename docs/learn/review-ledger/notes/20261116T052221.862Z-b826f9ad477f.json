@@ -1,0 +1,7 @@
+{
+  "revision": "8747e0aee39c3dcdf0afd3e6f3414ca3d4d9b5b0",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the approval claims against the adapter and pre-tool policy changes: only four metadata reads are auto-approved and skill edits, delegation and task control stay subject to approval; skill install/update/uninstall now additionally ask on every call (authority tools), consistent with this text.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/acp-adapter.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts","src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}

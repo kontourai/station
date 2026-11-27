@@ -1003,6 +1003,21 @@ describe('connection catching (protocol 1.1)', () => {
     expect(settledAt).toBeGreaterThanOrEqual(repliedAt);
   });
 
+  it('after sending spares, an idle listener serves an arriving request before the initial quiet window ends', async () => {
+    const channel = new FakeChannel();
+    const link = await promoted(channel, [], {}, { drainIdleGraceMs: 100 });
+    const server = okServer();
+    const { port } = await link.listen('api', server, { port: 0, host: HOST });
+    channel.deliver({ type: 'listener.spares', name: 'api', count: 1 });
+    const response = get(port, new http.Agent({ keepAlive: false }));
+    channel.deliver({ type: 'drain', deadlineMs: 7_000 });
+    await expect(response).resolves.toMatchObject({
+      status: 200,
+      connection: 'close',
+      body: 'ok',
+    });
+  });
+
   it('after sending spares, a drain keeps accepting until no connection has arrived for the quiet window', async () => {
     const channel = new FakeChannel();
     const link = await promoted(channel, [], {}, { drainIdleGraceMs: 100 });

@@ -1,7 +1,0 @@
-{
-  "revision": "5a243ad587e1cba5e5dd22f24a59726af8d3e745",
-
-  "notes": [
-    {"path":"docs/design/native-capabilities.md","note":"Fold geometry paragraph updated to match foldSources.ts: the plugin is asked only after resolvedPlatformTarget() names iOS (one capability report, by the profile), reads coalesce to one in flight plus one trailing, and the native reply then wins over Viewport Segments. Checked against foldSources.ts and PlatformProfileContext.tsx at this commit.","inputs":["docs/design/native-capabilities.md"]}
-  ]
-}

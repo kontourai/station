@@ -1,13 +1,23 @@
-import type {
-  SchedulerAutomationTarget,
-  SchedulerJob,
-  SchedulerSchedule,
+import {
+  isSchedulerJobDisplayName,
+  SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS,
+  SCHEDULER_JOB_NAME_TAKEN,
+  type SchedulerAutomationTarget,
+  type SchedulerJob,
+  type SchedulerSchedule,
 } from '@kontourai/station-contracts/scheduler';
-import { useScheduledConversationTargetCapability } from '@kontourai/station-sdk';
+import {
+  useScheduledConversationTargetCapability,
+  useSchedulerJobDisplayNameCapability,
+} from '@kontourai/station-sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAgentCatalogRead, useAgents } from '../../contexts/AgentsContext';
 import type { SchedulerProviderInfo } from '../../hooks/useScheduler';
-import { useAddJob, useEditJob } from '../../hooks/useScheduler';
+import {
+  useAddJob,
+  useEditJob,
+  useSchedulerJobs,
+} from '../../hooks/useScheduler';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { agentFixRoute } from '../AgentReadinessCell';
 import { Button } from '../Button';
@@ -16,6 +26,7 @@ import { SkeletonList } from '../state';
 import { Toggle } from '../Toggle';
 import { AgentPicker } from './AgentPicker';
 import { CronPreview } from './CronEditor';
+import { jobLabel, slugForJobName } from './jobName';
 import { ScheduleModeEditor } from './ScheduleModeEditor';
 import {
   SCHEDULER_ENGINE_AGENT_NOTE,
@@ -30,6 +41,7 @@ import {
   scheduleEquals,
   scheduleForJob,
   splitEveryMs,
+  tomorrowMorning,
   WEEKDAY_MORNING_CRON,
   weekdayMorningSchedule,
 } from './scheduleValue';
@@ -43,6 +55,7 @@ import {
 const AGENT_CATALOG_ERROR_ID = 'schedule-agent-catalog-error';
 
 export type JobFormPrefill = Partial<{
+  /** The name a person reads; the form derives the hidden slug from it. */
   name: string;
   cron: string;
   schedule?: SchedulerSchedule;
@@ -58,10 +71,11 @@ export type JobFormPrefill = Partial<{
  * whose output is a file, kept for jobs created before targets and for hosts
  * without `scheduledConversationTarget`.
  */
-type RunIn = 'dedicated' | 'chat' | 'file';
+type RunIn = 'dedicated' | 'chat' | 'file' | 'project';
 
 function runInForJob(job: SchedulerJob | undefined): RunIn | undefined {
   if (!job) return undefined;
+  if (job.projectId) return 'project';
   if (job.target?.kind === 'dedicated') return 'dedicated';
   if (job.target?.kind === 'conversation') return 'chat';
   return 'file';
@@ -89,9 +103,15 @@ export function JobFormModal({
   interactionDisabled = false,
   setupError,
   onReadinessChange,
+  project,
 }: {
   job?: SchedulerJob;
   prefill?: JobFormPrefill;
+  /**
+   * Opened from a Project: the new job belongs to it, and each run starts a
+   * Task there. An existing Project job keeps its Project either way.
+   */
+  project?: Readonly<{ id: string; name: string }>;
   onClose: () => void;
   onSetupAgent?: (target: string) => void;
   hidden?: boolean;
@@ -104,6 +124,14 @@ export function JobFormModal({
   const isEdit = !!job;
   const addJob = useAddJob();
   const editJob = useEditJob();
+  // A host that stores display names picks the hidden slug itself, against
+  // every job. An older host needs the form to name one, and drops the
+  // display name: the slug is then kept clear of the jobs this person sees,
+  // and the host still refuses one it already has.
+  const displayNameSupport = useSchedulerJobDisplayNameCapability().data;
+  const displayNames = displayNameSupport === true;
+  const existingJobs = useSchedulerJobs();
+  const [nameTouched, setNameTouched] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(
     job?.provider || providers[0]?.id || 'built-in',
   );
@@ -128,11 +156,15 @@ export function JobFormModal({
       ? job.target.conversationId
       : init.conversationId;
   const [runInChoice, setRunInChoice] = useState<RunIn | undefined>(
-    () => runInForJob(job) ?? (init.conversationId ? 'chat' : undefined),
+    () =>
+      runInForJob(job) ??
+      (project ? 'project' : init.conversationId ? 'chat' : undefined),
   );
   const runIn: RunIn = runInChoice ?? (targetsSupported ? 'dedicated' : 'file');
   const targeted = runIn !== 'file';
-  const anyEngine = runIn === 'dedicated';
+  // A Project run is a Task started on its Agent's own engine.
+  const anyEngine = runIn === 'dedicated' || runIn === 'project';
+  const projectId = job ? job.projectId : project?.id;
   const agentOptions = useMemo(
     () => schedulerAgentOptions(agents, { anyEngine }),
     [agents, anyEngine],
@@ -172,7 +204,7 @@ export function JobFormModal({
     monitorMaxRuntimeMs: number;
     [key: string]: string | number | boolean;
   }>({
-    name: job?.name || init.name || '',
+    name: job ? jobLabel(job) : init.name || '',
     scheduleKind: initialSchedule.kind,
     cron:
       initialSchedule.kind === 'cron'
@@ -183,11 +215,13 @@ export function JobFormModal({
     atTime:
       initialSchedule.kind === 'at'
         ? datetimeLocalValue(initialSchedule.timeMs)
-        : datetimeLocalValue(Date.now() + 60 * 60_000),
+        : datetimeLocalValue(tomorrowMorning()),
+    // Keeping the job is the default: removing it also removes its history
+    // from the list, which nobody should get without asking.
     deleteAfterRun:
       initialSchedule.kind === 'at'
-        ? (initialSchedule.deleteAfterRun ?? true)
-        : true,
+        ? (initialSchedule.deleteAfterRun ?? false)
+        : false,
     prompt: job?.prompt || init.prompt || '',
     agent:
       (job?.target?.kind === 'dedicated' ? job.target.agent : undefined) ||
@@ -405,8 +439,12 @@ export function JobFormModal({
             },
           }
         : undefined;
+    const displayName = form.name.trim();
     if (isEdit) {
       const opts: Record<string, unknown> = {};
+      // A rename changes only what people read; the slug stays the identity.
+      if (displayNames && displayName !== jobLabel(job))
+        opts.displayName = displayName === job.name ? null : displayName;
       if (!scheduleEquals(nextSchedule, initialSchedule)) {
         opts.schedule = nextSchedule;
       }
@@ -445,10 +483,20 @@ export function JobFormModal({
       }
       editJob.mutate({ target: job.name, ...opts }, { onSuccess: onClose });
     } else {
-      if (!form.name.trim()) return;
+      if (!nameValid) return;
+      const name =
+        displayNames && selectedProvider === 'built-in'
+          ? undefined
+          : slugForJobName(
+              displayName,
+              new Set(
+                (existingJobs.data ?? []).map((existing) => existing.name),
+              ),
+            );
       addJob.mutate(
         {
-          name: form.name,
+          ...(name === undefined ? {} : { name }),
+          ...(displayName === name ? {} : { displayName }),
           provider: selectedProvider,
           // #1536 L1: a bare `cron` string cannot carry a timezone, so sending
           // one silently dropped the zone the expression depends on. The
@@ -457,18 +505,20 @@ export function JobFormModal({
             ? { cron: nextSchedule.expr }
             : { schedule: nextSchedule }),
           prompt: form.prompt,
-          ...(target
-            ? { target }
-            : {
-                ...(form.monitorType === 'none'
-                  ? { agent: form.agent || undefined }
-                  : {}),
-                retryCount: form.retryCount || undefined,
-                retryDelaySecs: form.retryCount
-                  ? form.retryDelaySecs
-                  : undefined,
-                monitor,
-              }),
+          ...(runIn === 'project' && projectId
+            ? { projectId, agent: form.agent || undefined }
+            : target
+              ? { target }
+              : {
+                  ...(form.monitorType === 'none'
+                    ? { agent: form.agent || undefined }
+                    : {}),
+                  retryCount: form.retryCount || undefined,
+                  retryDelaySecs: form.retryCount
+                    ? form.retryDelaySecs
+                    : undefined,
+                  monitor,
+                }),
           ...Object.fromEntries(
             extraFields
               .map((f) => [f.key, form[f.key] || undefined])
@@ -482,7 +532,28 @@ export function JobFormModal({
 
   const pending = addJob.isPending || editJob.isPending;
   const mutationError = addJob.error ?? editJob.error;
-  const nameValid = /^[a-z0-9-]+$/.test(form.name);
+  const nameValid = isSchedulerJobDisplayName(form.name.trim());
+  // Said once the person has typed in the field, and always on Edit, where an
+  // empty name was a choice.
+  const nameError =
+    !nameValid && (isEdit || nameTouched)
+      ? form.name.trim()
+        ? 'Use letters, numbers or symbols, on one line.'
+        : 'Give the automation a name.'
+      : undefined;
+  // A create's 409 is always a taken name: an older host refuses only a
+  // duplicate slug with it (and sends no code), and this form never sends a
+  // proposal, the route's other 409. A newer host says `job_name_taken`.
+  const createError = addJob.error;
+  const nameTaken =
+    createError instanceof Error &&
+    (('code' in createError && createError.code === SCHEDULER_JOB_NAME_TAKEN) ||
+      ('status' in createError && createError.status === 409));
+  const renameLocked = isEdit && !displayNames;
+  // Only a host that answered without the flag is known to be older. While
+  // its answer is arriving, or when its handshake could not be read, the
+  // field waits without claiming why.
+  const renameUnsupported = renameLocked && displayNameSupport === false;
   const scheduleValid =
     form.scheduleKind === 'cron'
       ? form.cron.trim().length > 0
@@ -503,7 +574,7 @@ export function JobFormModal({
   return (
     <Dialog
       eyebrow="Automations"
-      title={isEdit ? `Edit: ${job.name}` : 'New automation'}
+      title={isEdit ? `Edit: ${jobLabel(job)}` : 'New automation'}
       closeLabel="Close automation editor"
       onClose={onClose}
       size="lg"
@@ -521,6 +592,7 @@ export function JobFormModal({
             disabled={
               interactionDisabled ||
               checkingSetup ||
+              !nameValid ||
               !scheduleValid ||
               !monitorValid ||
               // A new job is refused while it names an Agent that cannot run
@@ -532,8 +604,7 @@ export function JobFormModal({
               // The runnability half waits for the catalog to answer: an
               // unanswered catalog cannot refuse anything (#1536 H1-2).
               (!isEdit &&
-                (!nameValid ||
-                  !form.prompt.trim() ||
+                (!form.prompt.trim() ||
                   (agentRunnabilityKnown && !namedAgentRunnability.runnable)))
             }
           >
@@ -545,7 +616,9 @@ export function JobFormModal({
       <div className="schedule__modal-body">
         {mutationError && (
           <div role="alert" className="schedule__field-error">
-            {userFacingErrorMessage(mutationError)}
+            {nameTaken
+              ? 'Another automation already uses this name. Choose a different name.'
+              : userFacingErrorMessage(mutationError)}
           </div>
         )}
         {!isEdit && providers.length > 1 && (
@@ -563,22 +636,51 @@ export function JobFormModal({
             </select>
           </label>
         )}
-        {!isEdit && (
-          <label className="schedule__field">
-            <span className="schedule__field-label">Name</span>
-            <input
-              value={form.name}
-              onChange={set('name')}
-              placeholder="my-daily-briefing"
-            />
-            {form.name && !nameValid && (
-              <span className="schedule__field-error">
-                Lowercase letters, numbers, and hyphens only
-              </span>
-            )}
+        {/* A container, not a wrapping label: the error and hint below are
+            the field's description, not part of its name. */}
+        <div className="schedule__field">
+          <label htmlFor="schedule-name" className="schedule__field-label">
+            Name
           </label>
+          <input
+            id="schedule-name"
+            value={form.name}
+            onChange={(event) => {
+              setNameTouched(true);
+              set('name')(event);
+            }}
+            maxLength={SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS}
+            placeholder="Daily briefing"
+            readOnly={renameLocked}
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={
+              nameError
+                ? 'schedule-name-error'
+                : renameUnsupported
+                  ? 'schedule-name-locked'
+                  : undefined
+            }
+          />
+          {nameError && (
+            <span id="schedule-name-error" className="schedule__field-error">
+              {nameError}
+            </span>
+          )}
+          {renameUnsupported && (
+            <span id="schedule-name-locked" className="schedule__field-hint">
+              Renaming needs a newer version of this Station.
+            </span>
+          )}
+        </div>
+        {runIn === 'project' && (
+          <div className="schedule__field">
+            <span className="schedule__field-label">Run in</span>
+            <span className="schedule__field-hint">
+              Each run starts a Task in {project?.name ?? 'its Project'}.
+            </span>
+          </div>
         )}
-        {(targetsSupported || (isEdit && targeted)) && (
+        {runIn !== 'project' && (targetsSupported || (isEdit && targeted)) && (
           <label className="schedule__field">
             <span className="schedule__field-label">Run in</span>
             <select
@@ -633,7 +735,7 @@ export function JobFormModal({
               onClick={retryAgents}
               disabled={agentsRetrying}
             >
-              {agentsRetrying ? 'Trying…' : 'Try again'}
+              {agentsRetrying ? 'Retrying…' : 'Retry'}
             </button>
           </span>
         )}
@@ -652,7 +754,9 @@ export function JobFormModal({
             {agentRunnabilityKnown && !jobAgentRunnability.runnable && (
               <span className="schedule__field-error">
                 {needsAgentSetup
-                  ? 'Scheduled jobs need an agent using a model connection (Station engine). AI app agents cannot run scheduled jobs.'
+                  ? anyEngine
+                    ? 'Scheduled jobs need an agent that is set up and ready.'
+                    : "Scheduled jobs need an agent that runs on Station's engine."
                   : jobAgentRunnability.reason}
               </span>
             )}
@@ -691,7 +795,7 @@ export function JobFormModal({
         {!targeted && form.monitorType === 'github-pull-request' && (
           <>
             <div className="schedule__field">
-              <span className="schedule__field-label">Monitor Agent</span>
+              <span className="schedule__field-label">Monitor agent</span>
               <AgentPicker
                 value={form.monitorAgentId}
                 catalogErrorId={
@@ -789,8 +893,8 @@ export function JobFormModal({
               placeholder="project-id"
             />
             <span className="schedule__field-hint">
-              When set, an actionable revision adopts one deterministic project
-              Task instead of starting a scheduler turn.
+              A pull request that needs changes opens or continues one Task in
+              this Project.
             </span>
           </label>
         )}
@@ -941,7 +1045,7 @@ export function JobFormModal({
                     }))
                   }
                 />
-                <span>Delete the job after it runs</span>
+                <span>Remove it after it runs</span>
               </label>
             </>
           )}

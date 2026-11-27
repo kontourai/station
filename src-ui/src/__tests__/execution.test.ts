@@ -1,5 +1,6 @@
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
+  ACP_ENGINE_DURABILITY,
   STATION_ENGINE_DURABILITY,
   STEERING_ENGINE_DURABILITY,
   UNKNOWN_ENGINE_DURABILITY,
@@ -12,7 +13,6 @@ import { describe, expect, test } from 'vitest';
 import {
   buildProviderOptions,
   canAgentStartChat,
-  chatSessionIsLive,
   guaranteeConcreteModel,
   preferredChatRuntime,
   resolveAgentExecution,
@@ -831,6 +831,20 @@ describe('execution utils', () => {
     // It still stays in the final "any selectable connection" fallback when
     // nothing connected or managed exists.
     expect(preferredChatRuntime([kiro] as any)?.id).toBe('kiro');
+    // An OpenCode connection under the native-engine preview projects the
+    // engine id `opencode`; it is still an ACP connection, not "connected".
+    const openCode = {
+      ...kiro,
+      id: 'opencode',
+      name: 'OpenCode',
+      config: { engineId: 'opencode', provider: 'opencode' },
+    };
+    expect(preferredChatRuntime([openCode, managed] as any)?.id).toBe(
+      'bedrock',
+    );
+    expect(
+      preferredChatRuntime([openCode, managed] as any, 'opencode')?.id,
+    ).toBe('bedrock');
   });
 
   test('resolves provider-managed execution for project-scoped chat', () => {
@@ -1304,6 +1318,7 @@ describe('execution utils', () => {
   });
 
   test('steering eligibility follows the server declaration and refuses missing profiles', () => {
+    expect(sessionAdapterSupportsSteering(ACP_ENGINE_DURABILITY)).toBe(true);
     expect(sessionAdapterSupportsSteering()).toBe(false);
     expect(sessionAdapterSupportsSteering(STATION_ENGINE_DURABILITY)).toBe(
       true,
@@ -1323,94 +1338,5 @@ describe('execution utils', () => {
         },
       }),
     ).toBe(true);
-  });
-});
-
-/**
- * Round 3 F1. The send path withholds a session-start-only payload on a LIVE
- * session; every "unsure" answer here must be `false`, because false means
- * the posture is sent and a re-sent identical posture is a no-op while a
- * withheld one leaves a new session running something nobody chose.
- */
-describe('chatSessionIsLive', () => {
-  test('a running session is live', () => {
-    expect(
-      chatSessionIsLive({
-        orchestrationSessionStarted: true,
-        orchestrationStatus: 'running',
-      }),
-    ).toBe(true);
-  });
-
-  test('an open turn is live even before a status lands', () => {
-    expect(
-      chatSessionIsLive({
-        orchestrationSessionStarted: true,
-        orchestrationTurnOpen: true,
-      }),
-    ).toBe(true);
-  });
-
-  /**
-   * Round 4 N1/N6. A TURN ending is not a session ending: `turn.aborted`
-   * (Stop) and `runtime.error` write a status and leave the process — and
-   * `orchestrationSessionStarted` — alone, and 'idle' is the ordinary
-   * between-turns status. Classing any of them as settled re-requests the
-   * posture into a session the server merely continues.
-   */
-  test.each([
-    ['aborted', 'the user pressed Stop'],
-    ['errored', 'a runtime error ended the turn'],
-    ['idle', 'the session is between turns'],
-    ['running', 'a turn is running'],
-    ['awaiting-approval', 'an approval is pending'],
-    ['queued', 'the session is queued'],
-    ['needs_input', 'the session is waiting on input'],
-    ['review_pending', 'a review is pending'],
-    ['blocked', 'the session is blocked'],
-  ])('%s is live (%s)', (status) => {
-    expect(
-      chatSessionIsLive({
-        orchestrationSessionStarted: true,
-        orchestrationStatus: status,
-      }),
-    ).toBe(true);
-  });
-
-  test('every session-terminal status is not live', () => {
-    // The lifecycle half is derived from `isSessionLifecycleStateStopped`,
-    // so this list is the assertion, not the source.
-    for (const status of ['completed', 'failed', 'canceled', 'exited']) {
-      expect(
-        chatSessionIsLive({
-          orchestrationSessionStarted: true,
-          orchestrationStatus: status,
-        }),
-      ).toBe(false);
-    }
-  });
-
-  test('an exited session is not live even though its id remains', () => {
-    // `session.exited` clears the flag and leaves `currentSessionId`; the id
-    // is deliberately not an input here.
-    expect(
-      chatSessionIsLive({
-        orchestrationSessionStarted: false,
-        orchestrationStatus: 'exited',
-      }),
-    ).toBe(false);
-  });
-
-  test('a reopened conversation with no status is not live', () => {
-    // `commitConversationOpen` marks a resolved (continuable) open started
-    // and supplies no status. Unsure answers not-live.
-    expect(chatSessionIsLive({ orchestrationSessionStarted: true })).toBe(
-      false,
-    );
-  });
-
-  test('a chat that never started anything is not live', () => {
-    expect(chatSessionIsLive({})).toBe(false);
-    expect(chatSessionIsLive(undefined)).toBe(false);
   });
 });

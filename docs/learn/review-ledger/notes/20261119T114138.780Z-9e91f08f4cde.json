@@ -1,0 +1,9 @@
+{
+  "revision": "515e5c508ec633f555172da84febeb5a47a856b4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the stream ownership and lifecycle evidence. The controlled fixture now retains each real subscription release, then verifies registered transports stop and awaits SDK completion before replacing timers or retiring the DOM. The real transport, stream protocol, authority boundaries and browser claims remain unchanged. The cleanup fault reproduced on both jsdom versions.","inputs":["src-ui/src/__tests__/ensureOrchestrationEventStream.test.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"Reviewed the stream ownership and lifecycle evidence. The controlled fixture now retains each real subscription release, then verifies registered transports stop and awaits SDK completion before replacing timers or retiring the DOM. The real transport, stream protocol, authority boundaries and browser claims remain unchanged. The cleanup fault reproduced on both jsdom versions.","inputs":["src-ui/src/__tests__/ensureOrchestrationEventStream.test.ts"]}
+  ]
+}

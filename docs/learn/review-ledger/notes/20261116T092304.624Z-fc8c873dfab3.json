@@ -1,0 +1,13 @@
+{
+  "revision": "24437d2e3beff5fe4f1d8e595684f1a081f392e3",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked the history queryFn: the newest window now reads up to its cached rows' newest sequence on every read, so an extent widened by merges or a re-read survives TanStack keeping the original page param; added that sentence. The failure-journal batching is server-side and changes no SDK claim.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/projectRooms.ts","src-server/services/projects/project-room-agent-module.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The agents frame's contents are unchanged: newest 20 plus newest 50 reserved/started with no recorded failure, at most 70. Only how the server asks the failure journal changed (one batched read per frame); no API claim depends on that.","inputs":["docs/reference/api.md","src-server/services/projects/project-room-agent-module.ts","src-server/services/projects/project-room-store.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The module map's description of the live stream's Agent records (newest records and the newest 50 still working, never Sessions) still holds; the store now selects them with one batched failure lookup, which the map does not describe.","inputs":["docs/architecture/module-map.md","src-server/services/projects/project-room-agent-module.ts","src-server/services/projects/project-room-store.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Cites the agent module among room sources; batching its failure lookup changes no contract shape or claim here.","inputs":["docs/reference/contracts.md","src-server/services/projects/project-room-agent-module.ts"]}
+  ]
+}

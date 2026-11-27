@@ -1,0 +1,43 @@
+{
+  "revision": "f495a353efb30d60e106764a7f6b2a158e0ad1f6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Verified that the composer loads receipt publication and Session list refresh with its send, while the existing queue drain loads the shared request transport directly. Both paths keep their bound Station, message key and delivery checks.","inputs":["docs/design/chat-composer.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/foregroundMessageDispatch.ts","src-ui/src/lib/composerForegroundDispatch.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Traced the composer through its lazy send entry to the same scoped transport, immediate held receipt and Session list refresh. The browser still observes the original prepared request and admission result.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified the shared sender remains request-shaped for the foreground composer and the ordered drain. Its receipt identity check, error outcomes and Station scope are preserved.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Verified the shared sender remains request-shaped for the foreground composer and the ordered drain. Its receipt identity check, error outcomes and Station scope are preserved.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Verified the shared sender remains request-shaped for the foreground composer and the ordered drain. Its receipt identity check, error outcomes and Station scope are preserved.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Verified the shared sender remains request-shaped for the foreground composer and the ordered drain. Its receipt identity check, error outcomes and Station scope are preserved.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified the shared sender remains request-shaped for the foreground composer and the ordered drain. Its receipt identity check, error outcomes and Station scope are preserved.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]}
+  ]
+}

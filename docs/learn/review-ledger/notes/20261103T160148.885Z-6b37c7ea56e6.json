@@ -1,7 +1,0 @@
-{
-  "revision": "2086ab4e9d6325e8763219b865f6ee5be649f640",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts carries only the module-map TerminalSessions paragraph on command programs and agent terminal runs; the station-docs reference's claims about topic generation and serving are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

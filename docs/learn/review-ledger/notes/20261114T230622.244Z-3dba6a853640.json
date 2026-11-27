@@ -1,0 +1,7 @@
+{
+  "revision": "6643e2bf9c489d81291bfb992fa2fbf05a016800",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-reviewed the PR Gallery excuse paragraph against gallery-main-attribution.mjs and gallery-pr-check.yml at this commit: the call log keeps its header and first entry (checked against real Playwright 1.65 click, fill, waitFor, goto and expect messages), the Received rule stated as covering equality matchers, Expected never masked, the undetectable own last Browser errors line disclosed, and the base checkout now run without hooks (core.hooksPath=/dev/null) with HEAD and clean status as a second layer. Not run: the hosted capture.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml"]}
+  ]
+}

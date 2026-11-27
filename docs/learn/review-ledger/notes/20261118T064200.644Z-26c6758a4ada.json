@@ -1,0 +1,33 @@
+{
+  "revision": "b709d967107e49c12969234c0916f840c3a2610d",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the canonical full-regression qualification route against main-qualification.yml. Main pushes are coalesced and exclude only deploy-ledger-only changes. The separate Nightly usability gate retains its scope.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked the distinction between bounded local CI and hosted exact-source qualification against the revised testing guide and the reusable workflow. The Android viewport job belongs to hosted full regression.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed the native staging test delta against the Android and macOS producers. The attestation inputs still bind staged package and build metadata. This source review does not establish device execution or store delivery.","inputs":["docs/guides/mobile-release.md","scripts/__tests__/release-workflow.test.ts"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Checked staged Android, macOS, Windows and desktop assembly attestation subjects against nightly-native-stage.yml. The test now derives the action pin from each producer and checks shared immutable identity and subject inputs. The workflow's staging and promotion responsibilities remain accurate.","inputs":["docs/guides/native-releases.md","scripts/__tests__/release-workflow.test.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"Checked the current native stage producers and their staged attestation subjects. Native staging, Nightly's source gate and separately scheduled full qualification retain their documented roles.","inputs":["docs/guides/nightly.md","scripts/__tests__/release-workflow.test.ts"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Checked the portable release job's immutable action and release-assets subject, and confirmed attestation follows packaging and precedes draft upload. The guide's installer trust and portable OIDC claims still apply.","inputs":["docs/guides/release-rings.md","scripts/__tests__/release-workflow.test.ts"]},
+
+    {"path":"docs/guides/releasing.md","note":"Checked portable-fleet staging and admission for the SBOM and provenance steps. The generated SBOM and portable subjects are bound before upload and the admitted fleet inventory gets its own attestation. No provider publication was exercised.","inputs":["docs/guides/releasing.md","scripts/__tests__/native-release-promotion.test.ts"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Checked the release workflow test delta against Nightly native staging. Its immutable attestation pin check governs staged output and does not change the Stable store authority, producer identity or provider mutation requirements.","inputs":["docs/guides/store-entry.md","scripts/__tests__/release-workflow.test.ts"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Checked the Nightly native staging test delta against the listing guide's Nightly and store authority descriptions. The stage attestation subjects remain upstream of store submission. No listing or publication policy changes.","inputs":["docs/guides/store-listing.md","scripts/__tests__/release-workflow.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Traced UI-only main pushes through the ledger-only filter, reusable source_sha input, Android viewport checkout and test command, and the qualification-health completion chain. Focused contract tests verified source wiring. The historical UI-only Actions receipt is separate hosted job evidence.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked testing-guide references for the verification schedule, reuse, heavy slots and fixture controls. The new text reflects push qualification and does not change the scripts scope or command owners.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked the linked fixture-fidelity anchor and the independent qualification paragraph change. Server batching and test-evidence guidance remain as written.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked the linked journey profiling and mutation anchor. UI-only push qualification adds source-trigger context while leaving the documented browser and layout evidence requirements intact.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Checked the links for test lanes and fixture fidelity. Hosted Android viewport execution at the push SHA is distinct from the fixture and Playwright interaction rules already documented.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

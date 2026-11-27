@@ -1,0 +1,7 @@
+{
+  "revision": "75118037bf6de0a99606da1a97921802d58eb9c6",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Run setup button now described as Agent icon plus Model name and chosen effort (Opus · High); panel shows the warning glyph on the choice that raised it. Other passages (approval chip, effort in picker) still accurate.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

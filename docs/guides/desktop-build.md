@@ -18,13 +18,18 @@ waking); there is no OS job. A machine's
 [managed policy](managed-policy.md#update-control), read when the app starts,
 can turn these checks off or send them to an approved mirror.
 
+Stable RCs use the final product version and Stable update endpoint. Moving
+between RCs at the same `X.Y.Z` requires a manual reinstall; the updater does
+not treat another candidate at that version as newer. See
+[RC acceptance](release-rings.md#publish-a-release-candidate).
+
 Updating has three separate steps:
 
 1. **Download.** Open **Updates** in the sidebar, including its collapsed
    rail or mobile drawer, to review app and connected-server updates in one
    panel. Its **Desktop app** section offers **Download update**; the same
    controls remain in Settings → System → **Desktop app updates**. The
-   **Automatic download** setting (Never, After 24 hours, Immediately; default
+   **Automatic desktop app download** setting (Never, After 24 hours, Immediately; default
    After 24 hours) decides when it downloads without a click; the 24-hour clock
    starts when that version is first seen and survives restarts. A manual
    download always works. Downloading shows byte progress and never restarts
@@ -34,7 +39,8 @@ Updating has three separate steps:
    package in memory.
 2. **Confirm.** A downloaded update offers **Restart to update**, which only
    opens a confirmation. When the app's built-in server serves this window,
-   the confirmation lists the running agent turns the restart interrupts; an
+   the confirmation gives the number of running agent turns a restart interrupts.
+   It lists titles you can read and shows only a count for private turns. An
    installed service or another server keeps running.
 
    A downloaded update survives quitting. Shortly after the next start (off
@@ -55,8 +61,10 @@ Updating has three separate steps:
    install error; the next check offers the update again.
 3. **Install and restart.** Only **Restart now** installs the download, after
    its digest and signature check, and restarts the app. **Restart now** waits
-   until the running agent turns are listed. A failed install leaves the update
-   downloaded and the app running, with the failure shown.
+   for the built-in server’s running-turn check to finish. A failed install leaves the update
+   downloaded and the app running. If the installer runs out of disk space,
+   free space on the volume where Station is installed, then choose **Retry
+   install**. **Copy details** copies the full diagnostic.
 
 The Updates panel and Settings show check failures with the updater's own
 text; the sidebar control does not announce routine check failures. The
@@ -76,8 +84,14 @@ match. Supported services download first, then offer a confirmed restart or
 **When idle**. The existing server observer keeps following an accepted
 request if the panel is closed. Browser and mobile devices can open this
 server section, and mobile app release links appear in the same panel.
-**Update policies and details** opens Settings, where automatic-download
-policies remain. Source-installation and manual host guidance remain reachable
+The server section also shows its installed version’s changelog. App and server
+upgrades can each open a changelog once; server presentation is remembered per
+endpoint and instance, and the app prompt takes precedence when both are pending.
+The first observation of each server records its version without a popup.
+
+**Update policies and details** opens Settings. **Automatic server download**
+appears within the connected server’s card when that server supports staging
+updates from a release archive. Source-installation and manual host guidance remain reachable
 from the server section; see [update mechanisms](nightly.md#update-checks-in-settings-source-check-vs-release-check).
 
 Updating a separately running server remains a separate operation. Its source
@@ -117,15 +131,36 @@ ships compiled JavaScript plus its external runtime dependencies, native
 libraries, schemas, skills, and licenses. Desktop staging omits backend source
 maps while retaining them in the original build output for diagnostics. It also
 removes reviewed SDK source/test trees and unused browser Cedar WASM variants.
+The dependency planner places each conflicting version at the shallowest safe
+ancestor, without changing any previously planned Node dependency resolution.
+This reduces duplicate runtime trees while preserving required and peer versions,
+including npm aliases. Windows staging rejects dependency paths that would exceed
+Win32 file or directory limits beneath a 45-character installation root; shallow
+WiX/NSIS source aliases alone do not protect installed paths. The NSIS preinstall
+hook enforces the maximum installation-root length computed from all staged
+resource destinations before its runtime cleanup. Longer custom roots
+must be shortened. This does not require changing the machine's long-path policy.
 RxJS keeps its Node CommonJS exports (also used by Node ESM imports), metadata
 and license; its browser distributions and TypeScript sources are omitted.
 The OTLP transformer likewise retains its Node `build/src` implementation,
 metadata and license. Its alternate `build/esm` and `build/esnext` bundler
 distributions are omitted; normal Node imports and `require` share the retained
-implementation. Flow Agents keeps its compiled `build/`, hooks, skills, kits,
-schemas and context; its per-harness `dist/` bundles, its TypeScript `src/` and
-its own `evals/` test harness are omitted (a kit's own `evals/` is kept). The
-512 MiB runtime ceiling remains enforced.
+implementation. Semantic conventions retains its stable and incubating Node
+exports and license while omitting its `build/esm` and `build/esnext` bundler
+copies. That rule applies only to the reviewed default Node export targets;
+an added Node-specific condition or changed target keeps every distribution
+until it is reviewed. Flow Agents ships its compiled `build/`, hooks, skills, kits,
+schemas and context; since 9.14 it no longer publishes per-harness `dist/`
+bundles, a TypeScript `src/` or its own `evals/` harness, and a portability
+test fails if they return. It ships those bundles instead as one ~7 MB pack,
+`bundles/flow-agents-bundles.pack`, which staging omits. Only Flow Agents' own
+CLI expands it (`init`, `kit activate`, `workflow doctor` and the Codex home
+installer), and the packaged server runs none of them. Its esbuild edge (used
+only to rebuild those bundles) is still not followed.
+npm alias dependencies, such as Flow Agents' `@kontourai/surface-knowledge`
+(`npm:@kontourai/surface@…`), are staged under the alias name and verified
+against the real package the declaring manifest names. The 512 MiB runtime
+ceiling remains enforced.
 node-pty keeps every architecture's prebuilds for the staging operating system
 and omits prebuilds for other operating systems. Release packages use pinned
 Node, but desktop debug builds select Node from the login PATH; its architecture
@@ -268,14 +303,79 @@ claims still use the registry's current atomic ownership check. The running
 sidecar supervisor checks child exit every two seconds; restart and shutdown
 messages wake it immediately, and startup retains its 150 ms exit check.
 
-The desktop sidecar enables Node 24's compile cache before loading the server,
-under `<STATION_HOME>/cache/node-compile`. Home schema preparation precedes
-that launch. Child-process environments scrub `NODE_COMPILE_CACHE`, including
-terminal PTYs and engine children, so user Node programs do not write into this
-server cache. The server does not enable a cache after loading its bundle:
-that is too late to cache compilation of the entry point. Node's
-`NODE_DISABLE_COMPILE_CACHE=1` opt-out remains supported; cache failure must
-not prevent startup.
+Neither the desktop sidecar nor `station start` gives the server a compile
+cache; the sidecar removes any `NODE_COMPILE_CACHE` it inherits. Measured on
+the supervised server, a warm cache left it larger at rest and did not make
+startup measurably faster. Measured on the sidecar launch on one 64 GB Mac
+(three alternating rounds, medians after a 45-second settle), the cache added
+about 120 MiB to the idle server. Without the flag below, it started the
+server sooner in every round (0.5 to 1.9 s); with the flag, it was faster in one
+round of three. Memory at rest wins that trade. The server does not enable a cache after
+loading its bundle either: that is too late to cache compilation of the entry
+point.
+
+The sidecar starts Node with `--max-semi-space-size=16`, the young-generation
+cap the process supervisor gives each core it forks
+([server memory at rest](../reference/station-weight.md#server-memory-at-rest)).
+On the same measurement, the sidecar's idle process tree dropped from 663 MiB
+to 425 MiB with both changes.
+
+The server removes any inherited `NODE_COMPILE_CACHE` at boot, and
+child-process environments still scrub it. User and third-party Node
+programs, terminal PTYs and engine children never write into this cache.
+[`station-compile-cache.ts`](../../src-server/runtime/bootstrap/station-compile-cache.ts)
+gives the home's cache directory only to the built-in `station-control` and
+`station-knowledge` bundles, through the same exact-binary check
+(`withStationControlRuntimeEnv`), which no longer hands them any API
+credential. That covers the copies an engine or the tool catalogue starts
+from its MCP configuration. Measured, a warm cache starts those
+bundles faster and leaves them smaller. Each removes the setting from its own
+environment at startup and writes its cache straight away, because an engine
+may end it with a signal, after which Node writes nothing. A cold cache, the
+first start of a bundle in a home, holds its new entries in memory until that
+child exits. Every server build stamps its bundles with a build time, so a
+rebuild starts cold. `station-docs`, worker threads and the occasional helper
+children get no cache: the docs server's delivered definition carries no
+environment by design, and the rest were not measured as worth it.
+
+Node never prunes the cache. One minute after boot, the server removes any
+Node-version subdirectory that nothing has written to for 30 days, except the
+one its own process uses when an operator started it with `NODE_COMPILE_CACHE`. It then removes the whole cache if that is still over
+256 MiB. A subdirectory that is only read ages too, and costs one cold start
+once it is removed. The prune never follows a link inside the cache: it ages
+only real directories, counts only regular files, and removing a link removes
+the link, not its target. These checks run before the prune, not atomically
+with it: something that can write inside the home could swap `cache` or
+`node-compile` for a link in between. The home is private to its user, so that
+needs access the user already has over the target.
+
+`cache` and `cache/node-compile` under the home must each be a real directory
+or not exist yet, and the cache must resolve inside the home's real path. The
+home itself may be a link. If either component is a symbolic link or anything
+other than a directory, the server neither hands the cache to the built-in
+children nor prunes it, and logs that once for the home. Otherwise Node and
+the prune would write into, or delete from, the link's target, such as an
+operator's shared directory.
+
+No pre-generated cache ships with the desktop build. Node names each cache
+subdirectory after the Node version, architecture, V8 flags and user id, and
+keys each entry by the bundle's absolute path. A cache generated on the build
+machine would miss for other users, and Node's portable mode removes only the
+path dependency. Node's `NODE_DISABLE_COMPILE_CACHE=1` opt-out remains
+supported, and the server then gives the built-in children no cache either.
+Cache failure must not prevent startup.
+
+Every static import in `dist-server/command-station.js` is loaded when the
+server boots, whether or not its code runs. The Claude Agent SDK,
+`@kontourai/console-server` and `@kontourai/veritas/engine` are loaded on first
+use instead, because an idle server needs none of them and each costs memory
+once loaded. The server build fails if the bundle statically imports any of
+those packages, or any subpath of one, again
+([deny list](../../scripts/lib/server-static-imports.mjs)).
+The build also fails on a static import of the `@kontourai/flow-agents` root,
+which re-exports the whole package. Its narrow subpaths may still be imported
+statically; the ones only async callers need are loaded on first use
+([loaders](../../src-server/services/evidence/load-flow-agents.ts)).
 
 Server bundles are minified with function/class names retained. The esbuild
 `linked` source-map setting is equivalent to the previous `true`: both emit an
@@ -381,7 +481,7 @@ hashes/nonces that bundled assets require.
 | `style-src` | Existing runtime/plugin styles require inline styles; this exception does not apply to scripts. The same installed-plugin protocol sources admit Desktop plugin stylesheets. Fonts are self-hosted (#2648). |
 | `connect-src` | Tauri's `ipc:`/`http://ipc.localhost` transports plus Station user-selected `http:`, `https:`, `ws:`, and `wss:` endpoints. |
 | `font-src` | Bundled/data fonts only — UI faces are vendored under `src-ui/public/fonts/` (#2648); no remote font CDN. |
-| `img-src`, `media-src`, `frame-src` | Tauri `asset:`/`http://asset.localhost` where applicable, plus existing `data:`, `blob:`, `http:`, and `https:` content. MCP frames retain their separate sandbox and policy. |
+| `img-src`, `media-src`, `frame-src` | Tauri `asset:`/`http://asset.localhost` where applicable, plus existing `data:`, `blob:`, `http:`, and `https:` content. `frame-src` also admits the shell's `station-html-reply:` scheme for staged visual replies; Wry's `http://station-html-reply.localhost` alias on Windows and Android falls under `http:`. MCP frames retain their separate sandbox and policy. |
 | `worker-src` | Bundled and blob-backed diff workers. |
 | `manifest-src`, `form-action` | Same-origin application metadata and forms only. |
 | `object-src`, `base-uri`, `frame-ancestors` | All denied to prevent object embedding, base replacement, and framing Station. |
@@ -426,6 +526,20 @@ credential from native custody, disables redirects, caps decoded content at
 16 MiB, and revalidates authority after reading. No renderer headers or
 upstream response headers are forwarded. The installed endpoint checks its
 recorded content digest and current artifact before delivery.
+
+The [`station-html-reply` handler](../../src-desktop/src/html_reply_protocol.rs)
+registers on every platform, including the phone. A visual reply without a
+reachable frame origin renders in an opaque `sandbox="allow-scripts"` frame;
+as a `srcdoc` child that frame would inherit this shell policy, whose
+`script-src` refuses inline scripts, so script-built pages would stay blank.
+The shell's own webview instead stages the composed page document with the
+`station_html_reply_stage` command and frames it from this scheme, where the
+page's own meta policy governs. The handler serves only staged bytes (16
+slots, about 8 MiB each, oldest replaced first), never proxies the network or
+reads credentials, and uses the same label set, per-launch capability, top-frame
+guard and four-request limit as the plugin handler. A delivered page carries no
+response CSP, so a header cannot re-create the inherited refusal; refusals are
+empty and sandboxed. Browsers and older shells keep the `srcdoc` fallback.
 
 The external Vite development header retains the base policy, so Windows
 Vite-based plugin loading remains unavailable; packaged Windows assets use

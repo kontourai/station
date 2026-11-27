@@ -1,10 +1,13 @@
 import {
   isApprovalMode,
+  isEngineApprovalReviewer,
+  providerSessionBindingEnded,
   readProviderDurabilityProfile,
 } from '@kontourai/station-contracts/provider';
 import type { QueryClient } from '@tanstack/react-query';
 import {
   chatBelongsToStation,
+  outboundStationIdentity,
   type StationStateScope,
   stationPartitionKey,
 } from '../../connections/station-state';
@@ -13,16 +16,19 @@ import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { toastStore } from '../../contexts/ToastContext';
+import { observeConversationOpenTurns } from '../../lib/outboundAcceptedTurnObservations';
 import { newerConversationActivity } from '../../utils/conversation-activity';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
+  pendingNonModelOptions,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import { reconcileChildWorkSnapshot } from './childWorkHandlers';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
 import { rehydrateChatSession } from './rehydrateChatSession';
 import { isReplayThread } from './replay/replay-registry';
+import { observedEngineModeUpdates } from './sessionHandlers';
 import type { OrchestrationSnapshotPayload } from './types';
 
 type SnapshotChatState = Pick<
@@ -32,6 +38,7 @@ type SnapshotChatState = Pick<
   | 'requestedModel'
   | 'requestedModelSource'
   | 'requestedProviderOptions'
+  | 'currentModeId'
   | 'modelSource'
   | 'defaultModel'
   | 'orchestrationSessionStarted'
@@ -40,6 +47,7 @@ type SnapshotChatState = Pick<
   | 'currentSessionId'
   | 'conversationId'
   | 'pendingApprovals'
+  | 'pendingRequestKinds'
   | 'answeredApprovals'
   | 'pendingApprovalTurnIds'
   | 'approvalToasts'
@@ -63,19 +71,23 @@ type ConversationRecord = NonNullable<
  * server keep the per-row fold.
  */
 function rowTurnIsOpen(
-  session: { hasActiveTurn?: boolean },
+  session: { hasActiveTurn?: boolean; status: string },
   record: ConversationRecord | undefined,
 ): boolean {
-  return record ? record.openTurn !== undefined : turnIsOpen(session);
+  return record
+    ? record.openTurn !== undefined
+    : !providerSessionBindingEnded(session.status) && turnIsOpen(session);
 }
 
 /** The explicit verdict for the legacy fold, or undefined when none was sent. */
 function rowTurnVerdict(
-  session: { hasActiveTurn?: boolean },
+  session: { hasActiveTurn?: boolean; status: string },
   record: ConversationRecord | undefined,
 ): boolean | undefined {
   if (record) return record.openTurn !== undefined;
-  return session.hasActiveTurn;
+  return providerSessionBindingEnded(session.status)
+    ? false
+    : session.hasActiveTurn;
 }
 
 /**
@@ -133,6 +145,35 @@ function reconnectCatchUpUpdates(
       ? { openTurnShellSuperseded: true, openTurnStartedAt }
       : {}),
   };
+}
+
+/**
+ * A replayed outbox message Station accepted keeps its row until that turn's
+ * terminal event, and a browser that was reloaded, closed or cut off while
+ * the turn ran never receives it: a snapshot replays no events. The server's
+ * conversation record names the open turn exactly, so a record naming another
+ * turn, or none, is the server's own word that the accepted turn has ended.
+ * `records` hold the newest record this client knows for each conversation
+ * the snapshot named; the outbox applies them only to rows accepted before
+ * `observedAt`.
+ */
+function settleEndedDurableTurns(
+  records: ReadonlyMap<string, ConversationRecord>,
+  observedAt: number,
+  station?: StationStateScope,
+): void {
+  if (records.size === 0) return;
+  const observed = [...records.values()].map((record) => ({
+    conversationId: record.conversationId,
+    ...(record.openTurn ? { openTurnId: record.openTurn.turnId } : {}),
+  }));
+  // Published, not sent: this path loads no module of its own. The outbox
+  // takes it now if it has loaded, or when it does.
+  observeConversationOpenTurns({
+    records: observed,
+    observedAt,
+    ...(station ? { station: outboundStationIdentity(station) } : {}),
+  });
 }
 
 type OrchestrationSnapshotSyncPlan = {
@@ -207,6 +248,7 @@ type SelectedSnapshotRow = {
   record: ConversationRecord | undefined;
   openRequestIds: string[] | undefined;
   blockingOpenRequestIds: string[] | undefined;
+  openRequestKinds: Record<string, 'input' | 'approval'>;
   lastTurnEndMethod?: 'turn.completed' | 'turn.aborted' | 'runtime.error';
   /** #3157: that turn end was a provider usage-limit stop. */
   usageLimitStopped?: boolean;
@@ -320,6 +362,9 @@ function selectSnapshotRows(
               ),
             ),
           ];
+    const openRequestKinds = Object.fromEntries(
+      candidates.flatMap((row) => Object.entries(row.openRequestKinds ?? {})),
+    );
     const latest = (rows: SnapshotSession[]) =>
       rows.reduce((best, row) =>
         snapshotRowRecency(row) >= snapshotRowRecency(best) ? row : best,
@@ -350,6 +395,7 @@ function selectSnapshotRows(
         record,
         openRequestIds,
         blockingOpenRequestIds,
+        openRequestKinds,
         lastTurnEndMethod,
         usageLimitStopped,
       });
@@ -367,6 +413,7 @@ function selectSnapshotRows(
       record: undefined,
       openRequestIds,
       blockingOpenRequestIds,
+      openRequestKinds,
       lastTurnEndMethod,
       usageLimitStopped,
     });
@@ -387,6 +434,7 @@ function planSnapshot(
         row: session,
         record,
         blockingOpenRequestIds,
+        openRequestKinds,
         lastTurnEndMethod,
         usageLimitStopped,
       },
@@ -419,13 +467,14 @@ function planSnapshot(
       // not contradict a sibling's record.
       const runningChild = record
         ? record.openTurn?.threadId
-        : session.hasActiveTurn === true
+        : rowTurnVerdict(session, undefined) === true
           ? session.threadId
           : undefined;
       const currentChild = session.currentSessionId ?? runningChild;
-      const snapshotTurnOpen = record
-        ? record.openTurn !== undefined
-        : session.hasActiveTurn === true;
+      const snapshotTurnOpen = rowTurnVerdict(session, record) === true;
+      const bindingEnded =
+        providerSessionBindingEnded(session.status) &&
+        (!record?.openTurn || record.openTurn.threadId === session.threadId);
       const startedAt = record?.openTurn
         ? Date.parse(record.openTurn.startedAt)
         : undefined;
@@ -433,9 +482,30 @@ function planSnapshot(
         currentChild !== undefined &&
         chat?.currentSessionId !== currentChild &&
         (currentChild !== chatKey || chat?.currentSessionId !== undefined);
+      const modeForCurrentSession =
+        session.threadId === (currentChild ?? chat?.currentSessionId ?? chatKey)
+          ? session.currentModeId
+          : undefined;
+      const observedMode =
+        typeof modeForCurrentSession === 'string' &&
+        modeForCurrentSession.length > 0
+          ? observedEngineModeUpdates(
+              modeForCurrentSession,
+              adoptsCurrentChild ? undefined : chat,
+            )
+          : adoptsCurrentChild
+            ? { currentModeId: null }
+            : {};
+      const remainingAfterMode = Object.hasOwn(
+        observedMode,
+        'requestedProviderOptions',
+      )
+        ? observedMode.requestedProviderOptions
+        : chat?.requestedProviderOptions;
       return {
         threadId: chatKey,
         updates: {
+          ...observedMode,
           provider: session.provider,
           model:
             session.reportedModel ?? session.effectiveModel ?? session.model,
@@ -453,7 +523,10 @@ function planSnapshot(
                   chat?.requestedProviderOptions,
                   session.effectiveModelOptions,
                 )
-                  ? { requestedProviderOptions: undefined }
+                  ? {
+                      requestedProviderOptions:
+                        pendingNonModelOptions(remainingAfterMode),
+                    }
                   : {}),
                 ...(chat?.requestedModel !== null
                   ? {
@@ -475,6 +548,13 @@ function planSnapshot(
           orchestrationModel:
             session.reportedModel ?? session.effectiveModel ?? session.model,
           orchestrationSessionStarted: true,
+          ...(session.threadId ===
+            (currentChild ?? chat?.currentSessionId ?? chatKey) &&
+          isEngineApprovalReviewer(session.reportedApprovalReviewer)
+            ? { reportedApprovalReviewer: session.reportedApprovalReviewer }
+            : adoptsCurrentChild
+              ? { reportedApprovalReviewer: undefined }
+              : {}),
           // #4433: what the engine last reported applying is client memory
           // (`lastAppliedApprovalMode`), lost on a reload, a resync or a
           // reopened conversation; the chip then fell back to "Default"
@@ -491,22 +571,25 @@ function planSnapshot(
           // 'running' with no open turn (hasActiveTurn === false) must not
           // re-strand the streaming shell after a reconnect — the exact
           // symptom archive#1005 fixed on the live-event path.
-          orchestrationStatus: snapshotTurnOpen
-            ? 'running'
-            : lastTurnEndMethod === 'runtime.error' &&
-                !rowTurnIsOpen(session, record)
-              ? 'errored'
-              : lastTurnEndMethod === 'turn.aborted' &&
+          orchestrationStatus: bindingEnded
+            ? session.status
+            : snapshotTurnOpen
+              ? 'running'
+              : lastTurnEndMethod === 'runtime.error' &&
                   !rowTurnIsOpen(session, record)
-                ? 'aborted'
-                : (session.status === 'running' ||
-                      session.status === 'ready') &&
+                ? 'errored'
+                : lastTurnEndMethod === 'turn.aborted' &&
                     !rowTurnIsOpen(session, record)
-                  ? 'idle'
-                  : session.status,
+                  ? 'aborted'
+                  : (session.status === 'running' ||
+                        session.status === 'ready') &&
+                      !rowTurnIsOpen(session, record)
+                    ? 'idle'
+                    : session.status,
           ...(blockingOpenRequestIds
             ? {
                 pendingApprovals: blockingOpenRequestIds,
+                pendingRequestKinds: openRequestKinds,
                 // An answer is only meaningful while its request is still
                 // open: one the server no longer lists was resolved, and its
                 // mark would otherwise outlive it.
@@ -678,9 +761,31 @@ export function applyOrchestrationSnapshot(
   // plan's writes below merge onto it. A replayed snapshot never feeds the
   // live store.
   if (!replayId) {
+    const records = new Map<string, ConversationRecord>();
     for (const session of payload.sessions) {
       chatStore.applyConversationActivity(session.conversationActivity);
+      const record = newerConversationActivity(
+        records.get(session.conversationActivity?.conversationId ?? ''),
+        session.conversationActivity,
+      );
+      if (record) records.set(record.conversationId, record);
     }
+    // Another carrier (a list read, a live frame) may already have delivered
+    // a newer record than this snapshot's: the newest one known decides.
+    for (const chat of Object.values(activeChatsStore.getSnapshot())) {
+      const known = chat.conversationActivity;
+      if (
+        known &&
+        records.has(known.conversationId) &&
+        chatBelongsToStation(chat, station)
+      )
+        records.set(
+          known.conversationId,
+          newerConversationActivity(known, records.get(known.conversationId)) ??
+            known,
+        );
+    }
+    settleEndedDurableTurns(records, Date.now(), station);
   }
 
   for (const { threadId, updates } of plan.sessionUpdates) {

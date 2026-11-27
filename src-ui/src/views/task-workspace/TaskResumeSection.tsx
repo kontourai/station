@@ -134,7 +134,7 @@ function TaskResumeForScope({
         <ErrorState
           variant="compact"
           title="Resume details unavailable"
-          description="Check the connection to Station and try again."
+          description="Check your connection and try again."
           action={
             <Button
               onClick={() => void view.refetch()}

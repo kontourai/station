@@ -1,0 +1,159 @@
+{
+  "runtimeSource": "cfc2b1c8fc1b2fd855caf4f7228726f74f21815b",
+  "candidateSource": "ee32e85d364e31f151c4f24436a280dbb81f1935",
+  "productBlobsIdentical": [
+    {
+      "path": "packages/connect/src/react/ConnectionManagerModalContent.tsx",
+      "blob": "f111168d1c7bf3add33efff57b1974eb4c6ed2b8"
+    },
+    {
+      "path": "packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx",
+      "blob": "e827a7138ecdc0739e3cf992fbdce0b6467f0980"
+    },
+    {
+      "path": "src-ui/src/components/header/HeaderActions.tsx",
+      "blob": "3e6752c0a7b6fd64a458a24f191ab952ce339b15"
+    },
+    {
+      "path": "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "blob": "3ab3e24b34ded47391170faddb2bdf12c91193b6"
+    }
+  ],
+  "captureMethod": "Native CUA Chrome app screenshot bytes; no browser Save dialog",
+  "devicePixelRatio": 2,
+  "devicePreviewScalePercent": 50,
+  "inputProfile": "Desktop, fine pointer; touch disabled",
+  "transform": "Exact rectangular crop only; no resize, repaint, redaction or compositing",
+  "images": [
+    {
+      "image": "manager-dark-1440x900.png",
+      "sourceImage": "manager-dark-1440x900.full.png",
+      "sourceSha256": "2a67af0148e2f32951e09cc8873c42b5e7b412d7f157cbab1f3ee1d45c0dea69",
+      "sourcePixels": [
+        3600,
+        2260
+      ],
+      "cropBox": [
+        1556,
+        449,
+        2043,
+        1069
+      ],
+      "pixels": [
+        487,
+        620
+      ],
+      "sha256": "20def1df81581763534aec75adc7e7939eb3633d9e14ddb5752af13b56ebbd80",
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "dark",
+      "kind": "dialog crop"
+    },
+    {
+      "image": "manager-light-1440x900.png",
+      "sourceImage": "manager-light-1440x900.full.png",
+      "sourceSha256": "1c78592c51ab95d756d0e33a4b854992066aa7cde0fec21e7c06a6a0c698f710",
+      "sourcePixels": [
+        3600,
+        2260
+      ],
+      "cropBox": [
+        1556,
+        449,
+        2043,
+        1069
+      ],
+      "pixels": [
+        487,
+        620
+      ],
+      "sha256": "a3739e42e092452314ee2a15636be0f7f331a60987f26e56fbc9daccead69ab4",
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "kind": "dialog crop"
+    },
+    {
+      "image": "manager-dark-390x844.png",
+      "sourceImage": "manager-dark-390x844.full.png",
+      "sourceSha256": "f14a32253a692862a745e88defa2403b5fafd2d14fca170a5aa4d15744924de9",
+      "sourcePixels": [
+        3600,
+        2260
+      ],
+      "cropBox": [
+        1610,
+        412,
+        1991,
+        1049
+      ],
+      "pixels": [
+        381,
+        637
+      ],
+      "sha256": "773fdff3295300a7139ece91bfe05539ce102378a12c44fade8ff2376eb321f5",
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "dark",
+      "kind": "dialog crop"
+    },
+    {
+      "image": "manager-light-390x844.png",
+      "sourceImage": "manager-light-390x844.full.png",
+      "sourceSha256": "7cfdf136827d1170a54d4c6bb5073b77b8a85fcc278b6b9412a216ab835b91ab",
+      "sourcePixels": [
+        3600,
+        2260
+      ],
+      "cropBox": [
+        1610,
+        412,
+        1991,
+        1049
+      ],
+      "pixels": [
+        381,
+        637
+      ],
+      "sha256": "c6513e5bed340d7ccc90e6a14ecdc7e0d19cf228fce4e12fd8ffa6fb89fdc2ca",
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "kind": "dialog crop"
+    },
+    {
+      "image": "row-editor-dark-390x844.png",
+      "sourceImage": "row-editor-dark-390x844.full.png",
+      "sourceSha256": "e7f064ed9292328c6f65f2f25dbec842dbd9596658732c11c76c615e0383c3ff",
+      "sourcePixels": [
+        3600,
+        2260
+      ],
+      "cropBox": [
+        1610,
+        314,
+        1991,
+        1149
+      ],
+      "pixels": [
+        381,
+        835
+      ],
+      "sha256": "fcdb92c082a6b0a7f9c637517f37ea3086e5c8d7d7976e27158d73aac8b4df6e",
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "dark",
+      "kind": "visible editor portion"
+    }
+  ]
+}

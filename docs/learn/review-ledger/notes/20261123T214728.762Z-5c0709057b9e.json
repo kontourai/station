@@ -1,0 +1,15 @@
+{
+  "revision": "afbe9df92800b65a56bd0218e2ff441f417e041b",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Verified the two brokered argv profiles, the callback mount proof, stdin prompt ownership and environment-only key against the container source and exec fixture. These checks cover launch configuration. Provider, parent authority and native runtime execution remain separate qualification work.","inputs":["docs/guides/native-model-channel-lab.md","src-server/services/connections/__tests__/native-model-container.test.ts","src-server/services/connections/native-model-container.ts"]},
+
+    {"path":"docs/README.md","note":"Reviewed the new explicit brokered launch paragraph against the fixed-text and private relay descriptions. The launch remains unwired and the documented credential, accounting, namespace, and qualification limits are preserved.","inputs":["docs/guides/native-model-channel-lab.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the new explicit brokered launch paragraph against the fixed-text and private relay descriptions. The launch remains unwired and the documented credential, accounting, namespace, and qualification limits are preserved.","inputs":["docs/guides/native-model-channel-lab.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced brokered launch from the callback mounted at worker startup through the shared one-launch admission and cleanup owner. Only the explicit brokered method passes relay configuration and scope key environment to the native child. Fixed-text behavior and custody boundaries are preserved.","inputs":["src-server/services/connections/native-model-container.ts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Traced brokered launch from the callback mounted at worker startup through the shared one-launch admission and cleanup owner. Only the explicit brokered method passes relay configuration and scope key environment to the native child. Fixed-text behavior and custody boundaries are preserved.","inputs":["src-server/services/connections/native-model-container.ts"]}
+  ]
+}

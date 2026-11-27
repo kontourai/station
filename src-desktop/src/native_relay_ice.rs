@@ -120,7 +120,7 @@ pub(crate) fn parse_native_relay_ice_configuration(
         || !text(&receipt.surface.app_identifier, 256)
         || !matches!(
             receipt.surface.channel.as_str(),
-            "dev" | "stable" | "beta" | "nightly"
+            "dev" | "stable" | "nightly"
         )
         || receipt.ice_servers.is_empty()
         || receipt.ice_servers.len() > 4

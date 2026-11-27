@@ -136,7 +136,7 @@ export function ModelSelector({
     ? selectedModel?.name || value
     : defaultModelInfo
       ? `${defaultModelInfo.name} (default)`
-      : placeholder || 'Select a model...';
+      : placeholder || 'Select a model…';
 
   const filteredModels = useMemo(() => {
     let filtered = [...models];
@@ -183,6 +183,18 @@ export function ModelSelector({
     return [...options, ...sorted, ...custom];
   }, [models, search, value, defaultModel, defaultModelInfo]);
 
+  // The popup returns its keyboard highlight to the first row whenever it is
+  // handed a new `items` array, so the array must change only with the list.
+  const items = useMemo(
+    () =>
+      filteredModels.map((model) => ({
+        id: model.id || 'default',
+        title: model.name,
+        metadata: model,
+      })),
+    [filteredModels],
+  );
+
   return (
     <div style={{ position: 'relative' }}>
       <input
@@ -203,18 +215,14 @@ export function ModelSelector({
             setSearch('');
           }, 200);
         }}
-        placeholder={placeholder || 'Select a model...'}
+        placeholder={placeholder || 'Select a model…'}
         className="editor-input"
         style={{ width: '100%' }}
       />
       {isOpen && (
         <AutocompleteSelector
           anchorRef={inputRef}
-          items={filteredModels.map((model) => ({
-            id: model.id || 'default',
-            title: model.name,
-            metadata: model,
-          }))}
+          items={items}
           onSelect={(item) => {
             onChange(item.metadata.id);
             setIsOpen(false);

@@ -12,8 +12,8 @@ const COMMANDS: &[&str] = &[
 ];
 
 /// The iOS side is built only when enabled: the TestFlight delivery enables it
-/// for Beta and Nightly (#2513 slice D), and every other iOS build (local,
-/// simulator, Stable) stays without it. Enabling takes two halves together: STATION_IOS_LIVE_ACTIVITY=1 builds
+/// for Nightly and owner-gated Stable (#2513 slice D); local and simulator
+/// builds stay without it by default. Enabling takes two halves together: STATION_IOS_LIVE_ACTIVITY=1 builds
 /// this Swift plugin, and scripts/ensure-ios-agent-activity-extension.mjs
 /// adds the Live Activity widget extension, its embed and the app's keychain
 /// groups to the rendered gen/apple spec. The committed spec carries neither,

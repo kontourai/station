@@ -7,7 +7,7 @@ import {
 } from '../corpus-decisions.mjs';
 import { FAST_BASE_ENV } from '../run-ci-fast.mjs';
 
-const CORPUS_PACKAGE = `--package=https://codeload.github.com/kontourai/corpus/tar.gz/${CORPUS_PIN}`;
+const CORPUS_PACKAGE = `--package=github:kontourai/corpus#${CORPUS_PIN}`;
 
 describe('Corpus decisions wrapper', () => {
   it('declares the registry with the numbered-ADR freeze in corpus.json', () => {
@@ -21,7 +21,7 @@ describe('Corpus decisions wrapper', () => {
   });
 
   it('pins the Corpus commit docs-kit.yml and pages.yml use', () => {
-    expect(CORPUS_PIN).toBe('b8ecf4cd4c6482bb804cdeea617ebe2d9b78ab05');
+    expect(CORPUS_PIN).toBe('dfadba4e64883e6187fb42e32911ca9f091e0fa7');
     const docsKit = readFileSync('.github/workflows/docs-kit.yml', 'utf8');
     expect(docsKit.match(/corpus-ref:\s*([0-9a-f]{40})/)?.[1]).toBe(CORPUS_PIN);
     const pages = readFileSync('.github/workflows/pages.yml', 'utf8');

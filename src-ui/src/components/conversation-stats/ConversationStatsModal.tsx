@@ -8,10 +8,12 @@ import {
 import {
   conversationStatsMeasurementView,
   describeUnreportedMeasurements,
+  enginesReportingTokensSeparately,
   formatMeasuredCostUsd,
   formatMeasuredTokens,
   UNREPORTED_MEASUREMENT_TEXT,
 } from '@kontourai/station-shared/usage-measurement';
+import type { ChatEngineMcpServer } from '../../contexts/active-chats-state';
 import { Button } from '../Button';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import {
@@ -20,13 +22,19 @@ import {
 } from '../ResponsiveDialogSurface';
 import { describeReadFailure, ErrorState, SkeletonBlock } from '../state';
 import { ContextCompactionControl } from './ContextCompactionControl';
+import {
+  type EngineMcpReconnect,
+  EngineMcpStatusPanel,
+} from './EngineMcpStatusPanel';
 import { ThreadUsageBreakdown } from './ThreadUsageBreakdown';
 import type { ConversationStatsSnapshot } from './types';
 import {
   formatAverageTokens,
+  formatReportedCost,
   getContextBreakdownEntries,
   getContextWindowColor,
   getModelStatsEntries,
+  perTurnCostUsd,
 } from './utils';
 
 interface ConversationStatsModalProps {
@@ -47,6 +55,19 @@ interface ConversationStatsModalProps {
   usageTree?: ThreadUsageTree;
   usageTreeLoading?: boolean;
   usageTreeError?: unknown;
+  /** The engine's MCP servers as it last reported them (`engine-mcp.status`). */
+  engineMcpServers?: readonly ChatEngineMcpServer[];
+  /**
+   * The session's engine connection name ("Kiro (KAS)"), named in place of
+   * the generic label for its provider ("Custom engine" for `acp`).
+   */
+  engineName?: string;
+  /** Restart one of the engine's MCP servers; absent hides the action. */
+  onReconnectMcpServer?: EngineMcpReconnect;
+  /** The server a reconnect is in flight for. */
+  mcpReconnectPendingServer?: string;
+  /** What the last reconnect came to, in words. */
+  mcpReconnectNotice?: string;
 }
 
 function SectionCard({
@@ -91,6 +112,73 @@ function StatRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+type TokenFigures = Pick<
+  ConversationStatsSnapshot,
+  | 'inputTokens'
+  | 'outputTokens'
+  | 'totalTokens'
+  | 'cacheReadTokens'
+  | 'cacheWriteTokens'
+>;
+
+/**
+ * One reporter's token rows. Cache honesty (archive#4196): a summed or
+ * "(uncached)" figure appears only when the provider's declared inclusivity
+ * ('disjoint') backs it; otherwise the provider's own figures render
+ * unsummed, with cache as separate rows.
+ */
+function TokenRows({
+  provider,
+  figures,
+}: {
+  provider: string | undefined;
+  figures: TokenFigures;
+}) {
+  const promptSideTotal = cacheInclusivePromptTokens(provider, figures);
+  const cacheInclusiveTotal = cacheInclusiveTotalTokens(provider, figures);
+  return (
+    <>
+      <StatRow
+        label={
+          providerPromptCacheInclusivity(provider) === 'disjoint'
+            ? 'In (uncached)'
+            : 'In'
+        }
+        value={formatMeasuredTokens(figures.inputTokens)}
+      />
+      {/* Cache rows render only when the engine reported the figure —
+          an absent field gets no row rather than an invented zero
+          (station#3201). */}
+      {figures.cacheReadTokens !== undefined && (
+        <StatRow
+          label="Cache read"
+          value={formatMeasuredTokens(figures.cacheReadTokens)}
+        />
+      )}
+      {figures.cacheWriteTokens !== undefined && (
+        <StatRow
+          label="Cache write"
+          value={formatMeasuredTokens(figures.cacheWriteTokens)}
+        />
+      )}
+      {promptSideTotal !== undefined && (
+        <StatRow
+          label="Prompt total"
+          value={promptSideTotal.toLocaleString()}
+        />
+      )}
+      <StatRow label="Out" value={formatMeasuredTokens(figures.outputTokens)} />
+      {/* When the declared inclusivity backs it, the total includes
+          cache; otherwise this is the provider's own figure,
+          unsummed. */}
+      <div>
+        Total:{' '}
+        {formatMeasuredTokens(cacheInclusiveTotal ?? figures.totalTokens)}
+      </div>
+    </>
+  );
+}
+
 export function ConversationStatsModal({
   context,
   stats,
@@ -102,6 +190,11 @@ export function ConversationStatsModal({
   usageTree,
   usageTreeLoading,
   usageTreeError,
+  engineMcpServers,
+  engineName,
+  onReconnectMcpServer,
+  mcpReconnectPendingServer,
+  mcpReconnectNotice,
 }: ConversationStatsModalProps) {
   const target = useOptionalConversationConnection();
   if (!isVisible) return null;
@@ -109,32 +202,26 @@ export function ConversationStatsModal({
   const unreportedNote = stats
     ? describeUnreportedMeasurements(
         conversationStatsMeasurementView(stats),
-        engineDisplayLabel,
+        (provider) => engineName?.trim() || engineDisplayLabel(provider),
       )
     : null;
 
   /**
    * Cache honesty (archive#4196). The provider is only meaningful on an
    * engine-events view — Station's own memory accounting has no cache
-   * concept and keeps its plain labels. The two derivations below return a
-   * number ONLY when the provider's declared inclusivity ('disjoint') backs
-   * summing input + cacheRead + cacheWrite; for an 'unverified'/'subset'/
-   * undeclared provider they return `undefined` and the card renders the
-   * provider's own figures unsummed, with cache as separate rows. The
-   * "(uncached)" qualifier on the In rows is likewise shown only when the
-   * declaration backs it — a label must never claim more than the declared
-   * inclusivity does.
+   * concept and keeps its plain labels. The "(uncached)" qualifier on the
+   * In rows is shown only when the declaration backs it — a label must
+   * never claim more than the declared inclusivity does.
    */
   const usageProvider =
     stats?.measurement?.source === 'engine-events'
       ? stats.measurement.provider
       : undefined;
   const cacheInclusivity = providerPromptCacheInclusivity(usageProvider);
-  const promptSideTotal = stats
-    ? cacheInclusivePromptTokens(usageProvider, stats)
-    : undefined;
-  const cacheInclusiveTotal = stats
-    ? cacheInclusiveTotalTokens(usageProvider, stats)
+  // #5389: several engines reported tokens, each on its own scale, so the
+  // chat-wide token fields are absent and each engine gets its own rows.
+  const perEngineTokens = stats
+    ? enginesReportingTokensSeparately(stats)
     : undefined;
 
   /**
@@ -144,13 +231,14 @@ export function ConversationStatsModal({
    * context occupancy only, so three cards sat fully dashed above a footnote
    * that alone carried the information). A section collapses only when every
    * figure it shows is unreported; a mixed section keeps its dashes so a
-   * measured field stays distinguishable from an unmeasured one. A
-   * `station-memory` view records numbers (zeros included), so it never
-   * collapses.
+   * measured field stays distinguishable from an unmeasured one. Token
+   * counts collapse on a `station-memory` view too: there, as on an
+   * engine-events view, an absent count was never reported (#5390). Its cost
+   * card stays, because that cost is Station's own price.
    */
   const engineEventsView = stats?.measurement?.source === 'engine-events';
   const tokenUsageReported = stats
-    ? !engineEventsView ||
+    ? perEngineTokens !== undefined ||
       [
         stats.inputTokens,
         stats.outputTokens,
@@ -234,6 +322,14 @@ export function ConversationStatsModal({
         />
       ) : stats ? (
         <div>
+          {engineMcpServers && engineMcpServers.length > 0 && (
+            <EngineMcpStatusPanel
+              servers={engineMcpServers}
+              onReconnect={onReconnectMcpServer}
+              pendingServer={mcpReconnectPendingServer}
+              notice={mcpReconnectNotice}
+            />
+          )}
           {stats.contextWindowPercentage !== undefined && (
             <div
               style={{
@@ -259,8 +355,9 @@ export function ConversationStatsModal({
                   marginBottom: '8px',
                 }}
               >
-                {stats.contextTokens?.toLocaleString() || 'N/A'} tokens (all
-                messages + system instructions + tools)
+                {stats.contextTokens !== undefined
+                  ? `${stats.contextTokens.toLocaleString()} tokens (all messages + system instructions + tools)`
+                  : 'As the engine reported it'}
               </div>
               <div
                 style={{
@@ -342,48 +439,31 @@ export function ConversationStatsModal({
               {tokenUsageReported && (
                 <SectionCard
                   title="Total LLM Consumption"
-                  subtitle="Tokens sent/received across all API calls"
+                  subtitle={
+                    perEngineTokens
+                      ? 'Each engine counts tokens its own way, so there is no total across engines'
+                      : 'Tokens sent/received across all API calls'
+                  }
                 >
-                  <StatRow
-                    label={
-                      cacheInclusivity === 'disjoint' ? 'In (uncached)' : 'In'
-                    }
-                    value={formatMeasuredTokens(stats.inputTokens)}
-                  />
-                  {/* Cache rows render only when the engine reported the figure —
-                      an absent field gets no row rather than an invented zero
-                      (station#3201). */}
-                  {stats.cacheReadTokens !== undefined && (
-                    <StatRow
-                      label="Cache read"
-                      value={formatMeasuredTokens(stats.cacheReadTokens)}
-                    />
+                  {perEngineTokens ? (
+                    perEngineTokens.map((engine) => (
+                      <div
+                        key={engine.provider}
+                        style={{ marginBottom: '8px' }}
+                      >
+                        <div style={{ fontWeight: 600, marginBottom: '4px' }}>
+                          {engineDisplayLabel(engine.provider) ??
+                            engine.provider}
+                        </div>
+                        <TokenRows
+                          provider={engine.provider}
+                          figures={engine}
+                        />
+                      </div>
+                    ))
+                  ) : (
+                    <TokenRows provider={usageProvider} figures={stats} />
                   )}
-                  {stats.cacheWriteTokens !== undefined && (
-                    <StatRow
-                      label="Cache write"
-                      value={formatMeasuredTokens(stats.cacheWriteTokens)}
-                    />
-                  )}
-                  {promptSideTotal !== undefined && (
-                    <StatRow
-                      label="Prompt total"
-                      value={promptSideTotal.toLocaleString()}
-                    />
-                  )}
-                  <StatRow
-                    label="Out"
-                    value={formatMeasuredTokens(stats.outputTokens)}
-                  />
-                  {/* When the declared inclusivity backs it, the total includes
-                      cache; otherwise this is the provider's own figure,
-                      unsummed. */}
-                  <div>
-                    Total:{' '}
-                    {formatMeasuredTokens(
-                      cacheInclusiveTotal ?? stats.totalTokens,
-                    )}
-                  </div>
                 </SectionCard>
               )}
               {averagesReported && (
@@ -441,24 +521,39 @@ export function ConversationStatsModal({
                 <div style={{ marginBottom: '4px' }}>
                   Total: {formatMeasuredCostUsd(stats.estimatedCost)}
                 </div>
-                {stats.turns > 0 && (
-                  <div>
-                    Per Turn:{' '}
-                    {formatMeasuredCostUsd(
-                      stats.estimatedCost === undefined
-                        ? undefined
-                        : stats.estimatedCost / stats.turns,
-                    )}
+                <div>
+                  Per Turn: {formatMeasuredCostUsd(perTurnCostUsd(stats))}
+                </div>
+              </SectionCard>
+            )}
+            {stats.reportedCosts && stats.reportedCosts.length > 0 && (
+              <SectionCard
+                title="Engine-reported usage"
+                subtitle="In the engine's own units"
+              >
+                {stats.reportedCosts.map((cost) => (
+                  <div key={cost.unit} style={{ marginBottom: '4px' }}>
+                    {formatReportedCost(cost)}
                   </div>
-                )}
+                ))}
               </SectionCard>
             )}
           </div>
-          <ThreadUsageBreakdown
-            tree={usageTree}
-            isLoading={usageTreeLoading}
-            error={usageTreeError}
-          />
+          {/* The usage tree reads engine events; Station's own turns keep
+              their usage in its memory store, so for a Station chat with no
+              children the tree's root would say "not reported" under the
+              figures above (#5390). Until the tree has loaded, a Station chat
+              is not known to have children, so nothing is shown meanwhile. */}
+          {!(
+            stats.measurement?.source === 'station-memory' &&
+            (usageTreeLoading || usageTree?.root.children.length === 0)
+          ) && (
+            <ThreadUsageBreakdown
+              tree={usageTree}
+              isLoading={usageTreeLoading}
+              error={usageTreeError}
+            />
+          )}
           {unreportedNote && (
             <div
               style={{

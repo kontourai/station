@@ -1,0 +1,7 @@
+{
+  "revision": "77577479c93cce26e485ffb7611365e753f39370",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the Home/continuity row and Android runner prose against the mobile-layout change: the drawer keeper now waits for the exact-named Home row instead of a retired destination-row class and checks backward/forward focus wrap at the drawer boundary; the spec, bucket, Android project selection and the row's listed concerns are unchanged, so the page stays accurate.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/android/mobile-layout.spec.ts"]}
+  ]
+}

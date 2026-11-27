@@ -1,0 +1,7 @@
+{
+  "revision": "d9e76efb71114f685d0732686262688a87e3d338",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Only links docs/reference/contracts.md in its integration routing table; the Muse sandbox paragraph edit changes no routing or evidence claim here; no edit needed.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}

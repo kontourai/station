@@ -1,7 +1,0 @@
-{
-  "revision": "86fcdc55ba35a9730f1bba26be190cea615f9a6b",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"Checked pick and network request shapes, preview and view authorization, paging and redaction against Browser routes and service tests; no deployment or platform claim.","inputs":["docs/reference/api.md","src-server/runtime/routes/runtime-routes.ts","src-server/tools/station-control-browser-tools.ts"]}
-  ]
-}
