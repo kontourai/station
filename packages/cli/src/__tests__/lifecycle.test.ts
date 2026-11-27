@@ -700,6 +700,13 @@ function expectServiceGuidance(
   const command = message?.match(
     new RegExp(`"(station service ${action} [^\\r\\n]+)"`, 'u'),
   )?.[1];
+  expectStationArguments(command, ['service', action, ...expectedArguments]);
+}
+
+function expectStationArguments(
+  command: string | undefined,
+  expectedArguments: string[],
+): void {
   expect(command).toBeDefined();
   const shell =
     process.platform === 'win32'
@@ -719,11 +726,7 @@ function expectServiceGuidance(
   );
   expect(result.error).toBeUndefined();
   expect(result.status).toBe(0);
-  expect(result.stdout.split('\0').slice(0, -1)).toEqual([
-    'service',
-    action,
-    ...expectedArguments,
-  ]);
+  expect(result.stdout.split('\0').slice(0, -1)).toEqual(expectedArguments);
 }
 
 function staleSchedulingSpawnSync(unitPath: string): Mock {
@@ -10167,7 +10170,8 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
 
   it("starts and stops from a read-only archive, keeping state in the home's Station root", async () => {
     ensurePrebuiltArchive();
-    ensureDir(TEST_ALT_HOME);
+    const archiveHome = join(TEST_ALT_HOME, 'archive home');
+    ensureDir(archiveHome);
     const { killProcessTree, killSpy } = killableProcesses();
     const spawn = readyStartMocks([41311, 41312]);
     const { lifecycle } = await loadLifecycleModule({
@@ -10178,14 +10182,13 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const before = treeListing(TEST_CWD);
     const restoreWritable = makeReadOnly(TEST_CWD);
-    // TEST_ALT_HOME is a raw directory, so it is its own Station root.
-    const stateDir = join(TEST_ALT_HOME, 'state', 'stable', 'instances');
+    const stateDir = join(archiveHome, 'state', 'stable', 'instances');
     const statePath = join(stateDir, 'archive-a.json');
 
     try {
       await lifecycle.start({
         instanceName: 'archive-a',
-        baseDir: TEST_ALT_HOME,
+        baseDir: archiveHome,
         serverPort: 3262,
         uiPort: 5294,
       });
@@ -10200,12 +10203,18 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       }
       // The printed stop command names the home: a bare `station stop` would
       // search the default home's root, which holds no record of this one.
-      expect(log.mock.calls.map(([line]) => String(line))).toContain(
-        `\n  Stop with: station stop --home=${TEST_ALT_HOME} --instance=archive-a`,
-      );
+      const stopGuidance = log.mock.calls
+        .map(([line]) => String(line))
+        .join('\n')
+        .match(/^\s+Stop with: (station stop [^\r\n]+)$/mu)?.[1];
+      expectStationArguments(stopGuidance, [
+        'stop',
+        `--home=${archiveHome}`,
+        '--instance=archive-a',
+      ]);
       expect(lifecycle.isRunning({ instanceName: 'archive-a' })).toBe(false);
 
-      lifecycle.stop({ instanceName: 'archive-a', stateHome: TEST_ALT_HOME });
+      lifecycle.stop({ instanceName: 'archive-a', stateHome: archiveHome });
       expect(killProcessTree).toHaveBeenCalled();
       expect(existsSync(statePath)).toBe(false);
       expect(treeListing(TEST_CWD)).toEqual(before);
@@ -10263,11 +10272,12 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
   it('a second version directory of the channel sees and stops what the first one started', async () => {
     ensurePrebuiltArchive();
     ensureSecondVersion();
-    ensureDir(TEST_ALT_HOME);
+    const archiveHome = join(TEST_ALT_HOME, 'archive home');
+    ensureDir(archiveHome);
     const { killProcessTree, killSpy } = killableProcesses();
     // No --instance: the implicit id for this home and these ports.
-    const target = { baseDir: TEST_ALT_HOME, serverPort: 3272, uiPort: 5304 };
-    const stateDir = archiveStateDir(TEST_ALT_HOME);
+    const target = { baseDir: archiveHome, serverPort: 3272, uiPort: 5304 };
+    const stateDir = archiveStateDir(archiveHome);
 
     try {
       const firstSpawn = readyStartMocks([41321, 41322]);
@@ -10293,18 +10303,21 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       // finds it running, rather than launching a second server.
       await second.lifecycle.start(target);
       expect(secondSpawn).not.toHaveBeenCalled();
-      expect(
-        log.mock.calls.some(([line]) =>
-          String(line).includes(
-            `Already running\n  UI:   http://localhost:5304\n  Stop: station stop --home=${TEST_ALT_HOME} --instance=${instanceId}`,
-          ),
-        ),
-      ).toBe(true);
+      const runningGuidance = log.mock.calls
+        .map(([line]) => String(line))
+        .join('\n');
+      expect(runningGuidance).toContain(
+        'Already running\n  UI:   http://localhost:5304\n',
+      );
+      expectStationArguments(
+        runningGuidance.match(/^  Stop: (station stop [^\r\n]+)$/mu)?.[1],
+        ['stop', `--home=${archiveHome}`, `--instance=${instanceId}`],
+      );
       log.mockRestore();
 
       second.lifecycle.stop({
         instanceName: instanceId,
-        stateHome: TEST_ALT_HOME,
+        stateHome: archiveHome,
       });
       expect(killProcessTree).toHaveBeenCalled();
       expect(readdirSync(stateDir)).toEqual([]);
