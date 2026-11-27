@@ -5304,6 +5304,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   onTitleUpdate={handleTitleUpdate}
                                   onDeleteSession={removeSession}
                                   onFocusSession={focusSessionInPane}
+                                  onOpenImportedSession={
+                                    openImportedSessionInPane
+                                  }
                                   onOpenConversation={
                                     openUserSelectedConversationInScopedPane
                                   }

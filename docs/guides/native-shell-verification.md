@@ -806,6 +806,12 @@ contents are preserved. It refuses elevated execution so administrator
 privileges cannot hide the regression. This is helper evidence; native GUI
 startup and in-app installation/relaunch remain separate checks.
 
+On Windows the ACL and profile-lock helpers run without allocating a console.
+During packaged-shell verification, capture child process names and parent
+PIDs along with visible-window events. Exercise a fresh profile and a second
+launch with a profile lock. Capture process identities without command-line
+arguments, which can contain credentials.
+
 The desktop host writes its own log through `tauri-plugin-log`. The configured
 application identifier selects the shell log directory, so each release channel
 has a distinct path:

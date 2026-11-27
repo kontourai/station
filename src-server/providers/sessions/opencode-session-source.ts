@@ -20,6 +20,7 @@ import {
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
+  AttachedSessionDiscoveryPage,
   AttachedSessionDiscoveryResult,
   AttachedSessionReadResult,
   AttachedSessionSource,
@@ -402,7 +403,9 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     return boundedId(session.resumeCursor.acpSessionId);
   }
 
-  async discover(): Promise<AttachedSessionDiscoveryResult> {
+  async discover(
+    page?: AttachedSessionDiscoveryPage,
+  ): Promise<AttachedSessionDiscoveryResult> {
     const sourceHome = deriveConfigHomeAffinity(
       SOURCE_HOME_NAMESPACE,
       this.dataDir,
@@ -411,6 +414,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     const listed = this.listDatabases(sourceHome.canonicalRoot);
     const key = JSON.stringify([
       sourceHome.affinity.ref,
+      page,
       listed.outcome,
       listed.databases.map((database) => [
         database.fileName,
@@ -420,14 +424,14 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     ]);
     if (this.lastDiscovery?.key === key) {
       const cached = this.lastDiscovery.result;
-      return { outcome: cached.outcome, sessions: [...cached.sessions] };
+      return { ...cached, sessions: [...cached.sessions] };
     }
     this.lastDiscovery = undefined;
     this.handles.clear();
-    const result = await this.discoverDatabases(sourceHome, listed);
+    const result = await this.discoverDatabases(sourceHome, listed, page);
     this.lastDiscovery = {
       key,
-      result: { outcome: result.outcome, sessions: [...result.sessions] },
+      result: { ...result, sessions: [...result.sessions] },
     };
     return result;
   }
@@ -438,6 +442,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       outcome: AttachedSessionSourceOutcome;
       databases: DatabaseRegistration[];
     },
+    page?: AttachedSessionDiscoveryPage,
   ): Promise<AttachedSessionDiscoveryResult> {
     if (listed.databases.length === 0) {
       return {
@@ -447,6 +452,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     }
 
     let outcome = listed.outcome;
+    const end = page ? page.offset + page.limit : this.maxCandidates;
     const found: Array<{
       updatedAt: number;
       registration: SourceRegistration;
@@ -519,14 +525,14 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
                        AND session_message.type = 'user')
                  ORDER BY time_updated DESC, id ASC LIMIT ?`,
           )
-          .all(this.maxCandidates + 1);
+          .all(end + 1);
         return rows;
       });
       if (!result.ok) {
         outcome = mergeOutcome(outcome, result.outcome);
         continue;
       }
-      if (result.value.length > this.maxCandidates) {
+      if (!page && result.value.length > this.maxCandidates) {
         outcome = mergeOutcome(outcome, 'candidate_limit');
       }
       const held = besideV2
@@ -566,16 +572,22 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
           right.registration.descriptor.sessionId,
         ),
     );
-    if (found.length > this.maxCandidates) {
+    if (!page && found.length > this.maxCandidates) {
       found.length = this.maxCandidates;
       outcome = mergeOutcome(outcome, 'candidate_limit');
     }
     const sessions: AttachedSessionDescriptor[] = [];
-    for (const { registration } of found) {
+    for (const { registration, updatedAt } of page
+      ? found.slice(page.offset, end)
+      : found) {
       this.handles.set(registration.descriptor.sourceHandle, registration);
-      sessions.push(registration.descriptor);
+      sessions.push({ ...registration.descriptor, modifiedAtMs: updatedAt });
     }
-    return { outcome, sessions };
+    return {
+      outcome,
+      sessions,
+      ...(page && found.length > end ? { nextOffset: end } : {}),
+    };
   }
 
   async read(
@@ -675,7 +687,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
         if (oldest !== undefined) this.drainedReads.delete(oldest);
       }
     }
-    return read;
+    return reachedEnd ? read : { ...read, hasMore: true };
   }
 
   private async readMessages(

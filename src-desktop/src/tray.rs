@@ -1829,7 +1829,9 @@ fn run_service_action(app: &AppHandle, action: ServiceAction, service: ResolvedL
             let _ = update_once(&app);
             return;
         }
-        let result = Command::new(command.program)
+        let mut child = Command::new(command.program);
+        crate::apply_no_window(&mut child);
+        let result = child
             .args(command.args)
             .env("PATH", command.path)
             .output();

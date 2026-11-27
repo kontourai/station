@@ -4786,6 +4786,14 @@ export class StationRuntime {
       // revision-fenced agent-construction phase inside initializeRuntime.
       initialized = await initializeRuntime(
         createRuntimeInitializationDeps({
+          externalSessionHistoryPreview: isHostedTenantExecutionRequired()
+            ? undefined
+            : this.featurePreviews.bind({
+                id: 'external-session-history',
+                label: 'Third-party history',
+                description:
+                  'Browse older conversations in History and import them individually.',
+              }),
           attachedSessionSources: [
             this.claudeTranscriptSource,
             this.codexRolloutSource,

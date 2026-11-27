@@ -167,6 +167,97 @@ describe('AttachedSessionFollowService', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test('slows quiet discovery and stops scheduling on shutdown', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const resolveProjectRoots = vi.fn(async () => []);
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi.fn(async () => ({ outcome: 'ok', sessions: [] })),
+      read: vi.fn(),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [],
+      resolveProjectRoots,
+    });
+    try {
+      service.start(5_000);
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(source.discover).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(source.discover).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(3_999);
+      expect(source.discover).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(source.discover).toHaveBeenCalledTimes(2);
+      expect(resolveProjectRoots).not.toHaveBeenCalled();
+      await service.stop();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(source.discover).toHaveBeenCalledTimes(2);
+    } finally {
+      await service.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  test('stops scanning older external conversations beyond metadata until an explicit browse', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const read = vi.fn();
+    const locateProjects = vi.fn(async () => []);
+    const sources: AttachedSessionSource[] = [
+      'claude',
+      'codex',
+      'opencode',
+      'grok',
+    ].map((provider) => ({
+      provider,
+      kind: `${provider}-disk`,
+      discover: async () => ({
+        outcome: 'ok',
+        sessions: [
+          {
+            ...session,
+            provider,
+            threadId: `external:${provider}:historical`,
+            modifiedAtMs: Date.now() - 3_600_000,
+          },
+        ],
+      }),
+      read,
+    }));
+    const service = new AttachedSessionFollowService({
+      sources,
+      eventStore: store,
+      eventBus,
+      listProjects: () => [],
+      resolveProjectRoots: locateProjects,
+    });
+    try {
+      service.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(locateProjects).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+      expect(store.readSessions()).toHaveLength(0);
+      const archive = await service.listArchive(
+        { offset: 0, search: '' },
+        () => {},
+      );
+      expect(archive.sessions.map((entry) => entry.provider).sort()).toEqual([
+        'claude',
+        'codex',
+        'grok',
+        'opencode',
+      ]);
+      expect(store.readSessions()).toHaveLength(0);
+    } finally {
+      await service.stop();
+      vi.useRealTimers();
+    }
+  });
+
   function auditWrites() {
     const probe = new DatabaseSync(join(dir, 'orchestration.sqlite'));
     probe.exec(`

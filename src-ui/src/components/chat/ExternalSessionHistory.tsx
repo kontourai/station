@@ -1,0 +1,343 @@
+import type { ExternalSessionHistoryEntry } from '@kontourai/station-contracts/orchestration';
+import {
+  cancelExternalSessionHistoryImport,
+  useExternalSessionHistoryQuery,
+  useExternalSessionTranscriptQuery,
+  useImportExternalSessionHistory,
+} from '@kontourai/station-sdk/external-session-history-query';
+import { useEffect, useRef, useState } from 'react';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { Button } from '../Button';
+import { Dialog } from '../Dialog';
+import { Empty, ErrorState, SkeletonList } from '../state';
+
+export function ExternalSessionHistory({
+  onClose,
+  onOpenSaved,
+}: {
+  onClose: () => void;
+  onOpenSaved: (threadId: string) => void;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const [selected, select] = useState<ExternalSessionHistoryEntry>();
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [provider, setProvider] = useState('');
+  return (
+    <Dialog
+      title="Third-party history"
+      closeLabel="Close third-party history"
+      onClose={onClose}
+    >
+      {!scope ? (
+        <Empty label="Connect to Station to browse history" />
+      ) : selected ? (
+        <ArchiveTranscript
+          key={selected.id}
+          entry={selected}
+          onBack={() => select(undefined)}
+          onOpen={onOpenSaved}
+        />
+      ) : (
+        <div className="content-stack">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              setOffset(0);
+              setSearch(searchInput.trim());
+            }}
+          >
+            <label htmlFor="external-history-provider">Engine</label>
+            <select
+              id="external-history-provider"
+              value={provider}
+              onChange={(event) => {
+                setProvider(event.target.value);
+                setOffset(0);
+                setSearch('');
+                setSearchInput('');
+              }}
+            >
+              <option value="">All engines</option>
+              <option value="claude">Claude Code</option>
+              <option value="codex">Codex</option>
+              <option value="grok">Grok</option>
+              <option value="opencode">OpenCode</option>
+              <option value="acp">ACP</option>
+            </select>
+            <label htmlFor="external-history-search">
+              {provider
+                ? 'Filter this page by folder'
+                : 'Search by engine or folder'}
+            </label>
+            <input
+              id="external-history-search"
+              value={searchInput}
+              maxLength={120}
+              onChange={(event) => setSearchInput(event.target.value)}
+            />
+            <Button type="submit">Search</Button>
+          </form>
+          <ArchiveList
+            offset={offset}
+            provider={provider || undefined}
+            search={search}
+            move={setOffset}
+            select={select}
+          />
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
+function ArchiveList({
+  offset,
+  search,
+  provider,
+  move,
+  select,
+}: {
+  offset: number;
+  search: string;
+  provider?: string;
+  move: (offset: number) => void;
+  select: (entry: ExternalSessionHistoryEntry) => void;
+}) {
+  const query = useExternalSessionHistoryQuery(
+    useHostRequestAuthorityScope(),
+    offset,
+    search,
+    provider,
+  );
+  if (query.isLoading)
+    return <SkeletonList label="Finding third-party conversations" />;
+  if (query.isError)
+    return (
+      <ErrorState
+        title="Couldn’t load third-party history"
+        description={query.error.message}
+        action={<Button onClick={() => void query.refetch()}>Retry</Button>}
+      />
+    );
+  const data = query.data;
+  if (!data) return null;
+  return (
+    <>
+      {data.partial && (
+        <p>
+          {provider
+            ? 'Some conversations are outside this engine’s current scan limits.'
+            : 'Choose an engine to browse older conversations.'}
+        </p>
+      )}
+      {data.sessions.length === 0 ? (
+        <Empty
+          label={
+            data.nextOffset === null
+              ? 'No conversations found'
+              : 'No matches on this page'
+          }
+        />
+      ) : (
+        <ul className="content-stack">
+          {data.sessions.map((entry) => (
+            <li key={entry.id}>
+              <Button onClick={() => select(entry)}>
+                {entry.provider} · {new Date(entry.updatedAt).toLocaleString()}
+              </Button>
+              <div>{entry.cwd || 'Folder unavailable'}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {offset > 0 && <Button onClick={() => move(0)}>First page</Button>}
+      {data.nextOffset !== null && (
+        <Button onClick={() => move(data.nextOffset ?? 0)}>Next page</Button>
+      )}
+    </>
+  );
+}
+
+function ArchiveTranscript({
+  entry,
+  onBack,
+  onOpen,
+}: {
+  entry: ExternalSessionHistoryEntry;
+  onBack: () => void;
+  onOpen: (threadId: string) => void;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [fromStart, setFromStart] = useState(false);
+  const [canceled, setCanceled] = useState(false);
+  const [cancelError, setCancelError] = useState<string>();
+  const [canceling, setCanceling] = useState(false);
+  const activeImport = useRef<
+    { abort: AbortController; cancel: () => Promise<void> } | undefined
+  >(undefined);
+
+  const query = useExternalSessionTranscriptQuery(
+    entry.hasTranscript ? scope : undefined,
+    entry.id,
+    cursor,
+    fromStart,
+  );
+  const imported = useImportExternalSessionHistory(scope);
+  useEffect(
+    () => () => {
+      const operation = activeImport.current;
+      if (operation) {
+        void operation.cancel().catch(() => undefined);
+        operation.abort.abort();
+      }
+    },
+    [],
+  );
+  const openSaved = () => {
+    if (!scope?.isCurrent() || !imported.data) return;
+    onOpen(imported.data.threadId);
+  };
+  const startImport = () => {
+    if (activeImport.current || !scope?.isCurrent()) return;
+    const abort = new AbortController();
+    const operationId = Array.from(
+      crypto.getRandomValues(new Uint8Array(16)),
+      (byte) => byte.toString(16).padStart(2, '0'),
+    ).join('');
+    activeImport.current = {
+      abort,
+      cancel: () =>
+        cancelExternalSessionHistoryImport(
+          scope.apiBase,
+          entry.id,
+          operationId,
+          { requestScope: scope },
+        ),
+    };
+    setCanceled(false);
+    setCancelError(undefined);
+    imported.mutate(
+      { id: entry.id, operationId, signal: abort.signal },
+      {
+        onSettled: () => {
+          activeImport.current = undefined;
+        },
+      },
+    );
+  };
+  const stopImport = async () => {
+    const operation = activeImport.current;
+    if (!operation) return;
+    setCancelError(undefined);
+    setCanceling(true);
+    try {
+      await operation.cancel();
+      operation.abort.abort();
+      setCanceled(true);
+    } catch {
+      setCancelError('Couldn’t stop the import. Try again.');
+    } finally {
+      setCanceling(false);
+    }
+  };
+  const nextCursor = query.data?.nextCursor;
+  return (
+    <div className="content-stack">
+      <Button disabled={imported.isPending} onClick={onBack}>
+        Back to results
+      </Button>
+      <p>{entry.cwd}</p>
+      {!entry.hasTranscript ? (
+        <Empty label="Transcript unavailable for this engine" />
+      ) : query.isLoading ? (
+        <SkeletonList label="Reading transcript" />
+      ) : query.isError ? (
+        <ErrorState
+          title="Couldn’t read the transcript"
+          description={query.error.message}
+          action={<Button onClick={() => void query.refetch()}>Retry</Button>}
+        />
+      ) : (
+        query.data && (
+          <>
+            {query.data.startsNearEnd && (
+              <>
+                <p>Preview starts near the end of this transcript.</p>
+                <Button
+                  disabled={imported.isPending}
+                  onClick={() => {
+                    setCursor(null);
+                    setFromStart(true);
+                  }}
+                >
+                  Read from the beginning
+                </Button>
+              </>
+            )}
+            {query.data.messages.length === 0 && (
+              <Empty label="No message text on this page" />
+            )}
+            {query.data.messages.map((message) => (
+              <article key={message.id}>
+                <strong>{message.role === 'user' ? 'You' : 'Agent'}</strong>
+                <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                  {message.text}
+                </p>
+              </article>
+            ))}
+            {cursor && (
+              <Button
+                disabled={imported.isPending}
+                onClick={() => setCursor(null)}
+              >
+                First page
+              </Button>
+            )}
+            {nextCursor && (
+              <Button
+                disabled={imported.isPending}
+                onClick={() => setCursor(nextCursor)}
+              >
+                More messages
+              </Button>
+            )}
+            {imported.isPending ? (
+              <>
+                <p role="status">
+                  {canceling ? 'Stopping import…' : 'Importing conversation…'}
+                </p>
+                <Button onClick={() => void stopImport()} disabled={canceling}>
+                  Cancel import
+                </Button>
+              </>
+            ) : imported.data ? (
+              <Button onClick={openSaved}>Open saved conversation</Button>
+            ) : (
+              <Button onClick={startImport}>
+                {canceled ? 'Resume import' : 'Import conversation'}
+              </Button>
+            )}
+            {canceled && (
+              <p role="status">
+                Import canceled. Any saved messages stay in History.
+              </p>
+            )}
+            {cancelError && (
+              <ErrorState variant="compact" title={cancelError} />
+            )}
+            {imported.error && !canceled && (
+              <ErrorState
+                variant="compact"
+                title="Import paused"
+                description={imported.error.message}
+              />
+            )}
+          </>
+        )
+      )}
+    </div>
+  );
+}

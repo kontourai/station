@@ -66,6 +66,7 @@ interface RuntimeInitializationContext {
   codexToolFamiliesAdmitted?: InitializeRuntimeDeps['codexToolFamiliesAdmitted'];
   stationControlCallerRecords?: InitializeRuntimeDeps['stationControlCallerRecords'];
   attachedSessionSources?: AttachedSessionSource[];
+  externalSessionHistoryPreview?: FeaturePreviewSelector;
   port: number;
   host?: string;
   logger: Logger;
@@ -206,6 +207,7 @@ export function createRuntimeInitializationDeps(
 ): InitializeRuntimeDeps {
   return {
     attachedSessionSources: context.attachedSessionSources ?? [],
+    externalSessionHistoryPreview: context.externalSessionHistoryPreview,
     port: context.port,
     host: context.host,
     logger: context.logger,
