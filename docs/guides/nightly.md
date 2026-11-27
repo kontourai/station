@@ -68,6 +68,16 @@ See [native-releases.md](./native-releases.md) for the ledger and its
 [Manually dispatching Nightly](./native-releases.md#manually-dispatching-nightly)
 section for an exceptional same-day rebuild (`rebuild_index`).
 
+**CLI receipt recovery.** If npm accepted a publish but registry verification
+failed, retrying the same workflow run can recover its provider receipt. The
+retry derives the original version from the run's immutable creation time and
+ID, refuses a different registry `gitHead`, and verifies an already-published
+exact version without rebuilding or publishing it again. Skipping a build
+does not arm the pnpm cache. A missing version still fails the existing bounded
+read when a publish was attempted. Recovery does not shorten registry visibility
+delays or accept publication output as provenance. Another run's version is not
+a receipt for this run.
+
 The root product base is the next development train (`0.2.0` initially).
 After an immutable RC/final cut, the
 [release-cut command](native-releases.md#product-version-and-release-cut)
