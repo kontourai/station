@@ -10215,7 +10215,10 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       ]);
       expect(lifecycle.isRunning({ instanceName: 'archive-a' })).toBe(false);
 
-      lifecycle.stop({ instanceName: 'archive-a', stateHome: TEST_ARCHIVE_HOME });
+      lifecycle.stop({
+        instanceName: 'archive-a',
+        stateHome: TEST_ARCHIVE_HOME,
+      });
       expect(killProcessTree).toHaveBeenCalled();
       expect(existsSync(statePath)).toBe(false);
       expect(treeListing(TEST_CWD)).toEqual(before);
@@ -10314,7 +10317,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
         'Already running\n  UI:   http://localhost:5304\n',
       );
       expectStationArguments(
-        runningGuidance.match(/^  Stop: (station stop [^\r\n]+)$/mu)?.[1],
+        runningGuidance.match(/^ {2}Stop: (station stop [^\r\n]+)$/mu)?.[1],
         ['stop', `--home=${TEST_ARCHIVE_HOME}`, `--instance=${instanceId}`],
       );
       log.mockRestore();
