@@ -23,19 +23,34 @@ async function main() {
   const trafficPath = join(root, 'nearby-traffic.ndjson');
   const observerPath = join(root, 'nearby-observer.cjs');
   const controlToken = randomUUID();
-  const servePort = await findFreePortOutside(live.serverPort, 8);
-  const beforeServe = JSON.parse(
-    execFileSync('tailscale', ['serve', 'status', '--json'], {
-      encoding: 'utf8',
-      windowsHide: true,
-    }),
-  );
+  let servePort: number | undefined;
+  let beforeServe: unknown;
   let origin: string | undefined;
   let started = false;
   let approved = false;
+  let observedRequestId: string | undefined;
   let configured = false;
+  let stopping = false;
+  let commands: ReturnType<typeof createInterface> | undefined;
+  const requestStop = () => {
+    stopping = true;
+    commands?.close();
+  };
+  process.on('SIGINT', requestStop);
+  process.on('SIGTERM', requestStop);
   try {
+    servePort = await findFreePortOutside(live.serverPort, 8);
+    beforeServe = JSON.parse(
+      execFileSync('tailscale', ['serve', 'status', '--json'], {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 10_000,
+        killSignal: 'SIGKILL',
+      }),
+    );
+    if (stopping) return;
     await prepareLiveStationBuild(live);
+    if (stopping) return;
     writeFileSync(trafficPath, '');
     writeFileSync(
       observerPath,
@@ -65,6 +80,7 @@ subscribe('http.server.response.finish', message => record('finish', message));
         NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${observerPath}`,
       },
     });
+    if (stopping) return;
     const credential = readE2EOperatorCredential(live.home);
     const operatorHeaders = {
       Authorization: `Bearer ${credential}`,
@@ -74,6 +90,7 @@ subscribe('http.server.response.finish', message => record('finish', message));
     const projectName = `nearby-${Date.now()}`;
     const projectRoot = join(root, 'project');
     await createRepository(projectRoot, 'fixture');
+    if (stopping) return;
     const project = await fetch(`${live.api}/api/projects`, {
       method: 'POST',
       headers: operatorHeaders,
@@ -85,9 +102,11 @@ subscribe('http.server.response.finish', message => record('finish', message));
       signal: AbortSignal.timeout(30_000),
     });
     assert.equal(project.status, 201, await project.text());
-    const identity = (await fetch(`${live.api}/.well-known/station/v1`).then(
-      (response) => response.json(),
-    )) as { environmentId: string };
+    if (stopping) return;
+    const identity = (await fetch(`${live.api}/.well-known/station/v1`, {
+      signal: AbortSignal.timeout(10_000),
+    }).then((response) => response.json())) as { environmentId: string };
+    if (stopping) return;
     const endpoint = await resolveTailscaleOfferEndpoint({
       localApiBase: live.api,
       environmentId: identity.environmentId,
@@ -95,12 +114,17 @@ subscribe('http.server.response.finish', message => record('finish', message));
     });
     origin = endpoint.endpoint;
     configured = endpoint.configured;
+    if (stopping) return;
     writeFileSync(trafficPath, '');
     console.log(
       `NEARBY_REMOTE ${JSON.stringify({ kind: 'ready', origin, projectName, trafficPath })}`,
     );
-    for await (const line of createInterface({ input: process.stdin })) {
-      const command = JSON.parse(line) as { action: string };
+    commands = createInterface({ input: process.stdin });
+    for await (const line of commands) {
+      const command = JSON.parse(line) as {
+        action: string;
+        requestId?: string;
+      };
       if (command.action === 'stop') break;
       const requests = await fetch(`${live.api}/api/pairing/requests`, {
         headers: operatorHeaders,
@@ -114,6 +138,7 @@ subscribe('http.server.response.finish', message => record('finish', message));
           deviceName: string;
         }>;
       };
+      if (stopping) break;
       const traffic = readFileSync(trafficPath, 'utf8')
         .split('\n')
         .filter(Boolean)
@@ -135,6 +160,16 @@ subscribe('http.server.response.finish', message => record('finish', message));
       if (!approved) assert.ok(traffic.every((entry) => !entry.authenticated));
       if (command.action === 'approve') {
         assert.equal(pending.requests.length, 1);
+        assert.equal(
+          command.requestId,
+          pending.requests[0].requestId,
+          'Approval must name the observed pending request',
+        );
+        assert.equal(
+          command.requestId,
+          observedRequestId,
+          'Observe this request before approving it',
+        );
         assert.ok(
           traffic.some((entry) =>
             entry.path.endsWith('/pairing/access-request'),
@@ -153,19 +188,27 @@ subscribe('http.server.response.finish', message => record('finish', message));
         approved = true;
       } else {
         assert.equal(command.action, 'observe');
+        observedRequestId =
+          pending.requests.length === 1
+            ? pending.requests[0].requestId
+            : undefined;
       }
       console.log(
         `NEARBY_REMOTE ${JSON.stringify({ kind: command.action, requests: pending.requests, traffic })}`,
       );
     }
   } finally {
+    commands?.close();
     const cleanupErrors: unknown[] = [];
     try {
       if (configured && origin) {
+        assert.ok(servePort);
         const current = JSON.parse(
           execFileSync('tailscale', ['serve', 'status', '--json'], {
             encoding: 'utf8',
             windowsHide: true,
+            timeout: 10_000,
+            killSignal: 'SIGKILL',
           }),
         );
         const listener = new URL(origin).host;
@@ -174,11 +217,15 @@ subscribe('http.server.response.finish', message => record('finish', message));
         });
         execFileSync('tailscale', ['serve', `--https=${servePort}`, 'off'], {
           windowsHide: true,
+          timeout: 10_000,
+          killSignal: 'SIGKILL',
         });
         const restored = JSON.parse(
           execFileSync('tailscale', ['serve', 'status', '--json'], {
             encoding: 'utf8',
             windowsHide: true,
+            timeout: 10_000,
+            killSignal: 'SIGKILL',
           }),
         );
         assert.deepEqual(restored, beforeServe);
@@ -202,6 +249,8 @@ subscribe('http.server.response.finish', message => record('finish', message));
       );
       process.exitCode = 1;
     }
+    process.off('SIGINT', requestStop);
+    process.off('SIGTERM', requestStop);
   }
 }
 

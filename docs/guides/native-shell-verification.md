@@ -995,6 +995,10 @@ The journey uses an owned same-interface multicast advertisement separately
 from the remote host's supported Tailscale HTTPS ingress; a tailnet peer is not
 evidence of multicast reachability. Its [remote fixture](../../tests/tauri-shell/nearby-remote-host.ts)
 preserves existing Serve mappings and requires explicit operator approval.
+Send `{"action":"observe"}` first, then approve only its observed request with
+`{"action":"approve","requestId":"<observed requestId>"}`. The fixture restores
+its owned HTTPS listener on `stop`, stdin closure, SIGINT or SIGTERM; retain its
+exit status to distinguish completed cleanup from interruption.
 This journey is an execution procedure, not a qualification receipt; record its
 actual artifact, revision, interaction results and cleanup outcome separately.
 

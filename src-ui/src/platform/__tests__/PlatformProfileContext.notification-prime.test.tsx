@@ -28,8 +28,6 @@ vi.mock('../native', () => ({
   }),
 }));
 
-// Discovery IPC is covered by connectionDiscovery.test.ts; this notification
-// fixture owns only boot priming and waits for its unrelated lazy effect.
 vi.mock('../native/connectionDiscovery', () => ({
   registerNativeConnectionDiscovery: vi.fn(() => unregisterDiscovery),
 }));
