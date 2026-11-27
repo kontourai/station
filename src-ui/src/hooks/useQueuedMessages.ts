@@ -49,25 +49,28 @@ export function useQueuedMessages(sessionId: string | null) {
     updateChat(sessionId, { isEditingQueue: false });
   }, [sessionId, updateChat]);
 
-  const saveEdit = useCallback(() => {
-    if (!sessionId || editingIndex === null) return;
-    if (editValue.trim()) {
-      editQueuedMessage(sessionId, editingIndex, editValue.trim());
-    } else {
-      removeQueuedMessage(sessionId, editingIndex);
-    }
-    setEditingIndex(null);
-    setEditValue('');
-    editingSessionIdRef.current = null;
-    updateChat(sessionId, { isEditingQueue: false });
-  }, [
-    sessionId,
-    editingIndex,
-    editValue,
-    editQueuedMessage,
-    removeQueuedMessage,
-    updateChat,
-  ]);
+  const saveEdit = useCallback(
+    (value = editValue) => {
+      if (!sessionId || editingIndex === null) return;
+      if (value.trim()) {
+        editQueuedMessage(sessionId, editingIndex, value.trim());
+      } else {
+        removeQueuedMessage(sessionId, editingIndex);
+      }
+      setEditingIndex(null);
+      setEditValue('');
+      editingSessionIdRef.current = null;
+      updateChat(sessionId, { isEditingQueue: false });
+    },
+    [
+      sessionId,
+      editingIndex,
+      editValue,
+      editQueuedMessage,
+      removeQueuedMessage,
+      updateChat,
+    ],
+  );
 
   const remove = useCallback(
     (index: number) => {

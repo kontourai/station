@@ -318,6 +318,53 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
+test('phone chat opens the conversation’s live browser before any agent input', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 479px)',
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  try {
+    h.autoFloat = false;
+    sessions = [
+      session({
+        browserSessionId: OTHER,
+        threadId: 'other-conversation',
+        surfaceId: 'browser:11111111-2222-4333-8444-555555555555:g1',
+        updatedAt: '2026-09-22T12:01:00.000Z',
+      }),
+      session({ activity: { agentDriven: false } }),
+    ];
+    const { area } = chatArea({ width: 393, height: 700 });
+    renderFloat(area);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open browser' }),
+    );
+    const viewer = await screen.findByRole('dialog', { name: 'Browser' });
+    expect(within(viewer).getByTestId('float-canvas').dataset.surface).toBe(
+      SURFACE,
+    );
+    fireEvent.click(
+      within(viewer).getByRole('button', { name: 'Close browser' }),
+    );
+    expect(screen.queryByRole('dialog', { name: 'Browser' })).toBeNull();
+    h.opener.mockReturnValue({ ok: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Open browser' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open in Browser pane' }),
+    );
+    expect(h.opener).toHaveBeenCalledWith({
+      projectId: 'p-alpha',
+      browserSessionId: SESSION,
+    });
+    expect(screen.queryByRole('dialog', { name: 'Browser' })).toBeNull();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 describe('a dialog the page holds for the person driving from the float', () => {
   test('is shown and answerable in the float, with Open in pane, and answering it clears it', async () => {
     h.tone = 'you';

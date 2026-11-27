@@ -1,0 +1,7 @@
+{
+  "revision": "06005c158ed86287322621db7c976a0e7469380c",
+
+  "notes": [
+    {"path":"docs/design/acp-chat-architecture.md","note":"The ACP guide now describes repeated tool metadata. The historical architecture record remains historical and points to the current guide for runtime behavior.","inputs":["docs/guides/acp.md"]}
+  ]
+}

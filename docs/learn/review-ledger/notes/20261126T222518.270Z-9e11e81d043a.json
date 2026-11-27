@@ -1,0 +1,11 @@
+{
+  "revision": "79850ceb837161a51ea55eb9cc13736c96f40111",
+
+  "notes": [
+    {"path":"docs/design/station-routes.md","note":"Reviewed exact-page-origin publication reads before browser identity binding. Authenticated same-origin reads expose settings only; route learning still requires the saved matching environment identity. Native and remote unidentified profiles remain excluded. Live Windows HTTPS reproduction and red-to-green route query test cover the change.","inputs":["src-ui/src/components/connections/useStationRoutes.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed exact-page-origin publication reads before browser identity binding. Authenticated same-origin reads expose settings only; route learning still requires the saved matching environment identity. Native and remote unidentified profiles remain excluded. Live Windows HTTPS reproduction and red-to-green route query test cover the change.","inputs":["src-ui/src/components/connections/useStationRoutes.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed exact-page-origin publication reads before browser identity binding. Authenticated same-origin reads expose settings only; route learning still requires the saved matching environment identity. Native and remote unidentified profiles remain excluded. Live Windows HTTPS reproduction and red-to-green route query test cover the change.","inputs":["src-ui/src/components/connections/useStationRoutes.ts"]}
+  ]
+}

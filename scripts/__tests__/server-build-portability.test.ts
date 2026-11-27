@@ -17,6 +17,7 @@ import {
 import { createRequire } from 'node:module';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
+import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import * as esbuild from 'esbuild';
@@ -29,24 +30,52 @@ import { withDesktopRuntimeListenerLease } from '../lib/desktop-runtime-port-lea
 import {
   DESKTOP_SERVER_RUNTIME_BUDGET,
   DESKTOP_SERVER_RUNTIME_PACKAGES,
+  finalizeWindowsDesktopResourcePaths,
   inspectDesktopServerRuntime,
   NON_RUNTIME_ARTIFACT,
   RUNTIME_DEPENDENCY_EXCLUSIONS,
   RUNTIME_PACKAGE_PRUNE_RULES,
   stageDesktopServerBundle,
   stageDesktopServerRuntime,
+  WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR,
   WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG,
 } from '../lib/desktop-server-runtime.mjs';
+import {
+  captureOwnedProcessOutput,
+  executeOwnedCommand,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from '../lib/owned-process.mjs';
 import { STATION_SERVER_EXTERNALS } from '../lib/server-build-config.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const temporaryRoots: string[] = [];
+const desktopPreparations = new Map<
+  string,
+  { controller: AbortController; completion: Promise<string> }
+>();
+const unsettledDesktopRoots = new Set<string>();
 const makeTempDir = trackTempDirs();
 const execFileAsync = promisify(execFile);
 const DESKTOP_SERVER_BUILD_TIMEOUT_MS = 75_000;
 const DESKTOP_SERVER_READINESS_TIMEOUT_MS = 60_000;
 const DESKTOP_SERVER_READINESS_POLL_INTERVAL_MS = 250;
 const DESKTOP_SERVER_OUTPUT_TAIL_BYTES = 4_096;
+const DESKTOP_SERVER_DIAGNOSTIC_BYTES = 32 * 1024;
+
+function desktopFixturePhaseReporter(fixture: string) {
+  const startedAt = performance.now();
+  return (phase: string) => {
+    console.info(
+      '[packaged-runtime fixture]',
+      JSON.stringify({
+        fixture,
+        phase,
+        elapsedMs: Math.round(performance.now() - startedAt),
+      }),
+    );
+  };
+}
 
 class DesktopProbeTransportError extends Error {}
 
@@ -127,10 +156,190 @@ function stagedRuntimeFiles(release: string): string[] {
   return found;
 }
 
-async function buildDesktopResourceFixture(root: string) {
+async function runDesktopFixtureCommand(
+  root: string,
+  signal: AbortSignal,
+  label: string,
+  args: string[],
+  options: { cwd: string; env?: NodeJS.ProcessEnv; timeout: number },
+) {
+  await yieldToEventLoop(undefined, { signal });
+  const startedAt = performance.now();
+  const execution = executeOwnedCommand(process.execPath, args, spawn, label, {
+    cwd: options.cwd,
+    env: options.env ?? process.env,
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const setupElapsedMs = performance.now() - startedAt;
+  const capture = captureOwnedProcessOutput(execution, {
+    maxBytes: 1024 * 1024,
+  });
+  let timedOut = setupElapsedMs >= options.timeout;
+  let aborted = signal.aborted;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let abortCommand: () => void;
+  const interrupted = new Promise<undefined>((resolve) => {
+    abortCommand = () => {
+      aborted = true;
+      resolve(undefined);
+    };
+    signal.addEventListener('abort', abortCommand, { once: true });
+    if (signal.aborted) abortCommand();
+    if (timedOut) resolve(undefined);
+  });
+  let outcome = await Promise.race([
+    execution.completion,
+    interrupted,
+    new Promise<undefined>((resolve) => {
+      timer = setTimeout(
+        () => {
+          timedOut = true;
+          resolve(undefined);
+        },
+        Math.max(0, options.timeout - (performance.now() - startedAt)),
+      );
+    }),
+  ])
+    .catch((error: unknown) => ({ status: null, signal: null, error }))
+    .finally(() => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', abortCommand);
+    });
+  const [settlement] = await Promise.allSettled([
+    terminateSuiteExecution(execution, {
+      waitForSuiteSettlement,
+      terminationGraceMs: 5_000,
+      terminationForceMs: 5_000,
+      processLabel: label,
+    }),
+  ]);
+  const settled =
+    settlement.status === 'fulfilled' &&
+    settlement.value.settled &&
+    settlement.value.errors.length === 0;
+  if (!settled) unsettledDesktopRoots.add(root);
+  if (settled && !outcome) {
+    outcome = await execution.completion.catch((error: unknown) => ({
+      status: null,
+      signal: null,
+      error,
+    }));
+  }
+  const output = capture.finish();
+  if (
+    timedOut ||
+    aborted ||
+    signal.aborted ||
+    !settled ||
+    !outcome ||
+    outcome.status !== 0 ||
+    outcome.error ||
+    output.truncated ||
+    output.invalidUtf8
+  ) {
+    const diagnostic = {
+      fixture: root,
+      phase: label,
+      elapsedMs: Math.round(performance.now() - startedAt),
+      setupElapsedMs: Math.round(setupElapsedMs),
+      timeoutMs: options.timeout,
+      timedOut,
+      aborted: aborted || signal.aborted,
+      abortReason: signal.aborted ? String(signal.reason) : null,
+      status: outcome?.status ?? null,
+      signal: outcome?.signal ?? null,
+      ownership:
+        'settlementEvidence' in execution
+          ? execution.settlementEvidence()
+          : null,
+      error:
+        outcome?.error instanceof Error
+          ? outcome.error.message
+          : String(outcome?.error ?? ''),
+      settlement:
+        settlement.status === 'fulfilled'
+          ? settlement.value
+          : { settled: false, error: String(settlement.reason) },
+      stdout: {
+        ...output.stdout,
+        text: output.stdout.text.slice(-DESKTOP_SERVER_OUTPUT_TAIL_BYTES),
+      },
+      stderr: {
+        ...output.stderr,
+        text: output.stderr.text.slice(-DESKTOP_SERVER_OUTPUT_TAIL_BYTES),
+      },
+    };
+    console.error(
+      '[packaged-runtime command failed]',
+      JSON.stringify(diagnostic),
+    );
+    throw new Error(
+      `Packaged fixture command failed: ${JSON.stringify(diagnostic)}`,
+    );
+  }
+  if ((options.env ?? process.env).STATION_DESKTOP_BUILD_DIAGNOSTICS === '1') {
+    const diagnosticLines: string[] = [];
+    let diagnosticBytes = 0;
+    let diagnosticTruncated = false;
+    for (const stream of [output.stdout, output.stderr]) {
+      for (const line of stream.text.split(/\r?\n/)) {
+        if (!line.startsWith('[desktop-server build] ')) continue;
+        const bytes = Buffer.byteLength(line, 'utf8') + 1;
+        if (diagnosticBytes + bytes > DESKTOP_SERVER_DIAGNOSTIC_BYTES) {
+          diagnosticTruncated = true;
+          break;
+        }
+        diagnosticLines.push(line);
+        diagnosticBytes += bytes;
+      }
+      if (diagnosticTruncated) break;
+    }
+    console.info(
+      '[packaged-runtime command succeeded]',
+      JSON.stringify({
+        fixture: root,
+        phase: label,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        setupElapsedMs: Math.round(setupElapsedMs),
+        status: outcome.status,
+        signal: outcome.signal,
+        settled,
+        ownership:
+          'settlementEvidence' in execution
+            ? execution.settlementEvidence()
+            : null,
+        diagnosticLines,
+        diagnosticBytes,
+        diagnosticTruncated,
+      }),
+    );
+  }
+  return { stdout: output.stdout.text, stderr: output.stderr.text };
+}
+
+function buildDesktopResourceFixture(root: string, signal: AbortSignal) {
+  const controller = new AbortController();
+  const completion = prepareDesktopResourceFixture(
+    root,
+    AbortSignal.any([signal, controller.signal]),
+  );
+  desktopPreparations.set(root, { controller, completion });
+  return completion;
+}
+
+async function prepareDesktopResourceFixture(
+  root: string,
+  signal: AbortSignal,
+) {
+  await yieldToEventLoop(undefined, { signal });
+  const phase = desktopFixturePhaseReporter(root);
   const release = join(root, 'resources');
   const serverOutput = join(release, 'dist-server');
+  phase('runtime staging');
   stageDesktopServerRuntime({ projectRoot: repoRoot, outputRoot: release });
+  phase('runtime inspection');
+  await yieldToEventLoop(undefined, { signal });
   const footprint = inspectDesktopServerRuntime(release);
   expect(footprint.bytes).toBeLessThanOrEqual(
     DESKTOP_SERVER_RUNTIME_BUDGET.maxBytes,
@@ -162,14 +371,18 @@ async function buildDesktopResourceFixture(root: string) {
   ).toBeGreaterThan(0);
   expect(staged.some((path) => /LICEN[CS]E/i.test(path))).toBe(true);
   assertRealRuntimePrune(release);
-  await execFileAsync(process.execPath, ['esbuild.config.mjs'], {
-    cwd: repoRoot,
-    env: { ...process.env, STATION_BUILD_SERVER_DIR: serverOutput },
-    encoding: 'utf8',
-    // This settles before temporary resources are cleaned up and leaves room
-    // for the bounded readiness probe within the enclosing test timeout.
-    timeout: DESKTOP_SERVER_BUILD_TIMEOUT_MS,
-  });
+  phase('server build');
+  await runDesktopFixtureCommand(
+    root,
+    signal,
+    'server build',
+    ['esbuild.config.mjs'],
+    {
+      cwd: repoRoot,
+      env: { ...process.env, STATION_BUILD_SERVER_DIR: serverOutput },
+      timeout: DESKTOP_SERVER_BUILD_TIMEOUT_MS,
+    },
+  );
   expect(
     existsSync(join(serverOutput, 'project-task-room-working-state-worker.js')),
   ).toBe(true);
@@ -182,8 +395,11 @@ async function buildDesktopResourceFixture(root: string) {
   expect(existsSync(join(serverOutput, 'attached-session-path-child.js'))).toBe(
     true,
   );
-  const checkpointProbe = await execFileAsync(
-    process.execPath,
+  phase('checkpoint worker probe');
+  const checkpointProbe = await runDesktopFixtureCommand(
+    root,
+    signal,
+    'checkpoint worker probe',
     [
       '--input-type=module',
       '-e',
@@ -205,11 +421,12 @@ async function buildDesktopResourceFixture(root: string) {
       } finally {db.close()}
     `,
     ],
-    { cwd: tmpdir(), windowsHide: true, timeout: 30_000, encoding: 'utf8' },
+    { cwd: tmpdir(), timeout: 30_000 },
   );
   expect(JSON.parse(checkpointProbe.stdout)).toEqual({ wal: 0, rows: 1 });
   // Execute the shipped Task worker from an unrelated cwd with the real
   // staged runtime dependencies. Presence alone would not prove resolution.
+  phase('task reader build and probe');
   const taskReaderProbe = join(serverOutput, 'task-search-reader-probe.mjs');
   await esbuild.build({
     stdin: {
@@ -222,8 +439,10 @@ async function buildDesktopResourceFixture(root: string) {
     target: 'node24',
     format: 'esm',
   });
-  const taskProbe = await execFileAsync(
-    process.execPath,
+  const taskProbe = await runDesktopFixtureCommand(
+    root,
+    signal,
+    'task reader probe',
     [
       '--input-type=module',
       '-e',
@@ -240,7 +459,7 @@ async function buildDesktopResourceFixture(root: string) {
     } finally { await reader.close(); }
   `,
     ],
-    { cwd: root, encoding: 'utf8', timeout: 15_000, windowsHide: true },
+    { cwd: root, timeout: 15_000 },
   );
   expect(JSON.parse(taskProbe.stdout)).toEqual({
     reply: {
@@ -250,6 +469,7 @@ async function buildDesktopResourceFixture(root: string) {
     },
     opened: { state: 'not-found' },
   });
+  phase('transcript reader build and probe');
   const transcriptPath = join(root, 'canonical-transcript.sqlite');
   const transcriptStore = new EventStore(transcriptPath);
   try {
@@ -291,8 +511,10 @@ async function buildDesktopResourceFixture(root: string) {
     target: 'node24',
     format: 'esm',
   });
-  const transcriptProbe = await execFileAsync(
-    process.execPath,
+  const transcriptProbe = await runDesktopFixtureCommand(
+    root,
+    signal,
+    'transcript reader probe',
     [
       '--input-type=module',
       '-e',
@@ -309,7 +531,7 @@ async function buildDesktopResourceFixture(root: string) {
     } finally { await reader.close(); }
   `,
     ],
-    { cwd: root, encoding: 'utf8', timeout: 15_000, windowsHide: true },
+    { cwd: root, timeout: 15_000 },
   );
   expect(JSON.parse(transcriptProbe.stdout)).toMatchObject({
     owner: 'packaged-user',
@@ -345,6 +567,7 @@ async function buildDesktopResourceFixture(root: string) {
   cpSync(join(repoRoot, 'schemas'), join(release, 'schemas'), {
     recursive: true,
   });
+  phase('resources ready');
   return release;
 }
 
@@ -411,6 +634,7 @@ function launchDesktopServer(
       ...process.env,
       PORT: '0',
       STATION_STDOUT_HANDSHAKE: '1',
+      STATION_E2E_FIRST_RUN: '1',
       STATION_HOME: homeDir,
       STATION_HOST: '127.0.0.1',
       STATION_BUILD_SHA: conflictingCheckoutSha,
@@ -559,8 +783,11 @@ async function startPackagedRuntimeUnderLease(
   root: string,
   instanceId: string,
 ) {
+  const phase = desktopFixturePhaseReporter(`${root}:${instanceId}`);
+  phase('listener lease wait');
   return withDesktopRuntimeListenerLease(
     async () => {
+      phase('runtime launch and readiness');
       const launched = launchDesktopServer(release, root, instanceId);
       try {
         const identity = await waitForDesktopIdentity(launched);
@@ -570,14 +797,17 @@ async function startPackagedRuntimeUnderLease(
             `Station ${instanceId} identity succeeded without its readiness port`,
           );
         }
+        phase('identity verified');
         return { identity, launched, port };
       } catch (error) {
+        phase('readiness failed; cleanup');
         const port = readinessPort(launched.output());
         const detail = error instanceof Error ? error.message : String(error);
         const diagnostic = new Error(
           `Packaged Station startup failed: pid=${launched.child.pid ?? 'unknown'}, expectedBootId=${launched.expectedIdentity.bootId}, listenerBlock=${port === undefined ? 'unreported' : `${port}-${port + 3}`}, destination=${port === undefined ? 'unreported' : `http://127.0.0.1:${port}/api/system/liveness`}; ${detail}; output tail:\n${launched.output()}`,
         );
         await terminateDesktopServer(launched.child);
+        phase('cleanup complete');
         throw diagnostic;
       }
     },
@@ -755,30 +985,41 @@ function createBudgetFixture(root: string) {
   return projectRoot;
 }
 
-function createDeepRuntimeFixture(root: string) {
+function createDeepRuntimeFixture(root: string, depth = 7) {
   const projectRoot = join(root, 'project');
   const packageName = 'runtime-package-with-a-deliberately-long-name';
   let packageRoot = join(projectRoot, 'node_modules', packageName);
-  for (let index = 0; index < 7; index += 1) {
+  for (let index = 0; index < depth; index += 1) {
     mkdirSync(packageRoot, { recursive: true });
     writeFileSync(
       join(packageRoot, 'package.json'),
       JSON.stringify({
         name: packageName,
         version: '1.0.0',
-        dependencies: index < 6 ? { [packageName]: '1.0.0' } : {},
+        dependencies: index < depth - 1 ? { [packageName]: '1.0.0' } : {},
       }),
     );
     writeFileSync(join(packageRoot, 'runtime.js'), 'export default true;');
-    if (index < 6) {
+    if (index < depth - 1) {
       packageRoot = join(packageRoot, 'node_modules', packageName);
     }
   }
   return { projectRoot, packageName };
 }
 
-afterEach(() => {
+afterEach(async () => {
   for (const root of temporaryRoots.splice(0)) {
+    const preparation = desktopPreparations.get(root);
+    if (preparation) {
+      preparation.controller.abort();
+      await Promise.allSettled([preparation.completion]);
+      desktopPreparations.delete(root);
+    }
+    if (unsettledDesktopRoots.has(root)) {
+      throw new Error(
+        `Packaged fixture tree did not settle; refusing cleanup of ${root}`,
+      );
+    }
     rmSync(root, {
       recursive: true,
       force: true,
@@ -1009,7 +1250,7 @@ describe('server build package portability', () => {
     ]);
   });
 
-  it('keeps a loadable koffi for Windows staging and only its licenses elsewhere (#4524)', () => {
+  it('keeps a loadable koffi for Windows staging and only its licenses elsewhere (#4524)', async () => {
     const root = makeTempDir('station-runtime-koffi-');
     const stage = (platform: NodeJS.Platform) => {
       const output = join(root, platform);
@@ -1026,9 +1267,12 @@ describe('server build package portability', () => {
     // Use the installed host binary with the Windows retention rules. This
     // reaches koffi's real loader without pretending to run Win32 APIs here.
     const windows = stage('win32');
-    const requireStaged = createRequire(join(windows, '../probe.cjs'));
-    const koffi = requireStaged('koffi');
-    expect(koffi.sizeof('uint32_t')).toBe(4);
+    const probe = await execFileAsync(
+      process.execPath,
+      ['-e', "console.log(require('koffi').sizeof('uint32_t'));"],
+      { cwd: dirname(windows), windowsHide: true, timeout: 10_000 },
+    );
+    expect(probe.stdout.trim()).toBe('4');
     for (const dir of ['vendor', 'doc'])
       expect(existsSync(join(windows, 'koffi', dir))).toBe(false);
 
@@ -1477,11 +1721,128 @@ describe('server build package portability', () => {
     ).toBe('1.0.0');
   });
 
-  it('uses shallow WiX sources while preserving deep runtime destinations', () => {
+  it('rejects Windows runtime destinations that cannot fit below an ordinary install root', () => {
+    const root = makeTempDir('station-desktop-install-path-');
+    const { projectRoot, packageName } = createDeepRuntimeFixture(root);
+    expect(() =>
+      stageDesktopServerRuntime({
+        projectRoot,
+        outputRoot: join(root, 'runtime'),
+        packages: [packageName],
+        platform: 'win32',
+        windowsWixResourceRoot: join(root, 'wix-resources'),
+      }),
+    ).toThrow(/Windows installer path exceeds/);
+    expect(
+      existsSync(
+        join(root, 'wix-resources', WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG),
+      ),
+    ).toBe(false);
+    expect(() =>
+      stageDesktopServerRuntime({
+        projectRoot,
+        outputRoot: join(root, 'linux-runtime'),
+        packages: [packageName],
+        platform: 'linux',
+      }),
+    ).not.toThrow();
+  });
+
+  it.each([
+    ['file', 213],
+    ['directory', 201],
+  ] as const)(
+    'enforces the Windows %s destination boundary independently of build-host paths',
+    (kind, relativeLength) => {
+      const root = makeTempDir('station-desktop-path-boundary-');
+      const projectRoot = createBudgetFixture(root);
+      const outputRoot = join(root, 'runtime');
+      const wixRoot = join(root, 'wix-resources');
+      const packagePath = 'node_modules/fixture-runtime/';
+      const name = 'x'.repeat(relativeLength - packagePath.length);
+      const addEntry = (entryName: string) => {
+        const entryPath = join(projectRoot, packagePath, entryName);
+        if (kind === 'directory') mkdirSync(entryPath);
+        else writeFileSync(entryPath, 'payload');
+      };
+      addEntry(name);
+      stageDesktopServerRuntime({
+        projectRoot,
+        outputRoot,
+        packages: ['fixture-runtime'],
+        platform: 'win32',
+        windowsWixResourceRoot: wixRoot,
+      });
+      expect(
+        inspectDesktopServerRuntime(outputRoot, undefined, 'win32')
+          .maxInstallRootLength,
+      ).toBe(45);
+      expect(
+        readFileSync(join(wixRoot, 'installer-path-budget.nsh'), 'utf8'),
+      ).toBe('!define STATION_WINDOWS_MAX_INSTALL_ROOT 45\n');
+      addEntry(`${name}x`);
+      expect(() =>
+        stageDesktopServerRuntime({
+          projectRoot,
+          outputRoot,
+          packages: ['fixture-runtime'],
+          platform: 'win32',
+          windowsWixResourceRoot: wixRoot,
+        }),
+      ).toThrow(/Windows installer path exceeds/);
+      expect(existsSync(join(wixRoot, 'installer-path-budget.nsh'))).toBe(
+        false,
+      );
+    },
+  );
+
+  it('budgets all configured resource destinations after staging and invalidates unsafe headers', () => {
+    const root = makeTempDir('station-desktop-all-paths-');
+    const projectRoot = createBudgetFixture(root);
+    const outputRoot = join(projectRoot, 'dist-desktop-runtime');
+    const resourceRoot = join(
+      projectRoot,
+      WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR,
+    );
+    const configRoot = join(projectRoot, 'src-desktop');
+    mkdirSync(configRoot);
+    writeFileSync(
+      join(configRoot, 'tauri.windows.conf.json'),
+      JSON.stringify({ bundle: { resources: { '../schemas': 'schemas' } } }),
+    );
+    const schemas = join(projectRoot, 'schemas');
+    mkdirSync(schemas);
+    writeFileSync(join(schemas, 'x'.repeat(180)), 'schema');
+    stageDesktopServerRuntime({
+      projectRoot,
+      outputRoot,
+      packages: ['fixture-runtime'],
+      platform: 'win32',
+      windowsWixResourceRoot: resourceRoot,
+    });
+    expect(
+      finalizeWindowsDesktopResourcePaths({ projectRoot }).maxInstallRootLength,
+    ).toBe(70);
+    expect(
+      readFileSync(join(resourceRoot, 'installer-path-budget.nsh'), 'utf8'),
+    ).toBe('!define STATION_WINDOWS_MAX_INSTALL_ROOT 70\n');
+    writeFileSync(join(schemas, 'x'.repeat(206)), 'too deep');
+    expect(() => finalizeWindowsDesktopResourcePaths({ projectRoot })).toThrow(
+      /Windows installer path exceeds/,
+    );
+    expect(existsSync(join(resourceRoot, 'installer-path-budget.nsh'))).toBe(
+      false,
+    );
+  });
+
+  it('uses shallow WiX sources while keeping installable runtime destinations', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-desktop-wix-path-'));
     temporaryRoots.push(root);
-    const { projectRoot, packageName } = createDeepRuntimeFixture(root);
-    const outputRoot = join(root, 'runtime');
+    const { projectRoot, packageName } = createDeepRuntimeFixture(
+      join(root, 'build-host-'.repeat(15)),
+      2,
+    );
+    const outputRoot = join(projectRoot, 'runtime');
     const wixRoot = join(root, 'wix-resources');
     const configRoot = join(projectRoot, 'src-desktop');
     mkdirSync(configRoot, { recursive: true });
@@ -1504,20 +1865,21 @@ describe('server build package portability', () => {
     const deepTarget = [
       'node_modules',
       packageName,
-      ...Array.from({ length: 6 }, () => ['node_modules', packageName]).flat(),
+      'node_modules',
+      packageName,
     ].join('/');
     const [aliasSource] =
       Object.entries(config.bundle.resources).find(
         ([, target]) => target === deepTarget,
       ) ?? [];
-    expect(aliasSource).toMatch(/wix-resources\/package-0006$/);
+    expect(aliasSource).toMatch(/wix-resources\/package-0001$/);
     expect(
-      readFileSync(join(wixRoot, 'package-0006', 'runtime.js'), 'utf8'),
+      readFileSync(join(wixRoot, 'package-0001', 'runtime.js'), 'utf8'),
     ).toBe('export default true;');
 
     // This is the failing pre-fix shape: WiX receives the whole nested source
     // path. The generated map instead gives it a single shallow alias.
-    const legacyWixSource = `E:/station/src-desktop/../dist-desktop-runtime/${deepTarget}/runtime.js`;
+    const legacyWixSource = `${outputRoot}/${deepTarget}/runtime.js`;
     const shallowWixSource = `E:/station/src-desktop/${aliasSource}/runtime.js`;
     expect(legacyWixSource.length).toBeGreaterThan(260);
     expect(shallowWixSource.length).toBeLessThanOrEqual(260);
@@ -1573,10 +1935,13 @@ describe('server build package portability', () => {
     await buildProbe(release);
   }, 20_000);
 
-  it('stages a self-contained runtime beside the desktop server resources', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-desktop-release-'));
+  it('stages a self-contained runtime beside the desktop server resources', async ({
+    signal,
+  }) => {
+    const root = mkdtempSync(join(tmpdir(), 'dr-'));
     temporaryRoots.push(root);
-    const release = await buildDesktopResourceFixture(root);
+    const release = await buildDesktopResourceFixture(root, signal);
+    await yieldToEventLoop(undefined, { signal });
     assertRuntimeContainment(release, root);
     const launched = await startPackagedRuntimeUnderLease(
       release,
@@ -1616,10 +1981,13 @@ describe('server build package portability', () => {
     expect(events).toEqual(['enter-a', 'enter-b', 'leave-a', 'leave-b']);
   }, 20_000);
 
-  it('serializes concurrent packaged-runtime fixture starts until each listener block is owned', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-desktop-concurrent-'));
+  it('serializes concurrent packaged-runtime fixture starts until each listener block is owned', async ({
+    signal,
+  }) => {
+    const root = mkdtempSync(join(tmpdir(), 'dc-'));
     temporaryRoots.push(root);
-    const release = await buildDesktopResourceFixture(root);
+    const release = await buildDesktopResourceFixture(root, signal);
+    await yieldToEventLoop(undefined, { signal });
     assertRuntimeContainment(release, root);
     const results = await Promise.allSettled([
       startPackagedRuntimeUnderLease(

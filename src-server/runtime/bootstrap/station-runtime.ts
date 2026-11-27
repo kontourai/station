@@ -214,6 +214,7 @@ import type { ConnectionService } from '../../services/connections/connection-se
 import { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { readVerifiedNativePionApplicationRequest } from '../../services/connections/native-v2-pion-application-adapter.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
+import { RoutePublications } from '../../services/connections/route-publications.js';
 import {
   readVerifiedNativeVirtualApplicationRequest,
   type VirtualApplication,
@@ -587,7 +588,10 @@ import {
   runRuntimeHealthChecks,
   startRuntimeHealthChecks,
 } from './runtime-health.js';
-import { initializeRuntime } from './runtime-initialize.js';
+import {
+  type InitializeRuntimeDeps,
+  initializeRuntime,
+} from './runtime-initialize.js';
 import { createRuntimeInitializationDeps } from './runtime-initialize-deps.js';
 import { rebuildOrClearRuntimeProjections } from './runtime-projection-recovery.js';
 import { createRuntimeServiceBundle } from './runtime-service-bootstrap.js';
@@ -1451,10 +1455,19 @@ export class StationRuntime {
     process.env,
   );
   // A malformed STATION_TRUSTED_CONSENT_ORIGIN throws here, refusing startup.
+  private routePublications?: RoutePublications;
   public readonly consentChannel = new ConsentChannelService({
     trustedOrigin: parseTrustedConsentOrigin(
       process.env[TRUSTED_CONSENT_ORIGIN_ENV],
     ),
+    resolvePublication: () =>
+      this.routePublications?.resolve() ??
+      Promise.resolve({
+        consentOrigin: this.consentChannel.trustedOrigin,
+        source: 'unavailable',
+        appOrigins: [],
+        status: 'disabled',
+      }),
   });
   private consentListener: ConsentListener | null = null;
   // #3257 (S2b): the operator passkey enrollment ceremony. The registry file is
@@ -2033,6 +2046,40 @@ export class StationRuntime {
         !isHostedTenantExecutionRequired() &&
         !loadHostedTenantRegistryFromEnvironment()
       ) {
+        const publicationPreview = this.featurePreviews.bind({
+          id: 'dynamic-route-publications',
+          label: 'Dynamic HTTPS routes',
+          description:
+            'Discover private Tailscale app and approval addresses live, configure an approval address without restarting, and include the app address in Nearby Stations discovery.',
+        });
+        const uiPort = Number(process.env.STATION_UI_PORT);
+        this.routePublications = new RoutePublications({
+          appPorts: [
+            this.port,
+            ...(Number.isInteger(uiPort) && uiPort > 0 ? [uiPort] : []),
+          ],
+          consentPort:
+            process.env.STATION_CONSENT_PORT === undefined
+              ? this.port + 3
+              : Number(process.env.STATION_CONSENT_PORT),
+          enabled: () =>
+            publicationPreview.select({
+              enabled: () => true,
+              disabled: () => false,
+            }) &&
+            lanDiscoveryFor(this.configLoader).managedPolicyRefusal() ===
+              undefined,
+          configuredOrigin: async () =>
+            (await this.configLoader.loadAppConfig()).trustedConsentOrigin,
+          legacyOrigin: this.consentChannel.trustedOrigin,
+        });
+        lanDiscoveryFor(this.configLoader).setAppOriginResolver(async () => {
+          const publication = await this.routePublications!.resolve();
+          return publication.status !== 'disabled' &&
+            publication.appOrigins.length === 1
+            ? publication.appOrigins[0]
+            : undefined;
+        });
         this.reviewedTariffsPreview = this.featurePreviews.bind({
           id: 'reviewed-usage-tariffs',
           label: 'Reviewed tariff sources',
@@ -4742,6 +4789,14 @@ export class StationRuntime {
       // revision-fenced agent-construction phase inside initializeRuntime.
       initialized = await initializeRuntime(
         createRuntimeInitializationDeps({
+          externalSessionHistoryPreview: isHostedTenantExecutionRequired()
+            ? undefined
+            : this.featurePreviews.bind({
+                id: 'external-session-history',
+                label: 'Third-party history',
+                description:
+                  'Browse older conversations in History and import them individually.',
+              }),
           attachedSessionSources: [
             this.claudeTranscriptSource,
             this.codexRolloutSource,
@@ -4893,8 +4948,8 @@ export class StationRuntime {
           ollamaAdapter: this.ollamaAdapter,
           createVoltAgentInstance: async (slug) =>
             this.createVoltAgentInstance(slug),
-          configureRoutes: (app: any) => {
-            this.configureRoutes(app);
+          configureRoutes: (app, externalSessionHistory) => {
+            this.configureRoutes(app, externalSessionHistory);
             this.virtualApplication?.bind(app);
           },
           captureAgentConfigurationRevisions: () =>
@@ -5620,9 +5675,12 @@ export class StationRuntime {
     this.operatorPasskeyRegistry = new LazyOperatorPasskeyRegistry(
       this.configLoader.getProjectHomeDir(),
     );
+    const channel = this.consentChannel;
     this.operatorPasskeys = new OperatorPasskeyEnrollmentService({
       registry: this.operatorPasskeyRegistry,
-      origin: this.consentChannel.trustedOrigin,
+      get origin() {
+        return channel.trustedOrigin;
+      },
       resolveDevice: (deviceId) => {
         const device = this.environmentSecurityService.devicePairing
           .listDevices()
@@ -5639,9 +5697,12 @@ export class StationRuntime {
   private getOperatorSessions(): OperatorSessionService | undefined {
     if (!this.getOperatorPasskeys() || !this.operatorPasskeyRegistry)
       return undefined;
+    const channel = this.consentChannel;
     this.operatorSessions ??= new OperatorSessionService({
       registry: this.operatorPasskeyRegistry,
-      origin: this.consentChannel.trustedOrigin,
+      get origin() {
+        return channel.trustedOrigin;
+      },
       identifyDevice: (credential) =>
         this.environmentSecurityService.identifyDevice(credential),
       epoch: () =>
@@ -5717,7 +5778,13 @@ export class StationRuntime {
    */
   private configureRoutes(
     app: Parameters<NonNullable<HonoServerConfig['configureApp']>>[0],
+    externalSessionHistory: Parameters<
+      InitializeRuntimeDeps['configureRoutes']
+    >[1],
   ): void {
+    app.use('*', async (_context, next) =>
+      this.consentChannel.withPublication(next),
+    );
     this.codexToolDispatch = async (request) => app.fetch(request);
     // The existing handshake environment identity qualifies these local owner
     // records; it is not a new logical Station or machine identity.
@@ -5746,6 +5813,7 @@ export class StationRuntime {
       serverUpdate,
       analyticsMaintenance,
     } = configureRuntimeRoutes({
+      externalSessionHistory,
       bindPullRequestWatchPolicy: (policy) => {
         this.pullRequestWatchSlot.current = policy;
       },

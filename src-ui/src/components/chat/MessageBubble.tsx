@@ -1212,7 +1212,7 @@ function MessageBubbleComponent({
         data-message-mobile={isMobile}
         style={agentAccentStyle(sender)}
       >
-        <IncomingAgentCause sender={sender}>
+        <IncomingAgentCause sender={sender} origin={msg.stationOrigin}>
           <MessageContent
             contentParts={msg.contentParts}
             textContent={textContent}
@@ -1284,7 +1284,7 @@ function MessageBubbleComponent({
         {...(sender
           ? {
               role: 'group' as const,
-              'aria-label': incomingMessageLabel(sender),
+              'aria-label': incomingMessageLabel(sender, msg.stationOrigin),
               'data-agent-sender-session': sender.sessionId,
             }
           : {})}
@@ -1295,7 +1295,9 @@ function MessageBubbleComponent({
           ) : (
             <IncomingAgentHeader sender={providerSender} />
           ))}
-        {sender && !isMobile && <IncomingAgentHeader sender={sender} />}
+        {sender && !isMobile && (
+          <IncomingAgentHeader sender={sender} origin={msg.stationOrigin} />
+        )}
         {!isMobile && metadataControls}
         {!isMobile && metadataIdentity}
         {rewound ? (
@@ -1341,6 +1343,9 @@ function MessageBubbleComponent({
               {hasTurnFooter && !isMobile ? turnFooterBar : null}
             </div>
           ) : null}
+          {msg.role === 'user' && msg.steer && (
+            <span className="chat-steer-mark">Steer</span>
+          )}
           <HostImagesContext.Provider value={settledHostImages(msg.hostImages)}>
             <MessageContent
               sessionId={answerSessionId}

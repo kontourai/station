@@ -203,12 +203,14 @@ export async function outsideConsentFixture(home: string) {
     else {
       const bearer = c.req.header('authorization')?.replace(/^Bearer /, '');
       if (bearer) {
+        const identified = security.identifyDevice(bearer);
         setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
           credential: bearer,
           source: 'bearer',
           authority: security.verifyOperatorCredential(bearer)
             ? 'operator-credential'
             : 'device-credential',
+          ...(identified ? { deviceId: identified.id } : {}),
           ...(bearer === local.credential
             ? { locality: 'home-possession', mintKind: 'local-grant' }
             : {}),

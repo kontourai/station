@@ -1,0 +1,7 @@
+{
+  "revision": "79850ceb837161a51ea55eb9cc13736c96f40111",
+
+  "notes": [
+    {"path":"docs/design/station-routes.md","note":"Reviewed browser publication-settings reads against the exact page-origin gate and identity-bound route learner; native and unidentified remote profiles remain excluded. Focused route and settings tests passed 27 cases.","inputs":["docs/design/station-routes.md"]}
+  ]
+}

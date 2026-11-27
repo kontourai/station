@@ -45,6 +45,7 @@ import { sleep } from '../../utils/sleep.js';
 /** Stable listeners the supervisor holds across generations. */
 const SUPERVISOR_LISTENER_NAMES = Object.freeze([
   'api',
+  'api-local',
   'voice',
   'consent',
 ] as const);
@@ -773,7 +774,7 @@ export class SupervisorLink implements ListenerLink {
   ): Promise<void> {
     for (;;) {
       const now = Date.now();
-      const quietFor = now - this.lastAcceptAt;
+      const quietFor = now - Math.max(started, this.lastAcceptAt);
       if (quietFor >= DRAIN_QUIET_CLOSE_MS) break;
       if (now - started >= capMs) {
         this.log(

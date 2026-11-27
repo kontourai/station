@@ -745,6 +745,8 @@ interface OrchestrationDispatchInternalOptions {
   nativeMemoryReadAuthority?: SessionReadAuthority;
   sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
   beforeProviderStart?: SessionCommandInternalOptions['beforeProviderStart'];
+  beforeProviderSend?: SessionCommandInternalOptions['beforeProviderSend'];
+  beforeProviderInterrupt?: SessionCommandInternalOptions['beforeProviderInterrupt'];
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   /** Epic #4003: see `SessionCommandInternalOptions.taskBrief`. */
@@ -2599,6 +2601,13 @@ export class OrchestrationService {
       this.sendTurnsInDispatch.has(threadId)
     )
       throw new Error('group_sync_unavailable');
+    const assertOwnsActivation = () => {
+      if (
+        this.toolRestrictions.get(threadId)?.restriction !== restriction ||
+        !isCurrent()
+      )
+        throw new Error('group_sync_activation_changed');
+    };
     const restriction: SessionToolRestriction = {
       threadId,
       nativeSessionId,
@@ -2607,12 +2616,8 @@ export class OrchestrationService {
       clientTurnId,
       assertCurrent: () => {
         assertCurrent();
-        if (
-          signal.aborted ||
-          this.toolRestrictions.get(threadId)?.restriction !== restriction ||
-          !isCurrent() ||
-          !this.isRetainedSyncOwner(threadId, context)
-        )
+        assertOwnsActivation();
+        if (signal.aborted || !this.isRetainedSyncOwner(threadId, context))
           throw new Error('group_sync_activation_changed');
       },
     };
@@ -2620,18 +2625,18 @@ export class OrchestrationService {
     return withSessionToolRestriction(restriction, async () => {
       let released = true;
       let startedTurnId: string | undefined;
-      const park = (live: ProviderAdapterShape) =>
-        this.parkIdleSession(threadId, live, Date.now(), 0, undefined, {
+      const park = (assertStopCurrent: () => void) =>
+        this.parkIdleSession(threadId, adapter, Date.now(), 0, undefined, {
           requireObservedExit: true,
           beforeStop: () => {
-            restriction.assertCurrent();
+            assertStopCurrent();
             released = false;
           },
         });
       try {
         const live = this.sessionAdapters.get(threadId);
         if (live) {
-          if (live !== adapter || !(await park(live)))
+          if (live !== adapter || !(await park(restriction.assertCurrent)))
             throw new Error('group_sync_session_busy');
           released = true;
         }
@@ -2700,9 +2705,12 @@ export class OrchestrationService {
               throw new Error('group_sync_turn_failed');
             if (event.turnId !== turnId) continue;
             if (event.method === 'tool.started') toolCalls++;
-            if (event.method === 'turn.aborted')
+            if (event.method === 'turn.aborted') {
+              startedTurnId = undefined;
               throw new Error('group_sync_turn_failed');
+            }
             if (event.method === 'turn.completed') {
+              startedTurnId = undefined;
               if (event.finishReason !== 'stop')
                 throw new Error('group_sync_turn_failed');
               const terminal =
@@ -2719,11 +2727,7 @@ export class OrchestrationService {
                   nativeBindingKey
               )
                 throw new Error('group_sync_identity_changed');
-              if (!(await park(adapter)))
-                throw new Error('group_sync_release_unknown');
-              released = true;
-              restriction.assertCurrent();
-              return {
+              const receipt = {
                 sessionId: threadId,
                 nativeSessionId,
                 nativeIdentityHash: `sha256:${crypto
@@ -2735,19 +2739,27 @@ export class OrchestrationService {
                 output: terminal.outputText,
                 toolCalls,
               };
+              // The accepted terminal belongs to the activation's settlement.
+              // Caller expiry can stop delivery without erasing that evidence.
+              if (!(await park(assertOwnsActivation)))
+                throw new Error('group_sync_release_unknown');
+              released = true;
+              assertOwnsActivation();
+              return receipt;
             }
           }
           if (!page.hasMore) await scheduler.wait(50, { signal });
         }
       } finally {
-        if (!released && startedTurnId) {
+        const interruptTurnId = startedTurnId;
+        if (!released && interruptTurnId) {
           try {
-            await adapter.interruptTurn(threadId, startedTurnId);
+            await this.adapterRetirement.runCleanupWithinDeadline(async () => {
+              assertOwnsActivation();
+              await adapter.interruptTurn(threadId, interruptTurnId);
+            }, 'Retained Session sync interruption');
           } catch {
-            this.options.logger.warn(
-              'Context sync interruption was not confirmed',
-              { threadId },
-            );
+            // The deadline limits waiting. Only confirmed exit releases the restriction.
           }
         }
         // A failed/ambiguous activation stays fenced until explicit teardown.
@@ -7494,6 +7506,7 @@ export class OrchestrationService {
         new Error("This message key belongs to someone else's queued message."),
         { code: 'inbox_key_held' },
       );
+    if (pending?.retired) throw new ClientTurnInputConflictError();
     return pending;
   }
 
@@ -10560,6 +10573,7 @@ export class OrchestrationService {
        * untrusted-content permission asks about at a Station seam.
        */
       personAnswer?: true;
+      serverLogReadDecisionAuthorized?: () => boolean;
       /**
        * Set by the orchestration command route on an `interruptTurn` that
        * passes Station's person check (`personCredentialRequest`). Recorded
@@ -11666,6 +11680,10 @@ export class OrchestrationService {
                               turnInput,
                               context,
                             );
+                            internal?.beforeProviderSend?.(
+                              turnInput.threadId,
+                              turnInput.clientTurnId,
+                            );
                             if (boundary.prepareIntent) {
                               const captured = captureTurnIntent(turnInput, {
                                 binding: this.preparedTurnBinding(
@@ -12294,6 +12312,12 @@ export class OrchestrationService {
           }
         }
         case 'interruptTurn': {
+          const assertInterruptCurrent = () =>
+            internal?.beforeProviderInterrupt?.(
+              command.threadId,
+              command.turnId,
+            );
+          assertInterruptCurrent();
           // A person's Stop (the route's person check) is recorded as such on
           // `session.stop-settled`, so an automation can tell it from its own
           // budget interrupt, which never reaches this command.
@@ -12315,6 +12339,10 @@ export class OrchestrationService {
           if (
             this.options.eventStore?.ownedStopTargets(command.threadId).length
           ) {
+            if (internal?.beforeProviderInterrupt)
+              throw new Error(
+                'Exact delegated turn cancellation cannot use the Session cascade.',
+              );
             const activeTurnId = this.activeTurnIdOfThread(command.threadId);
             if (command.turnId && command.turnId !== activeTurnId) {
               const result: InterruptTurnResult = {
@@ -12372,6 +12400,11 @@ export class OrchestrationService {
               adapters: this.options.adapterRegistry.list(),
             });
           } catch {
+            assertInterruptCurrent();
+            if (internal?.beforeProviderInterrupt)
+              throw new Error(
+                'Exact delegated turn cancellation requires a current provider Session.',
+              );
             // UX audit T1 (live verification): the engine session for this
             // thread does not exist YET. A dispatched turn takes 0.5-2.6s to
             // reach `turn.started`, and refusing the whole command inside that
@@ -12396,6 +12429,7 @@ export class OrchestrationService {
             };
             return { receipt, result: pending };
           }
+          assertInterruptCurrent();
           this.assertAdapterCurrent(adapter);
           // UX audit T1: the settlement this returns is the ONLY thing that
           // knows whether the engine acknowledged (session kept warm and
@@ -12410,6 +12444,9 @@ export class OrchestrationService {
               command.turnId,
               'user',
               byPerson,
+              internal?.beforeProviderInterrupt
+                ? assertInterruptCurrent
+                : undefined,
             );
           if (
             interrupted.outcome === 'cooperative' ||
@@ -13073,6 +13110,30 @@ export class OrchestrationService {
               'request_event_changed',
               settledRefusal,
             );
+          const logRead = this.serverLogReads.get(command.threadId);
+          if (logRead?.requestId === command.requestId) {
+            if (
+              context?.serverLogReadDecisionAuthorized?.() !== true ||
+              command.expectedRequestEventId !== logRead.eventId ||
+              this.activeTurnIdOfThread(command.threadId) !== logRead.turnId ||
+              (command.decision !== 'accept' && command.decision !== 'decline')
+            )
+              throw new RequestEventGuardError(
+                'request_event_changed',
+                'The Station owner must answer the current log request in chat.',
+              );
+            if (
+              !logRead.settle(
+                command.decision === 'accept' ? 'approved' : 'denied',
+              )
+            )
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'Station could not record the server log decision.',
+              );
+            this.persistReceipt(receipt);
+            return { receipt, result: undefined };
+          }
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: command.threadId,
             threadProviders: this.threadProviders,
@@ -16994,6 +17055,90 @@ export class OrchestrationService {
         !this.quarantinedThreads.has(threadId) &&
         this.activeTurnIdOfThread(threadId) === turnId,
     };
+  }
+
+  private readonly serverLogReads = new Map<
+    string,
+    {
+      requestId: string;
+      eventId: string;
+      turnId: string;
+      settle: (
+        status: 'approved' | 'denied' | 'cancelled' | 'expired',
+      ) => boolean;
+    }
+  >();
+
+  async requestServerLogRead(
+    threadId: string,
+    description: string,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const provider = this.threadProviderForPosture(threadId);
+    const turnId = this.activeTurnIdOfThread(threadId);
+    if (
+      !provider ||
+      !turnId ||
+      signal.aborted ||
+      this.serverLogReads.has(threadId)
+    )
+      return false;
+
+    const requestId = crypto.randomUUID();
+    const eventId = crypto.randomUUID();
+    const base = { threadId, turnId, provider, requestId };
+    const publish = (event: CanonicalRuntimeEvent) => {
+      try {
+        return this.projectAndPublishEvent(event);
+      } catch (error) {
+        this.options.logger.warn('Could not publish the server log approval', {
+          threadId,
+          requestId,
+          error,
+        });
+        return false;
+      }
+    };
+    return new Promise<boolean>((resolve) => {
+      const cancel = () => settle('cancelled');
+      const timeout = setTimeout(() => settle('expired'), 60_000);
+      const retire = () => {
+        clearTimeout(timeout);
+        signal.removeEventListener('abort', cancel);
+        this.serverLogReads.delete(threadId);
+      };
+      const settle = (
+        status: 'approved' | 'denied' | 'cancelled' | 'expired',
+      ) => {
+        retire();
+        const persisted = publish({
+          ...base,
+          eventId: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          method: 'request.resolved',
+          status,
+        });
+        resolve(persisted && status === 'approved');
+        return persisted;
+      };
+      this.serverLogReads.set(threadId, { requestId, eventId, turnId, settle });
+      signal.addEventListener('abort', cancel, { once: true });
+      if (
+        !publish({
+          ...base,
+          eventId,
+          createdAt: new Date().toISOString(),
+          method: 'request.opened',
+          requestType: 'approval',
+          title: 'Allow this server log query?',
+          payload: { toolName: 'read_logs' },
+          description,
+        })
+      ) {
+        retire();
+        resolve(false);
+      }
+    });
   }
 
   private activeTurnIdOfThread(threadId: string): string | undefined {

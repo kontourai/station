@@ -1,13 +1,16 @@
 import { ChildProcess } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { PassThrough, type Writable } from 'node:stream';
-import { afterEach, expect, onTestFinished, test, vi } from 'vitest';
+import { beforeEach, expect, onTestFinished, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   spawnOwnedChild,
   terminateProcessTree,
 } from '../../infra/process-utils.js';
-import { NativeModelContainer } from '../native-model-container.js';
+import {
+  NativeModelContainer,
+  type NativeModelContainerOptions,
+} from '../native-model-container.js';
 
 vi.mock('../../infra/process-utils.js', () => ({
   spawnOwnedChild: vi.fn(),
@@ -18,7 +21,7 @@ const temp = trackTempDirs({ lifetime: 'file' });
 const imageId = `sha256:${'a'.repeat(64)}`;
 const containerId = 'b'.repeat(64);
 
-afterEach(() => vi.resetAllMocks());
+beforeEach(() => vi.resetAllMocks());
 
 function gate() {
   let release!: () => void;
@@ -50,9 +53,11 @@ function processFixture() {
 async function fixture({
   failExecRetirement = false,
   execStopGate,
+  delegationRpc,
 }: {
   failExecRetirement?: boolean;
   execStopGate?: Promise<void>;
+  delegationRpc?: NativeModelContainerOptions['delegationRpc'];
 } = {}) {
   const execStopEntered = gate();
   const active = new Map<
@@ -157,7 +162,7 @@ async function fixture({
     }
     child.process.finish('', null);
   });
-  const controller = NativeModelContainer.prepare({
+  const options: NativeModelContainerOptions = {
     namespaceId: 'fixed-text-fixture',
     imageId,
     dockerExecutable: '/fixture/docker',
@@ -166,11 +171,14 @@ async function fixture({
     request() {
       throw new Error('Fixture exec must not make model requests');
     },
-  });
+    delegationRpc,
+  };
+  const controller = NativeModelContainer.prepare(options);
   onTestFinished(() => controller.close());
   await controller.start();
   return {
     controller,
+    options,
     execs,
     removals,
     active,
@@ -185,7 +193,7 @@ function writePrompt(stdin: Writable, text: string): Promise<void> {
 }
 
 test('competing fixed text launches deliver exactly one private stdin prompt in the owned namespace', async () => {
-  const f = await fixture();
+  const f = await fixture({ delegationRpc: unusedBroker });
   const prompt = 'private fixture prompt ☃';
   const token = f.controller.connection().token;
   const write = vi.fn((stdin: Writable) => writePrompt(stdin, prompt));
@@ -216,6 +224,8 @@ test('competing fixed text launches deliver exactly one private stdin prompt in 
   expect(JSON.stringify(exec.env)).not.toContain(prompt);
   expect(JSON.stringify(exec.args)).not.toContain(token);
   expect(exec.env.ANTHROPIC_AUTH_TOKEN).toBe(token);
+  expect(exec.env.STATION_NATIVE_RPC_KEY).toBeUndefined();
+  expect(exec.args).not.toContain('--mcp-config');
   await f.controller.close();
   expect(f.removals).toEqual([containerId]);
   expect(f.active.size).toBe(0);
@@ -278,3 +288,83 @@ test('container retirement closes model admission during a held exec stop', asyn
   expect(f.removals).toEqual([containerId]);
   expect(f.active.size).toBe(0);
 });
+
+function unusedBroker(): never {
+  throw new Error('Fixture exec must not call the delegation broker');
+}
+
+test('brokered launch refuses if the worker was started without the broker', async () => {
+  const f = await fixture();
+  f.options.delegationRpc = unusedBroker;
+  await expect(
+    f.controller.startBrokeredText({
+      engine: 'claude',
+      modelId: 'fixture-model',
+      signal: new AbortController().signal,
+      writePrompt: (stdin) => writePrompt(stdin, 'unexpected launch'),
+    }),
+  ).rejects.toThrow('native_delegation_rpc_unavailable');
+  expect(f.execs).toHaveLength(0);
+});
+
+test.each(['claude', 'codex'] as const)(
+  'explicit %s launch binds the mounted relay without disclosing its key in argv',
+  async (engine) => {
+    const f = await fixture({ delegationRpc: unusedBroker });
+    const connection = f.controller.connection();
+    const input = {
+      engine,
+      modelId: 'fixture-model',
+      signal: new AbortController().signal,
+      writePrompt: (stdin: Writable) =>
+        writePrompt(stdin, 'bounded fixture prompt'),
+    };
+    const run = await f.controller.startBrokeredText(input);
+    expect(await run.result).toMatchObject({
+      stdout: 'bounded fixture prompt',
+    });
+    await run.settled;
+    await expect(f.controller.startText(input)).rejects.toThrow(
+      'native_text_admission_closed',
+    );
+    expect(f.execs).toHaveLength(1);
+    const [exec] = f.execs;
+    expect(exec.env.STATION_NATIVE_RPC_KEY).toBe(connection.token);
+    expect(exec.env.STATION_NATIVE_RPC_URL).toBe(
+      `${connection.baseUrl}/station/delegation-rpc/v1`,
+    );
+    expect(exec.args.some((value) => value.includes(connection.token))).toBe(
+      false,
+    );
+    expect(exec.args).toContain(`/station/${engine}`);
+    if (engine === 'claude') {
+      const config = exec.args[exec.args.indexOf('--mcp-config') + 1];
+      expect(JSON.parse(config)).toEqual({
+        mcpServers: {
+          station_delegation: {
+            type: 'stdio',
+            command: '/usr/local/bin/node',
+            args: [
+              '/station/native-model-worker.mjs',
+              '--delegation-rpc-client',
+            ],
+          },
+        },
+      });
+      expect(exec.args).toContain('--strict-mcp-config');
+      expect(exec.args[exec.args.indexOf('--allowedTools') + 1]).toBe(
+        'mcp__station_delegation__*',
+      );
+    } else {
+      const config = exec.args.find((value) =>
+        value.startsWith('mcp_servers.station_delegation='),
+      );
+      expect(config).toContain('/station/native-model-worker.mjs');
+      expect(config).toContain('--delegation-rpc-client');
+      expect(config).toContain(
+        'env_vars=["STATION_NATIVE_RPC_URL","STATION_NATIVE_RPC_KEY"]',
+      );
+      expect(config).toContain('required=true');
+    }
+  },
+);

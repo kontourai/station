@@ -1,0 +1,11 @@
+{
+  "revision": "40f3142b0384938fd08af422882a87048007d1d3",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reviewed the preview label, personal Station gate, redacted results, exact active chat, and the one-minute expiry against the runtime binding and diagnostics request.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the new preview table entry. The existing settings route, preview listing behavior, and the rest of the cited settings descriptions stay the same.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the new preview table entry. The existing settings route, preview listing behavior, and the rest of the cited settings descriptions stay the same.","inputs":["docs/user/settings.md"]}
+  ]
+}

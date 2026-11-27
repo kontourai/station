@@ -914,9 +914,9 @@ export const DEVICE_SETTINGS_REGISTRY = [
     key: 'inboxScope',
     scope: 'device',
     descriptor: { kind: 'string' },
-    label: 'Chat list scope',
-    help: 'Limit the chat list to one project or Station on this device.',
-    description: 'Selected project or Station filter for the chat list.',
+    label: 'Scope for Chats',
+    help: 'Limit Chats to one Project or Station on this device.',
+    description: 'Selected Project or Station filter for Chats.',
     // Unchosen follows the route; persisted explicit choices still win.
     defaultValue: INBOX_SCOPE_CURRENT_PROJECT,
   }),
@@ -924,9 +924,9 @@ export const DEVICE_SETTINGS_REGISTRY = [
     key: 'inboxOpen',
     scope: 'device',
     descriptor: { kind: 'boolean' },
-    label: 'Chat dock list open',
-    help: 'The chat dock reopens with its chat list showing on this device.',
-    description: 'Whether the chat dock chat list is open.',
+    label: 'Show chats',
+    help: 'The dock reopens with Chats visible on this device.',
+    description: 'Whether Chats is visible in the dock.',
     priorStorageKey: 'station.inbox.open',
     // Confirmed against ChatDock.tsx's readInboxOpen: `stored === null ?
     // true : stored === 'true'` — absent means open, not closed.
@@ -936,9 +936,9 @@ export const DEVICE_SETTINGS_REGISTRY = [
     key: 'inboxSections',
     scope: 'device',
     descriptor: { kind: 'composite' },
-    label: 'Chat dock list sections',
-    help: 'Chat list groups keep their order and fold state on this device.',
-    description: 'Order and collapsed/expanded state of the chat list groups.',
+    label: 'Chats sections',
+    help: 'Chats sections keep their order and expanded state on this device.',
+    description: 'Order and expanded state of the sections in Chats.',
     priorStorageKey: 'station.inbox.sections',
     // Confirmed against ChatDockInboxPanel.tsx's DEFAULT_SECTION_STATE.
     defaultValue: DEFAULT_INBOX_SECTIONS,
@@ -1229,9 +1229,9 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Sheet gestures preview',
-    help: 'Opt in to phone sheet handles and swipe-to-reveal Snooze and Mark done in the chat list.',
+    help: 'Opt in to phone sheet handles and swipe-to-reveal Snooze and Mark done in Chats.',
     description:
-      'Drag phone sheets to resize or close them; swipe chat list rows left for actions.',
+      'Drag phone sheets to resize or close them; swipe rows in Chats left for actions.',
     defaultValue: false,
   }),
   defineDeviceSetting({
@@ -1265,7 +1265,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Panels within a layout',
     help: 'Each layout and conversation reopens with its side and lower panels and their sizes as you left them.',
     description:
-      'Per layout and session: the side pane and its width, the lower panel’s open state and height, and the chat list fold.',
+      'Per layout and session: the side pane and its width, the lower panel’s open state and height, and whether Chats is visible.',
     // #2993: obsolete pre-release panel preferences reset to generic defaults.
     defaultValue: DEFAULT_LAYOUT_PANELS_RECORD,
   }),

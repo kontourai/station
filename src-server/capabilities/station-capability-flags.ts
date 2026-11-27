@@ -27,6 +27,8 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // withdraw it: see servesConversationStationHandoff.
   conversationStationHandoff: true,
   childWorkSteering: true,
+  // The personal Station serves these routes when its Session groups preview is enabled.
+  cliSessionGroups: true,
   privateOperationalOutcomes: true,
   // Automation targets: src-server/routes/operations/scheduler.ts accepts a
   // job `target` and the built-in scheduler runs it through the conversation
@@ -270,6 +272,13 @@ export function servesProjectRoomCoordinator(
   return !deployment.hosted && !deployment.sharedProjectRooms;
 }
 
+/** Session groups keep their plan and Flow run in the personal Station home. */
+export function servesCliSessionGroups(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Hosted Stations have no conversation inbox through which to wake a coordinator. */
 export function servesCoordinatorSession(
   deployment: StationCapabilityDeployment,
@@ -344,6 +353,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   projectSchedules: servesScheduledConversationTarget,
   schedulerJobDisplayName: servesSchedulerRoutes,
   projectRoomCoordinator: servesProjectRoomCoordinator,
+  cliSessionGroups: servesCliSessionGroups,
   remoteSessionHistory: servesRemoteSessionReads,
   projectLibrary: servesProjectLibrary,
 };

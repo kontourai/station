@@ -1289,7 +1289,7 @@ export class GenerationManager {
     const started = this.clock.now();
     for (;;) {
       const now = this.clock.now();
-      const last = Math.max(0, ...catchers.map((c) => c.lastCaughtAt));
+      const last = Math.max(started, ...catchers.map((c) => c.lastCaughtAt));
       const quietLeft = CATCH_QUIET_MS - (now - last);
       const capLeft = CATCH_QUIET_CAP_MS - (now - started);
       if (quietLeft <= 0 || capLeft <= 0 || this.stopping) break;

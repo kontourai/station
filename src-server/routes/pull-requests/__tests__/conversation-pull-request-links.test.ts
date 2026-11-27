@@ -1,9 +1,17 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ConversationPullRequestLink } from '@kontourai/station-contracts/conversation-pull-request-links';
+import type {
+  ConversationPullRequestLink,
+  LinkedPullRequestSnapshot,
+} from '@kontourai/station-contracts/conversation-pull-request-links';
 import { afterEach, expect, test, vi } from 'vitest';
+import recordedFixture from '../../../services/pull-requests/__tests__/fixtures/github-feedback-observation.json' with {
+  type: 'json',
+};
 import { ConversationPullRequestLinkStore } from '../../../services/pull-requests/conversation-pull-request-link-store.js';
+import { normalizeGitHubFeedbackObservation } from '../../../services/pull-requests/github-feedback-observation.js';
+import { LinkedPullRequestSnapshots } from '../../../services/pull-requests/linked-pull-request-snapshots.js';
 import { createConversationPullRequestLinkRoutes } from '../conversation-pull-request-links.js';
 
 const roots: string[] = [];
@@ -24,6 +32,9 @@ function fixture(
     conversationId: string,
     observations: readonly unknown[],
   ) => void,
+  snapshots?:
+    | ReadonlyMap<string, LinkedPullRequestSnapshot>
+    | LinkedPullRequestSnapshots,
 ) {
   const root = mkdtempSync(join(tmpdir(), 'station-pr-link-routes-'));
   roots.push(root);
@@ -56,6 +67,10 @@ function fixture(
         canRead: () => authority.read,
         operator: () => authority.actor,
         declared,
+        snapshot: (link) =>
+          snapshots instanceof LinkedPullRequestSnapshots
+            ? snapshots.get(link)
+            : snapshots?.get(link.ref),
         ...(lineageSessionIds ? { lineageSessionIds } : {}),
         ...(observed ? { observed } : {}),
       },
@@ -320,4 +335,131 @@ test('a throwing observer does not fail the refresh: it still answers 200 with i
     success: true,
     data: { links: [{ ...identity, status: { state: 'current' } }] },
   });
+});
+
+test('projects cached GitHub observations without another forge read and preserves unknown checks', async () => {
+  const other = { ...identity, ref: '18' };
+  const observedAt = '2026-11-25T15:00:00Z';
+  const answer = structuredClone(recordedFixture);
+  const pr = answer.data.repository.pullRequest;
+  const fullAnswer = {
+    data: {
+      ...answer.data,
+      repository: {
+        pullRequest: {
+          ...pr,
+          title: 'Exact change',
+          commits: {
+            nodes: [
+              {
+                commit: {
+                  ...pr.commits.nodes[0].commit,
+                  statusCheckRollup: {
+                    ...pr.commits.nodes[0].commit.statusCheckRollup,
+                    state: 'FAILURE',
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    },
+  };
+  const unknownAnswer = {
+    data: {
+      ...answer.data,
+      repository: {
+        pullRequest: {
+          ...pr,
+          title: 'Second change',
+          reviewDecision: null,
+          commits: {
+            nodes: [
+              { commit: { oid: pr.headRefOid, statusCheckRollup: null } },
+            ],
+          },
+        },
+      },
+    },
+  };
+  const snapshots = new Map<string, LinkedPullRequestSnapshot>();
+  const full = normalizeGitHubFeedbackObservation(
+    fullAnswer,
+    identity,
+    observedAt,
+  );
+  const unknown = normalizeGitHubFeedbackObservation(
+    unknownAnswer,
+    other,
+    observedAt,
+  );
+  expect(full?.snapshot).toBeDefined();
+  expect(unknown?.snapshot).toBeDefined();
+  snapshots.set(identity.ref, full!.snapshot!);
+  snapshots.set(other.ref, unknown!.snapshot!);
+  const x = fixture(
+    async () => [
+      { ...identity, source: 'task-declared' },
+      { ...other, source: 'task-declared' },
+    ],
+    undefined,
+    undefined,
+    snapshots,
+  );
+  const response = await x.app.request('/conversation-1');
+  expect(response.status).toBe(200);
+  const { data } = (await response.json()) as {
+    data: { links: { status: unknown }[] };
+  };
+  expect(data.links).toHaveLength(2);
+  expect(data.links[0]?.status).toMatchObject({
+    title: 'Exact change',
+    checks: 'failing',
+    reviewDecision: 'changes_requested',
+    observedAt,
+  });
+  expect(data.links[1]?.status).not.toHaveProperty('checks');
+  expect(data.links[1]?.status).not.toHaveProperty('reviewDecision');
+  expect(x.provider.getPullRequestByIdentity).not.toHaveBeenCalled();
+});
+
+test('refresh uses a live provider read once its feedback snapshot expires', async () => {
+  const observedAt = '2026-11-25T15:00:00Z';
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse(observedAt));
+  try {
+    const snapshots = new LinkedPullRequestSnapshots(
+      () => [],
+      () => true,
+      () => ({ title: 'Old open state', pullRequestState: 'OPEN', observedAt }),
+    );
+    const observed = vi.fn();
+    const x = fixture(
+      async () => [{ ...identity, source: 'task-declared' }],
+      undefined,
+      observed,
+      snapshots,
+    );
+    x.provider.getPullRequestByIdentity.mockResolvedValue({
+      available: true,
+      data: { ...identity, title: 'Merged change', state: 'MERGED' },
+    });
+    expect((await x.app.request('/conversation-1')).status).toBe(200);
+    expect(x.provider.getPullRequestByIdentity).not.toHaveBeenCalled();
+    clock.mockReturnValue(Date.parse(observedAt) + 120_000);
+    const response = await x.app.request('/conversation-1');
+    expect(response.status).toBe(200);
+    expect(x.provider.getPullRequestByIdentity).toHaveBeenCalledOnce();
+    expect(observed).toHaveBeenLastCalledWith(
+      expect.any(Request),
+      'conversation-1',
+      [
+        expect.objectContaining({
+          status: expect.objectContaining({ pullRequestState: 'MERGED' }),
+        }),
+      ],
+    );
+  } finally {
+    clock.mockRestore();
+  }
 });

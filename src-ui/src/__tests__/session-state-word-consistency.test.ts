@@ -63,7 +63,7 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
   // is not filed under Just finished). "Running" is deliberately absent: an
   // idle lane whose row says Running is the owner's "Active with no
   // activity" complaint in the other direction.
-  idle: new Set(['Idle', 'Read only']),
+  idle: new Set(['Idle', 'Read only', 'Unknown']),
   // Over. The refinement is which ending.
   recentlyFinished: new Set(['Done', 'Cut off', 'Stopped', 'Failed']),
   // #2310: nothing has been sent. Not "Queued" or "Running" — the raw state
@@ -515,8 +515,7 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
   ['Recently finished', 'Just finished'],
   ['Conversation history', 'History'],
   ['Copy thread ID', 'Copy chat ID'],
-  ['Expand chat list', 'Show chat list'],
-  ['Collapse chat list', 'Hide chat list'],
+  ['Chat list', 'Chats'],
   ['Session inventory', 'Chat inventory'],
   ['Open code layout', 'Open in Coding'],
   ['Model not reported', 'omit the model'],

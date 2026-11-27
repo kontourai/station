@@ -124,6 +124,31 @@ gesture passes `sheetGesture={false}` (`RequestSheet` does, because its drag is
 hide-only). Only the handle is draggable: a drag that starts anywhere else in
 the sheet scrolls or activates what it started on.
 
+### Phone dock sizes
+
+A phone dock dragged by its bar rests on one of four levels, resolved in
+[`dockSnap.ts`](../../src-ui/src/components/chat-dock/dockSnap.ts): Collapsed
+(the bar), Half, Tall (75%) and Full (the viewport minus the toolbar). Half is
+45% of the viewport and never under 380px, which is what it is on a 390×844
+phone: at 300px on a 667px-tall phone the bar and a three-line composer left
+about 105px of transcript. The floor stops 100px short of Tall, so it tapers
+away on a shorter viewport instead of putting Half on or above Tall. A desktop
+dock has no levels of this kind: it is dragged freely and uses Half only as
+the size it opens at, a plain 45%. A slow release lands on the level nearest
+where it was released.
+A flick up opens Full, a moderate flick down moves down one level and never
+closes an open dock, and a fast flick down collapses it. The resize grip's
+arrow keys move one level for keyboards and assistive technology.
+
+**Full screen chat** and **Restore chat size** in the bar, the region bar's
+maximize control and the `dock.maximize` chord share one toggle
+([`useDockShellChrome.ts`](../../src-ui/src/hooks/useDockShellChrome.ts)).
+Restore returns the dock to where it last rested before it was maximized,
+however it was maximized: its bar, the level it rested on, or on a computer the
+exact height it was dragged to. A dock maximized from its bar goes back to the
+bar. A navigation restore is separate: it returns a maximized dock to its
+docked size and leaves it open.
+
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
 anchored surface-popover, navigation, notification, toolbar-menu and palette
@@ -278,12 +303,15 @@ from its row. Its work-chat disclosure stays separate. A desktop row's ⋯ menu
 appears on hover or keyboard focus. Open Search from its icon or the narrow header menu. **New chat** floats over the Chats list. This list replaces the title-triggered Chats and tasks sheet
 and shares the desktop Chats list's scope and history preferences. It stays mounted
 behind a conversation, retaining its search and list position. While reading a
-chat, **Chat list** in Chat actions opens the same list. **Browse all conversations**
+chat, **Chats** in Chat actions opens the same list. The phone dock centers
+**Chats** when collapsed without a chat selected and aligns it left as the dock opens. **Browse all conversations**
 opens the saved conversation list.
 Project choice belongs to the start composer on phone and desktop; the dock
 header has no project picker, including while empty or showing Chats. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
 across the desktop inbox, the collapsed dock bar (icon only) and
-the open, empty dock. The mobile bar composes the same conversation-plus glyph
+the open, empty dock on a phone or in a full-screen layout, and while there
+are no Agents. An open desktop dock with no chat otherwise shows the start
+composer itself, ready to type ([no empty pane](../design/chat-composer.md)). The mobile bar composes the same conversation-plus glyph
 with its toolbar button styles. Both forms retain a 44px minimum target and
 an accessible name. It opens the start composer, in the dock as a draft in the
 dock body (full screen on a phone). New-chat and running-chat controls share

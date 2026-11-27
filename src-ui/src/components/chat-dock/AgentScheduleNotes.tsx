@@ -20,6 +20,7 @@ import { Checkbox } from '../Checkbox';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { CalendarGlyph, TimeGlyph } from '../icons/Glyph';
 import { scheduleText } from './agentScheduleText';
+import { ScheduleCardActions } from './ScheduleCardActions';
 import './AgentScheduleNotes.css';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { ScheduledCheckBackContext } from '../status/ScheduledCheckBackContext';
@@ -51,6 +52,7 @@ export function AgentScheduleNotes({
     loaded,
     cancelWakeUp,
     approveWakeUp,
+    wakeUpApprovalOutcome,
     declineWakeUp,
     declineProposal,
     approveProposal,
@@ -132,6 +134,7 @@ export function AgentScheduleNotes({
   return (
     <>
       {(confirmation ||
+        wakeUpApprovalOutcome ||
         visibleWakeUps.length > 0 ||
         proposals.list.length > 0 ||
         automationProposals.list.length > 0) && (
@@ -234,6 +237,13 @@ export function AgentScheduleNotes({
               />
             </PresenceRow>
           ))}
+          {wakeUpApprovalOutcome ? (
+            <li>
+              <div className="agent-schedule-card" role="alert">
+                Check-back approval closed. {wakeUpApprovalOutcome}
+              </div>
+            </li>
+          ) : null}
           {visibleWakeUps.map(({ item, key, phase }) => (
             <PresenceRow
               key={key}
@@ -255,6 +265,7 @@ export function AgentScheduleNotes({
                   }
                   failed={
                     (approveWakeUp.isError &&
+                      !wakeUpApprovalOutcome &&
                       approveWakeUp.variables === item.id) ||
                     (declineWakeUp.isError &&
                       declineWakeUp.variables === item.id)
@@ -340,12 +351,12 @@ function CheckBackApprovalCard({
   return (
     <section
       className="agent-schedule-card"
-      aria-label={`Check back at ${at}?`}
+      aria-label={`Approve check-back by ${at}`}
     >
       <p className="agent-schedule-card__title">
         <TimeGlyph className="agent-schedule-notes__glyph" />
         <strong>
-          Check back at <time dateTime={wakeUp.dueAt}>{at}</time>?
+          Approve check-back by <time dateTime={wakeUp.dueAt}>{at}</time>
         </strong>
       </p>
       <section
@@ -361,27 +372,15 @@ function CheckBackApprovalCard({
           That didn't go through. Try again.
         </p>
       ) : null}
-      <div className="agent-schedule-card__actions">
-        <Button
-          variant="primary"
-          size="sm"
-          pending={approving}
-          pendingLabel="Approving…"
-          disabled={busy}
-          onClick={onApprove}
-        >
-          Approve
-        </Button>
-        <Button
-          size="sm"
-          pending={declining}
-          pendingLabel="Declining…"
-          disabled={busy}
-          onClick={onDecline}
-        >
-          Decline
-        </Button>
-      </div>
+      <ScheduleCardActions
+        acceptLabel="Approve"
+        acceptingLabel="Approving…"
+        busy={busy}
+        accepting={approving}
+        declining={declining}
+        onAccept={onApprove}
+        onDecline={onDecline}
+      />
     </section>
   );
 }
@@ -455,27 +454,15 @@ function JobProposalCard({
           That didn't go through. Try again.
         </p>
       ) : null}
-      <div className="agent-schedule-card__actions">
-        <Button
-          variant="primary"
-          size="sm"
-          pending={approving}
-          pendingLabel="Creating…"
-          disabled={busy}
-          onClick={onApprove}
-        >
-          Approve
-        </Button>
-        <Button
-          size="sm"
-          pending={declining}
-          pendingLabel="Declining…"
-          disabled={busy}
-          onClick={onDecline}
-        >
-          Decline
-        </Button>
-      </div>
+      <ScheduleCardActions
+        acceptLabel="Approve"
+        acceptingLabel="Creating…"
+        busy={busy}
+        accepting={approving}
+        declining={declining}
+        onAccept={onApprove}
+        onDecline={onDecline}
+      />
     </section>
   );
 }
@@ -648,27 +635,15 @@ function AutomationProposalCard({
           {errorMessage}
         </p>
       ) : null}
-      <div className="agent-schedule-card__actions">
-        <Button
-          variant="primary"
-          size="sm"
-          pending={confirming}
-          pendingLabel="Creating…"
-          disabled={busy}
-          onClick={() => onConfirm(enable)}
-        >
-          Confirm
-        </Button>
-        <Button
-          size="sm"
-          pending={declining}
-          pendingLabel="Declining…"
-          disabled={busy}
-          onClick={onDecline}
-        >
-          Decline
-        </Button>
-      </div>
+      <ScheduleCardActions
+        acceptLabel="Confirm"
+        acceptingLabel="Creating…"
+        busy={busy}
+        accepting={confirming}
+        declining={declining}
+        onAccept={() => onConfirm(enable)}
+        onDecline={onDecline}
+      />
     </section>
   );
 }

@@ -122,8 +122,9 @@ export function createLongSessionEventWindowHandler({
       new URL(url).searchParams.get('turnLimit') ?? '10',
     );
     const turns = availableTurns();
+    const events = turns.flat();
     const sequenceByEventId = new Map(
-      turns.flat().map((event, index) => [event.eventId, index + 1]),
+      events.map((event, index) => [event.eventId, index + 1]),
     );
     const end = turns.length - alreadyLoaded;
     const start = Math.max(0, end - requestedLimit);
@@ -148,11 +149,7 @@ export function createLongSessionEventWindowHandler({
         })),
         hasMore: start > 0,
         nextCursor: start > 0 ? `older-turns-${totalLoaded}` : undefined,
-        // The corpus's own size, deliberately, where the inline builder this
-        // module replaced hardcoded 10000: a caller that shrinks `turnCount`
-        // (performance-stress uses 1,000) or grows the corpus mid-test would
-        // otherwise be served a watermark describing a different transcript.
-        watermark: turns.length,
+        watermark: events.length,
       },
     };
     return route.fulfill({

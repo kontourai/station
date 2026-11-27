@@ -1,8 +1,10 @@
+import { STATION_AGENT_ID } from '@kontourai/station-contracts/agent-identity';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { describe, expect, test } from 'vitest';
 import {
   selectFirstChatTarget,
   selectGlobalContextAgents,
+  selectHelpPromptTarget,
 } from '../components/agent-selection-policy';
 import type { AgentData } from '../contexts/AgentsContext';
 
@@ -106,5 +108,80 @@ describe('selectFirstChatTarget (station#1004 review MED)', () => {
         selectedProjectSlug: 'project-a',
       }),
     ).toEqual(globalAgent);
+  });
+});
+
+describe('selectHelpPromptTarget', () => {
+  const kiroConnection: ConnectionConfig = {
+    ...readyConnection,
+    id: 'kiro-cli',
+    type: 'acp',
+    name: 'Kiro',
+  } as any;
+  const stationConnection: ConnectionConfig = {
+    ...readyConnection,
+    id: 'station',
+  } as any;
+  const kiro: AgentData = {
+    slug: 'kiro-cli',
+    name: 'Kiro',
+    execution: { agentConnectionId: 'kiro-cli' },
+  } as any;
+  const station: AgentData = {
+    slug: STATION_AGENT_ID,
+    name: 'Station Assistant',
+    execution: { agentConnectionId: 'station' },
+  } as any;
+
+  test('starts on the Station Assistant even when another chat-ready Agent is listed first', () => {
+    const agentConnections = [kiroConnection, stationConnection];
+
+    expect(
+      selectHelpPromptTarget({ agents: [kiro, station], agentConnections }),
+    ).toEqual(station);
+    // The Assistant is global, so a Project the header is inside keeps it.
+    expect(
+      selectHelpPromptTarget({
+        agents: [kiro, station],
+        agentConnections,
+        selectedProjectSlug: 'project-a',
+      }),
+    ).toEqual(station);
+  });
+
+  const assistantCannotStart: Array<[string, AgentData[], ConnectionConfig[]]> =
+    [
+      [
+        'the server marks it unavailable',
+        [kiro, { ...station, available: false } as AgentData],
+        [kiroConnection, stationConnection],
+      ],
+      [
+        'its engine connection is not selectable',
+        [kiro, station],
+        [
+          kiroConnection,
+          { ...stationConnection, status: 'degraded' } as ConnectionConfig,
+        ],
+      ],
+      ['it is not in the catalog', [kiro], [kiroConnection]],
+    ];
+
+  test.each(assistantCannotStart)(
+    'falls back to the first Agent that can start a chat when %s',
+    (_case, agents, agentConnections) => {
+      expect(selectHelpPromptTarget({ agents, agentConnections })).toEqual(
+        kiro,
+      );
+    },
+  );
+
+  test('has no target when neither the Assistant nor any other Agent can start a chat', () => {
+    expect(
+      selectHelpPromptTarget({
+        agents: [station],
+        agentConnections: [],
+      }),
+    ).toBeUndefined();
   });
 });

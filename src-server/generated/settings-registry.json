@@ -161,7 +161,7 @@
     {
       "id": "experimental-sheet-gestures",
       "label": "Sheet gestures preview",
-      "help": "Opt in to phone sheet handles and swipe-to-reveal Snooze and Mark done in the chat list.",
+      "help": "Opt in to phone sheet handles and swipe-to-reveal Snooze and Mark done in Chats.",
       "scope": "device",
       "section": "developer-tools",
       "route": "/settings?view=developer-tools&highlight=experimental-sheet-gestures",
@@ -841,9 +841,11 @@
     {
       "id": "station-routes",
       "label": "Routes",
-      "scope": "device",
+      "help": "Leave empty for automatic discovery or enter an exact HTTPS DNS origin.",
+      "scope": "station",
       "section": "station-routes",
-      "route": "/settings?view=station-routes&highlight=station-routes"
+      "route": "/settings?view=station-routes&highlight=station-routes",
+      "configKey": "trustedConsentOrigin"
     },
     {
       "id": "personal-knowledge-store",

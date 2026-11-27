@@ -3296,6 +3296,62 @@ describe('Global Conversation Routes', () => {
     },
   );
 
+  test('projects workspace observations in one batch per inventory page', async () => {
+    const observed = vi.fn(
+      () => new Map([['thread-1', { branch: 'feature' }]]),
+    );
+    const items = ['thread-1', 'thread-2'].map((id) => ({
+      id,
+      source: 'runtime',
+      agentSlug: 'claude',
+      projectSlug: 'project-alpha',
+      title: id,
+      createdAt: '2026-07-23T00:00:00Z',
+      updatedAt: '2026-07-23T00:01:00Z',
+      messageCount: 2,
+      mutable: false,
+      answerability: { answerable: true },
+    }));
+    const app = createGlobalConversationRoutes(
+      new Map(),
+      { getConversation: () => null },
+      mockLogger,
+      undefined,
+      {
+        readSessionConversation: vi.fn(),
+        searchSessionMessages: vi.fn(),
+        listConversationHistoryPage: vi
+          .fn()
+          .mockResolvedValue({ items, hasMore: false }),
+      },
+      () => 'bound-user',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      observed,
+    );
+    const body = await json(await app.request('/'));
+    expect(observed).toHaveBeenCalledExactlyOnceWith(
+      expect.anything(),
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'thread-1' }),
+        expect.objectContaining({ id: 'thread-2' }),
+      ]),
+    );
+    expect(body.data.items).toEqual([
+      expect.objectContaining({ id: 'thread-2' }),
+      expect.objectContaining({
+        id: 'thread-1',
+        observedWorkspace: { branch: 'feature' },
+      }),
+    ]);
+    expect(body.data.items[0]).not.toHaveProperty('observedWorkspace');
+  });
+
   // S2 of archive#1302: the global conversation-inventory endpoint. Folds the
   // orchestration session leg (across every agent) and every registered
   // adapter's file-store conversations, tags each item's `source`, and
@@ -4022,6 +4078,73 @@ describe('Global Conversation Routes', () => {
       } else {
         expect(response.status).toBe(404);
       }
+    },
+  );
+
+  test.each([
+    ['reader', 200],
+    ['parent-only-reader', 404],
+    ['session-only-reader', 404],
+  ])(
+    'GET /:id follows a notification Session for %s only with access to both records',
+    async (user, status) => {
+      const conversation = {
+        id: 'durable-chat',
+        agentSlug: agentId('current-agent'),
+        projectSlug: 'station',
+        title: 'Continue the history fix',
+        createdAt: '2026-07-23T00:00:00Z',
+        updatedAt: '2026-07-23T00:01:00Z',
+        messageCount: 2,
+      };
+      const app = createGlobalConversationRoutes(
+        new Map(),
+        { getConversation: () => null },
+        mockLogger,
+        undefined,
+        {
+          ...emptyHistoryReader(),
+          isRuntimeConversation: () => true,
+          successorConversationId: (id) =>
+            id === 'notification-session' ? conversation.id : undefined,
+          readSessionConversation: async (id, authority) =>
+            id === 'notification-session' &&
+            authority.userId !== 'parent-only-reader'
+              ? { ...conversation, agentSlug: 'previous-agent', mutable: false }
+              : null,
+          resolveConversationOpen: async (id, authority) =>
+            id === conversation.id && authority.userId !== 'session-only-reader'
+              ? {
+                  status: 'resolved',
+                  conversation: {
+                    ...conversation,
+                    source: 'runtime',
+                    mutable: false,
+                    answerability: { answerable: true },
+                  },
+                  currentSessionId: 'current-session',
+                  transcript: {
+                    available: true,
+                    owner: 'runtime',
+                    messageCount: 2,
+                  },
+                  canContinue: false,
+                  answerability: { answerable: true },
+                  recoveryActions: [],
+                }
+              : null,
+        },
+        () => user,
+      );
+      const response = await app.request('/notification-session');
+      expect(response.status).toBe(status);
+      if (status === 200)
+        expect((await json(response)).data).toMatchObject(conversation);
+      else
+        expect(await json(response)).toEqual({
+          success: false,
+          error: 'Conversation not found',
+        });
     },
   );
 

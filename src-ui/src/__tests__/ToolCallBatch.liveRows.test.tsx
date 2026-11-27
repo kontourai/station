@@ -11,6 +11,7 @@ import {
   type ToolCallLike,
   type ToolCallRun,
 } from '../components/chat/tool-call-runs';
+import { backgroundTasksStore } from '../contexts/background-tasks-store';
 
 function runFor(parts: ToolCallLike[]): ToolCallRun {
   const [block] = splitToolCallRuns(parts);
@@ -89,6 +90,65 @@ describe('ToolCallBatch — live child rows', () => {
     expect(
       summaryButton().querySelector('.tool-call__label--active'),
     ).toBeNull();
+  });
+
+  test('a reconnect snapshot corrects the running count before the transcript catches up', () => {
+    const createdAt = '2026-11-25T02:55:00.000Z';
+    const threadId = 'codex-reconnect';
+    const turnId = 'turn-1';
+    for (const toolCallId of ['a', 'b']) {
+      backgroundTasksStore.ingest({
+        eventId: `start-${toolCallId}`,
+        provider: 'codex',
+        method: 'tool.started',
+        threadId,
+        turnId,
+        createdAt,
+        itemId: toolCallId,
+        toolCallId,
+        toolName: 'Bash',
+      });
+    }
+    try {
+      render(
+        <ToolCallBatch
+          run={runFor([command('a', 'call'), command('b', 'running')])}
+          renderCall={renderCall}
+        />,
+      );
+      expect(summaryButton().textContent).toContain('2 running');
+
+      act(() =>
+        backgroundTasksStore.reconcileSnapshot({
+          sessions: [
+            {
+              provider: 'codex',
+              threadId,
+              status: 'running',
+              hasActiveTurn: true,
+              conversationActivity: {
+                conversationId: threadId,
+                asOfSequence: 4,
+                openTurn: { threadId, turnId, startedAt: createdAt },
+                runningTools: [
+                  { name: 'Bash', callId: 'b', startedAt: createdAt },
+                ],
+                lastTool: {
+                  name: 'Bash',
+                  callId: 'a',
+                  outcome: 'success',
+                  completedAt: '2026-11-25T02:55:01.000Z',
+                },
+              },
+            },
+          ],
+        }),
+      );
+      expect(summaryButton().textContent).toContain('1 running');
+      expect(childRows().map((row) => row.dataset.toolCallId)).toEqual(['b']);
+    } finally {
+      act(() => backgroundTasksStore.reset());
+    }
   });
 
   test('shows at most two running calls, then how many more', () => {

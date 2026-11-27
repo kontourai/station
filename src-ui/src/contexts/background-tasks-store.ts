@@ -452,7 +452,10 @@ function foldToolProgress(
 
 function foldToolCompleted(
   state: BackgroundTasksState,
-  event: Extract<OrchestrationEvent, { method: 'tool.completed' }>,
+  event: Pick<
+    Extract<OrchestrationEvent, { method: 'tool.completed' }>,
+    'toolCallId' | 'status' | 'createdAt'
+  >,
 ): BackgroundTasksState {
   const existing = state.entries[event.toolCallId];
   // An `unresolved` card is the one settled state that is not final: the
@@ -873,6 +876,25 @@ export function reconcileBackgroundTasksSnapshot(
       };
       next = pruneFinished(next, entries, existing.chatThreadId);
     }
+  }
+  for (const session of payload.sessions) {
+    const activity = session.conversationActivity;
+    const lastTool = activity?.lastTool;
+    if (!lastTool) continue;
+    const entry = next.entries[lastTool.callId];
+    if (
+      entry?.kind !== 'tool' ||
+      entry.chatThreadId !== session.threadId ||
+      entry.startedAt === undefined ||
+      !(entry.startedAt <= Date.parse(lastTool.completedAt)) ||
+      activity.runningTools?.some((tool) => tool.callId === lastTool.callId)
+    )
+      continue;
+    next = foldToolCompleted(next, {
+      toolCallId: lastTool.callId,
+      status: lastTool.outcome,
+      createdAt: lastTool.completedAt,
+    });
   }
   // A snapshot is authoritative for liveness.  Do not leave raw tools or
   // delegates visible merely because their terminal SSE event was missed.

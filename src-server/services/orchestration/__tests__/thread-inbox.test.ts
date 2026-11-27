@@ -471,6 +471,133 @@ afterEach(async () => {
 describe('thread inbox (#3568)', () => {
   const path = () => join(makeTempDir('thread-inbox-'), 'orchestration.sqlite');
 
+  test('edits a queued message in place and sends the saved multiline text', async () => {
+    const world = boot(path());
+    const turn = await runningFirstTurn(world);
+    queueFollowUp(world, 'editable');
+    queueFollowUp(world, 'next');
+    const revised = 'Check the timeout.\nThen add a regression test.';
+    expect(
+      world.inbox.editQueued(
+        THREAD,
+        'editable',
+        FOLLOW_UP,
+        revised,
+        'another-user',
+      ),
+    ).toBe(false);
+    expect(
+      world.inbox.editQueued(THREAD, 'editable', FOLLOW_UP, revised, OWNER),
+    ).toBe(true);
+    expect(
+      world.inbox.editQueued(
+        THREAD,
+        'editable',
+        FOLLOW_UP,
+        'stale edit',
+        OWNER,
+      ),
+    ).toBe(false);
+    expect(world.inbox.list(THREAD, OWNER)).toMatchObject([
+      { clientTurnId: 'editable', position: 1, message: revised },
+      { clientTurnId: 'next', position: 2, message: FOLLOW_UP },
+    ]);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, turn);
+    await settle(world);
+    expect(sends).toContain(revised);
+    expect(
+      world.inbox.editQueued(THREAD, 'editable', revised, 'late edit', OWNER),
+    ).toBe(false);
+  });
+
+  test('moves adjacent queued messages and rejects a stale repeat', async () => {
+    const world = boot(path());
+    await runningFirstTurn(world);
+    queueFollowUp(world, 'first');
+    queueFollowUp(world, 'second');
+    expect(world.inbox.moveQueued(THREAD, 'second', 'first', 'up', OWNER)).toBe(
+      true,
+    );
+    expect(world.inbox.moveQueued(THREAD, 'second', 'first', 'up', OWNER)).toBe(
+      false,
+    );
+    expect(
+      world.inbox
+        .list(THREAD, OWNER)
+        .map((entry) => [entry.clientTurnId, entry.position]),
+    ).toEqual([
+      ['second', 1],
+      ['first', 2],
+    ]);
+  });
+
+  test('keeps the queued message on a stale steer and withdraws it on acceptance', async () => {
+    let fidelity: 'none' | 'native' = 'none';
+    const world = boot(path(), { steerFidelity: () => fidelity });
+    const turn = await runningFirstTurn(world);
+    queueFollowUp(world, 'waiting');
+    const input = {
+      conversationId: THREAD,
+      clientTurnId: 'promoted',
+      payload,
+      expectedTurn: world.inbox.currentSteerTarget(THREAD)!,
+    };
+    expect(
+      (
+        await world.inbox.promoteQueued(
+          { ...input, expectedTurn: 'stale' },
+          'waiting',
+        )
+      ).outcome,
+    ).toBe('stale-head');
+    expect(world.store.threadInboxStore().read(THREAD, 'waiting')?.state).toBe(
+      'queued',
+    );
+    expect((await world.inbox.promoteQueued(input, 'waiting')).outcome).toBe(
+      'steering-unavailable',
+    );
+    expect(world.store.threadInboxStore().read(THREAD, 'waiting')?.state).toBe(
+      'queued',
+    );
+    const earlierHead = world.inbox.currentHead(THREAD);
+    await emit(
+      world,
+      'content.text-delta',
+      { turnId: 'turn-1', delta: 'still working' },
+      turn,
+    );
+    expect(world.inbox.currentHead(THREAD)).not.toBe(earlierHead);
+    fidelity = 'native';
+    expect((await world.inbox.promoteQueued(input, 'waiting')).outcome).toBe(
+      'queued',
+    );
+    expect(world.store.threadInboxStore().read(THREAD, 'waiting')?.state).toBe(
+      'cancelled',
+    );
+    expect(world.store.threadInboxStore().read(THREAD, 'promoted')?.kind).toBe(
+      'steer',
+    );
+    expect((await world.inbox.promoteQueued(input, 'waiting')).outcome).toBe(
+      'conflict',
+    );
+    world.store.threadInboxStore().submit({
+      conversationId: THREAD,
+      clientTurnId: 'advance-retention',
+      kind: 'display',
+      payload,
+      now: Date.now() + 8 * 24 * 60 * 60 * 1000,
+    });
+    expect(queueFollowUp(world, 'waiting').outcome).toBe('conflict');
+    expect(() =>
+      world.service.readPendingConversationSubmission(
+        THREAD,
+        'waiting',
+        INTERNAL_SESSION_READ_SCOPE,
+        OWNER,
+      ),
+    ).toThrow(ClientTurnInputConflictError);
+  });
+
   test.each(['none', 'missing', 'missing-metadata'] as const)(
     'steer dispatch refuses %s steering declaration even for a native-named provider',
     async (declaration) => {
@@ -578,6 +705,84 @@ describe('thread inbox (#3568)', () => {
     await world.inbox.reconcile();
     expect(world.adapter.steers).toEqual([]);
   });
+
+  test.each(['follow-up first', 'steer first'] as const)(
+    'a steer reaches the open turn before its queued follow-up (%s)',
+    async (order) => {
+      let world: World;
+      let allowSteer!: () => void;
+      let steerIsWaiting!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        steerIsWaiting = resolve;
+      });
+      const ready = new Promise<void>((resolve) => {
+        allowSteer = resolve;
+      });
+      world = boot(path(), {
+        steerFidelity: (threadId) =>
+          world.service.steerFidelityForThread(threadId),
+        inspectSteer: (input) => world.store.readSteerInput(input),
+        steer: async ({ threadId, turnId, clientInputId, payload }) => {
+          steerIsWaiting();
+          await ready;
+          const dispatched = await world.service.dispatchWithReceipt(
+            {
+              type: 'steerTurn',
+              threadId,
+              turnId,
+              clientInputId,
+              input: payload.message,
+            },
+            { userId: payload.actor.userId },
+          );
+          if (!dispatched.result || !('outcome' in dispatched.result))
+            throw new Error('Steer dispatch did not return an outcome.');
+          return dispatched.result;
+        },
+      });
+      const turn = await runningFirstTurn(world);
+      const steerText = 'Keep using the current turn';
+      if (order === 'follow-up first') {
+        expect(queueFollowUp(world).outcome).toBe('queued');
+      }
+      try {
+        expect(
+          world.inbox.submitSteer({
+            conversationId: THREAD,
+            clientTurnId: 'priority-steer',
+            payload: { ...payload, message: steerText },
+            expectedHead: world.inbox.currentHead(THREAD),
+          }).outcome,
+        ).toBe('queued');
+        await waiting;
+        if (order === 'steer first') {
+          expect(queueFollowUp(world).outcome).toBe('queued');
+        }
+        expect(
+          world.store.threadInboxStore().read(THREAD, 'follow-up-1')?.state,
+        ).toBe('queued');
+        expect(world.adapter.steers).toEqual([]);
+        expect(sends).toEqual(['read the file']);
+      } finally {
+        allowSteer();
+      }
+      await world.inbox.idle();
+      expect(world.adapter.steers).toEqual([steerText]);
+      expect(sends).toEqual(['read the file']);
+      expect(
+        world.store.readSteerInput({
+          threadId: THREAD,
+          turnId: 'turn-1',
+          clientInputId: 'priority-steer',
+          input: steerText,
+        }),
+      ).toMatchObject({ outcome: 'steered' });
+      await emit(world, 'turn.completed', { turnId: 'turn-1' }, turn);
+      await settle(world);
+      expect(sends).toEqual(['read the file', FOLLOW_UP]);
+      expect(world.adapter.steers).toEqual([steerText]);
+    },
+  );
 
   test('the inbox drives a scripted adapter through the real receipted orchestration dispatch', async () => {
     const file = path();
@@ -1628,6 +1833,7 @@ describe('thread inbox (#3568)', () => {
       };
       world = boot(file, ports);
       await runningFirstTurn(world);
+      queueFollowUp(world);
       const expectedHead = world.inbox.currentHead(THREAD);
       const input = {
         conversationId: THREAD,
@@ -1638,7 +1844,10 @@ describe('thread inbox (#3568)', () => {
       expect(world.inbox.submitSteer(input).outcome).toBe('queued');
       await world.inbox.idle();
       expect(handoffs).toBe(1);
-      expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sent' }]);
+      expect(world.inbox.list(THREAD)).toMatchObject([
+        { kind: 'follow-up', state: 'queued', position: 1 },
+        { kind: 'steer', state: 'sent' },
+      ]);
       await crash(world);
       world = boot(file, ports);
       await world.inbox.reconcile();
@@ -1696,12 +1905,13 @@ describe('thread inbox (#3568)', () => {
     },
   );
 
-  test('a possibly handed-off steer is surfaced and never repeated after restart', async () => {
+  test('a possibly handed-off steer checks for a late receipt after restart without sending again', async () => {
     const file = path();
     let world: World;
     let handoffs = 0;
     const ports: Partial<ThreadInboxDeliveryPorts> = {
       steerFidelity: () => 'native',
+      retryDelaysMs: [50],
       inspectSteer: (input) => world.store.readSteerInput(input),
       steer: async ({ threadId, clientInputId, payload, turnId }) => {
         const input = {
@@ -1730,6 +1940,19 @@ describe('thread inbox (#3568)', () => {
     world = boot(file, ports);
     await world.inbox.reconcile();
     expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'unconfirmed' }]);
+    world.store.confirmSteerInput(
+      {
+        threadId: THREAD,
+        turnId: 'turn-1',
+        clientInputId: 'uncertain-steer',
+        input: payload.message,
+      },
+      'turn-1',
+    );
+    await vi.waitFor(
+      () => expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sent' }]),
+      { timeout: 5_000 },
+    );
     expect(handoffs).toBe(1);
   });
 

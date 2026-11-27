@@ -682,6 +682,48 @@ function dispatch(
       if (decision.put) tx.inbox.put(decision.put);
       return decision.result;
     }
+    case 'inbox.edit': {
+      const entry = tx.inbox.get(command.inboxId, command.key);
+      if (
+        !entry ||
+        entry.kind !== 'follow-up' ||
+        entry.state !== 'queued' ||
+        entry.placement !== null ||
+        entry.payload !== command.previousPayload
+      )
+        return { kind: 'conflict' };
+      tx.inbox.put({
+        ...entry,
+        payload: command.payload,
+        updatedAt: command.now,
+      });
+      return { kind: 'applied' };
+    }
+    case 'inbox.move': {
+      const entries = tx.inbox.listInbox(command.inboxId);
+      const waiting = entries.filter(
+        (entry) =>
+          entry.kind === 'follow-up' &&
+          ['queued', 'placing', 'unconfirmed'].includes(entry.state),
+      );
+      const index = waiting.findIndex((entry) => entry.key === command.key);
+      const entry = waiting[index];
+      const neighbor = waiting[index + (command.direction === 'up' ? -1 : 1)];
+      if (
+        !entry ||
+        neighbor?.key !== command.neighbor ||
+        entry.state !== 'queued' ||
+        neighbor.state !== 'queued' ||
+        entry.placement !== null ||
+        neighbor.placement !== null
+      )
+        return { kind: 'conflict' };
+      const temporary = Math.max(...entries.map((item) => item.sequence)) + 1;
+      tx.inbox.put({ ...entry, sequence: temporary });
+      tx.inbox.put({ ...neighbor, sequence: entry.sequence });
+      tx.inbox.put({ ...entry, sequence: neighbor.sequence });
+      return { kind: 'applied' };
+    }
     case 'inbox.cancel': {
       const decision = decideInboxCancel(
         tx.inbox.get(command.inboxId, command.key),
@@ -746,6 +788,8 @@ export const KERNEL_COMMAND_READ_ONLY: Readonly<
   'inbox.claimNext': false,
   'inbox.settle': false,
   'inbox.release': false,
+  'inbox.move': false,
+  'inbox.edit': false,
   'inbox.cancel': false,
   'inbox.read': true,
   'inbox.list': true,

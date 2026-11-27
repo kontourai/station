@@ -3128,7 +3128,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 |------|---------|-------------|
 | `--port=<n>` | worktree-derived development port (or explicit release channel port) | API server port |
 | `--ui-port=<n>` | worktree-derived development port (or explicit release channel port) | UI static file server port |
-| `--host=<address>` | existing lifecycle default (`127.0.0.1` under a managed policy without `remote` clients) | Explicit bind address for all four Station listeners: API, terminal, voice, and UI. Dogfood uses `127.0.0.1`. Under a [managed policy](../guides/managed-policy.md#network-exposure) without `remote` clients, a non-loopback address is refused, and so is a non-loopback `STATION_HOST` in the environment. |
+| `--host=<address>` | existing lifecycle default (`127.0.0.1` under a managed policy without `remote` clients) | Bind address for API, voice, UI, and consent. Terminal upgrades use the API listener. A concrete API bind also exposes the same API on `127.0.0.1` at the same port for local control and the UI proxy, without accepting local-only credentials from LAN peers. Dogfood uses `127.0.0.1`. Under a [managed policy](../guides/managed-policy.md#network-exposure) without `remote` clients, a non-loopback address is refused, and so is a non-loopback `STATION_HOST` in the environment. |
 | `--clean` | — | Clean the selected Station home before starting |
 | `--force` | — | Skip the confirmation prompt for destructive cleanup |
 | `--allow-default-home-clean` | — | Required together with `--force` to delete the selected default runtime home |
@@ -3145,7 +3145,8 @@ Detached processes are tracked per instance in `.station/instances/<instance-id>
 **The server runs under the [process supervisor](../design/process-supervisor.md).**
 `start` launches `station-supervisor.js` from the instance's build directory,
 and the supervisor runs the core server as a supervised generation and holds
-its three listeners. The instance record, the home registry entry, and the
+its API, voice and consent listeners, plus the loopback API socket when needed.
+The instance record, the home registry entry, and the
 active-local-station record name the supervisor's pid (`"supervised": true`
 in the record): the supervisor owns the instance while core server generations
 come and go beneath it. `station restart` hands off to a new generation in

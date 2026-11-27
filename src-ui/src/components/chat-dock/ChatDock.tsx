@@ -14,6 +14,8 @@ import { describeStationFailure } from '../../utils/stationFailure';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import { ConversationHeaderActionSlot } from '../conversation/ConversationHeaderActionSlot';
 import { SessionReaderBindingProvider } from '../conversation/SessionReaderBinding';
+import { useDialogHistoryHost } from '../DialogHistoryHost';
+import { DIALOG_HISTORY_KEY, registerDialogHistory } from '../dialog-history';
 import { RefreshGlyph } from '../icons/Glyph';
 import { refreshListQueries, useListRefresh } from '../refresh/ListRefresh';
 import { ChildChatNavigation } from './ChildChatNavigation';
@@ -48,6 +50,7 @@ import {
   useContext,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -159,6 +162,7 @@ import {
   optionalRemoteInventoryRefetch,
   stationViewReadQueryOptions,
 } from '../../lib/queryDefaults';
+import { motionTokenMs, prefersReducedMotion } from '../../lib/reduced-motion';
 import {
   requestTaskShaping,
   TASK_SHAPING_INSTRUCTION,
@@ -860,7 +864,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const refreshInbox = useCallback(
     async (recover: boolean) => {
       if (!requestAuthority?.isCurrent()) {
-        throw new Error('Chat list connection changed');
+        throw new Error('The Station connection changed');
       }
       if (recover) resyncOrchestrationEventStream(apiBase);
       await refreshListQueries(
@@ -982,6 +986,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     dockSnap,
     dockHeight,
     applyDockSnap,
+    toggleDockMaximize,
+    restoreDockFromMaximized,
     restoreDockToDocked,
     onHeaderDragPointerDown,
     onHeaderDragClickCapture,
@@ -1204,20 +1210,37 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   }, [activeChat, isMobile, setMobileInboxOpen]);
   const closeMobileInbox = useCallback(() => {
     cancelReaderOpen();
+    if (!activeChat && activeSessionId && !importedSessionId)
+      setActiveChat(
+        activeChatDurableId(
+          activeSessionId,
+          activeChatsStore.getSnapshot()[activeSessionId],
+        ),
+      );
     setMobileInboxOpen(false);
-  }, [cancelReaderOpen, setMobileInboxOpen]);
+  }, [
+    cancelReaderOpen,
+    activeChat,
+    activeSessionId,
+    importedSessionId,
+    setActiveChat,
+    setMobileInboxOpen,
+  ]);
   const toggleMobileInbox = useCallback(() => {
     cancelReaderOpen();
     if (!isPaneOpen) {
       setMobileInboxOpen(true);
       if (!isFullscreenPlacement) applyDockSnap('half');
-    } else setMobileInboxOpen((open) => !open);
+    } else if (mobileInboxShown) closeMobileInbox();
+    else setMobileInboxOpen(true);
   }, [
     isPaneOpen,
     isFullscreenPlacement,
     applyDockSnap,
     setMobileInboxOpen,
     cancelReaderOpen,
+    mobileInboxShown,
+    closeMobileInbox,
   ]);
   useEffect(
     () =>
@@ -1230,8 +1253,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // #3042/#3043: the inbox rows' status facts, derived beside `taskItems`
   // (never carried on them).
   const workFactSources = useMemo(
-    () => ({ tasks: durableTasks.data ?? [] }),
-    [durableTasks.data],
+    () => ({ tasks: durableTasks.data ?? [], inventoryById }),
+    [durableTasks.data, inventoryById],
   );
   const workFacts = useWorkFacts(
     taskItems,
@@ -1398,11 +1421,112 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // (`.fold-avoid-crease`).
   const workspaceRowRef = useRef<HTMLDivElement>(null);
   const readerRef = useRef<HTMLDivElement>(null);
+  const previousMobileInbox = useRef(mobileInboxShown);
+  useLayoutEffect(() => {
+    const changed = previousMobileInbox.current !== mobileInboxShown;
+    previousMobileInbox.current = mobileInboxShown;
+    if (
+      !changed ||
+      !isMobile ||
+      !isPaneOpen ||
+      (isFullscreenPlacement && !fullscreenOnScreen) ||
+      prefersReducedMotion()
+    )
+      return;
+    const incoming = mobileInboxShown
+      ? workspaceRowRef.current?.querySelector<HTMLElement>('.mobile-inbox')
+      : readerRef.current;
+    if (!incoming?.animate) return;
+    const animation = incoming.animate(
+      [
+        {
+          opacity: 0,
+          translate: mobileInboxShown
+            ? 'calc(-1 * var(--k-space-2)) 0'
+            : 'var(--k-space-2) 0',
+        },
+        { opacity: 1, translate: '0 0' },
+      ],
+      {
+        duration: motionTokenMs(getComputedStyle(incoming), '--motion-fast'),
+        easing: 'ease-out',
+      },
+    );
+    return () => animation.cancel();
+  }, [
+    isMobile,
+    isPaneOpen,
+    isFullscreenPlacement,
+    fullscreenOnScreen,
+    mobileInboxShown,
+  ]);
+  const [mobileReaderHistoryId] = useState(() => {
+    const marker = window.history.state?.[DIALOG_HISTORY_KEY];
+    return typeof marker === 'string' &&
+      marker.startsWith('station-mobile-reader:')
+      ? marker
+      : `station-mobile-reader:${randomCorrelationId()}`;
+  });
+  const readerHistoryHost = useDialogHistoryHost();
+  const readerHistoryVisible = useRef(false);
+  readerHistoryVisible.current =
+    isMobile && isPaneOpen && (!isFullscreenPlacement || fullscreenOnScreen);
+  useLayoutEffect(() => {
+    if (
+      !isMobile ||
+      !isPaneOpen ||
+      (isFullscreenPlacement && !fullscreenOnScreen) ||
+      (mobileInboxShown && !activeChat) ||
+      !(activeChat || importedSessionId)
+    )
+      return;
+    return registerDialogHistory(
+      mobileReaderHistoryId,
+      (reason) => {
+        if (reason !== 'back') return;
+        cancelReaderOpenAndChildren();
+        setMobileInboxOpen(true);
+        setActiveChat(null);
+      },
+      {
+        get removed() {
+          return (
+            !readerHistoryVisible.current ||
+            !workspaceRowRef.current?.isConnected ||
+            Boolean(readerHistoryHost?.removed)
+          );
+        },
+      },
+      { adoptLiveEntry: true },
+    );
+  }, [
+    isMobile,
+    isPaneOpen,
+    isFullscreenPlacement,
+    fullscreenOnScreen,
+    mobileInboxShown,
+    activeChat,
+    importedSessionId,
+    mobileReaderHistoryId,
+    readerHistoryHost,
+    cancelReaderOpenAndChildren,
+    setMobileInboxOpen,
+    setActiveChat,
+  ]);
   useFoldSplit(workspaceRowRef);
   useFoldSplit(readerRef);
   // The dock as it was before a phone draft forced it to full height, so a
   // dismissed draft puts it back and a started one opens its chat at that
   // size. Includes the maximize memory the forcing overwrote.
+  // #5592: a draft the dock opened on its own because it had no chat to
+  // show (no "No chat open" card). Dismissing it has nothing to go back to,
+  // so the dock folds to its toolbar instead of reopening the same draft.
+  // It keeps the dock's size: only a draft someone asked for takes a phone
+  // to full height.
+  const restingDraft = useRef(false);
+  // Set when that draft is dismissed: the dock is folding, so the pane must
+  // not open another one before it has. Cleared once the pane is closed.
+  const restingSuppressed = useRef(false);
   const dockBeforeDraft = useRef<{
     open: boolean;
     maximized: boolean;
@@ -1433,7 +1557,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     lastDockMaximized,
   ]);
   const revealNewChatDraft = useEffectEvent(() => {
-    if (showNewChatModal) revealDockForDraft();
+    if (showNewChatModal && !restingDraft.current) revealDockForDraft();
   });
   useEffect(() => {
     if (newChatRequestEpoch > 0) revealNewChatDraft();
@@ -1452,6 +1576,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // The draft's own dismissal (Escape, Back): the dock goes back
   // to the size it had before the draft forced it, maximize memory included.
   const dismissNewChatDraft = useCallback(() => {
+    // The dock's own draft has nothing behind it to return to: the dock
+    // folds to its toolbar rather than reopening the same draft. A draft
+    // someone asked for returns to the dock as it was (its text kept).
+    if (restingDraft.current) {
+      restingDraft.current = false;
+      restingSuppressed.current = true;
+      dockBeforeDraft.current = null;
+      closeNewChatDraft();
+      setDockState(false, lastDockMaximized);
+      return;
+    }
     const before = dockBeforeDraft.current;
     if (before) {
       if (!before.open) setDockState(false, before.remembered);
@@ -1459,7 +1594,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       else setDockState(true, false);
     }
     closeNewChatDraft();
-  }, [closeNewChatDraft, setDockState, collapseMaximizedDock]);
+  }, [
+    closeNewChatDraft,
+    setDockState,
+    collapseMaximizedDock,
+    lastDockMaximized,
+  ]);
   // A started draft is a chat now: the dock stays open at the size it had,
   // as opening any chat does (`focusSession`); the full height was the draft's.
   // Called before Start navigates, whose collapse of the draft's Back entry
@@ -1496,6 +1636,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // files, choices, a hand-off, a Task) still replaces it.
   const requestNewChat = useCallback(
     (intent?: NewChatIntent) => {
+      // Asked for, it is an ordinary draft now, whoever opened it.
+      restingDraft.current = false;
       cancelReaderOpen();
       setMobileInboxOpen(false);
       if (newChatDraftOpen.current && !newChatIntentCarriesPayload(intent)) {
@@ -1675,6 +1817,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         ]
       : profileExecutionRoutes;
   // Chat input hook - encapsulates autocomplete, history, and input handling
+  const sendReader = useRef({
+    sessionId: activeSessionId,
+    inboxShown: mobileInboxShown,
+    importedSessionId,
+    onScreen: isPaneOpen && (!isFullscreenPlacement || fullscreenOnScreen),
+  });
+  sendReader.current = {
+    sessionId: activeSessionId,
+    inboxShown: mobileInboxShown,
+    importedSessionId,
+    onScreen: isPaneOpen && (!isFullscreenPlacement || fullscreenOnScreen),
+  };
   const chatInput = useChatInput({
     apiBase: conversationConnection?.targetApiBase ?? apiBase,
     connection: conversationConnection,
@@ -1702,6 +1856,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         : mentionAuthority,
     defaultModelSource: activeSessionForHook?.defaultModelSource,
     onSessionMigrate: (newSessionId) => {
+      const navigation = navigationStore.getSnapshot();
+      if (
+        newSessionId !== sendReader.current.sessionId ||
+        sendReader.current.inboxShown ||
+        !sendReader.current.onScreen ||
+        sendReader.current.importedSessionId !== importedSessionId ||
+        !workspaceRowRef.current?.isConnected ||
+        navigation.activeChat !== activeChat ||
+        navigation.pathname !== pathname
+      )
+        return;
       // A send admission, not the person moving: a draft open over the dock
       // stays open.
       reanchorNewChatDraft(newSessionId);
@@ -2120,9 +2285,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const transcriptSnapshotRef = useRef<ConversationTranscriptSnapshot | null>(
     null,
   );
-  const continueInProjectEnabled = useSurfaceVisibilityFlags().has(
-    'continue-in-project',
-  );
+  const previewFlags = useSurfaceVisibilityFlags();
+  const continueInProjectEnabled = previewFlags.has('continue-in-project');
+  const taskQuestionsEnabled = previewFlags.has('inbox-task-questions');
   const turnIntoTask =
     hostConversation &&
     activeSession &&
@@ -3226,6 +3391,62 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const openingLabel = openingConversationLabel(openingChat);
   const showChatContent =
     workspaceShown && !conversationOpenRecovery && !importedSessionId;
+  // #5592: an open chat pane with no chat in it shows the New chat draft,
+  // ready to type, instead of an empty "No chat open" card. Nothing is
+  // created until the draft is sent. Only when nothing is on its way in: a
+  // chat the URL names, one opening, a child reader, the phone inbox, or a
+  // recovery prompt each keep the pane.
+  // Agents exist to start one with; with none the card says so instead.
+  const hasAgents = agentsLoaded && agents.length > 0;
+  // The desktop dock only: a phone shows the Chats list or a full-height
+  // draft someone asked for, and a full-screen layout keeps its own card.
+  const paneHasNoChat =
+    !isMobile &&
+    !isFullscreenPlacement &&
+    isDockOpen &&
+    showChatContent &&
+    !isCollapsedDragPreview &&
+    !showNewChatModal &&
+    !activeChat &&
+    !activeSession &&
+    openingChat === null &&
+    !workingParentPending &&
+    !isChildReaderOpen &&
+    !isHistoryOpen &&
+    hasAgents;
+  // Any other way the draft closes (it started, or a chat opened over it)
+  // ends its resting role; a later empty pane opens a fresh one. Declared
+  // before the effect below, which marks the next one as resting.
+  useEffect(() => {
+    if (!showNewChatModal) restingDraft.current = false;
+  }, [showNewChatModal]);
+  // A chat someone picked that could not be opened owns the pane: its
+  // recovery (Retry, and Start new chat only where the server allows one)
+  // replaces the dock's own draft rather than sitting under it.
+  // So does conversation history opened from the Chats list: it renders in
+  // the same pane.
+  useEffect(() => {
+    if (
+      (conversationOpenRecovery || isHistoryOpen) &&
+      restingDraft.current &&
+      showNewChatModal
+    )
+      closeNewChatDraft();
+  }, [
+    conversationOpenRecovery,
+    isHistoryOpen,
+    showNewChatModal,
+    closeNewChatDraft,
+  ]);
+  useEffect(() => {
+    if (restingSuppressed.current) {
+      if (!isPaneOpen) restingSuppressed.current = false;
+      return;
+    }
+    if (!paneHasNoChat) return;
+    restingDraft.current = true;
+    setShowNewChatModal(true);
+  }, [paneHasNoChat, isPaneOpen, setShowNewChatModal]);
 
   useEffect(() => {
     const openProjectChats = (event: Event) => {
@@ -3255,6 +3476,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           name: projectName,
           composerDraft: detail.composerDraft,
         });
+        restingDraft.current = false;
         setShowNewChatModal(true);
         telemetry.track('ui.chat.entry', {
           source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
@@ -3281,6 +3503,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           slug: detail.projectSlug,
           name: projectName,
         });
+        restingDraft.current = false;
         setShowNewChatModal(true);
         return;
       }
@@ -3309,6 +3532,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         slug: detail.projectSlug,
         name: projectName,
       });
+      restingDraft.current = false;
       setShowNewChatModal(true);
       telemetry.track('ui.chat.entry', {
         source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
@@ -4218,6 +4442,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 {isMobile ? (
                   <ChatDockMobileHeader
                     inboxActive={mobileInboxShown}
+                    isCollapsedDragPreview={isCollapsedDragPreview}
                     hasConversation={Boolean(
                       activeChat || importedSessionId || showNewChatModal,
                     )}
@@ -4331,10 +4556,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ? null
                         : {
                             maximized: isPaneOpen && isDockMaximized,
-                            onToggle: () =>
-                              applyDockSnap(
-                                isPaneOpen && isDockMaximized ? 'half' : 'full',
-                              ),
+                            onToggle: toggleDockMaximize,
                           }
                     }
                     // Shared creation action opens a draft without starting an engine.
@@ -4405,7 +4627,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onCollapseDock: () => applyDockSnap('collapsed'),
                       // Mirrors the drag-to-full gesture for keyboard/agent callers.
                       onExpandDock: () => applyDockSnap('full'),
-                      onRestoreDock: () => applyDockSnap('half'),
+                      onRestoreDock: restoreDockFromMaximized,
                       isDockMaximized: isPaneMaximized,
                       dockControls: !isFullscreenPlacement,
                       // The region's other panes (#2046 2b): a coarse device has
@@ -4628,6 +4850,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             toolsHost: mobileInboxToolsHost,
                             onNewChat: openNewChatDirect,
                             tasks: taskItems,
+                            taskQuestionsEnabled,
                             authority: requestAuthority,
                             pending: taskItemsPending,
                             loadError: taskItemsFailed,
@@ -4644,6 +4867,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               : (importedSessionId ?? activeSessionId),
                             triggerRef: inboxTriggerRef,
                             onClose: closeMobileInbox,
+                            onOpenHistory: () => {
+                              closeMobileInbox();
+                              openInboxHistory();
+                            },
                             onFocusChat: focusSessionInPane,
                             onOpenConversation:
                               openSelectedConversationInScopedPane,
@@ -4667,7 +4894,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     station#1797: the panel itself mounts only while
                     expanded — collapsed means collapsed, with no rail
                     duplicating the header's own expand/collapse toggle
-                    (the "Collapse/Expand chat list" row of the header's More
+                    (the "Show chats/Hide chats" row of the header's More
                     menu since #1536 F, the single control for this now). */}
                       {workspaceShown &&
                         desktopInboxAvailable &&
@@ -4678,6 +4905,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             componentProps={{
                               exiting: inboxPresence.exiting,
                               items: taskItems,
+                              taskQuestionsEnabled,
                               authority: requestAuthority,
                               agents,
                               gitLocationByThreadId,
@@ -5075,6 +5303,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                 inert={showNewChatModal || coveringStaleChat}
                               >
                                 <ChatDockContentArea
+                                  noAgentReady={
+                                    agentsLoaded && agents.length === 0
+                                  }
                                   connection={conversationConnection}
                                   transcriptSnapshotRef={
                                     continueInProjectEnabled && hostConversation
@@ -5213,6 +5444,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   onTitleUpdate={handleTitleUpdate}
                                   onDeleteSession={removeSession}
                                   onFocusSession={focusSessionInPane}
+                                  onOpenImportedSession={
+                                    openImportedSessionInPane
+                                  }
                                   onOpenConversation={
                                     openUserSelectedConversationInScopedPane
                                   }

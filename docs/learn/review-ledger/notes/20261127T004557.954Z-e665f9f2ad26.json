@@ -1,0 +1,17 @@
+{
+  "revision": "e0b8b2797a46f1799c4477a090a5bf20799aef10",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed new local catalog stories and verified the overflow menu by keyboard, the settings switch, and the updated coverage count in Chromium.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the catalog control story expansion. Setup, service, build and testing workflows retain their documented behavior.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed the catalog control story expansion. Setup, service, build and testing workflows retain their documented behavior.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the catalog control story expansion. Setup, service, build and testing workflows retain their documented behavior.","inputs":["docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed the catalog control story expansion. Setup, service, build and testing workflows retain their documented behavior.","inputs":["docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the catalog control story expansion. Setup, service, build and testing workflows retain their documented behavior.","inputs":["docs/guides/development.md"]}
+  ]
+}

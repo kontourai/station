@@ -182,6 +182,19 @@ CREATE TABLE IF NOT EXISTS automation_action_intents (
   body TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS automation_action_intents_rule ON automation_action_intents(rule_id, invoked_ms);
+CREATE TABLE IF NOT EXISTS automation_task_observations (
+  delivery_key TEXT NOT NULL,
+  rule_id TEXT NOT NULL,
+  episode_key TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  url TEXT NOT NULL,
+  label TEXT NOT NULL,
+  received_ms INTEGER NOT NULL,
+  closed_episode_id TEXT,
+  PRIMARY KEY (delivery_key, rule_id)
+);
+CREATE INDEX IF NOT EXISTS automation_task_observations_age
+  ON automation_task_observations(received_ms);
 CREATE TABLE IF NOT EXISTS automation_rule_decisions (
   delivery_key TEXT NOT NULL,
   rule_id TEXT NOT NULL,
@@ -379,7 +392,21 @@ export type RetryEpisodePolicy = (latest: AutomationActionIntent) =>
     }>
   | undefined;
 
+type TaskObservation = {
+  closedEpisodeId?: string | null;
+  ruleId: string;
+  episodeKey: string;
+  taskId: string;
+  url: string;
+  label: string;
+};
+
 export interface AutomationLedger {
+  listTaskObservations(): (TaskObservation & { deliveryKey: string })[];
+  listPriorEpisodeTasks(
+    intent: AutomationActionIntent,
+  ): { taskId: string; createdAt: string }[];
+  settleTaskObservation(deliveryKey: string, ruleId: string): void;
   recordIntake(input: {
     delivery: RecordDeliveryInput;
     openings: readonly OpenEpisodeInput[];
@@ -389,6 +416,7 @@ export interface AutomationLedger {
       'deliveryKey' | 'state' | 'createdAt' | 'updatedAt'
     >[];
     decisions?: readonly RuleDecisionCandidate[];
+    taskObservations?: readonly TaskObservation[];
     now: number;
   }): {
     recorded: RecordDeliveryOutcome;
@@ -396,8 +424,12 @@ export interface AutomationLedger {
     closedEpisodeIds: string[];
   };
   readIntent(intentId: string): AutomationActionIntent | undefined;
-  /** The intent bound to `taskId`, newest retry first; undefined when none. */
-  intentForTask(taskId: string): AutomationActionIntent | undefined;
+  /** The latest intent for this Task, or the intent for its exact session. */
+  intentForTask(
+    taskId: string,
+    sessionId?: string,
+    excludeIntentId?: string,
+  ): AutomationActionIntent | undefined;
   listActionIntents(): AutomationActionIntent[];
   /**
    * Records why a pending intent's claim was held (#4513): its delivery row
@@ -917,6 +949,7 @@ class SqliteAutomationLedger implements AutomationLedger {
       'deliveryKey' | 'state' | 'createdAt' | 'updatedAt'
     >[];
     decisions?: readonly RuleDecisionCandidate[];
+    taskObservations?: readonly TaskObservation[];
     now: number;
   }) {
     return this.transaction(() => {
@@ -925,6 +958,7 @@ class SqliteAutomationLedger implements AutomationLedger {
       const closedEpisodeIds: string[] = [];
       if (recorded.kind === 'duplicate')
         return { recorded, openedEpisodeIds, closedEpisodeIds };
+      const closedEpisodes = new Map<string, string>();
       let closedForRow: { ruleId: string; episodeId: string } | undefined;
       for (const closing of input.closings)
         this.db
@@ -938,12 +972,34 @@ class SqliteAutomationLedger implements AutomationLedger {
           now: input.now,
         });
         if (closed) {
+          closedEpisodes.set(closing.episodeKey, closed.episodeId);
           closedEpisodeIds.push(closed.episodeId);
           closedForRow ??= {
             ruleId: closing.ruleId,
             episodeId: closed.episodeId,
           };
         }
+      }
+      for (const observation of input.taskObservations ?? []) {
+        const closedEpisodeId =
+          observation.label === 'Recovered'
+            ? closedEpisodes.get(observation.episodeKey)
+            : undefined;
+        if (observation.label === 'Recovered' && !closedEpisodeId) continue;
+        this.db
+          .prepare(
+            'INSERT INTO automation_task_observations (delivery_key, rule_id, episode_key, task_id, url, label, received_ms, closed_episode_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          )
+          .run(
+            recorded.deliveryKey,
+            observation.ruleId,
+            observation.episodeKey,
+            observation.taskId,
+            observation.url,
+            observation.label,
+            input.now,
+            closedEpisodeId ?? null,
+          );
       }
       let firstEpisodeId: string | undefined;
       for (const opening of input.openings) {
@@ -1287,15 +1343,73 @@ class SqliteAutomationLedger implements AutomationLedger {
     });
   }
 
-  intentForTask(taskId: string): AutomationActionIntent | undefined {
+  listPriorEpisodeTasks(
+    intent: AutomationActionIntent,
+  ): { taskId: string; createdAt: string }[] {
+    return this.read(
+      () =>
+        this.db
+          .prepare(
+            `SELECT DISTINCT task_id AS taskId, json_extract(body, '$.taskCreatedAt') AS createdAt
+       FROM automation_action_intents
+       WHERE rule_id = ? AND episode_key = ? AND source_id = ?
+         AND task_id IS NOT NULL AND task_id <> ?
+         AND json_extract(body, '$.action.projectId') = ?
+         AND json_extract(body, '$.taskCreatedAt') IS NOT NULL
+       LIMIT 100`,
+          )
+          .all(
+            intent.ruleId,
+            intent.episodeKey,
+            intent.sourceId,
+            intent.taskId,
+            intent.action.projectId,
+          ) as { taskId: string; createdAt: string }[],
+    );
+  }
+
+  listTaskObservations(): (TaskObservation & { deliveryKey: string })[] {
+    return this.read(
+      () =>
+        this.db
+          .prepare(
+            `SELECT delivery_key AS deliveryKey, rule_id AS ruleId, episode_key AS episodeKey,
+        task_id AS taskId, url, label, closed_episode_id AS closedEpisodeId FROM automation_task_observations ORDER BY rowid LIMIT 100`,
+          )
+          .all() as (TaskObservation & { deliveryKey: string })[],
+    );
+  }
+
+  settleTaskObservation(deliveryKey: string, ruleId: string): void {
+    this.transaction(() =>
+      this.db
+        .prepare(
+          'DELETE FROM automation_task_observations WHERE delivery_key = ? AND rule_id = ?',
+        )
+        .run(deliveryKey, ruleId),
+    );
+  }
+
+  intentForTask(
+    taskId: string,
+    sessionId?: string,
+    excludeIntentId?: string,
+  ): AutomationActionIntent | undefined {
     return this.read(() => {
       const row = this.db
         .prepare(
-          'SELECT intent_id, state, body FROM automation_action_intents WHERE task_id = ? ORDER BY retry DESC, created_ms DESC LIMIT 1',
+          `SELECT intent_id, state, body FROM automation_action_intents
+            WHERE task_id = ? AND (? IS NULL OR json_extract(body, '$.sessionId') = ?)
+              AND (? IS NULL OR intent_id <> ?)
+            ORDER BY created_ms DESC, rowid DESC LIMIT 1`,
         )
-        .get(taskId) as
-        | { intent_id: string; state: string; body: string }
-        | undefined;
+        .get(
+          taskId,
+          sessionId ?? null,
+          sessionId ?? null,
+          excludeIntentId ?? null,
+          excludeIntentId ?? null,
+        ) as { intent_id: string; state: string; body: string } | undefined;
       if (!row) return undefined;
       const decoded = decodeAutomationActionIntent(row.body);
       if (
@@ -1621,6 +1735,13 @@ class SqliteAutomationLedger implements AutomationLedger {
         `DELETE FROM automation_rule_decisions WHERE rowid IN (
            SELECT rowid FROM automation_rule_decisions
             WHERE decided_ms < ? ORDER BY decided_ms LIMIT ?)`,
+      )
+      .run(now - limits.deliveryRetentionMs, limits.maxRules);
+    this.db
+      .prepare(
+        `DELETE FROM automation_task_observations WHERE rowid IN (
+         SELECT rowid FROM automation_task_observations
+          WHERE received_ms < ? ORDER BY received_ms LIMIT ?)`,
       )
       .run(now - limits.deliveryRetentionMs, limits.maxRules);
     // A live episode stays open until `closeOn`; an observe marker is also

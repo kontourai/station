@@ -196,6 +196,7 @@ export interface ChatMessage {
    * step it stopped otherwise reads as cancelled for no reason.
    */
   steerInterruptedRun?: boolean;
+  steer?: true;
   /**
    * A check-back Station sent into the chat (the agent scheduled it): sent
    * as the person, written by nobody. The bubble shows it as Station's.
@@ -211,6 +212,11 @@ export interface ChatMessage {
    * (unattended work it continued): written by Station, not the person.
    */
   stationRestartContinuation?: boolean;
+  /**
+   * A delegated Task's brief or an Automation's run: a Station flow sent it,
+   * the person did not type it. The row says which (`stationTurnOrigin`).
+   */
+  stationOrigin?: 'delegation' | 'automation';
   /**
    * An in-place engine rewind hid this turn from the engine. The row stays
    * in the transcript, shown dimmed with a Rewound badge.

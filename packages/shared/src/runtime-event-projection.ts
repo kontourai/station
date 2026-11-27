@@ -22,7 +22,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { stationControlRefusalView } from '@kontourai/station-contracts/station-control-refusal';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import { agentMessageInput } from './agent-message-frame.js';
+import { agentMessageInput, stationTurnOrigin } from './agent-message-frame.js';
 import {
   type ConversationMessage,
   isStationRestartContinuationTurn,
@@ -1050,13 +1050,12 @@ function createRuntimeMessageProjection(
           if (steerParts.length > 0) {
             pushMessage('user', steerParts, 'steer');
             userRowSender = undefined;
-            if (ev.steerInterruptedRun) {
-              const steerRow = messages[messages.length - 1]!;
-              steerRow.metadata = {
-                ...steerRow.metadata,
-                steerInterruptedRun: true,
-              };
-            }
+            const steerRow = messages[messages.length - 1]!;
+            steerRow.metadata = {
+              ...steerRow.metadata,
+              steer: true,
+              ...(ev.steerInterruptedRun ? { steerInterruptedRun: true } : {}),
+            };
           }
           break;
         }
@@ -1133,6 +1132,11 @@ function createRuntimeMessageProjection(
           if (isStationMemoryContinuationTurn(ev)) {
             const row = messages[messages.length - 1]!;
             row.metadata = { ...row.metadata, stationMemoryContinuation: true };
+          }
+          const origin = stationTurnOrigin(ev);
+          if (origin) {
+            const row = messages[messages.length - 1]!;
+            row.metadata = { ...row.metadata, stationOrigin: origin };
           }
           if (isStationRestartContinuationTurn(ev)) {
             const row = messages[messages.length - 1]!;

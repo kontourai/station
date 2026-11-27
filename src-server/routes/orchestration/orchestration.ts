@@ -34,6 +34,7 @@ import type {
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
   CLIENT_PROTOCOL_HEADER,
+  pairingScopeIncludes,
   readClientProtocolHeader,
 } from '@kontourai/station-contracts/environment-security';
 import {
@@ -81,6 +82,7 @@ import { isRuntimeEventContentDigest } from '@kontourai/station-contracts/runtim
 import {
   ATTACHED_SESSION_CONTINUATION_REFRESH,
   ENGINE_MCP_SERVER_NAME_MAX_CHARS,
+  isDeferredRetriableTurnError,
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
@@ -114,6 +116,7 @@ import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
 } from '../../constants.js';
+import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import { providerFailure } from '../../providers/provider-failure.js';
 import type {
   RequestDelegationResolver,
@@ -124,11 +127,14 @@ import {
   tenantExecutionContextForRequest,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   type FullAccessGrant,
+  isOperatorInPersonNotAgent,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
 import { managedEngineRefusalBody } from '../../security/managed-engine-limits.js';
+import { grantedPairingScope } from '../../security/pairing-route-scopes.js';
 import {
   personCredentialRequest,
   personTypedRequest,
@@ -141,6 +147,13 @@ import {
   stationControlRequestAuthority,
   stationControlRequestCurrent,
 } from '../../security/station-control-request-authority.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
+import {
+  type CliSessionGroupDispatchAdmission,
+  type CliSessionGroupHost,
+  CliSessionGroups,
+  CliSessionGroupUnavailable,
+} from '../../services/orchestration/cli-session-group.js';
 import {
   CreateRequestCapacityError,
   CreateRequestConflictError,
@@ -975,6 +988,50 @@ export const delegateTaskSchema = z.object({
     .optional(),
 });
 
+const groupTaskFields = delegateTaskSchema
+  .pick({ prompt: true, target: true, parentTaskId: true })
+  .strict();
+
+function isLocalGroupTask({
+  target,
+}: z.infer<typeof groupTaskFields>): boolean {
+  return (
+    (target.environment?.kind ?? 'current') === 'current' &&
+    target.expectedEngine?.kind === 'connection' &&
+    target.workspace?.kind !== 'project-portable' &&
+    target.workspace?.kind !== 'project-portable-prepared'
+  );
+}
+
+const groupTaskSchema = groupTaskFields.refine(
+  isLocalGroupTask,
+  'Session groups require a local, explicitly bound external engine.',
+);
+const groupSeatIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
+const groupCreateSchema = z
+  .object({
+    operationId: groupSeatIdSchema,
+    members: z
+      .array(
+        groupTaskFields
+          .extend({
+            seatId: groupSeatIdSchema,
+            needs: z.array(groupSeatIdSchema).max(32).default([]),
+          })
+          .refine(isLocalGroupTask),
+      )
+      .min(1)
+      .max(32),
+    maxConcurrent: z.number().int().min(1).max(32),
+    maxDispatches: z.number().int().min(0).max(32).optional(),
+    deadlineAt: z.number().int().positive(),
+  })
+  .strict();
+
 const inputRequestReferenceSchema = z.object({
   threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
   requestId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
@@ -1222,6 +1279,34 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
 export const conversationInboxBodySchema = z.discriminatedUnion('kind', [
   z
     .object({
+      kind: z.literal('edit'),
+      key: z.string().min(1).max(200),
+      previous: z.string().max(CHAT_INPUT_MAX_CHARS),
+      message: z
+        .string()
+        .max(CHAT_INPUT_MAX_CHARS)
+        .refine((message) => Boolean(message.trim())),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('move'),
+      key: z.string().min(1).max(200),
+      neighbor: z.string().min(1).max(200),
+      direction: z.enum(['up', 'down']),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('promote'),
+      key: z.string().uuid(),
+      source: z.string().min(1).max(200),
+      message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+      expectedTurn: z.string().min(1).max(4096),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal('steer'),
       key: z.string().min(1).max(128),
       message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
@@ -1382,6 +1467,7 @@ const sessionEventWindowQuerySchema = z.object({
 });
 
 interface DelegateTaskRequest {
+  sessionGroupAdmission?: CliSessionGroupDispatchAdmission;
   createRequestCallerSessionId?: string;
   taskRoomAttachments?: ChatAttachmentInput[];
   delegatedAppearance?: { ownerId: string; parentSessionId: string };
@@ -1608,6 +1694,10 @@ type InterruptDelegatedTaskBody = z.infer<
 >;
 
 type InterruptDelegatedTaskRequest = InterruptDelegatedTaskBody & {
+  beforeProviderInterrupt?: (
+    threadId: string,
+    turnId: string | undefined,
+  ) => void;
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
@@ -2333,7 +2423,13 @@ export function createOrchestrationRoutes(
       | 'inFlight'
       | 'keyBindingChanged'
       | 'nudge'
-    >;
+    > &
+      Partial<
+        Pick<
+          ThreadInboxDelivery,
+          'editQueued' | 'moveQueued' | 'promoteQueued' | 'currentSteerTarget'
+        >
+      >;
     /**
      * Continuing a conversation whose engine was killed for memory
      * (`memory-exhaustion-continuation.ts`). Absent without an inbox.
@@ -2398,6 +2494,7 @@ export function createOrchestrationRoutes(
     /** Bounded caller-bound MCP App occurrences for session inventory. */
     sessionInventoryAppRead?: SessionInventoryAppReadModule;
     callerBindingForRequest?: (request: Request) => string | undefined;
+    cliSessionGroups?: { home: string; preview: FeaturePreviewSelector };
     /**
      * Immutable deployment registry supplied by runtime wiring. Its presence,
      * rather than any request field, selects hosted authorization semantics.
@@ -3655,7 +3752,11 @@ export function createOrchestrationRoutes(
       // the winner is still sending a shared stage under the same key.
       if (
         (errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE ||
-          errorCode(error) === 'client_turn_input_conflict') &&
+          errorCode(error) === 'client_turn_input_conflict' ||
+          (error instanceof OrchestrationCommandDispatchError &&
+            error.receipt.status === 'rejected' &&
+            error.kind === 'busy' &&
+            error.failurePhase === 'refused')) &&
         stagedAttachmentsForRelease?.length &&
         stagedBindingForRelease &&
         releasePrincipal
@@ -4011,14 +4112,29 @@ export function createOrchestrationRoutes(
       ))
     )
       return c.json({ success: false, error: 'Conversation not found' }, 404);
+    const entries = deps.threadInbox.list(
+      conversationId,
+      resolveDispatchActor(deps, c).userId,
+    );
     return c.json({
       success: true,
       data: {
         currentHead: deps.threadInbox.currentHead(conversationId),
-        entries: deps.threadInbox.list(
-          conversationId,
-          resolveDispatchActor(deps, c).userId,
+        queueSteerTarget: entries.some(
+          (entry) =>
+            entry.kind === 'follow-up' &&
+            entry.state === 'queued' &&
+            entry.ownedByCaller === true &&
+            !entry.attachments?.length,
+        )
+          ? deps.threadInbox.currentSteerTarget?.(conversationId)
+          : undefined,
+        queueControls: Boolean(
+          deps.threadInbox.editQueued &&
+            deps.threadInbox.moveQueued &&
+            deps.threadInbox.promoteQueued,
         ),
+        entries,
       },
     });
   });
@@ -4046,10 +4162,46 @@ export function createOrchestrationRoutes(
           { success: false, error: 'Receiver-local conversation required' },
           403,
         );
+      if (body.kind === 'edit') {
+        if (!inbox.editQueued)
+          return c.json(
+            { success: false, error: 'Queue editing unavailable.' },
+            404,
+          );
+        if (
+          !inbox.editQueued(
+            conversationId,
+            body.key,
+            body.previous,
+            body.message,
+            actor.userId,
+          )
+        )
+          return c.json({ success: false, error: 'The queue changed.' }, 409);
+        return c.json({ success: true });
+      }
+      if (body.kind === 'move') {
+        if (!inbox.moveQueued)
+          return c.json(
+            { success: false, error: 'Queue ordering unavailable.' },
+            404,
+          );
+        if (
+          !inbox.moveQueued(
+            conversationId,
+            body.key,
+            body.neighbor,
+            body.direction,
+            actor.userId,
+          )
+        )
+          return c.json({ success: false, error: 'The queue changed.' }, 409);
+        return c.json({ success: true });
+      }
       const input = {
         conversationId,
         clientTurnId: body.key,
-        expectedHead: body.expectedHead,
+        expectedHead: body.kind === 'promote' ? undefined : body.expectedHead,
         payload: {
           message: body.message,
           actor: {
@@ -4067,14 +4219,26 @@ export function createOrchestrationRoutes(
             : {}),
         },
       };
-      let result: ReturnType<ThreadInboxDelivery['submitSteer']>;
+      let result: Awaited<ReturnType<ThreadInboxDelivery['promoteQueued']>>;
       try {
-        result =
-          body.kind === 'steer'
-            ? inbox.submitSteer({ ...input, expectedHead: body.expectedHead })
-            : body.kind === 'follow-up'
-              ? inbox.submit(input)
-              : inbox.submitDisplay(input);
+        if (body.kind === 'promote') {
+          if (!inbox.promoteQueued)
+            return c.json(
+              { success: false, error: 'Queue steering unavailable.' },
+              404,
+            );
+          result = await inbox.promoteQueued(
+            { ...input, expectedTurn: body.expectedTurn },
+            body.source,
+          );
+        } else {
+          result =
+            body.kind === 'steer'
+              ? inbox.submitSteer({ ...input, expectedHead: body.expectedHead })
+              : body.kind === 'follow-up'
+                ? inbox.submit(input)
+                : inbox.submitDisplay(input);
+        }
       } catch (error) {
         if (!isSteerConflictCode(errorCode(error))) throw error;
         return c.json(
@@ -4086,6 +4250,16 @@ export function createOrchestrationRoutes(
           409,
         );
       }
+      if (result.outcome === 'steering-unavailable')
+        return c.json(
+          {
+            success: false,
+            code: 'inbox_steering_unavailable',
+            error:
+              'The running turn cannot accept a steer. The message is still queued.',
+          },
+          409,
+        );
       if (result.outcome === 'stale-head')
         return c.json(
           {
@@ -4608,6 +4782,7 @@ export function createOrchestrationRoutes(
   async function dispatchAuthorizedDelegation(
     c: Context,
     sent: z.infer<typeof delegateTaskSchema>,
+    sessionGroupAdmission?: CliSessionGroupDispatchAdmission,
   ): Promise<Response> {
     if (!deps.delegateTask) {
       return c.json(
@@ -4851,7 +5026,7 @@ export function createOrchestrationRoutes(
       let roomAttachments: ChatAttachmentInput[] | undefined;
       let releaseRoomRequestPublication: (() => void) | undefined;
       const dispatch = async (
-        sessionId?: string,
+        sessionId: string | undefined = sessionGroupAdmission?.sessionId,
         recheck?: () => Promise<void>,
         roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
         contextSnapshot?: TaskRoomContextSnapshot,
@@ -4861,8 +5036,10 @@ export function createOrchestrationRoutes(
             deps.taskRoomWork?.holdPublication?.(roomRequest.taskId);
           await deps.taskRoomWork?.beforeInvocation?.(roomRequest.taskId);
         }
+        sessionGroupAdmission?.assertCurrent();
         return delegate({
           ...request,
+          ...(sessionGroupAdmission ? { sessionGroupAdmission } : {}),
           createRequestIntent: body,
           ...(delegatedAppearance ? { delegatedAppearance } : {}),
           createRequestCallerSessionId: await createRequestCallerSession(
@@ -4890,8 +5067,9 @@ export function createOrchestrationRoutes(
           // spawns.
           ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
           clientOrigin,
-          ...(sessionId
-            ? { sessionId, parentTaskId: roomRequest?.taskId }
+          ...(sessionId ? { sessionId } : {}),
+          ...(sessionId && roomRequest
+            ? { parentTaskId: roomRequest.taskId }
             : {}),
           ...(recheck && roomBinding
             ? {
@@ -5249,6 +5427,239 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+  }
+
+  const groupConfiguration = deps.cliSessionGroups;
+  if (groupConfiguration) {
+    let groups: CliSessionGroups<z.infer<typeof groupTaskSchema>> | undefined;
+    const previewEnabled = () =>
+      groupConfiguration.preview.select({
+        enabled: () => true,
+        disabled: () => false,
+      });
+
+    const respondSessionGroup = async (
+      c: Context,
+      operation: (
+        owner: NonNullable<typeof groups>,
+        binding: string,
+        assertCurrent: () => void,
+        assertStopCurrent: () => void,
+      ) => Promise<unknown>,
+    ): Promise<Response> => {
+      c.header('Cache-Control', 'private, no-store');
+      try {
+        if (!previewEnabled())
+          return c.json({ success: false, code: 'group_unavailable' }, 404);
+        const request = c.req.raw;
+        const binding = deps.callerBindingForRequest?.(request);
+        const { userId } = resolveActorPrincipal(deps, c);
+        const assertStopCurrent = () => {
+          if (!previewEnabled())
+            throw new CliSessionGroupUnavailable('group_unavailable');
+          if (
+            !binding ||
+            !userId ||
+            stationControlRequestAuthority(request)?.kind === 'caller' ||
+            tenantExecutionContextForRequest(request) ||
+            deps.isRequestPrincipalCurrent?.(request) !== true ||
+            deps.callerBindingForRequest?.(request) !== binding ||
+            resolveActorPrincipal(deps, c).userId !== userId
+          )
+            throw new CliSessionGroupUnavailable('group_authority_required');
+        };
+        const assertCurrent = () => {
+          assertStopCurrent();
+          if (request.signal.aborted)
+            throw new CliSessionGroupUnavailable('group_authority_required');
+        };
+        assertCurrent();
+        groups ??= new CliSessionGroups(
+          groupConfiguration.home,
+          (input) => groupTaskSchema.parse(input),
+          deps.logger,
+        );
+        const data = await operation(
+          groups,
+          JSON.stringify([userId, binding]),
+          assertCurrent,
+          assertStopCurrent,
+        );
+        assertCurrent();
+        return c.json({ success: true, data });
+      } catch (error) {
+        if (error instanceof SyntaxError || error instanceof z.ZodError)
+          return c.json({ success: false, code: 'group_invalid' }, 400);
+        if (error instanceof CliSessionGroupUnavailable) {
+          const { code } = error;
+          return c.json(
+            { success: false, code },
+            code === 'group_authority_required'
+              ? 403
+              : code === 'group_not_found' || code === 'group_unavailable'
+                ? 404
+                : code === 'group_invalid'
+                  ? 400
+                  : 409,
+          );
+        }
+        return c.json({ success: false, code: 'group_unavailable' }, 503);
+      }
+    };
+
+    const groupHost = (
+      c: Context,
+      assertCurrent: () => void,
+      assertStopCurrent: () => void,
+    ): CliSessionGroupHost<z.infer<typeof groupTaskSchema>> => ({
+      assertCurrent,
+      assertStopCurrent,
+      dispatch: async (task, admission) => {
+        admission.assertCurrent();
+        const response = await dispatchAuthorizedDelegation(
+          c,
+          delegateTaskSchema.parse({
+            ...task,
+            clientTurnId: admission.initialClientTurnId,
+          }),
+          admission,
+        );
+        const { data } = z
+          .object({
+            success: z.literal(true),
+            data: z.object({
+              taskId: z.string().min(1),
+              conversationId: z.string().min(1),
+              sessionId: z.string().min(1),
+              turnId: z.string().min(1),
+            }),
+          })
+          .parse(await response.json());
+        return { ...data, initialTurnId: data.turnId };
+      },
+      observe: async (handle) => {
+        assertCurrent();
+        const { sessionId, initialTurnId } = handle;
+        if (!initialTurnId) return { sessionId, status: 'unknown' };
+        const window = await orchestrationService.readSessionEventWindow(
+          sessionId,
+          { turnLimit: 20, authority: readAuthorityFor(c) },
+        );
+        assertCurrent();
+        const terminal = window?.events.find(
+          ({ event }) =>
+            event.threadId === sessionId &&
+            event.turnId === initialTurnId &&
+            (event.method === 'turn.completed' ||
+              event.method === 'turn.aborted' ||
+              (event.method === 'runtime.error' &&
+                !isDeferredRetriableTurnError(event))),
+        )?.event;
+        if (terminal?.method === 'turn.aborted')
+          return { sessionId, status: 'canceled' };
+        if (terminal?.method === 'runtime.error')
+          return { sessionId, status: 'failed' };
+        if (terminal?.method === 'turn.completed') {
+          if (terminal.finishReason === 'cancelled')
+            return { sessionId, status: 'canceled' };
+          if (PROVIDER_PROVEN_FINISH_REASONS.has(terminal.finishReason ?? ''))
+            return {
+              sessionId,
+              status: 'completed',
+              completedEvent: {
+                eventId: terminal.eventId,
+                turnId: initialTurnId,
+              },
+            };
+        }
+        return { sessionId, status: 'unknown' };
+      },
+      interrupt: async (handle) => {
+        assertStopCurrent();
+        if (!handle.initialTurnId || !deps.interruptDelegatedTask)
+          throw new CliSessionGroupUnavailable('group_turn_unconfirmed');
+        const scoped = refuseOutOfScopeDispatch(
+          c,
+          deps.stationControlDispatchScope,
+          () => ({ kind: 'task', taskId: handle.taskId, remote: false }),
+        );
+        if (scoped)
+          throw new CliSessionGroupUnavailable('group_authority_required');
+        const { principal, userId, ownerAttribution } = resolveDispatchActor(
+          deps,
+          c,
+        );
+        await deps.interruptDelegatedTask({
+          taskId: handle.taskId,
+          turnId: handle.initialTurnId,
+          principal,
+          userId,
+          ownerAttribution,
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          beforeProviderInterrupt: (threadId, turnId) => {
+            assertStopCurrent();
+            if (
+              threadId !== handle.sessionId ||
+              turnId !== handle.initialTurnId
+            )
+              throw new CliSessionGroupUnavailable('group_turn_unconfirmed');
+          },
+        });
+        assertStopCurrent();
+      },
+    });
+
+    app.post('/session-groups', (c) =>
+      respondSessionGroup(c, async (owner, binding, assertCurrent) => {
+        const body = await readBoundedRequestBody(c.req.raw, 262_144);
+        if (body.status !== 'ok')
+          throw new CliSessionGroupUnavailable('group_invalid');
+        const input = groupCreateSchema.parse(JSON.parse(body.body));
+        return owner.create(
+          binding,
+          input.operationId,
+          {
+            seats: input.members.map(({ seatId, needs, ...task }) => ({
+              seatId,
+              needs,
+              input: task,
+            })),
+            maxConcurrent: input.maxConcurrent,
+            maxDispatches: input.maxDispatches,
+            deadlineAt: input.deadlineAt,
+          },
+          assertCurrent,
+        );
+      }),
+    );
+    app.get('/session-groups/:groupId', (c) =>
+      respondSessionGroup(c, (owner, binding) =>
+        owner.view(param(c, 'groupId'), binding),
+      ),
+    );
+    app.post('/session-groups/:groupId/run', (c) =>
+      respondSessionGroup(
+        c,
+        (owner, binding, assertCurrent, assertStopCurrent) =>
+          owner.run(
+            param(c, 'groupId'),
+            binding,
+            groupHost(c, assertCurrent, assertStopCurrent),
+            c.req.raw.signal,
+          ),
+      ),
+    );
+    app.post('/session-groups/:groupId/cancel', (c) =>
+      respondSessionGroup(
+        c,
+        (owner, binding, assertCurrent, assertStopCurrent) =>
+          owner.cancel(
+            param(c, 'groupId'),
+            binding,
+            groupHost(c, assertCurrent, assertStopCurrent),
+          ),
+      ),
+    );
   }
 
   app.post('/delegations', validateFiles(delegateTaskSchema), (c) =>
@@ -7768,6 +8179,17 @@ export function createOrchestrationRoutes(
             ...(command.type === 'respondToRequest' &&
             isPersonRequest(c.req.raw)
               ? { personAnswer: true as const }
+              : {}),
+            ...(command.type === 'respondToRequest'
+              ? {
+                  serverLogReadDecisionAuthorized: () =>
+                    isOperatorInPersonNotAgent(c.req.raw) &&
+                    deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
+                    pairingScopeIncludes(
+                      grantedPairingScope(c) ?? 'access:manage',
+                      'access:manage',
+                    ),
+                }
               : {}),
             // A person's Stop, by Station's person check: never a delegation-
             // kind device or a request an Agent may have made. An automation

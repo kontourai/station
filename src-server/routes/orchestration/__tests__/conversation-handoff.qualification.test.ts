@@ -564,6 +564,11 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         expect(store.conversationSessions(conversationId)).toHaveLength(0);
       }
 
+      sourceAdapter.turnShape = {
+        toolCalls: 1,
+        toolOutputBytes: 80,
+        deltas: 0,
+      };
       const started = await post('/api/orchestration/chat', {
         conversationId,
         clientTurnId: 'initial-send',
@@ -823,6 +828,39 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       targetAdapter.failNextTranscriptSeed = failFirstHandoffSeed !== undefined;
       if (failFirstHandoffSeed)
         targetAdapter.seedFailureMethod = failFirstHandoffSeed;
+      if (
+        !staged &&
+        !nativeReturn &&
+        !preserveProfile &&
+        !dropHandoffSeedWitness
+      ) {
+        const readFacts = store.readTurnDigestFacts.bind(store);
+        const duringCapture = vi.spyOn(store, 'readTurnDigestFacts');
+        duringCapture.mockImplementationOnce((...args) => {
+          store.appendEvent({
+            provider: source.provider,
+            threadId: conversationId,
+            turnId: `${source.provider}-handoff-turn-1`,
+            eventId: 'tool-reported-during-handoff-capture',
+            createdAt: new Date().toISOString(),
+            method: 'tool.started',
+            itemId: 'late-tool',
+            toolCallId: 'late-tool',
+            toolName: 'late_read',
+          });
+          return readFacts(...args);
+        });
+        try {
+          const changedSource = await post(handoffPath, handoffBody);
+          expect(await changedSource.text()).toContain(
+            'Conversation context changed before its handoff reservation.',
+          );
+          expect(store.conversationSessions(conversationId)).toHaveLength(1);
+          expect(targetAdapter.starts).toHaveLength(0);
+        } finally {
+          duringCapture.mockRestore();
+        }
+      }
       const handoff = await post(handoffPath, handoffBody);
       expect(handoff.status, await handoff.clone().text()).toBe(200);
       const handoffReceipt = (await handoff.json()) as {
@@ -885,6 +923,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             store.conversationSessions(conversationId).at(-1)?.sessionId,
           ).toBe(redelivered.threadId);
           expect(redelivered.ambientContext).toContain(CONTEXT_TOKEN);
+          expect(redelivered.ambientContext).toContain('read_file (1)');
           // Never the failed Session's native thread: it never took the seed.
           expect(targetAdapter.starts.at(-1)?.resumeCursor).toBeUndefined();
           if (failRedeliveredSeed) {
@@ -915,6 +954,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
               store.conversationSessions(conversationId).at(-1)?.sessionId,
             ).toBe(again.threadId);
             expect(again.ambientContext).toContain(CONTEXT_TOKEN);
+            expect(again.ambientContext).toContain('read_file (1)');
             expect(targetAdapter.starts.at(-1)?.resumeCursor).toBeUndefined();
           }
         } finally {
@@ -1038,6 +1078,13 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       expect(targetAdapter.starts).toHaveLength(1);
       await eventually(() => expect(targetAdapter.turns).toHaveLength(1));
       expect(targetAdapter.turns[0]?.ambientContext).toContain(CONTEXT_TOKEN);
+      expect(targetAdapter.turns[0]?.ambientContext).toContain(
+        'Recorded work from prior turns',
+      );
+      expect(targetAdapter.turns[0]?.ambientContext).toContain('read_file (1)');
+      expect(targetAdapter.turns[0]?.ambientContext).not.toContain(
+        '0:'.padEnd(80, 'o'),
+      );
       if (staged) {
         expect(targetAdapter.starts[0]).toMatchObject({ modelId: 'gpt-5.4' });
         expect(targetAdapter.starts[0]?.resumeCursor).toBeUndefined();

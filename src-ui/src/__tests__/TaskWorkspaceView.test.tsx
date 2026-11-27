@@ -1083,6 +1083,50 @@ describe('TaskWorkspaceView', () => {
     ).toBeTruthy();
   });
 
+  test('the Task Overview links passing and failing workflow runs', () => {
+    const taskGraph = graph({ createdBy: 'automation-rule' });
+    queryResult.data = {
+      ...taskGraph,
+      links: [
+        ...taskGraph.links,
+        ...[
+          ['Workflow failed', '42'],
+          ['Recovered', '43'],
+        ].map(([label, id]) => ({
+          id: `run-${id}`,
+          source: 'system',
+          sourceType: 'task',
+          sourceId: 'task-alpha',
+          targetType: 'external',
+          targetId: `https://github.com/kontourai/station/actions/runs/${id}`,
+          relationType: 'references_external',
+          confidence: 1,
+          createdAt: '2026-11-06T00:00:00.000Z',
+          metadata: { label, automationRun: true },
+        })),
+      ],
+    };
+    render(<TaskWorkspaceView taskId="task-alpha" />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    const history = within(
+      screen.getByRole('region', { name: 'Workflow history' }),
+    );
+    expect(
+      history
+        .getAllByRole('link')
+        .map((link) => [link.textContent, link.getAttribute('href')]),
+    ).toEqual([
+      [
+        'Recovered · 43',
+        'https://github.com/kontourai/station/actions/runs/43',
+      ],
+      [
+        'Workflow failed · 42',
+        'https://github.com/kontourai/station/actions/runs/42',
+      ],
+    ]);
+  });
+
   test('a Task no automation started shows no mandate block', () => {
     render(<TaskWorkspaceView taskId="task-alpha" />);
     expect(

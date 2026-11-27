@@ -11,6 +11,8 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import type { ProviderInterruptTurnResult } from '../../../providers/adapter-shape.js';
+import { raceWithSignal } from '../../../utils/bounded-async.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -26,7 +28,13 @@ class SyncAdapter extends GateTestAdapter {
   async assertContextSyncRuntime() {}
   readonly starts: { input: ProviderSessionStartInput; generation?: string }[] =
     [];
-  readonly sends: { input: ProviderSendTurnInput; generation?: string }[] = [];
+  readonly sends: {
+    input: ProviderSendTurnInput;
+    generation?: string;
+    turnId: string;
+    terminalEventId: string;
+  }[] = [];
+  completeTurns = true;
   private readonly live = new Set<string>();
   override async hasSession(threadId = '') {
     return this.live.has(threadId);
@@ -81,11 +89,14 @@ class SyncAdapter extends GateTestAdapter {
     });
   }
   override async sendTurn(input: ProviderSendTurnInput) {
+    const turnId = randomUUID();
+    const terminalEventId = randomUUID();
     this.sends.push({
       input,
       generation: sessionToolRestriction(input.threadId)?.generation,
+      turnId,
+      terminalEventId,
     });
-    const turnId = randomUUID();
     this.events.push({
       eventId: randomUUID(),
       threadId: input.threadId,
@@ -106,22 +117,23 @@ class SyncAdapter extends GateTestAdapter {
         severity: 'error',
         message: 'controlled failure',
       });
-    this.events.push({
-      eventId: randomUUID(),
-      threadId: input.threadId,
-      turnId,
-      provider: 'claude',
-      createdAt: new Date().toISOString(),
-      method: 'turn.completed',
-      finishReason: this.finishReason,
-      outputText: 'ACK SYNC run',
-      invocationId: input.invocationId,
-    });
+    if (this.completeTurns)
+      this.events.push({
+        eventId: terminalEventId,
+        threadId: input.threadId,
+        turnId,
+        provider: 'claude',
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: this.finishReason,
+        outputText: 'ACK SYNC run',
+        invocationId: input.invocationId,
+      });
     return { threadId: input.threadId, turnId };
   }
 }
 
-async function fixture(persistSession = true) {
+async function fixture(persistSession = true, adapterStopTimeoutMs?: number) {
   const root = temporary('station-retained-sync-');
   const adapter = new SyncAdapter();
   const store = new EventStore(join(root, 'events.sqlite'));
@@ -135,6 +147,7 @@ async function fixture(persistSession = true) {
     eventBus: new EventBus(),
     logger: { debug() {}, warn() {} },
     idleSessionParkExitWaitMs: 100,
+    adapterStopTimeoutMs,
   });
   cleanup.push(async () => {
     await service.shutdown();
@@ -185,20 +198,22 @@ async function fixture(persistSession = true) {
   return { adapter, service, input, registry };
 }
 
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function holdRuntimePreflight(adapter: SyncAdapter) {
-  let arrived!: () => void;
-  let release!: () => void;
-  const entered = new Promise<void>((resolve) => {
-    arrived = resolve;
-  });
-  const pending = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+  const entered = deferred();
+  const pending = deferred();
   vi.spyOn(adapter, 'assertContextSyncRuntime').mockImplementation(async () => {
-    arrived();
-    await pending;
+    entered.resolve();
+    await pending.promise;
   });
-  return { entered, release };
+  return { entered: entered.promise, release: pending.resolve };
 }
 
 test.each(['prompt/client-turn', 'context'] as const)(
@@ -336,6 +351,144 @@ test('retained sync owns activation through resume/send/teardown and ordinary di
   expect(f.adapter.starts[2].generation).toBeUndefined();
   expect(f.adapter.sends[2].generation).toBeUndefined();
 });
+
+test('a held interrupt cannot hold the accepted sync open or release its activation', async () => {
+  const f = await fixture(true, 50);
+  f.adapter.completeTurns = false;
+  const controller = new AbortController();
+  const deadline = new Error('sync caller expired');
+  const interruptResponse = deferred<ProviderInterruptTurnResult>();
+  const interrupt = vi
+    .spyOn(f.adapter, 'interruptTurn')
+    .mockReturnValue(interruptResponse.promise);
+  const observe = f.service.readSessionEventPage.bind(f.service);
+  const observationEntered = deferred();
+  const allowObservation = deferred();
+  vi.spyOn(f.service, 'readSessionEventPage').mockImplementation(
+    async (...args) => {
+      observationEntered.resolve();
+      await allowObservation.promise;
+      return observe(...args);
+    },
+  );
+  const outcome = f.service
+    .syncRetainedSession({
+      ...f.input,
+      signal: controller.signal,
+      assertCurrent: () => controller.signal.throwIfAborted(),
+    })
+    .then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+  const ordinaryDispatch = () =>
+    f.service.dispatchWithReceipt(
+      { type: 'sendTurn', input: { threadId: 'retained', input: 'ordinary' } },
+      { userId: 'owner' },
+    );
+  try {
+    await observationEntered.promise;
+    controller.abort(deadline);
+    allowObservation.resolve();
+    expect(await raceWithSignal(outcome, AbortSignal.timeout(2_000))).toEqual({
+      error: deadline,
+    });
+    const turnId = f.adapter.sends[1]!.turnId;
+    expect(interrupt).toHaveBeenCalledExactlyOnceWith('retained', turnId);
+    await expect(ordinaryDispatch()).rejects.toThrow(
+      'group_sync_activation_changed',
+    );
+    interruptResponse.resolve({ outcome: 'cancelled', turnId });
+    await interruptResponse.promise;
+    await expect(ordinaryDispatch()).rejects.toThrow(
+      'group_sync_activation_changed',
+    );
+    expect(f.adapter.sends).toHaveLength(2);
+    await f.service.dispatchWithReceipt(
+      { type: 'stopSession', threadId: 'retained' },
+      { userId: 'owner' },
+    );
+    expect(f.adapter.engineEnded('retained')).toBe(true);
+  } finally {
+    allowObservation.resolve();
+    interruptResponse.resolve({ outcome: 'no-active-turn' });
+  }
+});
+
+test.each([true, false])(
+  'after caller expiry, an observed sync terminal yields a receipt only with exact cleanup confirmation (%s)',
+  async (confirmed) => {
+    const f = await fixture();
+    const controller = new AbortController();
+    const finalStopEntered = deferred();
+    const allowFinalStop = deferred();
+    const originalStop = f.adapter.stopSession.bind(f.adapter);
+    let stopCount = 0;
+    vi.spyOn(f.adapter, 'stopSession').mockImplementation(async (threadId) => {
+      if (++stopCount === 2) {
+        finalStopEntered.resolve();
+        await allowFinalStop.promise;
+        if (!confirmed) return;
+      }
+      await originalStop(threadId);
+    });
+    const interrupt = vi.spyOn(f.adapter, 'interruptTurn');
+    const result = f.service
+      .syncRetainedSession({
+        ...f.input,
+        signal: controller.signal,
+        assertCurrent: () => controller.signal.throwIfAborted(),
+      })
+      .then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      );
+    const ordinaryDispatch = () =>
+      f.service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'retained', input: 'ordinary' },
+        },
+        { userId: 'owner' },
+      );
+    try {
+      await finalStopEntered.promise;
+      controller.abort(new Error('sync caller expired after terminal'));
+      await expect(ordinaryDispatch()).rejects.toThrow(
+        'group_sync_activation_changed',
+      );
+    } finally {
+      allowFinalStop.resolve();
+    }
+    const settled = await result;
+    expect(f.adapter.sends).toHaveLength(2);
+    expect(interrupt).not.toHaveBeenCalled();
+    if (confirmed) {
+      const { turnId, terminalEventId } = f.adapter.sends[1]!;
+      expect(settled).toMatchObject({
+        value: {
+          sessionId: 'retained',
+          nativeSessionId: 'same-native-session',
+          turnId,
+          terminalEventId,
+          output: 'ACK SYNC run',
+          toolCalls: 0,
+        },
+      });
+      expect(f.adapter.engineEnded('retained')).toBe(true);
+      await ordinaryDispatch();
+      expect(f.adapter.sends[2]!.generation).toBeUndefined();
+    } else {
+      expect(settled).toHaveProperty(
+        'error.message',
+        'group_sync_release_unknown',
+      );
+      await expect(ordinaryDispatch()).rejects.toThrow(
+        'group_sync_activation_changed',
+      );
+    }
+  },
+);
 
 test('an unconfirmed ordinary-process exit prevents restricted restart and provider dispatch', async () => {
   const f = await fixture();

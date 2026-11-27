@@ -119,7 +119,7 @@ function launch(
       .join(' ');
     writeFileSync(
       command,
-      `#!/bin/sh\nif [ "$1" = "--version" ]; then printf '%s\\n' 1.5.14; exit; fi\nexec ${shellArgs}\n`,
+      `#!/bin/sh\nif [ "$1" = "--version" ]; then printf '%s\\n' 1.5.16; exit; fi\nprofile_dir=$(cd -P "$GEMINI_HOME" && pwd)\n[ "$3" = "--gemini-dir=$profile_dir" ] && [ "$4" = "--app-data-dir=antigravity-acp" ] || exit 64\nexec ${shellArgs}\n`,
       { mode: 0o700 },
     );
   }
@@ -645,6 +645,18 @@ describe.skipIf(process.platform === 'win32')(
         state: 'observed',
         value: { inputTokens: 10377, outputTokens: 48, totalTokens: 16595 },
       });
+    });
+
+    test('refuses the explicit Antigravity profile when its directory is missing', async () => {
+      const home = makeTempDir('station-agy-profile-missing-');
+      vi.stubEnv('STATION_HOME', home);
+      vi.stubEnv('GEMINI_HOME', join(home, 'engine-profiles', 'antigravity'));
+      const engine = launch(PROFILE, TEXT_TURN, true);
+
+      await expect(engine.start('missing-profile')).rejects.toThrow(
+        'The dedicated Antigravity profile must be an owner-only directory',
+      );
+      expect(engine.record()).toEqual([]);
     });
 
     test.each([

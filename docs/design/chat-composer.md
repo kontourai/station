@@ -216,6 +216,17 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   **Regenerate** and **Edit and resend** fork before a message with that
   message's Agent, so they open no picker while it can run; the same dialog
   appears only when that fork fails or the Agent cannot run.
+- **No empty pane.** An open desktop dock with no chat in its pane shows
+  this draft itself, ready to type, instead of an empty "No chat open" card
+  (#5592). Nothing is created until it is sent. Dismissing that draft folds
+  the dock to its toolbar, since there is no chat behind it; a draft someone
+  asked for (New chat, a Project or plugin request) dismisses as before, back
+  to the dock's own draft with its text kept. A chat that was picked but
+  could not be opened keeps its recovery prompt in its place. A phone (which
+  shows its Chats list) and a full-screen layout keep their own no-chat
+  state, and with no Agents the card remains and says so
+  ([`ChatDock`](../../src-ui/src/components/chat-dock/ChatDock.tsx),
+  [`ChatDockContentArea`](../../src-ui/src/components/chat-dock/ChatDockContentArea.tsx)).
 - **Leaving.** Escape, Back or **Cancel return** dismisses the
   draft and hands back its text; on a phone this restores the dock size the
   draft replaced. Start closes it as started before
@@ -618,7 +629,14 @@ in the dock.
 The shared New chat action remains directly reachable in mobile chrome and
 the desktop Inbox header. The phone Inbox is the dock's initial reader, not
 a modal reached through the title. Its explicit icon returns to the retained
-Inbox without unmounting the conversation. Completed answers expose an
+Inbox without unmounting the conversation. Browser Back also returns a phone
+reader to Inbox, including when a notification or direct link opened the chat.
+Child readers and dialogs keep their own Back step above that reader. A send
+finishing in the background updates its conversation without selecting it again.
+Moving between Inbox and its reader uses a short, interruptible entry transition;
+input and navigation do not wait for it. The existing **Appearance → Motion →
+Reduced** preference and the device's reduced-motion preference skip this motion.
+Completed answers expose an
 icon-only Branch action beside Copy, using the recorded turn's existing fork
 eligibility and execution identity. The timestamp stays on that action row. Child-work status says **Run finished**
 when its execution ends; its result remains separate and can report unfinished work.
@@ -712,8 +730,8 @@ that far down (12 pages of 20 turns), and the rest of the gap is left to Load
 older with no marker where it lies in the transcript; that limit predates
 reader-place keeping and applies equally once older pages are loaded.
 Scroll-button hover changes its background
-without enlarging its target. The desktop header exposes Hide chat list /
-Show chat list directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
+without enlarging its target. The desktop header exposes **Hide chats** and
+**Show chats** directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
 Pending tool permissions feed Needs approval; questions and forms feed Needs
 answer. Permission takes priority when both wait. The action opens the
@@ -1071,6 +1089,9 @@ without the directory retain the explicitly labelled loaded-window map.
   clears a followed `#station-message=` link, which would otherwise hold the
   transcript on its message. Scroll to bottom returns to
   the latest; if focus was on it or the steps, focus moves to the transcript.
+  This explicit request overrides earlier momentum and row-anchor restorations.
+  Fresh wheel, touch, scrollbar or keyboard input interrupts its short glide;
+  Reduced motion returns to the latest immediately.
 
 History replay has its own timeline and shows no rail.
 
@@ -1302,21 +1323,21 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 ### Turn activity and follow-up delivery
 
-On desktop, Send remains available beside a separate Stop action during a turn.
-During a turn the mode picker is the trailing segment of Send, one split
-control that takes Send's accent while Send is ready. With no turn, Send alone
-sits at the row's trailing edge. On mobile, Send is an arrow and its mode
-picker a chevron. They appear once the
-composer holds text, an attachment or quoted context. Until then they take no
-room, so Agent & model keeps the width an empty draft has no use for. On mobile,
-Stop follows them at the row's trailing edge, so it does not move when they
-appear; Agent & model narrows instead. At 390px a running turn's full row (Clear,
-Send, mode picker and Stop) still wraps to a second line once the draft holds
-text. Names and the selected mode remain accessible, and the opened picker
-uses explicit Queue and Steer labels. Stop stays visible throughout the turn.
-The mode picker defaults to **Queue** for every engine. Station holds a
-follow-up for the next turn when the current one is still running. A chosen
-mode holds until the conversation changes. Claude Code, Codex, Muse on `muse serve` and the GitHub Copilot (SDK)
+During a running turn, the trailing segment of Send toggles between amber
+**Queue** and green **Steer**. The Send button changes icon and color with the
+mode. Queue is the default and the selection lasts for that conversation
+while the composer is mounted. Stop remains with the Working status when that
+status is visible.
+
+The Queue count opens the list from the composer toolbar. Move changes the
+order of waiting messages. Tap a message to edit its full text in the
+composer. Save preserves its position, and Cancel restores the previous draft.
+Each preview shows up to four lines. Swipe left or open More to reveal
+cancellation behind the row. For an eligible text message, Steer is the
+rightmost action and sends its text into the current turn. Older connected
+Stations may support only cancelling a Station-held message.
+
+Claude Code, Codex, Muse on `muse serve` and the GitHub Copilot (SDK)
 preview engine have additive steering. A Muse Session on `muse exec` reports no
 steering in its Session summary and refuses a steer.
 ACP sessions report their live handshake's native channel, or an interrupting
@@ -1326,9 +1347,12 @@ additional instruction. It does not claim additive native steering.
 After a device's full access is revoked, a turn that started unconfined cannot
 take new steering input. The next turn runs confined (#2898).
 
+An admitted steer can reach the current turn ahead of queued follow-ups. An in-flight or unconfirmed inbox placement still takes precedence. Follow-ups retain their order, and only they receive queue positions.
+
 Station-owned steering waits durably for the next post-tool boundary in the
-turn Station accepted. If the turn ends first, the pending row explains why
-Steer was refused. Its wording says **Steer when safe**.
+turn Station accepted. A pending steer appears in an outlined message bubble,
+then fills when delivery is acknowledged. A steer whose turn ended before
+handoff can be restored to the composer.
 Claude, Codex and the GitHub Copilot (SDK) preview engine retain engine-defined native placement. The composer reads the
 current adapter declaration sent by session snapshots and conversation-open
 responses. A missing declaration is unknown; the client does not infer it from
@@ -1339,47 +1363,36 @@ nor Retry-steering is offered. Follow-up Retry remains available. A durable
 steer already queued waits while Session materialization has not registered an
 adapter. A registered adapter without a declaration, or a declared placement of
 `none`, refuses it with `unsupported-engine` before any handoff.
-ACP's cancel-and-reprompt extension does not become an additive
-native composer action. Profile observations are not persisted in browser session
-state. After post-tool injection the entry remains claimed until model dispatch,
-memory storage and the canonical steer event have been acknowledged. A request
-error or the turn ending first surfaces **May have been sent** immediately;
-reviewing and dismissing it releases following input without a restart. Its
-position stays after the triggering tool result and before later model replies,
-rather than moving to the newest position on every step.
+ACP's cancel-and-reprompt extension is an interrupting steer. The delivered
+message records that Station stopped the running step. Profile observations are
+not persisted in browser session state. After post-tool injection the entry
+remains claimed until model dispatch, memory storage and the canonical steer
+event have been acknowledged. It stays after the triggering tool result and
+before later model replies.
 
 Named-conversation steers first save text, the observed `expectedHead` and an
 authority-scoped key in IndexedDB, then submit to the server inbox. Missing
 conversation identity or an unobserved offline head keeps the draft. The server
 persists the text, head and turn's opening event before claiming a handoff.
-A restart before the claim can still deliver to the same open turn. After
-acknowledgement, Station retains the receipt for retries. A claim without an
-acknowledgement shows **May have been sent**. Engine receipts can settle it.
-**Review and resend** restores text into an empty composer and requires a new
-explicit Send. Station retains the old key after dismissal.
+A restart before the claim can still deliver to the same open turn. A claim
+without an acknowledgement shows **Unconfirmed**. Station rechecks the
+original receipt without sending the text again. Reviewing a resend restores
+text to the composer for a new explicit Send. Station retains the old key
+after dismissal.
 
-Follow-ups Station holds in the open conversation's server inbox share the
-pending-message list with this browser's outbox and retained legacy input
-([wrapper](../../src-ui/src/components/chat/ConversationInboxMessages.tsx)).
-It reads the existing [inbox API](../reference/session-api.md#let-station-hold-a-follow-up)
-for that conversation and verified Station identity, including messages submitted
-by another client. Held rows read **Held by Station** and sit at the bottom of
-the list, in the server's send order. A message both queued locally and held by
-Station (the same `clientTurnId`) appears once, as the held row. The count is
-every row the list shows, whatever its state (waiting, sending, unknown or
-refused delivery), and the chat's context card shows the same count from the
-same rule ([pendingMessages](../../src-ui/src/components/chat/pendingMessages.ts)). While neither holds anything the
-list renders nothing. Reads are silent: polling (every 2s while the
-conversation is working or holds messages, every 15s otherwise), turn-fact
-invalidation and focus/reconnect change the list only when the answer changes.
-A failed read is retried twice, 400ms apart, while the last rows stay shown;
-401, 403 and 404 are final and not retried. Only when every attempt fails do
-held rows give way to a **Couldn't load inbox entries** line and its **Retry**,
-never a zero count.
-**Remove** or **Dismiss** uses the original message key and the server's
-authorization and placement checks; rows without a permitted key are
-read-only. Held rows offer no local edit, reorder, send-now or steer action; an
-owned unconfirmed steer offers explicit Review and resend.
+The Queue list combines server-held follow-ups with this browser's outbox and
+retained local messages. A matching server-held copy replaces the local row.
+Waiting rows appear in send order with the next item highlighted. Pending
+steers appear in the transcript. Reads are silent: polling, turn-fact
+invalidation and focus or reconnect update the list. If the inbox cannot be
+read, the list offers Retry.
+
+Server-held actions use the original message identity and Station's placement
+and authority checks. The sender can edit a waiting message, swap it with an
+adjacent message they own, or steer an eligible text message. Promotion uses
+the observed turn identity so streaming does not invalidate the selection.
+When the selected turn has already ended, the waiting message stays queued.
+
 A busy-composer Queue submission requests inbox admission. Eligible submissions
 may be held; Station may instead return a started-turn receipt if the turn has
 ended or the request takes the live path. Apply a pending approval choice before
@@ -1407,8 +1420,8 @@ Send on a closed window's copy releases its original durable outbox key for
 server handoff. It never moves into a new per-tab automatic queue. Restored
 sessionStorage input has no originating Station/authority and is held for
 **Review destination**; it cannot drain, interrupt or steer automatically.
-Review and resend transfers its text into an empty composer before removing
-the retained row, preserving any existing draft.
+**Review and resend** and **Restore to draft** transfer the text into an empty
+composer before removing the retained row. An existing draft stays in place.
 Rows, and the list itself, grow in and collapse out (height and opacity) rather
 than popping.
 In a dock too short for the list and the draft, the list yields before the
@@ -1667,9 +1680,12 @@ with rename and delete actions. **History** opens the current conversation's
 read-only timeline. Chat actions also keeps background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**
 or **Exit full screen**; the open phone bar also shows the same switch as a
-44px **Full screen chat** / **Restore chat size** control (#4391). Collapse
-stays on the header control. No resize or
-navigation action requires a gesture.
+44px **Full screen chat** / **Restore chat size** control (#4391). Restore
+returns the chat to where it rested before it went full screen: its bar, or
+the size it was left at. Collapsing a chat that is not full screen stays on the
+header control. No resize or navigation action requires a gesture;
+[phone dock sizes](../guides/responsive-ui.md#phone-dock-sizes) lists the
+sizes a dragged bar rests on.
 
 Mobile message rows prioritize the authored text and essential live approval or
 error state. Each row with text has a 44px copy button beside a separate 44px
@@ -1717,7 +1733,8 @@ for actual captures and remaining Terminal and pairing work.
 The `conversation-resolution` Feature Preview groups actionable work under
 Needs attention, Working, Open, Snoozed, Third-party and Settled. An owed
 decision takes precedence over Working; running turns and monitoring work stay
-in Working. An unsent draft is an indicator on its chat row and does not change
+in Working. Unknown cleanup alone leaves a conversation in Open or Settled,
+with the cleanup reason visible. An unsent draft is an indicator on its chat row and does not change
 its status. A chat that has never started stays in Open. A completed or failed
 agent turn leaves a standalone conversation Open. Settle and Reopen record the person's explicit decision on
 the host, shared across their owner devices, separately from last-viewed state,
@@ -1746,7 +1763,7 @@ work, with Settled at the bottom by default. With no shelf expanded they stack
 from the top of the list. A collapsed shelf still lists the row of the chat on
 screen, so the open chat is never hidden from the inbox. Shelf menus offer Move up and
 Move down; that order is saved on this device within expanded and collapsed
-shelves. The inbox header is one line: search, the
+shelves. The inbox header groups search, the
 work scope picker (its "Show work" label kept for assistive technology), and
 New chat. Work the scope hides that needs the person is a count badge on the
 picker, which shows all work (2026-11-16); the phone keeps its "Show all"
@@ -1759,6 +1776,13 @@ The inbox list has no list-level overflow menu (each row has its own ⋯): a
 failed read offers Retry, disabled while the re-read runs. Full-size cards in the desktop and mobile Inbox share the title and project
 column. Status and one time align on the right. Hover or keyboard focus exposes
 the desktop row's ⋯ menu. A touch row keeps the agent named beside its mark.
+
+With the Pull request agent feedback preview enabled, the inbox also shows
+linked pull request chips and observed worktree diff counts. The PR chip opens
+the selected pull request beside Chat. If several are linked, it opens a chooser.
+The pull request picker below search and scope filters or sorts Chats by observed state.
+Filtering includes only matching observations. Closing a PR opened from a row
+returns focus to that row.
 Mark done offers a
 transient Undo toast, which **Undo last action** (⌘Z / Ctrl+Z, rebindable)
 also reaches while the toast is shown. Native editor and terminal undo retain

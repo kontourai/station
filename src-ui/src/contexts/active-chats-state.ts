@@ -218,12 +218,15 @@ export type ChatMessage = {
   timestamp?: number;
   /** See `ChatMessage.steerInterruptedRun` in types.ts. */
   steerInterruptedRun?: boolean;
+  steer?: true;
   /** See `ChatMessage.stationCheckBack` in types.ts. */
   stationCheckBack?: boolean;
   /** See `ChatMessage.stationMemoryContinuation` in types.ts. */
   stationMemoryContinuation?: boolean;
   /** See `ChatMessage.stationRestartContinuation` in types.ts. */
   stationRestartContinuation?: boolean;
+  /** See `ChatMessage.stationOrigin` in types.ts. */
+  stationOrigin?: 'delegation' | 'automation';
   /** See `ChatMessage.rewound` in types.ts. */
   rewound?: boolean;
   /** See `ChatMessage.sender` in types.ts. */

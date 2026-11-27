@@ -1,3 +1,4 @@
+import type { LinkedPullRequestSnapshot } from './conversation-pull-request-links.js';
 import type {
   PullRequestFeedbackObservationResult,
   PullRequestsByHeadResult,
@@ -110,6 +111,8 @@ export type PullRequestClientContext =
       branch?: string;
       /** Owner of the local branch's configured push target, when known. */
       pushTargetOwner?: string;
+      /** First page when the client asks for a list with the checkout context. */
+      pullRequests?: PullRequestResult<PullRequest[]> & { nextCursor?: string };
     }
   | {
       available: false;
@@ -162,6 +165,16 @@ export interface PullRequest {
    * status read observes it, and only for an open pull request.
    */
   landing?: PullRequestLanding;
+  snapshot?: Pick<
+    LinkedPullRequestSnapshot,
+    | 'checks'
+    | 'updatedAt'
+    | 'mergedAt'
+    | 'closedAt'
+    | 'additions'
+    | 'deletions'
+    | 'changedFiles'
+  >;
 }
 export type PullRequestLanding = 'auto-merge' | 'merge-queue' | 'not-queued';
 export type PullRequestMergeReadiness =
@@ -187,6 +200,10 @@ export interface PullRequestBranchMergeability {
 export interface PullRequestListQuery {
   state?: string;
   limit?: number;
+}
+export interface PullRequestPage {
+  items: PullRequest[];
+  nextCursor?: string;
 }
 export interface PullRequestOpenInput {
   title: string;
@@ -327,6 +344,10 @@ export interface IPullRequestProvider {
     context: PullRequestRepositoryContext,
     query: PullRequestListQuery,
   ): Promise<PullRequestResult<PullRequest[]>>;
+  listPullRequestPage?(
+    context: PullRequestRepositoryContext,
+    query: PullRequestListQuery & { cursor?: string },
+  ): Promise<PullRequestResult<PullRequestPage>>;
   getPullRequest(
     context: PullRequestRepositoryContext,
     ref: string,

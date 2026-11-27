@@ -63,6 +63,21 @@ The protocol limits requests to 2 MiB, frames to 3 MiB, channel lifetime to
 are at most 64 KiB. These transport bounds do not establish token or fiscal
 budgets. Client credentials are stripped from forwarded request headers.
 
+The [fixed-text request preparer](../../src-server/runtime/conversation/native-text-model-request.ts)
+is a dormant prerequisite. It validates bounded JSON, applies the selected
+model and output cap, and strips tools and opaque provider state from the
+final request. A future caller must authorize those final bytes through the
+source, credential, and reservation owners before any provider request.
+
+The separate brokered request profile is also dormant. It replaces native tool
+declarations with the host's selected MCP tools, keeps the requested model and
+output cap, and accepts only text plus matched calls and results in the
+Station delegation namespace. Requests with unknown, duplicate, or incomplete
+tool history are refused. For Responses requests, an explicit no-tools choice
+remains in force.
+The host still needs a current parent grant, effect authority, and a reservation
+for each physical attempt before forwarding these bytes.
+
 ## Run the lab
 
 Use a local Linux/arm64 Docker daemon and the repository's managed dependencies.
@@ -98,6 +113,13 @@ Codex uses a local catalog for the synthetic `station-channel-fixture` model;
 that metadata describes this fixture, not an upstream model or entitlement.
 The fixture supplies synthetic Messages/Responses replies and never calls a
 real model provider.
+
+The container also has an explicit brokered launcher. It requires the relay
+callback to have been mounted when the worker started and configures the
+single Station delegation server for the selected native CLI. The scoped bridge
+key stays in the child environment. Fixed-text launch keeps its original
+configuration even when a broker callback is mounted. This launcher remains
+unwired to serving callers and supplies no parent grant or provider reservation.
 
 ### Create-only lifecycle controls
 

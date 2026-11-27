@@ -111,6 +111,8 @@ function renderComposer(
 describe('ChatInputArea: one capability contract while a turn runs', () => {
   test('unavailable steering stays disabled and explains the missing host profile', async () => {
     renderComposer({
+      // The picker is a choice about a draft; it appears once there is one.
+      input: 'A follow-up',
       busyFollowUp: 'queue',
       busySteeringUnavailableReason:
         'Steering unavailable: the host did not report a durability profile.',

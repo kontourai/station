@@ -142,6 +142,7 @@ interface ChatMessageListProps {
   preserveReading?: boolean;
   activeSession: ChatSession;
   scrollControlsTarget?: HTMLElement | null;
+  pendingSteerRef?: (element: HTMLDivElement | null) => void;
   /** The canonical window plus sequenced live events already renders this turn. */
   suppressStreamingRow?: boolean;
   fontSize: number;
@@ -388,6 +389,7 @@ function ChatMessageListComponent({
   agents,
   activeSession,
   scrollControlsTarget,
+  pendingSteerRef,
   suppressStreamingRow,
   fontSize,
   layoutHeight,
@@ -1019,6 +1021,7 @@ function ChatMessageListComponent({
           ),
       );
       if (!row) return;
+      scrollAnimationRef.current?.cancel();
       isUserScrolledUpRef.current = true;
       setIsUserScrolledUp(true);
       setApprovalRevealRowId(row.id);
@@ -1055,6 +1058,7 @@ function ChatMessageListComponent({
       )
         return;
       event.preventDefault();
+      scrollAnimationRef.current?.cancel();
       isUserScrolledUpRef.current = true;
       visibleAnchorRef.current = request.anchor ?? null;
       setIsUserScrolledUp(true);
@@ -1098,6 +1102,7 @@ function ChatMessageListComponent({
     // The DOM target can only exist after the projected message count changes.
     void messages.length;
     if (!requestedMessageRowId) return;
+    scrollAnimationRef.current?.cancel();
     // Disable tail-follow before the child virtualizer receives the anchor.
     // Otherwise its normal new-message policy could undo the reveal.
     isUserScrolledUpRef.current = true;
@@ -1305,6 +1310,7 @@ function ChatMessageListComponent({
       const returning = lastClientHeightRef.current === 0;
       lastClientHeightRef.current = el.clientHeight;
       const resized = reanchorGate.shouldReanchor(el.clientHeight);
+      if (scrollAnimationRef.current) return;
       if (!returning && !resized) return;
       if (isUserScrolledUpRef.current || readerHoldRef.current) {
         if (
@@ -1594,18 +1600,7 @@ function ChatMessageListComponent({
       Math.abs(target.clientHeight - previousClientHeight) >=
         RESIZE_REANCHOR_THRESHOLD_PX;
     lastClientHeightRef.current = target.clientHeight;
-    // Every frame of a "Scroll to bottom" glide is our own write, and reader
-    // input cancels the glide before its own scroll arrives. Momentum the
-    // reader started before tapping emits no input event: a scroll that moves
-    // against the glide is theirs and ends it.
-    if (scrollAnimationRef.current) {
-      // (Content that shrank under the glide clamps it to the new end; that
-      // reads as reaching the end below, which pins, the glide's own goal.)
-      const glide = lastProgrammaticScrollRef.current;
-      if (!glide || target.scrollTop >= glide.top - PROGRAMMATIC_SCROLL_ECHO_PX)
-        return;
-      scrollAnimationRef.current.cancel();
-    }
+    if (scrollAnimationRef.current) return;
     // A dock/keyboard resize can dispatch `scroll` before ResizeObserver gets
     // its turn. Preserve the reader's prior intent during that event: an
     // already-pinned transcript stays pinned, while an intentionally scrolled
@@ -1775,6 +1770,7 @@ function ChatMessageListComponent({
           keyStep > 0 &&
           distance <= keyStep
         ) {
+          cancelScrollToBottom();
           event.preventDefault?.();
           tailIntentRef.current = true;
           isUserScrolledUpRef.current = false;
@@ -1981,6 +1977,7 @@ function ChatMessageListComponent({
       el.focus({ preventScroll: true });
     setReaderRestoreRequest(null);
     visibleAnchorRef.current = null;
+    setScrollAnchorVersion((version) => version + 1);
     scrollAnimationRef.current?.cancel();
     const token = {};
     scrollAnimationTokenRef.current = token;
@@ -2721,6 +2718,7 @@ function ChatMessageListComponent({
                           }
                           followTick={`${tailContentLength}:${tailPartsLength}`}
                           anchorVersion={scrollAnchorVersion}
+                          preserveAnchor={!scrollingToBottom}
                           revealRowId={
                             requestedMessageRowId ??
                             approvalRevealRowId ??
@@ -2829,6 +2827,7 @@ function ChatMessageListComponent({
                     }
                   />
                 )}
+                {pendingSteerRef && <div ref={pendingSteerRef} />}
                 {/* Room at the end for the composer's floating status row
                 (chat.css shows it). A row of its own, not a pseudo-element,
                 so the tail-follow sees it come and go. */}

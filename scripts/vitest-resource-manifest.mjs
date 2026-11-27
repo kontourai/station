@@ -151,6 +151,7 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
   'src-server/services/evidence/__tests__/task-code-review-module.test.ts',
   // Real launcher exit/stderr protocol with in-memory ChildProcess/streams
   // and substituted spawnOwnedChild; no child launch or wall-clock assertion.
@@ -1150,6 +1151,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // These tests start real children through the owned-process helper rather
   // than importing node:child_process directly.
   'scripts/__tests__/owned-process.test.ts',
+  'scripts/__tests__/windows-owned-protocol.test.ts',
   // #2269: drives the REAL muse adapter (production spawnOwnedChild +
   // production terminateProcessTree, no injected terminate) against tiny
   // Node fixtures emitting valid Muse JSONL with short injected idle/total

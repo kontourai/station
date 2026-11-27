@@ -379,6 +379,13 @@ a person has since continued the Session, and a person who continues afterwards
 works in a Task that already awaits review. A green run closes
 the episode and prevents later placement for it.
 
+A native Task rule can opt in to a [standing Task](../user/automations.md#keep-a-recurring-github-workflow-in-one-task).
+The rule retains its keyed episode and attempt limits. Each new episode
+can dispatch a fresh session under the same Task identity, with workflow
+observations retained as Task links. A triage-only rule can opt in to
+completion on recovery after a completed agent turn, subject to the Task,
+session, and pending review checks.
+
 A first turn a person stops reads `stopped` on the intent and the
 delivery, not `failed`; Settings shows "stopped by a person".
 Station knows it was a person from the Stop request itself: the

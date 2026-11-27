@@ -1,0 +1,53 @@
+{
+  "revision": "1455e2cdc604008103c68d511c4017933b222077",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed the foreground send and definitive busy refusal path against the documented attachment custody, explicit retry, and inbox admission contracts. Only the lease for the proven rejected dispatch is released. The documented protocol and authority rules remain accurate.","inputs":["src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

@@ -16,6 +16,7 @@ import {
   type ConnectionSectionId,
 } from './connections-hub/connection-sections';
 import { IntegrationStatusSection } from './connections-hub/IntegrationStatusSection';
+import { OutsideClientsSection } from './connections-hub/OutsideClientsSection';
 
 /** Each item's header and add action. */
 const SECTION_COPY: Readonly<
@@ -123,6 +124,7 @@ function CustomizeSectionFrameInner({
           desktop; on a phone it floats instead of taking a row. */}
       <PageCreateAction label={section.addLabel} onClick={add} />
       <IntegrationStatusSection />
+      {sectionId === 'tools' && <OutsideClientsSection />}
       <PageHeaderScope>{children}</PageHeaderScope>
     </div>
   );

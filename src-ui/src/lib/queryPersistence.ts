@@ -26,6 +26,7 @@
  *    mode) degrades gracefully rather than crashing or hanging first paint —
  *    see `buildPersistOptions`/`setupQueryPersistence`'s handling below.
  */
+import type { PullRequestClientContext } from '@kontourai/station-contracts/pull-request-provider';
 import { PERSISTED_QUERY_GC_TIME_MS } from '@kontourai/station-sdk';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import type {
@@ -149,7 +150,17 @@ export function shouldPersistQuery(
 ): boolean {
   if (query.state.status !== 'success') return false;
   if (query.state.error != null) return false;
-  const [prefix] = query.queryKey;
+  const [prefix, state] = query.queryKey;
+  // Only the first Open GitHub page carries summary data without detail.
+  if (prefix === 'checkout-pull-requests') {
+    const data = query.state.data as PullRequestClientContext | undefined;
+    return (
+      state === 'OPEN' &&
+      data?.available === true &&
+      data.provider === 'github' &&
+      data.pullRequests?.available === true
+    );
+  }
   return (
     typeof prefix === 'string' && PERSISTED_QUERY_KEY_PREFIX_SET.has(prefix)
   );
@@ -317,7 +328,20 @@ export function buildPersistOptions(options?: {
   };
 
   return {
-    persister,
+    persister: {
+      ...persister,
+      restoreClient: async () => {
+        const saved = await persister.restoreClient();
+        if (saved) {
+          for (const query of saved.clientState.queries) {
+            if (query.queryKey[0] !== 'checkout-pull-requests') continue;
+            query.state.dataUpdateCount = 0;
+            query.state.isInvalidated = true;
+          }
+        }
+        return saved;
+      },
+    },
     maxAge: QUERY_PERSISTENCE_MAX_AGE_MS,
     buster: queryPersistenceBuster(),
     dehydrateOptions,

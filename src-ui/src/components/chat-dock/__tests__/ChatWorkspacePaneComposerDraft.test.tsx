@@ -376,12 +376,13 @@ function CaptureShowSurface() {
   return null;
 }
 
-function renderPane(projectSlug: string) {
+function renderPane(projectSlug: string, onScreen = true) {
   renderInProviders(
     <ChatWorkspacePane
       placement="fullscreen"
       projectSlug={projectSlug}
       layoutSlug="coding"
+      onScreen={onScreen}
     />,
   );
 }
@@ -688,6 +689,8 @@ test('the docked start composer defaults to the bound Project, never the foreign
   await act(async () => {});
   expect(screen.queryByRole('button', { name: /^New chats:/ })).toBeNull();
   expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  // The Chats list mounts lazily; wait for it rather than racing it.
+  await screen.findByRole('complementary', { name: 'Chats' });
   clickDockedNewChat();
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
@@ -780,13 +783,15 @@ test('the docked New chat button opens a draft in the bound Project with one rea
 
 test('the dock reads run locations only while the start composer is open, and hands them over', async () => {
   deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
-  navigationStore.navigate('/', { dock: 'open' });
+  navigationStore.navigate('/');
   renderDockedPane();
   await act(async () => {});
-  // Nothing reads run locations while the dock shows no start composer.
+  // Nothing reads run locations while the dock shows no start composer
+  // (folded to its toolbar).
   expect(runLocationReads).toEqual([]);
 
-  clickDockedNewChat();
+  // #5592: an open dock with no chat shows its start composer itself.
+  act(() => navigationStore.setDockState(true, false));
   await screen.findByRole('region', { name: 'New chat picker' });
 
   expect(runLocationReads.length).toBeGreaterThan(0);
@@ -858,25 +863,148 @@ test('a phone opens its dock at the inbox without adding a modal layer', async (
   expect(screen.getByRole('button', { name: /^Pulse chat\b/ })).toBeTruthy();
 });
 
-test('returning to the inbox keeps the reader mounted and preserves its unsent text', async () => {
-  dockProbe.mobile = true;
-  openChatA();
-  navigationStore.navigate('/', { chat: 'chat-a', dock: 'open' });
-  renderDockedPane();
-  const composer = await screen.findByRole('textbox', {
-    name: 'Chat composer',
-  });
-  fireEvent.change(composer, { target: { value: 'Keep this draft' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
-  const inbox = await screen.findByRole('region', { name: 'Chats' });
-  expect(composer.isConnected).toBe(true);
-  expect(composer.closest('[hidden]')).not.toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
-  expect(screen.queryByRole('region', { name: 'Chats' })).toBeNull();
-  expect(inbox.isConnected).toBe(true);
-  expect(screen.getByRole('textbox', { name: 'Chat composer' })).toBe(composer);
-  expect((composer as HTMLTextAreaElement).value).toBe('Keep this draft');
-});
+test.each(['header', 'browser'] as const)(
+  'returning to the inbox with %s Back keeps the direct-linked reader and its unsent text',
+  async (back) => {
+    dockProbe.mobile = true;
+    openChatA();
+    navigationStore.navigate('/', { chat: 'chat-a', dock: 'open' });
+    renderDockedPane();
+    const composer = await screen.findByRole('textbox', {
+      name: 'Chat composer',
+    });
+    fireEvent.change(composer, { target: { value: 'Keep this draft' } });
+    if (back === 'browser') {
+      act(() => window.history.back());
+      await flushHistory();
+    } else {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Open task switcher' }),
+      );
+    }
+    const inbox = await screen.findByRole('region', { name: 'Chats' });
+    expect(composer.isConnected).toBe(true);
+    expect(composer.closest('[hidden]')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
+    expect(screen.queryByRole('region', { name: 'Chats' })).toBeNull();
+    expect(inbox.isConnected).toBe(true);
+    expect(screen.getByRole('textbox', { name: 'Chat composer' })).toBe(
+      composer,
+    );
+    expect((composer as HTMLTextAreaElement).value).toBe('Keep this draft');
+    expect(navigationStore.getSnapshot().activeChat).toBe('chat-a');
+    act(() => window.history.back());
+    await screen.findByRole('region', { name: 'Chats' });
+  },
+);
+
+test.each([
+  'inbox',
+  'another chat',
+  'another page',
+  'imported reader',
+] as const)(
+  'a pending send cannot take the reader back after leaving for %s',
+  async (destination) => {
+    dockProbe.mobile = true;
+    openChatA();
+    dockProbe.sessions.push(chatSession('chat-b'));
+    navigationStore.navigate('/', { chat: 'chat-a', dock: 'open' });
+    renderDockedPane();
+    await screen.findByRole('textbox', { name: 'Chat composer' });
+    const completeAdmission = sendAdmission.onActiveSessionChange!;
+    if (destination === 'inbox') {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Open task switcher' }),
+      );
+      await screen.findByRole('region', { name: 'Chats' });
+    } else if (destination === 'imported reader') {
+      act(() => showSurface!('chat', { session: 'imported-thread' }));
+      await act(async () => {});
+    } else {
+      act(() =>
+        navigationStore.navigate(
+          destination === 'another page' ? '/settings' : '/',
+          {
+            chat: destination === 'another chat' ? 'chat-b' : null,
+            dock: 'open',
+          },
+        ),
+      );
+      await act(async () => {});
+    }
+    const location = window.location.href;
+    if (destination === 'another chat')
+      expect(navigationStore.getSnapshot().activeChat).toBe('chat-b');
+    else if (destination === 'another page')
+      expect(navigationStore.getSnapshot().pathname).toBe('/settings');
+    act(() =>
+      activeChatsStore.assignConversationId('chat-a', 'conversation-a'),
+    );
+    act(() => completeAdmission('chat-a'));
+    await act(async () => {});
+    expect(window.location.href).toBe(location);
+    if (destination === 'inbox') {
+      expect(screen.getByRole('region', { name: 'Chats' })).toBeTruthy();
+    }
+  },
+);
+
+test.each([true, false])(
+  'send admission promotes only an on-screen chat (%s) without losing the open draft',
+  async (onScreen) => {
+    openChatA();
+    navigationStore.navigate('/', { chat: 'chat-a', dock: 'open' });
+    renderPane('pulse', onScreen);
+    await screen.findByRole('textbox', { name: 'Chat composer' });
+    const completeAdmission = sendAdmission.onActiveSessionChange!;
+    act(() => dispatchNewChatIntent({ initialPrompt: 'Keep my draft' }));
+    await screen.findByRole('region', { name: 'New chat picker' });
+    act(() => {
+      dockProbe.sessions[0].conversationId = 'conversation-a';
+      activeChatsStore.assignConversationId('chat-a', 'conversation-a');
+      completeAdmission('chat-a');
+    });
+    await act(async () => {});
+    expect(navigationStore.getSnapshot().activeChat).toBe(
+      onScreen ? 'conversation-a' : 'chat-a',
+    );
+    expect(
+      screen.getByRole('region', { name: 'New chat picker' }),
+    ).toBeTruthy();
+  },
+);
+
+test.each(['back', 'navigate'] as const)(
+  'mobile Back respects child history after %s',
+  async (action) => {
+    dockProbe.mobile = true;
+    openChatA();
+    navigationStore.navigate('/', { chat: 'chat-a', dock: 'open' });
+    renderDockedPane();
+    await screen.findByRole('textbox', { name: 'Chat composer' });
+    const close = vi.fn();
+    const release = registerDialogHistory('mobile-reader-top-layer', close);
+    if (action === 'navigate') {
+      dockProbe.sessions.push(chatSession('chat-b'));
+      act(() =>
+        navigationStore.navigate('/', { chat: 'chat-b', dock: 'open' }),
+      );
+      await act(async () => {});
+      expect(navigationStore.getSnapshot().activeChat).toBe('chat-b');
+    } else {
+      act(() => window.history.back());
+      await flushHistory();
+      expect(navigationStore.getSnapshot().activeChat).toBe('chat-a');
+    }
+    expect(close).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('region', { name: 'Chats' })).toBeNull();
+    release();
+    act(() => window.history.back());
+    await screen.findByRole('region', { name: 'Chats' });
+    expect(navigationStore.getSnapshot().activeChat).toBeNull();
+  },
+);
 
 test('the phone’s task switcher covers the chat, so it stops counting as viewed (#4266)', async () => {
   dockProbe.mobile = true;
@@ -1374,6 +1502,7 @@ test('the ambient dock publishes its open New chat draft, and a full-screen pane
     seen.push(useDockNewChatDraftOpen());
     return null;
   }
+  navigationStore.navigate('/', { dock: 'open' });
   renderInProviders(
     <>
       <Probe />
@@ -1385,14 +1514,23 @@ test('the ambient dock publishes its open New chat draft, and a full-screen pane
     </>,
   );
   await act(async () => {});
-  expect(seen.at(-1)).toBe(false);
+  // #5592: an open dock with no chat shows its own draft, and says so.
+  await screen.findByRole('region', { name: 'New chat picker' });
+  await waitFor(() => expect(seen.at(-1)).toBe(true));
   act(() => {
     dispatchNewChatIntent({});
   });
   await screen.findByRole('region', { name: 'New chat picker' });
   await waitFor(() => expect(seen.at(-1)).toBe(true));
+  // Asked for, the draft dismisses back to the dock as it was, which has no
+  // chat, so the dock's own draft stands again (its text kept).
+  act(() => pickerProps.at(-1)!.onClose());
+  await screen.findByRole('region', { name: 'New chat picker' });
+  await waitFor(() => expect(seen.at(-1)).toBe(true));
+  // Dismissing the dock's own draft folds the dock: nothing is published.
   act(() => pickerProps.at(-1)!.onClose());
   await waitFor(() => expect(seen.at(-1)).toBe(false));
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
   cleanup();
 
   seen.length = 0;
@@ -2439,4 +2577,118 @@ test('Start focuses the new chat’s composer', async () => {
       screen.getByRole('textbox', { name: 'Chat composer' }),
     ),
   );
+});
+
+// #5592: no "No chat open" card. An open dock with no chat shows its New
+// chat draft, ready to type; nothing is created until it is sent.
+test('an open dock with no chat shows its New chat draft and starts nothing until sent', async () => {
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  await screen.findByRole('region', { name: 'New chat picker' });
+  // The pane under the draft is hidden, not an empty card on screen.
+  expect(
+    screen.queryByText('No chat open')?.closest('[hidden]') ?? null,
+  ).not.toBeNull();
+  expect(createChatSession).not.toHaveBeenCalled();
+
+  act(() => {
+    pickerProps
+      .at(-1)!
+      .onSelect(
+        { slug: 'assistant', name: 'Assistant' },
+        undefined,
+        undefined,
+        'Go',
+      );
+  });
+  await act(async () => {});
+  expect(createChatSession).toHaveBeenCalledTimes(1);
+});
+
+test('dismissing the dock’s own draft folds the dock to its toolbar and it stays folded', async () => {
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  await screen.findByRole('region', { name: 'New chat picker' });
+
+  act(() => pickerProps.at(-1)!.onClose());
+  await waitFor(() =>
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(false),
+  );
+  await act(async () => {});
+  // Folded, the dock has no pane to fill: the draft does not come back.
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
+  expect(createChatSession).not.toHaveBeenCalled();
+});
+
+test('a phone and a full-screen pane keep their own no-chat state', async () => {
+  dockProbe.mobile = true;
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
+  cleanup();
+
+  dockProbe.mobile = false;
+  renderInProviders(
+    <ChatWorkspacePane
+      placement="fullscreen"
+      projectSlug="pulse"
+      layoutSlug="coding"
+    />,
+  );
+  await act(async () => {});
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
+});
+
+test('a Project-requested draft over the dock’s own draft dismisses as a requested one', async () => {
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  await screen.findByRole('region', { name: 'New chat picker' });
+  act(() => {
+    requestProjectChat({
+      projectSlug: 'pulse',
+      projectName: 'Pulse',
+      source: 'new-plugin',
+      composerDraft: draft,
+    });
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  // Requested, it is not the dock's own draft: dismissing it does not fold
+  // the dock. The dock's own draft then stands, and that one folds it.
+  act(() => pickerProps.at(-1)!.onClose());
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+  act(() => pickerProps.at(-1)!.onClose());
+  await waitFor(() =>
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(false),
+  );
+  await act(async () => {});
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
+});
+
+test('opening conversation history replaces the dock’s own draft', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  await screen.findByRole('region', { name: 'New chat picker' });
+
+  fireEvent.click(
+    within(screen.getByRole('complementary', { name: 'Chats' })).getByRole(
+      'button',
+      { name: 'Browse all conversations' },
+    ),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  // History holds the pane; the dock's own draft does not come back under it.
+  await act(async () => {});
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
+  expect(createChatSession).not.toHaveBeenCalled();
 });

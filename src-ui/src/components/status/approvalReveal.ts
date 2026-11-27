@@ -58,14 +58,14 @@ export async function revealApprovalCard(
   detail: RevealApprovalDetail,
   root: ParentNode = document,
 ): Promise<boolean> {
+  window.dispatchEvent(
+    new CustomEvent<RevealApprovalDetail>(REVEAL_APPROVAL_EVENT, { detail }),
+  );
   const present = cardFor(root, detail);
   if (present && isRendered(present)) {
     focusCard(present);
     return true;
   }
-  window.dispatchEvent(
-    new CustomEvent<RevealApprovalDetail>(REVEAL_APPROVAL_EVENT, { detail }),
-  );
   for (let frame = 0; frame < 12; frame += 1) {
     await new Promise((resolve) => requestAnimationFrame(resolve));
     const card = cardFor(root, detail);
@@ -119,6 +119,9 @@ export function focusRenderedApprovalCard(
 ): boolean {
   const card = cardFor(root, detail);
   if (!card || !isRendered(card)) return false;
+  window.dispatchEvent(
+    new CustomEvent<RevealApprovalDetail>(REVEAL_APPROVAL_EVENT, { detail }),
+  );
   focusCard(card);
   return true;
 }

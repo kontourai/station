@@ -98,7 +98,9 @@
 
     "src-server/services/ssh/device-pairing-service.ts",
 
-    "src-server/runtime/agents/durable-agent-tools.ts"
+    "src-server/runtime/agents/durable-agent-tools.ts",
+
+    "src-server/services/connections/route-publications.ts"
   ],
 
   "checks": [

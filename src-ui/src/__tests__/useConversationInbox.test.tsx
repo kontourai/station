@@ -24,7 +24,10 @@ import {
   INBOX_IDLE_POLL_MS,
   useConversationInbox,
 } from '../hooks/useConversationInbox';
-import { useConversationInboxSnapshot } from '../hooks/useConversationInboxSnapshot';
+import {
+  inboxQueryKey,
+  useConversationInboxSnapshot,
+} from '../hooks/useConversationInboxSnapshot';
 import { shouldPersistQuery } from '../lib/queryPersistence';
 
 function expand() {
@@ -265,6 +268,58 @@ test('an unknown steer offers explicit review and resend without automatically s
   fireEvent.click(screen.getByRole('button', { name: 'Review and resend' }));
   await waitFor(() => expect(dismissed).toBe(true));
   expect(review).toHaveBeenCalledExactlyOnceWith('change direction');
+  expect(
+    fetcher.mock.calls.some(([, options]) => options?.method === 'POST'),
+  ).toBe(false);
+});
+
+test('only your ended-turn steer can be restored after the composer accepts the text', async () => {
+  const missedSteer: ConversationInboxEntry = {
+    ...entry('refused', 'missed-steer'),
+    kind: 'steer',
+    ownedByCaller: true,
+    reasonCode: 'steer_turn_ended',
+    message: 'check the queue first',
+  };
+  let dismissed = false;
+  const fetcher = vi.fn(async (_url: unknown, options?: RequestInit) => {
+    if (options?.method === 'DELETE') {
+      dismissed = true;
+      return Response.json({
+        success: true,
+        data: { ...missedSteer, state: 'cancelled' },
+      });
+    }
+    return response([
+      ...(dismissed ? [] : [missedSteer]),
+      {
+        ...missedSteer,
+        clientTurnId: 'someone-elses-steer',
+        message: 'another sender',
+        ownedByCaller: false,
+      },
+    ]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const restore = vi.fn(() => false);
+  mount({ messages: [] }, restore);
+  await screen.findByText('2 pending');
+  expand();
+
+  const restoreButton = screen.getByRole('button', {
+    name: 'Restore to draft',
+  });
+  fireEvent.click(restoreButton);
+  expect(restore).toHaveBeenCalledExactlyOnceWith('check the queue first');
+  expect(
+    fetcher.mock.calls.every(
+      ([, options]) => !options?.method || options.method === 'GET',
+    ),
+  ).toBe(true);
+
+  restore.mockReturnValue(true);
+  fireEvent.click(restoreButton);
+  await waitFor(() => expect(dismissed).toBe(true));
   expect(
     fetcher.mock.calls.some(([, options]) => options?.method === 'POST'),
   ).toBe(false);
@@ -797,12 +852,17 @@ test('reads every 2s while anything is held, and slowly while nothing is', async
   const { client } = mount();
   await waitFor(() => expect(client.isFetching()).toBe(0));
   const interval = () => {
-    const query = client.getQueryCache().getAll()[0];
-    // The observer's options land on the query at runtime; QueryOptions'
-    // type omits the observer-only `refetchInterval`.
-    const option = (query.options as { refetchInterval?: unknown })
-      .refetchInterval as (q: typeof query) => unknown;
-    return option(query);
+    const query = client.getQueryCache().find({
+      queryKey: inboxQueryKey(authority.current, 'conversation'),
+      exact: true,
+    });
+    if (!query) throw new Error('The conversation inbox query did not mount.');
+    // QueryOptions omits the observer-only refetchInterval.
+    const interval = (query.options as { refetchInterval?: unknown })
+      .refetchInterval;
+    if (typeof interval !== 'function')
+      throw new Error('The conversation inbox did not configure polling.');
+    return interval(query);
   };
   expect(interval()).toBe(INBOX_IDLE_POLL_MS);
   answer = [entry('queued', 'own')];

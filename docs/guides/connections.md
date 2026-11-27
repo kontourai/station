@@ -2187,9 +2187,17 @@ operating-system level is tracked in
 Open a saved, enabled HTTP tool server in **Customize → Tools** and choose
 **Check events**. The Station operator can use this action on a connection
 with a shared account. Station checks the server using that connection and
-lists the event types it advertises. For OAuth, use a server that requests
-authorization during connection setup and sign in first. Subscriptions and
-delivery use separate protocol operations.
+lists the event types it advertises. Choose **Read events** beside an event type
+to read a page and expand an event's data. **Next page** continues from the
+server's cursor and **Check again** looks for later events. A message above the
+results identifies missing earlier events. Open **Live events** and choose
+**Listen** for a live view. Stop listening or leave the dialog to close it.
+Each connection lasts up to a minute. Choose **Listen** again to resume
+from the last cursor. For OAuth, sign in to the server before checking its events.
+
+Live events is an operator viewer. Authorized programs can discover, poll,
+and stream the same events through the [Station integration API](../reference/api.md#check-an-integrations-event-catalog)
+with the viewer closed. Use the cursor to resume a reader after it closes.
 
 ## Connect an OAuth MCP server to an Agent
 
@@ -2662,7 +2670,11 @@ off and on to retry. Private IPv4 LAN interfaces are supported; IPv6 listeners (
 and public-only listeners report unavailable.
 
 The Node API publishes `_station._tcp.local` only after its listener binds,
-using that listener's actual port. TXT contains only `v=1` and `transport=http`.
+using that listener's actual port. TXT contains `v=1` and `transport=http`.
+The default-off `dynamic-route-publications` preview can also publish an
+`appOrigin` hint: an exact canonical HTTPS DNS origin for this Station's app.
+The native adapter still requires a resolved private LAN endpoint, prefers a
+valid HTTPS hint, and otherwise retains the legacy LAN URL.
 The adapter restricts address records and multicast sockets to private IPv4
 interfaces reachable through the actual listener binding. A specific bind does
 not advertise another interface. Disable, listener stop, port restart, and
@@ -2674,8 +2686,10 @@ can reach the host through its firewall or Wi-Fi isolation.
 Discovery names and addresses are untrusted hints, never identity or access
 grants. Selecting a LAN HTTP result still requires explicit **Allow unencrypted**
 consent for that exact origin and the existing host approval ceremony before a
-connection can be saved or activated. The advertisement contains no arbitrary
-URL, credentials, pairing token, or trusted identity. The strict HTTPS pairing
+connection can be saved or activated. An HTTPS hint still enters existing
+Request Access and identity verification; it is not saved-route merge authority.
+The advertisement contains no credentials, pairing token, or trusted identity.
+The strict HTTPS pairing
 QR flow remains available for remote access; LAN discovery does not enumerate
 another app's tailnet inventory or change Tailscale settings.
 

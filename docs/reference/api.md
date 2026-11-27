@@ -1002,7 +1002,8 @@ id is not projected.
 
 `GET /api/tasks/pull-request-facts?projectId=` answers
 `{observedAt, tasks: {[taskId]: {taskCreatedAt, pullRequests, partial?}}}`
-for the Project's live Tasks (not done or canceled). Each entry lists the
+for the Project's live Tasks (not done or canceled). Pass `taskId` to
+restrict the read to one Task in that Project. Each entry lists the
 pull requests kept on that Task whose declaring session the requester may
 read, each read from its provider at its exact identity:
 `status: {state: "current", pullRequestState, title, draft?, reviewDecision?,
@@ -1567,6 +1568,43 @@ and child completion does not change parent status. Canonical Conversation IDs
 open through the existing chat inbox resolver, independently of dispatch Session
 identity. See [Task contracts](contracts.md#task-deliverable-and-work-chat-relationships)
 and [SDK Task mutations](sdk.md#task-mutations).
+
+## Personal Session-group preview
+
+The **Session groups** feature preview is off by default and is offered on
+personal Stations. The `cliSessionGroups` handshake flag indicates API support.
+The feature preview still governs each operation.
+When enabled, `POST /api/orchestration/session-groups`
+records a group of Tasks for local, explicitly bound external Engines.
+Creation records the plan without starting a Session. It accepts an operation
+ID, a deadline, up to 32 named members with dependency IDs, a concurrency
+limit, and an optional dispatch limit. A zero dispatch limit creates a closed
+group.
+
+The operation ID binds to the current verified credential and the captured
+plan. An unchanged request returns the existing group. A changed plan under
+the same operation ID conflicts. `GET /api/orchestration/session-groups/:groupId`
+reads the group projection for the creating credential. A disabled preview or
+unavailable group returns 404. A credential that becomes stale during creation
+cannot authorize the durable write. The projection contains group and member
+state without exposing the captured Task prompts.
+
+`POST /api/orchestration/session-groups/:groupId/run` runs ready members
+through local Task dispatch. Station checks the creating credential, the
+group deadline, and the reserved Session and first-turn IDs at dispatch.
+Running a group can spend provider credits. A completed dependency requires
+positive terminal evidence for that member's accepted initial turn.
+`POST /api/orchestration/session-groups/:groupId/cancel` closes further
+admission and requests stops for the group's confirmed initial turns.
+Station rechecks the live request before committing the cancellation.
+It retains one stop intent per accepted member and rechecks credential and
+preview authority before the provider interrupt and any escalation. Losing the
+run connection stops new admission for that run. Station can still request
+interruption for its confirmed initial turns while that credential remains
+current. Exact group stops require the current provider Session.
+Deferred interrupts and owned cascades use their separate Session owners.
+Missing acceptance or stop evidence remains unconfirmed. Paired callers need
+`orchestration:read` for inspection and `orchestration:operate` for mutations.
 
 ## Personal Task room agent requests
 
@@ -2309,7 +2347,33 @@ or acquires a short-lived connection. The response carries
 `{success: true, data: {supported: false}}` when the server has no Events
 capability, or `{success: true, data: {supported: true, events}}` for a
 successful catalog read. Each entry has `name` and optional `title` and
-`description`. A catalog read failure returns HTTP 502 with a Station error.
+`description`. Entries may also carry `delivery` (`poll`, `push` or `webhook`),
+`inputSchema` and `payloadSchema`. `data.truncated` is true if Station reached
+its catalog limits. A catalog read failure returns HTTP 502 with a Station error.
+
+### Poll an integration’s events
+
+`POST /integrations/:id/events/poll` uses the same operator and shared-account
+checks. Send an event `name` and a `cursor`. Start with `null`, then pass the
+returned cursor when checking again. Optional fields are `arguments`,
+`maxEvents` (1–100, default 25) and `maxAgeMs`. Station returns the server’s
+`hasMore` and `truncated` flags and its `nextPollMs` hint when present. If the
+server advertises no Events support, `data.supported` is false. Station bounds
+the response while reading it and checks the event count before returning the
+page. Polls do not create subscriptions.
+
+`POST /integrations/:id/events/stream` opens a bounded SSE reader for a named
+event on the same shared Streamable HTTP connection. Send `name`, a nullable
+`cursor` and optional `arguments`, `maxAgeMs` or `heartbeatMs` (5,000–30,000).
+The response publishes `active`, `event`, `heartbeat`, `warning` and `ended`
+frames. A `warning` reports a transient upstream error while the reader continues.
+Station binds frames to the upstream request and rechecks operator access
+before each write. Disconnecting cancels the upstream fetch. The reader
+closes after 60 seconds or its byte budget. Open another stream with the
+latest cursor to continue. A Station accepts up to four readers at once and
+one per integration.
+
+Authorized programs can call these endpoints without opening Connections.
 
 ### Discover transcript App tools
 
@@ -6887,7 +6951,9 @@ external-engine approval.
 
 `GET /api/conversations/:id` returns `{success: true, data}` or 404 when not found.
 The [lookup handler](../../src-server/routes/chat/conversations.ts) first resolves runtime-owned conversations under the request authority, returning
-404 when that read is denied. Other personal conversations use Project storage,
+404 when that read is denied. A successor Session ID must also pass the exact
+Session read check before returning its conversation and current execution
+metadata. Other personal conversations use Project storage,
 then file-memory adapters, then the authorized orchestration reader. Hosted
 mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
@@ -6923,7 +6989,10 @@ is read. User messages carry the stable id a search hit names
 (`<turn start event id>:user`). A station-control caller that is not a bound
 operator is further limited to its own conversation, its scope, or a
 conversation a person referenced in its conversation, and reads as the
-session's owner; a bound operator keeps the operator's reach. An id Station
+session's owner; a bound operator keeps the operator's reach. For the owner's
+own conversation outside that reach, `conversation_out_of_scope` (403) carries
+the scope rule's `reason` when it has one (for example `host`), and its
+explanation names that cause. An id Station
 has no record of answers `conversation_not_found`; see the
 [read route](../../src-server/routes/chat/conversation-reference-read.ts).
 
@@ -8314,7 +8383,7 @@ step-up described above for an operator session. The enrollment confirmation
 routes still accept only the operator credential; a paired device holding
 `access:manage` is refused (401 `authentication_required`, pinned by a test that lets the device reach the handler). Errors: `invalid_code` (404), `device_mismatch` (409), `device_gone` (409, the requesting device was revoked or unpaired after it asked; pending requests also show its current scope and `active`), `rate_limited`
 (429, with `retryAfterMs`), `passkey_not_found` (404), `enrollment_unavailable`
-(503, `STATION_TRUSTED_CONSENT_ORIGIN` unset), `store_unavailable` (503, the passkey store cannot be opened privately). Each error carries one fixed message per code, and an unexpected failure returns `internal_error` (500) with a generic message and no cause text. The browser half is served on the
+(503, no trusted HTTPS approval origin is available from the legacy startup setting or the enabled dynamic publication preview), `store_unavailable` (503, the passkey store cannot be opened privately). Each error carries one fixed message per code, and an unexpected failure returns `internal_error` (500) with a generic message and no cause text. The browser half is served on the
 consent origin under `/operator/passkeys/enroll`; see the
 [enrollment guide](../guides/operator-passkeys.md). Owner:
 [host routes](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts),

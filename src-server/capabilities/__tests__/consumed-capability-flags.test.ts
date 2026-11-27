@@ -64,6 +64,7 @@ import { EnvironmentSecurityService } from '../../services/ssh/environment-secur
 import {
   resolveStationCapabilityFlags,
   STATION_CAPABILITY_FLAGS,
+  servesCliSessionGroups,
   servesCoordinatorSession,
   servesFollowUpAttachments,
   servesRemoteSessionReads,
@@ -644,6 +645,45 @@ const CONSUMED_FLAGS: Record<
     );
     return response.status === 200;
   },
+  cliSessionGroups: async (deployment) => {
+    const routes = orchestrationRoutes(
+      deployment,
+      {},
+      {
+        callerBindingForRequest: () => 'verified-group-credential',
+        ...(servesCliSessionGroups(deployment)
+          ? {
+              cliSessionGroups: {
+                home: makeTempDir('cli-session-group-flag-'),
+                preview: {
+                  select: <T>({ enabled }: { enabled: () => T }) => enabled(),
+                },
+              },
+            }
+          : {}),
+      },
+    );
+    const response = await routes.request('/session-groups', {
+      method: 'POST',
+      body: JSON.stringify({
+        operationId: 'group-capability',
+        members: [
+          {
+            seatId: 'first',
+            prompt: 'Check this group route',
+            target: {
+              agent: 'reviewer',
+              expectedEngine: { kind: 'connection', connectionId: 'claude' },
+            },
+          },
+        ],
+        maxConcurrent: 1,
+        maxDispatches: 0,
+        deadlineAt: Date.now() + 60_000,
+      }),
+    });
+    return response.status === 200;
+  },
   // GET /sessions/:threadId/inputs/:eventId answers the exact authored input.
   sessionInventoryInputRead: async (deployment) => {
     const routes = orchestrationRoutes(deployment, {
@@ -1108,6 +1148,7 @@ describe('consumed capability flags match what their routes serve', () => {
     projectRoomMessageActions: { personal: true, hosted: true },
     projectRoomLive: { personal: true, hosted: true },
     projectRoomCoordinator: { personal: true, hosted: false },
+    cliSessionGroups: { personal: true, hosted: false },
     readMarkers: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
     projectSchedules: { personal: true, hosted: false },

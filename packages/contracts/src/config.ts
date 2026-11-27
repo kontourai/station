@@ -119,6 +119,7 @@ export interface AppConfig {
   telemetryTier?: TelemetryTierChoices;
   /** Opt-in local DNS-SD publication; absent is disabled. */
   lanDiscoveryEnabled?: boolean;
+  trustedConsentOrigin?: string;
   /** Operator classification of public catalog source keys; absent means none. */
   publicTelemetryRegistries?: string[];
   /** Lower publisher defaults only; never grants Full or replaces user choice. */

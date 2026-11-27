@@ -1,0 +1,18 @@
+.outside-clients {
+  flex: none;
+  margin-block: var(--k-space-2);
+}
+.outside-clients__inventory {
+  overflow-wrap: anywhere;
+}
+
+.outside-clients__details:not([hidden]) {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--k-space-1) var(--k-space-3);
+  margin: var(--k-space-2) 0 0;
+}
+
+.outside-clients__details dd {
+  margin: 0;
+}

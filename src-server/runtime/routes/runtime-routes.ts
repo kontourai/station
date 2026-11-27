@@ -235,6 +235,7 @@ import {
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { RecordingLimiter } from '../../services/projects/recording-limiter.js';
+import { SessionDiffStatSnapshots } from '../../services/projects/session-diff-stat-snapshots.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
 import { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
@@ -410,6 +411,7 @@ import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import {
+  servesCliSessionGroups,
   servesCoordinatorSession,
   servesProjectRoomCoordinator,
 } from '../../capabilities/station-capability-flags.js';
@@ -505,6 +507,10 @@ import { createTaskCodeReviewRoutes } from '../../routes/evidence/task-code-revi
 import { createTrustBundleRoutes } from '../../routes/evidence/trust-bundles.js';
 import { createVeritasReadinessRoutes } from '../../routes/evidence/veritas-readiness.js';
 import { createWorkflowSidecarRoutes } from '../../routes/evidence/workflow-sidecars.js';
+import {
+  createExternalSessionHistoryRoutes,
+  type ExternalSessionHistoryRouteDeps,
+} from '../../routes/external-session-history.js';
 import { createFleetInferenceRoutes } from '../../routes/inference/fleet-inference.js';
 import { createIntegrationStatusRoutes } from '../../routes/integrations/integration-status-routes.js';
 import {
@@ -1324,6 +1330,7 @@ export interface ConfigureRuntimeRoutesContext {
   nativeSurfaceRegistry?: NativeSurfaceRegistry;
   relayEnrollment?: RelayEnrollmentService;
   runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
+  externalSessionHistory?: ExternalSessionHistoryRouteDeps;
   app: HonoApp;
   logger: Logger;
   eventBus: EventBus;
@@ -4427,6 +4434,14 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService,
     ),
   );
+  const chatLogApproval = isHostedTenantExecutionRequired()
+    ? undefined
+    : context.featurePreviews.bind({
+        id: 'chat-server-log-approval',
+        label: 'Server log approvals in chat',
+        description:
+          'Let the Station owner approve a single agent log query from its chat.',
+      });
   context.app.route(
     '/api/diagnostics',
     createDiagnosticsRoutes(
@@ -4452,6 +4467,16 @@ export function configureRuntimeRoutes(
             JSON.stringify({ kind: 'diagnostics-session', sessionId }),
             'station-control:read_logs',
           ),
+        requestLogRead: (sessionId, description, signal) =>
+          chatLogApproval?.select({
+            enabled: () =>
+              context.orchestrationService.requestServerLogRead(
+                sessionId,
+                description,
+                signal,
+              ),
+            disabled: () => Promise.resolve(false),
+          }) ?? Promise.resolve(false),
         // #4470: in-app troubleshooting writes its run under this Station's
         // home with the same owner-only rules as `station triage`.
         troubleshoot: new TroubleshootService(
@@ -5991,6 +6016,40 @@ export function configureRuntimeRoutes(
       pullRequestProviders: () =>
         listProviders('pullRequest').map((entry) => entry.provider),
       pullRequestFeedbackFor: (...a) => pullRequestFeedback?.factFor(...a),
+      linkedPullRequestSnapshotsEnabled: () =>
+        pullRequestFeedback?.linkedSnapshotsEnabled() ?? false,
+      linkedPullRequestsForTasks: (request, taskSessions) => {
+        if (!pullRequestFeedback?.linkedSnapshotsEnabled()) return undefined;
+        const conversations = new Map(
+          [...taskSessions].map(([id, sessions]) => [
+            id,
+            [
+              ...new Set(
+                sessions.map(
+                  (session) =>
+                    context.orchestrationEventStore?.conversationForSession(
+                      session,
+                    )?.conversationId ?? session,
+                ),
+              ),
+            ].filter((conversationId) =>
+              context.orchestrationService.canUserReadConversation(
+                conversationId,
+                conversationReadAuthorityForRequest(request),
+              ),
+            ),
+          ]),
+        );
+        const observed = pullRequestFeedback.snapshotsForConversations([
+          ...new Set([...conversations.values()].flat()),
+        ]);
+        return new Map(
+          [...conversations].map(([id, members]) => [
+            id,
+            members.flatMap((member) => observed.get(member) ?? []),
+          ]),
+        );
+      },
       logger: context.logger,
       readAutomationTask: (task) => readAutomationTask?.(task),
       workChatConversations: taskInboxProjection,
@@ -7866,6 +7925,19 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
+      ...(servesCliSessionGroups({ hosted: !isPersonalHost })
+        ? {
+            cliSessionGroups: {
+              home: context.configLoader.getProjectHomeDir(),
+              preview: context.featurePreviews.bind({
+                id: 'cli-session-groups',
+                label: 'Session groups',
+                description:
+                  'Create, run and inspect groups of Tasks for local external engines. Running a group can spend provider credits.',
+              }),
+            },
+          }
+        : {}),
       eventBus: context.eventBus,
       reopenSettledConversation: (c, id) =>
         reopenSettledConversation(
@@ -11112,6 +11184,7 @@ export function configureRuntimeRoutes(
   registerPullRequestProvider(
     new GitHubPullRequestProvider(undefined, undefined, {
       readMergeQueue: () =>
+        (pullRequestFeedback?.linkedSnapshotsEnabled() ?? false) ||
         projectOverviewPreview.select({
           enabled: () => true,
           disabled: () => false,
@@ -11281,6 +11354,7 @@ export function configureRuntimeRoutes(
           );
         },
         derived: (id) => pullRequestFeedback?.derivedLinks(id) ?? [],
+        snapshot: (identity) => pullRequestFeedback?.snapshotFor(identity),
       },
     ),
   );
@@ -11291,6 +11365,7 @@ export function configureRuntimeRoutes(
       id,
       conversationReadAuthorityForRequest(request),
     );
+  const sessionDiffStatSnapshots = new SessionDiffStatSnapshots();
   pullRequestFeedback = composePullRequestFeedbackRuntime({
     homeDir: context.configLoader.getProjectHomeDir(),
     hosted: hostedTenantRegistry !== undefined,
@@ -11301,6 +11376,8 @@ export function configureRuntimeRoutes(
     eventBus: context.eventBus,
     logger: context.logger,
     links: conversationPullRequestLinks,
+    refreshWorkspaceFacts: (now, enabled) =>
+      sessionDiffStatSnapshots.refresh(now, enabled),
     providers: () =>
       listProviders('pullRequest').map((entry) => entry.provider),
     keptForSessions: (ids) =>
@@ -12734,6 +12811,7 @@ export function configureRuntimeRoutes(
             context.configLoader.getProjectHomeDir(),
           ),
         ).problem(directory),
+      () => context.consentChannel.publication !== undefined,
     ),
   );
   context.app.route(
@@ -13177,6 +13255,83 @@ export function configureRuntimeRoutes(
       ),
       context.environmentSecurityService,
       readMarkers,
+      (request, items) =>
+        pullRequestFeedback?.snapshotsForConversations(
+          items
+            .filter(
+              (item) =>
+                !item.environmentId && canReadConversation(request, item.id),
+            )
+            .map((item) => item.id),
+        ) ?? new Map(),
+      (request, items) => {
+        if (!pullRequestFeedback?.linkedSnapshotsEnabled()) return new Map();
+        const roots = new Map<string, string | undefined>();
+        const authority = conversationReadAuthorityForRequest(request);
+        const observe = (item: (typeof items)[number]) => {
+          if (
+            item.source !== 'runtime' ||
+            !item.projectSlug ||
+            item.environmentId ||
+            !context.orchestrationService.canUserReadConversation(
+              item.id,
+              authority,
+            )
+          )
+            return undefined;
+          const currentId =
+            context.orchestrationService.currentConversationSessionId(item.id);
+          const session =
+            context.orchestrationEventStore?.readSessionByThread(currentId);
+          if (!session?.cwd) return undefined;
+          try {
+            if (!roots.has(item.projectSlug)) {
+              roots.set(item.projectSlug, undefined);
+              const project = context.projectService.getProject(
+                item.projectSlug,
+              );
+              const root = project.workingDirectory
+                ? resolve(expandTilde(project.workingDirectory))
+                : undefined;
+              roots.set(item.projectSlug, root);
+            }
+            const projectRoot = roots.get(item.projectSlug);
+            if (!projectRoot) return undefined;
+            const metadata =
+              context.orchestrationService.firstStartedMetadataOfThread(
+                currentId,
+              );
+            const worktree: unknown =
+              metadata?.worktree ?? metadata?.workspaceIsolation;
+            const base =
+              worktree &&
+              typeof worktree === 'object' &&
+              'mode' in worktree &&
+              worktree.mode === 'worktree' &&
+              'path' in worktree &&
+              worktree.path === session.cwd &&
+              'baseCommit' in worktree &&
+              typeof worktree.baseCommit === 'string' &&
+              'baseRef' in worktree &&
+              typeof worktree.baseRef === 'string'
+                ? { ref: worktree.baseRef, commit: worktree.baseCommit }
+                : undefined;
+            return sessionDiffStatSnapshots.get(currentId, {
+              cwd: session.cwd,
+              projectRoot,
+              base,
+            });
+          } catch {
+            return undefined;
+          }
+        };
+        return new Map(
+          items.flatMap((item) => {
+            const workspace = observe(item);
+            return workspace ? [[item.id, workspace] as const] : [];
+          }),
+        );
+      },
     ),
   );
   // `rename_session`'s own leaf (never the person's `PATCH`, which stamps
@@ -13531,6 +13686,24 @@ export function configureRuntimeRoutes(
   };
   generalEventProducer = createEventStreamProducer(eventRouteDeps);
   context.app.route('/events', createEventRoutes(eventRouteDeps));
+  if (context.externalSessionHistory) {
+    context.app.route(
+      '/api/orchestration/external-history',
+      createExternalSessionHistoryRoutes({
+        ...context.externalSessionHistory,
+        isOwnerCurrent: (request) => {
+          const security = context.environmentSecurityService;
+          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+          return (
+            isRuntimeRequestPrincipalCurrent(request, security) &&
+            (principal?.locality === 'home-possession' ||
+              (principal?.authority === 'device-credential' &&
+                security.credentialHasOwnerStanding(principal.credential)))
+          );
+        },
+      }),
+    );
+  }
   context.app.route(
     '/api/presence',
     createFocusPresenceRoutes({

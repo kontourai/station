@@ -1,0 +1,43 @@
+{
+  "revision": "0933a1e1c65256dbe276d7361d673bb0fbfad2e3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the new second toolbar line with the real isolated app. Choosing scope and PR status works at the desktop dock width. The phone uses its existing Filter chats dialog.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockInboxPanel.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked that the new PR picker fits on its own toolbar line, with the original scope and search line reachable in the real app.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxPanel.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the inbox picker under search and scope in the real isolated desktop app, including selection and the empty result.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked that extracting the PR control keeps desktop scopes and the phone's draft-and-apply filter flow. Both picks were operable in their real surfaces.","inputs":["src-ui/src/components/chat-dock/InboxScopeFilter.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the compact Task rollup on a real Task at desktop and phone widths in both themes. The retained Task Plan image depicts a Task without this preview rollup.","inputs":["src-ui/src/views/TaskWorkspaceView.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked the compact Task rollup on a real Task at desktop and phone widths in both themes. The retained Task Plan image depicts a Task without this preview rollup.","inputs":["src-ui/src/views/TaskWorkspaceView.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the compact Task rollup on a real Task at desktop and phone widths in both themes. The retained Task Plan image depicts a Task without this preview rollup.","inputs":["src-ui/src/views/TaskWorkspaceView.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Checked the compact Task rollup on a real Task at desktop and phone widths in both themes. The retained Task Plan image depicts a Task without this preview rollup.","inputs":["src-ui/src/views/TaskWorkspaceView.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the compact Task rollup on a real Task at desktop and phone widths in both themes. The retained Task Plan image depicts a Task without this preview rollup.","inputs":["src-ui/src/views/TaskWorkspaceView.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked the compact Task rollup on a real Task at desktop and phone widths in both themes. The retained Task Plan image depicts a Task without this preview rollup.","inputs":["src-ui/src/views/TaskWorkspaceView.css"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the preview Task header at both widths, with one real GitHub PR moving from unknown to merged after an observation. The document editing and retained Plan capture are for the existing Task room surface.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Checked the preview Task header at both widths, with one real GitHub PR moving from unknown to merged after an observation. The document editing and retained Plan capture are for the existing Task room surface.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Checked the preview Task header at both widths, with one real GitHub PR moving from unknown to merged after an observation. The document editing and retained Plan capture are for the existing Task room surface.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the preview Task header at both widths, with one real GitHub PR moving from unknown to merged after an observation. The document editing and retained Plan capture are for the existing Task room surface.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Checked the preview Task header at both widths, with one real GitHub PR moving from unknown to merged after an observation. The document editing and retained Plan capture are for the existing Task room surface.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the preview Task header at both widths, with one real GitHub PR moving from unknown to merged after an observation. The document editing and retained Plan capture are for the existing Task room surface.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked the preview Task header at both widths, with one real GitHub PR moving from unknown to merged after an observation. The document editing and retained Plan capture are for the existing Task room surface.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the preview Task header at both widths, with one real GitHub PR moving from unknown to merged after an observation. The document editing and retained Plan capture are for the existing Task room surface.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the preview Task header at both widths, with one real GitHub PR moving from unknown to merged after an observation. The document editing and retained Plan capture are for the existing Task room surface.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]}
+  ]
+}

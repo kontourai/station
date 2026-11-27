@@ -36,6 +36,7 @@ mod native_http_performance_tests;
 mod native_http_transport;
 mod native_relay_ice;
 mod native_requester_consent;
+mod native_route_authorization;
 #[cfg(not(mobile))]
 mod notification_feed;
 // Proof keys remain host-only; bounded account and Device operations are IPC.
@@ -664,6 +665,8 @@ struct NativeProfileAuthority(std::sync::Arc<std::sync::Mutex<NativeProfileAutho
 #[derive(Default)]
 struct NativeProfileAuthorityState {
     active: Option<AuthorizedProfile>,
+    route_authorization: Option<native_route_authorization::Authorization>,
+    route_refreshing: bool,
     /// Credential references are the native authority identity. Profile names
     /// are renderer metadata and are never an authority key.
     bindings: std::collections::HashMap<String, NativeCredentialBinding>,
@@ -1845,6 +1848,7 @@ fn authorize_active_profile_in_state(
         binding_id: uuid::Uuid::new_v4().to_string(),
         exact_origin: profile_credential_binding(profile)?.exact_origin,
     };
+    state.route_authorization = None;
     state.active = Some(AuthorizedProfile {
         name: profile.name.clone(),
         reference,
@@ -3618,7 +3622,13 @@ fn scoped_profile_for_origin_in_store(
         .ok_or_else(native_request_binding_stale)?;
     if state.transitioning.contains(&key)
         || profile.configuration_state != "configured"
-        || binding.exact_origin != origin
+        || (binding.exact_origin != origin
+            && !state
+                .route_authorization
+                .as_ref()
+                .is_some_and(|authorization| {
+                    authorization.permits(expected_binding_id, store.revision, binding, origin)
+                }))
         || profile_credential_binding(profile).map_err(|_| native_request_binding_stale())?
             != *binding
     {
@@ -7353,7 +7363,9 @@ fn profile_lock_owner_liveness(pid: u32) -> ProfileLockOwnerLiveness {
         // look reclaimable.
         return ProfileLockOwnerLiveness::Ambiguous;
     };
-    Command::new(powershell)
+    let mut command = Command::new(powershell);
+    apply_no_window(&mut command);
+    command
         .args(windows_process_probe_arguments(pid))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -15428,6 +15440,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         credential_vault_delete_unreferenced,
         credential_vault_commit_pairing,
         station_profile_authorize_active,
+        native_route_authorization::station_profile_refresh_routes,
         station_ensure_bundled_local_profile,
         station_local_self_provision,
         station_native_http_request,

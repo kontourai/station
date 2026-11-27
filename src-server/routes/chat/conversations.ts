@@ -3189,6 +3189,17 @@ export function createGlobalConversationRoutes(
     ReadMarkerService,
     'acknowledgeConversation' | 'conversationReadStates'
   >,
+  pullRequestsFor?: (
+    request: Request,
+    items: readonly ConversationListItem[],
+  ) => ReadonlyMap<string, NonNullable<ConversationListItem['pullRequests']>>,
+  observeWorkspaces?: (
+    request: Request,
+    items: readonly ConversationListItem[],
+  ) => ReadonlyMap<
+    string,
+    NonNullable<ConversationListItem['observedWorkspace']>
+  >,
 ) {
   const app = new Hono();
   const authorityFor =
@@ -3379,11 +3390,17 @@ export function createGlobalConversationRoutes(
           }),
         );
       }
+      const pullRequests = pullRequestsFor?.(c.req.raw, page.items);
+      const workspaces = observeWorkspaces?.(c.req.raw, page.items);
       const data = page.items.map((item) => {
         const acknowledgedAt = acknowledgements?.get(item.id);
         const readState = readStates?.get(item.id);
+        const links = pullRequests?.get(item.id);
+        const observedWorkspace = workspaces?.get(item.id);
         return {
           ...item,
+          ...(links?.length ? { pullRequests: links } : {}),
+          ...(observedWorkspace ? { observedWorkspace } : {}),
           ...(acknowledgedAt ? { acknowledgedAt } : {}),
           ...(readState ? { readState } : {}),
         };
@@ -3636,9 +3653,25 @@ export function createGlobalConversationRoutes(
       }
 
       if (sessionConversationReader.isRuntimeConversation?.(id)) {
+        const successorOf =
+          sessionConversationReader.successorConversationId?.(id);
+        if (successorOf) {
+          // Notification links can name an execution Session. Authorize that
+          // exact Session before following its conversation.
+          const session =
+            await sessionConversationReader.readSessionConversation(
+              id,
+              authority,
+            );
+          if (session?.id !== successorOf)
+            return c.json(
+              { success: false, error: 'Conversation not found' },
+              404,
+            );
+        }
         const resolved =
           await sessionConversationReader.resolveConversationOpen?.(
-            id,
+            successorOf ?? id,
             authority,
           );
         if (!resolved)
@@ -3655,7 +3688,9 @@ export function createGlobalConversationRoutes(
             ),
             ...(eventStore
               ? {
-                  forkProvenance: eventStore.readConversationForkProvenance(id),
+                  forkProvenance: eventStore.readConversationForkProvenance(
+                    resolved.conversation.id,
+                  ),
                 }
               : {}),
           },

@@ -4998,7 +4998,11 @@ button.tool-call__line:hover {
   box-shadow: none;
 }
 
-.chat-input button:where(:not(.choice-trigger)) {
+/* Decision cards sit inside the composer but use the shared Button styles. */
+.chat-input
+  button:where(:not(.choice-trigger)):where(
+    :not(.agent-schedule-card .button)
+  ) {
   padding: 0;
   border: none;
   border-radius: 8px;
@@ -5019,14 +5023,17 @@ button.tool-call__line:hover {
 }
 
 .chat-input
-  button:where(:not(.choice-trigger)):hover:not(
-    :disabled,
-    [aria-disabled="true"]
-  ) {
+  button:where(:not(.choice-trigger)):where(
+    :not(.agent-schedule-card .button)
+  ):hover:not(:disabled, [aria-disabled="true"]) {
   opacity: 0.8;
 }
 
-.chat-input button:is(:disabled, [aria-disabled="true"]) {
+.chat-input
+  button:where(:not(.agent-schedule-card .button)):is(
+    :disabled,
+    [aria-disabled="true"]
+  ) {
   opacity: 0.5;
   cursor: not-allowed;
 }

@@ -3855,3 +3855,65 @@ describe('a turn that completed after it was recorded as interrupted', () => {
     );
   });
 });
+
+describe('a user-role row a Station flow sent names that flow', () => {
+  const origin = (kind: string, sender?: Record<string, unknown>) => ({
+    version: 1,
+    actor: { kind },
+    reported: { surface: 'unknown' },
+    ...(sender ? { sender } : {}),
+  });
+  const userRow = (extra: Record<string, unknown>) =>
+    projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        turnId: 'origin',
+        prompt: '# Task brief: fix the flaky login test',
+        ...extra,
+      }),
+    ]).find((message) => message.role === 'user');
+
+  it('marks a delegated brief and an Automation run that Station sent', () => {
+    expect(
+      userRow({
+        clientOrigin: origin('internal'),
+        dispatchOrigin: 'delegation',
+      })?.metadata?.stationOrigin,
+    ).toBe('delegation');
+    expect(
+      userRow({
+        clientOrigin: origin('internal'),
+        dispatchOrigin: 'automation',
+      })?.metadata?.stationOrigin,
+    ).toBe('automation');
+  });
+
+  it("never marks the person's words, another agent's message or an unknown origin", () => {
+    expect(
+      userRow({
+        clientOrigin: origin('device'),
+        dispatchOrigin: 'delegation',
+      })?.metadata?.stationOrigin,
+    ).toBeUndefined();
+    expect(
+      userRow({
+        clientOrigin: origin('internal'),
+        dispatchOrigin: 'delegation',
+        authoredBy: 'person',
+      })?.metadata?.stationOrigin,
+    ).toBeUndefined();
+    expect(
+      userRow({
+        clientOrigin: origin('internal', {
+          kind: 'agent-session',
+          sessionId: 'sender',
+        }),
+        dispatchOrigin: 'delegation',
+      })?.metadata?.stationOrigin,
+    ).toBeUndefined();
+    expect(
+      userRow({ clientOrigin: origin('internal'), dispatchOrigin: 'unknown' })
+        ?.metadata?.stationOrigin,
+    ).toBeUndefined();
+  });
+});

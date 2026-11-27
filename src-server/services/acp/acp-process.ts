@@ -601,12 +601,11 @@ export class ACPProcess extends EventEmitter {
         .filter(([, value]) => typeof value === 'string' && value.length > 0)
         .map(([name]) => foldEnvName(name)),
     );
-    if (!spawnedLaunch.launchReplacedByPolicy)
-      this.outcomeProfile = antigravityOutcomeProfile({
-        command: bin,
-        args: pinned.args,
-        geminiHome: env.GEMINI_HOME,
-      });
+    this.outcomeProfile = antigravityOutcomeProfile({
+      command: resolved.command,
+      args: resolved.args,
+      geminiHome: env.GEMINI_HOME,
+    });
     // archive#1863: spawn through the owned-process primitive so the child is
     // tagged with this Station's identity and recorded in the host-wide
     // registry. `detached: true` is preserved deliberately — a group kill reaps
@@ -615,7 +614,8 @@ export class ACPProcess extends EventEmitter {
     // THIS Station dies without ever running its own cleanup (SIGKILL, crash,
     // ENOSPC). The graceful destroy path below calls `release()` to drop the
     // record; the sweep is the fallback for the case where destroy never runs.
-    const { proc, release } = spawnOwnedChild(bin, [...pinned.args], {
+    const args = [...pinned.args, ...(this.outcomeProfile?.args ?? [])];
+    const { proc, release } = spawnOwnedChild(bin, args, {
       cwd: this.opts.cwd,
       env,
       stdio: ['pipe', 'pipe', this.opts.onStderr ? 'pipe' : 'inherit'],

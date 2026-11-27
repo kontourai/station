@@ -52,6 +52,12 @@ bounded replay queues are local to this single transport owner. See the
 [isolated R4a receipt](../design/outside-agent-mcp-r4a-evidence.md) for executed
 faults, real-client checks and topology/release limits.
 
+The isolated layout composition can also offer `list_project_layouts`.
+It checks the grant's stable Project identity before taking the Project read
+lock, under the lock before reading layouts, and again before publication.
+The result contains layout IDs, slugs, names, types and tab counts for the
+approved Project.
+
 The isolated search composition also offers `search_conversations`. It
 admits native Sessions by stable Project and recorded owner, and restricts
 transcript ranking to those IDs. The worker verifies its SQLite read
@@ -187,6 +193,17 @@ own focused evidence. These R3 tests do not qualify hosted clients,
 release exposure or the later Connections UI. The future runnable personal-Station
 setup belongs to R6; these inert endpoints are not an end-user integration example.
 
+
+In the isolated management composition, the **MCP access** panel in
+**Customize → Tools** reads the operator's pending requests, authorized clients and access history. It can copy the MCP URL. The operator can prepare an approval, denial,
+grant change or revocation and complete it on the consent listener with their
+passkey. Approval selects a single Project or work outside Projects and a
+read-only expiry. A grant change can keep or shorten the displayed expiry.
+The panel reports the passkey decision and refreshes the inventory. It lists
+current grants and up to 50 ended grants by approval date. In a paired browser, the
+panel offers operator sign-in when the listener is configured. The native app
+directs the operator to a paired browser. The release guard returns 404 before
+this panel can load inventory.
 
 The negative outside-token audience middleware is live in release builds even
 while `/mcp` itself remains compiled off. It matches only complete 47-character

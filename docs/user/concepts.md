@@ -331,10 +331,10 @@ sends it using the same key. **More delivery actions → Copy message** preserve
 Uncertain delivery remains fenced to prevent duplicate work.
 
 Native steering has engine-defined placement. Station-owned steering waits for
-an observed tool boundary in that turn. The pending row shows a refusal if the
-turn ends before the steer is placed. If a handoff may have reached an engine,
-**May have been sent** stays visible. **Review and resend**
-restores the text into an empty composer; sending again is your explicit choice.
+an observed tool boundary in that turn. The outlined steer bubble reports a
+refusal if the turn ends before placement. If a handoff may have reached an
+engine, it shows **Unconfirmed** while Station checks the original delivery.
+Reviewing a resend can restore the text to an empty composer for an explicit send.
 Display-only notes appear immediately without sending anything to an engine.
 
 ## Gates, Evidence, And Receipts

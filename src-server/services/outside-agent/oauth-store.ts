@@ -1181,6 +1181,28 @@ export class OutsideAgentGrantStore {
       return this.#all('grant');
     });
   }
+  grantInventory() {
+    return this.#write(() => {
+      this.#expireLive();
+      const limit = 50;
+      const terminal = this.#db
+        .prepare(
+          `SELECT data FROM outside_oauth_records
+           WHERE kind='grant' AND json_extract(data,'$.state')!='active'
+           ORDER BY json_extract(data,'$.createdAt') DESC, id DESC LIMIT ?`,
+        )
+        .all(limit + 1);
+      return {
+        rows: [
+          ...this.#active(),
+          ...terminal
+            .slice(0, limit)
+            .map((row) => this.#decode('grant', row.data)),
+        ],
+        olderGrantsOmitted: terminal.length > limit,
+      };
+    });
+  }
   /** Shared synchronous decision span: expected-state reads, mutation and outbox are atomic. */
   decide<T>(operation: () => T, wait?: WriteWait): T {
     return this.#write(() => {

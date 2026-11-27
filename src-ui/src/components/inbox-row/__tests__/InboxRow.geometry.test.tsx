@@ -55,7 +55,7 @@ import { ChatDockMobileHeader } from '../../chat-dock/ChatDockMobileHeader';
 import { MobileInboxPanel } from '../../chat-dock/MobileInboxPanel';
 import { snoozeChoices } from '../snooze-presets';
 
-// Chat list scope now reads Projects through the shared query boundary.
+// Scope for Chats now reads Projects through the shared query boundary.
 function render(ui: ReactElement) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },

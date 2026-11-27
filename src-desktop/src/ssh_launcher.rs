@@ -87,13 +87,14 @@ trait Runner: Send + Sync {
 struct SystemRunner;
 impl Runner for SystemRunner {
     fn run(&self, program: &str, args: &[String]) -> std::io::Result<Output> {
-        Command::new(program)
-            .args(args)
-            .stdin(Stdio::null())
-            .output()
+        let mut command = Command::new(program);
+        crate::apply_no_window(&mut command);
+        command.args(args).stdin(Stdio::null()).output()
     }
     fn spawn(&self, program: &str, args: &[String]) -> std::io::Result<Child> {
-        Command::new(program)
+        let mut command = Command::new(program);
+        crate::apply_no_window(&mut command);
+        command
             .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())

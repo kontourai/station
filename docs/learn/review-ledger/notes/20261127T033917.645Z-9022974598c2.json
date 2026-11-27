@@ -1,0 +1,9 @@
+{
+  "revision": "ae0e9f3e4a9d8c7dfcdeecf088b12bb92f70af6d",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Bounded phone-layer history callback review at ae0e9f3e4a against placement.md and pane-relationships.md: canonical navigation retires the old layer by restoring its captured region instead of invoking the browser Back guard/reinstatement path. Actual browser Back retains its existing owner-scoped dirty guard. The real knowledge-document quote opener reproduced the stuck device layer before this fix (17 passed, 1 failed), then the profiler, quote opener, phone-layer guard and phone-layer chat-focus suites passed 31 tests in 19.97s. Existing phone-layer, canonical navigation and once-only guard claims remain accurate; this does not qualify physical/native behavior, other pane contracts or timing improvements.","inputs":["src-ui/src/contexts/RegionModelContext.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Bounded phone-layer history callback review at ae0e9f3e4a against placement.md and pane-relationships.md: canonical navigation retires the old layer by restoring its captured region instead of invoking the browser Back guard/reinstatement path. Actual browser Back retains its existing owner-scoped dirty guard. The real knowledge-document quote opener reproduced the stuck device layer before this fix (17 passed, 1 failed), then the profiler, quote opener, phone-layer guard and phone-layer chat-focus suites passed 31 tests in 19.97s. Existing phone-layer, canonical navigation and once-only guard claims remain accurate; this does not qualify physical/native behavior, other pane contracts or timing improvements.","inputs":["src-ui/src/contexts/RegionModelContext.tsx"]}
+  ]
+}

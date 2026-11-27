@@ -1,0 +1,11 @@
+{
+  "revision": "e2205e640328af8169c0958280490048bc1b53ee",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the Feature previews references against the added personal Session groups row and enabled state. The new row describes the local Task API and operator cost choice. It grants no permission and does not change the guidance for other previews.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the Feature previews references against the added personal Session groups row and enabled state. The new row describes the local Task API and operator cost choice. It grants no permission and does not change the guidance for other previews.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the regenerated Corpus topic bundle against the updated SessionCommandModule description and the existing Station Docs tool contract. The read-only generator check validates all 139 topics. Tool discovery, topic addressing and response formats retain their documented roles.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

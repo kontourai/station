@@ -160,6 +160,16 @@ export type SessionCommandInternalOptions = {
   sessionStartAdmission?: SessionStartBoundaryClaim;
   /** Server-only final start admission; never accepted from a command body. */
   beforeProviderStart?: (threadId: string) => void;
+  /** Server-owned check at the initial turn handoff. */
+  beforeProviderSend?: (
+    threadId: string,
+    clientTurnId: string | undefined,
+  ) => void;
+  /** Server-owned cancellation authority for an exact delegated turn. */
+  beforeProviderInterrupt?: (
+    threadId: string,
+    turnId: string | undefined,
+  ) => void;
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: { projectId: string; taskId: string };
   /**

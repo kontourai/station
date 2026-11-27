@@ -447,19 +447,23 @@ export const NOTIFICATION_LINK_HELD_PARAMS = [
 
 /**
  * A notification link loaded cold (a Web Push tap that opened a tab or
- * navigated one): when the URL names a Station, the request to open once
- * connections are known. The caller takes `NOTIFICATION_LINK_HELD_PARAMS`
+ * navigated one) waits until connections are known. The caller takes
+ * `NOTIFICATION_LINK_HELD_PARAMS`
  * off the URL before anything reads them, so the dock does not look the
  * conversation up on whichever Station happens to be active, and the read
- * marker is not sent there. Without a Station parameter: null, and the URL
- * is left alone.
+ * marker is not sent there. Ordinary URLs without notification parameters
+ * are left alone.
  */
 export function captureNotificationLink(location: {
   pathname: string;
   search: string;
 }): NotificationOpenRequest | null {
   const search = new URLSearchParams(location.search);
-  if (!search.has(NOTIFICATION_STATION_QUERY_PARAM)) return null;
+  if (
+    !search.has(NOTIFICATION_STATION_QUERY_PARAM) &&
+    !(search.has(OPENED_NOTIFICATION_QUERY_PARAM) && search.has('chat'))
+  )
+    return null;
   const stationId = search.get(NOTIFICATION_STATION_QUERY_PARAM);
   const params = Object.fromEntries(search);
   delete params[NOTIFICATION_STATION_QUERY_PARAM];

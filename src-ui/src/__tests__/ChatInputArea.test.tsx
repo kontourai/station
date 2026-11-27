@@ -1000,6 +1000,27 @@ describe('ChatInputArea', () => {
     expect(onQueueFollowUp).not.toHaveBeenCalled();
   });
 
+  test.each([
+    { input: '', visible: false },
+    { input: 'A follow-up', visible: true },
+  ])(
+    'the desktop Steer/Queue picker takes no room until there is a draft ($visible)',
+    ({ input, visible }) => {
+      renderChatInputArea({
+        input,
+        turnInFlight: true,
+        busyFollowUp: 'steer',
+        onQueueFollowUp: vi.fn(),
+      });
+      expect(
+        Boolean(screen.queryByRole('button', { name: /^Send mode:/ })),
+      ).toBe(visible);
+      expect(
+        screen.getByRole('button', { name: 'Stop the current turn' }),
+      ).toBeTruthy();
+    },
+  );
+
   test('safe stop-and-send is named distinctly from native steering', () => {
     renderChatInputArea({
       turnInFlight: true,

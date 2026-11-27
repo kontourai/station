@@ -1,0 +1,9 @@
+{
+  "revision": "15c6d1fca0db80c5fb4a26b06f13b17e41755cc8",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed type-only narrowing for the successful admission case. The route still reports the same scope reason and preserves the same owner boundary.","inputs":["src-server/routes/chat/conversation-reference-read.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed type-only narrowing for the successful admission case. The route still reports the same scope reason and preserves the same owner boundary.","inputs":["src-server/routes/chat/conversation-reference-read.ts"]}
+  ]
+}

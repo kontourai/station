@@ -1,5 +1,9 @@
+import {
+  type LinkedPullRequestFilter,
+  linkedPullRequestMatches,
+} from '@kontourai/station-contracts/conversation-pull-request-links';
 import { INBOX_SCOPE_CURRENT_PROJECT } from '@kontourai/station-contracts/device-settings';
-import { useMemo, useSyncExternalStore } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import {
   useDeviceSettings,
@@ -17,12 +21,61 @@ import type { WorkFactsById } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
 import { useInboxDismissals } from './inbox-dismissals';
 
+const pullRequestFilters = [
+  { value: '', label: 'All pull request states' },
+  { value: 'priority', label: 'Sort by PR status' },
+  { value: 'failing', label: 'PR failing' },
+  { value: 'awaiting-review', label: 'PR awaiting review' },
+  { value: 'ready', label: 'PR ready to land' },
+  { value: 'merged', label: 'PR merged' },
+] as const;
+
+type PullRequestFilter = LinkedPullRequestFilter | 'priority' | '';
+
+export function InboxPullRequestFilter({
+  className,
+  value,
+  onChange,
+}: {
+  className?: string;
+  value: PullRequestFilter;
+  onChange: (value: PullRequestFilter) => void;
+}) {
+  return (
+    <select
+      className={className ? `choice-trigger ${className}` : 'choice-trigger'}
+      aria-label="Pull request status"
+      value={value}
+      onChange={(event) => {
+        const option = pullRequestFilters.find(
+          ({ value }) => value === event.target.value,
+        );
+        if (option) onChange(option.value);
+      }}
+    >
+      {pullRequestFilters.map(({ value, label }) => (
+        <option key={value} value={value}>
+          {label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function useInboxScope(
   items: HomeWorkItem[],
   now: number,
   facts?: WorkFactsById,
 ) {
   const { namespace } = useAuthorityPersistence();
+  const [pullRequestFilter, setPullRequestFilter] =
+    useState<PullRequestFilter>('');
+  const showPullRequestFilter = items.some(
+    (item) => facts?.get(item.id)?.pullRequests?.length,
+  );
+  const effectivePullRequestFilter = showPullRequestFilter
+    ? pullRequestFilter
+    : '';
   const { visible } = useInboxDismissals(items, facts);
   const version = useSyncExternalStore(
     subscribeSnoozes,
@@ -111,10 +164,19 @@ export function useInboxScope(
           ? `project:${JSON.stringify(['station:local', routeProject])}`
           : 'all';
     const matches = (item: HomeWorkItem) =>
-      scope === 'all' ||
-      (scope.startsWith('project:')
-        ? projectKey(item) === scope
-        : stationById.get(item.id) === scope);
+      (scope === 'all' ||
+        (scope.startsWith('project:')
+          ? projectKey(item) === scope
+          : stationById.get(item.id) === scope)) &&
+      (!effectivePullRequestFilter ||
+        effectivePullRequestFilter === 'priority' ||
+        facts
+          ?.get(item.id)
+          ?.pullRequests?.some(
+            (link) =>
+              link.status.state === 'current' &&
+              linkedPullRequestMatches(link.status, effectivePullRequestFilter),
+          ));
     const filtered = items.filter(matches);
     const snoozed = readSnoozes(now, namespace);
     const attention = visible.filter(
@@ -125,6 +187,9 @@ export function useInboxScope(
     const hiddenAttention = attention.filter((item) => !matches(item)).length;
     return {
       items: filtered,
+      pullRequestFilter: effectivePullRequestFilter,
+      setPullRequestFilter,
+      showPullRequestFilter,
       projectChoices,
       projectNames,
       stationCount: new Set(stationById.values()).size,
@@ -149,6 +214,8 @@ export function useInboxScope(
     setDeviceSetting,
     version,
     namespace,
+    effectivePullRequestFilter,
+    showPullRequestFilter,
   ]);
 }
 
@@ -172,7 +239,7 @@ export function InboxScopeFilter({
         <span className={inline ? 'sr-only' : undefined}>Show work</span>
         <select
           className="choice-trigger"
-          aria-label="Chat list scope"
+          aria-label="Scope for Chats"
           value={scope.value}
           onChange={(event) => scope.onChange(event.target.value)}
         >
@@ -199,7 +266,10 @@ export function InboxScopeFilter({
             className="chat-dock-inbox__scope-badge"
             aria-label={`${scope.hiddenAttention} need you outside this filter. Show all work`}
             title={`${scope.hiddenAttention} need you outside this filter. Show all work`}
-            onClick={() => scope.onChange('all')}
+            onClick={() => {
+              scope.setPullRequestFilter('');
+              scope.onChange('all');
+            }}
           >
             {scope.hiddenAttention}
           </button>
@@ -222,7 +292,10 @@ function InboxScopeHiddenAttention({
     <button
       type="button"
       className="chat-dock-inbox__hidden-attention"
-      onClick={() => scope.onChange('all')}
+      onClick={() => {
+        scope.setPullRequestFilter('');
+        scope.onChange('all');
+      }}
     >
       {scope.hiddenAttention} need you outside this filter · Show all
     </button>

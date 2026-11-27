@@ -49,9 +49,14 @@ function setup(
   overrides: Partial<{
     revalidateTarget: () => Promise<ConsentTargetSnapshot | null>;
     commitApproval: () => Promise<void>;
+    resolvePublication: NonNullable<
+      ConstructorParameters<typeof ConsentChannelService>[0]
+    >['resolvePublication'];
   }> = {},
 ) {
-  const channel = new ConsentChannelService();
+  const channel = new ConsentChannelService({
+    resolvePublication: overrides.resolvePublication,
+  });
   channel.markListening(CONSENT_PORT);
   const commitApproval = overrides.commitApproval ?? vi.fn(async () => {});
   const created = channel.store.create({
@@ -139,6 +144,54 @@ function decideBody(decision: string, nonce?: string): string {
 }
 
 describe('consent listener review page', () => {
+  test('a live publication change refuses an already issued review on both old and new origins', async () => {
+    let origin: string | null = 'https://station.example.ts.net:8449';
+    const { channel, app, id, commitApproval } = setup({
+      resolvePublication: async () => ({
+        consentOrigin: origin,
+        source: origin ? 'tailscale' : 'unavailable',
+        appOrigins: ['https://station.example.ts.net:8448'],
+        status: origin ? 'ready' : 'unavailable',
+      }),
+    });
+    await channel.withPublication(async () => {
+      expect(channel.reviewUrlFor('attacker.example', id)).toBe(
+        `${origin}/consent/${id}`,
+      );
+    });
+    const page = await app.request(`/consent/${id}`, {
+      headers: reviewGetHeaders({ host: new URL(origin!).host }),
+    });
+    expect(page.status).toBe(200);
+    const nonce = (await page.text()).match(
+      /name="nonce" value="([^"]+)"/,
+    )?.[1];
+    expect(nonce).toBeTruthy();
+    const old = origin!;
+    origin = 'https://station.example.ts.net:8450';
+    const movedReview = await app.request(`/consent/${id}`, {
+      headers: reviewGetHeaders({ host: new URL(origin).host }),
+    });
+    expect(movedReview.status).toBe(403);
+    expect(await movedReview.text()).not.toContain('name="nonce"');
+    for (const destination of [old, origin]) {
+      const response = await app.request(`/consent/${id}/decide`, {
+        method: 'POST',
+        headers: decideHeaders({
+          host: new URL(destination).host,
+          origin: destination,
+        }),
+        body: decideBody('approve', nonce),
+      });
+      expect(response.status).toBe(403);
+    }
+    expect(commitApproval).not.toHaveBeenCalled();
+    origin = null;
+    expect(
+      (await app.request(`/consent/${id}`, { headers: reviewGetHeaders() }))
+        .status,
+    ).toBe(403);
+  });
   test('an unauthenticated GET leaks nothing — not the description, not whether the id exists', async () => {
     const { app, id } = setup();
     const response = await app.request(`/consent/${id}`, {

@@ -219,6 +219,21 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
     expect('envOverride' in (region ?? {})).toBe(false);
   });
 
+  test('approval origin accepts automatic discovery and keeps environment as a fallback', () => {
+    const origin = APP_SETTINGS_REGISTRY.find(
+      (definition) => definition.key === 'trustedConsentOrigin',
+    );
+    expect(origin).toBeDefined();
+    if (!origin) throw new Error('Approval origin setting is missing');
+    expect(acceptsSettingValue(origin, '')).toBe(true);
+    expect(
+      acceptsSettingValue(origin, 'https://approval.example.com:8443'),
+    ).toBe(true);
+    expect(origin.scope).toBe('station');
+    expect(origin.envFallback).toBe('STATION_TRUSTED_CONSENT_ORIGIN');
+    expect('envOverride' in origin).toBe(false);
+  });
+
   // station#settings-revamp slice-1 review finding (ALSO section): key
   // presence alone lets a descriptor and its schema property drift apart in
   // shape (an enum that gained a value on one side, a min/max that only
@@ -333,6 +348,7 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         'terminalHistoryMaxAgeDays',
         'terminalHistoryMaxTerminalMiB',
         'terminalHistoryMaxTotalMiB',
+        'trustedConsentOrigin',
         // #3157: confirmed against `autoResumeAllowed` (the coordinator) and
         // the `=== true` wiring in orchestration-service.ts — absent is off.
         'usageLimitAutoResume',

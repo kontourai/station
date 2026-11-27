@@ -375,16 +375,67 @@ export interface ToolCredentialOwnership {
   allowInstanceFallback?: boolean;
 }
 
+export type ToolServerEventDelivery = 'poll' | 'push' | 'webhook';
+
+export interface ToolServerEventDescriptor {
+  name: string;
+  title?: string;
+  description?: string;
+  delivery?: ToolServerEventDelivery[];
+  inputSchema?: Record<string, unknown>;
+  payloadSchema?: Record<string, unknown>;
+}
+
 export type ToolServerEventCatalog =
+  | { supported: false }
+  | { supported: true; events: ToolServerEventDescriptor[]; truncated?: true };
+
+export interface ToolServerEventPollInput {
+  name: string;
+  cursor: string | null;
+  arguments?: Record<string, unknown>;
+  maxEvents?: number;
+  maxAgeMs?: number;
+}
+
+export type ToolServerEventPollPage =
   | { supported: false }
   | {
       supported: true;
+      cursor: string | null;
+      hasMore: boolean;
+      truncated: boolean;
+      nextPollMs?: number;
       events: Array<{
-        name: string;
-        title?: string;
-        description?: string;
+        name?: string;
+        eventId: string;
+        timestamp: string;
+        data: unknown;
       }>;
     };
+
+export type ToolServerEventStreamInput = Omit<
+  ToolServerEventPollInput,
+  'maxEvents'
+> & { heartbeatMs?: number };
+
+export type ToolServerEventStreamFrame =
+  | {
+      type: 'active';
+      cursor: string | null;
+      truncated: boolean;
+      heartbeatMs: number;
+    }
+  | {
+      type: 'event';
+      cursor: string | null;
+      eventId: string;
+      timestamp: string;
+      data: unknown;
+    }
+  | { type: 'heartbeat'; cursor: string | null }
+  | { type: 'warning' }
+  | { type: 'ended'; reason: 'complete' | 'unavailable' };
 
 export interface ToolServerProbeResult {
   ok: boolean;

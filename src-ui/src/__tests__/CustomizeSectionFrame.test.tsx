@@ -57,6 +57,9 @@ vi.mock('../views/connections-hub/AddMachineModal', () => ({
   AddMachineModal: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? <div data-testid="chooser" /> : null,
 }));
+vi.mock('../views/connections-hub/OutsideClientsSection', () => ({
+  OutsideClientsSection: () => <section aria-label="Outside clients" />,
+}));
 vi.mock('../views/connections-hub/IntegrationStatusSection', () => ({
   IntegrationStatusSection: () => <div data-testid="integration-status-slot" />,
 }));
@@ -123,6 +126,9 @@ describe('CustomizeSectionFrame', () => {
       );
       const actions = screen.getByTestId('frame-actions');
       expect(actions.querySelectorAll('button')).toHaveLength(1);
+      expect(
+        screen.queryByRole('region', { name: 'Outside clients' }) !== null,
+      ).toBe(sectionId === 'tools');
       fireEvent.click(actions.querySelector('button')!);
       expect(navigate).toHaveBeenCalledWith(path);
       unmount();

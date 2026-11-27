@@ -16,7 +16,7 @@ export function useWorkFacts(
   sessions: readonly OrchestrationSessionSummary[],
   extra: Pick<
     Parameters<typeof buildWorkFacts>[0],
-    'tasks' | 'remoteEnvironments'
+    'tasks' | 'remoteEnvironments' | 'inventoryById'
   > = NO_EXTRA_SOURCES,
 ): WorkFactsById {
   const chats = useOpenChatStatus();

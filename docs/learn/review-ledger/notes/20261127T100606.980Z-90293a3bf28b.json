@@ -1,0 +1,17 @@
+{
+  "revision": "247642bd9e3398c7430e3310b7eb956bd48668ce",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed downstream references to the native verification guide. The changed paragraph corrects the hostile-plugin fixture proof and explicitly excludes fallback-message authorization, exhaustive native commands and exact release qualification. Sidecar lifecycle, connection-broker architecture, collaboration setup and historical ADR platform evidence are unchanged. No current release or keyring status is promoted by this test-only repair.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed downstream references to the native verification guide. The changed paragraph corrects the hostile-plugin fixture proof and explicitly excludes fallback-message authorization, exhaustive native commands and exact release qualification. Sidecar lifecycle, connection-broker architecture, collaboration setup and historical ADR platform evidence are unchanged. No current release or keyring status is promoted by this test-only repair.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed downstream references to the native verification guide. The changed paragraph corrects the hostile-plugin fixture proof and explicitly excludes fallback-message authorization, exhaustive native commands and exact release qualification. Sidecar lifecycle, connection-broker architecture, collaboration setup and historical ADR platform evidence are unchanged. No current release or keyring status is promoted by this test-only repair.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed downstream references to the native verification guide. The changed paragraph corrects the hostile-plugin fixture proof and explicitly excludes fallback-message authorization, exhaustive native commands and exact release qualification. Sidecar lifecycle, connection-broker architecture, collaboration setup and historical ADR platform evidence are unchanged. No current release or keyring status is promoted by this test-only repair.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed downstream references to the native verification guide. The changed paragraph corrects the hostile-plugin fixture proof and explicitly excludes fallback-message authorization, exhaustive native commands and exact release qualification. Sidecar lifecycle, connection-broker architecture, collaboration setup and historical ADR platform evidence are unchanged. No current release or keyring status is promoted by this test-only repair.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed downstream references to the native verification guide. The changed paragraph corrects the hostile-plugin fixture proof and explicitly excludes fallback-message authorization, exhaustive native commands and exact release qualification. Sidecar lifecycle, connection-broker architecture, collaboration setup and historical ADR platform evidence are unchanged. No current release or keyring status is promoted by this test-only repair.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}

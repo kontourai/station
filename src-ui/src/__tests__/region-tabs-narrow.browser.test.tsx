@@ -16,8 +16,7 @@ const noop = () => {};
 const chrome = {
   isDockOpen: true, isDockMaximized: false, dockMode: 'right', dockHeight: 320,
   dockWidth: Number(new URLSearchParams(location.search).get('w') ?? 400),
-  setDockHeight: noop, setDockWidth: noop, previousDockHeight: 320,
-  setPreviousDockHeight: noop, previousDockOpen: true, setPreviousDockOpen: noop,
+  setDockHeight: noop, setDockWidth: noop,
   isDragging: false, setIsDragging: noop, dockSnap: 'half', liveDragHeight: null,
   setLiveDragHeight: noop, isCollapsedDragPreview: false, toolbarHeight: 46,
   collapsedHeight: 38, isMobile: false,

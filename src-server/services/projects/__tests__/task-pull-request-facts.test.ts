@@ -5,6 +5,7 @@ import type {
 } from '@kontourai/station-contracts/pull-request-provider';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { describe, expect, test, vi } from 'vitest';
+import { GitHubPullRequestProvider } from '../../pull-requests/github-pull-request-provider.js';
 import { readTaskPullRequestFacts } from '../task-pull-request-facts.js';
 
 const NOW = new Date('2026-11-15T12:00:00.000Z');
@@ -104,6 +105,46 @@ const read = (
   });
 
 describe('readTaskPullRequestFacts', () => {
+  test('two Task facts reads share a real GitHub status-cache observation', async () => {
+    const gh = vi.fn(async () => ({
+      stdout: JSON.stringify({
+        number: 7,
+        title: 'Fix verification',
+        url: 'https://github.com/acme/app/pull/7',
+        state: 'OPEN',
+        headRefName: 'fix-verification',
+        baseRefName: 'main',
+        headRefOid: 'a'.repeat(40),
+        mergeable: 'MERGEABLE',
+        mergeStateStatus: 'CLEAN',
+        isDraft: false,
+        reviewDecision: 'APPROVED',
+        statusCheckRollup: [
+          {
+            __typename: 'CheckRun',
+            status: 'COMPLETED',
+            conclusion: 'SUCCESS',
+          },
+        ],
+      }),
+    }));
+    const github = new GitHubPullRequestProvider(gh, undefined, {
+      now: () => NOW.getTime(),
+    });
+    const inputs = [task('rollup')];
+    const keeps = [keep('rollup', '7')];
+    const first = await read(inputs, keeps, [github]);
+    expect(first.tasks.rollup?.pullRequests[0]?.status).toMatchObject({
+      state: 'current',
+      checks: 'passing',
+      reviewDecision: 'approved',
+    });
+    expect(gh).toHaveBeenCalledTimes(1);
+    gh.mockClear();
+    await expect(read(inputs, keeps, [github])).resolves.toEqual(first);
+    expect(gh).not.toHaveBeenCalled();
+  });
+
   test('reads each kept pull request at its identity and carries the board facts', async () => {
     const facts = await read(
       [task('a')],

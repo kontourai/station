@@ -289,7 +289,11 @@ afterEach(() => {
 });
 
 describe('ChatWorkspacePane engine-switch gate', () => {
-  test('a collapsed phone chat can go straight to full screen and restore to a peek', async () => {
+  // Restore returns a full-screen chat to where it was before it went full
+  // screen (owner decision, replacing "restore to a peek" in every case): a
+  // chat maximized from its bar goes back to the bar, and one that was
+  // already open returns to the level it was on.
+  test('a collapsed phone chat goes full screen and restores to its bar; an open one restores to its dock', async () => {
     vi.stubGlobal(
       'matchMedia',
       vi.fn((query: string) => ({
@@ -306,6 +310,20 @@ describe('ChatWorkspacePane engine-switch gate', () => {
     );
     navigationStore.navigate('/', { dock: null, maximize: null });
     await renderPane(session(), false);
+    fireEvent.click(screen.getByRole('button', { name: 'Full screen chat' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Restore chat size' }),
+    );
+    // Back in its bar: full screen is offered again and no body is showing.
+    expect(
+      screen.getByRole('button', { name: 'Full screen chat' }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('content-area')).toBeNull();
+
+    // Opened from the bar (to Half), then full screen: Restore comes back to
+    // the open dock.
+    fireEvent.click(screen.getByRole('button', { name: 'Chats' }));
+    expect(await screen.findByTestId('content-area')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Full screen chat' }));
     fireEvent.click(
       await screen.findByRole('button', { name: 'Restore chat size' }),

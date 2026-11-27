@@ -698,7 +698,7 @@ DELETE /api/orchestration/conversations/<conversationId>/inbox/<clientTurnId>
 
 `GET` lists the conversation's held messages (`ConversationInboxEntry`:
 `state` is `queued`, `sending`, `sent`, `unconfirmed`, `refused` or
-`cancelled`, with `position` among those still waiting, and for a `refused`
+`cancelled`, with `position` among the follow-ups still waiting, and for a `refused`
 or `unconfirmed` one a `reasonCode` and a fixed `reason`, never the refusal's
 own text). `reasonCode` is one of `not_permitted`, `device_not_permitted`,
 `may_have_been_sent`, `start_deadline`, `unreadable_entry`, `session_ended`,
@@ -781,6 +781,25 @@ HTTP409 `inbox_stale_head` and `currentHead`, without a write.
   retries still answer the retained note. The next submission prunes display
   notes older than seven days (`inboxSettledRetentionMs`). Steer replay fences
   remain until conversation deletion.
+
+When the inbox read includes `data.queueControls: true`, the same POST
+supports these actions on the caller's still-waiting follow-ups:
+
+- `{kind: 'edit', key, previous, message}` replaces the text if the previously
+  read text still matches. It preserves the key, attachments and position.
+- `{kind: 'move', key, neighbor, direction}` swaps two adjacent entries from
+  the same sender if the observed order still matches. Direction is `up` or
+  `down`.
+- `{kind: 'promote', key, source, message, expectedTurn}` uses a fresh UUID for
+  `key`, the waiting entry's key for `source`, and the inbox read's opaque
+  `data.queueSteerTarget` for `expectedTurn`. The target stays stable as the
+  turn streams. Station withdraws the source and admits an attachment-free
+  steer in the same transaction. The source key stays retired so an older
+  client retry cannot restore the follow-up. A changed turn or unavailable
+  steering leaves the source queued.
+
+Edit and move return 200, while accepted promotion returns 202 with the steer
+entry. An entry already claimed for placement cannot be edited or moved.
 
 A handoff occurs at most once per durable claim. A crash between claim and
 acknowledgement leaves `unconfirmed`: the UI says **May have been sent** and
@@ -868,7 +887,11 @@ execution override under the same profile checks as other handoffs.
 
 Station requires an idle, current source Session and refuses while a follow-up
 is queued. A successful Send starts a fresh Session with bounded authorized
-conversation text and the submitted first message. Prior attachment bytes,
+conversation text, a short record of recent work, and the submitted first
+message. The record includes the source working directory, settled turn outcomes,
+reported tool names and counts, reported file changes and pull requests, and a
+redacted excerpt of the latest recorded source error when those facts are available.
+Tool arguments and outputs stay with the source. Prior attachment bytes,
 engine-native cursors and engine-local tool state stay with the source.
 The message can include attachments supported by the selected engine. If the
 response is lost, check the handoff status using the same key before trying
@@ -2652,6 +2675,11 @@ answer it instead of offering a local reply. The field is absent for work this
 Station runs. A server that predates the field omits it; a reply sent to a peer
 record through that server is still refused, not delivered elsewhere.
 
+An item for a session this Station runs links to the chat dock on that session,
+inside its Project when it has one (`notificationSessionHref`, the href its
+notification opens). That includes `session-failed`: the dock shows the recorded
+failure.
+
 The same record also opens in Activity from every work-item surface: Home's
 continue action and lists, the dock inbox, the mobile task switcher, the
 Sessions list, and a project's live work. Its agent slug and conversation id
@@ -2832,3 +2860,27 @@ reply**. This display does not enable Stop or Steer for a closed turn.
 
 Elapsed displays share `src-ui/src/utils/relativeTime.ts` and use `45s`,
 `2m 1s`, and `1h 4m`. Under an hour, live clocks retain seconds.
+
+## Third-party history preview
+
+A Station owner can browse the host's provider transcripts through the enabled
+**Third-party history** Feature Preview on a personal Station.
+
+- `GET /api/orchestration/external-history?offset=0&search=` returns one bounded
+  recent catalog page. Specify `provider` to page further through that engine.
+  It reports partial results when a scan reaches its budget or cannot complete.
+- `GET /api/orchestration/external-history/:id/transcript` reads a bounded text
+  preview without importing it. The response sets `truncated` when it shortens
+  or omits text to keep the preview small. Pass the returned `nextCursor` on a later
+  request to keep reading the same transcript. Pass `from=start` to start at the
+  beginning. Only sources that can read
+  transcripts expose this operation.
+- `POST /api/orchestration/external-history/:id/import?operationId=…` saves a bounded batch
+  through the ordinary attached-session owner. The returned `threadId` is
+  the saved Session. Repeat with the same operation ID while `more` is true.
+  Use `DELETE /api/orchestration/external-history/:id/import/:operationId` to
+  cancel independently of the HTTP transport. Canceling stops pending work
+  between writes. Already committed records and progress remain available.
+
+The catalog IDs and cursors are opaque and scoped to the serving Station.
+Refresh the catalog if a source or its cursor expires.

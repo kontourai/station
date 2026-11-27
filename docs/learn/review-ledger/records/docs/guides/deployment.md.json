@@ -90,7 +90,11 @@
 
     "scripts/__tests__/service-container-command.test.ts",
 
-    "deployment/telemetry/compose.dev.yaml"
+    "deployment/telemetry/compose.dev.yaml",
+
+    "src-server/services/connections/route-publications.ts",
+
+    "src-ui/src/views/settings/StationRoutesSection.tsx"
   ],
 
   "checks": [

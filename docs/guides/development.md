@@ -199,6 +199,14 @@ Agent and contributor smoke runs should use unique ports and `--temp-home`
 unless the task explicitly needs the selected channel's default runtime home.
 See [release channel ports](release-channel-ports.md) for the canonical map.
 
+A concrete `--host` keeps the public API bound to that interface and adds a
+separate `127.0.0.1` API listener on the same port for lifecycle readiness and
+the UI proxy. Both listeners serve the same authorization middleware and share
+terminal capacity. The supervisor retains both sockets across generation
+handoff. A private LAN peer does not become a local operator: internal lifecycle
+credentials still require a loopback socket. If either bind fails, startup
+fails rather than falling back to a wildcard listener.
+
 ### Handing a running instance to the operator
 
 Starting the app is not the whole handoff. The UI signs in through a
@@ -1143,6 +1151,15 @@ GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
+Prefer live acceptance before arming auto-merge for a change to a user journey
+or integration when the affected runtime is available. Exercise a representative
+changed path on the candidate revision with the actual app, engine, service,
+or device. Use an isolated Station instance for local acceptance. Record the
+revision, environment, path, and observed result in the PR. If access,
+credentials, a device, or a reproducible provider condition is unavailable,
+state which live case remains open and what the available checks exercised.
+Keep the normal required checks and merge queue.
+
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
 one exact source SHA through every canonical phase and the Android viewport suite.
 `Main: Qualification` runs after main pushes (one admitted push and one
@@ -1303,3 +1320,28 @@ npm run docs:pages:build
 ```
 
 The generated `dist-pages/` directory is disposable and should not be edited by hand.
+
+### UI component catalog
+
+Run `npm run dev:ui -- --host 127.0.0.1 --port 4178 --strictPort` and open
+`/component-catalog.html` on that development server. The catalog lists UI
+source files in Station and its UI packages, including files that still
+need a story or coverage through a composed example. The first stories use
+the shared button, disclosure, and loading, empty, and error primitives.
+The control stories also exercise action overflow, editable and disabled
+switches, icon buttons, and settings provenance. Use the source filter and **Unmapped only** to check coverage.
+
+Open **Inbox Task rows** in the catalog to compare the current row with
+the proposed layout. The Inbox storyboard also has a direct entry at
+`/inbox-storyboard.html`. It uses
+Station’s Task row, status rendering, theme tokens, buttons, and swipe hook.
+Compare the shipping row anatomy and the proposed attention actions with the
+same fixtures. Toggle phone width and swipe left on a proposed row to reveal
+actions. Replies, approvals, retries, acknowledgements, and snoozes use
+temporary fixture state. They make no Station API requests.
+
+When adding a story, give it a stable section ID and list the source files
+it actually exercises in the catalog. For composed flows, use the same
+fixtures for current and proposed views. Import the production components
+and keep fixtures local. Catalog and storyboard entries run through Vite
+in development and are outside the product build inputs.

@@ -216,6 +216,17 @@ describe('buildTranscriptSeed', () => {
     ).toThrow(RangeError);
   });
 
+  test('preserves transcript space when recorded work exceeds the available budget', () => {
+    const seed = buildTranscriptSeed({
+      heading: 'Prior conversation transcript.',
+      entries: [{ role: 'user', text: 'Keep this request.' }],
+      recordedWork: `> ${'界'.repeat(2_000)}`,
+      budgetTokens: TRANSCRIPT_SEED_MIN_TOKEN_BUDGET,
+    });
+    expect(seed.text).toContain('Keep this request.');
+    expect(seed.text).not.toContain('Recorded work from prior turns');
+  });
+
   test('refuses a heading that alone exceeds the budget', () => {
     expect(() =>
       buildTranscriptSeed({

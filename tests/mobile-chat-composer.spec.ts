@@ -2243,7 +2243,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     },
   );
   await switcher.click();
-  await page.getByRole('button', { name: 'Chat list actions' }).click();
+  await page.getByRole('button', { name: 'Actions for Chats' }).click();
   await page
     .getByRole('menuitem', { name: 'Back to chat', exact: true })
     .click();
@@ -2309,7 +2309,7 @@ test('switches between mobile tasks and restores the exact active chat context',
       .getByRole('button', { name: /^Station Chat.*Default/i })
       .filter({ hasText: 'Waiting on you' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Chat list actions' }).click();
+  await page.getByRole('button', { name: 'Actions for Chats' }).click();
   await page
     .getByRole('menuitem', { name: 'Back to chat', exact: true })
     .click();
@@ -2361,7 +2361,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect((compactBox?.x ?? 0) + (compactBox?.width ?? 0)).toBeLessThanOrEqual(
     320,
   );
-  const actions = page.getByRole('button', { name: 'Chat list actions' });
+  const actions = page.getByRole('button', { name: 'Actions for Chats' });
   await actions.focus();
   await page.keyboard.press('Enter');
   const compactClose = page.getByRole('menuitem', {
@@ -2954,6 +2954,54 @@ async function answerSheetLayout(sheet: Locator) {
   });
 }
 
+for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+  test(`direct-linked mobile Back retains the draft with motion ${reducedMotion}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ reducedMotion });
+    await page.addInitScript(() => {
+      const animate = Element.prototype.animate;
+      Element.prototype.animate = function (keyframes, options) {
+        if (this.matches('.mobile-inbox, .chat-dock__reader'))
+          performance.mark('mobile-reader-transition');
+        return animate.call(this, keyframes, options);
+      };
+    });
+    await seedMobileTaskSwitcher(page);
+    await page.goto('/?dock=open&maximize=true&chat=conv-running');
+    await dismissSetupLauncher(page);
+    const composer = page.locator('textarea[placeholder*="Type a message"]');
+    await expect(composer).toBeVisible();
+    await page.reload();
+    await expect(composer).toBeVisible();
+    await composer.fill('Keep this draft');
+    const retainedComposer = await composer.elementHandle();
+    await page.goBack();
+    const inbox = page.getByRole('region', { name: 'Chats', exact: true });
+    await expect(inbox).toBeVisible();
+    expect(new URL(page.url()).searchParams.get('chat')).toBeNull();
+    await inbox
+      .getByRole('button', { name: /^Station Chat.*Default/i })
+      .filter({ hasText: 'Running' })
+      .click();
+    await expect(inbox).toBeHidden();
+    await composer.fill('Keep this draft, still responsive');
+    await expect(composer).toHaveValue('Keep this draft, still responsive');
+    expect(
+      await retainedComposer!.evaluate((element) => element.isConnected),
+    ).toBe(true);
+    expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-running');
+    const transitions = await page.evaluate(
+      () => performance.getEntriesByName('mobile-reader-transition').length,
+    );
+    if (reducedMotion === 'reduce') expect(transitions).toBe(0);
+    else expect(transitions).toBeGreaterThan(0);
+    await page.goBack();
+    await expect(inbox).toBeVisible();
+  });
+}
+
 /**
  * Escape dismisses the sheet and does nothing else — including after a row
  * selection has rewritten the URL underneath it.
@@ -3470,7 +3518,7 @@ test('the maximized phone dock header clears the status bar once, not twice', as
     .boundingBox())!;
   expect(identity.width).toBeGreaterThanOrEqual(180);
   const back = (await header
-    .getByRole('button', { name: 'Chat list', exact: true })
+    .getByRole('button', { name: 'Chats', exact: true })
     .boundingBox())!;
   expect(back.width).toBeGreaterThanOrEqual(44);
   expect(back.x + back.width).toBeLessThanOrEqual(identity.x + 1);
@@ -3798,7 +3846,7 @@ for (const viewport of [
     // header's overflow sheet, where each is a real menuitem.
     const mobileActions = page.getByRole('menu', { name: 'Chat actions' });
     await expect(mobileActions).toBeVisible();
-    for (const name of ['New chat', 'Chat list', 'Agent & model']) {
+    for (const name of ['New chat', 'Chats', 'Agent & model']) {
       await expect(mobileActions.getByRole('menuitem', { name })).toBeVisible();
     }
     const mobileActionsBox = await mobileActions.boundingBox();
@@ -4333,13 +4381,14 @@ test('drags the mobile dock bar between half and full without stealing taps', as
     Math.round(beforeTap?.height ?? 0),
   );
 
-  const collapseControl = page.getByRole('button', {
-    name: 'Collapse chat',
-    exact: true,
-  });
-  await expect(collapseControl).toBeVisible();
-  await expectSettledTouchTargetHeight(collapseControl);
-  await collapseControl.click();
+  // With a conversation open the header's leading slot is Chats, so the
+  // dock is put away by its gesture: a slow drag down the header, past the
+  // midpoint between the bar and Half. The header is the touch target.
+  await expectSettledTouchTargetHeight(header);
+  await page.mouse.move(headerBox.x + 4, headerBox.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(headerBox.x + 4, headerBox.y + 330, { steps: 4 });
+  await page.mouse.up();
   await expect(dock).toHaveClass(/is-collapsed/);
   await expectVisibleGeometry(false);
 
@@ -4444,12 +4493,12 @@ test('preserves desktop dock geometry', async ({ page }) => {
   expect(maximizedDock?.x).toBe(sidebar.x + sidebar.width);
   expect(maximizedDock?.width).toBe(inlineDockWidth);
   await chooseChatRegionRow(page, 'Restore size');
-  // Restore now returns to the named Half snap, whose 45% viewport contract
-  // resolves to 360px at this 800px desktop viewport (rather than reviving
-  // the older fixed 320px default).
+  // Restore returns the dock to where it was before it was maximized (owner
+  // decision, 2026-11-25): the height it was opened or dragged at, here 320px,
+  // rather than the Half snap's 45% (360px at this 800px viewport).
   await expect
     .poll(async () => (await page.locator('.chat-dock').boundingBox())?.height)
-    .toBe(360);
+    .toBe(320);
   const resizeHandle = page.getByRole('separator', {
     name: 'Resize chat dock',
   });
@@ -4462,6 +4511,19 @@ test('preserves desktop dock geometry', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(handleBox.x + handleBox.width / 2, 365, { steps: 4 });
   await page.mouse.up();
+  await expect
+    .poll(async () =>
+      Math.round((await page.locator('.chat-dock').boundingBox())?.height ?? 0),
+    )
+    .toBe(435);
+  // Maximized again from that dragged height, Restore brings the height back.
+  await chooseChatRegionRow(page, 'Maximize');
+  await expect
+    .poll(async () =>
+      Math.round((await page.locator('.chat-dock').boundingBox())?.height ?? 0),
+    )
+    .toBeGreaterThan(600);
+  await chooseChatRegionRow(page, 'Restore size');
   await expect
     .poll(async () =>
       Math.round((await page.locator('.chat-dock').boundingBox())?.height ?? 0),
@@ -4969,7 +5031,7 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
     )
     .toBeGreaterThan(15);
 
-  await page.getByRole('button', { name: 'Chat list actions' }).click();
+  await page.getByRole('button', { name: 'Actions for Chats' }).click();
   const close = page.getByRole('menuitem', {
     name: 'Back to chat',
     exact: true,
@@ -5109,7 +5171,7 @@ test('profiles switching between authoritative conversations', async ({
   await seedMobileTaskSwitcher(page);
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
-  const switcher = page.getByRole('button', { name: /^(Inbox|Back to chat)$/ });
+  const switcher = page.getByRole('button', { name: 'Chats', exact: true });
   const menu = page.getByRole('region', { name: 'Chats', exact: true });
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
   await expect(switcher).toBeVisible();
@@ -5297,14 +5359,14 @@ test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
     exact: true,
   });
   const menu = page.getByRole('menu', { name: 'Chat actions' });
-  await page.getByRole('button', { name: 'Chat list', exact: true }).click();
+  await page.getByRole('button', { name: 'Chats', exact: true }).click();
   const sheet = page.getByRole('region', { name: 'Chats', exact: true });
   await expect(sheet).toBeVisible();
   await expect(navigation).not.toBeVisible();
   await expect(
     sheet.getByText('Overflow conversation 0', { exact: true }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Chat list actions' }).click();
+  await page.getByRole('button', { name: 'Actions for Chats' }).click();
   await page
     .getByRole('menuitem', { name: 'Back to chat', exact: true })
     .click();
@@ -5331,7 +5393,7 @@ for (const width of [320, 431]) {
     const input = await openComposer(page);
     const header = page.getByTestId('chat-dock-mobile-header');
     const back = (await header
-      .getByRole('button', { name: 'Chat list', exact: true })
+      .getByRole('button', { name: 'Chats', exact: true })
       .boundingBox())!;
     const actions = (await header
       .locator('.chat-dock__mobile-actions')

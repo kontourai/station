@@ -79,6 +79,7 @@ const PROFILE_STORE = {
 function storageWithProfileStore(
   profileStore: unknown = PROFILE_STORE,
   clientSelectionStorage: StorageAdapter = memoryStorage(),
+  routeRefresh?: () => unknown,
 ) {
   const calls: Array<[string, Record<string, unknown> | undefined]> = [];
   const bridge = {
@@ -87,6 +88,8 @@ function storageWithProfileStore(
       args?: Record<string, unknown>,
     ): Promise<T> {
       calls.push([command, args]);
+      if (command === 'station_profile_refresh_routes' && routeRefresh)
+        return (await routeRefresh()) as T;
       return (
         command === 'station_profile_store_read'
           ? JSON.stringify(profileStore)
@@ -1288,6 +1291,251 @@ describe('NativeStationProfileStorage', () => {
     ).toBeNull();
   });
 
+  it('projects host-approved HTTPS routes without changing the canonical profile or exposing credentials', async () => {
+    const receipt = {
+      bindingId: CLIENT_INSTANCE_ID,
+      exactOrigin: 'http://127.0.0.1:3141',
+      authorizedOrigins: ['https://kontour.example.test'],
+      expiresAtMs: Date.now() + 600_000,
+    };
+    const { storage, calls } = storageWithProfileStore(
+      PROFILE_STORE,
+      memoryStorage(),
+      () => receipt,
+    );
+    await storage.hydrate();
+    await storage.authorizeDefaultProfile();
+    const connections = new ConnectionStore({ storage, locks: null });
+    const changed = vi.fn(() => connections.reload());
+    storage.subscribeRelayRouteProfiles(changed);
+    await storage.refreshNativeRoutes('station-profile:kontour');
+    expect(changed).toHaveBeenCalledOnce();
+    expect(
+      connections.getActive()?.endpoints.map((endpoint) => endpoint.url),
+    ).toEqual(['https://kontour.example.test', 'http://127.0.0.1:3141']);
+    expect(connections.getActive()?.url).toBe('http://127.0.0.1:3141');
+    connections.recordEndpointSuccess(
+      'station-profile:kontour',
+      'https://kontour.example.test',
+    );
+    expect(connections.getActive()?.url).toBe('https://kontour.example.test');
+    expect(
+      storage.captureNativeRequestBinding(
+        'station-profile:kontour',
+        'https://kontour.example.test',
+      ),
+    ).toEqual({
+      bindingId: CLIENT_INSTANCE_ID,
+      exactOrigin: 'https://kontour.example.test',
+    });
+    expect(
+      calls.filter(([command]) => command === 'station_profile_refresh_routes'),
+    ).toEqual([
+      ['station_profile_refresh_routes', { bindingId: CLIENT_INSTANCE_ID }],
+    ]);
+    expect(
+      calls.every(([command]) =>
+        [
+          'station_profile_store_read',
+          'station_profile_authorize_active',
+          'station_profile_refresh_routes',
+        ].includes(command),
+      ),
+    ).toBe(true);
+    const reopened = storageWithProfileStore(PROFILE_STORE).storage;
+    await reopened.hydrate();
+    expect(
+      new ConnectionStore({ storage: reopened, locks: null }).getActive()
+        ?.endpoints,
+    ).toHaveLength(1);
+    expect(PROFILE_STORE.profiles[0].endpoint).toBe('http://127.0.0.1:3141');
+  });
+
+  it('expires alternate request bindings while retaining canonical local recovery', async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const { storage } = storageWithProfileStore(
+        PROFILE_STORE,
+        memoryStorage(),
+        () => ({
+          bindingId: CLIENT_INSTANCE_ID,
+          exactOrigin: 'http://127.0.0.1:3141',
+          authorizedOrigins: ['https://kontour.example.test'],
+          expiresAtMs: now + 600_000,
+        }),
+      );
+      await storage.hydrate();
+      await storage.authorizeDefaultProfile();
+      await storage.refreshNativeRoutes('station-profile:kontour');
+      expect(
+        storage.captureNativeRequestBinding(
+          'station-profile:kontour',
+          'https://kontour.example.test',
+        ),
+      ).not.toBeNull();
+      clock.mockReturnValue(now + 600_000);
+      expect(
+        storage.captureNativeRequestBinding(
+          'station-profile:kontour',
+          'https://kontour.example.test',
+        ),
+      ).toBeNull();
+      expect(
+        storage.captureNativeRequestBinding(
+          'station-profile:kontour',
+          'http://127.0.0.1:3141',
+        ),
+      ).not.toBeNull();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it.each([
+    { authorizedOrigins: ['http://other.test'] },
+    { authorizedOrigins: ['https://other.test/path'] },
+    { authorizedOrigins: ['https://user:secret@other.test'] },
+    { authorizedOrigins: ['https://127.0.0.1'] },
+    { authorizedOrigins: ['https://other.test:0'] },
+    { authorizedOrigins: ['https://other.test', 'https://other.test'] },
+    { authorizedOrigins: 'https://other.test' },
+    { authorizedOrigins: [42] },
+    {
+      authorizedOrigins: Array.from(
+        { length: 17 },
+        (_, index) => `https://route-${index}.test`,
+      ),
+    },
+    { exactOrigin: 'https://other.test' },
+    { bindingId: 'different-binding' },
+    { expiresAtMs: 0 },
+    { expiresAtMs: Number.MAX_SAFE_INTEGER },
+    { unexpected: true },
+  ])(
+    'rejects malformed host receipt %j and withdraws earlier alternates',
+    async (invalid) => {
+      const receipt = {
+        bindingId: CLIENT_INSTANCE_ID,
+        exactOrigin: 'http://127.0.0.1:3141',
+        authorizedOrigins: ['https://kontour.example.test'],
+        expiresAtMs: Date.now() + 600_000,
+      };
+      const refresh = vi
+        .fn()
+        .mockReturnValueOnce(receipt)
+        .mockReturnValueOnce({ ...receipt, ...invalid });
+      const { storage } = storageWithProfileStore(
+        PROFILE_STORE,
+        memoryStorage(),
+        refresh,
+      );
+      await storage.hydrate();
+      await storage.authorizeDefaultProfile();
+      await storage.refreshNativeRoutes('station-profile:kontour');
+      await expect(
+        storage.refreshNativeRoutes('station-profile:kontour'),
+      ).rejects.toThrow('invalid_native_route_receipt');
+      expect(
+        storage.captureNativeRequestBinding(
+          'station-profile:kontour',
+          'https://kontour.example.test',
+        ),
+      ).toBeNull();
+      expect(
+        new ConnectionStore({ storage, locks: null }).getActive()?.endpoints,
+      ).toHaveLength(1);
+    },
+  );
+
+  it('discards a route refresh that finishes after a profile is reauthorized', async () => {
+    let release: ((value: unknown) => void) | undefined;
+    const { storage } = storageWithProfileStore(
+      PROFILE_STORE,
+      memoryStorage(),
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    await storage.hydrate();
+    await storage.authorizeDefaultProfile();
+    const pending = storage.refreshNativeRoutes('station-profile:kontour');
+    await storage.authorizeDefaultProfile();
+    release?.({
+      bindingId: CLIENT_INSTANCE_ID,
+      exactOrigin: 'http://127.0.0.1:3141',
+      authorizedOrigins: ['https://kontour.example.test'],
+      expiresAtMs: Date.now() + 600_000,
+    });
+    await pending;
+    expect(
+      storage.captureNativeRequestBinding(
+        'station-profile:kontour',
+        'https://kontour.example.test',
+      ),
+    ).toBeNull();
+    expect(
+      new ConnectionStore({ storage, locks: null }).getActive()?.endpoints,
+    ).toHaveLength(1);
+  });
+
+  it.each(['selection', 'credential', 'environment', 'endpoint'] as const)(
+    'retires alternate bindings after a %s change',
+    async (change) => {
+      const profileStore: StationProfileStore = {
+        ...PROFILE_STORE,
+        profiles: PROFILE_STORE.profiles.map((profile) => ({ ...profile })),
+      };
+      const { storage } = storageWithProfileStore(
+        profileStore,
+        memoryStorage(),
+        () => ({
+          bindingId: CLIENT_INSTANCE_ID,
+          exactOrigin: 'http://127.0.0.1:3141',
+          authorizedOrigins: ['https://kontour.example.test'],
+          expiresAtMs: Date.now() + 600_000,
+        }),
+      );
+      await storage.hydrate();
+      await storage.authorizeDefaultProfile();
+      await storage.refreshNativeRoutes('station-profile:kontour');
+      expect(
+        storage.captureNativeRequestBinding(
+          'station-profile:kontour',
+          'https://kontour.example.test',
+        ),
+      ).not.toBeNull();
+      if (change === 'selection')
+        storage.set(
+          'station-connect-connections-active',
+          'station-profile:station.kontourai.io',
+        );
+      else {
+        if (change === 'credential')
+          profileStore.profiles[0].credentialRef = hostRef('replacement-token');
+        if (change === 'environment')
+          profileStore.profiles[0].environmentId = 'replacement-environment';
+        if (change === 'endpoint')
+          profileStore.profiles[0].endpoint = 'http://127.0.0.1:3774';
+        profileStore.revision += 1;
+        await storage.refresh();
+      }
+      expect(
+        storage.captureNativeRequestBinding(
+          'station-profile:kontour',
+          'https://kontour.example.test',
+        ),
+      ).toBeNull();
+      expect(
+        storage.captureNativeRequestBinding(
+          'station-profile:kontour',
+          'http://127.0.0.1:3141',
+        ),
+      ).toBeNull();
+    },
+  );
+
   it('preserves a retained native request binding through harmless metadata refresh but clears an authority change', async () => {
     const { currentStore, replaceStore, storage } = storageWithKeyring();
     await storage.hydrate();
@@ -2153,9 +2401,15 @@ describe('NativeStationProfileStorage', () => {
     expect(connectionId).toBe('station-profile:kontour');
   });
 
-  it('keeps the shared default unchanged when pairing a different Station', async () => {
-    const { currentStore, storage } = storageWithKeyring();
+  it('keeps the selected Station and its native binding when pairing a different Station', async () => {
+    const { activeProfile, currentStore, storage } = storageWithKeyring();
     await storage.hydrate();
+    await storage.authorizeActiveConnection('station-profile:kontour');
+    const binding = storage.captureNativeRequestBinding(
+      'station-profile:kontour',
+      PROFILE_STORE.profiles[0].endpoint,
+    );
+    expect(binding).not.toBeNull();
 
     await storage.commitVerifiedPairing({
       connectionId: 'temporary-desktop-connection',
@@ -2171,6 +2425,19 @@ describe('NativeStationProfileStorage', () => {
     });
 
     expect(currentStore().defaultProfile).toBe('kontour');
+    expect(activeProfile()).toBe('kontour');
+    expect(
+      storage.captureNativeRequestBinding(
+        'station-profile:kontour',
+        PROFILE_STORE.profiles[0].endpoint,
+      ),
+    ).toEqual(binding);
+    expect(
+      storage.captureNativeRequestBinding(
+        'station-profile:other-station',
+        'https://other.example',
+      ),
+    ).toBeNull();
   });
 
   it('atomically selects the first paired Station and retains the exact client instance for cold authorization', async () => {

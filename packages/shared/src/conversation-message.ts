@@ -221,6 +221,7 @@ export interface ConversationMessage {
     sender?: ClientOriginSender;
     /** That steer was delivered by cancelling the running step (see `TurnStartedEvent`). */
     steerInterruptedRun?: true;
+    steer?: true;
     /**
      * A check-back Station sent (`isStationCheckBackTurn`): sent as the
      * person, written by nobody. Shown as Station's, not the person's.
@@ -236,6 +237,11 @@ export interface ConversationMessage {
      * (`isStationRestartContinuationTurn`). Shown as Station's.
      */
     stationRestartContinuation?: true;
+    /**
+     * A delegated Task's brief or an Automation's run (`stationTurnOrigin`):
+     * sent by a Station flow, not typed by the person.
+     */
+    stationOrigin?: 'delegation' | 'automation';
     /**
      * An in-place engine rewind hid this turn from the engine
      * (`ACP_SESSION_REWOUND_CODE`). The row stays; it is shown as rewound.

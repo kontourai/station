@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createEngineOAuthProxyRoutes } from '../../../routes/mcp/engine-oauth-proxy-route.js';
 import {
   ACP_ENGINE_DURABILITY,
@@ -10793,6 +10794,42 @@ describe('OrchestrationService', () => {
       await vi.advanceTimersByTimeAsync(0);
 
       expect(claude.interruptTurn).toHaveBeenCalledWith(threadId, 'turn-late');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a guarded exact stop refuses deferred delivery when its provider Session is unavailable', async () => {
+    vi.useFakeTimers();
+    try {
+      const threadId = 'guarded-stop-before-session';
+      const turnId = 'reserved-initial-turn';
+      await expect(
+        service.dispatchWithReceipt(
+          { type: 'interruptTurn', threadId, turnId },
+          undefined,
+          { beforeProviderInterrupt: vi.fn() },
+        ),
+      ).rejects.toThrow(
+        'Exact delegated turn cancellation requires a current provider Session.',
+      );
+
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'claude' },
+      });
+      claude.events.push({
+        eventId: 'guarded-stop-before-session-started',
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: 'Accepted initial turn',
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(claude.interruptTurn).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -32101,6 +32138,7 @@ describe('OrchestrationService', () => {
     function createPolicyWorkspace(): string {
       const cwd = mkdtempSync(join(tmpdir(), 'orchestration-policy-'));
       policyWorkspaces.push(cwd);
+      execFileSync('git', ['init', '--quiet'], { cwd, windowsHide: true });
       mkdirSync(join(cwd, '.flow-agents'), { recursive: true });
       return cwd;
     }
@@ -32441,6 +32479,7 @@ describe('OrchestrationService', () => {
     function createTaskWorkspace(): string {
       const cwd = mkdtempSync(join(tmpdir(), 'orchestration-task-'));
       taskWorkspaces.push(cwd);
+      execFileSync('git', ['init', '--quiet'], { cwd, windowsHide: true });
       return cwd;
     }
 

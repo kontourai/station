@@ -333,6 +333,8 @@ for bounds, scope and recorded workspace fields.
 
 Third-party MCP servers are configured as integrations and can be attached to an Agent. Delivery to an external engine follows that engine's transport and credential-custody policy; an empty environment does not grant a server arbitrary authority. The built-in Station Docs server has a verified runtime identity and no credential requirement. Station Control is a separate capability with its own authorization and delivery requirements.
 
+### Tool selection and approval
+
 Open an Agent's **Tools → Add tools** list. Each source shows where it came
 from. Choose **Add**, or open a source to select individual actions. Click an
 action name for its description; approvals sit beside selected actions.

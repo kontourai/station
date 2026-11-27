@@ -6,6 +6,10 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type {
+  ToolServerEventStreamFrame,
+  ToolServerEventStreamInput,
+} from '@kontourai/station-contracts/tool';
 import {
   type AuthProvider,
   Client,
@@ -19,7 +23,10 @@ import {
   type Transport,
 } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { z } from 'zod';
 import { spawnChildWorkload } from './child-workload.js';
+import { encodeMcpEventHeader } from './mcp-event-headers.js';
+import { observeMcpEventStream } from './mcp-event-stream.js';
 import { isObjectRecord } from './object-record.js';
 import {
   type ClaudeDesktopConfig,
@@ -84,6 +91,13 @@ export type MCPElicitationRoute = (request: {
   signal: AbortSignal;
 }) => Promise<ElicitResult>;
 
+type EventStreamReceiver = (frame: ToolServerEventStreamFrame) => Promise<void>;
+type EventStreamScope = {
+  receive: EventStreamReceiver;
+  signal: AbortSignal;
+  send?: Promise<void>;
+};
+
 export interface MCPConnection {
   client: Client;
   serverId: string;
@@ -91,6 +105,12 @@ export interface MCPConnection {
   negotiation: MCPNegotiation;
   close: () => Promise<void>;
   disconnect: () => Promise<void>;
+  readEventStream?: (
+    input: ToolServerEventStreamInput,
+    receive: EventStreamReceiver,
+    signal: AbortSignal,
+    headers?: Record<string, string>,
+  ) => Promise<void>;
   /**
    * Run `operation` with `route` answering an elicitation the server sends
    * while one of its requests is in flight. Present on owned connections.
@@ -179,6 +199,8 @@ const NON_ELICITING_METHODS_2026: ReadonlySet<string> = new Set([
   'ping',
   'completion/complete',
   'events/list',
+  'events/poll',
+  'events/stream',
 ]);
 
 /** The JSON-RPC method each client helper sends. */
@@ -279,6 +301,7 @@ export function prepareMCPConnection(
   type ElicitationScope = { route: MCPElicitationRoute; open: boolean };
   const inFlight = new Set<{ scope: ElicitationScope | undefined }>();
   const elicitationScope = new AsyncLocalStorage<ElicitationScope>();
+  const eventScope = new AsyncLocalStorage<EventStreamScope>();
   function inFlightRequest<T>(operation: () => T): T {
     const scope = elicitationScope.getStore();
     const entry = { scope: scope?.open ? scope : undefined };
@@ -375,6 +398,7 @@ export function prepareMCPConnection(
               normalized,
               opts?.authProvider,
               opts?.authorizationFetch,
+              () => eventScope.getStore(),
             );
             const rawTransport = transport;
             const originalTransportClose =
@@ -396,7 +420,19 @@ export function prepareMCPConnection(
                   // no later start/send may resurrect that local handle.
                   assertCurrent();
                   return track(() => {
+                    const stream =
+                      property === 'send' &&
+                      isObjectRecord(args[0]) &&
+                      args[0].method === 'events/stream'
+                        ? eventScope.getStore()
+                        : undefined;
+                    stream?.signal.throwIfAborted();
                     const result = Reflect.apply(value, target, args);
+                    if (stream)
+                      stream.send = Promise.resolve(result).then(
+                        () => {},
+                        () => {},
+                      );
                     if (
                       result &&
                       typeof (result as { then?: unknown }).then === 'function'
@@ -559,6 +595,25 @@ export function prepareMCPConnection(
               disconnect: handle.close,
               isUsable: () => current() && phase === 'connected',
               localState: handle.inspect,
+              readEventStream: async (input, receive, signal, headers) => {
+                const controller = new AbortController();
+                const scope: EventStreamScope = {
+                  receive,
+                  signal: AbortSignal.any([signal, controller.signal]),
+                };
+                try {
+                  await eventScope.run(scope, () =>
+                    guardedClient.request(
+                      { method: 'events/stream', params: { ...input } },
+                      z.object({}),
+                      { signal: scope.signal, timeout: 65_000, headers },
+                    ),
+                  );
+                } finally {
+                  controller.abort();
+                  await scope.send;
+                }
+              },
               withElicitationRoute: async (route, operation) => {
                 const scope: ElicitationScope = { route, open: true };
                 try {
@@ -776,10 +831,100 @@ export const REQUIRES_AUTHORIZATION_FETCH = Symbol.for(
   'kontourai.station.oauth.requiresAuthorizationFetch',
 );
 
+function boundEventResponse(response: Response): Response {
+  if (!response.body) return response;
+  let bytes = 0;
+  const body = response.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        bytes += chunk.byteLength;
+        if (bytes > 512 * 1024)
+          throw new Error('MCP Events response exceeds 512 KiB');
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  return new Response(body, {
+    headers: response.headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+// The current SDK omits Mcp-Name on named Events requests.
+function withEventsTransport(
+  fetch: FetchLike,
+  getStreamScope?: () => EventStreamScope | undefined,
+): FetchLike {
+  return async (input, init) => {
+    const headers = new Headers(init?.headers);
+    const method = headers.get('mcp-method');
+    if (method === 'events/list')
+      return boundEventResponse(await fetch(input, init));
+    if (method !== 'events/poll' && method !== 'events/stream')
+      return fetch(input, init);
+    if (typeof init?.body !== 'string')
+      throw new Error('Missing MCP Events request body');
+    const request: unknown = JSON.parse(init.body);
+    if (
+      !isObjectRecord(request) ||
+      request.method !== method ||
+      !isObjectRecord(request.params) ||
+      typeof request.params.name !== 'string' ||
+      (typeof request.id !== 'number' && typeof request.id !== 'string')
+    )
+      throw new Error('Invalid MCP Events request');
+    const {
+      id,
+      params: { name },
+    } = request;
+    if (!headers.has('mcp-name'))
+      headers.set('mcp-name', encodeMcpEventHeader(name));
+    const scope = method === 'events/stream' ? getStreamScope?.() : undefined;
+    const response = await fetch(input, {
+      ...init,
+      headers,
+      ...(scope && {
+        signal: init.signal
+          ? AbortSignal.any([init.signal, scope.signal])
+          : scope.signal,
+      }),
+    });
+    if (scope && response.ok) {
+      if (
+        !response.body ||
+        !/^text\/event-stream\b/iu.test(
+          response.headers.get('content-type') ?? '',
+        )
+      ) {
+        await response.body?.cancel();
+        throw new Error('Invalid MCP event stream response');
+      }
+      // Own the whole response so the SDK cannot resume it or dispatch another request's reply.
+      const reply = await observeMcpEventStream(
+        response.body,
+        { id, name },
+        scope.signal,
+        scope.receive,
+      );
+      const headers = new Headers(response.headers);
+      headers.set('Content-Type', 'application/json');
+      headers.delete('Content-Length');
+      headers.delete('Content-Encoding');
+      return new Response(JSON.stringify(reply), {
+        status: response.status,
+        headers,
+      });
+    }
+    return boundEventResponse(response);
+  };
+}
+
 export function createMCPTransport(
   def: ToolDef,
   authProvider?: OAuthClientProvider | AuthProvider,
   authorizationFetch?: (fetch: FetchLike) => FetchLike,
+  getEventStreamScope?: () => EventStreamScope | undefined,
 ): Transport {
   if (
     authProvider &&
@@ -820,24 +965,29 @@ export function createMCPTransport(
         ...remoteFetch(),
       });
 
-    case 'streamable-http':
+    case 'streamable-http': {
       if (!def.endpoint)
         throw new Error(
           `Tool '${def.id}': streamable-http transport requires 'endpoint'`,
         );
+      const { fetch } = remoteFetch(
+        def.headers
+          ? originBoundLiteralHeaderFetch(
+              def.endpoint,
+              def.headers,
+              remoteTransportFetch(def),
+            )
+          : undefined,
+      );
       return new StreamableHTTPClientTransport(new URL(def.endpoint), {
         authProvider,
         requestInit: { redirect: 'error' },
-        ...remoteFetch(
-          def.headers
-            ? originBoundLiteralHeaderFetch(
-                def.endpoint,
-                def.headers,
-                remoteTransportFetch(def),
-              )
-            : undefined,
+        fetch: withEventsTransport(
+          fetch ?? globalThis.fetch.bind(globalThis),
+          getEventStreamScope,
         ),
       });
+    }
 
     default:
       if (def.command) {

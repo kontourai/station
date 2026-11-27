@@ -19,6 +19,7 @@ import {
   usePluginsQuery,
   useQueryClient,
   useTaskGraphQuery,
+  useTaskPullRequestFactsQuery,
   useTaskWorkItemQuery,
 } from '@kontourai/station-sdk';
 import { useProjectTaskRoomDiscoveryQuery } from '@kontourai/station-sdk/project-task-rooms';
@@ -52,6 +53,7 @@ import {
   useNavigation,
   useNavigationActions,
 } from '../contexts/NavigationContext';
+import { openChatsStore } from '../contexts/open-chats-store';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { clientOriginDetail } from '../utils/clientOrigin';
@@ -70,6 +72,7 @@ import {
   WorkspacePaneHostOpenContext,
 } from '../workspace-panes/WorkspacePaneHostOpenContext';
 import { WorkspacePaneHostRuntime } from '../workspace-panes/workspacePaneHostRuntime';
+import { TaskPullRequestRollup } from './project-page/TaskPullRequestRollup';
 import {
   observeTaskExperienceAvailability,
   type ResolvedTaskExperience,
@@ -424,6 +427,89 @@ function taskReferences(graph: TaskGraph): ReferenceItem[] {
   });
 }
 
+function AutomationRunHistory({ links }: { links: RelationGraphLink[] }) {
+  const runs = links
+    .filter(
+      (link) =>
+        link.source === 'system' &&
+        link.metadata?.automationRun === true &&
+        typeof link.metadata.label === 'string' &&
+        /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/runs\/\d+(?:\/attempts\/\d+)?$/.test(
+          link.targetId,
+        ),
+    )
+    .reverse();
+  const { navigate } = useNavigation();
+  const [notice, setNotice] = useState('');
+  const sessions = links
+    .filter(
+      (link) =>
+        link.source === 'dispatch' &&
+        link.relationType === 'spawned_session' &&
+        link.sourceType === 'task' &&
+        link.targetType === 'session',
+    )
+    .reverse();
+  const priorTasks = links.filter(
+    (link) =>
+      link.source === 'system' &&
+      link.metadata?.automationPriorTask === true &&
+      /^\/tasks\/[a-f0-9-]{36}$/.test(link.targetId),
+  );
+  if (runs.length === 0) return null;
+  return (
+    <section className="task-room-results" aria-label="Workflow history">
+      <h2>Workflow history</h2>
+      <ol>
+        {runs.map((run) => (
+          <li key={run.id}>
+            <a href={run.targetId} target="_blank" rel="noreferrer">
+              {String(run.metadata?.label)} ·{' '}
+              {run.targetId
+                .split('/runs/')[1]
+                ?.replace('/attempts/', ' · attempt ')}
+            </a>
+          </li>
+        ))}
+      </ol>
+      {sessions.length > 0 && (
+        <details>
+          <summary>Agent sessions ({sessions.length})</summary>
+          {sessions.map((session) => (
+            <Button
+              key={session.id}
+              type="button"
+              onClick={async () => {
+                setNotice('');
+                if (!(await openChatsStore.openConversation(session.targetId)))
+                  setNotice('This agent session could not be opened.');
+              }}
+            >
+              Open session · {new Date(session.createdAt).toLocaleString()}
+            </Button>
+          ))}
+        </details>
+      )}
+      {priorTasks.length > 0 && (
+        <details>
+          <summary>Previous Tasks ({priorTasks.length})</summary>
+          {priorTasks.map((task) => (
+            <Button
+              key={task.id}
+              type="button"
+              onClick={() => navigate(task.targetId)}
+            >
+              {String(task.metadata?.label)} ·{' '}
+              {new Date(task.createdAt).toLocaleDateString()}
+            </Button>
+          ))}
+        </details>
+      )}
+      {notice && <p role="status">{notice}</p>}
+    </section>
+  );
+}
+
 function useReferenceSelection(taskId: string, references: ReferenceItem[]) {
   const [selection, setSelection] = useState<ReferenceSelection | null>(null);
   useEffect(() => {
@@ -569,6 +655,9 @@ function TaskWorkspaceContent({
   const integrations = references.filter(
     (reference) => reference.kind === 'external',
   );
+  const showPullRequestRollup = useSurfaceVisibilityFlags().has(
+    'pull-request-agent-feedback',
+  );
   const tabStripRef = useRef<HTMLDivElement>(null);
   const revealTab = useCallback((button: HTMLElement) => {
     const strip = tabStripRef.current;
@@ -607,6 +696,13 @@ function TaskWorkspaceContent({
         projectId={projectId}
         onDetails={() => setTab('Details')}
       />
+      {showPullRequestRollup && (
+        <TaskHeaderPullRequests
+          task={graph.task}
+          projectSlug={projectSlug}
+          projectId={projectId}
+        />
+      )}
       <div
         className="task-room-tabs page__tabs"
         ref={tabStripRef}
@@ -767,6 +863,7 @@ function TaskWorkspaceContent({
             />
           </Suspense>
         )}
+        <AutomationRunHistory links={graph.links} />
         <TaskRelationships task={graph.task} kind="children" />
         <div id="task-deliverables">
           <TaskRoomResults task={graph.task} />
@@ -1193,6 +1290,28 @@ function TaskExperienceBoundary({
       )}
     </section>
   );
+}
+
+function TaskHeaderPullRequests({
+  task,
+  projectSlug,
+  projectId,
+}: {
+  task: TaskRecord;
+  projectSlug: string;
+  projectId: string;
+}) {
+  const { data } = useTaskPullRequestFactsQuery(projectSlug, {
+    taskId: task.id,
+  });
+  const entry = data?.tasks[task.id];
+  return entry?.taskCreatedAt === task.createdAt &&
+    entry.linkedPullRequests !== undefined &&
+    (entry.pullRequests.length > 0 || entry.linkedPullRequests.length > 0) ? (
+    <div className="task-room-header__pr-rollup">
+      <TaskPullRequestRollup entry={entry} projectId={projectId} />
+    </div>
+  ) : null;
 }
 
 function TaskHeader({ task }: { task: TaskRecord }) {

@@ -1,0 +1,27 @@
+{
+  "revision": "1586e90a6301831df579fb3ec2931ee3050ed594",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Traced the optional layout read through the explicit catalog, the live grant, keyed Project admission before and under the revision lock, metadata projection and the final authority and Project checks. Focused HTTP cases cover valid and corrupt foreign Projects, withheld storage errors and replacement before lock acquisition.","inputs":["docs/reference/outside-agent-oauth.md","src-server/routes/outside-agent/__tests__/mcp-routes.test.ts","src-server/routes/outside-agent/mcp-routes.ts","src-server/services/outside-agent/mcp-dispatch.ts","src-server/tools/station-control-project-read-tools.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed the optional isolated layout reader wiring against the historical transport evidence and current API. The release guard, transport ownership and session admission remain in place.","inputs":["src-server/routes/outside-agent/mcp-routes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the optional isolated layout reader wiring against the historical transport evidence and current API. The release guard, transport ownership and session admission remain in place.","inputs":["src-server/routes/outside-agent/mcp-routes.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed the positive allowlist and scoped Project layout callback. The reader uses the shared Project tool registration and the current stable Project grant.","inputs":["src-server/services/outside-agent/mcp-dispatch.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the positive allowlist and scoped Project layout callback. The reader uses the shared Project tool registration and the current stable Project grant.","inputs":["src-server/services/outside-agent/mcp-dispatch.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Traced the existing operations registrations after moving the Project layout registration to the shared Project readers. Internal callers still use the same scoped SDK fetcher and result envelope.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Traced the existing operations registrations after moving the Project layout registration to the shared Project readers. Internal callers still use the same scoped SDK fetcher and result envelope.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Traced the existing operations registrations after moving the Project layout registration to the shared Project readers. Internal callers still use the same scoped SDK fetcher and result envelope.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Traced the existing operations registrations after moving the Project layout registration to the shared Project readers. Internal callers still use the same scoped SDK fetcher and result envelope.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Traced the existing operations registrations after moving the Project layout registration to the shared Project readers. Internal callers still use the same scoped SDK fetcher and result envelope.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Traced the existing operations registrations after moving the Project layout registration to the shared Project readers. Internal callers still use the same scoped SDK fetcher and result envelope.","inputs":["src-server/tools/station-control-operations-tools.ts"]}
+  ]
+}

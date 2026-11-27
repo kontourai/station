@@ -78,6 +78,7 @@ import {
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { ErrorState } from '../state';
+import { InboxLinkedPullRequest } from './InboxLinkedPullRequest';
 import { discardUnsentDraft } from './inbox-dismissals';
 import type { MobileActivityGroup } from './mobile-activity-groups';
 import { inboxResolutionId } from './mobile-inbox-selection';
@@ -632,6 +633,7 @@ function InboxRowProjectLine({
   compact = true,
   remoteProject = false,
   children,
+  showTaskPrefix = true,
 }: Pick<InboxRowProps, 'item' | 'projectIcon' | 'projectAccent' | 'compact'> & {
   statusId: string;
   contextLabel: string;
@@ -639,6 +641,7 @@ function InboxRowProjectLine({
   hasUnsentDraft?: boolean;
   remoteProject?: boolean;
   children?: ReactNode;
+  showTaskPrefix?: boolean;
 }) {
   return (
     <span
@@ -650,7 +653,7 @@ function InboxRowProjectLine({
           : undefined
       }
     >
-      {item.kind === 'task' && 'Task · '}
+      {showTaskPrefix && item.kind === 'task' && 'Task · '}
       {(!compact || item.projectSlug || item.projectLabel !== 'No project') && (
         <ProjectAccentSwatch
           size={compact ? 16 : 12}
@@ -1283,6 +1286,22 @@ export function InboxRow({
           </>
         )}
       </button>
+      {!actionsOnHold && facts?.pullRequests?.length ? (
+        <InboxLinkedPullRequest
+          links={facts?.pullRequests}
+          projectSlug={item.projectSlug}
+        />
+      ) : null}
+      {facts?.observedWorkspace?.diffStat && (
+        <span
+          className="inbox-row__diff-stat inbox-row__chip"
+          role="img"
+          aria-label={`${facts?.observedWorkspace.diffStat.insertions} insertions, ${facts?.observedWorkspace.diffStat.deletions} deletions`}
+        >
+          +{facts?.observedWorkspace.diffStat.insertions} −
+          {facts?.observedWorkspace.diffStat.deletions}
+        </span>
+      )}
       {hasActions && !actionsOnHold && (
         <div className="chat-dock-inbox__row-actions inbox-row__actions">
           {/* One ⋯: a menu on a hover chrome, the Details sheet on touch. */}
@@ -1381,7 +1400,7 @@ export function InboxRow({
   );
 }
 
-function InboxTaskRow({
+export function InboxTaskRow({
   item,
   projectName,
   projectAccent,
@@ -1390,9 +1409,11 @@ function InboxTaskRow({
   now,
   facts,
   onActivate,
+  onOpenTaskQuestions,
   onSnoozeWake,
   done,
   isSnoozed,
+  attention,
 }: Pick<
   InboxRowProps,
   | 'projectName'
@@ -1406,7 +1427,10 @@ function InboxTaskRow({
   | 'onSnoozeWake'
   | 'done'
   | 'isSnoozed'
->) {
+> & {
+  onOpenTaskQuestions?: (item: HomeWorkItem) => void;
+  attention?: { reason: string; actions: ReactNode };
+}) {
   const id = useId();
   const status = useObservedWorkStatus(item, now, facts);
   const actions = inboxRowActions({
@@ -1425,9 +1449,10 @@ function InboxTaskRow({
       : undefined,
   });
   const menu = actions.length > 1;
+  const questionCount = facts?.taskOpenQuestionCount ?? 0;
   return (
     <div
-      className={`chat-dock-inbox__row inbox-row inbox-row--card inbox-row--${chrome}${menu ? ' inbox-row--has-actions' : ''}`}
+      className={`chat-dock-inbox__row inbox-row inbox-row--card inbox-row--${chrome}${menu && !attention ? ' inbox-row--has-actions' : ''}${attention ? ' inbox-row--task-attention' : ''}`}
       data-row-key={item.id}
     >
       <button
@@ -1439,6 +1464,7 @@ function InboxTaskRow({
       >
         <InboxRowSummary item={item} now={now} status={status} statusId={id}>
           <InboxRowProjectLine
+            showTaskPrefix={!attention}
             item={item}
             statusId={id}
             contextLabel={projectName ?? item.projectLabel}
@@ -1446,16 +1472,35 @@ function InboxTaskRow({
             projectIcon={projectIcon}
             stationLabel={facts?.station?.label ?? item.environmentLabel}
           />
+          {attention && <span className="inbox-row__task-kind">Task</span>}
         </InboxRowSummary>
       </button>
-      {menu && (
-        <div className="inbox-row__actions">
-          <RowMenu
-            items={inboxRowMenuItems(actions)}
-            label={`Actions for task ${item.title}`}
-            triggerClassName="chat-dock-inbox__row-action inbox-row__action"
-          />
+      {onOpenTaskQuestions && questionCount > 0 && (
+        <div className="inbox-row__question-link">
+          <Button variant="secondary" onClick={() => onOpenTaskQuestions(item)}>
+            {questionCount === 1
+              ? 'Open question'
+              : `${questionCount} open questions`}
+          </Button>
         </div>
+      )}
+      {attention ? (
+        <div className="inbox-row__task-attention-details">
+          <p>{attention.reason}</p>
+          <div className="inbox-row__task-attention-actions">
+            {attention.actions}
+          </div>
+        </div>
+      ) : (
+        menu && (
+          <div className="inbox-row__actions">
+            <RowMenu
+              items={inboxRowMenuItems(actions)}
+              label={`Actions for task ${item.title}`}
+              triggerClassName="chat-dock-inbox__row-action inbox-row__action"
+            />
+          </div>
+        )
       )}
     </div>
   );
@@ -1525,6 +1570,7 @@ export interface InboxGroupListProps {
   /** Sheet chrome: each group label says how many ("Needs you · 2"). */
   showGroupCounts?: boolean;
   onActivate: (item: HomeWorkItem) => void;
+  onOpenTaskQuestions?: (item: HomeWorkItem) => void;
   actionsOnHold?: boolean;
   onSelectRow?: (item: HomeWorkItem) => void;
   onHoldRow?: (item: HomeWorkItem) => void;
@@ -1589,6 +1635,7 @@ export function InboxGroupList({
   collapsible,
   showGroupCounts = false,
   onActivate,
+  onOpenTaskQuestions,
   actionsOnHold = false,
   onSelectRow,
   onHoldRow,
@@ -1726,6 +1773,13 @@ export function InboxGroupList({
         now={now}
         facts={facts}
         onActivate={onActivate}
+        onOpenTaskQuestions={
+          group.id === 'needsYou' &&
+          !item.environmentId &&
+          facts?.hostDetails !== false
+            ? onOpenTaskQuestions
+            : undefined
+        }
         onSnoozeWake={group.id === 'dismissed' ? undefined : onSnoozeWake}
         isSnoozed={group.id === 'snoozed'}
         done={done}

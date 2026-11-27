@@ -633,6 +633,12 @@ holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
 configuration rather than the Project's identity.
 
+With the **Pull request agent feedback** preview on, Chats shows a chip
+for known linked pull requests. Select it to open a pull request beside Chat.
+Use the pull request status picker to find chats with failing checks, awaiting
+review, ready to land or merged pull requests. Task headers and the Project's
+Tasks section summarize their linked and kept pull requests.
+
 The Project conversation list shows its channels and Task rooms. If one of those
 lists is temporarily unavailable, retry that list from the Project page.
 
@@ -723,7 +729,7 @@ started. If you close the dock's draft instead, the message comes back to Home
 as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
-In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed chat-list bar),
+In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed dock),
 **⌘T**, and the floating button in the phone's Chats list open the same composer.
 Text you leave there without starting comes back the next time you open New chat
 for the same Project.
@@ -822,13 +828,15 @@ At the end of first-run setup, **Take the tour** and **Connect another device**
 are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step. If your organization's policy allows only this computer to connect, **Connect another device** is turned off and shows the policy's message, with a **Get help** link when the policy has one.
 
 On a phone, the dock starts at **Chats** unless you open a specific
-conversation. A conversation opens full screen; **Restore chat size** in the
-chat bar shrinks it to a peek and **Full screen chat** grows it back or opens it
-directly from the collapsed bar. The menu drawer lists places and Projects.
-The chat bar’s **Chat list** button returns to the work list; the chat title stays
-as context. Search opens from the magnifier. Your search, list position and
+conversation. A conversation opens full screen. **Restore chat size** in the
+chat bar returns it to where it was before: the bar it opened from, or the size
+you had left it at. **Full screen chat** grows it back or opens it directly
+from the collapsed bar. Drag the bar to resize it: it rests at about half the
+screen, about three quarters, or full screen, and a quick flick down closes it.
+The menu drawer lists places and Projects.
+The chat bar’s **Chats** button returns to the work list. Search opens from the magnifier. Your search, list position and
 unsent message stay in place when switching back to a conversation. Collapsing a conversation keeps its title in the bar. Tap the title to resume it.
-Use the floating **New chat** button in Chats, the compose icon on the collapsed chat-list bar, or **New chat** in Chat actions. The three-dot menu holds chat actions, including **This chat**:
+Use the floating **New chat** button in Chats, the compose icon on the collapsed dock, or **New chat** in Chat actions. The three-dot menu holds chat actions, including **This chat**:
 the chat's workspace, branch and changed files, status, background tasks and
 linked pull requests, each opening its own view. On a computer, a wide dock
 shows the same panel beside the transcript, and a narrower one puts it behind
@@ -836,7 +844,7 @@ a chip in the dock header. The app header keeps connection health, the drawer, a
 for creating a project, including a short first-project prompt when empty.
 
 On a phone, pull down from the top of Chats, Home’s **Recent work**, or the
-Project **Tasks** list. Release when the ring fills. Use **Refresh chats** in Chat list actions or the refresh button beside **Recent work** on Home. A floating status pill shows what’s refreshing.
+Project **Tasks** list. Release when the ring fills. Use **Refresh chats** in **Actions for Chats** or the refresh button beside **Recent work** on Home. A floating status pill shows what’s refreshing.
 
 Each chat appears once in Chats and on Home, under the group its status puts it
 in. When this device sent a message whose delivery Station can't confirm, the
@@ -868,7 +876,7 @@ done** (or **Reopen** once it is done), **Snooze** with its choices (In 1 hour,
 This evening, Tomorrow morning, Next week, each with the time it ends; **Wake
 now** once snoozed), and **Discard draft** when the row has a draft. On a phone
 the same actions are in the row's Details sheet. Closing a chat is not an inbox
-action; close it from the open chat. On mobile, hold a conversation or choose **Select conversations** from Chat list actions. Choose **Details** for one selected row to open its actions. The bottom tray offers **Snooze** and **Mark done** for the selection. Use **Filter chats** for Station, Project and status. On narrow phones, Search and Filter are in Chat list actions. With **Sheet gestures preview** enabled in Settings → Advanced →
+action; close it from the open chat. On mobile, hold a conversation or choose **Select conversations** from **Actions for Chats**. Choose **Details** for one selected row to open its actions. The bottom tray offers **Snooze** and **Mark done** for the selection. Use **Filter chats** for Station, Project and status. On narrow phones, Search and Filter are in **Actions for Chats**. With **Sheet gestures preview** enabled in Settings → Advanced →
 Developer tools, swipe left to reveal labelled actions; the row follows your
 finger and snaps open when released. Only one row's actions stay revealed.
 **Snooze** opens duration choices, and **Mark done** puts the conversation away.
@@ -1111,16 +1119,18 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. **Send** defaults to **Queue**. Station holds the
-message and delivers it after the turn finishes. The message appears in the
-pending list as soon as Station accepts it. The dropdown switches between the
-available modes. For an ACP engine without native steering, choosing **Steer**
-stops its current step and continues the task with your instruction once cancellation
-finishes. Station-owned steering waits for the next safe boundary. A Muse chat
-on `muse exec` supports Queue only. Each pending row shows its mode.
-For a locally queued message, **Send now** stops the active turn and sends the
-selected message after Station confirms the stop. Messages held by Station can
-be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
+Keep typing during a turn. The amber **Queue** button holds your message until
+the turn finishes. Use the chevron to switch to the green **Steer** button
+when the engine supports it. A Station-managed turn takes the steer at its
+next safe boundary. An ACP engine with interrupting steering stops the running
+step before continuing with your instruction. A steer appears with an outline
+while waiting for acknowledgement.
+
+Open the Queue count to review waiting messages. Use the grip to move a
+message, tap its text to edit it, or swipe left to reveal the trash icon. The
+More button reveals the same action. On a supported running turn, the green
+arrow on a queued text message steers with that message. **Stop** remains
+separate.
 You can attach files or dictate during a turn. In the parent chat, Steer carries text only, so a
 message with files is queued: Station keeps the files with it and sends them
 when the turn ends, and the pending row names them. On a Station that cannot
@@ -1304,6 +1314,11 @@ keeps a file for as long as its message stands. If a Project channel
 pauses attachments while its file store is repaired, it says so; remove the
 files and your text still sends.
 
+On a phone, tap an image to open the full-screen preview. Swipe left or right
+while the image fits the screen, or tap the chevrons below the image. Pinch to
+zoom and drag to pan. Open **⋯** for fit, actual size, and zoom controls. Use
+the download icon to save the current image.
+
 An existing chat can become a Task through **New Task from this** in its More menu.
 The **Add to Task** picker also offers **New Task from this** for an answer or input.
 **New Task from this** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or choose **Stop shaping this Task** in the chat’s More menu. No Task is created until acceptance.
@@ -1441,11 +1456,13 @@ sessions and capability checks are left out.
 `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 point Station at a different folder (for OpenCode, the folder holding the
 database). With `STATION_EXTERNAL_CODEX_SOURCE_ROOT` set, that folder is the
-only Codex home Station reads. Station checks every two seconds and reads the
-128 most recently changed conversations from each place (each Codex home is
-its own place, up to 512 Codex conversations in all, the default home first). Older ones stay in history once Station has read
-them, but new messages in them are not picked up until they are among
-the 128 again. Conversations Station has not listed before appear only after it
+only Codex home Station reads. By default, Station waits at least two seconds
+between checks and backs off to twelve seconds when nothing changes. It
+reads a few transcripts per source at a time and yields between batches. Discovery can find up to 128
+recently changed conversations per place (each Codex home is its own place,
+up to 512 Codex conversations in all, the default home first). Previous
+imports stay in history. A conversation outside the discovery limit becomes
+eligible for new messages when it moves back into the limit. Conversations Station has not listed before appear only after it
 finishes restoring its own sessions at startup; if that restore fails, already
 listed conversations keep updating but new ones wait until Station restarts.
 
@@ -1491,6 +1508,28 @@ Conversations inside a Project are read either way.
 
 A hosted Station never reads conversations outside your Projects. It reads the
 ones inside a Project, but no account can open them there.
+
+### Browse older third-party conversations
+
+Enable **Third-party history** in **Settings → Advanced → Feature previews**.
+Open global **History** and choose **Third-party history**. Choose an engine to
+browse older pages, or search the recent results by engine or folder. Open a conversation to read its text from the provider's local
+store. Browsing leaves its transcript with the provider. ACP entries from the
+optional external session list show metadata only.
+
+Choose **Import conversation** to save the transcript in Station. You can
+cancel and resume from the saved progress. After import, **Open saved
+conversation** opens the same reader that the inbox uses. Claude Code and
+Codex keep their usual **Continue in Station** behavior. Grok and OpenCode
+transcripts stay read only.
+
+Station follows sources with a known write time automatically for 30 minutes
+after their last change. New writes make an older
+conversation eligible again. Existing imported history stays available.
+The archive uses each provider's discovery cap and reports when results are
+partial. Claude's preview starts near the end of large transcripts, with
+**Read from the beginning** available. Import starts at the beginning of an
+archive that Station has never saved.
 
 ## Continue an Attached Session
 
@@ -1604,6 +1643,11 @@ The session reader and coding tabs use the same reply controls as the dock.
 Shared Task history keeps the records already loaded when an earlier page fails;
 use **Retry** to read that page again. Chats search, snooze, Mark done and Undo
 work across its desktop and mobile layouts.
+
+Each prompt under **Ask Station** in the help menu, such as **Check my
+Station**, starts a new chat with the built-in **Station Assistant**. When the
+Station Assistant has no engine to run on, the prompt starts on the first agent
+that can.
 
 Open the help menu and choose **Troubleshoot with an agent**, or search the
 command palette for **Troubleshoot an issue**. It is also under Settings →

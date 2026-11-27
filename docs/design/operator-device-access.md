@@ -304,6 +304,11 @@ Stations (refused in v1, D11), and confirming pairing requests remotely (D9).
    Without `STATION_TRUSTED_CONSENT_ORIGIN`, the listener keeps issuing
    `http://<request host>:<consent port>` review URLs for ordinary consent
    transactions, including loopback `http://localhost:<consent port>`.
+   The default-off [dynamic publication preview](station-routes.md#dynamic-https-publications-preview)
+   extends this legacy configuration: a live saved approval origin or an
+   existing owned Tailscale Serve mapping can provide HTTPS without the startup
+   variable. Requests capture one publication snapshot; pending reviews and
+   WebAuthn ceremonies remain pinned to their original origin and refuse a move.
    Operator passkey enrollment and sign-in, however, run only on the configured
    HTTPS origin; without it they are unavailable (503) on every host, loopback
    included.

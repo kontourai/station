@@ -29,12 +29,3 @@
   margin: 0;
   font-size: var(--k-text-sm);
 }
-
-/* On a phone the top of the page is a route's primary control (Home's start
-   composer): stand the notice just clear of the collapsed dock instead. */
-@media (max-width: 640px) {
-  .notification-station-notice {
-    top: auto;
-    bottom: calc(var(--dock-bottom-clearance, 0px) + 8px);
-  }
-}

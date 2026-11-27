@@ -102,7 +102,11 @@
 
     "src-ui/src/__tests__/toast-lifecycle.test.tsx",
 
-    "src-server/services/orchestration/finished-alert-episodes.ts"
+    "src-server/services/orchestration/finished-alert-episodes.ts",
+
+    "src-ui/src/components/notifications/NotificationStationOpener.tsx",
+
+    "src-ui/src/lib/notificationStationOpen.ts"
   ],
 
   "checks": [

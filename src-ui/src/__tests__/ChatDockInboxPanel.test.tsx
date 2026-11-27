@@ -13,10 +13,12 @@ import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { LIFECYCLE_HOLD_MS } from '../components/chat-dock/useHeldLifecycles';
 import { snoozeChoices } from '../components/inbox-row/snooze-presets';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
+import { navigationStore } from '../contexts/navigation-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { migrateSnoozeKey, writeSnooze } from '../utils/activity-snooze-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import { buildOrchestrationItems } from '../views/home/home-view-model';
+import type { WorkFacts } from '../views/home/work-facts';
 import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 // The app supplies connection authority; these isolated row tests supply the
@@ -92,6 +94,37 @@ describe('ChatDockInboxPanel', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('opens a Task’s Plan from its question count only with the preview enabled', () => {
+    const navigate = vi
+      .spyOn(navigationStore, 'navigate')
+      .mockImplementation(() => {});
+    const task: HomeWorkItem = {
+      ...item('question-task', 'Needs attention', NOW - 60_000),
+      kind: 'task',
+      kindLabel: 'Task · Needs input',
+    };
+    const { props, rerender } = renderPanel({
+      items: [task],
+      workFacts: new Map([[task.id, { taskOpenQuestionCount: 2 }]]),
+    });
+    expect(
+      screen.queryByRole('button', { name: '2 open questions' }),
+    ).toBeNull();
+    rerender(<ChatDockInboxPanel {...props} taskQuestionsEnabled />);
+    fireEvent.click(screen.getByRole('button', { name: '2 open questions' }));
+    expect(navigate).toHaveBeenCalledWith(
+      '/tasks/question-task',
+      expect.objectContaining({ taskView: 'plan' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open task question-task title' }),
+    );
+    expect(navigate).toHaveBeenLastCalledWith(
+      '/tasks/question-task',
+      expect.objectContaining({ taskView: 'overview' }),
+    );
   });
 
   it('renders activity groups in order with their status words', () => {
@@ -1162,13 +1195,13 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
         within(toolbar).getByRole('searchbox', { name: 'Search chats' }),
       ).toBeTruthy();
       expect(
-        within(toolbar).getByRole('combobox', { name: 'Chat list scope' }),
+        within(toolbar).getByRole('combobox', { name: 'Scope for Chats' }),
       ).toBeTruthy();
       expect(
         within(toolbar).getByRole('button', { name: 'New chat' }),
       ).toBeTruthy();
       expect(
-        screen.queryByRole('button', { name: 'Chat list actions' }),
+        screen.queryByRole('button', { name: 'Actions for Chats' }),
       ).toBeNull();
       // The scope's visible label gave its width to search; its name stays.
       expect(
@@ -1197,4 +1230,42 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
     expect(within(row).getByText('active agent')).toBeTruthy();
     expect(within(row).getAllByText('1m ago')).toHaveLength(1);
   });
+});
+
+it('filters Chats by a known PR state without matching an unknown check', () => {
+  const pullRequest = {
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'acme', name: 'team' },
+    source: 'explicit' as const,
+    ref: '17',
+    observedAt: '2026-11-25T15:00:00Z',
+    status: {
+      state: 'current' as const,
+      title: 'Fix a check',
+      pullRequestState: 'OPEN',
+    },
+  };
+  const workFacts = new Map<string, WorkFacts>([
+    [
+      'active',
+      {
+        pullRequests: [
+          {
+            ...pullRequest,
+            status: { ...pullRequest.status, checks: 'failing' },
+          },
+        ],
+      },
+    ],
+    ['attention', { pullRequests: [{ ...pullRequest, ref: '18' }] }],
+  ]);
+  renderPanel({ workFacts });
+  const filter = screen.getByRole('combobox', { name: 'Pull request status' });
+  fireEvent.change(filter, { target: { value: 'failing' } });
+  expect(screen.getByText('active title')).toBeTruthy();
+  expect(screen.queryByText('attention title')).toBeNull();
+  fireEvent.change(filter, { target: { value: 'ready' } });
+  expect(screen.queryByText('active title')).toBeNull();
+  expect(screen.queryByText('attention title')).toBeNull();
 });

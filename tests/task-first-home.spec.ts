@@ -14,6 +14,7 @@ import type {
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Locator, type Page } from '@playwright/test';
 import type { PluginPublishInspection } from '../src-ui/src/views/project-page/pluginPublishClient';
+import { createLongSessionEventWindowHandler } from './fixtures/long-session';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import {
   E2E_STATION_CAPABILITIES,
@@ -119,6 +120,11 @@ async function mockTaskFirstHome(
     localStorage.setItem('station:onboarding-setup-dismissed', '1');
   });
   await page.route('**/events', (route) => route.abort());
+  await page.route('**/acp/connections', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill(json([]))
+      : rejectUnexpectedFixtureRequest(route),
+  );
   await page.route(
     '**/agents/codex-agent/conversations/task-first-home/messages',
     (route) => route.fulfill(json([])),
@@ -351,6 +357,7 @@ async function mockTaskFirstHome(
                 threadId: `history-${index}`,
                 conversationId: `conversation-${index}`,
                 displayTitle: `History session ${index}`,
+                eventCount: 0,
                 delegation: undefined,
                 lifecycleState: 'completed',
                 status: 'closed',
@@ -495,6 +502,26 @@ async function mockTaskFirstHome(
         );
         return;
       }
+    }
+    const historyWindow = path.match(
+      /^\/api\/orchestration\/sessions\/history-(\d+)\/event-window$/,
+    );
+    if (historyWindow && options.historyCount) {
+      const query = new URL(route.request().url()).searchParams;
+      if (
+        route.request().method() !== 'GET' ||
+        Number(historyWindow[1]) >= options.historyCount ||
+        query.get('direction') !== 'newest' ||
+        query.get('turnLimit') !== '1' ||
+        query.has('cursor')
+      )
+        return rejectUnexpectedFixtureRequest(route);
+      await createLongSessionEventWindowHandler({
+        threadId: `history-${historyWindow[1]}`,
+        provider: taskSession.provider,
+        availableTurns: () => [],
+      })(route);
+      return;
     }
     if (path === '/api/orchestration/sessions/task-first-home') {
       await route.fulfill(
@@ -778,6 +805,13 @@ async function mockTaskFirstHome(
       await route.fulfill(json([]));
       return;
     }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/mobile-devices/agent-reveals'
+    ) {
+      await route.fulfill({ status: 404, json: { success: false } });
+      return;
+    }
     if (await fulfillStationShellRead(route)) return;
     await rejectUnexpectedFixtureRequest(route);
   });
@@ -944,11 +978,9 @@ async function startProjectTask(
   );
   await sendDraft(await openProjectDraft(page), prompt);
   await sent;
-  // Desktop keeps the standalone project-context row; a phone folds the project
-  // into the one-row header's eyebrow above the chat title.
-  const projectContext = page.locator('.chat-dock__project-context');
-  const mobileEyebrow = page.locator('.chat-dock__mobile-eyebrow');
-  await expect(projectContext.or(mobileEyebrow).first()).toBeVisible();
+  const chatHeader = page.locator('.chat-dock__header');
+  await expect(chatHeader).toBeVisible();
+  await expect(chatHeader).toContainText(prompt);
   if (options.settle) await completeStartedTurn(page, prompt);
 }
 
@@ -1564,24 +1596,24 @@ test.describe('Task-first Home (#332, mocked)', () => {
       }),
     ).toHaveAttribute('aria-current', 'true');
 
-    // Back on Home with the dock open and no chat in it.
+    // Back on Home with the dock open and no chat in it: the dock shows its
+    // own New chat draft, ready to type, instead of a "No chat open" card
+    // (#5592), and Home's composer steps aside for it.
     await page.goto('/?dock=open');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBeNull();
-    await expect(page.getByText('No chat open')).toBeVisible();
-
-    // The selection Home's chips name is the one the dock's draft opens
-    // with: the same chips, the same words. Opening the project's work bound
-    // the dock to it, so both now open on Station.
-    await expect(advertised).toBeVisible();
+    await expect(page.getByText('No chat open')).toHaveCount(0);
+    const dialog = page.getByRole('region', { name: 'New chat', exact: true });
+    await expect(dialog).toBeVisible();
+    const draft = dialog.getByRole('form', { name: 'Start work' });
     await expect(
-      homeComposer.getByRole('button', {
-        name: 'Project: Station',
-        exact: true,
-      }),
-    ).toBeVisible();
-    const { dialog, draft } = await openNewChatDraft(page);
+      page.locator('.home-view').getByRole('form', { name: 'Start work' }),
+    ).toHaveCount(0);
+
+    // The selection Home's chips named is the one the dock's draft opens
+    // with: the same chips, the same words. Opening the project's work bound
+    // the dock to it, so the draft opens on Station.
     await expect(
       await runSetupControl(draft, (panel) =>
         panel.getByRole('button', {
@@ -1596,8 +1628,25 @@ test.describe('Task-first Home (#332, mocked)', () => {
         exact: true,
       }),
     ).toBeVisible();
+    // Dismissing a draft the dock opened on its own folds the dock to its
+    // toolbar: there is no chat behind it to return to.
     await dialog.press('Escape');
     await expect(dialog).toHaveCount(0);
+    // With the dock folded, Home's own composer is back and names the same
+    // selection the dock's draft opened with.
+    const homeAgain = page.getByRole('form', { name: 'Start work' });
+    await expect(homeAgain).toBeVisible();
+    await expect(
+      await runSetupControl(homeAgain, (panel) =>
+        panel.getByRole('button', {
+          name: 'Agent: Codex · gpt-5.3-codex',
+          exact: true,
+        }),
+      ),
+    ).toBeVisible();
+    await expect(
+      homeAgain.getByRole('button', { name: 'Project: Station', exact: true }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: /Open local project/i }).click();
     await expect(
@@ -1612,7 +1661,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       .toBeNull();
     await expect
       .poll(() => new URL(page.url()).searchParams.get('dock'))
-      .toBe('open');
+      .not.toBe('open');
 
     // station#settings-revamp slice 5: the dead `/providers` alias is
     // removed. An old Connections address still lands on its Customize item.
@@ -1901,93 +1950,107 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
   test('desktop active work reveals real files and task context beside usable chat', async ({
     page,
-  }) => {
+  }, testInfo) => {
+    await installJourneyProfile(page);
     await installMockOrchestrationSse(page);
     await mockTaskFirstHome(page);
     await page.goto('/');
-    await startProjectTask(page, { settle: true });
+    await startProjectTask(page);
+    await page.getByRole('button', { name: 'Show Chat', exact: true }).click();
+    await completeStartedTurn(page, 'Start the project task.');
 
-    // Delegate/Commands/Files/Task-context collapse into one grouped "+"
-    // menu next to attach + mic (docs/design/chat-composer.md §3.2) — open
-    // it to reach the Files/Task-context toggles.
-    const actionsMenuTrigger = page.getByRole('button', {
-      name: 'Composer actions',
-    });
-    await expect(actionsMenuTrigger).toBeVisible();
+    await profileJourney(
+      page,
+      testInfo,
+      'desktop-workspace',
+      { files: 1, taskContexts: 1 },
+      async () => {
+        const actionsMenuTrigger = page.getByRole('button', {
+          name: 'More dock actions',
+        });
+        await expect(actionsMenuTrigger).toBeVisible();
 
-    await actionsMenuTrigger.click();
-    const menu = page.getByRole('menu', { name: 'Composer actions' });
-    await expect(menu).toBeVisible();
-    const filesTrigger = menu.getByRole('menuitemcheckbox', {
-      name: 'Files (1)',
-    });
-    await expect(filesTrigger).toBeVisible();
-    await filesTrigger.click();
-    await expect(
-      page.getByRole('complementary', { name: 'Active work files' }),
-    ).toBeVisible();
-    await expect(page.locator('.chat-dock textarea')).toBeVisible();
+        await actionsMenuTrigger.click();
+        const menu = page.getByRole('menu', { name: 'More dock actions' });
+        await expect(menu).toBeVisible();
+        const filesTrigger = menu.getByRole('menuitemcheckbox', {
+          name: 'Changed files (1)',
+        });
+        await expect(filesTrigger).toBeVisible();
+        await filesTrigger.click();
+        await expect(
+          page.getByRole('complementary', { name: 'Active work files' }),
+        ).toBeVisible();
+        await expect(page.locator('.chat-dock textarea')).toBeVisible();
 
-    // Task context replaces the files panel beside the same usable chat.
-    await actionsMenuTrigger.click();
-    await expect(menu).toBeVisible();
-    await menu.getByRole('menuitemcheckbox', { name: 'Task context' }).click();
-    const context = page.getByRole('complementary', { name: 'Task context' });
-    await expect(context).toContainText('feat/contextual-active-work');
-    await expect(context).toContainText('Checks');
-    await expect(context).toContainText('Unavailable');
-    await expect(page.locator('.chat-dock textarea')).toBeVisible();
+        // Task context replaces the files panel beside the same usable chat.
+        await actionsMenuTrigger.click();
+        await expect(menu).toBeVisible();
+        await menu
+          .getByRole('menuitemcheckbox', { name: 'Task context' })
+          .click();
+        const context = page.getByRole('complementary', {
+          name: 'Task context',
+        });
+        await expect(context).toContainText('feat/contextual-active-work');
+        await expect(context).toContainText('Checks');
+        await expect(context).toContainText('Unavailable');
+        await expect(page.locator('.chat-dock textarea')).toBeVisible();
 
-    const geometry = await page
-      .locator('.chat-dock__workspace')
-      .evaluate((el) => ({
-        clientWidth: el.clientWidth,
-        scrollWidth: el.scrollWidth,
-        clientHeight: el.clientHeight,
-        scrollHeight: el.scrollHeight,
-      }));
-    expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
-    expect(geometry.scrollHeight).toBeLessThanOrEqual(
-      geometry.clientHeight + 1,
+        const geometry = await page
+          .locator('.chat-dock__workspace')
+          .evaluate((el) => ({
+            clientWidth: el.clientWidth,
+            scrollWidth: el.scrollWidth,
+            clientHeight: el.clientHeight,
+            scrollHeight: el.scrollHeight,
+          }));
+        expect(geometry.scrollWidth).toBeLessThanOrEqual(
+          geometry.clientWidth + 1,
+        );
+        expect(geometry.scrollHeight).toBeLessThanOrEqual(
+          geometry.clientHeight + 1,
+        );
+
+        // A changed file opens in the editor route, where the same chat's
+        // composer is still the usable surface.
+        await actionsMenuTrigger.click();
+        await expect(menu).toBeVisible();
+        await filesTrigger.click();
+        // The opened file's pane reads its changes against HEAD (#3365). Wait
+        // for that read so the test, not teardown timing, decides it ran.
+        const changesRead = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname ===
+              '/api/projects/station/file-preview/changes' &&
+            response.request().method() === 'POST',
+        );
+        await page
+          .getByRole('button', { name: 'Open src-ui/src/App.tsx in editor' })
+          .click();
+        await expect
+          .poll(() => new URL(page.url()).pathname)
+          .toBe('/projects/station/layouts/coding');
+        expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
+          'src-ui/src/App.tsx',
+        );
+        const changes = await changesRead;
+        expect(changes.status()).toBe(200);
+        // The pane asked for the file it opened.
+        expect(changes.request().postDataJSON()).toMatchObject({
+          path: 'src-ui/src/App.tsx',
+        });
+        // The opened preview shows the file and consumed the read: the Changes
+        // toggle counts the declared patch's one changed line.
+        await expect(page.getByText('export function App() {}')).toBeVisible();
+        await expect(
+          page.getByRole('button', { name: 'Changes vs HEAD, 1 changed line' }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('textbox', { name: 'Message', exact: true }),
+        ).toBeVisible();
+      },
     );
-
-    // A changed file opens in the editor route, where the same chat's
-    // composer is still the usable surface.
-    await actionsMenuTrigger.click();
-    await expect(menu).toBeVisible();
-    await filesTrigger.click();
-    // The opened file's pane reads its changes against HEAD (#3365). Wait
-    // for that read so the test, not teardown timing, decides it ran.
-    const changesRead = page.waitForResponse(
-      (response) =>
-        new URL(response.url()).pathname ===
-          '/api/projects/station/file-preview/changes' &&
-        response.request().method() === 'POST',
-    );
-    await page
-      .getByRole('button', { name: 'Open src-ui/src/App.tsx in editor' })
-      .click();
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toBe('/projects/station/layouts/coding');
-    expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
-      'src-ui/src/App.tsx',
-    );
-    const changes = await changesRead;
-    expect(changes.status()).toBe(200);
-    // The pane asked for the file it opened.
-    expect(changes.request().postDataJSON()).toMatchObject({
-      path: 'src-ui/src/App.tsx',
-    });
-    // The opened preview shows the file and consumed the read: the Changes
-    // toggle counts the declared patch's one changed line.
-    await expect(page.getByText('export function App() {}')).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Changes vs HEAD, 1 changed line' }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('textbox', { name: 'Message', exact: true }),
-    ).toBeVisible();
   });
 
   // #1180: the Activity surface is one of the places where `SplitPaneLayout`'s
@@ -2057,7 +2120,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       { width: 375, height: 667 },
       { width: 412, height: 915 },
     ]) {
-      test(`phone chat opens full and restores its snap after rotation at ${portrait.width}px`, async ({
+      test(`phone chat opens full, restores to where it was, and keeps its snap after rotation at ${portrait.width}px`, async ({
         page,
       }, testInfo) => {
         await page.setViewportSize(portrait);
@@ -2143,8 +2206,25 @@ test.describe('Task-first Home (#332, mocked)', () => {
           exact: true,
         });
         await composer.fill(draft);
+
+        // Restore returns the chat to where it was before it went full screen
+        // (owner decision, 2026-11-25). This chat opened full from Home, so it
+        // goes back to its bar over Home; it used to shrink to Half instead.
+        const snap = () =>
+          page.evaluate(() => localStorage.getItem('station.chatDock.snap'));
+        const dockHeight = async () =>
+          Math.round((await dock.boundingBox())?.height ?? 0);
         await restore.click();
         await expect(dock).not.toHaveClass(/is-maximized/);
+        await expect(dock).toHaveClass(/is-collapsed/);
+        await expect.poll(snap).toBe('collapsed');
+        await expect(
+          page.getByRole('region', { name: 'Home', exact: true }),
+        ).toBeInViewport();
+
+        // Opened from the bar, the chat rests on Half with its draft intact.
+        await dock.getByRole('button', { name: /^Open chat:/ }).click();
+        await expect(composer).toHaveValue(draft);
 
         const geometry = [];
         for (const viewport of [
@@ -2156,12 +2236,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
           portrait,
         ]) {
           await page.setViewportSize(viewport);
+          // A short window shows an open dock at its full height. Otherwise
+          // Half is 45% of the viewport and never under 380px on a phone.
           const expectedHeight =
             viewport.height <= 540
               ? viewport.height
-              : Math.round(viewport.height * 0.45);
+              : Math.max(380, Math.round(viewport.height * 0.45));
           await expect
-            .poll(() =>
+            .poll(async () =>
               page.evaluate(() =>
                 localStorage.getItem('station.chatDock.snap'),
               ),
@@ -2189,10 +2271,66 @@ test.describe('Task-first Home (#332, mocked)', () => {
           });
         }
 
+        // Resting evidence for review: each level in both themes at this width.
+        const dataTheme = await page.evaluate(() =>
+          document.documentElement.getAttribute('data-theme'),
+        );
+        const attachView = async (name: string) => {
+          for (const theme of ['dark', 'light'] as const) {
+            await page.evaluate((value) => {
+              document.documentElement.setAttribute('data-theme', value);
+            }, theme);
+            await testInfo.attach(`${name}, ${theme}`, {
+              body: await page.screenshot(),
+              contentType: 'image/png',
+            });
+          }
+          await page.evaluate((value) => {
+            if (value)
+              document.documentElement.setAttribute('data-theme', value);
+            else document.documentElement.removeAttribute('data-theme');
+          }, dataTheme);
+        };
+        await attachView('phone chat at Half');
+
+        // Tall is the level between Half and Full: most of the screen for the
+        // conversation, with the page behind still in view. A slow drag up
+        // from Half lands on it, and Restore then returns to it.
+        const tallHeight = Math.round(portrait.height * 0.75);
+        const halfTranscript =
+          geometry[geometry.length - 1]?.transcriptHeight ?? 0;
+        const headerBox = await dock
+          .getByTestId('chat-dock-mobile-header')
+          .boundingBox();
+        if (!headerBox) throw new Error('Mobile dock header is not measurable');
+        await page.mouse.move(headerBox.x + 4, headerBox.y + 30);
+        await page.mouse.down();
+        await page.mouse.move(
+          headerBox.x + 4,
+          portrait.height - tallHeight + 30,
+          { steps: 4 },
+        );
+        await page.mouse.up();
+        await expect.poll(snap).toBe('tall');
+        await expect.poll(dockHeight).toBe(tallHeight);
+        const tallTranscript = (await transcript.boundingBox())?.height ?? 0;
+        expect(tallTranscript).toBeGreaterThan(halfTranscript);
+        expect((await dock.boundingBox())?.y ?? 0).toBeGreaterThanOrEqual(100);
+        await attachView('phone chat at Tall');
+
         await dock.getByRole('button', { name: 'Full screen chat' }).click();
         await expect(dock).toHaveClass(/is-maximized/);
         await expect(composer).toHaveValue(draft);
-        await dock.getByRole('button', { name: 'Toggle menu' }).click();
+        await restore.click();
+        await expect(dock).not.toHaveClass(/is-maximized/);
+        await expect.poll(snap).toBe('tall');
+        await expect.poll(dockHeight).toBe(tallHeight);
+
+        await dock.getByRole('button', { name: 'Full screen chat' }).click();
+        await expect(dock).toHaveClass(/is-maximized/);
+        await expect(composer).toHaveValue(draft);
+        // The drawer toggle is the app toolbar's; the dock header carries none.
+        await page.getByRole('button', { name: 'Toggle menu' }).click();
         await page
           .getByRole('navigation', { name: 'Mobile navigation' })
           .getByRole('button', { name: 'Home', exact: true })
@@ -2899,31 +3037,64 @@ test.describe('Task-first Home (#332, mocked)', () => {
   });
 });
 
-test('profiles Home with substantial session history', async ({
-  page,
-}, testInfo) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await installJourneyProfile(page);
-  await mockTaskFirstHome(page, { historyCount: 1000 });
-  await profileJourney(
+for (const viewport of [
+  { width: 1280, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test(`profiles Home with substantial session history at ${viewport.width}px`, async ({
     page,
-    testInfo,
-    'home-history',
-    { sessions: 1000 },
-    async () => {
-      const response = page.waitForResponse(
-        (response) =>
-          new URL(response.url()).pathname ===
-          '/api/orchestration/sessions/read-model',
-      );
-      await page.goto('/');
-      expect((await (await response).json()).data).toHaveLength(1000);
-      await expect(
-        page.getByRole('form', { name: 'Start work' }),
-      ).toBeVisible();
-      await expect(
-        page.getByText('History session 0', { exact: true }).first(),
-      ).toBeVisible();
-    },
-  );
-});
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await installJourneyProfile(page);
+    await mockTaskFirstHome(page, { historyCount: 1000 });
+    await profileJourney(
+      page,
+      testInfo,
+      viewport.width === 1280 ? 'home-history' : 'home-history-mobile',
+      { sessions: 1000 },
+      async () => {
+        const response = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname ===
+            '/api/orchestration/sessions/read-model',
+        );
+        await page.goto('/');
+        expect((await (await response).json()).data).toHaveLength(1000);
+        await expect(
+          page.getByRole('form', { name: 'Start work' }),
+        ).toBeVisible();
+        await expect(
+          page.getByText('History session 0', { exact: true }).first(),
+        ).toBeVisible();
+      },
+    );
+    const composer = page
+      .getByRole('form', { name: 'Start work' })
+      .getByRole('textbox', { name: 'What would you like done?' });
+    const draft = 'Keep this draft while I browse recent work';
+    await composer.click();
+    await composer.pressSequentially(draft);
+    await expect(composer).toHaveValue(draft);
+    await expect(composer).toBeFocused();
+    const bounds = await composer.boundingBox();
+    expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    await page
+      .getByText('History session 0', { exact: true })
+      .first()
+      .scrollIntoViewIfNeeded();
+    await expect(composer).toBeFocused();
+    await composer.scrollIntoViewIfNeeded();
+    await expect(composer).toHaveValue(draft);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth + 1,
+      ),
+    ).toBe(true);
+    await testInfo.attach('home-history-draft-and-focus', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
+  });
+}

@@ -266,12 +266,15 @@ the same `perProject` level, from silently muting turn and approval alerts.
 The in-app approval toast sends the selected decision and opens its originating
 conversation. An accepted approval action in notification history or Attention
 also opens that conversation; a runtime Activity link is converted to the chat
-dock for this decision action. Ordinary Open session links keep their original
-destination. These client actions do not add approval buttons to native push or
-change background delivery guarantees. A request answered with a form (a
-harness question) carries no decision actions in notification history or
-Attention: an Allow or Deny there names no answer and no exact request event,
-so the command route would refuse it. Its Open session link leads to the form.
+dock for this decision action. An Attention row's own Open session link is that
+dock href (`notificationSessionHref`) for a session on this Station, a failed
+one included, so the row and its alert open the same chat. A stored Activity
+link still opens the session reader in Chat. These client actions do not add
+approval buttons to native push or change background delivery guarantees. A
+request answered with a form (a harness question) carries no decision actions
+in notification history or Attention: an Allow or Deny there names no answer
+and no exact request event, so the command route would refuse it. Its Open
+session link leads to the form.
 A request whose content, or the content of a call it gates, was stored out of
 line carries only Deny there: allowing it needs the whole request loaded,
 which the conversation's card does ([event content spill](event-content-spill.md)).
@@ -1324,15 +1327,16 @@ and the right conversation.
   still switching away re-selects the active Station, so the last tap wins.
   A Station not saved on this device, or a failed or overtaken switch,
   shows a notice with Manage Stations (and Retry for a failed switch)
-  instead of dropping the tap. On a phone-width screen the notice sits just
-  above the collapsed dock rather than over the top of the page.
+  instead of dropping the tap. The notice sits below the toolbar at every dock height.
 - **Cold loads.** A tab loaded on a link that names a Station has `chat`,
   `dock`, `openedNotification` and `station` taken off the URL before the
   first render, and the request waits for the opener: the dock never looks
   the conversation up on whichever Station happened to be active, and the
   read marker is sent to the right one. A request that waited is dropped
   when the person navigated (or went Back) before the opener mounted
-  (`installNavigationPosition`, the navigation store's history index).
+  (`installNavigationPosition`, the navigation store's history index). A cold
+  chat link with `openedNotification` also uses this opener on older Stations
+  whose links omit the Station id.
 - **No reload where the app runs.** The service worker posts
   `station-notification-open` with the link's on-origin URL to the focused
   tab and waits up to 1.5 seconds for its acknowledgement
@@ -1346,9 +1350,10 @@ and the right conversation.
   conversation on <Station>" after a switch) over the conversation it showed
   before, which stays mounted hidden and inert; the header names the open,
   and the inbox selection and This Chat card stand down until it lands.
-  When a notification asked for the conversation, a miss is said rather
-  than only cleared: not found (also what an unreadable session answers),
-  no access (403, at once: a refusal is the Station's answer), or the
+  A link can name an execution Session. The Station checks access to that
+  Session and resolves its conversation using the current execution. A missing
+  conversation from a notification open shows a transient toast below the
+  toolbar. Other notification lookup failures keep their notice: no access (403, at once: a refusal is the Station's answer), or the
   Station did not answer, with Retry. That Retry belongs to the Station that
   did not answer: once another Station is active the notice is retired and
   its Retry does nothing. A `?chat=` that no notification opened (a reload

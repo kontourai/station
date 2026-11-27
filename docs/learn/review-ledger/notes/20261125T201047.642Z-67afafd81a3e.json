@@ -1,0 +1,55 @@
+{
+  "revision": "55d4aebbc44176d6c117f3b6aef761dbd91ca020",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Traced desktop, web push, native and in-app links through Station selection and the authorized conversation lookup. Cold Web Push links with a read marker can open without a sender ID. A definitive notification lookup miss emits a transient toolbar toast, and other notices use the same viewport anchor. Physical OS delivery and taps remain outside this evidence.","inputs":["docs/design/notification-delivery.md","src-ui/src/components/notifications/NotificationStationOpener.tsx","src-ui/src/lib/notificationStationOpen.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the Chats label in the collapsed bar, open phone header and Chat actions, and the center-to-left title motion through the live drag preview. The existing conversation title remains the resume target. Focused component coverage does not establish physical-device geometry.","inputs":["docs/guides/responsive-ui.md","src-ui/src/__tests__/ChatDock.engineSwitchGate.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the existing mounted GET lookup with durable IDs and successor Session IDs. A successor lookup checks the requested Session before resolving the durable conversation under the same request authority. The open/read and mutation endpoints retain their own contracts.","inputs":["docs/reference/api.md","src-server/routes/chat/conversations.ts","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked Chats, Actions for Chats and the collapsed dock wording against the header, list controls and mobile fixtures. The conversation’s title remains the resume affordance. The authorized successor lookup does not change the New chat flow.","inputs":["docs/user/getting-started.md","src-server/routes/chat/conversations.ts","src-ui/src/__tests__/inbox-swipe.browser.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat-dock/InboxScopeFilter.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the desktop visibility toggle’s Hide chats and Show chats copy, phone Chats title alignment, and the existing scope and selection flows.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/design/automations.md","note":"The linked delivery design updates cold conversation open handling and lookup feedback. The automations delivery and notification routing claims still hold.","inputs":["docs/design/notification-delivery.md"]},
+
+    {"path":"docs/design/terminal.md","note":"The existing lookup now follows authorized successor Sessions. Authentication, route mounting, execution and continuation boundaries cited here retain their contracts.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The existing lookup now follows authorized successor Sessions. Authentication, route mounting, execution and continuation boundaries cited here retain their contracts.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/ui-copy.md","note":"The vocabulary gate now permits Show chats and Hide chats for the renamed list and continues to retire the old Inbox toggle term.","inputs":["scripts/noun-consistency-gate.mjs"]},
+
+    {"path":"docs/glossary.md","note":"The vocabulary regression now retires Chat list in favor of Chats. Other responsibility and vocabulary claims retain their source support.","inputs":["src-ui/src/__tests__/session-state-word-consistency.test.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Updated the Coding navigation assertion for the Chats crumb. Layout composition and plugin ownership claims retain their source support.","inputs":["src-ui/src/app-shell/__tests__/ProjectLayoutRenderer.test.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The dock passes its existing collapsed drag preview into the mobile header. Placement, connection and Settings ownership, layout composition, conversation content and create/send paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"The dock passes its existing collapsed drag preview into the mobile header. Placement, connection and Settings ownership, layout composition, conversation content and create/send paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"The dock passes its existing collapsed drag preview into the mobile header. Placement, connection and Settings ownership, layout composition, conversation content and create/send paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The dock passes its existing collapsed drag preview into the mobile header. Placement, connection and Settings ownership, layout composition, conversation content and create/send paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"The dock passes its existing collapsed drag preview into the mobile header. Placement, connection and Settings ownership, layout composition, conversation content and create/send paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"The dock passes its existing collapsed drag preview into the mobile header. Placement, connection and Settings ownership, layout composition, conversation content and create/send paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"The dock passes its existing collapsed drag preview into the mobile header. Placement, connection and Settings ownership, layout composition, conversation content and create/send paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"The dock passes its existing collapsed drag preview into the mobile header. Placement, connection and Settings ownership, layout composition, conversation content and create/send paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"The dock passes its existing collapsed drag preview into the mobile header. Placement, connection and Settings ownership, layout composition, conversation content and create/send paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The linked journey uses the current Chats and Scope for Chats labels and covers the same cross-runtime behavior as before.","inputs":["tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The linked journey uses the current Chats and Scope for Chats labels and covers the same cross-runtime behavior as before.","inputs":["tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"The linked journey uses the current Chats and Scope for Chats labels and covers the same cross-runtime behavior as before.","inputs":["tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The linked journey uses the current Chats and Scope for Chats labels and covers the same cross-runtime behavior as before.","inputs":["tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Updated Chats labels in the mobile composer journey fixtures. Suite selection and listed journey scope retain their contracts.","inputs":["tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

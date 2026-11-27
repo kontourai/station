@@ -1,0 +1,7 @@
+{
+  "revision": "1586e90a6301831df579fb3ec2931ee3050ed594",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed the optional Project layout registration alongside the original two-tool transport receipt. Current route tests cover keyed, scoped layout admission and a cooperating replacement before read-lock acquisition. The historical transport and real-client claims retain their recorded revisions.","inputs":["docs/design/outside-agent-mcp-r4a-evidence.md","src-server/routes/outside-agent/__tests__/mcp-routes.test.ts","src-server/tools/station-control-project-read-tools.ts"]}
+  ]
+}

@@ -358,7 +358,26 @@ describe('notification links', () => {
     uninstall();
   });
 
-  test('a URL naming no Station is left alone', () => {
+  test('a cold Web Push chat link from an older Station still queues the notification open', () => {
+    const opened = vi.fn();
+    const uninstall = installNotificationOpener(opened);
+    try {
+      const clear = vi.fn();
+      holdColdNotificationLink(
+        { pathname: '/', search: '?chat=s-1&dock=open&openedNotification=n-1' },
+        clear,
+      );
+      expect(clear).toHaveBeenCalledOnce();
+      expect(opened).toHaveBeenCalledWith({
+        pathname: '/',
+        params: { chat: 's-1', dock: 'open', openedNotification: 'n-1' },
+      });
+    } finally {
+      uninstall();
+    }
+  });
+
+  test('an ordinary chat URL is left alone', () => {
     const clear = vi.fn();
     holdColdNotificationLink({ pathname: '/', search: '?chat=s-1' }, clear);
     expect(clear).not.toHaveBeenCalled();

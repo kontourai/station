@@ -228,7 +228,7 @@ function resolveTimeoutMs(opts?: ClientRequestOptions): number | undefined {
 }
 
 /** Native abort ordering where available, with an iOS 16.4 fallback. */
-function composeRequestSignals(
+export function composeRequestSignals(
   deadline: AbortSignal,
   ...callers: Array<AbortSignal | null | undefined>
 ): { signal: AbortSignal; cleanup: () => void } {
@@ -2061,11 +2061,14 @@ function dispatchSseFrame(
   return { accepted, id, retry };
 }
 
-async function consumeSseResponse(
+export async function consumeSseResponse(
   response: Response,
   signal: AbortSignal,
   onMessage: (message: FetchSseMessage) => unknown,
-  onCheckpoint: (checkpoint: { id?: string; retry?: number }) => void,
+  onCheckpoint: (checkpoint: {
+    id?: string;
+    retry?: number;
+  }) => void = () => {},
   stallTimeoutMs?: number,
 ): Promise<void> {
   if (signal.aborted) {

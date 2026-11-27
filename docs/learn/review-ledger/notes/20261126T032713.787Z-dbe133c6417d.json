@@ -1,0 +1,7 @@
+{
+  "revision": "09fc618d14eabeab937ac8306658ba75b6f21280",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Reviewed 09fc618d14 Windows resource staging and its production caller: shallow build-source aliases do not solve installed MAX_PATH; safe hoisting shortens destinations, validation enforces a 45-character floor, and complete configured resource scan generates artifact-specific NSIS limits. Hook refuses excess before its own cleanup, not before all stock-template prior uninstall actions. MSI custom roots explicitly remain unguarded. Source and narrow path probes are not signed artifact, upgrade or Nightly delivery proof.","inputs":["docs/guides/native-releases.md"]}
+  ]
+}

@@ -327,7 +327,9 @@ another person owns, keeps `station_control_assurance_insufficient` (or
 it reads the same as a Session that does not exist. Reads keep their own
 answers: `read_conversation` answers `conversation_out_of_scope` or
 `conversation_not_found`, and `list_project_activity` and `get_session_digest`
-answer `session_not_found`. `station_control_assurance_insufficient` otherwise remains the code of the
+answer `session_not_found`. On `read_conversation`, `conversation_out_of_scope`
+carries the scope rule's `reason` when it has one, so a refusal for `host` does
+not read as another Project. `station_control_assurance_insufficient` otherwise remains the code of the
 assurance checks themselves, such as a tool that needs a bound caller or an
 approval command.
 
@@ -414,7 +416,8 @@ A station-control caller may read:
 
 - its own conversation;
 - a conversation the dispatch scope above admits, read with the owner's
-  Project `view` action;
+  Project `view` action. To a caller that is not bound, that excludes a
+  conversation that runs unconfined, even one in the caller's own Project;
 - a conversation a person referenced in a turn of the caller's conversation,
   by the conversation's id or one of its sessions' ids. Station decides this
   from the sender it recorded on that turn: the operator, or a paired device
@@ -431,11 +434,14 @@ For a caller that is not a bound operator, the transcript is read as the
 session's owner, so a reference never reaches another person's
 conversation, and another person's conversation reads as not found. A bound
 operator caller keeps the operator's reach (decision 2 of #2377) and can read
-any recorded conversation. Refusals name a reason:
-`conversation_out_of_scope` when the conversation is the owner's but outside
-the caller's scope, `conversation_deleted` when a referenced conversation no
-longer reads, and `conversation_not_found` otherwise, including an id Station
-has no record of. The
+any recorded conversation. Refusals name their cause.
+`conversation_out_of_scope` is answered when the conversation is the owner's
+but outside the caller's reach. It carries the scope rule's `reason` when the
+rule states one (`host` for a conversation that runs unconfined, `remote`,
+`other-project`, and so on), and its explanation matches that cause instead of
+naming another Project. `conversation_deleted` is answered when a referenced
+conversation no longer reads, and `conversation_not_found` otherwise,
+including an id Station has no record of. The
 [read route](../../src-server/routes/chat/conversation-reference-read.ts)
 defines the rule.
 
@@ -915,8 +921,9 @@ canceling in a loop. Settled check-backs older than an hour are pruned.
 
 A caller that is not bound, in a Session that runs unconfined (`host`), is
 not refused: the check-back is recorded `needs_approval` and the result says
-so. The person sees a card above the composer ("Check back at 4:12 PM?", with
-the agent's whole note) and approves or declines it with one click; the
+so. The person sees a card above the composer ("Approve check-back by 4:12 PM",
+with the agent's whole note) and approves or declines it with one click. If they
+try to approve it after the deadline, Station tells them the time has passed. The
 chat's Automations section lists it as "Needs your approval". Only a person may
 answer it, under the same gate as a job proposal: a request that may be an
 agent's is refused, and one from a person who may not send to the

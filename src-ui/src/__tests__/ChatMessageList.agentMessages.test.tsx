@@ -344,6 +344,60 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
     ).toHaveLength(2);
   });
 
+  test('a delegated Task brief and an Automation run say which Station flow sent them, never the person', async () => {
+    const internalOrigin = {
+      version: 1,
+      actor: { kind: 'internal' },
+      reported: { version: 1, surface: 'unknown', build: null },
+    };
+    windowEvents.current = [
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 't1',
+        prompt: '# Task brief: fix the flaky login test',
+        clientOrigin: internalOrigin,
+        dispatchOrigin: 'delegation',
+      }),
+      runtimeEvent({ method: 'turn.completed', turnId: 't1' }),
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 't2',
+        prompt: 'The full test run on main finished red.',
+        clientOrigin: internalOrigin,
+        dispatchOrigin: 'automation',
+      }),
+      runtimeEvent({ method: 'turn.completed', turnId: 't2' }),
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 't3',
+        prompt: 'Thanks, now open the PR.',
+        clientOrigin: personOrigin,
+        dispatchOrigin: 'interactive',
+        authoredBy: 'person',
+      }),
+      runtimeEvent({ method: 'turn.completed', turnId: 't3' }),
+    ];
+    renderTranscript();
+    await waitFor(() =>
+      expect(document.querySelectorAll('.agent-incoming')).toHaveLength(2),
+    );
+    expect(
+      screen.getByText('Task brief from the delegating agent'),
+    ).toBeTruthy();
+    expect(screen.getByText('Automation run started by Station')).toBeTruthy();
+    expect(screen.queryByText('Automated message · sender unknown')).toBeNull();
+    const labels = [
+      ...document.querySelectorAll<HTMLElement>('.agent-incoming[aria-label]'),
+    ].map((row) => row.getAttribute('aria-label'));
+    expect(labels).toEqual([
+      'Task brief from the delegating agent, not from you',
+      'Automation run started by Station, not from you',
+    ]);
+    const person = [...document.querySelectorAll<HTMLElement>('.message.user')];
+    expect(person).toHaveLength(1);
+    expect(person[0]?.textContent).toContain('Thanks, now open the PR.');
+  });
+
   test("pull request feedback is labelled as Station's, not as an unknown sender or the person", async () => {
     windowEvents.current = [
       runtimeEvent({

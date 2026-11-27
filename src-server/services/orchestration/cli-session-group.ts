@@ -1,4 +1,3 @@
-// UNWIRED(#91): Station runtime composition must supply Session authority and effect adapters.
 import { createHash, randomUUID } from 'node:crypto';
 import { lstatSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,10 +9,9 @@ import {
   startRun,
   validateDefinition,
 } from '@kontourai/flow';
-import {
-  type FlowMultiCursorExecution,
-  type FlowScheduleEvent,
-  orchestrateFlowMultiCursor,
+import type {
+  FlowMultiCursorExecution,
+  FlowScheduleEvent,
 } from '@kontourai/flow-agents';
 import { canonicalJson } from '@kontourai/relay';
 import type { CliSessionGroupView } from '@kontourai/station-contracts/delegation-group';
@@ -86,6 +84,7 @@ const recordSchema = z
             reservedSessionId: z.string().max(512).optional(),
             initialClientTurnId: z.string().max(512).optional(),
             handle: handleSchema.optional(),
+            stopReserved: z.literal(true).optional(),
             outcome: z.enum(['completed', 'failed', 'canceled']).optional(),
             terminalObservedAt: z.string().datetime().optional(),
             terminalEvent: terminalEventSchema.optional(),
@@ -113,22 +112,26 @@ const digest = (value: unknown) =>
   createHash('sha256').update(canonicalJson(value)).digest('hex');
 const MAX_BYTES = 1024 * 1024;
 
-class CliSessionGroupUnavailable extends Error {
+export class CliSessionGroupUnavailable extends Error {
   constructor(readonly code: string) {
     super(code);
     this.name = 'CliSessionGroupUnavailable';
   }
 }
 
+export interface CliSessionGroupDispatchAdmission {
+  readonly sessionId: string;
+  readonly initialClientTurnId: string;
+  readonly signal: AbortSignal;
+  assertCurrent(): void;
+}
+
 export interface CliSessionGroupHost<T> {
   assertCurrent(): void;
+  assertStopCurrent(): void;
   dispatch(
     input: T,
-    admission: {
-      assertCurrent(): void;
-      sessionId: string;
-      initialClientTurnId: string;
-    },
+    admission: CliSessionGroupDispatchAdmission,
   ): Promise<unknown>;
   observe(handle: MemberHandle): Promise<{
     status: string;
@@ -184,7 +187,11 @@ export class CliSessionGroups<T> {
         (record.maxDispatches > record.seats.length ||
           record.dispatchCount > record.maxDispatches)) ||
       record.seats.some(
-        (s) => (s.state === 'started' || s.state === 'terminal') && !s.handle,
+        (s) =>
+          ((s.state === 'started' || s.state === 'terminal') && !s.handle) ||
+          (s.stopReserved &&
+            (!s.handle?.initialTurnId ||
+              s.handle.sessionId !== s.reservedSessionId)),
       )
     )
       throw new CliSessionGroupUnavailable('group_storage_unavailable');
@@ -195,15 +202,20 @@ export class CliSessionGroups<T> {
     groupId: string,
     owner: string,
     work: (record: GroupRecord) => R,
+    assertCurrent?: (record: GroupRecord) => void,
   ): Promise<R> {
     const path = this.path(groupId);
     const release = await acquireFileMutationLockAsync(`${path}.mutation`);
     try {
       const record = this.read(groupId, owner);
+      assertCurrent?.(record);
       const result = work(record);
       record.revision += 1;
       recordSchema.parse(record);
-      await publishJsonFileWithOwnedLock(path, record, { maxBytes: MAX_BYTES });
+      await publishJsonFileWithOwnedLock(path, record, {
+        maxBytes: MAX_BYTES,
+        assertCurrent: assertCurrent ? () => assertCurrent(record) : undefined,
+      });
       return result;
     } finally {
       await release();
@@ -391,24 +403,18 @@ export class CliSessionGroups<T> {
     owner: string,
     host: CliSessionGroupHost<T>,
   ): Promise<CliSessionGroupView> {
-    await this.mutate(groupId, owner, (record) => {
-      host.assertCurrent();
-      record.cancelled = true;
-    });
+    await this.mutate(
+      groupId,
+      owner,
+      (record) => {
+        record.cancelled = true;
+      },
+      () => host.assertCurrent(),
+    );
     this.active.get(groupId)?.abort();
     for (const seat of this.read(groupId, owner).seats) {
-      if (seat.state === 'started' || seat.state === 'launch-intent') {
-        host.assertCurrent();
-        const reserved = seat.reservedSessionId!;
-        await this.requestInterrupt(
-          host,
-          seat.handle ?? {
-            taskId: reserved,
-            conversationId: reserved,
-            sessionId: reserved,
-          },
-        );
-      }
+      if (seat.state === 'started')
+        await this.requestInterrupt(groupId, owner, host, seat.seatId);
     }
     host.assertCurrent();
     return this.view(groupId, owner);
@@ -432,6 +438,11 @@ export class CliSessionGroups<T> {
     );
     const lifetime = AbortSignal.any([signal, controller.signal, deadline]);
     try {
+      const { orchestrateFlowMultiCursor } = await import(
+        '@kontourai/flow-agents'
+      );
+      host.assertCurrent();
+      lifetime.throwIfAborted();
       await orchestrateFlowMultiCursor({
         runId: groupId,
         cwd: join(this.root, groupId),
@@ -456,10 +467,30 @@ export class CliSessionGroups<T> {
   }
 
   private async requestInterrupt(
+    groupId: string,
+    owner: string,
     host: CliSessionGroupHost<T>,
-    handle: MemberHandle,
+    seatId: string,
   ): Promise<void> {
     try {
+      const handle = await this.mutate(
+        groupId,
+        owner,
+        (record) => {
+          const seat = record.seats.find((member) => member.seatId === seatId);
+          if (
+            seat?.state !== 'started' ||
+            !seat.handle?.initialTurnId ||
+            seat.stopReserved
+          )
+            return undefined;
+          seat.stopReserved = true;
+          return structuredClone(seat.handle);
+        },
+        () => host.assertStopCurrent(),
+      );
+      if (!handle) return;
+      host.assertStopCurrent();
       const interruption = host.interrupt(handle);
       void interruption.catch(() => {});
       await awaitWithAbort(interruption, AbortSignal.timeout(5_000));
@@ -545,40 +576,51 @@ export class CliSessionGroups<T> {
     execution: FlowMultiCursorExecution,
   ): Promise<void> {
     const seatId = execution.claim.step_id;
-    const launch = await this.mutate(groupId, owner, (record) => {
+    const assertLaunchCurrent = (record: GroupRecord) => {
       host.assertCurrent();
       execution.signal.throwIfAborted();
       if (record.cancelled || Date.now() >= record.deadlineAt)
         throw new CliSessionGroupUnavailable('group_closed');
-      const seat = record.seats.find((s) => s.seatId === seatId);
-      if (!seat) throw new CliSessionGroupUnavailable('group_invalid');
-      if (seat.state !== 'pending')
-        return { seat: structuredClone(seat), dispatch: false };
-      if (record.dispatchCount >= (record.maxDispatches ?? record.seats.length))
-        throw new CliSessionGroupUnavailable('group_dispatch_limit');
-      const occupied = record.seats.filter(
-        (s) => s.state === 'launch-intent' || s.state === 'started',
-      ).length;
-      if (occupied >= record.maxConcurrent)
-        throw new CliSessionGroupUnavailable('group_capacity');
-      seat.reservedSessionId = `task:${randomUUID()}`;
-      seat.initialClientTurnId = randomUUID();
-      seat.state = 'launch-intent';
-      seat.claimId = execution.claim.claim_id;
-      record.dispatchCount += 1;
-      if (
-        record.dispatchCount >= (record.maxDispatches ?? record.seats.length) &&
-        record.seats.some((member) => member.state === 'pending')
-      )
-        record.admissionClosed = 'dispatch-limit-exhausted';
-      return { seat: structuredClone(seat), dispatch: true };
-    });
+    };
+    const launch = await this.mutate(
+      groupId,
+      owner,
+      (record) => {
+        const seat = record.seats.find((s) => s.seatId === seatId);
+        if (!seat) throw new CliSessionGroupUnavailable('group_invalid');
+        if (seat.state !== 'pending')
+          return { seat: structuredClone(seat), dispatch: false };
+        if (
+          record.dispatchCount >= (record.maxDispatches ?? record.seats.length)
+        )
+          throw new CliSessionGroupUnavailable('group_dispatch_limit');
+        const occupied = record.seats.filter(
+          (s) => s.state === 'launch-intent' || s.state === 'started',
+        ).length;
+        if (occupied >= record.maxConcurrent)
+          throw new CliSessionGroupUnavailable('group_capacity');
+        seat.reservedSessionId = `task:${randomUUID()}`;
+        seat.initialClientTurnId = randomUUID();
+        seat.state = 'launch-intent';
+        seat.claimId = execution.claim.claim_id;
+        record.dispatchCount += 1;
+        if (
+          record.dispatchCount >=
+            (record.maxDispatches ?? record.seats.length) &&
+          record.seats.some((member) => member.state === 'pending')
+        )
+          record.admissionClosed = 'dispatch-limit-exhausted';
+        return { seat: structuredClone(seat), dispatch: true };
+      },
+      assertLaunchCurrent,
+    );
     let handle = launch.seat.handle;
     if (launch.dispatch) {
       host.assertCurrent();
       execution.signal.throwIfAborted();
       const dispatched = host
         .dispatch(this.parseInput(launch.seat.input), {
+          signal: execution.signal,
           sessionId: z.string().min(1).parse(launch.seat.reservedSessionId),
           initialClientTurnId: z
             .string()
@@ -602,26 +644,19 @@ export class CliSessionGroups<T> {
           const accepted = handleSchema.parse(result);
           if (accepted.sessionId !== launch.seat.reservedSessionId)
             throw new CliSessionGroupUnavailable('group_session_changed');
-          await this.mutate(groupId, owner, (record) => {
+          const cancelled = await this.mutate(groupId, owner, (record) => {
             const seat = record.seats.find((s) => s.seatId === seatId)!;
             seat.handle = accepted;
             seat.state = 'started';
+            return record.cancelled;
           });
+          if (cancelled || execution.signal.aborted)
+            await this.requestInterrupt(groupId, owner, host, seatId);
           return accepted;
         });
       // Losing work can still return its actual identity; retain it without authorizing a resend.
       void dispatched.catch(() => {});
-      try {
-        handle = await awaitWithAbort(dispatched, execution.signal);
-      } catch (error) {
-        const reserved = launch.seat.reservedSessionId!;
-        await this.requestInterrupt(host, {
-          taskId: reserved,
-          conversationId: reserved,
-          sessionId: reserved,
-        });
-        throw error;
-      }
+      handle = await awaitWithAbort(dispatched, execution.signal);
     }
     if (!handle) throw new CliSessionGroupUnavailable('group_start_unknown');
     if (launch.seat.state === 'terminal') {
@@ -671,7 +706,7 @@ export class CliSessionGroups<T> {
         await delay(250, undefined, { signal: execution.signal });
       }
     } catch (error) {
-      await this.requestInterrupt(host, handle);
+      await this.requestInterrupt(groupId, owner, host, seatId);
       throw error;
     }
   }

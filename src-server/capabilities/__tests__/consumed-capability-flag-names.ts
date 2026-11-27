@@ -22,6 +22,7 @@ export const TABLED_CAPABILITY_FLAGS: readonly string[] = Object.freeze([
   'projectLibrary',
   'projectRoomLive',
   'projectRoomCoordinator',
+  'cliSessionGroups',
   'projectRoomMessageActions',
   'readMarkers',
   'remoteSessionHistory',

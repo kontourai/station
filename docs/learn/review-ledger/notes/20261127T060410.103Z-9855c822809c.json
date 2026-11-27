@@ -1,0 +1,27 @@
+{
+  "revision": "2f8a9e3fa26c68d18ff56f4f22297ce3db0809ac",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the inbox selection and claim against Monument and the ThreadInbox delivery service. In-flight and unconfirmed entries keep precedence. Queued steers take precedence over follow-ups while preserving FIFO order within each kind. A real ACP fixture received a native steer with two ordinary follow-ups still queued. The shared ConversationBody still resolves its own delivery target.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/thread-inbox.ts","src-ui/src/components/chat/chat.css","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Traced the composer submit, held row read and steer claim through the shared ConversationBody and ThreadInbox. Only follow-ups receive a queue position. The watched development app additionally shows separate Steer and Queue actions and a next-first list. The documented release layout still uses the split control. Verified native delivery in the mobile Browser with a scripted ACP engine. Installed engine behavior is outside this check.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/thread-inbox.ts","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/QueuedMessages.css","src-ui/src/components/chat/QueuedMessages.tsx","src-ui/src/components/chat/chat.css","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Checked the pending list style changes against QueuedMessages presence transitions. The new preview border, single-line next message and compact mobile rows do not alter entry or exit animation, presence timing, or reduced-motion handling.","inputs":["docs/design/motion.md","src-ui/src/components/chat/QueuedMessages.css"]},
+
+    {"path":"docs/design/placement.md","note":"Checked composer and pending-list geometry at phone width in the actual chat. The development preview supplies separate actions and keeps existing dock placement, resize, activity and focus ownership. No placement rules or released shell controls changed.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked the preview wiring in the canonical ConversationBody. It retains the same transcript, draft owner, connection controller and shell placement. It introduces no navigation or Board behavior.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked the live composer call into handleSendWithContext and the scoped inbox callbacks. They still resolve authority and delivery through the owning connection. Presentation and send order do not add a transport, capability, or permission.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat/chat.css","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the preview's two actions and compact queue in the actual Station mobile chat at 393px. The actions wrap in the composer toolbar and keep their touch targets. The existing shared run controls, focus ownership and form geometry remain the source of responsive behavior.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the GET inbox projection against waitingPositions and the existing route. The shape and authority checks are unchanged. Only follow-ups receive positions. Turn-bound steers use the same submission and reconciliation contract.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked that the first-message entry remains the existing Start or Send path. The separate Steer and Queue controls are a watched development preview for a running turn. The documented first-run and attachment journeys retain the same handlers.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked that ThreadInbox and the atomic claim both use the same inbox head selection. A placing or unconfirmed entry takes precedence, followed by the oldest queued steer or follow-up. Key, digest, claim transaction and settlement rules remain in their original owners.","inputs":["packages/monument/CONTEXT.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked that the preview stays inside the shared conversation owner and uses the existing scoped inbox and turn operations. The normal capability checks and component ownership still apply. No product claim or UI authoring rule changes.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

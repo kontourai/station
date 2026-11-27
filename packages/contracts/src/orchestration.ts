@@ -4,6 +4,7 @@ import type { QueuedChatAttachmentDescriptor } from './chat-attachment.js';
 import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin, ClientOriginSender } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
+import type { ConversationPullRequestLinkObservation } from './conversation-pull-request-links.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
 import type {
   InputRequestContent,
@@ -28,6 +29,7 @@ import type {
   SessionTransitionSource,
 } from './session-lifecycle.js';
 import type { SkillExperienceIdentityV1 } from './skill-experience.js';
+import type { ObservedSessionWorkspace } from './workspace-isolation.js';
 
 export type {
   AttachedSessionSourceMetadata,
@@ -124,6 +126,34 @@ export interface AttachedSourceActivity {
 
 /** How recent a transcript write keeps an open turn `active`. */
 export const ATTACHED_SOURCE_ACTIVE_WINDOW_MS = 5 * 60_000;
+
+export const EXTERNAL_SESSION_HISTORY_PREVIEW = 'external-session-history';
+
+export interface ExternalSessionHistoryEntry {
+  id: string;
+  provider: string;
+  cwd: string;
+  updatedAt: string;
+  hasTranscript: boolean;
+}
+
+export interface ExternalSessionHistoryPage {
+  sessions: ExternalSessionHistoryEntry[];
+  nextOffset: number | null;
+  partial: boolean;
+}
+
+export interface ExternalSessionTranscriptPage {
+  messages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
+  nextCursor: string | null;
+  startsNearEnd: boolean;
+  truncated?: boolean;
+}
+
+export interface ExternalSessionHistoryImport {
+  threadId: string;
+  more: boolean;
+}
 
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
@@ -2211,6 +2241,8 @@ export interface ConversationReadStateUnavailable {
  */
 export interface ConversationListItem {
   id: string;
+  pullRequests?: ConversationPullRequestLinkObservation[];
+  observedWorkspace?: ObservedSessionWorkspace;
   source: 'runtime' | 'store';
   agentSlug: AgentId;
   projectSlug?: string;

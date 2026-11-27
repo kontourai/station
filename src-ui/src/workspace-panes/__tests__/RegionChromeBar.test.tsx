@@ -49,10 +49,6 @@ function chromeStub(overrides: Partial<DockShellChrome> = {}): DockShellChrome {
     dockWidth: 400,
     setDockHeight: noop,
     setDockWidth: noop,
-    previousDockHeight: 320,
-    setPreviousDockHeight: noop,
-    previousDockOpen: true,
-    setPreviousDockOpen: noop,
     isDragging: false,
     setIsDragging: noop,
     dockSnap: 'half',
@@ -72,6 +68,8 @@ function chromeStub(overrides: Partial<DockShellChrome> = {}): DockShellChrome {
     selectRegionPane: noop,
     ownsMaximizeShortcut: true,
     applyDockSnap: vi.fn(),
+    toggleDockMaximize: vi.fn(),
+    restoreDockFromMaximized: noop,
     setRegionOpen: vi.fn(),
     commitDesktopBottomHeight: noop,
     commitDockPlacement: vi.fn(),
@@ -777,17 +775,22 @@ describe('the region controls (from ChatDockHeader, #795 / #1385)', () => {
     expect(collapsed.applyDockSnap).not.toHaveBeenCalled();
   });
 
-  test('routes explicit maximize and restore through the snap owner', () => {
+  // Restore is the toggle's decision, not a snap the bar picks: a dock
+  // maximized from closed goes back to closed, so a hardcoded `'half'` here
+  // would reopen it.
+  test('routes maximize and restore through the toggle the ⌘M chord uses', () => {
     const chrome = chromeStub();
     const { unmount } = renderBar({ chrome });
     fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
-    expect(chrome.applyDockSnap).toHaveBeenCalledWith('full');
+    expect(chrome.toggleDockMaximize).toHaveBeenCalledTimes(1);
+    expect(chrome.applyDockSnap).not.toHaveBeenCalled();
     unmount();
 
     const maximized = chromeStub({ isDockMaximized: true });
     renderBar({ chrome: maximized });
     fireEvent.click(screen.getByLabelText('Restore dock region size'));
-    expect(maximized.applyDockSnap).toHaveBeenLastCalledWith('half');
+    expect(maximized.toggleDockMaximize).toHaveBeenCalledTimes(1);
+    expect(maximized.applyDockSnap).not.toHaveBeenCalled();
   });
 
   /**

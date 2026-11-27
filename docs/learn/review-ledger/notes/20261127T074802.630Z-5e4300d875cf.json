@@ -1,0 +1,7 @@
+{
+  "revision": "06ca4af507c1487f4b12cd0a2fa072a8f469d7dc",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Verified archive failures render curated recovery instructions in the chat boundary.","inputs":["src-ui/src/components/chat/ExternalSessionHistory.tsx"]}
+  ]
+}

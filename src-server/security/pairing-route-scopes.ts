@@ -4617,6 +4617,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/integrations/:id/oauth/callback' },
     { method: 'POST', path: '/integrations/:id/reconnect' },
     { method: 'POST', path: '/integrations/:id/events/discover' },
+    { method: 'POST', path: '/integrations/:id/events/poll' },
+    { method: 'POST', path: '/integrations/:id/events/stream' },
     // #3483: keeps or resets an integration's legacy trust settings in this
     // Station, like an integration edit; the handler requires the operator in
     // person and records a receipt.
@@ -4827,6 +4829,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'DELETE',
       path: '/api/orchestration/conversations/:conversationId/context-boundary/:idempotencyKey',
     },
+    { method: 'POST', path: '/api/orchestration/session-groups' },
+    { method: 'GET', path: '/api/orchestration/session-groups/:groupId' },
+    { method: 'POST', path: '/api/orchestration/session-groups/:groupId/run' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/session-groups/:groupId/cancel',
+    },
     { method: 'GET', path: '/api/orchestration/delegations' },
     { method: 'POST', path: '/api/orchestration/delegations' },
     { method: 'GET', path: '/api/orchestration/delegations/:taskId' },
@@ -4849,6 +4858,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/orchestration/delegations/:taskId/respond' },
     { method: 'POST', path: '/api/orchestration/delegations/options' },
     { method: 'GET', path: '/api/orchestration/events' },
+    { method: 'GET', path: '/api/orchestration/external-history' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/external-history/:id/transcript',
+    },
+    { method: 'POST', path: '/api/orchestration/external-history/:id/import' },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/external-history/:id/import/:operationId',
+    },
     { method: 'GET', path: '/api/orchestration/processes/terminals' },
     {
       method: 'DELETE',

@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 104,
+  "pageLocalMediaQueryCeiling": 103,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -108,10 +108,6 @@
     "src-ui/src/components/notifications/NotificationContainer.css": {
       "count": 2,
       "reason": "The toast stack's small-screen box (safe-area gutters, a viewport-bounded height) and its dismiss touch target."
-    },
-    "src-ui/src/components/notifications/NotificationStationOpener.css": {
-      "count": 1,
-      "reason": "The notification-open notice is a fixed overlay like the toast stack; on a phone it stands just above the collapsed dock instead of over the route's top controls (Home's start composer)."
     },
     "src-ui/src/components/notifications/NotificationHistory.css": {
       "count": 1,

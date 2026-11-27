@@ -11,6 +11,7 @@ import {
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
 import { type Context, Hono } from 'hono';
+import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   type OutsideOAuthExposure,
@@ -98,6 +99,7 @@ export async function createOutsideAgentMcpServer(input: {
   store: OutsideAgentGrantStore;
   validateGrant(grant: Grant): boolean;
   projects: Pick<ProjectService, 'listProjects' | 'getProject'>;
+  layoutStorage?: Pick<IStorageAdapter, 'projectRevision' | 'listLayouts'>;
   activeWork?: OutsideActiveWorkDeps;
   conversationSearch?: OutsideConversationSearchDeps;
   exposure: OutsideOAuthExposure;
@@ -537,6 +539,7 @@ export async function createOutsideAgentMcpServer(input: {
               server: createOutsideMcpDispatch({
                 current: () => current(owned),
                 projects: input.projects,
+                layoutStorage: input.layoutStorage,
                 listActiveWork,
                 searchConversations,
                 reserveCall: () => {

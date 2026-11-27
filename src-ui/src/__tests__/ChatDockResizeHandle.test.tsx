@@ -237,10 +237,23 @@ describe('ChatDockResizeHandle', () => {
     expect(onLiveHeight).toHaveBeenCalledWith(expect.any(Number));
   });
 
-  test('keyboard cycling is unaffected: ArrowUp grows one snap', () => {
-    const { handle, onSnap } = renderHandle({ snap: 'half' });
+  test('keyboard steps move one level', () => {
+    const { handle, onSnap } = renderHandle({ snap: 'tall' });
     fireEvent.keyDown(handle, { key: 'ArrowUp' });
-    expect(onSnap).toHaveBeenCalledWith('full');
+    fireEvent.keyDown(handle, { key: 'ArrowDown' });
+    expect(onSnap).toHaveBeenNthCalledWith(1, 'full');
+    expect(onSnap).toHaveBeenNthCalledWith(2, 'half');
+  });
+
+  // The separator's value range is how a screen reader sees the levels; a
+  // hardcode of three would report Tall as Full.
+  test('the handle reports four levels and which one is current', () => {
+    const { handle } = renderHandle({ snap: 'tall' });
+    expect(
+      ['aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext'].map(
+        (name) => handle.getAttribute(name),
+      ),
+    ).toEqual(['0', '3', '2', 'tall']);
   });
 
   test('desktop keyboard arrows adjust the continuous pixel height', () => {

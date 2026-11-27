@@ -58,6 +58,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'notificationPreferences',
   'notifications',
   'operatingState',
+  'outsideClients',
   'plugins',
   'projectData',
   'projectS3Sources',
@@ -97,6 +98,8 @@ const PUBLIC_QUERY_DOMAINS = [
  * inline reason.
  */
 const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
+  externalSessionHistory:
+    'Published only from the documented external-session-history-query subpath for owner-scoped history discovery and import.',
   learningReview:
     'Published only from the documented learning-review-query subpath; keep scoped owner lifecycle reads and mutations outside the eager root entry.',
   privateInsights:

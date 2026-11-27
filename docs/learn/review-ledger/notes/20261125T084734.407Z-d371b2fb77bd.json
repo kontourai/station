@@ -1,0 +1,9 @@
+{
+  "revision": "8ac71edd1d55068a5cbe61190ab9cbd21fdef1ee",
+
+  "notes": [
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Reviewed the chat-to-pane handoff and list filtering against Browser authority and action replay. Viewing and filtering do not execute page actions.","inputs":["docs/guides/browser-workspace.md"]},
+
+    {"path":"docs/design/verified-action-replay.md","note":"Reviewed the chat-to-pane handoff and list filtering against Browser authority and action replay. Viewing and filtering do not execute page actions.","inputs":["docs/guides/browser-workspace.md"]}
+  ]
+}

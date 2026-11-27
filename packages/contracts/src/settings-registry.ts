@@ -254,6 +254,17 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: false,
   }),
   defineSetting({
+    key: 'trustedConsentOrigin',
+    scope: 'station',
+    envFallback: 'STATION_TRUSTED_CONSENT_ORIGIN',
+    descriptor: { kind: 'string' },
+    label: 'Approval HTTPS origin',
+    help: 'Leave empty for automatic discovery or enter an exact HTTPS DNS origin.',
+    description:
+      'Persisted approval origin for dynamic route publications. The environment setting remains a legacy fallback. Selecting an origin does not configure HTTPS or grant access.',
+    defaultValue: '',
+  }),
+  defineSetting({
     key: 'telemetryTier',
     scope: 'station',
     descriptor: { kind: 'composite' },

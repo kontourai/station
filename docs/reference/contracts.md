@@ -25,6 +25,13 @@ for the dormant server owner. It describes reserved member starts, observed
 Session state and Flow lineage. The dispatch allowance bounds reservations.
 The view carries neither dispatch authority nor a portable Flow envelope.
 
+`@kontourai/station-contracts/ensemble` parses bounded
+[`station.ensemble/v1` member presets](../../packages/contracts/src/ensemble.ts)
+and renders deterministic rosters and member-specific briefs. It preserves authored
+prompt text and model declarations. Server preparation owns engine and model
+availability checks. Presets, including the Stationmaster designation, confer
+no authentication or execution authority.
+
 `LayoutPanelsRecord` holds device-local side/lower-panel state by layout host
 scope and conversation. `LAYOUT_PANELS_LAYOUT_BOUND` and
 `LAYOUT_PANELS_SESSION_BOUND` bound retention. The v3 device envelope retires the
@@ -93,7 +100,9 @@ custody (`local`, `peer`, `unknown`), reason and count without exposing child ID
 use it when cleanup is pending. The shared status ladder renders **Stopping**,
 **Waiting on another Station process**, or **Unknown**, including a closed
 parent whose child cleanup remains pending. Unknown cleanup stays visible after
-an ancestor's own Stop completes. The counts cover verified,
+an ancestor's own Stop completes. In Chats, unknown cleanup appears under
+**Open** (or **Settled** when marked done) when no turn, child work or cleanup
+with a known owner is in flight. The counts cover verified,
 non-background descendants and pending stop obligations.
 
 `releaseUnknownOwnedWork` is an orchestration command with `threadId` and
@@ -2095,10 +2104,24 @@ it does not discover every provider's quota policy.
 `conversation-pull-request-links` defines exact provider, host, repository, and
 native-ref identities for Conversation links. Explicit links, branch-derived
 associations, and Task-kept declarations retain distinct `source` values.
-Provider refresh results carry an observation time and either current state or
-an explicit unsupported/unavailable reason. `PullRequest.headSha` and
-`baseSha` are optional because a provider that omits exact revisions must not
-be presented as current by inference.
+A current observation can include a timed `LinkedPullRequestSnapshot` with
+draft, checks, review decision, mergeability, updated, closed and merged
+times, diff counts and landing state. Checks can be passing, failing,
+pending or awaiting approval. Queue entries can include a position and
+removals have a forge event ID, a timestamp and an optional reason. A
+removal matches the failing filter for up to 15 minutes unless checks pass.
+A forge can explicitly report that review requirements are satisfied even
+when it omits a review decision. GitLab has no merge queue status here.
+A missing fact is unknown. Unsupported and unavailable observations carry a
+reason. `PullRequest.headSha` and `baseSha` carry exact revisions when the
+provider supplies them.
+
+With the Pull request agent feedback preview enabled, conversation
+inventory pages carry optional linked observations and local workspace
+observations. Workspace diff counts name their observed base and time.
+Task pull request facts can also carry readable linked observations from
+the Task's chats. Both projections reuse observations and keep missing
+facts visible when they aggregate links.
 
 `pull-request-feedback` defines pull request agent feedback: a person's
 switches, the forge observation (checks with their required flag, review
@@ -2111,7 +2134,8 @@ the `pull-request-head-review` preview is on. The newest review reads as
 `PullRequestHeadReview` (`headReview` on both views, with `current`), why
 the observed head has none yet as `PullRequestHeadReviewWaiting`
 (`headReviewWaiting`), and its required findings go as a `review-findings`
-delivery. `IPullRequestProvider.getFeedbackObservation` is
+delivery. Merge queue removals use a `merge-queue-removal` delivery keyed by
+the forge event ID. `IPullRequestProvider.getFeedbackObservation` is
 optional; a provider without it reads as `unsupported`. A `paused` status
 carries `cap` (`head` or `day`, for a round limit) and `at` when it paused.
 The attention subpath's `PullRequestFeedbackAttentionItem`

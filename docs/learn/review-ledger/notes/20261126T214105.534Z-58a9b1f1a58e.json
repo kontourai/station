@@ -1,0 +1,9 @@
+{
+  "revision": "f088663bc413c8b27b70104d1c4b2cfa9ec0a770",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the Inbox Task questions entry and the citing guides. The default-off preview exposes a route to existing Task answers and grants no additional permission. The feature preview catalog check passed.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the Inbox Task questions entry and the citing guides. The default-off preview exposes a route to existing Task answers and grants no additional permission. The feature preview catalog check passed.","inputs":["docs/user/settings.md"]}
+  ]
+}

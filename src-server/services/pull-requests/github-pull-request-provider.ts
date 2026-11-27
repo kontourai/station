@@ -4,10 +4,12 @@ import type {
   PullRequestAvailability,
   PullRequestBranchMergeability,
   PullRequestCapabilities,
+  PullRequestListQuery,
   PullRequestMergeInput,
   PullRequestMergeMethod,
   PullRequestMergeReadiness,
   PullRequestMergeResult,
+  PullRequestPage,
   PullRequestRepositoryContext,
   PullRequestRepositoryIdentityContext,
   PullRequestResult,
@@ -185,12 +187,25 @@ const githubMergeability = (value: unknown): PullRequest['mergeability'] =>
       ? 'conflicting'
       : 'unknown';
 
-/**
- * One field list for every full pull request read (list, view, view by
- * identity), so a field the normalizer reads cannot be missing from one of
- * them.
- */
-const GITHUB_PULL_REQUEST_FIELDS =
+const GITHUB_PULL_REQUEST_LIST_LIMIT = 30;
+const GITHUB_PULL_REQUEST_LIST_FIELDS =
+  'number,url,title,state,author,headRefName,baseRefName,headRefOid,isDraft,reviewDecision,mergeable,statusCheckRollup,updatedAt,additions,deletions,changedFiles';
+const GITHUB_PULL_REQUEST_PAGE_QUERY = `query(
+  $owner: String!, $name: String!, $first: Int!, $states: [PullRequestState!], $after: String
+) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: $first, states: $states, after: $after, orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes {
+        number url title state author { login url }
+        headRefName baseRefName headRefOid isDraft reviewDecision mergeable updatedAt
+        additions deletions changedFiles
+        commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`;
+const GITHUB_PULL_REQUEST_DETAIL_FIELDS =
   'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus,isDraft,reviewDecision';
 
 /**
@@ -199,7 +214,7 @@ const GITHUB_PULL_REQUEST_FIELDS =
  * comments, which are the expensive parts of a full read.
  */
 const GITHUB_PULL_REQUEST_STATUS_FIELDS =
-  'number,url,title,state,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,isDraft,reviewDecision,autoMergeRequest';
+  'number,url,title,state,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,isDraft,reviewDecision,autoMergeRequest,statusCheckRollup,updatedAt,mergedAt,closedAt,additions,deletions,changedFiles';
 
 /**
  * Whether an open pull request sits in its repository's merge queue (#5064).
@@ -251,6 +266,45 @@ const githubReviewDecision = (value: unknown): PullRequest['reviewDecision'] =>
         ? 'review_required'
         : undefined;
 
+function statusChecks(
+  value: unknown,
+): NonNullable<PullRequest['snapshot']>['checks'] {
+  if (!Array.isArray(value) || !value.length) return undefined;
+  const checks = value.map((check) => {
+    if (check?.__typename === 'StatusContext') return check?.state;
+    if (check?.__typename !== 'CheckRun') return undefined;
+    if (check.status === 'WAITING' || check.conclusion === 'ACTION_REQUIRED')
+      return 'WAITING';
+    return check.status === 'COMPLETED' ? check.conclusion : check.status;
+  });
+  if (
+    checks.some((state) =>
+      [
+        'FAILURE',
+        'ERROR',
+        'TIMED_OUT',
+        'CANCELLED',
+        'STARTUP_FAILURE',
+      ].includes(state),
+    )
+  )
+    return 'failing';
+  if (checks.includes('WAITING')) return 'awaiting-approval';
+  if (
+    checks.some((state) =>
+      ['EXPECTED', 'PENDING', 'IN_PROGRESS', 'QUEUED', 'REQUESTED'].includes(
+        state,
+      ),
+    )
+  )
+    return 'pending';
+  if (
+    checks.every((state) => ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(state))
+  )
+    return 'passing';
+  return undefined;
+}
+
 export function normalizeGitHubPullRequest(
   value: any,
   host: string,
@@ -264,7 +318,24 @@ export function normalizeGitHubPullRequest(
     typeof value.baseRefName !== 'string'
   )
     throw new Error('GitHub CLI returned an incomplete pull request');
+  const checks = statusChecks(value.statusCheckRollup);
+  const snapshot = {
+    ...(checks ? { checks } : {}),
+    ...Object.fromEntries(
+      ['updatedAt', 'mergedAt', 'closedAt'].flatMap((key) =>
+        typeof value[key] === 'string' ? [[key, value[key]]] : [],
+      ),
+    ),
+    ...Object.fromEntries(
+      ['additions', 'deletions', 'changedFiles'].flatMap((key) =>
+        Number.isSafeInteger(value[key]) && value[key] >= 0
+          ? [[key, value[key]]]
+          : [],
+      ),
+    ),
+  };
   return {
+    ...(Object.keys(snapshot).length ? { snapshot } : {}),
     provider: 'github',
     host,
     ref: String(value.number),
@@ -627,11 +698,93 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
         '--repo',
         `${host}/${c.repository.owner}/${c.repository.name}`,
         '--json',
-        GITHUB_PULL_REQUEST_FIELDS,
+        GITHUB_PULL_REQUEST_LIST_FIELDS,
         ...(q.state ? ['--state', q.state.toLowerCase()] : []),
-        ...(q.limit ? ['--limit', String(q.limit)] : []),
+        '--limit',
+        String(q.limit ?? GITHUB_PULL_REQUEST_LIST_LIMIT),
       ],
       { shared: true },
+    );
+  }
+  listPullRequestPage(
+    context: PullRequestRepositoryContext,
+    query: PullRequestListQuery & { cursor?: string },
+  ): Promise<PullRequestResult<PullRequestPage>> {
+    const host = this.getHost(context);
+    const { owner, name } = context.repository;
+    return this.read(
+      context,
+      [
+        'api',
+        'graphql',
+        '--hostname',
+        host,
+        '-f',
+        `query=${GITHUB_PULL_REQUEST_PAGE_QUERY}`,
+        '-f',
+        `owner=${owner}`,
+        '-f',
+        `name=${name}`,
+        '-F',
+        `first=${query.limit ?? GITHUB_PULL_REQUEST_LIST_LIMIT}`,
+        ...(query.state && query.state !== 'ALL'
+          ? ['-f', `states[]=${query.state}`]
+          : []),
+        ...(query.cursor ? ['-f', `after=${query.cursor}`] : []),
+      ],
+      true,
+      (parsed) => {
+        const page = (
+          parsed as {
+            data?: {
+              repository?: {
+                pullRequests?: {
+                  nodes?: unknown;
+                  pageInfo?: { hasNextPage?: unknown; endCursor?: unknown };
+                };
+              };
+            };
+          }
+        ).data?.repository?.pullRequests;
+        if (
+          !Array.isArray(page?.nodes) ||
+          typeof page.pageInfo?.hasNextPage !== 'boolean'
+        )
+          throw new Error('GitHub did not return a pull request page');
+        const cursor = page.pageInfo.endCursor;
+        if (
+          page.pageInfo.hasNextPage &&
+          (typeof cursor !== 'string' || !cursor || cursor === query.cursor)
+        )
+          throw new Error('GitHub did not return the next pull request cursor');
+        const items = page.nodes.map((node) => {
+          const item = normalizeGitHubPullRequest(node, host);
+          const target = node.commits?.nodes?.[0]?.commit;
+          const state =
+            target?.oid === item.headSha
+              ? target?.statusCheckRollup?.state
+              : undefined;
+          const checks =
+            state === 'SUCCESS'
+              ? 'passing'
+              : state === 'FAILURE' || state === 'ERROR'
+                ? 'failing'
+                : state === 'PENDING' || state === 'EXPECTED'
+                  ? 'pending'
+                  : undefined;
+          return {
+            ...item,
+            repository: { owner, name },
+            ...(checks ? { snapshot: { ...item.snapshot, checks } } : {}),
+          } satisfies PullRequest;
+        });
+        return {
+          items,
+          ...(page.pageInfo.hasNextPage && typeof cursor === 'string'
+            ? { nextCursor: cursor }
+            : {}),
+        };
+      },
     );
   }
   /**
@@ -682,7 +835,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      GITHUB_PULL_REQUEST_FIELDS,
+      GITHUB_PULL_REQUEST_DETAIL_FIELDS,
     ]);
   }
   getPullRequestByIdentity(
@@ -696,7 +849,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${c.host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      GITHUB_PULL_REQUEST_FIELDS,
+      GITHUB_PULL_REQUEST_DETAIL_FIELDS,
     ]);
   }
   /** Agent feedback's one read per pull request (github-feedback-observation.ts). */

@@ -11,18 +11,21 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  probeExactProcessIdentity,
+  probeExactProcessIdentityAsync,
   resolveOwnProcessIdentity,
 } from '../../packages/shared/src/process-identity.mjs';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let verifiedOwner;
 
 function ownerIdentity(pid) {
+  if (verifiedOwner?.pid === pid) return verifiedOwner;
   const result = resolveOwnProcessIdentity(pid);
   if (result.state !== 'exact') {
     throw new Error('Cannot prove this process identity for a listener lease');
   }
-  return result.identity;
+  verifiedOwner = result.identity;
+  return verifiedOwner;
 }
 
 function lockPath() {
@@ -43,12 +46,15 @@ function readLease(path) {
   }
 }
 
-function leaseOwnerState(lease) {
+async function leaseOwnerState(lease, currentOwner) {
   const owner = lease?.owner;
   if (!Number.isInteger(owner?.pid) || typeof owner?.start !== 'string') {
     return 'unknown';
   }
-  const probe = probeExactProcessIdentity(owner.pid);
+  if (owner.pid === currentOwner.pid) {
+    return owner.start === currentOwner.start ? 'live' : 'dead';
+  }
+  const probe = await probeExactProcessIdentityAsync(owner.pid);
   if (probe.state === 'dead') return 'dead';
   if (probe.state !== 'exact') return 'unknown';
   return probe.identity.start === owner.start ? 'live' : 'dead';
@@ -144,7 +150,7 @@ export async function withDesktopRuntimeListenerLease(work, options = {}) {
       )
         throw error;
       const existing = readLease(path);
-      const ownerState = leaseOwnerState(existing);
+      const ownerState = await leaseOwnerState(existing, owner);
       if (ownerState === 'dead' && reclaimDeadOwner(path, existing)) continue;
       if (Date.now() >= deadline) {
         let holder = 'unknown';

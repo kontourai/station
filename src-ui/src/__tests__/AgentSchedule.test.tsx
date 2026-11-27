@@ -181,6 +181,7 @@ const ruleProposal: AutomationProposal = {
 };
 
 let schedule: ConversationAgentSchedule;
+let approvalExpired: boolean;
 let activationRefusal: string | undefined;
 let creationRefusal: string | undefined;
 let calls: Array<{ method: string; url: string; body?: unknown }>;
@@ -190,6 +191,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'], now: NOW });
   schedule = { wakeUps: [wakeUp], jobProposals: [proposal], jobs: [] };
   calls = [];
+  approvalExpired = false;
   activationRefusal = undefined;
   creationRefusal = undefined;
   scheduler.jobs = [];
@@ -218,6 +220,17 @@ beforeEach(() => {
           return Response.json({ success: true, data: { canceled: true } });
         }
         if (url.endsWith('/wake-ups/w2/approve')) {
+          if (approvalExpired) {
+            schedule = { ...schedule, wakeUps: [] };
+            return Response.json(
+              {
+                success: false,
+                code: 'wake_up_settled',
+                error: 'Its time has passed.',
+              },
+              { status: 409 },
+            );
+          }
           schedule = {
             ...schedule,
             wakeUps: schedule.wakeUps.map((item) =>
@@ -396,6 +409,7 @@ describe('an Automation proposal waits for the person (#4830)', () => {
       });
       toggle.focus();
       await user.keyboard(' ');
+      await user.tab();
       await user.tab();
       expect(document.activeElement).toBe(
         screen.getByRole('button', { name: 'Confirm' }),
@@ -588,10 +602,10 @@ describe('in-chat notes', () => {
     schedule = { wakeUps: [waiting], jobProposals: [], jobs: [] };
     mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
     const card = await screen.findByRole('region', {
-      name: 'Check back at 3:30 PM?',
+      name: 'Approve check-back by 3:30 PM',
     });
     expect(card.querySelector('.agent-schedule-card__title')?.textContent).toBe(
-      'Check back at 3:30 PM?',
+      'Approve check-back by 3:30 PM',
     );
     // The note, whole: what the agent will be sent back.
     expect(screen.getByRole('region', { name: 'Note' }).textContent).toBe(
@@ -613,6 +627,21 @@ describe('in-chat notes', () => {
     // Approved: it becomes the armed line.
     expect((await screen.findByText(/Checking back at/)).textContent).toBe(
       'Checking back at 3:30 PM',
+    );
+  });
+
+  test('a late approval explains expiry after Station removes the check-back', async () => {
+    schedule = { wakeUps: [waiting], jobProposals: [], jobs: [] };
+    mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    const approve = await screen.findByRole('button', { name: 'Approve' });
+    approvalExpired = true;
+    fireEvent.click(approve);
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull(),
+    );
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Its time has passed.',
     );
   });
 
@@ -669,7 +698,7 @@ describe('in-chat notes', () => {
     );
     const arrived = await waitFor(() => {
       const item = screen
-        .getByRole('region', { name: 'Check back at 3:30 PM?' })
+        .getByRole('region', { name: 'Approve check-back by 3:30 PM' })
         .closest('.agent-schedule-notes__item');
       expect(item?.getAttribute('data-phase')).toBe('entering');
       return item!;
@@ -917,34 +946,35 @@ describe('when the chat re-reads its schedule', () => {
     await waitFor(() => expect(gets()).toBe(2));
   });
 
-  test('the key moves with a turn boundary or a finished scheduling call, not with streamed output', async () => {
+  test.each([
+    { toolName: 'mcp__station-control__schedule_wake_up' },
+    {
+      toolName: 'functions.exec',
+      args: 'await tools.schedule_wake_up({minutes: 20})',
+    },
+  ])('refreshes after $toolName finishes a scheduling call', async (call) => {
     const { agentScheduleRefreshKey } = await import(
       '../components/chat-dock/ChatDockBody'
     );
-    const running = [
-      { type: 'text' },
-      {
-        type: 'tool-invocation',
-        toolName: 'mcp__station-control__schedule_wake_up',
-        state: 'running',
-      },
-    ];
-    const base = agentScheduleRefreshKey('turn-1', running);
-    // More text, another tool: same key.
+    const invocation = {
+      type: 'tool-invocation',
+      toolName: call.toolName,
+      state: 'running',
+      args: '',
+    };
+    const parts = [{ type: 'text' }, invocation];
+    const base = agentScheduleRefreshKey('turn-1', parts);
     expect(
       agentScheduleRefreshKey('turn-1', [
-        ...running,
+        ...parts,
         { type: 'text' },
         { type: 'tool-invocation', toolName: 'Bash', state: 'completed' },
       ]),
     ).toBe(base);
-    // The scheduling call finished: a new key.
-    expect(
-      agentScheduleRefreshKey('turn-1', [
-        running[0]!,
-        { ...running[1]!, state: 'completed' },
-      ]),
-    ).not.toBe(base);
+
+    invocation.args = call.args ?? '';
+    invocation.state = 'completed';
+    expect(agentScheduleRefreshKey('turn-1', parts)).not.toBe(base);
     // The turn ended.
     expect(agentScheduleRefreshKey(undefined, [])).not.toBe(base);
   });

@@ -314,9 +314,9 @@ Sending a message to an ACP-connected agent is identical, from the UI's perspect
 3. A later turn uses the bound continuation endpoint. The `acp` adapter forwards it to the runtime via `connection.prompt()`.
 4. The runtime's ACP session-update and extension notifications are translated by the adapter into [Canonical runtime events](../glossary.md) and streamed back over `GET /api/orchestration/events` (SSE), exactly like any other provider.
 
-The chat composer reads the live session's steering declaration. A confirmed
-native channel defaults to Steer; cancel-and-reprompt defaults to Queue. You
-can select Steer on the fallback too: Station cancels the active prompt, waits
+The chat composer reads the live session's steering declaration and defaults
+to Queue. Switch to Steer for a native channel or a declared interrupting
+fallback. On the fallback, Station cancels the active prompt, waits
 up to ten seconds for its terminal answer, then sends the additional instruction
 with a short continuation instruction on the same session and Station turn.
 The continuation keeps the current task unless your instruction changes it.
@@ -1078,6 +1078,9 @@ and the scripted profile
   `<Station home>/engine-profiles/antigravity` to enable diagnostics for the
   built-in launch. Create that directory with mode `0700` and use it only
   for this Station instance. Sign in through Station with that environment.
+  Station passes the dedicated directory to Antigravity's native CLI
+  arguments for chat and sign-in. An opted-in launch requires a private
+  profile directory and a managed launch policy that allows these arguments.
   Station excludes the provider-owned profile from home backups and update
   snapshots. During update rollback the profile stays in place.
   Station checks a bounded interval in the active CLI session's SQLite log
@@ -1227,6 +1230,10 @@ be `declared` without any other engine reading "nothing running".
 ### Tool Calls (Runtime → Station)
 
 When the runtime invokes a tool, the adapter translates the ACP `tool_call` session update into a `tool.started` canonical event, and subsequent `tool_call_update` notifications into `tool.progress`/`tool.completed` events — rendered by the same tool-activity UI every provider uses.
+
+Station publishes a revised `tool.started` for the same call when its projected
+name, kind, or arguments change. Repeated metadata with the same values keeps
+the existing event.
 
 The ACP `kind` the runtime reports (`read`, `edit`, `execute`, `search`, …) rides those events as `toolKind` and is kept across an update that omits it, so the terminal still says what the call was; a value outside the ACP vocabulary is dropped rather than coerced. The chat classifies a row by that kind first. A runtime that reports no programmatic `name` has its human `title` published as `toolName` — for OpenCode's shell tool the whole command line — and the chat shows such a title as written, never humanizing it the way it does an identifier-style name like `shell_exec`.
 

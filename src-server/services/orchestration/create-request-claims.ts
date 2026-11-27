@@ -42,6 +42,7 @@ interface Claim {
   kind: 'delegation' | 'foreground';
   digest: string;
   sessionId: string;
+  sessionIdentityOrigin?: 'server' | 'provided';
   starting?: true;
   startedAt?: number;
   tombstoneAt?: number;
@@ -219,6 +220,9 @@ export class CreateRequestClaims {
         ) ||
         typeof claim.sessionId !== 'string' ||
         !claim.sessionId ||
+        (claim.sessionIdentityOrigin !== undefined &&
+          claim.sessionIdentityOrigin !== 'server' &&
+          claim.sessionIdentityOrigin !== 'provided') ||
         !['delegation', 'foreground'].includes(claim.kind) ||
         (claim.starting !== undefined && claim.starting !== true) ||
         (claim.tombstoneAt !== undefined &&
@@ -286,6 +290,8 @@ export class CreateRequestClaims {
       throw new Error(
         'Create requires authenticated caller scope and a request key.',
       );
+    const { kind } = input;
+    const requestedSessionId = input.sessionId ?? undefined;
     const digest = chatTurnSubmissionDigest(input.intent);
     const callerSessionId =
       input.callerSessionId ?? (await createRequestCallerSession());
@@ -297,7 +303,7 @@ export class CreateRequestClaims {
       callerSessionId ?? null,
     ];
     const key = createHash('sha256')
-      .update(JSON.stringify([input.kind, scope, input.requestKey]))
+      .update(JSON.stringify([kind, scope, input.requestKey]))
       .digest('hex');
     // Reject changed input before waiting for the live request's ownership lock.
     const known = await this.#update((ledger) => ledger.claims[key]);
@@ -362,12 +368,15 @@ export class CreateRequestClaims {
           return existing;
         }
         const row: Claim = {
-          kind: input.kind,
+          kind,
           digest,
           sessionId:
-            input.sessionId ??
-            `${input.kind === 'delegation' ? 'task' : 'conversation'}:${randomUUID()}`,
+            requestedSessionId ??
+            `${kind === 'delegation' ? 'task' : 'conversation'}:${randomUUID()}`,
         };
+        if (kind === 'delegation')
+          row.sessionIdentityOrigin =
+            requestedSessionId === undefined ? 'server' : 'provided';
         ledger.claims[key] = row;
         const capacity = (): 'records' | 'bytes' | undefined => {
           if (Object.keys(ledger.claims).length > MAX_CLAIMS) return 'records';

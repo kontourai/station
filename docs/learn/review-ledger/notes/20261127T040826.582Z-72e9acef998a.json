@@ -1,0 +1,7 @@
+{
+  "revision": "bec3730fa62e8ec760413961b24f777041a01b2b",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed bec3730fa6 phone-layer regression coverage against placement contract. Extended existing real PR review-pane guard fixture to current Project and current-page mobile NavigationProvider calls; Cancel preserves draft, layer and URL, Discard closes. Raw current-Project regression failed on unguarded synthetic restore before repair. Full quote/guard/focus/reload run29/29 in92.42s; fixture does not claim physical device or full shell teardown coverage.","inputs":["src-ui/src/contexts/__tests__/RegionModelContext-phone-layer-guard.test.tsx"]}
+  ]
+}

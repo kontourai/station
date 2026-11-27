@@ -1,0 +1,7 @@
+{
+  "revision": "29d820d740f08822f1256366626fd5a43e2f0813",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r2b-evidence.md","note":"Reviewed the retained-history assertion after switching it to the response matcher. The current route test verifies all active grants and the bounded ended-grant page. The original passkey and transport evidence retain their recorded revision.","inputs":["docs/design/outside-agent-mcp-r2b-evidence.md","src-server/routes/outside-agent/__tests__/consent-routes.test.ts"]}
+  ]
+}

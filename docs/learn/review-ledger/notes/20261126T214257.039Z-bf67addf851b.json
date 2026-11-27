@@ -1,0 +1,23 @@
+{
+  "revision": "ecd13d0178b58ea8772ec563a5d7feeda8342eac",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the previewed count and the Task Plan shortcut. Inbox rows consume the existing WorkFacts sidecar; disabled preview and existing row activation retain their paths.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the previewed count and the Task Plan shortcut. Inbox rows consume the existing WorkFacts sidecar; disabled preview and existing row activation retain their paths.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the previewed count and the Task Plan shortcut. Inbox rows consume the existing WorkFacts sidecar; disabled preview and existing row activation retain their paths.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the Inbox-only count derived from live Task memory attention. The shared HomeWorkItem projection and its stored grant field list retain their existing contract.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the Inbox-only count derived from live Task memory attention. The shared HomeWorkItem projection and its stored grant field list retain their existing contract.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the Inbox-only count derived from live Task memory attention. The shared HomeWorkItem projection and its stored grant field list retain their existing contract.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the Inbox-only count derived from live Task memory attention. The shared HomeWorkItem projection and its stored grant field list retain their existing contract.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the Inbox-only count derived from live Task memory attention. The shared HomeWorkItem projection and its stored grant field list retain their existing contract.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the Inbox-only count derived from live Task memory attention. The shared HomeWorkItem projection and its stored grant field list retain their existing contract.","inputs":["src-ui/src/views/home/work-facts.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "d757f7e74ee54b3405962b92ef5f3c9b2d722f0b",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed check-back approval in the composer and the schedule approval route. The approval deadline and typed 409 outcome now appear in the chat. Confirmed the referenced Session authority and route composition claims still hold.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

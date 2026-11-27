@@ -388,7 +388,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
       } else
         fireEvent.change(
-          screen.getByRole('combobox', { name: 'Chat list scope' }),
+          screen.getByRole('combobox', { name: 'Scope for Chats' }),
           {
             target: { value: 'project:["station:local","alpha"]' },
           },
@@ -406,7 +406,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         expect(
           (
             screen.getByRole('combobox', {
-              name: 'Chat list scope',
+              name: 'Scope for Chats',
             }) as HTMLSelectElement
           ).value,
         ).toBe('project:["station:local","alpha"]');
@@ -478,7 +478,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       const mounted = render(panel());
       const scope = () =>
         screen.getByRole('combobox', {
-          name: 'Chat list scope',
+          name: 'Scope for Chats',
         }) as HTMLSelectElement;
       // With no stored setting a project route scopes the inbox.
       expect(scope().value).toBe('current-project');

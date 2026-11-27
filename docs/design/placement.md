@@ -248,6 +248,9 @@ every other route. These rules make it a region rather than a special case
     then closes the replacement. Synthetic navigation events do not settle that
     traversal. Removed views, changed captured URLs and failed history writes cancel
     unpublished registrations; they do not move an old dialog onto a new route.
+    Ordinary canonical navigation retires the old stack from top to bottom;
+    a native Back traversal dismisses only its top layer. A retained phone reader
+    registers its own Back step at the selected destination, below new dialogs.
     See [the history owner](../../src-ui/src/components/dialog-history.ts) and its
     [Chromium handoff tests](../../src-ui/src/__tests__/dialog-history.browser.test.tsx).
 
@@ -2073,7 +2076,9 @@ routing occurs only after the reader's focus guard accepts the destination.
 
 The Chats list and reader stay mounted while switching between them, preserving
 list position, the search, and unsent composer text. Collapse and reopen retain
-the selected view. A collapsed chat retains its title and actions. Activating
+the selected view. Browser Back returns a phone reader to the Chats list even
+after a direct link or reload; reopening it restores its canonical chat identity.
+Late send admission does not select a chat the reader has left. A collapsed chat retains its title and actions. Activating
 a chat command in the collapsed header reveals the dock. A new conversation
 URL reveals its reader. A covered reader
 does not count as viewed and cannot take composer focus. A hidden New chat

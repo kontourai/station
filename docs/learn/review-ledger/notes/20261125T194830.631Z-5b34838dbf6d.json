@@ -1,0 +1,7 @@
+{
+  "revision": "4056494f0b056255ed455df564a225be6b0530ce",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Rewrote the first paragraph of Phone dock sizes for Half's floor and checked it against dockSnap.ts: on a phone Half is 45% of the viewport and never under 380px, and never nearer Tall than 100px, so the floor tapers away on a shorter viewport (600px tall gives 350, 412 gives 209, 375 gives 200). A desktop dock has no floor: useDockShellChrome passes phone: isMobile and the drag passes phone only in mobile-snap mode, so desktop Half stays a plain 45%. Verified by the dockSnap tables, the drag midpoint test and the task-first-home phone journey at 375px, where Half is now 380px.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

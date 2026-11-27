@@ -170,6 +170,7 @@ export type {
   StationHandshakeIdentity,
   StorageAdapter,
 } from './core/types';
+export { ConnectionManagerDiscoverPanel } from './react/ConnectionManagerDiscoverPanel';
 export type { ConnectionManagerModalProps } from './react/ConnectionManagerModal';
 export { ConnectionManagerModal } from './react/ConnectionManagerModal';
 export type { ConnectionStatusDotProps } from './react/ConnectionStatusDot';

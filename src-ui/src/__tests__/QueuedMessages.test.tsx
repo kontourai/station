@@ -203,6 +203,37 @@ describe('one send order and one count across the list', () => {
     onRetry: vi.fn(),
   });
 
+  it('keeps the pending row mounted when Station takes over delivery', () => {
+    const message = 'station follow-up';
+    const { rerender } = renderQueue(
+      <QueuedMessages
+        sessionId="s1"
+        messages={[message]}
+        metadata={[{ id: 'follow-up', mode: 'queue' }]}
+      />,
+    );
+    const original = screen
+      .getByText(message)
+      .closest('.queued-message-presence');
+    expect(original).not.toBeNull();
+
+    rerender(
+      <QueuedMessages
+        sessionId="s1"
+        messages={[message]}
+        metadata={[{ id: 'follow-up', mode: 'queue' }]}
+        held={held([heldEntry('follow-up', 'queued', 1)])}
+      />,
+    );
+
+    expect(screen.getByText(message).closest('.queued-message-presence')).toBe(
+      original,
+    );
+    expect(
+      screen.getByRole('button', { name: '1 pending message' }),
+    ).toBeTruthy();
+  });
+
   it('numbers rows in the order they send, next to send lowest: Station’s, then this window’s; the outbox has none', () => {
     const { container } = renderQueue(
       <QueuedMessages

@@ -193,6 +193,12 @@ CREATE TABLE IF NOT EXISTS orchestration_message_search_backfill_v3 (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS orchestration_message_search_acp_backfill (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  last_global_sequence INTEGER NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 -- The completed-turn provenance projection is assembled once while the live
 -- turn is still available, then replayed by its narrow primary key.  This is
 -- deliberately a sidecar rather than another event: the canonical event log

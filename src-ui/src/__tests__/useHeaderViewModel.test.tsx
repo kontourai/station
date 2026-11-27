@@ -167,6 +167,42 @@ describe('useHeaderViewModel help launch', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  test('an Ask Station prompt starts on the Station Assistant, not the first Agent listed', async () => {
+    const { result } = renderHook(() =>
+      useHeaderViewModel({
+        currentView: undefined,
+        // Catalog order is not a preference: another engine's Agent can be
+        // listed ahead of the built-in one. Both rows are the shape
+        // `/api/agents` returns for an Agent bound to an engine connection.
+        agents: [
+          {
+            slug: 'kiro-cli',
+            name: 'Kiro',
+            execution: { agentConnectionId: 'kiro-cli' },
+          },
+          {
+            slug: 'station',
+            name: 'Station Assistant',
+            execution: { agentConnectionId: 'station' },
+          },
+        ] as any,
+        onNavigate: vi.fn(),
+      }),
+    );
+
+    act(() => result.current.handleHelpPrompt('Check my Station'));
+
+    await waitFor(() => expect(launchChat).toHaveBeenCalledOnce());
+    expect(launchChat).toHaveBeenCalledWith(
+      'station',
+      'Station Assistant',
+      'Check my Station',
+      undefined,
+      undefined,
+      { provider: 'station-agent' },
+    );
+  });
+
   test('navigates to Engines and records no-target without attempting a send', () => {
     const { result } = renderHook(() =>
       useHeaderViewModel({

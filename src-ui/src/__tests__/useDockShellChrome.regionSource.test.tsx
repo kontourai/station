@@ -140,6 +140,23 @@ describe('useDockShellChrome reads its open state from the region model', () => 
       expect(harness.collapseMaximizedDock).not.toHaveBeenCalled();
     });
 
+    // A caller at a navigation seam this hook cannot see (an inbox row that
+    // reveals Activity) restores explicitly, and must find the dock at the
+    // size it left: the height it was dragged to and the level it rested on.
+    test('an explicit restore returns the region to the height and level it was maximized from', () => {
+      const { result } = mount('right');
+      act(() => result.current.model.placeSurface('workspace-agents', 'right'));
+      act(() => result.current.chrome.applyDockSnap('tall'));
+      const tallHeight = result.current.chrome.dockHeight;
+
+      act(() => result.current.chrome.applyDockSnap('full'));
+      act(() => result.current.chrome.restoreDockToDocked());
+
+      expect(result.current.chrome.dockSnap).toBe('tall');
+      expect(result.current.chrome.dockHeight).toBe(tallHeight);
+      expect(result.current.model.regions.right.maximized).toBe(false);
+    });
+
     test('a shell that does not register dock.maximize does not own the chord', () => {
       const { result } = mount('right');
       expect(result.current.chrome.ownsMaximizeShortcut).toBe(false);
@@ -788,58 +805,66 @@ describe('a page open at / shows the page past a full-screen phone dock (#4399)'
     window.localStorage.removeItem(SNAP_KEY);
   });
 
-  test('the drawer’s Agents row returns a full-screen Chat to Half', () => {
-    const restore = stubPhone();
-    try {
-      const client = new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      });
-      const wrapper = ({ children }: { children: ReactNode }) => (
-        <QueryClientProvider client={client}>
-          <RegionModelProvider>{children}</RegionModelProvider>
-        </QueryClientProvider>
-      );
-      const { result } = renderHook(
-        () => ({
-          chrome: useDockShellChrome({
-            publishesDockSlotClearance: true,
-            registersDockShortcuts: false,
-            regionId: 'bottom',
-          }),
-          model: useRegionModel(),
-        }),
-        { wrapper },
-      );
-      expect(result.current.chrome.isMobile).toBe(true);
-      const metrics = {
-        viewportHeight: result.current.chrome.visualViewport.height,
-        toolbarHeight: result.current.chrome.toolbarHeight,
-        collapsedHeight: result.current.chrome.collapsedHeight,
-      };
-
-      act(() => result.current.chrome.applyDockSnap('full'));
-      expect(result.current.model.regions.bottom.maximized).toBe(true);
-      expect(result.current.chrome.dockHeight).toBe(
-        dockSnapPixels('full', metrics),
-      );
-
-      act(() => {
-        result.current.model.openSurfaceInRegion('home', {
-          region: 'main',
+  // The dock comes back to the level it was maximized from. For Tall that
+  // matters twice: the mobile snap-sync re-derives the height from the snap,
+  // so a snap reconciled to Half would shrink a dock the person set to Tall.
+  test.each(['half', 'tall'] as const)(
+    'the drawer’s Agents row returns a full-screen Chat to %s, the level it was maximized from',
+    (level) => {
+      const restore = stubPhone();
+      try {
+        const client = new QueryClient({
+          defaultOptions: { queries: { retry: false } },
         });
-      });
+        const wrapper = ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={client}>
+            <RegionModelProvider>{children}</RegionModelProvider>
+          </QueryClientProvider>
+        );
+        const { result } = renderHook(
+          () => ({
+            chrome: useDockShellChrome({
+              publishesDockSlotClearance: true,
+              registersDockShortcuts: false,
+              regionId: 'bottom',
+            }),
+            model: useRegionModel(),
+          }),
+          { wrapper },
+        );
+        expect(result.current.chrome.isMobile).toBe(true);
+        const metrics = {
+          viewportHeight: result.current.chrome.visualViewport.height,
+          toolbarHeight: result.current.chrome.toolbarHeight,
+          collapsedHeight: result.current.chrome.collapsedHeight,
+          phone: result.current.chrome.isMobile,
+        };
 
-      expect(result.current.model.regions.main.occupant).toBe('home');
-      expect(result.current.model.regions.bottom.maximized).toBe(false);
-      expect(result.current.chrome.dockSnap).toBe('half');
-      expect(result.current.chrome.dockHeight).toBe(
-        dockSnapPixels('half', metrics),
-      );
-      expect(window.localStorage.getItem(SNAP_KEY)).toBe('half');
-    } finally {
-      restore();
-    }
-  });
+        act(() => result.current.chrome.applyDockSnap(level));
+        act(() => result.current.chrome.applyDockSnap('full'));
+        expect(result.current.model.regions.bottom.maximized).toBe(true);
+        expect(result.current.chrome.dockHeight).toBe(
+          dockSnapPixels('full', metrics),
+        );
+
+        act(() => {
+          result.current.model.openSurfaceInRegion('home', {
+            region: 'main',
+          });
+        });
+
+        expect(result.current.model.regions.main.occupant).toBe('home');
+        expect(result.current.model.regions.bottom.maximized).toBe(false);
+        expect(result.current.chrome.dockSnap).toBe(level);
+        expect(result.current.chrome.dockHeight).toBe(
+          dockSnapPixels(level, metrics),
+        );
+        expect(window.localStorage.getItem(SNAP_KEY)).toBe(level);
+      } finally {
+        restore();
+      }
+    },
+  );
 });
 
 /**

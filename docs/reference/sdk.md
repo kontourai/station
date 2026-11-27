@@ -427,8 +427,23 @@ withhold stale provenance.
 Call `useDiscoverIntegrationEventsMutation().mutateAsync({id, requestScope})`
 to check a saved Streamable HTTP tool server’s event catalog as the Station
 operator. The result carries `supported` and, when supported, bounded event
-names with optional titles and descriptions. The captured scope binds the
+descriptors with names, optional titles and descriptions, delivery modes,
+and schemas supplied by the server. The captured scope binds the
 request to the current Station and authority. Older hosts return HTTP 404.
+
+`usePollIntegrationEventsMutation().mutateAsync({id, input, requestScope})`
+reads one page of a named event type through that same integration. Start
+with `cursor: null` and pass the returned cursor to continue. Keep the name
+and optional event arguments consistent when continuing. The response
+reports whether more events remain and whether earlier events are unavailable.
+
+`useStreamIntegrationEventsMutation().mutateAsync({id, input, requestScope, signal, receive})`
+opens a bounded operator event stream and delivers typed frames to `receive`.
+Use the caller's abort signal to stop it and the latest cursor to resume.
+
+Programs can import `discoverIntegrationEvents`, `pollIntegrationEvents` and
+`streamIntegrationEvents` from `@kontourai/station-sdk/client` to use the same
+operator-scoped API outside React.
 
 `useIntegrationAccountQuery(id, projectSlug?, requestScope?)` reads the account
 summary. Pass the captured `ApiRequestScope` to partition account state by
@@ -484,6 +499,17 @@ reader substitutes an empty or working result for a failure. These exports
 require an SDK version and Station host containing them. See the
 [API](api.md#integration-capability-status-and-task-write-back) for authority,
 probe limits and the current lack of outbound producers.
+
+## Outside-client inventory and review
+
+`useOutsideClientsQuery(requestScope)` reads the bound Station's pending
+requests, grants and MCP URL. It distinguishes a guarded or older host from a
+Station that requires operator sign-in. `useOutsideClientReviewMutation(requestScope)`
+prepares a consent review with an exact request fingerprint or grant version
+and digest. Project selections include the stable Project ID. The returned
+review URL opens the passkey ceremony. `useOutsideClientReviewStatusQuery(requestScope, id)`
+reads the decision through the same operator's session. See the
+[outside-agent reference](outside-agent-oauth.md) for enablement and scope.
 
 ## Project tool library
 
@@ -1956,6 +1982,21 @@ production support. See the [hook](../../packages/sdk/src/hooks/operations.ts),
 
 ## Query Hooks
 
+
+### Third-party history
+
+The `@kontourai/station-sdk/external-session-history-query` subpath exports
+`useExternalSessionHistoryQuery(scope, offset, search, provider?)` and
+`useExternalSessionTranscriptQuery(scope, id, cursor, fromStart)`. Both use the
+selected Station's request authority and stop when their last observer closes.
+The catalog and transcript load on demand.
+
+`useImportExternalSessionHistory(scope)` accepts a catalog ID and an
+`AbortSignal` and a client operation ID. It saves bounded batches and returns the saved thread ID.
+Canceling leaves any committed messages available and a later request can
+resume from the saved cursor. Use the Station's **Third-party history** preview
+availability before mounting these queries.
+
 ### Unified search (backend and SDK slice)
 
 `searchStation(apiBase, request, { requestScope, signal? })` queries `POST /api/search` with the
@@ -1985,8 +2026,9 @@ signal across that asynchronous boundary.
 
 `readSearchMessage(apiBase, { sessionId, matchedEventId, continuation? },
 { requestScope, signal? })`, from `@kontourai/station-sdk/client`, reads a page
-of the exact canonical event's prompt or completed output. Every page is
-reauthorized; text is never read from the search index. Pages contain at most
+of the exact canonical prompt or completed reply. For ACP completions that carry
+no final output field, the reader uses the text deltas recorded before that
+completion in the same Session and turn. Every page is reauthorized; text is never read from the search index. Pages contain at most
 4,096 Unicode code points, with an existing 128 KiB source allowance and the
 same isolated reader deadline. The opaque continuation binds Session/event,
 content and recorded metadata; changed content refuses continuation instead of
@@ -5058,8 +5100,9 @@ content, while retaining the observed HTTP status (usually 200).
   and keeps the last answer when a refresh fails. A host that answers a plain
   404 (one older than this read) resolves to `null`, and the board then
   claims nothing about pull requests; a 404 with `request_principal_changed`
-  (lost standing) is an error. Only the board enables it; the list view
-  claims nothing about pull requests. `useMergePullRequestMutation`
+  (lost standing) is an error. The board enables the Project-wide read. A
+  Task header passes `{ taskId }` to the hook to read just that Task. The
+  list view does not read pull request facts. `useMergePullRequestMutation`
   invalidates every Project's facts query, so a merge through Station moves
   its card on the next read.
 - `createTask` and `createTaskReference` accept an optional `requestScope`
@@ -5732,6 +5775,17 @@ Profile extraction uses the contracts' `readProviderDurabilityProfile` helper:
 absent carriers remain unknown, including legacy metadata without a declaration.
 Display notes have a separate 50-note capacity
 and seven-day retention, pruned on submission. See [inbox kinds and crash outcomes](session-api.md#submit-steer-follow-up-or-display-input).
+
+The queue uses `updateConversationQueue(apiBase,
+conversationId, action)` to edit or move queued follow-ups from the same
+sender or steer an attachment-free queued follow-up. The inbox read reports
+this capability to `listConversationInbox` callers through `onQueueControls`.
+An edit names the original
+message and replacement text and keeps the queue position. A move names the observed
+neighbor and direction. A steer names the source, a fresh UUID, the original
+message and the running turn token from `onQueueControls`. Station cancels the source and accepts the
+steer in one transaction. If the queue or conversation has changed, refresh
+before acting again.
 
 `ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
 HTTP/envelope failure form carries `status`, `code`, `details` and
@@ -6467,6 +6521,20 @@ repository owner; GitLab omits it. A conflict indicator matches the local branch
 and compares these owners case-insensitively when both are present. If either
 owner is absent, it matches on branch alone; the upstream branch name is never
 a substitute for the local branch.
+
+Set `config.list` to `OPEN`, `MERGED`, `CLOSED` or `ALL` to request the
+checkout and its first pull request page together. On supporting hosts the
+available context includes a `pullRequests` result, which can report that the
+forge read failed while the checkout context remains available. Older hosts
+omit this field. The SDK caches each requested state separately and seeds the
+checkout-only cache from a fresh bundled response. After the app restores a
+saved list, the query's `isLastKnown` flag stays set until the server returns
+a new answer. Background refreshes of a live result keep that flag clear.
+GitHub returns a `nextCursor` when more rows are available. Pass those opaque
+cursors to `useCheckoutPullRequestPages` with the same checkout and state.
+Subsequent pages have independent memory-only query keys. Pass a stable
+checkout identity as the optional fourth argument to segregate pages when
+the same working directory resolves to a different repository.
 
 ## Conversation pull-request links
 

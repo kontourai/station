@@ -896,7 +896,11 @@
 
     "packages/sdk/src/query-domains/projectRoomCoordinator.ts",
 
-    "packages/sdk/src/client/integrations.ts"
+    "packages/sdk/src/client/integrations.ts",
+
+    "packages/sdk/src/query-domains/externalSessionHistory.ts",
+
+    "packages/sdk/src/client/external-session-history.ts"
   ],
 
   "checks": [

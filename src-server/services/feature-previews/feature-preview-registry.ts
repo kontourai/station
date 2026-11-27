@@ -101,9 +101,21 @@ export class FeaturePreviewRegistry {
         'Inspect Project tool setup and follow Task work to its artifacts and receipts.',
     });
     this.rememberConsumer({
+      id: 'inbox-task-questions',
+      label: 'Inbox Task questions',
+      description:
+        'Show open-question counts and open the Task Plan from the Inbox.',
+    });
+    this.rememberConsumer({
       id: 'task-collaboration',
       label: 'Task collaboration',
       description: 'Show member names and presence in shared Task rooms.',
+    });
+    this.rememberConsumer({
+      id: 'pull-request-workspace',
+      label: 'Pull request workspace',
+      description:
+        'Group and search pull requests in Coding and review them in dedicated tabs.',
     });
     this.rememberConsumer({
       id: 'apps-library',

@@ -1,0 +1,19 @@
+{
+  "revision": "bae94cc60242b024ad68f88044e233a73feec121",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Checked the terminal and integration references against the API change. The only changed parameter is taskId on the Task pull request facts route.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the terminal and integration references against the API change. The only changed parameter is taskId on the Task pull request facts route.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"Checked the glossary, integration references and contracts instructions against the new snapshot and filter wording. No other shared shape or authoring instruction changed.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the glossary, integration references and contracts instructions against the new snapshot and filter wording. No other shared shape or authoring instruction changed.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Checked the glossary, integration references and contracts instructions against the new snapshot and filter wording. No other shared shape or authoring instruction changed.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Compared the integration guide and SDK instructions to the new optional Task scope. The original board query, authentication and SDK package boundary are unchanged.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Compared the integration guide and SDK instructions to the new optional Task scope. The original board query, authentication and SDK package boundary are unchanged.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

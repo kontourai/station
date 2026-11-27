@@ -135,6 +135,13 @@
   padding: 0;
 }
 
+/* Navigation and controls around flush content align with the page header. */
+.page-frame--flush
+  > .page-frame__body
+  :is(.page__tabs--frame-inset, .page-frame__body-inset) {
+  padding-inline: 1.5rem;
+}
+
 @media (max-width: 640px) {
   .page-frame__header {
     padding: 1.5rem 1rem 0;
@@ -146,6 +153,12 @@
 
   .page-frame--flush > .page-frame__body {
     padding: 0;
+  }
+
+  .page-frame--flush
+    > .page-frame__body
+    :is(.page__tabs--frame-inset, .page-frame__body-inset) {
+    padding-inline: 1rem;
   }
 }
 
