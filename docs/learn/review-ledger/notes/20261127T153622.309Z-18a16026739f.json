@@ -1,0 +1,7 @@
+{
+  "revision": "cbfd73fe70d96e9092beb6765a9daa6acc60704d",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"After merging ea6a0bf main, compared new nightly-desktop/Android source5b580/run46015301036 cohort rows and generated Markdown projection with the complete final cohort receipt and Windows installer SHA256. Receipt and ledger source/version agree; CLI receipt remains missing and is not inferred from successful native publication. No ledger data is changed by this PR.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}
