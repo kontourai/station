@@ -1,7 +1,7 @@
 [package]
 name = "tauri-plugin-station-discovery"
 version = "0.1.0"
-description = "Bounded system DNS-SD discovery for Station mobile clients"
+description = "Bounded DNS-SD discovery for Station native clients"
 edition = "2021"
 publish = false
 links = "tauri-plugin-station-discovery"
@@ -11,3 +11,7 @@ tauri-plugin = { version = "=2.7.1", features = ["build"] }
 
 [dependencies]
 tauri = { version = "=2.12.1" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+mdns-sd = { version = "=0.22.0", default-features = false }
+serde = { version = "1", features = ["derive"] }

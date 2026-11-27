@@ -77,6 +77,7 @@ hpke = { version = "=0.13.0", default-features = false, features = ["alloc", "p2
 serde_jcs = "=0.2.0"
 tauri-plugin-dialog = "=2.7.3"
 tauri-plugin-opener = "=2.5.5"
+tauri-plugin-station-discovery = { path = "plugins/station-discovery" }
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 # Self-update (#575). Desktop-only, matching this plugin's own supported
@@ -148,7 +149,6 @@ tauri-plugin-keyring-store = { version = "=0.2.0", default-features = false }
 # (docs/design/notification-delivery.md). The iOS native half is compiled
 # only with STATION_IOS_LIVE_ACTIVITY=1 (plugins/agent-activity/build.rs).
 tauri-plugin-station-agent-activity = { path = "plugins/agent-activity" }
-tauri-plugin-station-discovery = { path = "plugins/station-discovery" }
 # Clipboard image paste (Android and iOS) and the Android image share target
 # (docs/design/native-capabilities.md#clipboard-images-and-the-share-target).
 tauri-plugin-station-media-intake = { path = "plugins/media-intake" }
