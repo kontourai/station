@@ -961,7 +961,12 @@ export function createSqliteDelegationResultStore(
       const rows = db
         .prepare(
           `SELECT DISTINCT pr_key, identity_json
-         FROM delegation_result_pull_request_watches WHERE closed = 0 AND cancelled = 0 ORDER BY pr_key`,
+         FROM delegation_result_pull_request_watches watch
+         WHERE cancelled = 0 AND (closed = 0 OR EXISTS (
+           SELECT 1 FROM delegation_result_deliveries delivery
+           WHERE delivery.child_conversation_id = watch.watch_id
+             AND delivery.state IN ('pending', 'claimed') AND delivery.fence IS NULL
+         )) ORDER BY pr_key`,
         )
         .all() as { pr_key: string; identity_json: string }[];
       return rows.map((row) => ({
@@ -980,11 +985,16 @@ export function createSqliteDelegationResultStore(
       return atomically(() => {
         const rows = db
           .prepare(
-            `SELECT watch_id, status_json FROM delegation_result_pull_request_watches
-           WHERE pr_key = ? AND closed = 0 AND cancelled = 0`,
+            `SELECT watch_id, status_json, closed FROM delegation_result_pull_request_watches
+           WHERE pr_key = ? AND cancelled = 0`,
           )
-          .all(prKey) as { watch_id: string; status_json: string | null }[];
+          .all(prKey) as {
+          watch_id: string;
+          status_json: string | null;
+          closed: number;
+        }[];
         for (const row of rows) {
+          if (row.closed) continue;
           const owner = readOwner(row.watch_id);
           if (!owner) continue;
           const prior = row.status_json
@@ -2040,7 +2050,10 @@ export class DelegationResultDelivery {
         return true;
       },
     );
-    for (const watchId of watchIds) this.driveChild(watchId);
+    for (const watchId of watchIds)
+      for (const row of this.ports.store.listForChild(watchId))
+        if (row.state === 'pending' || row.state === 'claimed')
+          this.drive(row, true);
   }
 
   handlesApprovalWake(
@@ -2665,6 +2678,10 @@ export class DelegationResultDelivery {
     if (!this.canDeliverRow(row)) return;
     const owner = store.owner(row.childConversationId);
     if (!owner) return store.settle(row, 'refused', 'owner-missing');
+    if (row.transition === 'pull_request') {
+      if (row.fence === 'consumed') return store.release(row);
+      if (!this.mayReadPullRequestWatch(owner)) return;
+    }
     let pinned: { branch: SessionDeliveryBranch; threadId: string } | undefined;
     if (row.state === 'pending') {
       if (!store.claim(row)) return;
@@ -2753,11 +2770,6 @@ export class DelegationResultDelivery {
     )
       return store.settle(row, 'refused', 'resolved');
 
-    if (
-      row.transition === 'pull_request' &&
-      !this.mayReadPullRequestWatch(owner)
-    )
-      return store.settle(row, 'refused', 'pull-request-watch-access-changed');
     if (carryUntrusted)
       for (const id of new Set([owner.parentConversationId, threadId]))
         ledger.markConversation(id, Promise.resolve(true));

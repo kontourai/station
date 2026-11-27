@@ -883,11 +883,19 @@ describe('delegated task result delivery (#3158)', () => {
     first.store.close();
     open.splice(open.indexOf(first), 1);
 
+    prAuthorized = false;
     const second = setup(path);
     emit(second, PARENT, 'turn.completed', { turnId: 'parent-running' });
     await second.delivery.reconcile();
+    expect(second.starts).toHaveLength(0);
+    expect(second.delivery.watchedPullRequests()).toHaveLength(1);
+
+    prAuthorized = true;
     second.delivery.observePullRequest(prKey, observation);
     await second.delivery.idle();
+    second.delivery.observePullRequest(prKey, observation);
+    await second.delivery.idle();
+    expect(second.delivery.watchedPullRequests()).toHaveLength(0);
     expect(second.starts).toHaveLength(1);
     expect(second.starts[0]!.parentConversationId).toBe(PARENT);
     expect(second.starts[0]!.text).toContain('acme/notes #72 merged');
