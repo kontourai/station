@@ -1,0 +1,21 @@
+{
+  "revision": "7d44c4337d4882d6cf819571ec39e825f6950055",
+
+  "notes": [
+    {"path":"docs/design/cloud-move.md","note":"Verified the Windows no-window guard remains applied to both SSH process launch paths after rustfmt.","inputs":["src-desktop/src/ssh_launcher.rs"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"Verified the Windows no-window guard remains applied to both SSH process launch paths after rustfmt.","inputs":["src-desktop/src/ssh_launcher.rs"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Verified the Windows no-window guard remains applied to both SSH process launch paths after rustfmt.","inputs":["src-desktop/src/ssh_launcher.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Verified the Windows tray-service subprocess still carries the no-window flag after rustfmt.","inputs":["src-desktop/src/tray.rs"]},
+
+    {"path":"docs/guides/android-build.md","note":"Verified the Windows tray-service subprocess still carries the no-window flag after rustfmt.","inputs":["src-desktop/src/tray.rs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Verified the Windows tray-service subprocess still carries the no-window flag after rustfmt.","inputs":["src-desktop/src/tray.rs"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Verified the Windows tray-service subprocess still carries the no-window flag after rustfmt.","inputs":["src-desktop/src/tray.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Verified the Windows tray-service subprocess still carries the no-window flag after rustfmt.","inputs":["src-desktop/src/tray.rs"]}
+  ]
+}
