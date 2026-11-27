@@ -1,0 +1,9 @@
+{
+  "revision": "afb673d041c5b6722d099e511f490ea0497406a4",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed afb673d observer-order correction: fixture defers hostile bundle response until diagnostic listeners exist, including the report source/origin check; teardown resolves pending response before server close. This eliminates missed one-shot report timing without changing product APIs, recovery, trust or native command authority. Earlier Windows baseline and mutation receipts retain their dated source scope; final rerun is separate.","inputs":["tests/tauri-shell/plugin-host-security.e2e.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed afb673d observer-order correction: fixture defers hostile bundle response until diagnostic listeners exist, including the report source/origin check; teardown resolves pending response before server close. This eliminates missed one-shot report timing without changing product APIs, recovery, trust or native command authority. Earlier Windows baseline and mutation receipts retain their dated source scope; final rerun is separate.","inputs":["tests/tauri-shell/plugin-host-security.e2e.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "afb673d041c5b6722d099e511f490ea0497406a4",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed hostile-plugin paragraph against afb673d: deferred fixture bundle release makes observer ordering deterministic. Seeded hydration and actual CSP transport refusal remain the stated proof. No chooser, fallback transport, real keyring or exact-final packaged qualification is implied.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}
