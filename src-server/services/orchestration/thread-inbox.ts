@@ -551,17 +551,13 @@ const MAY_STILL_SEND: ReadonlySet<InboxEntryRecord['state']> = new Set([
   'unconfirmed',
 ]);
 
-/** Positions (1 = next) of the entries still waiting, by key. */
+/** Positions (1 = next) of the follow-ups still waiting, by key. */
 function waitingPositions(
   entries: readonly InboxEntryRecord[],
 ): Map<string, number> {
   const positions = new Map<string, number>();
   for (const entry of entries)
-    if (
-      entry.state === 'queued' ||
-      entry.state === 'placing' ||
-      entry.state === 'unconfirmed'
-    )
+    if (entry.kind === 'follow-up' && MAY_STILL_SEND.has(entry.state))
       positions.set(entry.key, positions.size + 1);
   return positions;
 }

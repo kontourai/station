@@ -3807,3 +3807,51 @@ div.chat-input
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
+
+.chat-input .chat-follow-up-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+}
+
+.chat-input .chat-follow-up-actions .button {
+  min-height: 44px;
+  padding-inline: var(--k-space-2);
+}
+
+.chat-input .chat-follow-up-steer {
+  border-color: var(--k-caution);
+  color: var(--k-caution);
+}
+
+.chat-input .chat-follow-up-steer:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--k-caution) 12%, transparent);
+}
+
+.chat-input .chat-follow-up-actions .button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.chat-follow-up-effect {
+  color: var(--k-caution);
+  display: block;
+  padding-inline: var(--k-space-2);
+  text-align: end;
+}
+
+.chat-input .chat-controls-row:has(.chat-follow-up-actions) {
+  flex-wrap: wrap;
+}
+
+.chat-input .chat-follow-up-queue {
+  background: var(--k-action);
+  color: var(--k-action-contrast);
+}
+
+.chat-input .chat-follow-up-queue:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--k-action) 85%, var(--k-text));
+}

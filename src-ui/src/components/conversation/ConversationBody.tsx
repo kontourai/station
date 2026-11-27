@@ -1321,9 +1321,17 @@ function LiveConversationBody({
     },
     [getComposedContext, chatInput, queueTakesFiles, stagedAgentChange],
   );
-  const nativeSteering =
-    sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
-    'native';
+  const steerPlacement = sessionSteeringPlacement(
+    activeSession.orchestrationDurability,
+  );
+  const nativeSteering = steerPlacement.state === 'native';
+  const followUpPreview = import.meta.env.DEV;
+  const steerEffect = nativeSteering
+    ? 'Adds to the running turn'
+    : steerPlacement.state === 'emulated' &&
+        steerPlacement.boundary === 'engine-defined'
+      ? 'Stops the step and continues'
+      : 'Sends at the next safe boundary';
   const steeringUnavailableReason = activeSession.orchestrationDurability
     ? undefined
     : activeOrchestrationSessionRead === 'pending'
@@ -2352,6 +2360,7 @@ function LiveConversationBody({
             sessionId: activeSession.id,
             messages: activeSession.queuedMessages,
             metadata: activeSession.queuedMessageMetadata,
+            nextFirst: followUpPreview,
             outbox: outboxRows,
             // The pill's fact when the server's turn record is here (it
             // survives a reload; the live parts do not), unless the user
@@ -3191,6 +3200,11 @@ function LiveConversationBody({
             busyFollowUp={busyFollowUp}
             busyQueueTakesFiles={queueTakesFiles}
             busySteeringUnavailableReason={steeringUnavailableReason}
+            followUpPresentation={
+              followUpPreview
+                ? { steerLabel: 'Steer', effect: steerEffect }
+                : undefined
+            }
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
             onQueueFollowUp={handleSendWithContext}
             stopPending={!!activeSession.stopPending}

@@ -58,7 +58,13 @@ import type { StartComposerVoice } from '../chat-start/StartComposer';
 import { ConversationStopControl } from '../conversation/ConversationStopControl';
 import { AgentIcon } from '../icons/AgentIcon';
 import { BrandIcon } from '../icons/BrandIcon';
-import { AgentGlyph, ArrowDownGlyph, EngineGlyph } from '../icons/Glyph';
+import {
+  AgentGlyph,
+  ArrowDownGlyph,
+  BranchGlyph,
+  EngineGlyph,
+  OutboxGlyph,
+} from '../icons/Glyph';
 import { ModelIcon } from '../icons/ModelIcon';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
@@ -219,6 +225,7 @@ interface ChatInputAreaProps {
   busySteeringUnavailableReason?: string;
   /** Hold the draft as a follow-up instead of steering the open turn. */
   onQueueFollowUp?: () => Promise<void>;
+  followUpPresentation?: { steerLabel: string; effect?: string };
   /**
    * a Stop request is in flight. The control stays visible (the
    * turn is still the thing on screen) but is disabled and labelled with what
@@ -647,6 +654,7 @@ export function ChatInputArea({
   busySteeringUnavailableReason,
   busyFollowUp = 'queue',
   onQueueFollowUp,
+  followUpPresentation,
   stopPending = false,
   modelSupportsAttachments = false,
   fileAttachmentsSupported = modelSupportsAttachments,
@@ -820,7 +828,7 @@ export function ChatInputArea({
   const uploadsInFlight = hasUploadsInFlight(attachmentStages);
   const [sendAfterUploads, setSendAfterUploads] = useState(false);
   const waitingForUploads = sendQueuedForUploads || sendAfterUploads;
-  const submit = async () => {
+  const submit = async (intent = sendMode) => {
     if (submitPending.current || sendQueuedForUploads) return;
     if (uploadsInFlight) {
       setSendAfterUploads(true);
@@ -829,7 +837,7 @@ export function ChatInputArea({
     submitPending.current = true;
     setSubmitting(true);
     try {
-      if (turnInFlight && sendMode === 'steer' && busyFollowUp === 'steer') {
+      if (turnInFlight && intent === 'steer' && busyFollowUp === 'steer') {
         await onSend('steer');
       } else if (turnInFlight && onQueueFollowUp) {
         await onQueueFollowUp();
@@ -1024,11 +1032,13 @@ export function ChatInputArea({
               ? 'Draft a follow-up while this turn finishes…'
               : 'Waiting on this chat — check again above to send…'
             : turnInFlight
-              ? sendMode === 'steer' && busyFollowUp === 'steer'
-                ? busySteeringKind === 'native'
-                  ? 'Steer this turn…'
-                  : 'Send at a safe boundary…'
-                : 'Queue a follow-up…'
+              ? followUpPresentation
+                ? 'Write a message…'
+                : sendMode === 'steer' && busyFollowUp === 'steer'
+                  ? busySteeringKind === 'native'
+                    ? 'Steer this turn…'
+                    : 'Send at a safe boundary…'
+                  : 'Queue a follow-up…'
               : mentionLocation && mentionRequestScope
                 ? 'Type a message — @ files, / for commands…'
                 : 'Type a message — / for commands…');
@@ -2311,137 +2321,175 @@ export function ChatInputArea({
               something to send, so Stop sits after them, at the row's edge,
               and typing never moves it. Desktop keeps Stop first; its mode
               picker also waits for a draft. */}
-          <div
-            className="chat-input__send-group"
-            data-stop-placement={isMobile ? 'trailing' : undefined}
-          >
-            {turnInFlight && onCancel && !stopInActivity && !isMobile && (
-              <ConversationStopControl
-                onCancel={onCancel}
-                stopPending={stopPending}
-              />
-            )}
-            <div
-              className="chat-input__submit-controls"
-              aria-hidden={hideMobileSubmit || undefined}
-              data-concealed={hideMobileSubmit || undefined}
-            >
-              <button
+          {turnInFlight && followUpPresentation ? (
+            <div className="chat-follow-up-actions">
+              {onCancel && !stopInActivity && (
+                <ConversationStopControl
+                  onCancel={onCancel}
+                  stopPending={stopPending}
+                />
+              )}
+
+              <Button
                 type="button"
-                onClick={async () => {
-                  if (workspaceRefused && !isOverLimit) {
-                    await onStartNewChat?.(input, attachments);
-                  } else if (
-                    (input.trim() ||
-                      hasQuotedContext ||
-                      attachments.length > 0) &&
-                    !isOverLimit
-                  ) {
-                    await submit();
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (
-                    !disabled &&
-                    e.key === 'Enter' &&
-                    !isOverLimit &&
-                    (workspaceRefused ||
-                      input.trim() ||
-                      hasQuotedContext ||
-                      attachments.length > 0)
-                  ) {
-                    e.preventDefault();
-                    if (workspaceRefused) {
-                      void onStartNewChat?.(input, attachments);
-                    } else {
-                      void submit();
-                    }
-                  }
-                }}
+                variant="secondary"
+                className="chat-follow-up-steer"
+                title={followUpPresentation.effect}
                 disabled={
                   disabled ||
                   submitting ||
-                  waitingForUploads ||
-                  isOverLimit ||
-                  !!sendBlockedReason ||
-                  (workspaceRefused
-                    ? !onStartNewChat
-                    : !input.trim() &&
-                      !hasQuotedContext &&
-                      attachments.length === 0)
+                  !sendReady ||
+                  busyFollowUp !== 'steer'
                 }
-                tabIndex={hideMobileSubmit ? -1 : 0}
-                aria-label={
-                  workspaceRefused
-                    ? 'Start new chat'
-                    : (submitAction?.label ?? 'Send')
-                }
-                data-submit-action={submitAction ? 'continuation' : undefined}
-                aria-describedby={
-                  sendBlockedReason
-                    ? `composer-attachment-send-gate-${sessionId}`
-                    : undefined
-                }
-                title={
-                  workspaceRefused
-                    ? 'Start new chat'
-                    : (sendBlockedReason ?? submitAction?.label ?? 'Send')
-                }
-                className={`send-button chat-input__send-btn ${
-                  sendReady
-                    ? 'chat-input__send-btn--active'
-                    : 'chat-input__send-btn--inactive'
-                }`}
+                onClick={() => void submit('steer')}
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                  focusable="false"
-                >
-                  <path d="M12 19V5M5 12l7-7 7 7" />
-                </svg>
-                <span className="chat-input__send-label">
-                  {submitAction?.label ?? 'Send'}
-                </span>
-              </button>
-              {/* The mode is a choice about a draft: with nothing to send it
-                  takes no room, on any screen. */}
-              {turnInFlight && onQueueFollowUp && hasSendableDraft && (
+                <BranchGlyph />
+                {followUpPresentation.steerLabel}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                className="chat-follow-up-queue"
+                disabled={disabled || submitting || !sendReady}
+                onClick={() => void submit('queue')}
+              >
+                <OutboxGlyph />
+                Queue
+              </Button>
+            </div>
+          ) : (
+            <div
+              className="chat-input__send-group"
+              data-stop-placement={isMobile ? 'trailing' : undefined}
+            >
+              {turnInFlight && onCancel && !stopInActivity && !isMobile && (
+                <ConversationStopControl
+                  onCancel={onCancel}
+                  stopPending={stopPending}
+                />
+              )}
+              <div
+                className="chat-input__submit-controls"
+                aria-hidden={hideMobileSubmit || undefined}
+                data-concealed={hideMobileSubmit || undefined}
+              >
                 <button
                   type="button"
-                  className={`chat-input__send-mode ${
-                    sendReady ? 'chat-input__send-mode--active' : ''
-                  }`}
-                  aria-label={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
-                  title={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
+                  onClick={async () => {
+                    if (workspaceRefused && !isOverLimit) {
+                      await onStartNewChat?.(input, attachments);
+                    } else if (
+                      (input.trim() ||
+                        hasQuotedContext ||
+                        attachments.length > 0) &&
+                      !isOverLimit
+                    ) {
+                      await submit();
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (
+                      !disabled &&
+                      e.key === 'Enter' &&
+                      !isOverLimit &&
+                      (workspaceRefused ||
+                        input.trim() ||
+                        hasQuotedContext ||
+                        attachments.length > 0)
+                    ) {
+                      e.preventDefault();
+                      if (workspaceRefused) {
+                        void onStartNewChat?.(input, attachments);
+                      } else {
+                        void submit();
+                      }
+                    }
+                  }}
+                  disabled={
+                    disabled ||
+                    submitting ||
+                    waitingForUploads ||
+                    isOverLimit ||
+                    !!sendBlockedReason ||
+                    (workspaceRefused
+                      ? !onStartNewChat
+                      : !input.trim() &&
+                        !hasQuotedContext &&
+                        attachments.length === 0)
+                  }
                   tabIndex={hideMobileSubmit ? -1 : 0}
-                  aria-haspopup="dialog"
-                  aria-expanded={sendModeOpen}
-                  onClick={() => setSendModeOpen(true)}
+                  aria-label={
+                    workspaceRefused
+                      ? 'Start new chat'
+                      : (submitAction?.label ?? 'Send')
+                  }
+                  data-submit-action={submitAction ? 'continuation' : undefined}
+                  aria-describedby={
+                    sendBlockedReason
+                      ? `composer-attachment-send-gate-${sessionId}`
+                      : undefined
+                  }
+                  title={
+                    workspaceRefused
+                      ? 'Start new chat'
+                      : (sendBlockedReason ?? submitAction?.label ?? 'Send')
+                  }
+                  className={`send-button chat-input__send-btn ${
+                    sendReady
+                      ? 'chat-input__send-btn--active'
+                      : 'chat-input__send-btn--inactive'
+                  }`}
                 >
-                  <span className="chat-input__mode-label">
-                    {sendMode === 'steer' && busyFollowUp === 'steer'
-                      ? 'Steer'
-                      : 'Queue'}
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="18"
+                    height="18"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                  <span className="chat-input__send-label">
+                    {submitAction?.label ?? 'Send'}
                   </span>
-                  <ArrowDownGlyph />
                 </button>
+                {/* The mode is a choice about a draft: with nothing to send it
+                  takes no room, on any screen. */}
+                {turnInFlight && onQueueFollowUp && hasSendableDraft && (
+                  <button
+                    type="button"
+                    className={`chat-input__send-mode ${
+                      sendReady ? 'chat-input__send-mode--active' : ''
+                    }`}
+                    aria-label={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
+                    title={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
+                    tabIndex={hideMobileSubmit ? -1 : 0}
+                    aria-haspopup="dialog"
+                    aria-expanded={sendModeOpen}
+                    onClick={() => setSendModeOpen(true)}
+                  >
+                    <span className="chat-input__mode-label">
+                      {sendMode === 'steer' && busyFollowUp === 'steer'
+                        ? 'Steer'
+                        : 'Queue'}
+                    </span>
+                    <ArrowDownGlyph />
+                  </button>
+                )}
+              </div>
+              {turnInFlight && onCancel && !stopInActivity && isMobile && (
+                <ConversationStopControl
+                  onCancel={onCancel}
+                  stopPending={stopPending}
+                />
               )}
             </div>
-            {turnInFlight && onCancel && !stopInActivity && isMobile && (
-              <ConversationStopControl
-                onCancel={onCancel}
-                stopPending={stopPending}
-              />
-            )}
-          </div>
+          )}
           {sendModeOpen && hasSendableDraft && (
             <ResponsiveDialogSurface
               layer="popover"
@@ -2483,6 +2531,14 @@ export function ChatInputArea({
             </ResponsiveDialogSurface>
           )}
         </div>
+        {turnInFlight && followUpPresentation?.effect && hasSendableDraft && (
+          <small className="chat-follow-up-effect" role="status">
+            {busyFollowUp === 'steer'
+              ? followUpPresentation.effect
+              : (busySteeringUnavailableReason ??
+                'Steering unavailable for this draft')}
+          </small>
+        )}
         {/* The composer clips what overflows it in a short dock, which is
             the only dock that shows this Discard…. Its question opens as the
             composer's own popover (a sheet on a phone): above everything,

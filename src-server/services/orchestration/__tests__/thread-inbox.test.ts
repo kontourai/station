@@ -1628,6 +1628,7 @@ describe('thread inbox (#3568)', () => {
       };
       world = boot(file, ports);
       await runningFirstTurn(world);
+      queueFollowUp(world);
       const expectedHead = world.inbox.currentHead(THREAD);
       const input = {
         conversationId: THREAD,
@@ -1638,7 +1639,10 @@ describe('thread inbox (#3568)', () => {
       expect(world.inbox.submitSteer(input).outcome).toBe('queued');
       await world.inbox.idle();
       expect(handoffs).toBe(1);
-      expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sent' }]);
+      expect(world.inbox.list(THREAD)).toMatchObject([
+        { kind: 'follow-up', state: 'queued', position: 1 },
+        { kind: 'steer', state: 'sent' },
+      ]);
       await crash(world);
       world = boot(file, ports);
       await world.inbox.reconcile();

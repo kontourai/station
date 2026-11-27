@@ -18,6 +18,7 @@ import './QueuedMessages.css';
 interface QueuedMessagesProps {
   sessionId: string;
   messages: string[];
+  nextFirst?: boolean;
   metadata?: PendingMessageMetadata[];
   sendNowPending?: boolean;
   waitingForTools?: boolean;
@@ -106,6 +107,7 @@ function PoliteAnnouncement({ text }: { text: string }) {
 export function QueuedMessages({
   sessionId,
   messages,
+  nextFirst = false,
   metadata,
   sendNowPending,
   waitingForTools,
@@ -134,7 +136,7 @@ export function QueuedMessages({
   } = useQueuedMessages(sessionId);
 
   const outboxCount = outbox?.count ?? 0;
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(nextFirst);
   const queueId = useId();
   const editInputRef = useRef<HTMLInputElement>(null);
   const nextRowId = useRef(0);
@@ -241,8 +243,29 @@ export function QueuedMessages({
         node: renderHeldRow(entry),
       })),
   ];
+  const queuedFollowUps = [...heldOrder.keys()].filter(
+    (entry) => entry.kind === 'follow-up',
+  );
+  const nextMessage =
+    queuedFollowUps[0]?.message ??
+    localRows.find(({ idx }) => localSendOrder.has(idx))?.row.message;
+  const queuedCount = queuedFollowUps.length + localSendOrder.size;
+  const steerUpdates = nextFirst
+    ? heldEntries.filter(
+        (entry) => entry.kind === 'steer' && !heldSendsInOrder(entry),
+      )
+    : [];
   const rowPresence = usePresenceList(
-    displayRows,
+    nextFirst
+      ? [...displayRows]
+          .reverse()
+          .filter(
+            ({ key }) =>
+              !steerUpdates.some(
+                (entry) => key === `turn:${entry.clientTurnId}`,
+              ),
+          )
+      : displayRows,
     (row) => row.key,
     PRESENCE_FALLBACK_MS,
   );
@@ -358,11 +381,6 @@ export function QueuedMessages({
                     : 'Send now'}
                 </Button>
               )}
-            {/* The list renders reversed (newest on top, next-to-drain
-                at the bottom), so the VISUAL up direction corresponds
-                to a HIGHER real array index (drains later): ▲ calls
-                moveDown(realIdx) and ▼ calls moveUp(realIdx). Review
-                #613-1 caught the inverted wiring. */}
             {canSteer && onSteer && !metadata?.[idx]?.originUnverified && (
               <button
                 type="button"
@@ -377,7 +395,7 @@ export function QueuedMessages({
                     onPendingSettled?.();
                   });
                 }}
-                className="queued-message__btn"
+                className="queued-message__btn queued-message__steer"
                 aria-label={
                   metadata?.[idx]?.delivery ? 'Retry steering' : 'Send as steer'
                 }
@@ -388,8 +406,13 @@ export function QueuedMessages({
             <div className="queued-message__utilities">
               <button
                 type="button"
-                onClick={() => moveDown(idx, messages.length)}
-                disabled={sendNowPending || idx === messages.length - 1}
+                onClick={() =>
+                  nextFirst ? moveUp(idx) : moveDown(idx, messages.length)
+                }
+                disabled={
+                  sendNowPending ||
+                  (nextFirst ? idx === 0 : idx === messages.length - 1)
+                }
                 className="queued-message__btn"
                 title="Move up"
                 aria-label="Move message up"
@@ -398,8 +421,13 @@ export function QueuedMessages({
               </button>
               <button
                 type="button"
-                onClick={() => moveUp(idx)}
-                disabled={sendNowPending || idx === 0}
+                onClick={() =>
+                  nextFirst ? moveDown(idx, messages.length) : moveUp(idx)
+                }
+                disabled={
+                  sendNowPending ||
+                  (nextFirst ? idx === messages.length - 1 : idx === 0)
+                }
                 className="queued-message__btn"
                 title="Move down"
                 aria-label="Move message down"
@@ -543,6 +571,7 @@ export function QueuedMessages({
       className="queued-messages queued-messages--pending"
       aria-label="Pending messages"
       data-expanded={expanded || undefined}
+      data-next-first={nextFirst || undefined}
     >
       <button
         type="button"
@@ -550,9 +579,11 @@ export function QueuedMessages({
         aria-expanded={expanded}
         aria-controls={queueId}
         aria-label={
-          pendingCount > 0
-            ? `${pendingCount} pending message${pendingCount !== 1 ? 's' : ''}${needsReview ? `, ${attention.toLowerCase()}` : ''}`
-            : 'Held messages need review'
+          nextFirst && nextMessage
+            ? `Up next: ${nextMessage} — ${queuedCount} queued`
+            : pendingCount > 0
+              ? `${pendingCount} pending message${pendingCount !== 1 ? 's' : ''}${needsReview ? `, ${attention.toLowerCase()}` : ''}`
+              : 'Held messages need review'
         }
         onClick={() => setExpanded((value) => !value)}
       >
@@ -567,7 +598,15 @@ export function QueuedMessages({
         >
           <path d="M4 5h16M4 12h12M4 19h8" />
         </svg>
-        {pendingCount > 0 && <span>{pendingCount} pending</span>}
+        {pendingCount > 0 &&
+          (nextFirst && nextMessage ? (
+            <span>Up next · {queuedCount}</span>
+          ) : (
+            <span>{pendingCount} pending</span>
+          ))}
+        {nextFirst && !expanded && nextMessage && (
+          <span className="queued-messages__next">{nextMessage}</span>
+        )}
         {needsReview && (
           <span className="queued-messages__attention">{attention}</span>
         )}
@@ -605,6 +644,11 @@ export function QueuedMessages({
           </span>
         </div>
       )}
+      {steerUpdates.map((entry) => (
+        <div className="queued-messages__steer-update" key={entry.clientTurnId}>
+          {renderHeldRow(entry)}
+        </div>
+      ))}
       <div id={queueId} className="queued-messages__content" hidden={!expanded}>
         {steeringUnavailableReason && (
           <p role="status">{steeringUnavailableReason}</p>

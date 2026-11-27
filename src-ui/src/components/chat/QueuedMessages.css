@@ -475,3 +475,38 @@
 .queued-message--held .queued-message__status + .queued-message__status {
   margin-top: 0;
 }
+
+.queued-messages[data-next-first] .queued-messages__toggle {
+  max-width: 100%;
+  border-inline-start: 2px solid var(--k-action);
+}
+
+.queued-messages__next {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--k-text);
+}
+
+.queued-messages__steer-update {
+  margin-block-start: var(--k-space-1);
+  border-inline-start: 2px solid var(--k-caution);
+}
+
+.queued-messages[data-next-first] .queued-message__steer {
+  color: var(--k-caution);
+}
+
+@media (max-width: 768px) {
+  .queued-messages[data-next-first] .queued-message--held {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  .queued-messages[data-next-first]
+    .queued-message--held
+    .queued-message__text {
+    flex: 1 1 auto;
+  }
+}

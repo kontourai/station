@@ -1856,7 +1856,9 @@ otherwise the send takes the live path. Inbox ids are canonical conversation
 ids (`conversationOf`). The entry is a
 [`@kontourai/monument`](../../packages/monument/CONTEXT.md) inbox entry on
 `EventStore`'s connection: idempotent by `clientTurnId` with a digest of the
-sender and input, FIFO, one `placing` at a time. Placement runs after a turn
+sender and input, one `placing` at a time. An in-flight or unconfirmed
+entry takes precedence, then steers, then follow-ups. Queued entries preserve
+FIFO within each kind. Placement runs after a turn
 or Session-state event on the conversation, after each submit, at startup,
 and on bounded re-checks (the schedule, then two-minute checks up to 30 while
 entries wait, reset when a new message is accepted, and after a drive that

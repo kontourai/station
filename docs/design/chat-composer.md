@@ -1331,6 +1331,8 @@ additional instruction. It does not claim additive native steering.
 After a device's full access is revoked, a turn that started unconfined cannot
 take new steering input. The next turn runs confined (#2898).
 
+An admitted steer can reach the current turn ahead of queued follow-ups. An in-flight or unconfirmed inbox placement still takes precedence. Follow-ups retain their order, and only they receive queue positions.
+
 Station-owned steering waits durably for the next post-tool boundary in the
 turn Station accepted. If the turn ends first, the pending row explains why
 Steer was refused. Its wording says **Steer when safe**.
