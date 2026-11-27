@@ -33,6 +33,11 @@
       "instructions": "Assess provenance, durable evidence, and whether uncertainty remains explicitly disclosed. Findings are evidence input only."
     },
     {
+      "id": "documentation",
+      "nodeIds": ["documentation.general"],
+      "instructions": "Assess whether the documentation matches the implementation and states the limits of its evidence. Findings are evidence input only."
+    },
+    {
       "id": "verification",
       "nodeIds": [
         "tooling.scripts",
