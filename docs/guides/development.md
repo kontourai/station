@@ -1320,7 +1320,8 @@ Run `npm run dev:ui -- --host 127.0.0.1 --port 4178 --strictPort` and open
 source files in Station and its UI packages, including files that still
 need a story or coverage through a composed example. The first stories use
 the shared button, disclosure, and loading, empty, and error primitives.
-Use the source filter and **Unmapped only** to check coverage.
+The control stories also exercise action overflow, editable and disabled
+switches, icon buttons, and settings provenance. Use the source filter and **Unmapped only** to check coverage.
 
 Open **Inbox Task rows** in the catalog to compare the current row with
 the proposed layout. The Inbox storyboard also has a direct entry at
