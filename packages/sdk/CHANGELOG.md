@@ -1,5 +1,184 @@
 # @kontourai/station-sdk
 
+## 0.15.0
+
+### Minor Changes
+
+- c4272d5: An automation can have a display name. `SchedulerJob`, `AddJobOpts` and `UpdateJobOpts` carry an optional `displayName`, checked by `isSchedulerJobDisplayName` (no controls, separators, bidi controls, invisible fillers or tag characters, so subdivision flags are refused) and bounded by `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS`. `name` stays the internal slug that routes, runs and grants are keyed by, so renaming an automation (`displayName` on an update; `null` removes it) keeps its id and its runs.
+
+  `AddJobOpts.name` is now optional: a create that gives only `displayName` gets the first unused slug of `schedulerJobSlugCandidates`, decided by the host against every job; a taken slug is refused with `SCHEDULER_JOB_NAME_TAKEN`. The create answer is `SchedulerCreateResponse`, whose `name` is the slug the job was stored under; `createJob` in the SDK client returns it. Hosts that do this advertise the new `schedulerJobDisplayName` capability flag, read with `useSchedulerJobDisplayNameCapability()`. A Station without it drops `displayName` and still answers success, so clients offer renaming only with the flag and name the slug themselves there.
+- de1aed1: Automation policy changes are explained and scoped (#4511), the operator
+  surface is complete (#4513), and the isolated-repair tick refuses intents whose
+  rule was deleted or changed kind (#4575).
+
+  Policy: a retained action's fingerprint covers only authority-bearing fields
+  (the source's repository, enabled/revoked state and the grant for this rule's
+  Project, Agent and action; the rule's mode, matcher and action). Renaming a
+  rule or a source, or changing a rate limit, episode policy or poll interval,
+  no longer stops work. A change to the action's instructions or budget is an
+  amendment: the action adopts it and the running Session gets the new text as
+  its next turn. Any other change is a revocation: automatic work stops, the
+  Session is marked blocked and the Task moves to `blocked`, both with the
+  reason. A person's own turn into that Session is admitted under their
+  authority (no rule budget, and Ask instead of an inherited Auto) and the
+  Session becomes theirs. This boundary survives action settlement and runtime
+  restart; a failed hand-over or approval write refuses the turn before send.
+  Intents retained before this change still match
+  until their rule or source changes in any way.
+
+  Task reads (`GET /api/tasks/:taskId` and `/graph`) carry `automation`
+  (`AutomationTaskProjection`): the immutable `AutomationTaskMandate` the Task
+  started under, its amendments, revocation and hand-over. Task Details shows it
+  as "Started by automation".
+
+  Operator surface: every `AUTOMATION_OPERATOR_SURFACE` verb has a route, an SDK
+  function and a `station automation` action, plus the new `update-rule`
+  (`PUT /automations/rules/:target`). Station Control MCP gains the four read
+  tools only. Mutations need the operator in person and edit `dispatch-task`
+  rules only. `retry-episode` gives an exhausted episode exactly one more
+  attempt under the rule's current policy.
+
+  Ledger: a held claim records `suppressed` with its reason (`rate-limited`,
+  `rule-active-limit`, `concurrency-limit`, `episode-active`,
+  `episode-exhausted`, `episode-indeterminate`). A refused intent keeps its
+  refusal reason (`policy_changed` and the new `admission_refused`), never
+  `policy_unavailable` by default.
+
+  Breaking for type consumers: `notify` is no longer an action kind and
+  `received` is no longer a delivery outcome; nothing ever executed or wrote
+  either. A stored grant listing `notify` drops it on read; a stored `notify`
+  rule makes the configuration unreadable (fails closed). Downgrade: once an
+  episode has been retried, an older Station cannot open the ledger and reads
+  Automation as `policy_unavailable` (fails closed).
+- 302129e: An Automation rule's action and a source's grant may name their Project by
+  slug as well as by id. Station stores the Project's id; when a value is one
+  Project's id and another's slug, the id wins. Creating or editing a rule or
+  grant that names no Project is refused, quoting the value. A delivery whose
+  rule names a Project that no longer exists is refused with the new reason
+  `project_unavailable` in `AUTOMATION_REFUSAL_REASONS`, and no Task starts.
+
+  `AutomationEpisodeRecord` gains an optional `startFailed: true` for an open
+  episode whose latest start failed before its Agent started; retry-episode
+  now accepts such an episode, with `startFailure: 'agent-option-unsupported'`
+  when the rule asks for an approval mode its Agent cannot take.
+  `AutomationEpisodeList` (`GET /automations/episodes`) adds
+  `actionsUnavailable` while no automation Task can start, and
+  `listAutomationEpisodes` returns it.
+
+  A dispatch-task rule's `approvalMode` adds `connection-default` (the
+  Agent's own approval settings; no per-invocation setting is sent). Omitted
+  still means `ask`, and an Agent that cannot be told `ask` is refused before
+  any Task is created. Open episodes add `startFailure` values
+  `agent-own-approval-required` and `task-not-canceled`, and
+  `retryNeedsRuleChange`; `actionsUnavailable` adds `detail`.
+
+  Delegation and Station Control starts change for an ACP connection whose
+  approvals Station answers (`acpApprovalControl` of `station` or `requests`):
+  an ACP Agent on such a connection now accepts a per-invocation
+  `approvalMode` instead of refusing it; other Agents are refused as before.
+  A start whose Task could not be canceled keeps `task-not-canceled` on its
+  open episode only while that Task is live, so Retry returns once the Task is
+  canceled or done.
+- e308051: A child transcript can be read the way a chat reads it. `ChildWorkTranscriptPage` now carries `offset` and `endOffset` (where a page's messages start and end; a read from past the end names the end), and `getChildWorkTranscript` accepts `tail: true` for the latest messages. The new `useChildWorkTranscriptTailQuery` opens on the latest messages, loads older ones through `fetchPreviousPage`, and while the child runs reads only the messages past its last `endOffset`, instead of re-reading every loaded page. Against a Station from before page ranges it pages forward by `nextOffset` (`hasLaterPage`) and re-reads its pages while the child runs.
+
+  Approval copy is plainer. `toolPolicyDeliveryExplanation` now reads, for example, "Station's approval rules apply to every tool call." and "This engine handles its own approvals; Station's rules aren't used.", and the approval-mode setting's `never` option is labelled "Full access".
+- a80f89f: Send staged images to a running child turn when its reported steer control advertises image input. The child steering API accepts image-only messages and messages with a caption. Existing text messages keep their original wire format.
+- ec227ca: Derive a Task's board lane from live facts instead of its stored status. Contracts add `@kontourai/station-contracts/task-lane` (`deriveTaskLane`, `partitionTaskLanes`, and the Task pull request facts shapes) and optional `draft`, `reviewDecision` and `mergeReadiness` on `PullRequest`. The SDK adds `useTaskPullRequestFactsQuery` for `GET /api/tasks/pull-request-facts`.
+- b7f8c61: Allow `resolveConversationOpen` to report an authorized empty-context
+  reservation as `fresh-context-ready`. The earlier transcript remains readable,
+  and the next successful continuation starts the reserved Session with fresh
+  context. The result exposes reservation identities separately from execution.
+- 3475cd8: Add `station acp setup` and the safe `ACPEngineSetupEntry` catalog contract for guided engine setup. Engine setup links lead to Station's existing connection and sign-in pane; installation and credential operations stay with the person. ACP command-catalog actions reject an engine id instead of implying they check that engine.
+
+  The `@kontourai/station-sdk/engine-setup` entry provides scoped installer and Agent-tool hooks. The guided pane reviews and runs built-in installers in a visible terminal, verifies device-code sign-in, repairs launch arguments in place, and explicitly selects Station tools while preserving authored settings. Installer retries reconcile the saved attempt; Stop targets that exact attempt. The supervisor's protocol 1.4 negotiates a process-owned lifetime before starting a bounded command.
+- 6e51382: `getConversationWorkState` now returns `hidden` (third-party Session thread id to when it was hidden) from a host that keeps hidden Sessions per person, typed as `ConversationWorkState`. The new `setConversationInboxHidden(apiBase, sessionId, hidden, opts)` hides or unhides a third-party Session in the caller's own inbox under the `conversation-resolution` Feature Preview.
+- 64522c2: A Station records a default for new chats. `AppConfig.newChatDefault` (`{ agent, reason }`) names the Agent new chats start with when nothing closer names one: `first-signed-in` when Station picked the first engine whose sign-in it has verified, in the fixed order Claude Code, Codex, other engines by id; `chosen` when a person picked it. `describeNewChatDefaultViolation` is the one rule: a `first-signed-in` record is written only while none exists. `ROUTE_WRITTEN_APP_CONFIG_KEYS` and `routeWrittenKeyRefusal` name the settings only their own routes write (`firstRun`, `newChatDefault`). `StationCapabilityFlags.newChatDefault` reports a host that serves `POST /config/new-chat-default`. The SDK adds `useNewChatDefaultCapability()` and `useRecordNewChatDefaultMutation()`; the mutation resolves `recorded: false` with the standing default when the host keeps one it already has. A sign-in the engine sign-in hooks see finish now re-reads engine readiness (Agents, picker catalog, connections).
+
+  Behaviour change: on an upgraded Station with no remembered Agent, new chats move from Station's assistant to the first engine whose sign-in Station has verified.
+
+  `station config set --offline` refuses `firstRun` and `newChatDefault`, naming the route that writes each.
+- 7c54e90: Add the Project brief, Project memory and Project usage, behind the `project-coordination` Feature Preview. Contracts add `@kontourai/station-contracts/project-session-context` (the brief and memory note shapes, their limits and parsers, and `composeProjectSessionContext`, the one composer of what a new Session in a Project starts from), `ProjectConfig` `goal`, `instructions`, `coordinatorEffort`, `taskModel`, `taskProviderId` and `taskEffort`, the `PROJECT_SESSION_CONTEXT_METADATA_KEY` and `PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY` reserved metadata keys, `projectBrief` and `projectMemory` context-injection blocks, a `project` usage grouping with `projectSlug` attribution, `projectUsageTotals`, and the `PROJECT_MEMORY_FULL_CODE` (`project_memory_full`) refusal, mapped in `PROVIDER_FAILURE_KINDS` to the non-retryable `conflict` kind. Shared's turn provenance fold reads the Project context a turn carried on every engine. The SDK adds Project memory clients (`listProjectMemory`, `getProjectMemoryNote`, `createProjectMemoryNote`, `updateProjectMemoryNote`, `deleteProjectMemoryNote`) and a `projectSlug` usage rollup filter.
+- 525ef09: Accept an optional `requestScope` when creating a Task, citing a turn in a Task, or updating a Project. Callers can bind each write to the Station and account selected when the person started the operation.
+- 097e7e0: Add the Project Library. Contracts add `@kontourai/station-contracts/project-library` (`ProjectLibraryPage`, `ProjectLibraryItem`, `projectLibraryUploadPath`, `filterProjectLibraryItems`, `projectLibraryTasks`, `sortProjectLibraryItems`) and the optional `projectLibrary` capability flag. The SDK adds `@kontourai/station-sdk/project-library` (`useProjectLibraryQuery`, `useUploadProjectLibraryFileMutation`, `useDeleteProjectLibraryFileMutation`, `downloadProjectLibraryContent`, `readProjectLibraryCapability`) for `GET/PUT/DELETE /api/projects/:slug/library…`, available while the `project-library` Feature Preview is on.
+- 890bb71: Add the coordinator in a Project Room's `#general`, behind the `project-room-coordinator` Feature Preview. Contracts add `@kontourai/station-contracts/project-room-coordinator` (the Project's coordinator limits and their parser and defaults, `askedForPullRequest`, `parseCoordinatorReply` for the reply's `station_routing` block, the row states, the suggested-Tasks card view and the status sweep result), `ProjectConfig.roomCoordinator` and the `projectRoomCoordinator` capability flag. The SDK adds `@kontourai/station-sdk/project-room-coordinator`: the card, Start, status sweep and settings clients and their React hooks.
+- 6b381fa: Add a Commenter Project role for reading and discussing shared work. The Task room message client can bind a reply to the signed-in member and the selected Task publication.
+- 0fa15f6: Add pull request agent feedback, behind the `pull-request-agent-feedback` Feature Preview. Contracts add `@kontourai/station-contracts/pull-request-feedback` (settings, status, delivery and observation shapes), an optional `getFeedbackObservation` on the pull request provider, and a `pullRequestFeedback` capability flag. The SDK adds a client for `/api/pull-request-feedback` to read a conversation's feedback state, turn its switches on or off, send a paused pull request's feedback again, and read whether the host serves it.
+- d4233c3: Pull request agent feedback that needs a person shows in Needs you. Contracts add the `pull-request-feedback` attention item (`PullRequestFeedbackAttentionItem`), `cap` and `at` on a paused feedback status, and a `pull-request-feedback` client-origin sender so the delivered message is labelled as Station's. The SDK adds `turnOffPullRequestFeedback` and exports the new item type. Shared ranks the `pull-request-feedback` notification category as needing input.
+- 4001c1b: Pull request agent feedback can be turned on once for a Project. Contracts add `ProjectPullRequestFeedbackDefaults`, `PullRequestByHead` and `PullRequestsByHeadResult`, and the optional `IPullRequestProvider.findOpenPullRequestsByHead`. The SDK adds `getProjectPullRequestFeedbackDefaults`, `writeProjectPullRequestFeedbackDefaults` and `removeDerivedPullRequest`.
+- f93562f: Show pull request agent feedback wherever a pull request is looked at. Contracts add `PullRequestFeedbackByPullRequest`, an optional `headSha` on a current Task pull request fact, its optional `feedback` (`TaskPullRequestFeedbackFact`), and `TaskLaneDerivation.feedbackNote`, which never changes a lane. `PullRequestFeedbackOwner.conversationId` is now optional: it is absent for a chat the reader may not read. The SDK adds `getPullRequestFeedbackByPullRequest`, and `pullRequestFeedbackOwnerOf` answers `{}` for such a chat instead of `undefined`.
+- 7e3fdf4: Review each new pull request head. Contracts add `pullRequestFeedbackActive(settings, headReview)` (a sending switch, or `reviewEachHead` while review of each head is offered), `PULL_REQUEST_HEAD_REVIEW_PREVIEW_ID`, `PullRequestHeadReview` (with `current`), `PullRequestHeadReviewFinding` and `PullRequestHeadReviewWaiting`, and optional `headReview` and `headReviewWaiting` on `PullRequestFeedbackByPullRequest` and `PullRequestFeedbackView`. The SDK adds `reviewPullRequestHeadAgain`, `sendPullRequestHeadReviewFindings` and `pullRequestHeadReviewRefusal`, and `writePullRequestFeedback` accepts an optional `reviewEachHead`; leaving it out keeps the chat's stored value.
+- b5d5625: Read sessions that live on a connected SSH environment's Station. `fetchRemoteSessionHistory(environmentId, threadId, { cursor?, turnLimit? }, { apiBase?, requestScope?, signal? })` reads one read-only, bounded history page relayed by the named Station and rejects with `StationHttpError` carrying the route's `code`, and `readRemoteSessionHistoryCapability(apiBase)` reports the new `remoteSessionHistory` handshake flag (`StationCapabilityFlags.remoteSessionHistory`), which hosted Stations withdraw. `listOrchestrationSessions` takes an optional `{ limit }` asking for only the newest sessions. A response past `maxResponseBytes` now rejects with `StationResponseTooLargeError`, and the orchestration and conversation-search readers keep it as the `cause` of their unreadable-body error. `getOrchestrationSessionDetailWindow` rejects with `SessionDetailWindowUnsupportedError` (also exported from the agent entry) when a host answers without a `window-v1` page.
+- 5aaabc0: Remove `streaming` and `ui.quickPrompts` from the Agent authoring type and schema. Remove those keys from new definitions. Existing files still open with their bytes intact, and the next save writes the current shape. Agent guidance import and export omit both fields. Layouts can continue passing `AgentQuickPrompt` to `onLaunchPrompt`.
+- 47a181c: Add optional week and display-zone arguments to the scheduled jobs read. Jobs can include a bounded weekly forecast. Built-in scheduler status can include operator-only diagnostics for damaged job rows. Existing calls and healthy job actions keep their existing response shapes.
+- ea9ce36: Let a Task watch the pull requests it keeps until they land, behind the `pull-request-agent-feedback` Feature Preview. Contracts add `@kontourai/station-contracts/pull-request-watch` (the Project setting, a Task's choice, the ready test, refused-action kinds and the Task's watch view), optional `ProjectConfig.pullRequestWatch`, `TaskRecord.pullRequestWatch` and `TaskRecord.pullRequestWatchHold`, the `fix-budget` pause reason and the `fixAttemptsUsed` Task lane rung. Station builds that predate them refuse a Task store carrying either Task field. The SDK adds `@kontourai/station-sdk/pull-request-watch` to read a Task's watch and set a Task's or Project's choice.
+- a67e849: Add the third-party history preview contracts and authority-scoped queries for browsing provider transcripts and explicitly importing a conversation.
+- b9cc026: Read a paired browser's current Web Push registration with
+  `fetchWebPushRegistration`. The VAPID read preserves HTTP refusals, and
+  registration requests accept a captured Station request scope.
+
+### Patch Changes
+
+- c4272d5: `useKnowledgeScanMutation` now also refreshes the project's knowledge namespaces after a scan, because a first directory scan registers the project's `code` namespace.
+- 2d61598: A plugin install, update or removal that Station saved but did not finish applying is no longer reported as a failure. When the runtime pass does not complete, these routes answer `202` with `success: false` and `configurationActivation.status: 'pending'`. `usePluginInstallMutation`, `usePluginUpdateMutation`, `usePluginRemoveMutation`, `requestPluginRegistryInstallAction` (install and uninstall) and `requestRegistryCatalogAction('plugins', …)` used to throw "Install failed", "Update failed" or "Remove failed" for that response. They now resolve with the result. For an install or update the plugin is then not active, and Station does not retry its activation: it stays in Needs recovery until a person recovers it. A removal finishes unloading on Station's next reconciliation. A plugin list read made while the install request is still open reads `installationReadiness` as `pending` and also carries `activationInFlight: true`: clients offer no recovery for that row until the flag is gone. A client that predates the flag reads the row as `pending`, as before. `station plugin install`, `station plugin update`, `station plugin remove` and `station registry install` print the same outcomes.
+
+  `@kontourai/station-contracts/plugin` adds `readPluginLifecycleResponse(status, body)` (`applied`, `saved` or `refused`) and `pluginLifecycleUnapplied(body)` (`activation` or `projection`), so every caller reads the response the same way, and `describeActivationDeadline(ms)` for saying the deadline in whole seconds. `PluginInstallResult` gains an optional `configurationActivation` field whose `recovery` (`required` or `none`) and `deadlineMs` say whether the plugin needs recovery and why; readers branch on `recovery` and treat its absence (an older server) as unknown, and `recoverPlugin` reads its response through the same function. A `202` without that marker is still a refusal.
+- f3ff956: Require a direct Station-marked JSON success before reporting credential recovery. Keep successful fallback and redirect responses available to the requesting caller.
+- 552acf1: Release browser event listeners from the targets where the SDK registered them when an SSE connection ends. Ordinary page exits still abort the stream, and back-forward cache navigation keeps it available.
+- 8338ed4: Keep the HTTP status, refusal code, and structured package details when uninstalling a Skill through the registry client.
+- Updated dependencies [d8def70]
+- Updated dependencies [c4272d5]
+- Updated dependencies [9b2ecff]
+- Updated dependencies [c4272d5]
+- Updated dependencies [de1aed1]
+- Updated dependencies [e3340d8]
+- Updated dependencies [302129e]
+- Updated dependencies [2ad52ad]
+- Updated dependencies [c4272d5]
+- Updated dependencies [e308051]
+- Updated dependencies [a80f89f]
+- Updated dependencies [64522c2]
+- Updated dependencies [64522c2]
+- Updated dependencies [ec227ca]
+- Updated dependencies [9b2ecff]
+- Updated dependencies [9294965]
+- Updated dependencies [b7f8c61]
+- Updated dependencies [3475cd8]
+- Updated dependencies [91be223]
+- Updated dependencies [64522c2]
+- Updated dependencies [c4272d5]
+- Updated dependencies [613b900]
+- Updated dependencies [2d61598]
+- Updated dependencies [7c54e90]
+- Updated dependencies [097e7e0]
+- Updated dependencies [890bb71]
+- Updated dependencies [6b381fa]
+- Updated dependencies [0fa15f6]
+- Updated dependencies [d4233c3]
+- Updated dependencies [4001c1b]
+- Updated dependencies [f93562f]
+- Updated dependencies [7e3fdf4]
+- Updated dependencies [64522c2]
+- Updated dependencies [b5d5625]
+- Updated dependencies [781a688]
+- Updated dependencies [ee46eed]
+- Updated dependencies [5aaabc0]
+- Updated dependencies [47a181c]
+- Updated dependencies [f8791cd]
+- Updated dependencies [9b2ecff]
+- Updated dependencies [1d0dbf5]
+- Updated dependencies [64522c2]
+- Updated dependencies [ea9ce36]
+- Updated dependencies [a67e849]
+- Updated dependencies [9b2ecff]
+- Updated dependencies [b3f8383]
+- Updated dependencies [3ae3285]
+- Updated dependencies [1b5f643]
+- Updated dependencies [c4272d5]
+- Updated dependencies [3ae3285]
+- Updated dependencies [b9cc026]
+  - @kontourai/station-contracts@0.15.0
+  - @kontourai/station-shared@0.15.0
+
 ## 0.14.0
 
 ### Minor Changes

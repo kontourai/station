@@ -1,5 +1,81 @@
 # @kontourai/station-shared
 
+## 0.15.0
+
+### Minor Changes
+
+- c4272d5: A reply the engine stopped at its output limit no longer reads as finished. `OrchestrationSessionSummary.lastTurnCutOff` (`'max-tokens'`) is set while the Session's latest turn completed with `finishReason: 'max-tokens'` and no turn is open after it; `sessionLadderWord` then answers the new `SESSION_STATUS_WORDS.cutOff` ("Cut off") instead of "Done". The runtime-event projection marks that turn's last row with `metadata.turnCutOff`. Claude Code (a `max_tokens` result), ACP agents, the Station agent (an SDK `length` finish), Ollama and Bedrock report an output-limit stop. Codex, Muse Code, OpenCode and Copilot never do: their adapters report only `stop`, `cancelled` or `other`, so their cut-off replies still read "Done". Absent on older hosts.
+- 64522c2: Add `isSafeSkillName` and `PROTOTYPE_AFFECTING_KEYS` to `@kontourai/station-shared/setup-import-bounds`, so the server and the Codex import dialog check a skill name by the same rule.
+- 91be223: A Session whose turn start may have reached its engine no longer refuses every later message until Station restarts when that engine is observed gone. Contracts add to `@kontourai/station-contracts/orchestration` the refusal codes a send gets while an earlier start blocks it, so clients can say what clears it instead of suggesting a retry: `TURN_START_HELD_CODE` (`turn_start_held`: the next send settles it once the engine is seen to end), `TURN_START_HELD_UNTIL_RESTART_CODE` (`turn_start_held_until_restart`: the engine cannot report ending, so it stays held until the turn ends or Station is restarted) `TURN_START_BUSY_CODE` (`turn_start_busy`: another start has not finished) and `CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE` (`conversation_predecessor_engine_live`: a continuation refused while the failed predecessor's engine process still runs). Shared adds to `@kontourai/station-shared/runtime-event-projection` `TURN_ENGINE_ENDED_MESSAGE` (the interrupted-turn banner when Station settles such a start at runtime), `TURN_ENGINE_ENDED_CONTINUE_PROMPT` and `turnInterruptedContinuePrompt(reason)` (Continue after that banner does not claim a restart), and `TURN_COMPLETED_AFTER_INTERRUPTION_CODE` (the `runtime.warning` shown when a turn recorded as interrupted completes after all).
+- c4272d5: A usage figure nobody reported reads "Not reported" instead of a dash (#5390): `UNREPORTED_MEASUREMENT_TEXT` is now `'Not reported'`, so `formatMeasuredTokens` and `formatMeasuredCostUsd` return it for `undefined`; a reported zero still formats as zero. `enginesReportingTokensSeparately` (in `usage-measurement`) returns the engines a conversation's token figures are listed by when more than one engine reported tokens, and `undefined` when the conversation has a single token total.
+
+  `unreportedMeasurementClasses` and `describeUnreportedMeasurements` now name missing token counts for a `station-memory` view too ("The model did not report token counts for this chat."); its cost and context stay undisclosed, since Station prices and estimates those itself.
+
+  `foldLineageUsageEvents` no longer carries the previous engine's context figure or model past an engine change: both come from the newest run that has one since the last engine change, so they are absent until the new engine reports them. The latest figures now come from the run that holds the newest Session, which matters only when a Session continues a run that is not the last one. The per-Session fold in `usage-fold` is unchanged.
+- 7c54e90: Add the Project brief, Project memory and Project usage, behind the `project-coordination` Feature Preview. Contracts add `@kontourai/station-contracts/project-session-context` (the brief and memory note shapes, their limits and parsers, and `composeProjectSessionContext`, the one composer of what a new Session in a Project starts from), `ProjectConfig` `goal`, `instructions`, `coordinatorEffort`, `taskModel`, `taskProviderId` and `taskEffort`, the `PROJECT_SESSION_CONTEXT_METADATA_KEY` and `PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY` reserved metadata keys, `projectBrief` and `projectMemory` context-injection blocks, a `project` usage grouping with `projectSlug` attribution, `projectUsageTotals`, and the `PROJECT_MEMORY_FULL_CODE` (`project_memory_full`) refusal, mapped in `PROVIDER_FAILURE_KINDS` to the non-retryable `conflict` kind. Shared's turn provenance fold reads the Project context a turn carried on every engine. The SDK adds Project memory clients (`listProjectMemory`, `getProjectMemoryNote`, `createProjectMemoryNote`, `updateProjectMemoryNote`, `deleteProjectMemoryNote`) and a `projectSlug` usage rollup filter.
+- d4233c3: Pull request agent feedback that needs a person shows in Needs you. Contracts add the `pull-request-feedback` attention item (`PullRequestFeedbackAttentionItem`), `cap` and `at` on a paused feedback status, and a `pull-request-feedback` client-origin sender so the delivered message is labelled as Station's. The SDK adds `turnOffPullRequestFeedback` and exports the new item type. Shared ranks the `pull-request-feedback` notification category as needing input.
+- 5aaabc0: Remove `streaming` and `ui.quickPrompts` from the Agent authoring type and schema. Remove those keys from new definitions. Existing files still open with their bytes intact, and the next save writes the current shape. Agent guidance import and export omit both fields. Layouts can continue passing `AgentQuickPrompt` to `onLaunchPrompt`.
+- 9b2ecff: A `model.rerouted` transcript marker part now carries `modelReroute` (`sessionId`, `turnId` when the engine named the turn, and `scope`), so a reader can tell which turn ran on another model than it asked for without parsing the marker text. A subagent's reroute carries none. The marker text is unchanged.
+- c4272d5: A conversation that changes engine keeps each engine's usage (#5389). Folding the whole lineage as one stream let an engine that reports a running total (Codex) replace what a per-turn engine (Claude Code) had counted.
+
+  `foldLineageUsageEvents` (new subpath `@kontourai/station-shared/usage-lineage-fold`) folds Sessions into runs (for Codex, Sessions on the same recorded native thread; for other engines, consecutive Sessions of the engine) and combines the runs per engine into `LineageUsageAggregate.engines` (`EngineUsageAggregate`). The per-Session fold in `usage-fold` is unchanged. The conversation stats response gains `engines` (`ConversationEngineUsage`, validated by `parseConversationStatsResponse`, which refuses an engine listed twice or more than `CONVERSATION_STATS_ENGINES_MAX` rows; `reportsEngineTokens` is the shared "reported tokens" predicate). When more than one engine reported tokens, the response's own token figures are absent rather than a sum across engines; turns, tool calls and costs (per unit) stay conversation-wide. A single-engine conversation gains its one `engines` row; its figures change only where a Codex successor ran on a new native thread, whose total now adds to the earlier thread's instead of replacing it.
+
+### Patch Changes
+
+- 9b2ecff: Approval choices share one layout. `approvalDecisionLayout` splits an approval's decision body into Allow once, Deny and the session grants the request offered, and `APPROVAL_SESSION_GRANTS_MENU_LABEL` ("Allow for this session") names the menu that holds those grants. The one-call option's label is now "Allow once".
+- ee46eed: `projectRuntimeEventsToMessages` stamps the interrupted-turn notice with its
+  event's time when the notice closes a turn that was still open (a turn that
+  ended in `runtime.error`). The notice had no `metadata.timestamp` in that case,
+  so readers that order rows by time placed it after every later turn.
+- 64522c2: A scaffolded plugin's README says to install it from Apps › Library → Install
+  plugin, where Station now manages installed plugins.
+- Updated dependencies [d8def70]
+- Updated dependencies [c4272d5]
+- Updated dependencies [c4272d5]
+- Updated dependencies [de1aed1]
+- Updated dependencies [e3340d8]
+- Updated dependencies [302129e]
+- Updated dependencies [2ad52ad]
+- Updated dependencies [c4272d5]
+- Updated dependencies [e308051]
+- Updated dependencies [a80f89f]
+- Updated dependencies [64522c2]
+- Updated dependencies [ec227ca]
+- Updated dependencies [9b2ecff]
+- Updated dependencies [9294965]
+- Updated dependencies [b7f8c61]
+- Updated dependencies [3475cd8]
+- Updated dependencies [91be223]
+- Updated dependencies [64522c2]
+- Updated dependencies [613b900]
+- Updated dependencies [2d61598]
+- Updated dependencies [7c54e90]
+- Updated dependencies [097e7e0]
+- Updated dependencies [890bb71]
+- Updated dependencies [6b381fa]
+- Updated dependencies [0fa15f6]
+- Updated dependencies [d4233c3]
+- Updated dependencies [4001c1b]
+- Updated dependencies [f93562f]
+- Updated dependencies [7e3fdf4]
+- Updated dependencies [64522c2]
+- Updated dependencies [b5d5625]
+- Updated dependencies [781a688]
+- Updated dependencies [5aaabc0]
+- Updated dependencies [47a181c]
+- Updated dependencies [f8791cd]
+- Updated dependencies [9b2ecff]
+- Updated dependencies [1d0dbf5]
+- Updated dependencies [ea9ce36]
+- Updated dependencies [a67e849]
+- Updated dependencies [b3f8383]
+- Updated dependencies [3ae3285]
+- Updated dependencies [1b5f643]
+- Updated dependencies [c4272d5]
+- Updated dependencies [3ae3285]
+- Updated dependencies [b9cc026]
+  - @kontourai/station-contracts@0.15.0
+
 ## 0.14.0
 
 ### Minor Changes
