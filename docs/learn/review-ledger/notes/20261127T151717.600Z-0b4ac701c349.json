@@ -1,0 +1,7 @@
+{
+  "revision": "c0127ee5379123a36b89e5d020260019060d84e2",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Reviewed CLI recovery paragraph against same-run identity/idempotency/receipt steps and real bash workflow-step tests. No new publish, cache or weakened provenance/deadline; does not claim registry lag fixed.","inputs":["docs/guides/nightly.md","scripts/__tests__/nightly-build-identity.test.ts"]}
+  ]
+}
