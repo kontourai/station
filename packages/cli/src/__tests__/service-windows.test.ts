@@ -78,6 +78,28 @@ function powerShellProgram(args: string[]): string {
   return Buffer.from(args[3] ?? '', 'base64').toString('utf16le');
 }
 
+function windowsTrustOperation(args: string[]): 'ensure' | 'verify' | null {
+  const payload = /\$request = .*FromBase64String\('([^']+)'\)/u.exec(
+    powerShellProgram(args),
+  )?.[1];
+  if (payload === undefined) return null;
+  const request = JSON.parse(Buffer.from(payload, 'base64').toString('utf8'));
+  if (!Object.hasOwn(request, 'operation')) return null;
+  expect(request).toEqual({
+    operation: expect.stringMatching(/^(ensure|verify)$/u),
+    targets: expect.any(Array),
+  });
+  expect(request.targets.length).toBeGreaterThan(0);
+  for (const target of request.targets) {
+    expect(target).toEqual({
+      kind: expect.stringMatching(/^(directory|file)$/u),
+      path: expect.stringMatching(/\S/u),
+      policy: expect.stringMatching(/^(current-user-only|execution-safe)$/u),
+    });
+  }
+  return request.operation;
+}
+
 // Pinned independently of the constants under test (#2970): no execution time
 // limit, the scheduler's restart settings, and no battery rules.
 const EXPECTED_TASK_SETTINGS =
@@ -330,7 +352,7 @@ describe('Windows Task Scheduler service backend', () => {
             };
       }
       if (isWindowsUtility(command, 'powershell')) {
-        if (args.includes('verify') || args.includes('ensure')) {
+        if (windowsTrustOperation(args) !== null) {
           return { status: 0, stdout: '{"trusted":true}' };
         }
         const applied = runTaskSettingsProgram(
@@ -494,7 +516,7 @@ describe('Windows Task Scheduler service backend', () => {
           : { status: 1, stderr: 'not found' };
       }
       if (isWindowsUtility(command, 'powershell')) {
-        if (args.includes('verify') || args.includes('ensure')) {
+        if (windowsTrustOperation(args) !== null) {
           return { status: 0, stdout: '{"trusted":true}' };
         }
         if (
@@ -550,7 +572,7 @@ describe('Windows Task Scheduler service backend', () => {
           : { status: 1, stderr: 'not found' };
       }
       if (isWindowsUtility(command, 'powershell')) {
-        if (args.includes('verify') || args.includes('ensure')) {
+        if (windowsTrustOperation(args) !== null) {
           return { status: 0, stdout: '{"trusted":true}' };
         }
         return { status: 0, stdout: 'unknown-localized\n' };
@@ -744,7 +766,7 @@ describe('Windows Task Scheduler service backend', () => {
           : { status: 1, stderr: 'not found' };
       }
       if (isWindowsUtility(command, 'powershell')) {
-        if (args.includes('verify') || args.includes('ensure')) {
+        if (windowsTrustOperation(args) !== null) {
           return { status: 0, stdout: '{"trusted":true}' };
         }
         if (
@@ -830,7 +852,7 @@ describe('Windows Task Scheduler service backend', () => {
             : { status: 1, stderr: 'not found' };
         }
         if (isWindowsUtility(command, 'powershell')) {
-          if (args.includes('verify') || args.includes('ensure')) {
+          if (windowsTrustOperation(args) !== null) {
             return { status: 0, stdout: '{"trusted":true}' };
           }
           // Model a scheduler that accepted the call but kept one default. The
@@ -899,7 +921,7 @@ describe('Windows Task Scheduler service backend', () => {
           : { status: 1, stderr: 'not found' };
       }
       if (isWindowsUtility(command, 'powershell')) {
-        if (args.includes('verify') || args.includes('ensure')) {
+        if (windowsTrustOperation(args) !== null) {
           return { status: 0, stdout: '{"trusted":true}' };
         }
         return { status: 0, stdout: `${running ? '4' : '3'}\n` };
@@ -960,6 +982,9 @@ describe('Windows Task Scheduler service backend', () => {
         return { status: 0, stdout: taskXml(registration.unitPath) };
       }
       if (isWindowsUtility(command, 'powershell')) {
+        if (windowsTrustOperation(args) !== null) {
+          return { status: 0, stdout: '{"trusted":true}' };
+        }
         return { status: 0, stdout: `${running ? '4' : '3'}\n` };
       }
       if (args[0] === '/End') {
@@ -1011,7 +1036,7 @@ describe('Windows Task Scheduler service backend', () => {
         return { status: 0, stdout: taskXml(registration.unitPath) };
       }
       if (isWindowsUtility(command, 'powershell')) {
-        if (args.includes('verify') || args.includes('ensure')) {
+        if (windowsTrustOperation(args) !== null) {
           return { status: 0, stdout: '{"trusted":true}' };
         }
         return {
