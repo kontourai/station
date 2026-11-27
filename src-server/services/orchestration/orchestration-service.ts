@@ -13121,9 +13121,15 @@ export class OrchestrationService {
                 'request_event_changed',
                 'The Station owner must answer the current log request in chat.',
               );
-            logRead.settle(
-              command.decision === 'accept' ? 'approved' : 'denied',
-            );
+            if (
+              !logRead.settle(
+                command.decision === 'accept' ? 'approved' : 'denied',
+              )
+            )
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'Station could not record the server log decision.',
+              );
             this.persistReceipt(receipt);
             return { receipt, result: undefined };
           }
@@ -17056,7 +17062,9 @@ export class OrchestrationService {
       requestId: string;
       eventId: string;
       turnId: string;
-      settle: (status: 'approved' | 'denied' | 'cancelled' | 'expired') => void;
+      settle: (
+        status: 'approved' | 'denied' | 'cancelled' | 'expired',
+      ) => boolean;
     }
   >();
 
@@ -17078,16 +17086,31 @@ export class OrchestrationService {
     const requestId = crypto.randomUUID();
     const eventId = crypto.randomUUID();
     const base = { threadId, turnId, provider, requestId };
+    const publish = (event: CanonicalRuntimeEvent) => {
+      try {
+        return this.projectAndPublishEvent(event);
+      } catch (error) {
+        this.options.logger.warn('Could not publish the server log approval', {
+          threadId,
+          requestId,
+          error,
+        });
+        return false;
+      }
+    };
     return new Promise<boolean>((resolve) => {
       const cancel = () => settle('cancelled');
       const timeout = setTimeout(() => settle('expired'), 60_000);
-      const settle = (
-        status: 'approved' | 'denied' | 'cancelled' | 'expired',
-      ) => {
+      const retire = () => {
         clearTimeout(timeout);
         signal.removeEventListener('abort', cancel);
         this.serverLogReads.delete(threadId);
-        const persisted = this.projectAndPublishEvent({
+      };
+      const settle = (
+        status: 'approved' | 'denied' | 'cancelled' | 'expired',
+      ) => {
+        retire();
+        const persisted = publish({
           ...base,
           eventId: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
@@ -17095,11 +17118,12 @@ export class OrchestrationService {
           status,
         });
         resolve(persisted && status === 'approved');
+        return persisted;
       };
       this.serverLogReads.set(threadId, { requestId, eventId, turnId, settle });
       signal.addEventListener('abort', cancel, { once: true });
       if (
-        !this.projectAndPublishEvent({
+        !publish({
           ...base,
           eventId,
           createdAt: new Date().toISOString(),
@@ -17109,8 +17133,10 @@ export class OrchestrationService {
           payload: { toolName: 'read_logs' },
           description,
         })
-      )
-        cancel();
+      ) {
+        retire();
+        resolve(false);
+      }
     });
   }
 
