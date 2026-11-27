@@ -1,0 +1,17 @@
+{
+  "revision": "afb673d041c5b6722d099e511f490ea0497406a4",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed downstream verification-guide links for afb673d observer setup sequencing. The added sentence changes only fixture sequencing; linked lifecycle, broker, recovery and collaboration contracts retain their existing limits and no stronger release evidence is claimed.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed downstream verification-guide links for afb673d observer setup sequencing. The added sentence changes only fixture sequencing; linked lifecycle, broker, recovery and collaboration contracts retain their existing limits and no stronger release evidence is claimed.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed downstream verification-guide links for afb673d observer setup sequencing. The added sentence changes only fixture sequencing; linked lifecycle, broker, recovery and collaboration contracts retain their existing limits and no stronger release evidence is claimed.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed downstream verification-guide links for afb673d observer setup sequencing. The added sentence changes only fixture sequencing; linked lifecycle, broker, recovery and collaboration contracts retain their existing limits and no stronger release evidence is claimed.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed downstream verification-guide links for afb673d observer setup sequencing. The added sentence changes only fixture sequencing; linked lifecycle, broker, recovery and collaboration contracts retain their existing limits and no stronger release evidence is claimed.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed downstream verification-guide links for afb673d observer setup sequencing. The added sentence changes only fixture sequencing; linked lifecycle, broker, recovery and collaboration contracts retain their existing limits and no stronger release evidence is claimed.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}
