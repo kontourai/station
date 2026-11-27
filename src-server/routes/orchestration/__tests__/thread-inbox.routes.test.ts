@@ -317,7 +317,10 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       await world.busy();
       const listing = await world.listInbox();
       expect(listing.status).toBe(200);
-      const expectedHead = (await listing.json()).data[headField];
+      const snapshot = (await listing.json()) as {
+        data: Partial<Record<typeof headField, string>>;
+      };
+      const expectedHead = snapshot.data[headField];
       expect(expectedHead).toEqual(expect.any(String));
       const send = () =>
         world.app.request(
