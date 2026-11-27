@@ -150,21 +150,30 @@ test('a reused guard name cannot make successful work delete a replacement owner
   const f = fixture();
   seed(f.modules);
   const moved = join(f.root, 'original-guard');
+  const originalReceipt = join(f.root, 'original-receipt');
   expect(() =>
     withDependencyInstallGuard({
       root: f.root,
       clean: true,
       run: () => {
         seed(f.modules, 'verified');
+        renameSync(join(f.guard, 'receipt.json'), originalReceipt);
         renameSync(f.guard, moved);
         seed(f.guard, 'new-owner');
       },
     }),
-  ).toThrow(/not verified/i);
+  ).toThrow(
+    expect.objectContaining({
+      message: expect.stringMatching(/not verified/i),
+      cause: expect.objectContaining({
+        message: 'Dependency installer ownership changed; refusing cleanup.',
+      }),
+    }),
+  );
   expect(readFileSync(join(f.guard, 'new-owner'), 'utf8')).toBe('original');
-  expect(
-    JSON.parse(readFileSync(join(moved, 'receipt.json'), 'utf8')).phase,
-  ).toBe('failed');
+  expect(JSON.parse(readFileSync(originalReceipt, 'utf8')).phase).toBe(
+    'failed',
+  );
 });
 
 test('a replaced retired tree cannot redirect cleanup', () => {
