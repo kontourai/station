@@ -43,7 +43,7 @@ export function RowMenu({
   triggerContent,
   onOpenChange,
 }: {
-  items: readonly RowMenuItem[];
+  items: readonly RowMenuItem[] | (() => readonly RowMenuItem[]);
   label?: string;
   /** Replaces the trigger's own class, for a host with its own action slot. */
   triggerClassName?: string;
@@ -147,7 +147,7 @@ export function RowMenu({
     };
   }, [open]);
 
-  if (items.length === 0) return null;
+  if (typeof items !== 'function' && items.length === 0) return null;
 
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const entries = Array.from(
@@ -173,7 +173,12 @@ export function RowMenu({
   };
 
   const groups: { name?: string; items: RowMenuItem[] }[] = [];
-  for (const item of items) {
+  const visibleItems = open
+    ? typeof items === 'function'
+      ? items()
+      : items
+    : [];
+  for (const item of visibleItems) {
     const last = groups.at(-1);
     if (last && last.name === item.group) last.items.push(item);
     else groups.push({ name: item.group, items: [item] });
