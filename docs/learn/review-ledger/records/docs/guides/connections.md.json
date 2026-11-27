@@ -270,10 +270,6 @@
 
     "src-ui/src/views/AgentConnectionView.tsx",
 
-    "src-ui/src/views/ConnectionsHub.tsx",
-
-    "src-ui/src/views/ConnectionsSectionFrame.tsx",
-
     "src-ui/src/views/CredentialProfileDeviceCodeLogin.tsx",
 
     "src-ui/src/views/EngineAccountOverview.tsx",
@@ -461,6 +457,10 @@
     "src-ui/src/views/ProviderSettingsView.css",
 
     "src-ui/src/views/project-page/useMemberProjectSharedWork.ts",
+
+    "src-ui/src/views/CustomizeSectionFrame.tsx",
+
+    "src-ui/src/views/customize/CustomizeLanding.tsx",
 
     "src-ui/src/views/project-page/ProjectWebMcp.tsx",
 

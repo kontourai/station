@@ -488,7 +488,7 @@ test.describe('Plugin Update Flow', () => {
     await page.locator('.plugins__install-btn').click();
     await expect(
       page.getByRole('region', {
-        name: 'Registry verification for registry-dependency',
+        name: 'Source verification for registry-dependency',
       }),
     ).toContainText('dependency-signing-key');
     await page.getByRole('button', { name: 'Confirm Install' }).click();

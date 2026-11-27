@@ -258,7 +258,7 @@ describe('NotificationContainer', () => {
           dismissed: false,
           actions: [
             { label: 'Retry', onClick: vi.fn() },
-            { label: 'Open Plugins', onClick: vi.fn() },
+            { label: 'Open Apps', onClick: vi.fn() },
           ],
         },
       ];

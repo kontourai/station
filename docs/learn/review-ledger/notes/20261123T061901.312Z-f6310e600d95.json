@@ -1,0 +1,9 @@
+{
+  "revision": "ddb1d1a864db4b9c2f5f3d1a42f482f869591e62",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Checked: the Default for new chats section now says only a verified engine is recorded as first-signed-in, other engines by id, never Station's own; citing pages unaffected.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked: the Default for new chats section now says only a verified engine is recorded as first-signed-in, other engines by id, never Station's own; citing pages unaffected.","inputs":["docs/reference/api.md"]}
+  ]
+}

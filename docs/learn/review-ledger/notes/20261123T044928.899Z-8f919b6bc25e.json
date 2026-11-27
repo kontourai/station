@@ -1,0 +1,9 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked: config.md gains the newChatDefault row. Pages citing it for other fields stay accurate.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked: config.md gains the newChatDefault row. Pages citing it for other fields stay accurate.","inputs":["docs/reference/config.md"]}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"README.md","note":"The plugins guide now names Apps › Discover and Library; linking pages remain accurate.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The plugins guide now names Apps › Discover and Library; linking pages remain accurate.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"The plugins guide now names Apps › Discover and Library; linking pages remain accurate.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

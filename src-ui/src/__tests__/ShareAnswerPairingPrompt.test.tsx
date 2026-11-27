@@ -60,7 +60,7 @@ describe('ShareAnswerPairingPrompt', () => {
     // The confirm/exchange half must not be reachable from here at all.
     expect(
       await screen.findByText(
-        'Request sent. Approve this browser in Connections, then share again.',
+        'Request sent. Approve this browser in Computers, then share again.',
       ),
     ).toBeTruthy();
   });
@@ -73,10 +73,10 @@ describe('ShareAnswerPairingPrompt', () => {
 
     fireEvent.click(
       await screen.findByRole('button', {
-        name: 'Open Connections to approve',
+        name: 'Open Computers to approve',
       }),
     );
-    expect(navigate).toHaveBeenCalledWith('/connections');
+    expect(navigate).toHaveBeenCalledWith('/connections/computers');
   });
 
   it('reports a failed request rather than implying the browser is now paired', async () => {

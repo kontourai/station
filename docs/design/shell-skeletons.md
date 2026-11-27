@@ -160,11 +160,11 @@ The rule now:
   had — the audit named it the canonical instance for the header's SHAPE. Schedule is no longer a
   canonical instance of the EYEBROW specifically: archive#4463 slice 1 retired its self-referential
   `SCHEDULE`-above-**Schedule** eyebrow (Schedule is top-level, so it now renders none). For a
-  current eyebrow example, see a subpage instead — Connections → Models renders eyebrow
-  `Connections`, title `Models`. That eyebrow is deliberately **static text**: an eyebrow ancestor
-  is linked only when it has a real landing surface, and `/connections` is a redirect-only
-  resolver, so a link there would be a no-op or a sibling jump dressed as "up"
-  (`ConnectionsSectionFrame.tsx` carries the full rationale). Note eyebrows are produced on two
+  current eyebrow example, see a subpage instead — Customize → Providers renders eyebrow
+  `Customize`, title `Providers`. That eyebrow is a link because Customize has a real landing
+  page; an eyebrow ancestor is linked only when it has one (`CustomizeSectionFrame.tsx`). The
+  retired Connections eyebrow was static text for the opposite reason: `/connections` was a
+  redirect-only resolver. Note eyebrows are produced on two
   paths — `SplitPaneLayout`'s breadcrumb trail and `PageEyebrowTrail` — and the linked-only-when-
   navigable rule governs both.
 - **`src-ui/src/app-shell/page-frame-registry.ts` decides which routes get one.** It is a `Record`
@@ -244,10 +244,10 @@ one exception entry per `null` route.
 
 This table preserves the original port-time inspection (`wc -c` and source
 reads). Its wrappers, sizes, and delivery labels are historical measurements,
-not the current inventory. For example, Connections now resolves into a section
-instead of rendering the old hub, and Project Settings has a `page page--full`
-root; current owners are [ConnectionsHub](../../src-ui/src/views/ConnectionsHub.tsx)
-and [ProjectSettingsView](../../src-ui/src/views/ProjectSettingsView.tsx).
+not the current inventory. For example, the Connections hub is gone (its parts are
+Customize items, framed by `CustomizeSectionFrame.tsx`), and Project Settings has a
+`page page--full` root; its current owner is
+[ProjectSettingsView](../../src-ui/src/views/ProjectSettingsView.tsx).
 
 | # | View | Current root wrapper (verified) | Target skeleton | Status |
 |---|---|---|---|---|
@@ -255,7 +255,7 @@ and [ProjectSettingsView](../../src-ui/src/views/ProjectSettingsView.tsx).
 | 2 | Deleted tool-management view | No live UI surface | SplitPaneLayout | Historical port completed in archive#245; server routes and CLI remain live without a UI consumer |
 | 3 | Deleted workflow-management view | No live UI surface | SplitPaneLayout | Deleted; server routes and CLI remain live without a UI consumer |
 | 4 | `src-ui/src/views/ProjectSettingsView.tsx` | `project-settings` | page-layout, sectioned | Remaining — tracked by the ratchet ceiling |
-| 5 | `src-ui/src/views/ConnectionsHub.tsx` | `connections-hub` (9,160-byte CSS + 15,970-byte TSX) | page-layout, hub | Remaining — tracked by the ratchet ceiling |
+| 5 | `ConnectionsHub.tsx` (removed in first-release slice 1.2) | `connections-hub` (9,160-byte CSS + 15,970-byte TSX) | page-layout, hub | Remaining — tracked by the ratchet ceiling |
 | 6 | `src-ui/src/views/MonitoringView.tsx` | `monitoring-view` (32,014-byte CSS — the largest of the six) | page-layout, dashboard | Remaining — tracked by the ratchet ceiling |
 
 This is the exact steal-list §3 port order (Knowledge → Tool → Workflow → ProjectSettings →
@@ -275,7 +275,7 @@ Knowledge, reasoning from a surveyed knowledge-browser tree+reader pattern. This
   list-select interaction that doesn't correspond to anything the current UI does — that is a
   **redesign**, not a structural convergence, and would violate the parity requirement this port
   is judged against (before/after screenshots must match).
-- It would also require touching `src-ui/src/views/ConnectionsHub.tsx` (the list this view is
+- It would also require touching `ConnectionsHub.tsx` (since removed; the list this view is
   reached from) to wire a new selectable-item affordance — `ConnectionsHub.tsx` is explicitly out
   of scope for this PR (its own separate archive#193 port, mapping row 5 above).
 
@@ -361,5 +361,5 @@ happen rather than after the fact.
 The Engines collection uses `SplitPaneLayout`. **Add engine** leaves that
 collection for a narrow flow page: choose an engine, complete setup, then
 return to the collection with the new engine selected. Both the plain
-`/connections/engines/new` route and engine-specific setup links use this frame.
+`/customize/engines/new` route and engine-specific setup links use this frame.
 The collection rail and its Add action stay on the collection page.

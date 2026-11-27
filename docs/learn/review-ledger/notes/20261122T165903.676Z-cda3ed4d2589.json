@@ -1,0 +1,11 @@
+{
+  "revision": "0672bb70a7355525e1c217ebe9e4f713930638ff",
+
+  "notes": [
+    {"path":"README.md","note":"Plugins guide now names Apps > Library for install; citing pages make no claim about the old Plugins page.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Plugins guide now names Apps > Library for install; citing pages make no claim about the old Plugins page.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Plugins guide now names Apps > Library for install; citing pages make no claim about the old Plugins page.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

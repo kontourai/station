@@ -20,6 +20,7 @@ import {
   buildNewChatModelOverrideKey,
   GLOBAL_CONTEXT,
   getRecentAgentSlugsForContext,
+  newChatDefaultRow,
   newChatLastChosenModel,
   newChatProjectDefaultModel,
   resolveNewChatDefaultSelection,
@@ -52,6 +53,7 @@ import type {
 } from '../utils/modelCapabilities';
 import { profileCompatibilityReason } from '../utils/modelCapabilities';
 import { useLastChosenModelMap } from './lastChosenModel';
+import { useRecordNewChatDefault } from './useRecordNewChatDefault';
 
 const EMPTY_CONNECTIONS: never[] = [];
 
@@ -394,23 +396,50 @@ export function useNewChatSelectionModel({
       selectedProjectConfig?.agents,
     ],
   );
+  // The Station's default for new chats (#5401), recorded once from the
+  // fixed order and read after every closer default below.
+  const storedNewChatDefaultSlug = appConfig?.newChatDefault?.agent;
+  useRecordNewChatDefault({
+    stored: appConfig ? appConfig.newChatDefault : null,
+    agents: modalAgents,
+    agentConnections,
+    settled:
+      !!pickerCatalog &&
+      !catalogFetching &&
+      !!agentCatalog.data &&
+      !agentCatalog.isFetching &&
+      agentCatalog.catalogState !== 'reconciling',
+  });
+  const listedAgents = viewModel.scopedAgents ?? viewModel.flatList;
+  // The stored default as the row the menu shows: an engine's alias row
+  // that another of that engine's own Agents stands in for resolves to it,
+  // for the selection and the tag alike.
+  const newChatDefaultSlug = newChatDefaultRow(
+    listedAgents,
+    storedNewChatDefaultSlug,
+  );
   const defaultSelection = resolveNewChatDefaultSelection({
     flatList: viewModel.flatList,
+    listedAgents,
     agentConnections,
     modelConnections,
     acpConnections,
     projectDefaultModel: selectedProjectConfig?.defaultModel,
     projectChatDefaults: selectedProjectSlug ? projectChatDefaults : undefined,
-    preferredAgentSlug: firstStartableAgentSlug(viewModel.flatList, [
-      rememberedAgentSlug,
-      ...getRecentAgentSlugsForContext(
-        activeChatsSnapshot,
-        selectedContext,
-        [],
-      ),
-      selectedProjectConfig?.defaultAgent,
-      layout?.defaultAgent,
-    ]),
+    preferredAgentSlug: firstStartableAgentSlug(
+      listedAgents,
+      [
+        rememberedAgentSlug,
+        ...getRecentAgentSlugsForContext(
+          activeChatsSnapshot,
+          selectedContext,
+          [],
+        ),
+        selectedProjectConfig?.defaultAgent,
+        layout?.defaultAgent,
+      ],
+      newChatDefaultSlug,
+    ),
 
     lastChosenModelByBinding,
   });
@@ -623,6 +652,8 @@ export function useNewChatSelectionModel({
   return {
     viewModel,
     defaultSelection,
+    /** The Agent the Station's default for new chats names, if one is recorded. */
+    newChatDefaultSlug,
     agentConnections,
     modelConnections,
     acpConnections,
@@ -675,19 +706,25 @@ export function useNewChatSelectionModel({
 
 /**
  * The new chat's preferred Agent: the first of the remembered, recent and
- * configured Agents that can start. One that needs setup is passed over, so a
- * stale memory never outranks a working default. When none can start, the
- * first one named is kept, so a missing Agent is still reported as missing.
+ * configured Agents that can start, then the Station's default for new chats
+ * if it can start. One that needs setup is passed over, so a stale memory
+ * never outranks a working default. When none can start, the first one named
+ * is kept, so a missing Agent is still reported as missing; the Station's
+ * default never is: a stale record is passed over everywhere, and the fixed
+ * order (or quick-start preparation) takes it from there.
  */
 export function firstStartableAgentSlug(
   agents: readonly AgentData[],
   candidates: readonly (string | undefined)[],
+  stationDefault?: string,
 ): string | undefined {
   const named = candidates.filter((slug): slug is string => Boolean(slug));
+  const startable = (slug: string) => {
+    const agent = agents.find((candidate) => candidate.slug === slug);
+    return agent !== undefined && agentRunnability(agent).runnable;
+  };
   return (
-    named.find((slug) => {
-      const agent = agents.find((candidate) => candidate.slug === slug);
-      return agent !== undefined && agentRunnability(agent).runnable;
-    }) ?? named[0]
+    named.find(startable) ??
+    (stationDefault && startable(stationDefault) ? stationDefault : named[0])
   );
 }

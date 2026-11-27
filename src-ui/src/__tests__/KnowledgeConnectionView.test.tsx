@@ -40,12 +40,11 @@ vi.mock('../hooks/useCloseShortcut', () => ({
   useCloseShortcut: vi.fn(),
 }));
 
-import { PageFrame } from '../components/page-frame';
 import { KnowledgeConnectionView } from '../views/KnowledgeConnectionView';
 
 describe('KnowledgeConnectionView (#242 shell port)', () => {
   beforeEach(() => {
-    navigationStore.navigate('/connections/knowledge');
+    navigationStore.navigate('/customize/knowledge');
     connectionsQueryData = [];
     connectionsQueryState = {};
     knowledgeStatusQueryState = {};
@@ -84,47 +83,8 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
 
     expect(screen.getByText('No embedding model configured.')).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: /Add one in Models/ }),
+      screen.getByRole('button', { name: /Add one in Providers/ }),
     ).toBeTruthy();
-  });
-
-  it('publishes an unlinked Connections eyebrow (parent-context text only) into the page frame', () => {
-    render(
-      <PageFrame
-        spec={{ title: 'Knowledge infrastructure', width: 'narrow' }}
-        routeIdentity="connections-knowledge"
-      >
-        <KnowledgeConnectionView />
-      </PageFrame>,
-    );
-
-    const header = document.querySelector('.page-frame__header');
-    expect(header?.textContent).toContain('Connections');
-    expect(header?.textContent).toContain('Knowledge infrastructure');
-    // The title, not the eyebrow, says 'Knowledge infrastructure' —
-    // archive#4463 retired the breadcrumb-as-eyebrow that restated
-    // it a second time.
-    expect(document.querySelector('.page__label')?.textContent?.trim()).toBe(
-      'Connections',
-    );
-    // Fix round (arbiter decision #4): unlinked — `/connections` is a
-    // redirect-only resolver, so a click would be a no-op or a sibling jump.
-    expect(document.querySelector('.page__label-link')).toBeNull();
-  });
-
-  it('publishes nothing when embedded in another page, which owns its own title', () => {
-    render(
-      <PageFrame
-        spec={{ title: 'Settings', width: 'narrow' }}
-        routeIdentity="settings"
-      >
-        <KnowledgeConnectionView embedded />
-      </PageFrame>,
-    );
-
-    const header = document.querySelector('.page-frame__header');
-    expect(header?.textContent).toContain('Settings');
-    expect(header?.textContent).not.toContain('Connections');
   });
 
   it('uses shared sections and keeps embedding deep links in query state', () => {
@@ -187,7 +147,7 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
         }),
       );
 
-      expect(window.location.pathname).toBe('/connections/knowledge');
+      expect(window.location.pathname).toBe('/customize/knowledge');
       expect(screen.getByText('Unsaved Changes')).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
       expect(window.location.pathname).toBe('/settings');

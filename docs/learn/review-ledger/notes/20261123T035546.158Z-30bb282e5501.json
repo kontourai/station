@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Holds both slices: Customize is the page at /customize with six items in three groups, Computers outside it; App is Apps › Discover and Apps › Library; Plugin stays the packaging word and the Registry's plugin catalogue is Apps › Discover. No entry places Apps or Plugins in Customize.","inputs":["docs/glossary.md"]}
+  ]
+}

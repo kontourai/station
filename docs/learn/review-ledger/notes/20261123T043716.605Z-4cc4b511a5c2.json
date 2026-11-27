@@ -1,0 +1,47 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Checked: one inherited leaf, POST /config/new-chat-default, added beside POST /config/first-run. No family, tier or scope rule changed, so claims about pairing scopes stay accurate.","inputs":["src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

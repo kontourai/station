@@ -1,0 +1,7 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Export/import now skips newChatDefault as well as firstRun; checked against settings utils and its test.","inputs":["docs/design/settings-architecture.md"]}
+  ]
+}

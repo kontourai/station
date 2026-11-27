@@ -1,0 +1,7 @@
+{
+  "revision": "56866b3225feefcb5f7e31c527cdfb4f86df0af8",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"SetupImportEffectJournal re-read after apply() learned to read skills created earlier in the same run as absent for the source-namespace check: the section's claims (witness binds each target's absence or revision; per-item effects and reasons; compare-delete rollback) are unchanged, and it makes no claim about that check. Dialog now words source-namespace-changed separately; no module-map claim covers that copy.","inputs":["docs/architecture/module-map.md","src-server/services/setup/existing-agent-setup-import.ts","src-ui/src/components/setup/CodexPromptImportDialog.tsx"]}
+  ]
+}

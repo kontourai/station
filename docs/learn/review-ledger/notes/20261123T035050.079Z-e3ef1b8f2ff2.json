@@ -1,0 +1,7 @@
+{
+  "revision": "62694dedd2ad88de44a5fa70962aeab935bfd143",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Combined the Customize slice's wording with the Apps slice's, and changed 'Load plugin packages through Registry' to name Apps › Library, where Install plugin lives; the Codex import paragraph from the import slice is kept as written.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

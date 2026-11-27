@@ -11,6 +11,11 @@ import { buildAgentsViewEmptyContent } from '../views/agent-editor/agentsViewHel
 
 const state = vi.hoisted(() => ({
   listItems: [] as Array<{ id: string; name: string }>,
+  /** What the agents catalogue read answers (`GET /api/registry/agents`). */
+  agentCatalog: { data: [] as unknown[] | undefined } as {
+    data: unknown[] | undefined;
+    error?: Error;
+  },
   query: {
     isLoading: false,
     isError: true,
@@ -31,6 +36,8 @@ vi.mock('../contexts/NavigationContext', () => {
 
 vi.mock('@kontourai/station-sdk', () => ({
   useAgentsQuery: () => state.query,
+  useRegistryItemsQuery: (tab: string) =>
+    tab === 'agents' ? state.agentCatalog : { data: undefined },
 }));
 
 vi.mock('../views/agent-editor/useAgentsViewModel', () => ({
@@ -62,6 +69,7 @@ afterEach(cleanup);
 beforeEach(() => {
   state.query.refetch.mockClear();
   state.listItems = [];
+  state.agentCatalog = { data: [] };
 });
 
 describe('AgentsView after a failed agents read', () => {
@@ -111,4 +119,14 @@ describe('AgentsView after a failed agents read', () => {
       };
     }
   });
+});
+
+// Agents arrive inside apps: the agent catalogue is not a page and Agents
+// links to none, even when a source lists agent entries.
+test('Agents offers no agent catalogue, even when a source lists agents', () => {
+  state.agentCatalog = {
+    data: [{ id: 'planner', displayName: 'Project Planner' }],
+  };
+  render(<AgentsView agents={[]} availableModels={[]} onNavigate={vi.fn()} />);
+  expect(screen.queryByRole('button', { name: /browse agents/i })).toBeNull();
 });

@@ -351,7 +351,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
 
   // Skills
   list_skills: listed('Skills'),
-  list_registry_skills: listed('Skills in the registry'),
+  list_registry_skills: listed('Skills you can add'),
   install_skill: entry(
     'Installed',
     'Installing',
@@ -706,7 +706,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     'Remove',
     named('Integration', 'id', 'an Integration'),
   ),
-  list_registry_integrations: listed('Integrations in the registry'),
+  list_registry_integrations: listed('Tool servers you can add'),
   install_registry_integration: entry(
     'Installed',
     'Installing',

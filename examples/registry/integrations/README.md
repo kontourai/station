@@ -2,9 +2,9 @@
 
 The bundled marketplace offers a small starting set for research, coding and
 document work. These are ordinary MCP integration definitions, not bundled
-executables or new Station Browser hosts. Install an entry from **Registry →
-Integrations**, then configure and enable it in **Connections** and select it
-for the Agent that needs it. Registry installation saves it disabled; installing
+executables or new Station Browser hosts. Add an entry from **Browse tool servers**
+(Customize › Tools), then configure and enable it in **Customize › Tools** and
+select it for the Agent that needs it. Adding it saves it disabled; installing
 a definition does not install a local runtime, connect an account or grant an
 Agent access automatically.
 

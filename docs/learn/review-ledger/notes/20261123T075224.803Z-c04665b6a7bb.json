@@ -1,0 +1,9 @@
+{
+  "revision": "a6bd9c38973d5e169559127fc8905a02f4913de1",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked: the skills spec now reads a catalogue skill's source as Added from Browse; the matrix row for registry and skills still describes what the specs cover.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/skills.spec.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked: the shipped bundle was regenerated with docs:mcp:generate for the Apps and Customize wording in the guides; this reference's description of the bundle and its tools is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

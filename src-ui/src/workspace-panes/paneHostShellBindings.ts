@@ -3,6 +3,10 @@ import type {
   PaneUnavailableReason,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
+import {
+  getLegacyPathRedirect,
+  resolveViewFromPath,
+} from '../app-shell/routing';
 import { toastStore } from '../contexts/ToastContext';
 
 /**
@@ -115,10 +119,25 @@ export function resolvePaneNavigationRoute(
  * directions from disagreeing about which routes exist.
  */
 export function paneAppSurfaceIdForRoute(pathname: string): string | null {
-  const destination = APP_DESTINATION_REGISTRY.getRegistered().find(
-    (definition) => definition.view && definition.route === pathname,
-  );
-  return destination?.id ?? null;
+  // A retired address a published plugin may still send (`/plugins`,
+  // `/registry`, `/connections`) goes through the redirect a person typing
+  // it gets first, so it keeps working.
+  const redirect = getLegacyPathRedirect(pathname);
+  const landing = redirect ? redirect.split('?')[0]! : pathname;
+  const destination =
+    APP_DESTINATION_REGISTRY.getRegistered().find(
+      (definition) => definition.view && definition.route === landing,
+    ) ??
+    // A redirect can land below a destination's root (`/plugins` lands on
+    // Apps › Library); the frame then lands on that destination's root, the
+    // only place an `app-surface` target can name. A path no redirect
+    // touched still has to match a root exactly.
+    (redirect
+      ? APP_DESTINATION_REGISTRY.getDestinationForView(
+          resolveViewFromPath(landing),
+        )
+      : null);
+  return destination?.view ? destination.id : null;
 }
 
 /**

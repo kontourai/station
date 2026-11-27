@@ -139,7 +139,7 @@ describe('PluginRegistryGate', () => {
       expect(bannerStore.getSnapshot()).toHaveLength(0);
       expect(toastStore.getSnapshot()[0]?.message).toContain('broken-layout');
       toastStore.getSnapshot()[0]?.actions?.[0]?.onClick();
-      expect(mocks.navigate).toHaveBeenCalledWith('/registry');
+      expect(mocks.navigate).toHaveBeenCalledWith('/apps/discover');
       act(() => setLoadStatus('ready'));
       expect(toastStore.getSnapshot()).toHaveLength(0);
     },
@@ -252,9 +252,7 @@ describe('PluginRegistryGate', () => {
     );
 
     await waitFor(() => expect(toastStore.getSnapshot()).toHaveLength(1));
-    expect(toastStore.getSnapshot()[0]?.actions?.[0]?.label).toBe(
-      'Open Extensions',
-    );
+    expect(toastStore.getSnapshot()[0]?.actions?.[0]?.label).toBe('Open Apps');
     expect(bannerStore.getSnapshot()).toHaveLength(0);
     expect(mocks.reload).toHaveBeenCalledTimes(2);
   });

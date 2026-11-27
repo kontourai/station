@@ -150,9 +150,7 @@ export function AgentEditorModelSection({
             <button
               type="button"
               className="agent-editor__capability-banner-action"
-              onClick={() =>
-                navigationStore.navigate('/connections?section=models')
-              }
+              onClick={() => navigationStore.navigate('/customize/providers')}
             >
               Fix {connection.name}
             </button>
@@ -165,9 +163,7 @@ export function AgentEditorModelSection({
           <button
             type="button"
             className="agent-editor__capability-banner-action"
-            onClick={() =>
-              navigationStore.navigate('/connections?section=models')
-            }
+            onClick={() => navigationStore.navigate('/customize/providers')}
           >
             {modelConnectionOptions.length === 0
               ? // archive#4521 LOW-1: matches CONNECTION_SECTIONS' own

@@ -1,8 +1,8 @@
 /**
  * One answer to "can I use this connection now?"
  * (docs/design/connections-overhaul.md, "One readiness derivation"). The
- * section rail, the `/connections` resolver, the Engines and Models list rows
- * and the engine detail read this function, so they cannot disagree about the
+ * Customize list's dots, the Engines and Models list rows and the engine
+ * detail read this function, so they cannot disagree about the
  * same connection.
  *
  * Labels, reasons and fixes are `resolveProviderPresentation`'s recorded,
@@ -39,8 +39,7 @@ export type { ConnectionVerdict };
 export interface ConnectionHealth extends ResourceStatus {
   verdict: ConnectionVerdict;
   /**
-   * Whether the section rail marks this connection and `/connections` may
-   * open its section for it. An engine needs attention whenever it is not
+   * Whether the Customize list marks this connection's item. An engine needs attention whenever it is not
    * dispatchable. A model connection does only for something the reader
    * must fix — off, a blocking prerequisite, a refused check, an endpoint
    * Station has stopped retrying — and not for resting states: saved but

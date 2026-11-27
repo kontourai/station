@@ -158,11 +158,11 @@ for (const width of [390, 1440]) {
           );
         }
       };
-      await page.goto('/connections/engines');
+      await page.goto('/customize/engines');
       await page
         .getByRole('button', { name: 'Add engine', exact: true })
         .click();
-      await expect(page).toHaveURL(/\/connections\/engines\/new$/);
+      await expect(page).toHaveURL(/\/customize\/engines\/new$/);
       await expect(
         page.getByRole('heading', { name: 'Choose an engine' }),
       ).toBeVisible();
@@ -234,7 +234,7 @@ for (const width of [390, 1440]) {
         .toBe(true);
       await capture('station-tools');
       await page.getByRole('button', { name: 'Done', exact: true }).click();
-      await expect(page).toHaveURL(/\/connections\/engines\/antigravity$/);
+      await expect(page).toHaveURL(/\/customize\/engines\/antigravity$/);
       await expect(
         page.getByRole('heading', { name: 'Google Antigravity', exact: true }),
       ).toBeVisible();

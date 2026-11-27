@@ -1,0 +1,7 @@
+{
+  "revision": "64570bc59d8f47664f19ccdd3c6cbb07dfcbbce2",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Import from Codex paragraph checked against the dialog and SkillsView: nothing pre-selected, rename for clashes with existing skills or another prompt, description kept and other front matter dropped (skill-metadata.ts), placeholders copied unchanged, 32-prompt cap (SETUP_IMPORT_MAX_ITEMS), undo until the window closes, operator only. The entry now sits on its own row under Import .md.","inputs":["docs/user/getting-started.md","src-ui/src/views/SkillsView.tsx"]}
+  ]
+}

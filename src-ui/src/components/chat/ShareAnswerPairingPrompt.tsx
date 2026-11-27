@@ -4,6 +4,7 @@ import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { errorText } from '../../utils/errorText';
+import { COMPUTERS_PATH } from '../../views/connections-hub/connection-sections';
 
 /**
  * The pairing path offered when minting a share is refused for want of a
@@ -81,14 +82,14 @@ export function ShareAnswerPairingPrompt() {
       {state.phase === 'requested' && (
         <>
           <span className="share-answer__status" role="status">
-            Request sent. Approve this browser in Connections, then share again.
+            Request sent. Approve this browser in Computers, then share again.
           </span>
           <button
             type="button"
             className="share-answer__button"
-            onClick={() => navigate('/connections')}
+            onClick={() => navigate(COMPUTERS_PATH)}
           >
-            Open Connections to approve
+            Open Computers to approve
           </button>
         </>
       )}

@@ -37,6 +37,7 @@ import {
   workspacePaneDirectRoute,
   workspacePaneRequiresLayoutIdentity,
 } from '../workspace-panes/workspacePaneDirectRoute';
+import { COMPUTERS_PATH } from './connections-hub/connection-sections';
 import { MemberProjectPage } from './project-page/MemberProjectPage';
 import { ProjectHeldBanner } from './project-page/ProjectHeldBanner';
 import { ProjectKnowledgeSection } from './project-page/ProjectKnowledgeSection';
@@ -103,7 +104,7 @@ export function ProjectPage({ slug }: { slug: string }) {
               title="Sign in to this Station account"
               description="A native relay route is selected. Sign in to its Station account before opening shared Projects."
               action={
-                <Button onClick={() => navigate('/connections/computers')}>
+                <Button onClick={() => navigate(COMPUTERS_PATH)}>
                   Open Station connections
                 </Button>
               }
@@ -373,7 +374,7 @@ function ProjectOperatorPage({
     }
     if (action.code === 'enable-distribution') {
       navigate('/registry/layouts');
-      return 'Opening the layout registry to review distribution.';
+      return 'Opening Browse layouts to review distribution.';
     }
     return 'This build can explain the requirement but cannot complete that step from the pane catalog.';
   }

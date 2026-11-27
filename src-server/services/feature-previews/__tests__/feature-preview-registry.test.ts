@@ -100,6 +100,7 @@ describe('FeaturePreviewRegistry', () => {
         enabled: false,
       }),
       expect.objectContaining({ id: 'continue-in-project', enabled: false }),
+      expect.objectContaining({ id: 'quiet-sidebar', enabled: false }),
     ]);
     const probe = bindProbe(registry);
     expect(registry.list()).toEqual([
@@ -124,6 +125,7 @@ describe('FeaturePreviewRegistry', () => {
         enabled: false,
       }),
       expect.objectContaining({ id: 'continue-in-project', enabled: false }),
+      expect.objectContaining({ id: 'quiet-sidebar', enabled: false }),
       expect.objectContaining({ id: 'probe', enabled: false }),
     ]);
     expect(selectProbe(probe)).toBe('skipped');
@@ -182,6 +184,7 @@ describe('FeaturePreviewRegistry', () => {
         enabled: false,
       }),
       expect.objectContaining({ id: 'continue-in-project', enabled: false }),
+      expect.objectContaining({ id: 'quiet-sidebar', enabled: false }),
     ]);
     await expect(registry.setEnabled('orphaned', false)).rejects.toBeInstanceOf(
       FeaturePreviewNotOfferedError,

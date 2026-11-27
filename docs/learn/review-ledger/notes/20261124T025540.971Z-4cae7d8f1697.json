@@ -1,0 +1,7 @@
+{
+  "revision": "32c2bcd30e4c5809d189cb03cb43a9180295bef9",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Added that retired paths (/plugins, /registry, /connections) and surface ids (registry, connections) still resolve and where they land; checked against paneHostShellBindings.ts, destination-registry.ts and CommandPalette.tsx and their tests. RegistryView's removed controls were not described here.","inputs":["docs/guides/plugins.md","src-ui/src/views/RegistryView.tsx"]}
+  ]
+}

@@ -43,7 +43,7 @@ describe('AboutYouStep — nothing is assumed', () => {
     const devices = screen.getByRole('button', {
       name: 'Connect another device',
     });
-    const hint = screen.getByText('Optional. Also in Connections.');
+    const hint = screen.getByText('Optional. Also in the Station menu.');
     expect(devices.getAttribute('aria-describedby')).toBe(hint.id);
   });
 
@@ -140,7 +140,9 @@ describe('AboutYouStep — managed limit without remote clients (#4519)', () => 
     const help = screen.getByRole('link', { name: 'Get help' });
     expect(help.getAttribute('href')).toBe('https://help.acme.example/station');
     expect(note.contains(help)).toBe(true);
-    expect(screen.queryByText('Optional. Also in Connections.')).toBeNull();
+    expect(
+      screen.queryByText('Optional. Also in the Station menu.'),
+    ).toBeNull();
     fireEvent.click(devices);
     expect(onComplete).not.toHaveBeenCalled();
     // The other exits still work.

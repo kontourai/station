@@ -1,0 +1,11 @@
+{
+  "revision": "dc418699cc4048c45468401e33b814aca4b056c4",
+
+  "notes": [
+    {"path":"README.md","note":"Getting started makes no claim about removing plugins; the removal paragraph change does not affect it.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Getting started makes no claim about removing plugins; the removal paragraph change does not affect it.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Getting started makes no claim about removing plugins; the removal paragraph change does not affect it.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

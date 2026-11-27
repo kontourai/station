@@ -1,0 +1,7 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"New Chat only gains a tag on the row of the Station's default for new chats; the captured start flow is otherwise unchanged and this capture's Station has no recorded default.","inputs":["docs/learn/media/new-chat-start-after.png"]}
+  ]
+}

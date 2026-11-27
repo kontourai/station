@@ -27,7 +27,7 @@ the public SDK.
 
 1. Build it with `station plugin build` in this directory, then install the
    directory with `station plugin install ./examples/related-terminal` (or
-   through **Plugins → Install plugin**).
+   through **Apps › Library → Install plugin**).
 2. Open a Project, choose **Add pane**, and open **Terminal launcher**.
 3. Choose **Open a terminal**. A shell opens with the Tools, below.
 

@@ -1,0 +1,9 @@
+{
+  "revision": "cf309ae51a58956742033da5acf2d780e25a697e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked: a stored default naming a folded alias now resolves to the Agent standing in for it, for the selection and the tag; precedence and the stale pass-over are unchanged.","inputs":["src-ui/src/hooks/useNewChatSelectionModel.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked: a stored default naming a folded alias now resolves to the Agent standing in for it, for the selection and the tag; precedence and the stale pass-over are unchanged.","inputs":["src-ui/src/hooks/useNewChatSelectionModel.ts"]}
+  ]
+}
