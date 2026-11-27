@@ -18,7 +18,8 @@ import type { InboxEntryRecord, InboxEntryState } from '../records.js';
  *
  * - A submission is idempotent by key: the same digest answers the stored
  *   entry, a different digest is a conflict. A refused or never-placed
- *   cancelled entry can be queued again; dismissing an unknown effect cannot.
+ *   cancelled entry can be queued again unless the host retired the key
+ *   while replacing the input. Dismissing an unknown effect cannot requeue it.
  * - Queued steers take precedence over queued follow-ups, with FIFO within
  *   each kind. Existing placements and unknown effects take precedence over
  *   both. A `placing` head is in flight and
@@ -29,6 +30,15 @@ import type { InboxEntryRecord, InboxEntryState } from '../records.js';
  * - The placement is recorded in the same transaction as the move to
  *   `placing`, before the host's effect.
  */
+
+export const RETIRED_INBOX_INPUT_OUTCOME =
+  '{"reasonCode":"inbox_input_retired"}';
+
+export function inboxInputIsRetired(entry: InboxEntryRecord): boolean {
+  return (
+    entry.state === 'cancelled' && entry.outcome === RETIRED_INBOX_INPUT_OUTCOME
+  );
+}
 
 /** Entries that still hold a place in the queue. */
 const UNSETTLED: ReadonlySet<InboxEntryState> = new Set([
@@ -82,7 +92,9 @@ export function decideInboxSubmit(
   const { existing } = inputs;
   if (
     existing &&
-    (existing.digest !== command.digest || existing.kind !== command.kind)
+    (inboxInputIsRetired(existing) ||
+      existing.digest !== command.digest ||
+      existing.kind !== command.kind)
   )
     return { result: { kind: 'conflict' } };
   const requeue =
@@ -207,6 +219,12 @@ export function decideInboxCancel(
       const entry: InboxEntryRecord = {
         ...existing,
         state: 'cancelled',
+        outcome:
+          command.retireKey &&
+          existing.state === 'queued' &&
+          existing.placement === null
+            ? RETIRED_INBOX_INPUT_OUTCOME
+            : existing.outcome,
         updatedAt: command.now,
       };
       return { put: entry, result: { kind: 'cancelled', entry } };

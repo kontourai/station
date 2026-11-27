@@ -580,6 +580,22 @@ describe('thread inbox (#3568)', () => {
     expect((await world.inbox.promoteQueued(input, 'waiting')).outcome).toBe(
       'conflict',
     );
+    world.store.threadInboxStore().submit({
+      conversationId: THREAD,
+      clientTurnId: 'advance-retention',
+      kind: 'display',
+      payload,
+      now: Date.now() + 8 * 24 * 60 * 60 * 1000,
+    });
+    expect(queueFollowUp(world, 'waiting').outcome).toBe('conflict');
+    expect(() =>
+      world.service.readPendingConversationSubmission(
+        THREAD,
+        'waiting',
+        INTERNAL_SESSION_READ_SCOPE,
+        OWNER,
+      ),
+    ).toThrow(ClientTurnInputConflictError);
   });
 
   test.each(['none', 'missing', 'missing-metadata'] as const)(

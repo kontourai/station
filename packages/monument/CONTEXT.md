@@ -157,8 +157,10 @@ vite or vitest configs are accepted limits, left to review.
   slot, so a claim that can never resolve does not lock its caller out of the
   per-caller cap, or everyone out of the store-wide one.
 - **Inbox:** submit expires safe settled follow-ups before
-  `inboxSettledRetentionMs`; display notes use the same expiry. Steer keys and
-  dismissed uncertain claims survive until explicit inbox deletion. Display
+  `inboxSettledRetentionMs`; display notes use the same expiry. Steer keys,
+  dismissed uncertain claims and retired follow-up keys survive until explicit
+  inbox deletion. A host retires a waiting input when it records a replacement
+  in the same transaction. Display
   notes have their own `inboxMaxDisplay` capacity (50 by default); a new note
   past the bound answers `capacity`, while an existing key remains idempotent. An
   inbox holds at most `inboxMaxUnsettled` unsettled entries; a queued submit past it

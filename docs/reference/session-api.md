@@ -794,8 +794,9 @@ supports these actions on the caller's still-waiting follow-ups:
   `key`, the waiting entry's key for `source`, and the inbox read's opaque
   `data.queueSteerTarget` for `expectedTurn`. The target stays stable as the
   turn streams. Station withdraws the source and admits an attachment-free
-  steer in the same transaction. A changed turn or unavailable steering leaves
-  the source queued.
+  steer in the same transaction. The source key stays retired so an older
+  client retry cannot restore the follow-up. A changed turn or unavailable
+  steering leaves the source queued.
 
 Edit and move return 200, while accepted promotion returns 202 with the steer
 entry. An entry already claimed for placement cannot be edited or moved.

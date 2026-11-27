@@ -511,6 +511,8 @@ export interface InboxCancelCommand {
   readonly inboxId: string;
   readonly key: string;
   readonly now: number;
+  /** The caller replaced this queued input with another recorded input. */
+  readonly retireKey?: true;
 }
 export type InboxCancelResult =
   | { readonly kind: 'cancelled'; readonly entry: InboxEntryRecord }

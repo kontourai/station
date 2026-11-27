@@ -6,6 +6,7 @@ import {
   type InboxEntryRecord,
   type InboxSubmitResult,
   inboxHead,
+  inboxInputIsRetired,
   type KernelCommand,
   type KernelResults,
   type OwnerLiveness,
@@ -685,6 +686,7 @@ export function createSqliteThreadInboxStore(
               inboxId: input.conversationId,
               key: input.promoteKey,
               now: input.now,
+              retireKey: true,
             },
             true,
           );
@@ -803,8 +805,9 @@ export function createSqliteThreadInboxStore(
         inboxId: conversationId,
         key: clientTurnId,
       });
-      if (result.kind !== 'found' || !MAY_STILL_SEND.has(result.entry.state))
-        return undefined;
+      if (result.kind !== 'found') return undefined;
+      const retired = inboxInputIsRetired(result.entry);
+      if (!retired && !MAY_STILL_SEND.has(result.entry.state)) return undefined;
       const payload = decodePayload(result.entry.payload);
       if (!payload)
         throw new Error('Station could not read this queued message.');
@@ -814,6 +817,7 @@ export function createSqliteThreadInboxStore(
           clientTurnId: result.entry.key,
         },
         userId: payload.actor.userId,
+        ...(retired ? { retired: true as const } : {}),
         ...(payload.inputDigest !== undefined
           ? { inputDigest: payload.inputDigest }
           : {}),
@@ -857,7 +861,9 @@ export function threadInboxRecordNonDelivery(
   record: ReturnType<ThreadInboxStore['read']>,
 ): 'refused' | 'cancelled' | undefined {
   if (record?.state === 'refused') return 'refused';
-  return record?.state === 'cancelled' && record.placement === null
+  return record?.state === 'cancelled' &&
+    record.placement === null &&
+    !inboxInputIsRetired(record)
     ? 'cancelled'
     : undefined;
 }
@@ -1606,6 +1612,7 @@ export class ThreadInboxDelivery {
       return { outcome: 'not-permitted' };
     this.inspectDelivery(inbox, input.clientTurnId, input.payload);
     const prior = this.ports.store.read(inbox, input.clientTurnId);
+    if (prior && inboxInputIsRetired(prior)) return { outcome: 'conflict' };
     const priorPayload = prior ? decodePayload(prior.payload) : undefined;
     let steerTarget = priorPayload?.steerTarget;
     if (
@@ -1722,7 +1729,7 @@ export class ThreadInboxDelivery {
     );
     return (
       record !== undefined &&
-      MAY_STILL_SEND.has(record.state) &&
+      (MAY_STILL_SEND.has(record.state) || inboxInputIsRetired(record)) &&
       decodePayload(record.payload)?.actor.userId !== userId
     );
   }
