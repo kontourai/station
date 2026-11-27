@@ -25,6 +25,7 @@ type AttackHits = {
   blockedFetch: number;
   secretApi: number;
   requests: string[];
+  unexpectedRequests: string[];
 };
 
 let remote: ListeningServer;
@@ -34,7 +35,12 @@ let browser!: DirectWebDriver;
 let fixture: TauriShellFixture;
 let stationOrigin = 'tauri://localhost';
 let hostileBundle = '';
-const hits: AttackHits = { blockedFetch: 0, secretApi: 0, requests: [] };
+const hits: AttackHits = {
+  blockedFetch: 0,
+  secretApi: 0,
+  requests: [],
+  unexpectedRequests: [],
+};
 
 function send(
   response: import('node:http').ServerResponse,
@@ -262,7 +268,12 @@ function remoteResponse(
   if (pathname === '/api/events' || pathname === '/events') {
     return send(response, 204, '');
   }
-  return json(response, { success: true, data: [] });
+  hits.unexpectedRequests.push(`${request.method ?? 'GET'} ${pathname}`);
+  return send(
+    response,
+    501,
+    JSON.stringify({ success: false, error: 'Unmodeled fixture request' }),
+  );
 }
 
 async function setUp() {
@@ -407,7 +418,9 @@ async function runProof() {
     null,
   );
 
-  await browser.refresh();
+  const panePath =
+    '/projects/hostile/layouts/proof/panes/hostile-pane/hostile-instance';
+  await browser.navigate(new URL(panePath, stationOrigin).href);
   await browser.waitUntil(
     async () =>
       (await browser.execute(
@@ -429,22 +442,27 @@ async function runProof() {
       }, managerSelector),
     { timeout: 20_000, timeoutMsg: 'Station manager button was not visible.' },
   );
-  await browser.execute((selector: string) => {
-    document.querySelector<HTMLElement>(selector)?.click();
-  }, managerSelector);
+  const managerElement = await browser.findElement(managerSelector);
+  assert.ok(managerElement, 'Station manager control disappeared before input.');
+  await browser.clickElement(managerElement);
   const selectRemoteSelector =
-    'button[aria-label="Select remote-plugin-proof"]';
+    'button[role="menuitemradio"][aria-label^="remote-plugin-proof — "]';
   await browser.waitUntil(
     () =>
       browser.execute((selector: string) => {
         const element = document.querySelector<HTMLElement>(selector);
-        return Boolean(element && element.getClientRects().length > 0);
+        return Boolean(
+          element &&
+            element.getClientRects().length > 0 &&
+            !element.hasAttribute('disabled') &&
+            element.getAttribute('aria-disabled') !== 'true',
+        );
       }, selectRemoteSelector),
     { timeout: 20_000, timeoutMsg: 'Remote profile button was not visible.' },
   );
-  await browser.execute((selector: string) => {
-    document.querySelector<HTMLElement>(selector)?.click();
-  }, selectRemoteSelector);
+  const remoteElement = await browser.findElement(selectRemoteSelector);
+  assert.ok(remoteElement, 'Remote Station disappeared before input.');
+  await browser.clickElement(remoteElement);
   try {
     await browser.waitUntil(async () => hits.requests.length > 0, {
       timeout: 5_000,
@@ -487,14 +505,6 @@ async function runProof() {
     );
   }
   await browser.execute(() => {
-    const closeManager = document.querySelector<HTMLElement>(
-      'button[aria-label="Close Station manager"]',
-    );
-    if (closeManager?.getClientRects().length) closeManager.click();
-  });
-  const panePath =
-    '/projects/hostile/layouts/proof/panes/hostile-pane/hostile-instance';
-  await browser.execute((path: string) => {
     (
       window as unknown as { __tauriShellErrors?: string[] }
     ).__tauriShellErrors = [];
@@ -508,9 +518,7 @@ async function runProof() {
         window as unknown as { __tauriShellErrors: string[] }
       ).__tauriShellErrors.push(String(event.reason));
     });
-    window.history.pushState({}, '', path);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  }, panePath);
+  });
   // The embedded macOS driver executes element lookup on the WebView's main
   // loop. Give the lazy isolation chunk one command-free turn to resolve;
   // tight findElement polling can otherwise starve the very asset load it is
@@ -602,6 +610,7 @@ async function runProof() {
     },
     { blockedFetch: 0, secretApi: 0 },
   );
+  assert.deepEqual(hits.unexpectedRequests, []);
 
   assert.equal(
     (
