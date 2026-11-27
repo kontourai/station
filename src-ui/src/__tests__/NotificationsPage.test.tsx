@@ -58,6 +58,13 @@ async function commitMarkDone() {
   });
 }
 
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => [],
+}));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const sdk = await importOriginal<typeof import('@kontourai/station-sdk')>();
   return {
