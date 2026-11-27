@@ -1,0 +1,7 @@
+{
+  "revision": "c0eeea5ee41188c63199ea4c8fd702db3aa30408",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Added the Import from Codex paragraph: checked against SkillsView (button shown only when the operator-only sources check reports the Codex prompts folder) and CodexPromptImportDialog (nothing selected, inline rename, Undo import after import, Codex files untouched).","inputs":["docs/user/getting-started.md","src-ui/src/views/SkillsView.tsx"]}
+  ]
+}

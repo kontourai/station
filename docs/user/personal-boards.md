@@ -9,7 +9,9 @@ Tasks, approvals or conversations into it.
 
 Enable **Apps library** in **Settings → Advanced → Feature previews**, then
 choose **Browse apps** in the **Apps** section. In the collapsed rail,
-choose **Apps** first. On a phone, open the navigation drawer.
+choose **Apps** first. On a phone, open the navigation drawer. With the
+**Quiet sidebar** preview on, **Browse apps** is not shown: **Discover**
+takes its place.
 
 The Apps launcher searches your personal layouts by name, description, address
 and plugin. **Your Boards** lists records without a plugin source; **Plugin
@@ -37,7 +39,9 @@ remain available.
 
 ## Create and edit
 
-Choose **+** beside **Apps**, name the Board, and open it. Start with
+Choose **+** beside **Apps**, name the Board, and open it. With the **Quiet
+sidebar** preview on, **Apps** has no **+**: choose **New Board** in the
+command palette instead. Start with
 **Daily brief**, **Project watch**, **Review desk**, or **Start blank**. Project
 watch asks you to choose an available Project first.
 

@@ -1,0 +1,227 @@
+[
+  {
+    "id": "minimal-layout",
+    "displayName": "Minimal Workspace",
+    "description": "Minimal Workspace Pane for Agent discovery and explicit local chat dock navigation.",
+    "version": "1.0.0",
+    "installed": false,
+    "app": {
+      "kind": "app",
+      "screens": [],
+      "panes": ["Minimal Workspace"],
+      "opensAs": ["project-view"],
+      "worksWith": ["chats-and-agents"],
+      "agents": 0,
+      "promptActions": [],
+      "knowledge": [],
+      "toolServers": [],
+      "sandboxedToolView": false,
+      "inProcessScreen": true
+    }
+  },
+  {
+    "id": "getting-started-starter",
+    "displayName": "Getting Started Starter",
+    "description": "Default starter layout that demonstrates agents, chat dock control, navigation, and toast feedback without external services.",
+    "version": "1.0.0",
+    "installed": false,
+    "app": {
+      "kind": "app",
+      "screens": ["Start", "SDK Patterns"],
+      "panes": [],
+      "opensAs": ["screen", "project-view"],
+      "worksWith": ["chats-and-agents"],
+      "agents": 1,
+      "promptActions": ["Explain this workspace"],
+      "knowledge": [],
+      "toolServers": [],
+      "sandboxedToolView": false,
+      "inProcessScreen": true
+    }
+  },
+  {
+    "id": "coding-starter",
+    "displayName": "Coding Starter",
+    "description": "Two Project Workspace Panes with labelled code examples and an owner-qualified review action.",
+    "version": "1.0.0",
+    "installed": false,
+    "app": {
+      "kind": "app",
+      "screens": [],
+      "panes": ["Coding Workspace", "Coding Diff Review"],
+      "opensAs": ["project-view"],
+      "worksWith": ["chats-and-agents"],
+      "agents": 1,
+      "promptActions": ["Review current diff"],
+      "knowledge": [],
+      "toolServers": [],
+      "sandboxedToolView": false,
+      "inProcessScreen": true
+    }
+  },
+  {
+    "id": "survey-review-workbench",
+    "displayName": "Survey Review Workbench",
+    "description": "Kontour Survey's Review Workbench as a Station layout: per-project persisted review sessions and projection to a Surface trust bundle.",
+    "version": "1.0.0",
+    "installed": false,
+    "app": {
+      "kind": "app",
+      "screens": ["Review Workbench"],
+      "panes": [],
+      "opensAs": ["screen", "project-view"],
+      "worksWith": [],
+      "agents": 0,
+      "promptActions": [],
+      "knowledge": [],
+      "toolServers": [],
+      "sandboxedToolView": false,
+      "inProcessScreen": true
+    }
+  },
+  {
+    "id": "builder-delivery-viewer",
+    "displayName": "Builder Delivery Viewer",
+    "description": "Read-only view of published Builder Kit sessions, trust state, delivery companions, and exact Flow joins.",
+    "version": "1.0.0",
+    "installed": false,
+    "app": {
+      "kind": "app",
+      "screens": ["Builder sessions", "Flow runs"],
+      "panes": [],
+      "opensAs": ["screen", "project-view"],
+      "worksWith": [],
+      "agents": 0,
+      "promptActions": [],
+      "knowledge": [],
+      "toolServers": [],
+      "sandboxedToolView": false,
+      "inProcessScreen": true
+    }
+  },
+  {
+    "id": "fieldwork-review",
+    "displayName": "Fieldwork Review",
+    "description": "Project-local Fieldwork application plugin with a protected review surface hosted by Station.",
+    "version": "0.1.0",
+    "installed": false,
+    "app": {
+      "kind": "app",
+      "screens": ["Fieldwork Review"],
+      "panes": [],
+      "opensAs": ["screen", "project-view"],
+      "worksWith": [],
+      "agents": 0,
+      "promptActions": [],
+      "knowledge": [],
+      "toolServers": [],
+      "sandboxedToolView": false,
+      "inProcessScreen": true
+    }
+  },
+  {
+    "id": "knowledge-docs-starter",
+    "displayName": "Knowledge Docs Starter",
+    "description": "Knowledge and documentation starter layout for document intake, source review, and question answering.",
+    "version": "1.0.0",
+    "installed": false,
+    "app": {
+      "kind": "app",
+      "screens": ["Library", "Ask", "Sources"],
+      "panes": [],
+      "opensAs": ["screen", "project-view"],
+      "worksWith": ["chats-and-agents", "knowledge"],
+      "agents": 1,
+      "promptActions": ["Summarize selected documents"],
+      "knowledge": ["Starter Documents"],
+      "toolServers": [],
+      "sandboxedToolView": false,
+      "inProcessScreen": true
+    }
+  },
+  {
+    "id": "demo-layout",
+    "displayName": "Demo Layout",
+    "description": "Starter workspace plugin that demonstrates layout tabs, chat launch, and local state.",
+    "version": "1.0.0",
+    "installed": false,
+    "app": {
+      "kind": "app",
+      "screens": ["Welcome", "Notes"],
+      "panes": [],
+      "opensAs": ["screen", "project-view"],
+      "worksWith": ["chats-and-agents"],
+      "agents": 1,
+      "promptActions": ["Say Hello"],
+      "knowledge": [],
+      "toolServers": [],
+      "sandboxedToolView": false,
+      "inProcessScreen": true
+    }
+  },
+  {
+    "id": "enterprise-layout",
+    "displayName": "Enterprise Layout",
+    "description": "Knowledge-rich multi-provider workspace example with calendar, CRM, notes, and provider contracts.",
+    "version": "1.0.0",
+    "installed": false,
+    "app": {
+      "kind": "app",
+      "screens": ["Dashboard", "Calendar", "CRM", "Notes"],
+      "panes": [],
+      "opensAs": ["screen", "project-view"],
+      "worksWith": ["chats-and-agents", "knowledge"],
+      "agents": 1,
+      "promptActions": [
+        "Daily Overview",
+        "Log Activity",
+        "Customer Outreach",
+        "Generate Report"
+      ],
+      "knowledge": ["Meeting Notes"],
+      "toolServers": [],
+      "sandboxedToolView": false,
+      "inProcessScreen": true
+    }
+  },
+  {
+    "id": "smart-routing",
+    "displayName": "Smart Routing",
+    "description": "Deterministic model-tier routing plugin with routing-decision telemetry.",
+    "version": "1.0.0",
+    "installed": false,
+    "app": {
+      "kind": "none"
+    }
+  },
+  {
+    "id": "matt-pocock-engineering",
+    "displayName": "Matt Pocock engineering collection (Station-curated)",
+    "description": "Clarify an idea, review project decisions, write a specification, and approve a work breakdown using attributed pinned Skills. Tools, tracker setup, writes and publication retain the selected agent’s authority.",
+    "version": "1.0.0",
+    "installed": false,
+    "app": {
+      "kind": "none"
+    }
+  },
+  {
+    "id": "workspace-pane-starter",
+    "displayName": "Session Activity Pane",
+    "description": "A data-only Workspace Pane backed by a sandboxed MCP App",
+    "version": "1.0.0",
+    "installed": false,
+    "app": {
+      "kind": "app",
+      "screens": [],
+      "panes": ["Session activity"],
+      "opensAs": ["project-view", "pane"],
+      "worksWith": ["chats-and-agents"],
+      "agents": 0,
+      "promptActions": ["Summarize activity"],
+      "knowledge": [],
+      "toolServers": ["station-sessions-mcp"],
+      "sandboxedToolView": true,
+      "inProcessScreen": false
+    }
+  }
+]

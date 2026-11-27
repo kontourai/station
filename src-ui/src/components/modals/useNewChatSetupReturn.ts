@@ -21,8 +21,8 @@ type SetupJourney = {
 };
 
 function isRepairRoute(path: string, target: string) {
-  return target.startsWith('/connections')
-    ? path === '/connections' || path.startsWith('/connections/')
+  return target.startsWith('/customize')
+    ? path === '/customize' || path.startsWith('/customize/')
     : path === target;
 }
 

@@ -1,0 +1,17 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked: adds the newChatDefault capability read and the record mutation. Config, agent and first-run functions are unchanged.","inputs":["packages/sdk/src/query-domains/agentAdmin.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked: adds the newChatDefault capability read and the record mutation. Config, agent and first-run functions are unchanged.","inputs":["packages/sdk/src/query-domains/agentAdmin.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked: adds the newChatDefault capability read and the record mutation. Config, agent and first-run functions are unchanged.","inputs":["packages/sdk/src/query-domains/agentAdmin.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked: adds the newChatDefault capability read and the record mutation. Config, agent and first-run functions are unchanged.","inputs":["packages/sdk/src/query-domains/agentAdmin.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked: adds the newChatDefault capability read and the record mutation. Config, agent and first-run functions are unchanged.","inputs":["packages/sdk/src/query-domains/agentAdmin.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked: adds the newChatDefault capability read and the record mutation. Config, agent and first-run functions are unchanged.","inputs":["packages/sdk/src/query-domains/agentAdmin.ts"]}
+  ]
+}

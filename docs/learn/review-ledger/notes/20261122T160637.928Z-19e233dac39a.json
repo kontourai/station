@@ -1,0 +1,7 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Rechecked after the fix round: Discover and Library steps unchanged; Review, Added and Remove still match.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

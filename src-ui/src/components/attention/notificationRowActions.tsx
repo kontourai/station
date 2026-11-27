@@ -60,3 +60,7 @@ export const ACKNOWLEDGE_ATTENTION_ACTION: NotificationRowAction = {
 export const DISMISS_NOTIFICATION_ACTION: NotificationRowAction = {
   label: 'Mark done',
 };
+
+export const DISMISS_ACTIVITY_ACTION: NotificationRowAction = {
+  label: 'Dismiss',
+};

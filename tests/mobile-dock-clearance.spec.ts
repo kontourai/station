@@ -6,7 +6,7 @@ import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
  * archive#3902 — the chat dock is shell chrome (`App.tsx`), so no route can
  * reserve space for it, and every route needs the space reserved anyway.
  *
- * `/connections/models/new` is the subject because it is the route the phone
+ * `/customize/providers/new` is the subject because it is the route the phone
  * first-run journey lands on with nothing between the reader and a grid of
  * provider tiles — but the fix is in the shell (`.content-view` reserves
  * `--dock-bottom-clearance`), so this spec is about the shell's contract and
@@ -35,7 +35,7 @@ async function openProviderPickerOnAPhone(page: Page) {
       apply();
     }
   }, PHONE_SAFE_AREA_BOTTOM_PX);
-  await page.goto('/connections/models/new');
+  await page.goto('/customize/providers/new');
   await dismissSetupLauncher(page);
   await expect(page.locator('.provider-picker-modal')).toBeVisible({
     timeout: 30_000,

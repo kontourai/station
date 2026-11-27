@@ -58,6 +58,7 @@ import {
 import {
   hardenWindowsPathsTrusted,
   runWindowsTrustCommand,
+  type WindowsTrustCommandRunner,
 } from '@kontourai/station-shared/windows-path-trust';
 import { buildSync } from 'esbuild';
 import { Hono } from 'hono';
@@ -87,6 +88,7 @@ import {
   formatTaskSettings,
   schtasksDefaultSettings,
 } from './helpers/windows-task-settings-fixture.js';
+import { windowsTrustOperation } from './helpers/windows-trust-fixture.js';
 
 type LifecycleModule = typeof import('../commands/lifecycle.js');
 type PlatformModule = typeof import('../commands/platform.js');
@@ -561,12 +563,57 @@ function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true });
 }
 
+const runFixtureWindowsTrust: WindowsTrustCommandRunner = (
+  command,
+  args,
+  options,
+) =>
+  realSpawnSync(command, args, {
+    ...options,
+    encoding: 'utf8',
+    shell: false,
+    windowsHide: true,
+  });
+
 function ensureTrustedInstallDirectory(path: string): void {
   mkdirSync(path, { recursive: true, mode: 0o755 });
+  hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+    { kind: 'directory', path: resolve(path, '../..') },
+  ]);
 }
 
 function writeTrustedInstallFile(path: string, content: string): void {
   writeFileSync(path, content, { mode: 0o644 });
+}
+
+function writePackagedInstallers(directory: string): void {
+  writeFileSync(join(directory, 'install.sh'), '#!/bin/sh\nexit 0\n', {
+    mode: 0o700,
+  });
+  writeFileSync(join(directory, 'install.ps1'), 'exit 0\n', { mode: 0o700 });
+}
+
+function expectedPackagedInstaller(directory: string): [string, string[]] {
+  return process.platform === 'win32'
+    ? [
+        win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'WindowsPowerShell',
+          'v1.0',
+          'powershell.exe',
+        ),
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          join(directory, 'install.ps1'),
+          'install',
+        ],
+      ]
+    : ['sh', ['./install.sh', 'install']];
 }
 
 /**
@@ -700,9 +747,10 @@ function expectServiceGuidance(
   message: string | null,
   action: 'install' | 'status' | 'uninstall',
   expectedArguments: string[],
+  launcher = 'station',
 ): void {
   const command = message?.match(
-    new RegExp(`"(station service ${action} [^\\r\\n]+)"`, 'u'),
+    new RegExp(`"(${launcher} service ${action} [^\\r\\n]+)"`, 'u'),
   )?.[1];
   expect(command).toBeDefined();
   const shell =
@@ -718,7 +766,10 @@ function expectServiceGuidance(
       : 'sh';
   const result = realSpawnSync(
     shell,
-    ['-c', `station() { printf '%s\\0' "$@"; }; ${command}`],
+    [
+      '-c',
+      `station() { printf '%s\\0' "$@"; }; station${command?.slice(launcher.length)}`,
+    ],
     { encoding: 'utf8', windowsHide: true },
   );
   expect(result.error).toBeUndefined();
@@ -731,25 +782,38 @@ function expectServiceGuidance(
 }
 
 function staleSchedulingSpawnSync(unitPath: string): Mock {
-  return vi.fn((command: string, args: string[]) => {
-    const probe = stoppedServiceProbe(command, args);
-    if (probe) return probe;
-    if (process.platform === 'darwin') {
-      return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
-    }
-    if (process.platform === 'win32') {
+  return vi.fn(
+    (
+      command: string,
+      args: string[],
+      options?: Parameters<WindowsTrustCommandRunner>[2],
+    ) => {
+      if (
+        process.platform === 'win32' &&
+        /\\powershell\.exe$/i.test(command) &&
+        windowsTrustOperation(args) !== null
+      ) {
+        return runFixtureWindowsTrust(command, args, options);
+      }
+      const probe = stoppedServiceProbe(command, args);
+      if (probe) return probe;
+      if (process.platform === 'darwin') {
+        return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
+      }
+      if (process.platform === 'win32') {
+        return {
+          status: 0,
+          stderr: '',
+          stdout: `${formatTaskSettings(schtasksDefaultSettings())}\n`,
+        };
+      }
       return {
         status: 0,
         stderr: '',
-        stdout: `${formatTaskSettings(schtasksDefaultSettings())}\n`,
+        stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
       };
-    }
-    return {
-      status: 0,
-      stderr: '',
-      stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
-    };
-  });
+    },
+  );
 }
 
 function runningServiceSpawnSync(unitPath: string): Mock {
@@ -5822,7 +5886,7 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-missing-provenance');
     const releasesRoot = join(installRoot, 'releases');
     const release = join(releasesRoot, 'unsigned');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     for (const path of [installRoot, releasesRoot, release]) {
       chmodSync(path, 0o700);
     }
@@ -5876,9 +5940,7 @@ describe('upgrade', () => {
           prerelease: releaseChannel !== 'stable',
         })}\n`,
       );
-      writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-        mode: 0o700,
-      });
+      writePackagedInstallers(release);
       writeTrustedInstallFile(
         join(installRoot, '.station-portable-install-root'),
         'station-portable-install-root-v1\n',
@@ -5942,8 +6004,7 @@ describe('upgrade', () => {
         await lifecycle.upgrade();
 
         expect(execFileSync).toHaveBeenCalledWith(
-          'sh',
-          ['./install.sh', 'install'],
+          ...expectedPackagedInstaller(release),
           expect.objectContaining({
             cwd: release,
             env: expect.objectContaining({
@@ -5970,8 +6031,17 @@ describe('upgrade', () => {
         // The reinstall names the ring's launcher, which owns this install
         // (#4189). A Windows remedy reads the manifest, which this fixture
         // writes without the archive fields.
-        expect(log.mock.calls.flat().join('\n')).toContain(
-          `Run "${process.platform === 'win32' ? 'station' : launcher} service install --instance=packaged-guidance --base=${stationHome} --port=3141 --ui-port=3000 --host=127.0.0.1"`,
+        expectServiceGuidance(
+          log.mock.calls.flat().join('\n'),
+          'install',
+          [
+            '--instance=packaged-guidance',
+            `--base=${stationHome}`,
+            '--port=3141',
+            '--ui-port=3000',
+            '--host=127.0.0.1',
+          ],
+          process.platform === 'win32' ? 'station' : launcher,
         );
         expect(execSync).not.toHaveBeenCalled();
       } finally {
@@ -5998,9 +6068,7 @@ describe('upgrade', () => {
         prerelease: false,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -6195,9 +6263,7 @@ describe('upgrade', () => {
         prerelease: true,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -6245,9 +6311,7 @@ describe('upgrade', () => {
         prerelease: false,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -6263,7 +6327,21 @@ describe('upgrade', () => {
       { mode: 0o600 },
     );
     symlinkSync(release, join(installRoot, 'current'));
-    chmodSync(installRoot, 0o777);
+    if (process.platform === 'win32') {
+      const result = realSpawnSync(
+        win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'icacls.exe',
+        ),
+        [installRoot, '/grant', '*S-1-1-0:(W)'],
+        { encoding: 'utf8', windowsHide: true },
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
+    } else {
+      chmodSync(installRoot, 0o777);
+    }
 
     const execFileSync = vi.fn();
     const { lifecycle } = await loadLifecycleModule({
@@ -6272,7 +6350,9 @@ describe('upgrade', () => {
     });
 
     await expect(lifecycle.upgrade()).rejects.toThrow(
-      'packaged install root must be a same-user directory that is not group/world writable',
+      process.platform === 'win32'
+        ? 'Windows current-user ACL verification failed'
+        : 'packaged install root must be a same-user directory that is not group/world writable',
     );
     expect(execFileSync).not.toHaveBeenCalled();
   });
@@ -11021,9 +11101,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
         prerelease: true,
       })}\n`,
     );
-    writeFileSync(join(version, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(version);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -11083,8 +11161,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     await lifecycle.upgrade();
 
     expect(execFileSync).toHaveBeenCalledWith(
-      'sh',
-      ['./install.sh', 'install'],
+      ...expectedPackagedInstaller(version),
       expect.objectContaining({
         cwd: version,
         env: expect.objectContaining({
@@ -11275,9 +11352,7 @@ describe('station upgrade under the managed update limit (#4522)', () => {
         prerelease: releaseChannel !== 'stable',
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',

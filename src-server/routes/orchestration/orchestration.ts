@@ -1279,6 +1279,34 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
 export const conversationInboxBodySchema = z.discriminatedUnion('kind', [
   z
     .object({
+      kind: z.literal('edit'),
+      key: z.string().min(1).max(200),
+      previous: z.string().max(CHAT_INPUT_MAX_CHARS),
+      message: z
+        .string()
+        .max(CHAT_INPUT_MAX_CHARS)
+        .refine((message) => Boolean(message.trim())),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('move'),
+      key: z.string().min(1).max(200),
+      neighbor: z.string().min(1).max(200),
+      direction: z.enum(['up', 'down']),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('promote'),
+      key: z.string().uuid(),
+      source: z.string().min(1).max(200),
+      message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+      expectedTurn: z.string().min(1).max(4096),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal('steer'),
       key: z.string().min(1).max(128),
       message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
@@ -2395,7 +2423,13 @@ export function createOrchestrationRoutes(
       | 'inFlight'
       | 'keyBindingChanged'
       | 'nudge'
-    >;
+    > &
+      Partial<
+        Pick<
+          ThreadInboxDelivery,
+          'editQueued' | 'moveQueued' | 'promoteQueued' | 'currentSteerTarget'
+        >
+      >;
     /**
      * Continuing a conversation whose engine was killed for memory
      * (`memory-exhaustion-continuation.ts`). Absent without an inbox.
@@ -4078,14 +4112,29 @@ export function createOrchestrationRoutes(
       ))
     )
       return c.json({ success: false, error: 'Conversation not found' }, 404);
+    const entries = deps.threadInbox.list(
+      conversationId,
+      resolveDispatchActor(deps, c).userId,
+    );
     return c.json({
       success: true,
       data: {
         currentHead: deps.threadInbox.currentHead(conversationId),
-        entries: deps.threadInbox.list(
-          conversationId,
-          resolveDispatchActor(deps, c).userId,
+        queueSteerTarget: entries.some(
+          (entry) =>
+            entry.kind === 'follow-up' &&
+            entry.state === 'queued' &&
+            entry.ownedByCaller === true &&
+            !entry.attachments?.length,
+        )
+          ? deps.threadInbox.currentSteerTarget?.(conversationId)
+          : undefined,
+        queueControls: Boolean(
+          deps.threadInbox.editQueued &&
+            deps.threadInbox.moveQueued &&
+            deps.threadInbox.promoteQueued,
         ),
+        entries,
       },
     });
   });
@@ -4113,10 +4162,46 @@ export function createOrchestrationRoutes(
           { success: false, error: 'Receiver-local conversation required' },
           403,
         );
+      if (body.kind === 'edit') {
+        if (!inbox.editQueued)
+          return c.json(
+            { success: false, error: 'Queue editing unavailable.' },
+            404,
+          );
+        if (
+          !inbox.editQueued(
+            conversationId,
+            body.key,
+            body.previous,
+            body.message,
+            actor.userId,
+          )
+        )
+          return c.json({ success: false, error: 'The queue changed.' }, 409);
+        return c.json({ success: true });
+      }
+      if (body.kind === 'move') {
+        if (!inbox.moveQueued)
+          return c.json(
+            { success: false, error: 'Queue ordering unavailable.' },
+            404,
+          );
+        if (
+          !inbox.moveQueued(
+            conversationId,
+            body.key,
+            body.neighbor,
+            body.direction,
+            actor.userId,
+          )
+        )
+          return c.json({ success: false, error: 'The queue changed.' }, 409);
+        return c.json({ success: true });
+      }
       const input = {
         conversationId,
         clientTurnId: body.key,
-        expectedHead: body.expectedHead,
+        expectedHead: body.kind === 'promote' ? undefined : body.expectedHead,
         payload: {
           message: body.message,
           actor: {
@@ -4134,14 +4219,26 @@ export function createOrchestrationRoutes(
             : {}),
         },
       };
-      let result: ReturnType<ThreadInboxDelivery['submitSteer']>;
+      let result: Awaited<ReturnType<ThreadInboxDelivery['promoteQueued']>>;
       try {
-        result =
-          body.kind === 'steer'
-            ? inbox.submitSteer({ ...input, expectedHead: body.expectedHead })
-            : body.kind === 'follow-up'
-              ? inbox.submit(input)
-              : inbox.submitDisplay(input);
+        if (body.kind === 'promote') {
+          if (!inbox.promoteQueued)
+            return c.json(
+              { success: false, error: 'Queue steering unavailable.' },
+              404,
+            );
+          result = await inbox.promoteQueued(
+            { ...input, expectedTurn: body.expectedTurn },
+            body.source,
+          );
+        } else {
+          result =
+            body.kind === 'steer'
+              ? inbox.submitSteer({ ...input, expectedHead: body.expectedHead })
+              : body.kind === 'follow-up'
+                ? inbox.submit(input)
+                : inbox.submitDisplay(input);
+        }
       } catch (error) {
         if (!isSteerConflictCode(errorCode(error))) throw error;
         return c.json(
@@ -4153,6 +4250,16 @@ export function createOrchestrationRoutes(
           409,
         );
       }
+      if (result.outcome === 'steering-unavailable')
+        return c.json(
+          {
+            success: false,
+            code: 'inbox_steering_unavailable',
+            error:
+              'The running turn cannot accept a steer. The message is still queued.',
+          },
+          409,
+        );
       if (result.outcome === 'stale-head')
         return c.json(
           {

@@ -27,7 +27,7 @@ import './inboxPresentation.css';
  */
 export type InboxTone = 'caution' | 'negative' | 'active' | 'neutral';
 
-interface InboxMark {
+export interface InboxMark {
   Glyph: ComponentType<{ className?: string }>;
   tone: InboxTone;
 }

@@ -1198,10 +1198,10 @@ function TaskExperienceNavigation({
         <div className="task-workspace__experience-heading">
           <div>
             <h3 id="task-inspection-heading">Task inspection</h3>
-            <p>Plugins can add more ways to open this Task.</p>
+            <p>Apps can add more ways to open this Task.</p>
           </div>
-          <a className="editor-btn" href="/plugins">
-            Add plugins
+          <a className="editor-btn" href="/apps/discover">
+            Find apps
           </a>
         </div>
       </section>

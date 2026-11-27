@@ -1,0 +1,7 @@
+{
+  "revision": "c0eeea5ee41188c63199ea4c8fd702db3aa30408",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated with docs:mcp:generate after the module-map and user-guide edits; content mirrors the reviewed sources.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

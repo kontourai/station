@@ -1,6 +1,6 @@
 # Computer relationships: pairing vs. remote work
 
-Station's Connections hub has one **Add computer** entry point. It routes to
+Station's Computers page (`/connections/computers`) has one **Add computer** entry point. It routes to
 device invitations, a Station connection, remote work over SSH, or native
 saved broker-route preparation based on what the user wants to do. The flows differ in **direction**
 (who reaches whom), **trust model**, and **what becomes possible afterward**.
@@ -360,5 +360,5 @@ remain separate acceptance work.
   and [runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
   — generation without tools and the separately stored serve receipt.
 - [docs/reference/connect.md](../reference/connect.md) — device pairing protocol, offers, credentials, revocation.
-- Connections hub → **Add computer** — the single entry point that asks which
+- Computers → **Add computer** — the single entry point that asks which
   relationship you want, then opens the matching flow.

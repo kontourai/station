@@ -1,0 +1,15 @@
+{
+  "revision": "08289a60185b50ec8b4b17a06cd7dfe4198cf85d",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed the merged Customize frame and its callers against this page: Tools retains the existing scope-bound MCP access section, other items keep their header/add action, and shared PageFrame insets are preserved. The computer relationships, explicit smoke-send contract, and historical screenshot limits are unchanged. Focused routing, frame, header, handshake, and connection-health checks passed (222 tests); no new live provider, native, or screenshot claim.","inputs":["src-ui/src/views/CustomizeSectionFrame.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed the merged Customize frame and its callers against this page: Tools retains the existing scope-bound MCP access section, other items keep their header/add action, and shared PageFrame insets are preserved. The computer relationships, explicit smoke-send contract, and historical screenshot limits are unchanged. Focused routing, frame, header, handshake, and connection-health checks passed (222 tests); no new live provider, native, or screenshot claim.","inputs":["src-ui/src/views/CustomizeSectionFrame.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed the merged Customize frame and its callers against this page: Tools retains the existing scope-bound MCP access section, other items keep their header/add action, and shared PageFrame insets are preserved. The computer relationships, explicit smoke-send contract, and historical screenshot limits are unchanged. Focused routing, frame, header, handshake, and connection-health checks passed (222 tests); no new live provider, native, or screenshot claim.","inputs":["src-ui/src/views/CustomizeSectionFrame.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the merged Customize frame and its callers against this page: Tools retains the existing scope-bound MCP access section, other items keep their header/add action, and shared PageFrame insets are preserved. The computer relationships, explicit smoke-send contract, and historical screenshot limits are unchanged. Focused routing, frame, header, handshake, and connection-health checks passed (222 tests); no new live provider, native, or screenshot claim.","inputs":["src-ui/src/views/CustomizeSectionFrame.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the merged Customize frame and its callers against this page: Tools retains the existing scope-bound MCP access section, other items keep their header/add action, and shared PageFrame insets are preserved. The computer relationships, explicit smoke-send contract, and historical screenshot limits are unchanged. Focused routing, frame, header, handshake, and connection-health checks passed (222 tests); no new live provider, native, or screenshot claim.","inputs":["src-ui/src/views/CustomizeSectionFrame.tsx"]}
+  ]
+}

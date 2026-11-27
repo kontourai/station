@@ -1,0 +1,7 @@
+{
+  "revision": "aef7a1c513df4bedb5dc00e2559a303ec414e033",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Adds the alias-folding rule shared by the menu rows and the fixed order, so the default is always a listed row; checked against new-chat-modal-utils and its tests.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

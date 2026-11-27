@@ -64,10 +64,10 @@ const PLUGIN_VALIDATE_BUNDLE_NOT_CHECKED =
   'Validation does not build. Station builds the bundle when a person installs the plugin; a build error is reported then.';
 
 const PLUGIN_VALIDATE_NOTE =
-  'Validation only. Nothing was installed, copied, or built, and dependencies were not resolved. A person installs a plugin from Plugins → Install plugin (or `station plugin install <source>`) after reviewing its preview and permissions.';
+  'Validation only. Nothing was installed, copied, or built, and dependencies were not resolved. A person installs a plugin from Apps › Library → Install plugin (or `station plugin install <source>`) after reviewing its preview and permissions.';
 
 const REMOTE_SOURCE_REFUSED =
-  'validate checks local folders; to check a git source, a person can run the install preview (Plugins → Install plugin).';
+  'validate checks local folders; to check a git source, a person can run the install preview (Apps › Library → Install plugin).';
 
 const NETWORK_PATH_REFUSED =
   'validate checks local folders and refuses network filesystem paths (UNC, device and automount paths such as /net/…); copy the plugin to a local folder first.';

@@ -79,7 +79,7 @@ export function RegistryMcpServerFacts({
           <p className="page__subtitle">
             {listing.qualification.state === 'setup-required'
               ? 'Adds it turned off. Enter your OAuth client in its settings, then sign in.'
-              : 'Adds it turned off. Turn it on and sign in under Connections.'}
+              : 'Adds it turned off. Turn it on and sign in under Customize › Tools.'}
           </p>
         )
       )}

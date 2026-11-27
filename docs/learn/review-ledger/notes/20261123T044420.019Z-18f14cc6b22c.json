@@ -1,0 +1,13 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Checked: one composite registry entry, newChatDefault, userFacing false, so no Settings row or catalog entry appears. Other settings unchanged.","inputs":["packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Checked: one composite registry entry, newChatDefault, userFacing false, so no Settings row or catalog entry appears. Other settings unchanged.","inputs":["packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Checked: one composite registry entry, newChatDefault, userFacing false, so no Settings row or catalog entry appears. Other settings unchanged.","inputs":["packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked: one composite registry entry, newChatDefault, userFacing false, so no Settings row or catalog entry appears. Other settings unchanged.","inputs":["packages/contracts/src/settings-registry.ts"]}
+  ]
+}

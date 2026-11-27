@@ -1,0 +1,7 @@
+{
+  "revision": "f59331fd1f2dceb0e4fbac6fc6021d045e34168e",
+
+  "notes": [
+    {"path":"examples/registry/integrations/README.md","note":"Integration entries are untouched by the fix round; only plugin entry listing changed.","inputs":["examples/registry/integrations/README.md","src-server/providers/registries/json-manifest-registry.ts"]}
+  ]
+}

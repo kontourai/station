@@ -1,0 +1,7 @@
+{
+  "revision": "49af49479a2d186a36eb509f0cd25963e88ba5c6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the two short-chat Chromium cases in the shared browser fixture. The rendered prompt text identifies the latest user message with or without virtualization.","inputs":["src-ui/src/__tests__/transcript-turn-rail.browser.test.tsx"]}
+  ]
+}

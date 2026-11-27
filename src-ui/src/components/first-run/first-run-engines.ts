@@ -122,7 +122,7 @@ function notReadyNote(engine: ExternalEngineReadinessProjection): string {
     case 'sign_in_required':
       return `Sign in to ${engine.name} to use it here.`;
     case 'disabled':
-      return `${engine.name} is turned off in Connections.`;
+      return `${engine.name} is turned off in Customize.`;
     case 'cannot_verify':
       return `Station could not verify ${engine.name} is ready.`;
     case 'missing_prerequisites':

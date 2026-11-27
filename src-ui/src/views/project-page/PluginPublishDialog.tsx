@@ -82,7 +82,7 @@ function Published({ result }: { result: PluginPublishResult }) {
       )}
       <CopyField label="Install with the CLI" value={result.installCommand} />
       <p className="editor-hint">
-        In Station, use Plugins → Install plugin with the install source.
+        In Station, use Apps › Library → Install plugin with the install source.
         Installs from it update by pulling new commits.
       </p>
     </div>

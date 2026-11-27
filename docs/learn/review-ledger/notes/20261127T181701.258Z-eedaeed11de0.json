@@ -1,0 +1,7 @@
+{
+  "revision": "466da845d026b70086ccbe5c2febf9467aef9650",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked composer queue cards, touch cancellation and keyboard controls. The row uses a native group, and the action label reports the queue count and first message.","inputs":["src-ui/src/components/chat/QueuedMessages.tsx"]}
+  ]
+}

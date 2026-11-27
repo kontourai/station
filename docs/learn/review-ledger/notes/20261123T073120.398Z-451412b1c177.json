@@ -1,0 +1,9 @@
+{
+  "revision": "aef7a1c513df4bedb5dc00e2559a303ec414e033",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Checked: sdk.md only gained one sentence on readiness refresh after sign-in; pages citing it for other hooks stay accurate.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked: sdk.md only gained one sentence on readiness refresh after sign-in; pages citing it for other hooks stay accurate.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

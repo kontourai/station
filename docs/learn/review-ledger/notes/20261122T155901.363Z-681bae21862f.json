@@ -1,0 +1,9 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/guides/distribution-profiles.md","note":"Fix round: the catalogue page no longer offers plugin-only sources and never opens its Plugins tab; distribution-profiles and the plugins guide stay accurate.","inputs":["src-ui/src/views/RegistryView.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Fix round: the catalogue page no longer offers plugin-only sources and never opens its Plugins tab; distribution-profiles and the plugins guide stay accurate.","inputs":["src-ui/src/views/RegistryView.tsx"]}
+  ]
+}

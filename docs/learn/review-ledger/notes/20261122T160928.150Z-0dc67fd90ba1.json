@@ -1,0 +1,7 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"No SDK surface changed in the fix round.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

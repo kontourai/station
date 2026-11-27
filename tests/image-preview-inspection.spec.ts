@@ -58,6 +58,7 @@ async function mount(page: Page) {
     'node_modules/@kontourai/ui/tokens/tokens.css',
     'src-ui/src/tokens.css',
     'src-ui/src/index.css',
+    'packages/sdk/src/components/ActionControl.css',
     'src-ui/src/components/ImageInspector.css',
   ]) {
     await page.addStyleTag({ path: join(ROOT, file) });
@@ -70,17 +71,20 @@ async function mount(page: Page) {
     .getByRole('button', { name: 'Inspect attachment', exact: true })
     .click();
   await expect(
-    page
-      .getByRole('dialog', { name: 'Preview' })
-      .getByRole('button', { name: 'Actual size', exact: true }),
-  ).toBeEnabled();
+    dialog(page).getByRole('button', { name: 'Zoom controls' }),
+  ).toBeVisible();
 }
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Preview' });
 
+async function openZoom(page: Page) {
+  await dialog(page).getByRole('button', { name: 'Zoom controls' }).click();
+}
+
 test('actual size, keyboard pan, fit, image navigation and focus return', async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await mount(page);
   const panel = dialog(page);
   const scrim = page.locator('.image-preview-overlay');
@@ -99,6 +103,7 @@ test('actual size, keyboard pan, fit, image navigation and focus return', async 
   const image = panel.getByRole('img', { name: 'Large screenshot' });
   const view = panel.getByRole('region', { name: 'Image viewport' });
   expect((await image.boundingBox())!.width).toBeLessThan(2400);
+  await openZoom(page);
   await panel.getByRole('button', { name: 'Actual size', exact: true }).click();
   await expect(panel.getByLabel('Image zoom level')).toHaveText('100%');
   expect((await image.boundingBox())!.width).toBe(2400);
@@ -129,6 +134,7 @@ test('pointer drag pans without dismissing and Alt+wheel preserves the pointer a
 }) => {
   await mount(page);
   const panel = dialog(page);
+  await openZoom(page);
   await panel.getByRole('button', { name: 'Actual size', exact: true }).click();
   const view = panel.getByRole('region', { name: 'Image viewport' });
   const box = (await view.boundingBox())!;
@@ -168,44 +174,31 @@ test('narrow preview keeps controls reachable through rotation and traps focus',
   await page.setViewportSize({ width: 390, height: 844 });
   await mount(page);
   const panel = dialog(page);
-  for (const button of await panel.getByRole('button').all()) {
-    const box = (await button.boundingBox())!;
+  await expect(panel.getByRole('group', { name: 'Image zoom' })).toBeHidden();
+  const view = panel.getByRole('region', { name: 'Image viewport' });
+  await expect.poll(async () => (await view.boundingBox())?.width).toBe(390);
+  const download = panel.getByRole('link', { name: /^Download / });
+  const close = panel.getByRole('button', { name: 'Close preview' });
+  const zoom = panel.getByRole('button', { name: 'Zoom controls' });
+  const next = panel.getByRole('button', { name: 'Next image' });
+  for (const control of [close, download, zoom, next]) {
+    const box = (await control.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(390);
     expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.width).toBeGreaterThanOrEqual(44);
   }
-  const toolbarButtons = [
-    panel.getByRole('button', { name: 'Fit', exact: true }),
-    panel.getByRole('button', { name: 'Actual size', exact: true }),
-    panel.getByRole('button', { name: 'Zoom out', exact: true }),
-    panel.getByRole('button', { name: 'Zoom in', exact: true }),
-  ];
-  const toolbarTop = (await toolbarButtons[0].boundingBox())!.y;
-  for (const button of toolbarButtons)
-    expect((await button.boundingBox())!.y).toBe(toolbarTop);
-  const level = (await panel.getByLabel('Image zoom level').boundingBox())!;
-  const firstButton = (await toolbarButtons[0].boundingBox())!;
-  expect(level.y + level.height / 2).toBeCloseTo(
-    firstButton.y + firstButton.height / 2,
-    1,
-  );
-  // Download rides the zoom row as a 44px icon link rather than a row of
-  // its own, and fits the narrow viewport with the controls.
-  const download = (await panel
-    .getByRole('link', { name: /^Download / })
-    .boundingBox())!;
-  expect(download.y).toBe(toolbarTop);
-  expect(download.x + download.width).toBeLessThanOrEqual(390);
-  expect(download.height).toBeGreaterThanOrEqual(44);
-  expect(download.width).toBeGreaterThanOrEqual(44);
-  await expect(panel.getByText('Pinch to zoom. Drag to pan.')).toBeVisible();
-  const view = panel.getByRole('region', { name: 'Image viewport' });
-  await view.focus();
+  expect((await download.boundingBox())!.y).toBe((await zoom.boundingBox())!.y);
+  await next.focus();
   await page.keyboard.press('Tab');
-  await expect(
-    panel.getByRole('button', { name: 'Close preview', exact: true }),
-  ).toBeFocused();
+  await expect(close).toBeFocused();
+  await openZoom(page);
+  await panel.getByRole('button', { name: 'Fit', exact: true }).focus();
+  await page.keyboard.press('Escape');
+  await expect(zoom).toBeFocused();
+  await expect(panel.getByRole('group', { name: 'Image zoom' })).toBeHidden();
   await page.setViewportSize({ width: 844, height: 390 });
+  await openZoom(page);
   await panel.getByRole('button', { name: 'Fit', exact: true }).click();
   const image = (await panel.getByRole('img').boundingBox())!;
   const frame = (await view.boundingBox())!;
@@ -219,6 +212,7 @@ for (const width of [320, 402]) {
   }) => {
     await page.setViewportSize({ width, height: 844 });
     await mount(page);
+    await openZoom(page);
     const controls = dialog(page).getByRole('group', { name: 'Image zoom' });
     const buttons = await controls.getByRole('button').all();
     const first = (await buttons[0].boundingBox())!;
@@ -256,6 +250,7 @@ test('invalid image stays dismissible and inline file inspector uses the same co
   await expect(dialog(page).getByRole('alert')).toContainText(
     'could not be loaded',
   );
+  await openZoom(page);
   await expect(
     dialog(page).getByRole('button', { name: 'Actual size', exact: true }),
   ).toBeDisabled();
@@ -271,7 +266,7 @@ test('invalid image stays dismissible and inline file inspector uses the same co
   ).toBe(2400);
 });
 
-test('browser touch pinch zooms and cancellation leaves drag usable', async ({
+test('touch swipes at fit size and pans the current image after pinch zoom', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -306,12 +301,29 @@ test('browser touch pinch zooms and cancellation leaves drag usable', async ({
     type: 'touchCancel',
     touchPoints: [],
   });
-  await panel.getByRole('button', { name: 'Actual size', exact: true }).click();
+  async function swipe() {
+    await input.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: x + 70, y }],
+    });
+    await input.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: x - 70, y }],
+    });
+    await input.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+  }
   const left = await view.evaluate((el) => el.scrollLeft);
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x - 60, y, { steps: 5 });
-  await page.mouse.up();
+  await swipe();
   expect(await view.evaluate((el) => el.scrollLeft)).toBeGreaterThan(left + 50);
+  await expect(image).toBeVisible();
+  await openZoom(page);
+  await panel.getByRole('button', { name: 'Fit', exact: true }).click();
+  await panel.getByRole('button', { name: 'Zoom controls' }).click();
+  await swipe();
+  await expect(panel.getByRole('img', { name: 'Portrait' })).toBeVisible();
+  await expect(panel.getByText('2 / 2')).toBeVisible();
   await input.detach();
 });

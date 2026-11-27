@@ -6,10 +6,20 @@ import {
   useDevicePresentation,
   useOrchestrationSessionsQuery,
 } from '@kontourai/station-sdk';
-import { type ComponentType, useCallback, useMemo } from 'react';
+import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
+import {
+  type ComponentProps,
+  type ComponentType,
+  useCallback,
+  useMemo,
+} from 'react';
+import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useProjects } from '../../contexts/ProjectsContext';
 import { sessionsByThreadId } from '../../utils/answerability';
+import { notificationSessionTitle } from '../../utils/notifications';
 import { sessionProjectLabel, sessionTitle } from '../../utils/sessionDisplay';
+import { AgentIcon } from '../icons/AgentIcon';
 import {
   AgentGlyph,
   EngineGlyph,
@@ -17,6 +27,7 @@ import {
   MessageGlyph,
   MonitorGlyph,
 } from '../icons/Glyph';
+import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
 
 /**
  * Where a notification comes from: which Station runs the work, which
@@ -35,6 +46,8 @@ export interface InboxContextPart {
   remote?: boolean;
   /** The engine without its model, for the tray's one-line form. */
   brief?: string;
+  agent?: ComponentProps<typeof AgentIcon>['agent'];
+  projectIcon?: string;
 }
 
 const PART_LABEL: Record<InboxContextPart['kind'], string> = {
@@ -67,6 +80,8 @@ interface ContextFacts {
   environmentName?: string;
   engine?: string;
   agent?: string;
+  agentIdentity?: ComponentProps<typeof AgentIcon>['agent'];
+  projectIdentity?: { name: string; icon?: string };
   /** This Station's own name, for work that runs here. */
   localStationName?: string;
 }
@@ -107,16 +122,28 @@ export function inboxContextParts(facts: ContextFacts): InboxContextPart[] {
   );
   push(
     'project',
-    facts.projectSlug ?? (session ? sessionProjectLabel(session) : null),
+    facts.projectIdentity?.name ??
+      facts.projectSlug ??
+      (session ? sessionProjectLabel(session) : null),
   );
+  const project = parts.at(-1);
+  if (project?.kind === 'project')
+    project.projectIcon = facts.projectIdentity?.icon;
   const chat = facts.chatTitle ?? (session ? sessionTitle(session) : undefined);
   if (chat && chat !== facts.title && !facts.body?.includes(`“${chat}”`))
     push('chat', chat);
   const engine = facts.engine ?? session?.provider;
   const agent = facts.agent ?? session?.assignedAgentSlug;
   // An agent named for its engine ("codex" on Codex) says nothing new.
-  if (agent && agent.toLowerCase() !== engine?.toLowerCase())
-    push('agent', agent);
+  if (
+    agent &&
+    (facts.agentIdentity || agent.toLowerCase() !== engine?.toLowerCase())
+  ) {
+    push('agent', facts.agentIdentity?.name ?? agent);
+    const part = parts.at(-1);
+    if (part?.kind === 'agent')
+      part.agent = facts.agentIdentity ?? { name: agent, slug: agent };
+  }
   if (engine) {
     const label = engineDisplayLabel(engine) ?? engine;
     push('engine', session?.model ? `${label} · ${session.model}` : label);
@@ -160,6 +187,41 @@ function metadataString(
  */
 export function useInboxContext() {
   const sessionsQuery = useOrchestrationSessionsQuery();
+  const agents = useAgents();
+  const { projects } = useProjects();
+  const identities = useCallback(
+    (
+      session: OrchestrationSessionSummary | undefined,
+      agent?: string,
+      slug?: string,
+      id?: string,
+      remote = false,
+    ) => {
+      if (
+        remote ||
+        (session?.delegation?.environmentKind &&
+          session.delegation.environmentKind !== 'current')
+      )
+        return {};
+      const agentSlug = agent ?? session?.assignedAgentSlug;
+      const projectSlug =
+        slug ?? session?.delegation?.projectSlug ?? session?.projectSlug;
+      const project = projectSlug
+        ? projects.find((candidate) => candidate.slug === projectSlug)
+        : projects.find((candidate) => candidate.id === id);
+      return {
+        agentIdentity: agents.find((candidate) => candidate.slug === agentSlug),
+        projectIdentity: project && {
+          name: project.name,
+          icon: displayableProjectIcon(
+            project.icon ??
+              (project.iconDisabled ? undefined : project.derivedIcon),
+          ),
+        },
+      };
+    },
+    [agents, projects],
+  );
   // The SDK hook bound to the same api base the inbox reads, so this joins
   // the one in-flight system-status query rather than starting another.
   const { apiBase } = useApiBase();
@@ -172,34 +234,54 @@ export function useInboxContext() {
   const forAttention = useCallback(
     (item: AttentionItem): InboxContextPart[] => {
       const threadId = attentionThreadId(item);
+      const session = threadId ? sessions.get(threadId) : undefined;
+      const agent = 'agent' in item ? item.agent : undefined;
+      const remote =
+        'environmentKind' in item && item.environmentKind === 'peer';
       return inboxContextParts({
         title: item.title,
-        session: threadId ? sessions.get(threadId) : undefined,
+        session,
         projectSlug: item.projectSlug,
-        environmentName:
-          'environmentKind' in item && item.environmentKind === 'peer'
-            ? item.environmentName
-            : undefined,
+        ...identities(session, agent, item.projectSlug, undefined, remote),
+        environmentName: remote
+          ? (item.environmentName ?? 'Another Station')
+          : undefined,
         engine: 'engine' in item ? item.engine : undefined,
-        agent: 'agent' in item ? item.agent : undefined,
+        agent,
         localStationName,
       });
     },
-    [localStationName, sessions],
+    [identities, localStationName, sessions],
   );
   const forNotification = useCallback(
     (notification: Notification): InboxContextPart[] => {
-      const threadId = notificationThreadId(notification);
+      const envelope = readNotificationEnvelope(notification);
+      const source = envelope?.source;
+      const target = envelope?.target;
+      const threadId =
+        notificationThreadId(notification) ??
+        (target?.kind === 'session' ? target.sessionId : undefined) ??
+        (source?.kind === 'agent' ? source.sessionId : undefined);
+      const session = threadId ? sessions.get(threadId) : undefined;
+      const agent = source?.kind === 'agent' ? source.agent : undefined;
+      const projectId =
+        source?.kind === 'agent' || source?.kind === 'system'
+          ? source.projectId
+          : undefined;
+      const projectSlug = metadataString(notification, 'projectSlug');
+      const title = notificationSessionTitle(notification);
       return inboxContextParts({
-        title: notification.title,
-        body: notification.body,
+        title: title ?? notification.title,
+        body: title ? undefined : notification.body,
+        agent,
+        ...identities(session, agent, projectSlug, projectId),
         chatTitle: metadataString(notification, 'chatTitle'),
-        session: threadId ? sessions.get(threadId) : undefined,
-        projectSlug: metadataString(notification, 'projectSlug'),
+        session,
+        projectSlug,
         localStationName,
       });
     },
-    [localStationName, sessions],
+    [identities, localStationName, sessions],
   );
   return { forAttention, forNotification };
 }
@@ -213,8 +295,7 @@ export function InboxContextLine({
   parts: readonly InboxContextPart[];
   className?: string;
   /**
-   * The tray's one-line form: what identifies the work — its Project, chat
-   * and engine, and its Station only when that is another one. The page
+   * The tray shows the work’s identity and names a Station when it runs remotely. The page
    * shows every part.
    */
   compact?: boolean;
@@ -224,6 +305,7 @@ export function InboxContextLine({
         (part) =>
           part.kind === 'project' ||
           part.kind === 'chat' ||
+          part.kind === 'agent' ||
           part.kind === 'engine' ||
           (part.kind === 'station' && part.remote),
       )
@@ -239,7 +321,22 @@ export function InboxContextLine({
             className={`inbox-context__part inbox-context__part--${part.kind}`}
             title={`${part.label}: ${part.value}`}
           >
-            <Glyph className="inbox-context__glyph" />
+            {part.agent ? (
+              <AgentIcon
+                agent={part.agent}
+                size={14}
+                className="inbox-context__glyph"
+                fallbackGlyph
+              />
+            ) : part.projectIcon ? (
+              <ProjectIcon
+                project={{ name: part.value, icon: part.projectIcon }}
+                size={14}
+                className="inbox-context__glyph"
+              />
+            ) : (
+              <Glyph className="inbox-context__glyph" />
+            )}
             <span className="sr-only">{part.label}: </span>
             <span className="inbox-context__value">
               {compact ? (part.brief ?? part.value) : part.value}

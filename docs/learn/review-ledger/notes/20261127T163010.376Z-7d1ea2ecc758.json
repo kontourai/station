@@ -1,0 +1,9 @@
+{
+  "revision": "41ae56e5e5366a778ca22acec63401d1311d07d0",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Inspected Home and shared Inbox row construction, local/remote identity/opening, lane/status owners, optional metadata and pure model/provider/date helpers against chat-composer Inbox shelves/shared-row policy and getting-started chat/status claims. Replacing conditional object spreads with typed construction and conditional assignments preserves field presence/values, lifecycle precedence, notices, recency and provenance; no prose change is needed. Seven alternating production fixture-backed Home pairs at 1000 sessions show consistent row-builder self-CPU reduction and a desktop scripting improvement, not reliable mobile journey latency or allocation gains. Existing owner tests are qualification evidence only when their execution completes; source review is not native/phone/live-provider or exhaustive UX certification.","inputs":["src-ui/src/views/home/home-view-model.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Inspected Home and shared Inbox row construction, local/remote identity/opening, lane/status owners, optional metadata and pure model/provider/date helpers against chat-composer Inbox shelves/shared-row policy and getting-started chat/status claims. Replacing conditional object spreads with typed construction and conditional assignments preserves field presence/values, lifecycle precedence, notices, recency and provenance; no prose change is needed. Seven alternating production fixture-backed Home pairs at 1000 sessions show consistent row-builder self-CPU reduction and a desktop scripting improvement, not reliable mobile journey latency or allocation gains. Existing owner tests are qualification evidence only when their execution completes; source review is not native/phone/live-provider or exhaustive UX certification.","inputs":["src-ui/src/views/home/home-view-model.ts"]}
+  ]
+}

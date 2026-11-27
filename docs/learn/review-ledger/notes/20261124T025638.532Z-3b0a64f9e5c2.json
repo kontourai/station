@@ -1,0 +1,7 @@
+{
+  "revision": "32c2bcd30e4c5809d189cb03cb43a9180295bef9",
+
+  "notes": [
+    {"path":"docs/guides/ui-copy.md","note":"Re-read against this change: the noun gate now also reads text inside JSX passed as an attribute; the table's zero-tolerance claim still holds and is now more complete.","inputs":["docs/guides/ui-copy.md","scripts/noun-consistency-gate.mjs"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "fe3aafb9d61f45ec7e5403f36f84041486ac96cc",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"No SDK surface changed: useRegistryItemsQuery returns the contract RegistryItem, which gains the optional app field; nothing in this page describes registry item fields.","inputs":["docs/reference/sdk.md","packages/contracts/src/catalog.ts","src-server/providers/registries/json-manifest-registry.ts","src-server/providers/registries/registry-source-configuration.ts"]}
+  ]
+}

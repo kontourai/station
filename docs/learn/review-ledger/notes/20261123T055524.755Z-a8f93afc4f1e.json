@@ -1,0 +1,41 @@
+{
+  "revision": "d605a099c14f5391e3685b06c645beb5fccc5e59",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Checked: the glossary gained one User-facing labels row for the sidebar's Apps section; no claim this map makes about the glossary changed.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"Checked: the glossary gained one User-facing labels row for the sidebar's Apps section; no claim this page makes about the glossary changed.","inputs":["CONTEXT.md","docs/glossary.md"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Amended D3 with the quiet sidebar behind the quiet-sidebar preview (rows above Projects, Apps with Discover, labelled Customize and Settings, the rail and drawer) and why two place rows above Projects are not the rejected status band; checked the existing D3 claims about the Boards section, its + and the footer still describe the sidebar with the preview off.","inputs":["docs/design/shell-ownership-and-boards.md","docs/user/personal-boards.md","src-ui/src/components/project-sidebar/ProjectSidebar.tsx","src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Checked the Personal Boards claims against ProjectSidebarBoards.tsx: with the quiet-sidebar preview off the + still creates an Untitled Board and the section shows when empty; the quiet variant drops the header + and the palette's New Board still creates one. No claim here changed.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Added the User-facing labels row for the sidebar's Apps section: one row per Layout you own, then Discover, so the Boards section and Apps › Discover share one meaning of Apps.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked: the settings guide gained a quiet-sidebar row in its Feature previews table; the link and the claim that enabling a preview grants no permission still hold.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked: quiet-sidebar is a UI-only preview offered by the registry constructor through rememberConsumer and read through useSurfaceVisibilityFlags, which is the pattern this guide describes; default off; documented in the settings guide's table.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked: responsive-action-surfaces.txt gained a covered entry for QuietSidebar.tsx with its geometry test; the inventory format and the rule this guide states are unchanged.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked: the responsive action inventory gained one covered entry (QuietSidebar.tsx); nothing this page says about it changed.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked: the responsive action inventory gained one covered entry (QuietSidebar.tsx); nothing this page says about it changed.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked: the responsive action inventory gained one covered entry (QuietSidebar.tsx); nothing this page says about it changed.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Checked: the feature preview registry gained the UI-only quiet-sidebar preview; the plan's Preferences row and its links are unchanged.","inputs":["docs/plans/whole-app-ux-campaign.md","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/README.md","note":"Checked against the quiet-sidebar preview change: ProjectSidebar.tsx now mounts the Apps section and footer from the QuietSidebar chunk only while the preview is on; with it off the Home row, Projects list, Boards section and footer are mounted with the same props as before. The drawer focus handling this review records is unchanged.","inputs":["docs/reviews/sidebar-focus-20261107/README.md","src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","note":"Checked against the quiet-sidebar preview change: ProjectSidebar.tsx now mounts the Apps section and footer from the QuietSidebar chunk only while the preview is on; with it off the Home row, Projects list, Boards section and footer are mounted with the same props as before. The drawer focus handling this addendum records is unchanged.","inputs":["docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Checked against the quiet-sidebar preview change: ProjectSidebar.tsx now mounts the Apps section and footer from the QuietSidebar chunk only while the preview is on; with it off the Home row, Projects list, Boards section and footer are mounted with the same props as before. The workspace map this review records is the preview-off sidebar.","inputs":["docs/reviews/workspace-map-20261015/README.md","src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Added where Browse apps and New Board are with the Quiet sidebar preview on (expanded sidebar; command palette); checked the remaining Boards claims against ProjectSidebarBoards.tsx with the preview off.","inputs":["docs/user/personal-boards.md","src-ui/src/components/project-sidebar/ProjectSidebar.tsx","src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Added the quiet-sidebar row to the Feature previews table; its id, label and effect match the registry entry and QuietSidebar.tsx.","inputs":["docs/user/settings.md","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"examples/custom-branding/README.md","note":"Checked against the quiet-sidebar preview change: ProjectSidebar.tsx now mounts the Apps section and footer from the QuietSidebar chunk only while the preview is on; with it off the Home row, Projects list, Boards section and footer are mounted with the same props as before. The branding the sidebar header reads is unchanged.","inputs":["examples/custom-branding/README.md","src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]}
+  ]
+}

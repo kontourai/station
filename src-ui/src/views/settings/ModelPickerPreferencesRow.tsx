@@ -28,7 +28,7 @@ export function ModelPickerPreferencesRow() {
       resetHandledByControl
       control={
         <div className="settings__row-controls">
-          <Button onClick={() => navigate('/connections/models')}>
+          <Button onClick={() => navigate('/customize/providers')}>
             Open model connections
           </Button>
           <Button

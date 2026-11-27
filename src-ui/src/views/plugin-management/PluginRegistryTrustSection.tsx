@@ -3,6 +3,8 @@ import './PluginRegistryTrustSection.css';
 
 /**
  * #1521: the registry claim and pin the server persisted, rendered as-is.
+ * People see the registry as the app's source ("Source verification"); the
+ * glossary keeps "Registry" for the catalogue infrastructure only.
  *
  * Every value here comes from the host's own verification receipt. Nothing is
  * read from the package manifest, and no state is inferred client-side: an
@@ -19,8 +21,8 @@ export function PluginRegistryTrustSection({
   dependency?: string;
 }) {
   const label = dependency
-    ? `Registry verification for ${dependency}`
-    : 'Registry verification';
+    ? `Source verification for ${dependency}`
+    : 'Source verification';
   return (
     <section
       className="detail-panel__section plugin-registry-trust"
@@ -43,22 +45,22 @@ function RegistryTrustBody({
   if (!trust)
     return (
       <p className="plugin-registry-trust__note">
-        Station did not report registry verification for this {subject}. Treat
-        it as unverified.
+        Station did not report source verification for this {subject}. Treat it
+        as unverified.
       </p>
     );
   if (trust.state === 'unavailable')
     return (
       <p className="plugin-registry-trust__note">
-        The stored registry verification for this installation could not be
-        read. Station does not treat it as verified.
+        The stored source verification for this installation could not be read.
+        Station does not treat it as verified.
       </p>
     );
   if (trust.state === 'none')
     return (
       <p className="plugin-registry-trust__note">
-        No verified registry claim. Station has no verified source, signer or
-        registry pin for this {subject}.
+        No verified source claim. Station has no verified source, signer or pin
+        for this {subject}.
       </p>
     );
   const { receipt } = trust;
@@ -66,7 +68,7 @@ function RegistryTrustBody({
     <>
       <p className="plugin-registry-trust__note">
         {context === 'preview'
-          ? 'Station checked these bytes against the registry claim under the applied trust policy. Installing binds this exact claim and pin.'
+          ? 'Station checked these bytes against the source claim under the applied trust policy. Installing binds this exact claim and pin.'
           : 'Recorded when this installation was verified. This is the stored receipt, not a fresh check.'}
       </p>
       <dl className="plugin-registry-trust__list">

@@ -11,6 +11,7 @@ import { InstallPluginModal } from './InstallPluginModal';
 import { InstallPreviewExtensionAccess } from './InstallPreviewExtensionAccess';
 import { InstallPreviewModal } from './InstallPreviewModal';
 import { LayoutAssignmentModal } from './LayoutAssignmentModal';
+import { RemovePluginModal } from './RemovePluginModal';
 import type { PluginMessage, PreviewData, ReinstallFromSource } from './types';
 
 export function PluginModalStack({
@@ -191,45 +192,13 @@ export function PluginModalStack({
       )}
 
       {removeConfirm && (
-        <ResponsiveDialogSurface
-          layer="dialog"
-          onClose={onCancelRemove}
-          ariaLabelledBy="remove-plugin-title"
-          overlayClassName="plugins__confirm-overlay"
-          panelClassName="plugins__confirm"
-        >
-          <h3 id="remove-plugin-title">Remove plugin</h3>
-          <p>
-            Remove &ldquo;{removeConfirm}&rdquo; from Station?
-            {removalRetainsData
-              ? ' Its stored data and code versions will be retained.'
-              : ' This cannot be undone.'}
-          </p>
-          {proposal?.kind === 'remove' &&
-            proposal.pluginName === removeConfirm && (
-              <PluginProposalSummary
-                author={proposal.author}
-                rationale={proposal.rationale}
-                testId="remove-plugin-proposal"
-              />
-            )}
-          <ResponsiveSurfaceActions className="plugins__confirm-actions">
-            <button
-              type="button"
-              className="plugins__confirm-cancel"
-              onClick={onCancelRemove}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="plugins__confirm-delete"
-              onClick={() => onConfirmRemove(removeConfirm)}
-            >
-              Remove
-            </button>
-          </ResponsiveSurfaceActions>
-        </ResponsiveDialogSurface>
+        <RemovePluginModal
+          name={removeConfirm}
+          retainsData={removalRetainsData}
+          proposal={proposal}
+          onCancel={onCancelRemove}
+          onConfirm={() => onConfirmRemove(removeConfirm)}
+        />
       )}
 
       {updateConfirm && (

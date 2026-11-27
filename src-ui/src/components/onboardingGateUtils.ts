@@ -175,7 +175,7 @@ export function buildSetupBannerContent(
           title: 'Choose what powers Station',
           description:
             'Add a model connection or engine for chat, agents, or both.',
-          actionLabel: 'Open Connections',
+          actionLabel: 'Open Providers',
           badges: [],
           actionTarget: 'providers',
         };
@@ -219,8 +219,8 @@ export function buildSetupBannerContent(
           `${detectedProviderLabel} is available`,
         description:
           status.recommendation?.detail ||
-          `Open Connections to review or add ${detectedProviderLabel} for chat.`,
-        actionLabel: 'Review Connections',
+          `Open Providers to review or add ${detectedProviderLabel} for chat.`,
+        actionLabel: 'Review Providers',
         badges: [`Detected: ${detectedProviderLabel}`],
         actionTarget: 'providers',
       };
@@ -229,7 +229,7 @@ export function buildSetupBannerContent(
       return {
         title: 'No model connection is ready for chat',
         description:
-          'Enable or repair a model connection in Connections before starting a chat.',
+          'Enable or repair a model connection in Providers before starting a chat.',
         actionLabel: 'Manage connections',
         badges: dedupeBadges(
           configured.map((provider) =>
@@ -253,7 +253,7 @@ export function buildSetupBannerContent(
         title: 'Choose what powers Station',
         description:
           'Add a model connection or engine for chat, agents, or both.',
-        actionLabel: 'Open Connections',
+        actionLabel: 'Open Providers',
         badges: dedupeBadges(
           enabledProviders.map(
             (provider) =>

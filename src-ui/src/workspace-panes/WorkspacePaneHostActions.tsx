@@ -27,7 +27,7 @@ const reasons: Record<WorkspacePaneHostActionUnavailableReason, string> = {
   'authorization-changed':
     'Your connection authorization changed. Reconnect before starting this action.',
   'permission-required':
-    'Review this plugin’s Agent invocation permission in Plugins.',
+    'Review this plugin’s Agent invocation permission in Apps › Library.',
   'agent-restricted': 'This Agent is not available in this Project.',
   'agent-unavailable':
     'This Agent is not ready. Review its model or engine connection.',
@@ -267,7 +267,7 @@ export function WorkspacePaneHostActions({
       </div>
       {!query.data.complete ? (
         <p role="status">
-          Some plugins couldn’t be read. Check Plugins before using these
+          Some plugins couldn’t be read. Check Apps › Library before using these
           workspace actions.
         </p>
       ) : null}

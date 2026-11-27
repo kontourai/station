@@ -1593,6 +1593,52 @@ describe('CommandPalette plugin commands (#1418/#1419)', () => {
     });
   });
 
+  // The ids of the places Apps and Customize replaced are published; a
+  // command naming one stays available and opens its successor.
+  test.each([
+    ['registry', '/apps'],
+    ['connections', '/customize'],
+  ] as const)(
+    "a command naming the retired '%s' destination opens %s",
+    async (surfaceId, route) => {
+      pluginsMock = [
+        {
+          name: 'demo',
+          version: '1.0.0',
+          installationGeneration: 'gen-1',
+          commands: [
+            {
+              version: '1.0' as const,
+              id: 'demo.open-retired',
+              title: 'Open retired (demo)',
+              intent: { kind: 'navigate' as const, surfaceId },
+            },
+          ],
+          permissions: { granted: [] },
+        },
+      ];
+      await renderCommandPalette();
+      open();
+      const option = screen.getByRole('option', {
+        name: /Open retired \(demo\)/,
+      });
+      expect(option.textContent).not.toContain('does not expose');
+      fireEvent.click(option);
+      await vi.waitFor(() =>
+        expect(pluginCommandRunMock).toHaveBeenCalledTimes(1),
+      );
+      const call = pluginCommandRunMock.mock.calls[0][0];
+      expect(call.target).toEqual({
+        kind: 'destination',
+        destinationId: surfaceId,
+      });
+      expect(call.apply({ kind: 'navigate', destinationId: surfaceId })).toBe(
+        true,
+      );
+      expect(navigateMock).toHaveBeenCalledWith(route);
+    },
+  );
+
   test('stays visible with its exact reason when a command is unavailable, and never dispatches it', async () => {
     pluginsMock = [
       {

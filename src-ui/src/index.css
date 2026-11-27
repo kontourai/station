@@ -1347,8 +1347,18 @@ button:hover:where(:not(:disabled)) {
   scroll-padding-bottom: var(--dock-bottom-clearance);
 }
 
-/* Fill frames delegate scrolling to their bodies and need the full width. */
-.content-view:not(:has(> .route-transition--fill, > .page-frame--fill)) {
+/* Fill frames delegate scrolling to their bodies and need the full width.
+   Every route sits inside the Customize shell, which off a Customize item
+   takes no box (`customize-shell--off`), so its children count as the
+   outlet's own here. */
+.content-view:not(
+  :has(
+    > .route-transition--fill,
+    > .page-frame--fill,
+    > .customize-shell--off > .customize-shell__main > .route-transition--fill,
+    > .customize-shell--off > .customize-shell__main > .page-frame--fill
+  )
+) {
   scrollbar-gutter: stable;
 }
 

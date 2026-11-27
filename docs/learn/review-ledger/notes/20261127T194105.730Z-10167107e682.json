@@ -1,0 +1,17 @@
+{
+  "revision": "b84f3ac783ef08ce21c59203d7dce3e13b147395",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the transcript viewport’s latest-prompt cutoff and placement at the touch rail and composer action. The down controls share the cutoff; the up control remains available while reading above the tail. Chromium covers the placement and the latest-prompt states. Native device behavior is outside this review.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/transcript-turn-rail.browser.test.tsx","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/TranscriptTurnRail.tsx"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked the cited ChatMessageList change. Sharing the return-to-latest state with turn navigation leaves the form sender and its delivery boundary intact.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the shared ChatMessageList caller and narrow layout. The floating steps remain in the transcript and the Browse turns overflow entry is unaffected.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the touch steps' 44px targets and transcript-local positioning. The header overflow and This chat inventory entry still use their documented paths.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/TranscriptTurnRail.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked that measuring the latest prompt in the turn rail uses existing mounted transcript rows and preserves the reader and host composition boundaries.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat/TranscriptTurnRail.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked the shared transcript renderer: touch arrow availability uses local viewport geometry and does not derive or change Station authority, delivery action, or transport.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat/TranscriptTurnRail.tsx"]}
+  ]
+}

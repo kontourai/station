@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Route table combines both slices: Customize, Providers, Engines, Knowledge and Tools at /customize with their /connections aliases, Computers at /connections/computers, Apps at /apps/discover and /apps/library with /registry, /registry/plugins and /plugins redirects, and the Registry's remaining tabs at /registry/:tab. Checked against routing.ts and app-routing.test.ts.","inputs":["docs/guides/connections.md"]}
+  ]
+}

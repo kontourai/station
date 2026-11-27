@@ -1,0 +1,55 @@
+{
+  "revision": "d29fb872d629120fc0f445784bd5707ee0824ad6",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r2b-evidence.md","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp.md","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-cancelled.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-approve-desktop.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-approve-loopback.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-approve.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-change.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-cors-add.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-cors-remove.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-deny.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-redirect-add.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-redirect-remove.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-revoke.png","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"The two approved-with-plugin-cleanup status lines (incomplete, and changed again while reconciling) now name Apps > Library; no citing page or capture quotes either line or shows those states (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]}
+  ]
+}

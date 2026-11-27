@@ -1,4 +1,4 @@
-import { snoozeChoices } from './snooze-presets';
+import { SNOOZE_ACTION_LABEL, snoozeChoices } from './snooze-presets';
 
 type SelectAction = (trigger: HTMLButtonElement) => void;
 
@@ -20,7 +20,7 @@ export interface InboxRowSnoozeAction extends ActionLabel {
   kind: 'snooze';
   id: 'snooze';
   isSnoozed: boolean;
-  choices: { label: string; hint: string; wakeAt: number }[];
+  choices: () => { label: string; hint: string; wakeAt: number }[];
   choose: (wakeAt: number | null, trigger: HTMLButtonElement) => void;
 }
 
@@ -94,12 +94,12 @@ export function inboxRowActions({
     actions.push({
       kind: 'snooze',
       id: 'snooze',
-      label: snooze.isSnoozed ? 'Wake now' : 'Snooze',
+      label: snooze.isSnoozed ? 'Wake now' : SNOOZE_ACTION_LABEL,
       accessibleLabel: snooze.isSnoozed
         ? `Wake ${title} now`
         : `Snooze ${title}`,
       isSnoozed: snooze.isSnoozed,
-      choices: snoozeChoices(now),
+      choices: () => snoozeChoices(now),
       choose: snooze.choose,
     });
   }

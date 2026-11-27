@@ -3203,6 +3203,38 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
   });
 
+  it.each(['idle', 'sending'] as const)(
+    'preserves an explicit steer draft when the conversation is %s and cannot steer',
+    async (status) => {
+      activeChatsStore.updateChat(sessionId, {
+        status,
+        orchestrationProvider: 'muse',
+        input: 'change direction',
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        expect(
+          await result.current(
+            sessionId,
+            'muse',
+            sessionId,
+            'change direction',
+            undefined,
+            undefined,
+            undefined,
+            { requireSteer: true },
+          ),
+        ).toBe(false);
+      });
+      expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+      expect(queueExecutionMessageMock).not.toHaveBeenCalled();
+      expect(submitConversationSteerMock).not.toHaveBeenCalled();
+      expect(activeChatsStore.getSnapshot()[sessionId]?.input).toBe(
+        'change direction',
+      );
+    },
+  );
+
   it('queues a mid-turn message when the bound adapter cannot steer', async () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',

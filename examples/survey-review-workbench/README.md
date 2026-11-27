@@ -61,7 +61,7 @@ longer resolves — point the build script at your installed `station`, or use
 the checkout-independent `buildPlugin()` entrypoint shown in
 `docs/guides/build-your-first-plugin.md`.
 
-Install the built plugin from the Plugins page — or from a terminal with
+Install the built plugin from Apps › Library — or from a terminal with
 `station plugin install <this directory>`, which previews it, prints what it
 requires, and asks before submitting installation. Preview can stage content;
 it is not a no-write operation. (Over raw HTTP that is

@@ -1,7 +1,11 @@
 import { createHash } from 'node:crypto';
 import { lstatSync } from 'node:fs';
 import { basename, isAbsolute, resolve } from 'node:path';
-import type { RegistryCatalogSelection } from '@kontourai/station-contracts/catalog';
+import {
+  parseRegistryAppFacts,
+  type RegistryAppFacts,
+  type RegistryCatalogSelection,
+} from '@kontourai/station-contracts/catalog';
 import { MANAGED_POLICY_CAPABILITY_DISABLED_CODE } from '@kontourai/station-contracts/managed-policy';
 import { readBoundedRegularFileSync } from '@kontourai/station-shared/regular-file';
 import { z } from 'zod';
@@ -69,6 +73,16 @@ export const registryItemSchema = z.object({
   catalogSourceName: z.string().max(100).optional(),
   catalogFreshness: z.enum(['live', 'stale']).optional(),
   packageRevision: z.string().max(200).optional(),
+  // Read through the contract's bounds. Facts outside them are dropped, not
+  // refused: they describe an entry and never decide whether a stored
+  // catalog can be read.
+  app: z
+    .unknown()
+    .optional()
+    .transform(
+      (value): RegistryAppFacts | undefined =>
+        parseRegistryAppFacts(value) ?? undefined,
+    ),
 });
 const snapshotSchema = z.object({
   data: z.array(registryItemSchema).max(512),

@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Combines both slices: Customize's connection items read the merged connections list, and plugin client routes are unchanged; no claim places Apps in Customize.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

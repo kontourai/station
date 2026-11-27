@@ -27,18 +27,20 @@ const MARKER_TEXT: Record<TranscriptTurnMarker, string> = {
   subagent: 'Started a sub-agent',
 };
 
-/** Where the reader is, in turns. Changes only when the turn changes. */
+/** The reader’s turn and which prompts the viewport reaches. */
 export interface TranscriptTurnViewport {
   /** The turn owning the row at the transcript's vertical centre. */
   readonly activeTurn: number;
   /** Whether that turn's own prompt row is on screen. */
   readonly activeStartVisible: boolean;
+  /** Whether the latest user message is below the visible transcript. */
+  readonly latestPromptBelowViewport: boolean;
 }
 
 /**
  * Follows the transcript's scroll position in turns. The in-view marks on the
  * rail and its viewport band are written to the DOM from the scroll handler,
- * once per frame at most; React state changes only when the centre turn does.
+ * once per frame at most. React state tracks the centre turn and prompt visibility.
  * Only mounted rows can be on screen, so reading their geometry is exact;
  * mapping them to turns goes through the full row model.
  */
@@ -60,6 +62,7 @@ export function useTranscriptTurnViewport({
   const [viewport, setViewport] = useState<TranscriptTurnViewport>({
     activeTurn: Math.max(0, landmarks.length - 1),
     activeStartVisible: true,
+    latestPromptBelowViewport: false,
   });
   const modelRef = useRef({ landmarks, rowIndexById, rowCount });
   modelRef.current = { landmarks, rowIndexById, rowCount };
@@ -97,6 +100,7 @@ export function useTranscriptTurnViewport({
     if (centre < 0) centre = first;
     const activeTurn = turnIndexForRow(landmarks, centre);
     const activeStartVisible = landmarks[activeTurn]!.rowIndex >= first;
+    const latestPromptBelowViewport = last < landmarks.at(-1)!.rowIndex;
     const rail = railRef.current;
     const drawn = `${first}:${last}:${rowCount}:${rail?.dataset.indexed}:${rail?.dataset.turnCount}`;
     if (
@@ -135,9 +139,10 @@ export function useTranscriptTurnViewport({
     }
     setViewport((current) =>
       current.activeTurn === activeTurn &&
-      current.activeStartVisible === activeStartVisible
+      current.activeStartVisible === activeStartVisible &&
+      current.latestPromptBelowViewport === latestPromptBelowViewport
         ? current
-        : { activeTurn, activeStartVisible },
+        : { activeTurn, activeStartVisible, latestPromptBelowViewport },
     );
   };
   useEffect(() => {
@@ -175,7 +180,7 @@ export function useTranscriptTurnViewport({
 
 /** The previous/next turn a step from the reader's position lands on. */
 export function turnStepTarget(
-  viewport: TranscriptTurnViewport,
+  viewport: Pick<TranscriptTurnViewport, 'activeTurn' | 'activeStartVisible'>,
   direction: -1 | 1,
   turnCount: number,
 ): number | undefined {
@@ -208,9 +213,10 @@ interface TranscriptTurnRailProps {
   /**
    * Touch only: whether the steps are drawn. They float over the text, so
    * they show only while the reader has scrolled away from the latest
-   * message, the same moment Scroll to bottom appears.
+   * message.
    */
   readonly touchStepsShown?: boolean;
+  readonly touchNextStepShown?: boolean;
 }
 
 /**
@@ -260,6 +266,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
   onStep,
   touchControls,
   touchStepsShown = true,
+  touchNextStepShown = true,
 }: TranscriptTurnRailProps) {
   const hostRef = useRef<HTMLFieldSetElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -398,6 +405,8 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [preview, railRef]);
+  const canStepNext =
+    nextTurn !== undefined && (!touchControls || touchNextStepShown);
   const tabStop = focused ?? Math.min(activeTurn, landmarks.length - 1);
 
   // Keep the preview beside its tick but inside the rail's height.
@@ -528,8 +537,8 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
         className="transcript-turn-rail__step transcript-turn-rail__step--next"
         aria-label="Next turn"
         title="Next turn"
-        aria-disabled={nextTurn === undefined || undefined}
-        onClick={() => nextTurn !== undefined && onStep(nextTurn)}
+        aria-disabled={!canStepNext || undefined}
+        onClick={() => canStepNext && onStep(nextTurn)}
       >
         <ArrowDownGlyph />
       </button>

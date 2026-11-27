@@ -607,6 +607,7 @@ export function useChatInput({
         ambientContext?: string;
         /** Hold this as a follow-up even when the engine can steer. */
         queueOnBusy?: boolean;
+        requireSteer?: boolean;
         /** The host holds a queued follow-up's files (`followUpAttachments`). */
         queueFilesOnBusy?: boolean;
       },
@@ -725,6 +726,7 @@ export function useChatInput({
               }
             : {}),
           ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
+          ...(options?.requireSteer ? { requireSteer: true } : {}),
           ...(options?.queueOnBusy && options.queueFilesOnBusy
             ? { queueFilesOnBusy: true }
             : {}),
