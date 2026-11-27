@@ -1315,7 +1315,7 @@ function LiveConversationBody({
       return chatInput.handleSend(undefined, undefined, {
         ambientContext,
         ...(intent === 'steer'
-          ? {}
+          ? { requireSteer: true }
           : { queueOnBusy: true, queueFilesOnBusy: queueTakesFiles }),
       });
     },
@@ -1325,7 +1325,6 @@ function LiveConversationBody({
     activeSession.orchestrationDurability,
   );
   const nativeSteering = steerPlacement.state === 'native';
-  const followUpPreview = import.meta.env.DEV;
   const [queueToolbar, setQueueToolbar] = useState<HTMLDivElement | null>(null);
   const [queueEditTarget, setQueueEditTarget] = useState<HTMLDivElement | null>(
     null,
@@ -1336,9 +1335,7 @@ function LiveConversationBody({
     saving?: boolean;
   } | null>(null);
   const queueEdit =
-    followUpPreview && queueDraft?.sessionId === activeSession?.id
-      ? queueDraft
-      : null;
+    queueDraft?.sessionId === activeSession?.id ? queueDraft : null;
   const queueEditing = queueEdit !== null;
   const queueSessionId = activeSession?.id;
   useEffect(() => {
@@ -1368,6 +1365,8 @@ function LiveConversationBody({
       : 'Steering unavailable: the host did not report a durability profile.';
   const busyFollowUp =
     turnInFlight &&
+    !stagedAgentChange &&
+    activeSession.conversationActivity?.openTurn?.trigger !== 'provider' &&
     chatInput.attachments.length === 0 &&
     sessionAdapterSupportsSteering(activeSession.orchestrationDurability)
       ? 'steer'
@@ -2249,9 +2248,7 @@ function LiveConversationBody({
               fontSize: chatFontSize,
               layoutHeight: dockHeight,
               scrollControlsTarget,
-              pendingSteerRef: followUpPreview
-                ? setPendingSteerTarget
-                : undefined,
+              pendingSteerRef: setPendingSteerTarget,
               showReasoning,
               showToolDetails,
               renderOverride,
@@ -2392,26 +2389,24 @@ function LiveConversationBody({
             sessionId: activeSession.id,
             messages: activeSession.queuedMessages,
             metadata: activeSession.queuedMessageMetadata,
-            nextFirst: followUpPreview,
+            nextFirst: true,
             queueToolbar,
-            composerEdit: followUpPreview
-              ? {
-                  target: queueEditTarget,
-                  text: queueEdit?.text,
-                  start: (text: string) =>
-                    setQueueDraft({ sessionId: activeSession.id, text }),
-                  finish: () =>
-                    setQueueDraft((draft) =>
-                      draft?.sessionId === activeSession.id ? null : draft,
-                    ),
-                  setSaving: (saving: boolean) =>
-                    setQueueDraft((draft) =>
-                      draft?.sessionId === activeSession.id
-                        ? { ...draft, saving }
-                        : draft,
-                    ),
-                }
-              : undefined,
+            composerEdit: {
+              target: queueEditTarget,
+              text: queueEdit?.text,
+              start: (text: string) =>
+                setQueueDraft({ sessionId: activeSession.id, text }),
+              finish: () =>
+                setQueueDraft((draft) =>
+                  draft?.sessionId === activeSession.id ? null : draft,
+                ),
+              setSaving: (saving: boolean) =>
+                setQueueDraft((draft) =>
+                  draft?.sessionId === activeSession.id
+                    ? { ...draft, saving }
+                    : draft,
+                ),
+            },
             pendingSteerTarget,
             outbox: outboxRows,
             // The pill's fact when the server's turn record is here (it
@@ -2476,6 +2471,8 @@ function LiveConversationBody({
               ),
             steeringUnavailableReason,
             canSteer:
+              activeSession.conversationActivity?.openTurn?.trigger !==
+                'provider' &&
               Boolean(
                 isExecutionActive ||
                   activeSession.queuedMessageMetadata?.some(
@@ -3188,9 +3185,7 @@ function LiveConversationBody({
             }
             activityRef={setScrollControlsTarget}
             hasQuotedContext={chatInput.quotes.length > 0}
-            queueEditTargetRef={
-              followUpPreview ? setQueueEditTarget : undefined
-            }
+            queueEditTargetRef={setQueueEditTarget}
             draftText={queueEdit?.text ?? chatInput.quotedDraftText}
             quoteContext={chatInput.quotes}
             sessionId={activeSession.id}
@@ -3257,15 +3252,11 @@ function LiveConversationBody({
             busyFollowUp={busyFollowUp}
             busyQueueTakesFiles={queueTakesFiles}
             busySteeringUnavailableReason={steeringUnavailableReason}
-            queueToolbarRef={followUpPreview ? setQueueToolbar : undefined}
-            followUpPresentation={
-              followUpPreview
-                ? {
-                    effect: steerEffect,
-                    showEffect: !nativeSteering,
-                  }
-                : undefined
-            }
+            queueToolbarRef={setQueueToolbar}
+            followUpPresentation={{
+              effect: steerEffect,
+              showEffect: !nativeSteering,
+            }}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
             onQueueFollowUp={handleSendWithContext}
             stopPending={!!activeSession.stopPending}

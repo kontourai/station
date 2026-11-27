@@ -1857,12 +1857,15 @@ ids (`conversationOf`). The entry is a
 [`@kontourai/monument`](../../packages/monument/CONTEXT.md) inbox entry on
 `EventStore`'s connection: idempotent by `clientTurnId` with a digest of the
 sender and input, one `placing` at a time. An in-flight or unconfirmed
-entry takes precedence, then steers, then follow-ups. Queued entries preserve
-FIFO within each kind. Placement runs after a turn
+entry takes precedence, then steers, then follow-ups. Submission order is the
+default. The sender can swap adjacent waiting follow-ups, or edit the text
+in place while the observed text still matches. Placement runs after a turn
 or Session-state event on the conversation, after each submit, at startup,
 and on bounded re-checks (the schedule, then two-minute checks up to 30 while
 entries wait, reset when a new message is accepted, and after a drive that
-failed mid-placement). A follow-up is a start, never a steer. Before each start it re-checks
+failed mid-placement). An explicit promotion atomically withdraws a waiting
+follow-up and admits a steer to the observed open turn. Otherwise, placement
+starts the next turn. Before each start it re-checks
 the sender with the live continuation's rule (`mayContinue`) and the sending
 device's or personal access token's route scope (`deviceMaySendChat`, one
 by-id lookup in the pairing service, `credentialHoldsScope`, which for an

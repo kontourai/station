@@ -10,6 +10,7 @@ import {
 } from '@kontourai/station-sdk/client';
 import {
   type QueryClient,
+  skipToken,
   useMutation,
   useQuery,
   useQueryClient,
@@ -78,6 +79,12 @@ export function useConversationInbox(
   const client = useQueryClient();
   const enabled = Boolean(conversationId && scope?.isCurrent());
   const queryKey = inboxQueryKey(scope, conversationId, apiBase);
+  const controlsKey = [...queryKey, 'queue-controls'];
+  const queueControls = useQuery<{ supported: boolean; steerTarget?: string }>({
+    queryKey: controlsKey,
+    queryFn: skipToken,
+    gcTime: 0,
+  });
   const query = useQuery<ConversationInboxEntry[]>({
     queryKey,
     enabled,
@@ -112,6 +119,10 @@ export function useConversationInbox(
         requireCredential: scope.requiresEnrolledCredential !== false,
         signal,
         timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+        onQueueControls: (supported, steerTarget) => {
+          if (!signal.aborted && scope.isCurrent())
+            client.setQueryData(controlsKey, { supported, steerTarget });
+        },
         onHead: (head) => {
           if (!signal.aborted && scope.isCurrent())
             client.setQueryData([...queryKey, 'head'], head);
@@ -259,17 +270,23 @@ export function useConversationInbox(
       if (enabled && scope?.isCurrent())
         void query.refetch({ cancelRefetch: false });
     },
+    supportsQueueControls:
+      availability === 'available' && queueControls.data?.supported === true,
+    queueSteerTarget:
+      availability === 'available'
+        ? queueControls.data?.steerTarget
+        : undefined,
     updating: queueUpdate.isPending,
     updateError: queueUpdate.isError,
     updateQueue: async (
       action:
         | Exclude<ConversationQueueAction, { kind: 'promote' }>
-        | { kind: 'promote'; source: string; message: string },
+        | Omit<Extract<ConversationQueueAction, { kind: 'promote' }>, 'key'>,
     ) => {
       if (!scope?.isCurrent())
         throw new Error('The Station connection changed.');
-      const expectedHead = client.getQueryData<string>([...queryKey, 'head']);
-      if (action.kind === 'promote' && !expectedHead) return;
+      if (!queueControls.data?.supported)
+        throw new Error('Queue controls are unavailable on this Station.');
       return queueUpdate.mutateAsync({
         apiBase: apiBase!,
         scope,
@@ -283,7 +300,6 @@ export function useConversationInbox(
             : {
                 ...action,
                 key: crypto.randomUUID(),
-                expectedHead: expectedHead!,
               },
       });
     },

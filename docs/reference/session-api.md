@@ -782,6 +782,24 @@ HTTP409 `inbox_stale_head` and `currentHead`, without a write.
   notes older than seven days (`inboxSettledRetentionMs`). Steer replay fences
   remain until conversation deletion.
 
+When the inbox read includes `data.queueControls: true`, the same POST
+supports these actions on the caller's still-waiting follow-ups:
+
+- `{kind: 'edit', key, previous, message}` replaces the text if the previously
+  read text still matches. It preserves the key, attachments and position.
+- `{kind: 'move', key, neighbor, direction}` swaps two adjacent entries from
+  the same sender if the observed order still matches. Direction is `up` or
+  `down`.
+- `{kind: 'promote', key, source, message, expectedTurn}` uses a fresh UUID for
+  `key`, the waiting entry's key for `source`, and the inbox read's opaque
+  `data.queueSteerTarget` for `expectedTurn`. The target stays stable as the
+  turn streams. Station withdraws the source and admits an attachment-free
+  steer in the same transaction. A changed turn or unavailable steering leaves
+  the source queued.
+
+Edit and move return 200, while accepted promotion returns 202 with the steer
+entry. An entry already claimed for placement cannot be edited or moved.
+
 A handoff occurs at most once per durable claim. A crash between claim and
 acknowledgement leaves `unconfirmed`: the UI says **May have been sent** and
 never automatically replays it. **Review and resend** restores text into an

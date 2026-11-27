@@ -24,7 +24,10 @@ import {
   INBOX_IDLE_POLL_MS,
   useConversationInbox,
 } from '../hooks/useConversationInbox';
-import { useConversationInboxSnapshot } from '../hooks/useConversationInboxSnapshot';
+import {
+  inboxQueryKey,
+  useConversationInboxSnapshot,
+} from '../hooks/useConversationInboxSnapshot';
 import { shouldPersistQuery } from '../lib/queryPersistence';
 
 function expand() {
@@ -849,10 +852,14 @@ test('reads every 2s while anything is held, and slowly while nothing is', async
   const { client } = mount();
   await waitFor(() => expect(client.isFetching()).toBe(0));
   const interval = () => {
-    const query = client.getQueryCache().getAll()[0];
+    const query = client.getQueryCache().find({
+      queryKey: inboxQueryKey(authority.current, 'conversation'),
+      exact: true,
+    });
+    expect(query).toBeDefined();
     // The observer's options land on the query at runtime; QueryOptions'
     // type omits the observer-only `refetchInterval`.
-    const option = (query.options as { refetchInterval?: unknown })
+    const option = (query?.options as { refetchInterval?: unknown })
       .refetchInterval as (q: typeof query) => unknown;
     return option(query);
   };

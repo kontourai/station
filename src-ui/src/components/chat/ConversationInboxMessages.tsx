@@ -32,7 +32,7 @@ export function ConversationInboxMessages({
   const inbox = useConversationInbox(conversationId ?? '', {
     active: conversationActive,
   });
-  const entries = inbox.entries;
+  const { entries, queueSteerTarget } = inbox;
   const visible = useMemo(() => visibleInboxEntries(entries), [entries]);
   const displayEntries = useMemo(
     () =>
@@ -51,7 +51,7 @@ export function ConversationInboxMessages({
       void remove(key).catch(() => undefined);
     },
     onRetry: refresh,
-    ...(queue.nextFirst
+    ...(queue.nextFirst && inbox.supportsQueueControls
       ? {
           updating: inbox.updating,
           updateError: inbox.updateError,
@@ -62,11 +62,20 @@ export function ConversationInboxMessages({
               .updateQueue({ kind: 'move', key, neighbor, direction })
               .catch(() => undefined);
           },
-          onSteer: (source, message) => {
-            void inbox
-              .updateQueue({ kind: 'promote', source, message })
-              .catch(() => undefined);
-          },
+          ...(queueSteerTarget
+            ? {
+                onSteer: (source, message) => {
+                  void inbox
+                    .updateQueue({
+                      kind: 'promote',
+                      source,
+                      message,
+                      expectedTurn: queueSteerTarget,
+                    })
+                    .catch(() => undefined);
+                },
+              }
+            : {}),
         }
       : {}),
     ...(onResend

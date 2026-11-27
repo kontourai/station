@@ -55,6 +55,7 @@ import {
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import {
+  isProviderTriggeredTurn,
   TURN_DISPATCH_ORIGINS,
   type TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
@@ -1202,8 +1203,19 @@ export class ThreadInboxDelivery {
         event.invocationId === invocationId &&
         event.inputKind !== 'steer'
       )
-        return { threadId, turnId, openingSequence: sequence };
+        return isProviderTriggeredTurn(event)
+          ? undefined
+          : { threadId, turnId, openingSequence: sequence };
     }
+  }
+
+  currentSteerTarget(conversationId: string): string | undefined {
+    const inbox = this.inboxOf(conversationId);
+    const target = this.observeSteerTurn(this.ports.currentSessionId(inbox));
+    return (
+      target &&
+      JSON.stringify([target.threadId, target.turnId, target.openingSequence])
+    );
   }
 
   private ownsSteerTurn(
@@ -1526,28 +1538,38 @@ export class ThreadInboxDelivery {
     );
   }
 
-  promoteQueued(
-    input: ThreadInboxInput & { expectedHead: string },
+  async promoteQueued(
+    input: ThreadInboxInput & { expectedTurn: string },
     source: string,
-  ): ThreadInboxHeadSubmission {
+  ): Promise<ThreadInboxHeadSubmission | { outcome: 'steering-unavailable' }> {
     const inbox = this.inboxOf(input.conversationId);
     const record = this.ports.store.read(inbox, source);
     const payload = record && decodePayload(record.payload);
     if (
-      !record ||
-      record.kind !== 'follow-up' ||
+      record?.kind !== 'follow-up' ||
       record.state !== 'queued' ||
       record.placement !== null ||
       !payload ||
       payload.actor.userId !== input.payload.actor.userId ||
       payload.message !== input.payload.message ||
       payload.attachments?.length ||
+      payload.automaticBackground ||
       payload.serverAutomationIntentId
     )
       return { outcome: 'conflict' };
     if (this.refusalFor(inbox, payload, this.now()))
       return { outcome: 'not-permitted' };
-    return this.submitEntry(input, 'steer', source);
+    if (this.currentSteerTarget(inbox) !== input.expectedTurn)
+      return { outcome: 'stale-head', currentHead: this.currentHead(inbox) };
+    const fidelity = await this.ports.steerFidelity?.(
+      this.ports.currentSessionId(inbox),
+    );
+    if (!fidelity || fidelity === 'none' || fidelity === 'pending')
+      return { outcome: 'steering-unavailable' };
+    const expectedHead = this.currentHead(inbox);
+    if (this.currentSteerTarget(inbox) !== input.expectedTurn)
+      return { outcome: 'stale-head', currentHead: expectedHead };
+    return this.submitEntry({ ...input, expectedHead }, 'steer', source);
   }
 
   submitDisplay(

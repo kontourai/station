@@ -483,7 +483,10 @@ export function QueuedMessages({
       );
     const rowBusy = sendNowPending || pendingRows.has(row.id);
     const card = (
-      <div className="queued-message">
+      <div
+        className="queued-message"
+        data-queue-head={(nextFirst && orderNum === 1) || undefined}
+      >
         {nextFirst && editingIndex !== idx && (
           <QueueMove
             disabled={sendNowPending}

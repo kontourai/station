@@ -532,30 +532,52 @@ describe('thread inbox (#3568)', () => {
   });
 
   test('keeps the queued message on a stale steer and withdraws it on acceptance', async () => {
-    const world = boot(path());
-    await runningFirstTurn(world);
+    let fidelity: 'none' | 'native' = 'none';
+    const world = boot(path(), { steerFidelity: () => fidelity });
+    const turn = await runningFirstTurn(world);
     queueFollowUp(world, 'waiting');
     const input = {
       conversationId: THREAD,
       clientTurnId: 'promoted',
       payload,
-      expectedHead: world.inbox.currentHead(THREAD),
+      expectedTurn: world.inbox.currentSteerTarget(THREAD)!,
     };
     expect(
-      world.inbox.promoteQueued({ ...input, expectedHead: 'stale' }, 'waiting')
-        .outcome,
+      (
+        await world.inbox.promoteQueued(
+          { ...input, expectedTurn: 'stale' },
+          'waiting',
+        )
+      ).outcome,
     ).toBe('stale-head');
     expect(world.store.threadInboxStore().read(THREAD, 'waiting')?.state).toBe(
       'queued',
     );
-    expect(world.inbox.promoteQueued(input, 'waiting').outcome).toBe('queued');
+    expect((await world.inbox.promoteQueued(input, 'waiting')).outcome).toBe(
+      'steering-unavailable',
+    );
+    expect(world.store.threadInboxStore().read(THREAD, 'waiting')?.state).toBe(
+      'queued',
+    );
+    const earlierHead = world.inbox.currentHead(THREAD);
+    await emit(
+      world,
+      'content.text-delta',
+      { turnId: 'turn-1', delta: 'still working' },
+      turn,
+    );
+    expect(world.inbox.currentHead(THREAD)).not.toBe(earlierHead);
+    fidelity = 'native';
+    expect((await world.inbox.promoteQueued(input, 'waiting')).outcome).toBe(
+      'queued',
+    );
     expect(world.store.threadInboxStore().read(THREAD, 'waiting')?.state).toBe(
       'cancelled',
     );
     expect(world.store.threadInboxStore().read(THREAD, 'promoted')?.kind).toBe(
       'steer',
     );
-    expect(world.inbox.promoteQueued(input, 'waiting').outcome).toBe(
+    expect((await world.inbox.promoteQueued(input, 'waiting')).outcome).toBe(
       'conflict',
     );
   });

@@ -1343,7 +1343,7 @@ function MessageBubbleComponent({
               {hasTurnFooter && !isMobile ? turnFooterBar : null}
             </div>
           ) : null}
-          {import.meta.env.DEV && msg.role === 'user' && msg.steer && (
+          {msg.role === 'user' && msg.steer && (
             <span className="chat-steer-mark">Steer</span>
           )}
           <HostImagesContext.Provider value={settledHostImages(msg.hostImages)}>

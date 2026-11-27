@@ -508,7 +508,10 @@ export async function queueExecutionMessage(
 export async function listConversationInbox(
   apiBase: string,
   conversationId: string,
-  opts?: ClientRequestOptions & { onHead?: (head: string) => void },
+  opts?: ClientRequestOptions & {
+    onHead?: (head: string) => void;
+    onQueueControls?: (supported: boolean, steerTarget?: string) => void;
+  },
 ): Promise<ConversationInboxEntry[]> {
   const response = await getJson(
     `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`,
@@ -516,7 +519,12 @@ export async function listConversationInbox(
   );
   const result = (await readExecutionBody(response)) as {
     success?: boolean;
-    data?: { entries?: ConversationInboxEntry[]; currentHead?: unknown };
+    data?: {
+      entries?: ConversationInboxEntry[];
+      currentHead?: unknown;
+      queueControls?: unknown;
+      queueSteerTarget?: unknown;
+    };
     error?: string;
     code?: string;
   };
@@ -533,6 +541,13 @@ export async function listConversationInbox(
     result.data.currentHead.length <= 4096
   )
     opts?.onHead?.(result.data.currentHead);
+  const target = result.data.queueSteerTarget;
+  opts?.onQueueControls?.(
+    result.data.queueControls === true,
+    typeof target === 'string' && target.length > 0 && target.length <= 4096
+      ? target
+      : undefined,
+  );
   return result.data.entries;
 }
 
@@ -575,7 +590,7 @@ export type ConversationQueueAction =
       key: string;
       source: string;
       message: string;
-      expectedHead: string;
+      expectedTurn: string;
     };
 
 export async function updateConversationQueue(

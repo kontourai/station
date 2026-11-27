@@ -5767,12 +5767,14 @@ absent carriers remain unknown, including legacy metadata without a declaration.
 Display notes have a separate 50-note capacity
 and seven-day retention, pruned on submission. See [inbox kinds and crash outcomes](session-api.md#submit-steer-follow-up-or-display-input).
 
-The Station queue prototype uses `updateConversationQueue(apiBase,
+The queue uses `updateConversationQueue(apiBase,
 conversationId, action)` to edit or move queued follow-ups from the same
-sender or steer an attachment-free queued follow-up. An edit names the original
+sender or steer an attachment-free queued follow-up. The inbox read reports
+this capability to `listConversationInbox` callers through `onQueueControls`.
+An edit names the original
 message and replacement text and keeps the queue position. A move names the observed
 neighbor and direction. A steer names the source, a fresh UUID, the original
-message and the observed head. Station cancels the source and accepts the
+message and the running turn token from `onQueueControls`. Station cancels the source and accepts the
 steer in one transaction. If the queue or conversation has changed, refresh
 before acting again.
 
