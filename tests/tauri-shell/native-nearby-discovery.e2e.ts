@@ -5,9 +5,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -86,6 +86,19 @@ async function ipc(driver: DirectWebDriver, command: string, args = {}) {
   assert.equal(response.error, undefined);
   assert.ok(response.value);
   return response.value;
+}
+
+async function waitForElement(driver: DirectWebDriver, selector: string) {
+  let elementId: string | undefined;
+  await driver.waitUntil(
+    async () => {
+      elementId = await driver.findElement(selector);
+      return elementId !== undefined;
+    },
+    { timeout: 30_000, timeoutMsg: `Missing element: ${selector}` },
+  );
+  assert.ok(elementId);
+  return elementId;
 }
 
 async function clickButton(driver: DirectWebDriver, text: string) {
@@ -488,20 +501,20 @@ async function main() {
     );
     assert.ok(chooseStation);
     await driver.clickElement(chooseStation);
-    const manageStations = await driver.findElement(
+    const manageStations = await waitForElement(
+      driver,
       'button[aria-label="Manage Stations"]',
     );
-    assert.ok(manageStations);
     await driver.clickElement(manageStations);
-    const savedDetails = await driver.findElement(
+    const savedDetails = await waitForElement(
+      driver,
       `button[aria-label="View details for ${paired.name}"]`,
     );
-    assert.ok(savedDetails);
     await driver.clickElement(savedDetails);
-    const select = await driver.findElement(
+    const select = await waitForElement(
+      driver,
       `button[aria-label="Switch to ${paired.name}"]`,
     );
-    assert.ok(select);
     await driver.clickElement(select);
     await driver.navigateApp('/projects');
     await driver.waitUntil(
@@ -629,7 +642,7 @@ async function main() {
         !shellLaunched || processGroupSettled,
         'Do not remove a running WebView profile',
       );
-      rmSync(webviewRoot, {
+      await rm(webviewRoot, {
         recursive: true,
         force: true,
         maxRetries: 5,
