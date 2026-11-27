@@ -2546,10 +2546,10 @@ function ChatMessageListComponent({
     ],
   );
 
-  const scrollToBottomControl =
-    (isUserScrolledUp || readerHeld) && !scrollingToBottom ? (
-      <ScrollToBottomButton onClick={handleScrollToBottom} />
-    ) : null;
+  const canReturnToLatest = readerAway && !scrollingToBottom;
+  const scrollToBottomControl = canReturnToLatest ? (
+    <ScrollToBottomButton onClick={handleScrollToBottom} />
+  ) : null;
   const scrollControls = scrollToBottomControl;
 
   // A request Station reports settled that this view still lists: drop it
@@ -2863,7 +2863,7 @@ function ChatMessageListComponent({
                   nextTurn={nextTurn}
                   onStep={stepToTurn}
                   touchControls={touchTurnControls}
-                  touchStepsShown={isUserScrolledUp}
+                  touchStepsShown={canReturnToLatest}
                   conversationId={activeSession.conversationId!}
                   activeStartVisible={turnViewport.activeStartVisible}
                   onAnnounceStep={announceIndexedTurnStep}

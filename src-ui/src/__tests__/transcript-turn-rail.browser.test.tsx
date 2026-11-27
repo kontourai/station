@@ -248,7 +248,7 @@ test('Previous and Next turn step from the turn in view and keep focus', async (
   }
 });
 
-test('phone turn steps reserve no column and appear only once the reader scrolls away', async () => {
+test('phone turn steps appear at the top right only while reading away from the latest message', async () => {
   const { browser, page, errors } = await turnRailBrowserFixture(PHONE);
   try {
     await page.waitForSelector('.chat-messages');
@@ -290,6 +290,7 @@ test('phone turn steps reserve no column and appear only once the reader scrolls
     expect(box.width).toBeGreaterThanOrEqual(44);
     expect(box.height).toBeGreaterThanOrEqual(44);
     expect(box.x + box.width).toBeLessThanOrEqual(390);
+    const transcript = (await page.locator('.chat-messages').boundingBox())!;
     let shown = 0;
     for (const name of ['Previous turn', 'Next turn']) {
       const step = page.getByRole('button', { name });
@@ -301,12 +302,23 @@ test('phone turn steps reserve no column and appear only once the reader scrolls
       expect(rect.height).toBeGreaterThanOrEqual(44);
       expect(rect.x + rect.width).toBeLessThanOrEqual(390);
       expect(
+        transcript.x + transcript.width - rect.x - rect.width,
+      ).toBeLessThanOrEqual(24);
+      expect(rect.y).toBeGreaterThan(transcript.y);
+      expect(rect.y + rect.height).toBeLessThan(
+        transcript.y + transcript.height / 2,
+      );
+      expect(
         box.x + box.width <= rect.x ||
           rect.y + rect.height <= box.y ||
           box.y + box.height <= rect.y,
       ).toBe(true);
     }
     expect(shown).toBeGreaterThan(0);
+    await page.getByRole('button', { name: 'Scroll to bottom' }).click();
+    for (const name of ['Previous turn', 'Next turn']) {
+      await page.getByRole('button', { name }).waitFor({ state: 'hidden' });
+    }
     expect(errors).toEqual([]);
   } finally {
     await browser.close();

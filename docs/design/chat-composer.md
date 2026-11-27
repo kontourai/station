@@ -681,8 +681,8 @@ notice card such as "Couldn't check this chat", the pending list, a banner),
 a shorter transcript, a next-turn or composer notice, scheduled notes or
 Scroll to bottom keep the row in the composer, so the status never covers a
 card or its controls and a short dock spends no line on room for it. While the
-row is back in the composer the turn rail's steps come down, but the
-transcript keeps its end's room, so the reader leaving the end moves no row.
+row is back in the composer, the desktop turn rail's bottom step comes down.
+The transcript keeps its end's room, so the reader leaving the end moves no row.
 Scroll to bottom shows while the reader is scrolled up, and from the moment
 they open a row at the end that then grows past the view's end: that row stays
 where it is, and
@@ -1061,9 +1061,8 @@ without the directory retain the explicitly labelled loaded-window map.
 - **Previous turn / Next turn.** Previous and next controls sit at the top and bottom of the turn rail.
   They appear on hover or keyboard focus on desktop. On touch they keep 44px
   targets but reserve no gutter: they float stacked in the transcript's
-  bottom-right corner only while the reader has scrolled away from the latest
-  message (when **Scroll to bottom** appears), and a step with no turn to go
-  to is not drawn.
+  top-right corner while **Scroll to bottom** is available. Each arrow
+  appears only when it has a turn to go to.
   **Browse turns** remains in the conversation overflow. The browser pages indexed turn summaries independently
   of transcript bodies; selecting a turn loads older bounded history pages until
   its complete prompt/body window is available, then reveals it. Each request
