@@ -292,10 +292,11 @@ async function main() {
     const shell = fixture;
     const driver = fixture.driver;
     const bootstrapStarted = performance.now();
+    let sidecarReady = false;
     let navigated = false;
     await driver.waitUntil(
       async () => {
-        if (!navigated) {
+        if (!sidecarReady) {
           const status = await driver.executeAsyncSource<
             { value?: { phase: string }; error?: string },
             []
@@ -309,21 +310,26 @@ async function main() {
           console.log(
             `NEARBY_NATIVE_SIDECAR_READY ${JSON.stringify({ elapsedMs: performance.now() - bootstrapStarted })}`,
           );
+          sidecarReady = true;
+        }
+        const store = profiles(shell);
+        const configured = store.profiles.some(
+          (profile) =>
+            profile.name === 'local' &&
+            profile.configurationState === 'configured' &&
+            profile.credentialRef,
+        );
+        if (!configured) return false;
+        if (!navigated) {
+          console.log(
+            `NEARBY_NATIVE_LOCAL_CONFIGURED ${JSON.stringify({ elapsedMs: performance.now() - bootstrapStarted })}`,
+          );
           await driver.navigateApp('/connections/computers');
           navigated = true;
         }
-        const store = profiles(shell);
         return (
-          store.profiles.some(
-            (profile) =>
-              profile.name === 'local' &&
-              profile.configurationState === 'configured' &&
-              profile.credentialRef,
-          ) &&
-          (
-            await driver.execute(() => document.body?.textContent ?? '')
-          ).includes('Add computer')
-        );
+          await driver.execute(() => document.body?.textContent ?? '')
+        ).includes('Add computer');
       },
       {
         timeout: 90_000,
