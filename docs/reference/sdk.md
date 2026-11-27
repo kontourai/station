@@ -853,6 +853,10 @@ If the capability handshake cannot be read, the client refuses with
 Retry an uncertain resume with the same `resumeId` and inputs: the host answers
 the stored record with `replayed: true` and the Task as it is now. Resuming
 starts nothing; dispatch the Task separately.
+The root `dispatchTask({ taskId, dispatch?, apiBase?, requestScope? })` and
+`useDispatchTaskMutation` accept the captured request scope. A dispatch following
+resume confirmation passes the same scope as resume: a changed account or
+connection refuses dispatch rather than adopting the new ambient credential.
 
 ## Shared Project room
 
