@@ -9,9 +9,9 @@ import {
   useSessionInventoryLive,
 } from '../useSessionInventoryLive';
 
-const readModel = vi.hoisted(() => ({
-  sessions: undefined as readonly OrchestrationSessionSummary[] | undefined,
-}));
+const readModel = vi.hoisted<{
+  sessions: readonly OrchestrationSessionSummary[] | undefined;
+}>(() => ({ sessions: undefined }));
 // The Session read model is the hook's only remote input.
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: readModel.sessions }),
