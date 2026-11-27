@@ -497,7 +497,12 @@ test.each([
         const transcript = (await page
           .locator('.chat-messages')
           .boundingBox())!;
-        const latestPrompt = (await page.locator(userRow(1)).boundingBox())!;
+        const latestPrompt = (await page
+          .getByText(/^Turn 2: can you look at/)
+          .boundingBox())!;
+        expect(latestPrompt.y + latestPrompt.height).toBeGreaterThan(
+          transcript.y,
+        );
         expect(latestPrompt.y).toBeLessThan(transcript.y + transcript.height);
         for (const name of ['Next turn', 'Scroll to bottom']) {
           expect(await page.getByRole('button', { name }).isVisible()).toBe(
