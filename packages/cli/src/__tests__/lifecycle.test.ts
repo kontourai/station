@@ -765,7 +765,10 @@ function expectServiceGuidance(
       : 'sh';
   const result = realSpawnSync(
     shell,
-    ['-c', `${launcher}() { printf '%s\\0' "$@"; }; ${command}`],
+    [
+      '-c',
+      `station() { printf '%s\\0' "$@"; }; station${command?.slice(launcher.length)}`,
+    ],
     { encoding: 'utf8', windowsHide: true },
   );
   expect(result.error).toBeUndefined();
