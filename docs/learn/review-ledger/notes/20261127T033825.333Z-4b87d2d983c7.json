@@ -1,0 +1,7 @@
+{
+  "revision": "ae0e9f3e4a9d8c7dfcdeecf088b12bb92f70af6d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Bounded delta review of ae0e9f3e4a: the production-build provenance option now defaults to an empty string so TypeScript infers its optional string contract for existing callers. Missing, mismatched and empty provenance remain rejected by the same validator. The profiler runtime, captured workloads, fixture interception, owned cleanup and measured performance claims are unchanged. Existing profiler cases passed in the combined 31-test focused invocation; this is not a new timing qualification. Canonical testing guide and module-map profiler explanation remain accurate without prose changes.","inputs":["scripts/run-journey-profiles.mjs"]}
+  ]
+}
