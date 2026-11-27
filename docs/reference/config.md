@@ -412,6 +412,13 @@ The write side above has a matching self-read path — Station can answer "what 
 - **`read_logs`** MCP tool (station-control) — calls the same HTTP handler. Its caller binding determines redaction; the internal hop alone is insufficient. Its tool schema accepts integer limits 1–1000, while the HTTP route clamps an out-of-range value.
 - **Redaction on egress:** without bound owner authority (home-possession or owner-device standing), the reader applies `redactDeep` to secret-named fields and secret-pattern redaction to string leaves, including message and error text. Both filtering and output use this rendering. With bound owner authority, the reader uses the unredacted stored entry. This differs from stdout, where write-time redaction remains in place.
 
+On a personal Station, enable **Server log approvals in chat** under
+**Settings → Advanced → Feature previews** to approve a log query from its
+active conversation. The approval card shows the severity, time bounds, and
+maximum entries. Station checks the operator's authority when the operator
+answers, then returns redacted results for that query. The approval expires
+after one minute and applies to a single read.
+
 Agent log reads are denied by default, including calls made with the internal
 token and no verified caller. An operator may grant one verified **bound**
 session through `POST /api/agents/unattended-grants` as the owner in person (the

@@ -1,0 +1,17 @@
+{
+  "revision": "9d613d8ba7eee3f9db9824c9f2bc9df55e827132",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the new current-caller binding on GET diagnostics logs. The existing caller-assurance and route checks still apply before admission and are repeated before results leave the route.","inputs":["src-server/security/station-control-authority-guard.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the new current-caller binding on GET diagnostics logs. The existing caller-assurance and route checks still apply before admission and are repeated before results leave the route.","inputs":["src-server/security/station-control-authority-guard.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the new current-caller binding on GET diagnostics logs. The existing caller-assurance and route checks still apply before admission and are repeated before results leave the route.","inputs":["src-server/security/station-control-authority-guard.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the new current-caller binding on GET diagnostics logs. The existing caller-assurance and route checks still apply before admission and are repeated before results leave the route.","inputs":["src-server/security/station-control-authority-guard.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the new current-caller binding on GET diagnostics logs. The existing caller-assurance and route checks still apply before admission and are repeated before results leave the route.","inputs":["src-server/security/station-control-authority-guard.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the new current-caller binding on GET diagnostics logs. The existing caller-assurance and route checks still apply before admission and are repeated before results leave the route.","inputs":["src-server/security/station-control-authority-guard.ts"]}
+  ]
+}
