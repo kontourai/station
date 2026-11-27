@@ -84,10 +84,13 @@ describe('POST /api/tasks/:taskId/resume through the runtime composition', () =>
   afterEach(async () => {
     __resetStationControlMcpTokensForTests();
     for (const close of closers.splice(0)) await close();
+    vi.unstubAllEnvs();
   });
 
   async function setup() {
     const homeDir = makeTempDir('station-task-resume-');
+    vi.stubEnv('STATION_HOME', homeDir);
+    vi.stubEnv('STATION_ROOT', makeTempDir('station-task-resume-root-'));
     const workspace = makeTempDir('station-task-resume-ws-');
     const notifications = new NotificationService(
       new EventBus(),
