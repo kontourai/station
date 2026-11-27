@@ -6541,7 +6541,7 @@ function externalHistoryScreens(): Screen[] {
             ),
             await withRoute(
               page,
-              `**/api/orchestration/external-history/${id}/transcript?**`,
+              `**/api/orchestration/external-history/${id}/transcript**`,
               read({
                 messages: [
                   {
@@ -6576,11 +6576,16 @@ function externalHistoryScreens(): Screen[] {
             exact: true,
           });
           await expect(dock).toBeVisible();
-          if (!(await browse.isVisible())) {
-            await dock
-              .getByRole('button', { name: /^(Show )?Chats(?: [—·].*)?$/i })
-              .click();
-          }
+          const toggle = dock.getByRole('button', {
+            name: /^(Show )?Chats(?: [—·].*)?$/i,
+          });
+          await expect
+            .poll(
+              async () =>
+                (await browse.isVisible()) || (await toggle.isVisible()),
+            )
+            .toBe(true);
+          if (!(await browse.isVisible())) await toggle.click();
           await browse.click();
           await page
             .getByRole('button', { name: 'Third-party history', exact: true })
@@ -6598,11 +6603,7 @@ function externalHistoryScreens(): Screen[] {
         },
         cleanup: async () => {
           for (const cleanup of cleanups) await cleanup();
-          cleanups = [
-            await withRoute(page, '**/.well-known/station/v1', (route) =>
-              fulfillGalleryStationHandshake(route, true),
-            ),
-          ];
+          cleanups = [];
         },
       };
     }),
