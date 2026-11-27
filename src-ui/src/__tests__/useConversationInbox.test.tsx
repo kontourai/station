@@ -856,12 +856,13 @@ test('reads every 2s while anything is held, and slowly while nothing is', async
       queryKey: inboxQueryKey(authority.current, 'conversation'),
       exact: true,
     });
-    expect(query).toBeDefined();
-    // The observer's options land on the query at runtime; QueryOptions'
-    // type omits the observer-only `refetchInterval`.
-    const option = (query?.options as { refetchInterval?: unknown })
-      .refetchInterval as (q: typeof query) => unknown;
-    return option(query);
+    if (!query) throw new Error('The conversation inbox query did not mount.');
+    // QueryOptions omits the observer-only refetchInterval.
+    const interval = (query.options as { refetchInterval?: unknown })
+      .refetchInterval;
+    if (typeof interval !== 'function')
+      throw new Error('The conversation inbox did not configure polling.');
+    return interval(query);
   };
   expect(interval()).toBe(INBOX_IDLE_POLL_MS);
   answer = [entry('queued', 'own')];
