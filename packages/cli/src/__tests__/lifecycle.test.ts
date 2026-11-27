@@ -75,6 +75,10 @@ import {
   reapLongRunningFixtureChild,
   spawnLongRunningFixtureChild,
 } from './helpers/longrunning-fixture-child.js';
+import {
+  formatTaskSettings,
+  schtasksDefaultSettings,
+} from './helpers/windows-task-settings-fixture.js';
 
 type LifecycleModule = typeof import('../commands/lifecycle.js');
 type PlatformModule = typeof import('../commands/platform.js');
@@ -692,7 +696,11 @@ function staleSchedulingSpawnSync(unitPath: string): Mock {
       return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
     }
     if (process.platform === 'win32') {
-      return { status: 0, stderr: '', stdout: '7\n' };
+      return {
+        status: 0,
+        stderr: '',
+        stdout: `${formatTaskSettings(schtasksDefaultSettings())}\n`,
+      };
     }
     return {
       status: 0,
@@ -5431,7 +5439,7 @@ describe('upgrade', () => {
     ensureDir(TEST_CWD);
     ensureDir(join(TEST_CWD, '.git'));
     writeOwnedDependencyLifecycle(TEST_CWD);
-    const channelHome = join(TEST_ROOT, 'beta-home');
+    const channelHome = join(TEST_ROOT, 'beta home');
     const unitPath = writeStaleServiceManifest(channelHome, 'beta-upgrade');
     const execSync = vi.fn(
       (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
@@ -5480,7 +5488,7 @@ describe('upgrade', () => {
         ),
       ).toMatchObject({ sha: '0123456789abcdef0123456789abcdef01234567' });
       expect(log.mock.calls.flat().join('\n')).toContain(
-        `station service install --instance=beta-upgrade --base=${channelHome} --port=3141 --ui-port=3000 --host=127.0.0.1`,
+        `station service install --instance=beta-upgrade --base='${channelHome}' --port=3141 --ui-port=3000 --host=127.0.0.1`,
       );
     } finally {
       log.mockRestore();
@@ -5531,11 +5539,9 @@ describe('upgrade', () => {
     ensureDir(TEST_CWD);
     ensureDir(join(TEST_CWD, '.git'));
     writeOwnedDependencyLifecycle(TEST_CWD);
-    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
-    const unitPath = writeStaleServiceManifest(
-      TEST_DEFAULT_HOME,
-      'service-unknown',
-    );
+    const serviceHome = join(TEST_ROOT, 'unknown service home');
+    vi.stubEnv('STATION_HOME', serviceHome);
+    const unitPath = writeStaleServiceManifest(serviceHome, 'service-unknown');
     const fallback = staleSchedulingSpawnSync(unitPath);
     const spawnSync = vi.fn((command: string, args: string[]) =>
       command === 'launchctl' ||
@@ -5549,7 +5555,7 @@ describe('upgrade', () => {
       childProcessMock: { execSync, spawnSync },
     });
 
-    const refusal = lifecycle.upgrade().then(
+    const refusal = lifecycle.upgrade({ baseDir: serviceHome }).then(
       () => null,
       (error: Error) => error.message,
     );
@@ -5560,13 +5566,13 @@ describe('upgrade', () => {
     // Actionable (review M2): the manifest file, the status command for this
     // unit, the uninstall that clears a gone unit, and the override flag.
     expect(message).toContain(
-      `manifest: ${join(TEST_DEFAULT_HOME, 'service', 'service-unknown.json')}`,
+      `manifest: ${join(serviceHome, 'service', 'service-unknown.json')}`,
     );
     expect(message).toContain(
-      `"station service status --instance=service-unknown --base=${TEST_DEFAULT_HOME}"`,
+      `"station service status --instance=service-unknown --base='${serviceHome}'"`,
     );
     expect(message).toContain(
-      `"station service uninstall --instance=service-unknown --base=${TEST_DEFAULT_HOME}"`,
+      `"station service uninstall --instance=service-unknown --base='${serviceHome}'"`,
     );
     expect(message).toContain('--ignore-service-state');
     expect(execSync).not.toHaveBeenCalled();
@@ -5988,11 +5994,9 @@ describe('upgrade', () => {
     ensureDir(TEST_CWD);
     ensureDir(join(TEST_CWD, '.git'));
     writeOwnedDependencyLifecycle(TEST_CWD);
-    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
-    const unitPath = writeStaleServiceManifest(
-      TEST_DEFAULT_HOME,
-      'source-guidance',
-    );
+    const serviceHome = join(TEST_ROOT, 'stale service home');
+    vi.stubEnv('STATION_HOME', serviceHome);
+    const unitPath = writeStaleServiceManifest(serviceHome, 'source-guidance');
     const execSync = vi.fn(
       (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
         if (command === 'npm run build:server') {
@@ -6026,13 +6030,13 @@ describe('upgrade', () => {
     });
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
-      await lifecycle.upgrade();
+      await lifecycle.upgrade({ baseDir: serviceHome });
 
       expect(log.mock.calls.flat().join('\n')).toContain(
         'Service scheduling is stale for source-guidance',
       );
       expect(log.mock.calls.flat().join('\n')).toContain(
-        `station service install --instance=source-guidance --base=${TEST_DEFAULT_HOME} --port=3141 --ui-port=3000 --host=127.0.0.1`,
+        `station service install --instance=source-guidance --base='${serviceHome}' --port=3141 --ui-port=3000 --host=127.0.0.1`,
       );
     } finally {
       log.mockRestore();
