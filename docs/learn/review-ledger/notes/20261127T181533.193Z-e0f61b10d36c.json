@@ -1,0 +1,11 @@
+{
+  "revision": "466da845d026b70086ccbe5c2febf9467aef9650",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked inbox reads, polling and queued-message promotion; promotion now generates the same correlation key on HTTP Station origins. Public queue behavior and target binding are unchanged.","inputs":["src-ui/src/hooks/useConversationInbox.ts"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Checked inbox reads, polling and queued-message promotion; promotion now generates the same correlation key on HTTP Station origins. Public queue behavior and target binding are unchanged.","inputs":["src-ui/src/hooks/useConversationInbox.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked inbox reads, polling and queued-message promotion; promotion now generates the same correlation key on HTTP Station origins. Public queue behavior and target binding are unchanged.","inputs":["src-ui/src/hooks/useConversationInbox.ts"]}
+  ]
+}

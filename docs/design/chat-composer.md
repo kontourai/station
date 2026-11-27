@@ -1315,23 +1315,21 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 ### Turn activity and follow-up delivery
 
-On desktop, Send remains available beside a separate Stop action during a turn.
-During a turn the mode picker is the trailing segment of Send, one split
-control that takes Send's accent while Send is ready. With no turn, Send alone
-sits at the row's trailing edge. On mobile, Send is an arrow and its mode
-picker a chevron. They appear once the
-composer holds text, an attachment or quoted context. Until then they take no
-room, so Agent & model keeps the width an empty draft has no use for. On mobile,
-Stop follows them at the row's trailing edge, so it does not move when they
-appear; Agent & model narrows instead. At 390px a running turn's full row (Clear,
-Send, mode picker and Stop) still wraps to a second line once the draft holds
-text. Names and the selected mode remain accessible, and the opened picker
-uses explicit Queue and Steer labels. Stop stays visible throughout the turn.
-On every screen the mode picker appears only once the composer holds
-something to send, so an empty composer gives it no room.
-The mode picker defaults to **Queue** for every engine. Station holds a
-follow-up for the next turn when the current one is still running. A chosen
-mode holds until the conversation changes. Claude Code, Codex, Muse on `muse serve` and the GitHub Copilot (SDK)
+During a running turn, the trailing segment of Send toggles between amber
+**Queue** and green **Steer**. The Send button changes icon and color with the
+mode. Queue is the default and the selection lasts for that conversation
+while the composer is mounted. Stop remains with the Working status when that
+status is visible.
+
+The Queue count opens the list from the composer toolbar. Move changes the
+order of waiting messages. Tap a message to edit its full text in the
+composer. Save preserves its position, and Cancel restores the previous draft.
+Each preview shows up to four lines. Swipe left or open More to reveal
+cancellation behind the row. For an eligible text message, Steer is the
+rightmost action and sends its text into the current turn. Older connected
+Stations may support only cancelling a Station-held message.
+
+Claude Code, Codex, Muse on `muse serve` and the GitHub Copilot (SDK)
 preview engine have additive steering. A Muse Session on `muse exec` reports no
 steering in its Session summary and refuses a steer.
 ACP sessions report their live handshake's native channel, or an interrupting
@@ -1341,9 +1339,12 @@ additional instruction. It does not claim additive native steering.
 After a device's full access is revoked, a turn that started unconfined cannot
 take new steering input. The next turn runs confined (#2898).
 
+An admitted steer can reach the current turn ahead of queued follow-ups. An in-flight or unconfirmed inbox placement still takes precedence. Follow-ups retain their order, and only they receive queue positions.
+
 Station-owned steering waits durably for the next post-tool boundary in the
-turn Station accepted. If the turn ends first, the pending row explains why
-Steer was refused. Its wording says **Steer when safe**.
+turn Station accepted. A pending steer appears in an outlined message bubble,
+then fills when delivery is acknowledged. A steer whose turn ended before
+handoff can be restored to the composer.
 Claude, Codex and the GitHub Copilot (SDK) preview engine retain engine-defined native placement. The composer reads the
 current adapter declaration sent by session snapshots and conversation-open
 responses. A missing declaration is unknown; the client does not infer it from
@@ -1354,49 +1355,36 @@ nor Retry-steering is offered. Follow-up Retry remains available. A durable
 steer already queued waits while Session materialization has not registered an
 adapter. A registered adapter without a declaration, or a declared placement of
 `none`, refuses it with `unsupported-engine` before any handoff.
-ACP's cancel-and-reprompt extension does not become an additive
-native composer action. Profile observations are not persisted in browser session
-state. After post-tool injection the entry remains claimed until model dispatch,
-memory storage and the canonical steer event have been acknowledged. A request
-error or the turn ending first surfaces **May have been sent** immediately;
-reviewing and dismissing it releases following input without a restart. Its
-position stays after the triggering tool result and before later model replies,
-rather than moving to the newest position on every step.
+ACP's cancel-and-reprompt extension is an interrupting steer. The delivered
+message records that Station stopped the running step. Profile observations are
+not persisted in browser session state. After post-tool injection the entry
+remains claimed until model dispatch, memory storage and the canonical steer
+event have been acknowledged. It stays after the triggering tool result and
+before later model replies.
 
 Named-conversation steers first save text, the observed `expectedHead` and an
 authority-scoped key in IndexedDB, then submit to the server inbox. Missing
 conversation identity or an unobserved offline head keeps the draft. The server
 persists the text, head and turn's opening event before claiming a handoff.
-A restart before the claim can still deliver to the same open turn. After
-acknowledgement, Station retains the receipt for retries. A claim without an
-acknowledgement shows **May have been sent**. Engine receipts can settle it.
-**Review and resend** restores text into an empty composer and requires a new
-explicit Send. Station retains the old key after dismissal.
+A restart before the claim can still deliver to the same open turn. A claim
+without an acknowledgement shows **Unconfirmed**. Station rechecks the
+original receipt without sending the text again. Reviewing a resend restores
+text to the composer for a new explicit Send. Station retains the old key
+after dismissal.
 
-Follow-ups Station holds in the open conversation's server inbox share the
-pending-message list with this browser's outbox and retained legacy input
-([wrapper](../../src-ui/src/components/chat/ConversationInboxMessages.tsx)).
-It reads the existing [inbox API](../reference/session-api.md#let-station-hold-a-follow-up)
-for that conversation and verified Station identity, including messages submitted
-by another client. Held rows read **Held by Station** and sit at the bottom of
-the list, in the server's send order. A message both queued locally and held by
-Station (the same `clientTurnId`) appears once, as the held row. The count is
-every row the list shows, whatever its state (waiting, sending, unknown or
-refused delivery), and the chat's context card shows the same count from the
-same rule ([pendingMessages](../../src-ui/src/components/chat/pendingMessages.ts)). While neither holds anything the
-list renders nothing. Reads are silent: polling (every 2s while the
-conversation is working or holds messages, every 15s otherwise), turn-fact
-invalidation and focus/reconnect change the list only when the answer changes.
-A failed read is retried twice, 400ms apart, while the last rows stay shown;
-401, 403 and 404 are final and not retried. Only when every attempt fails do
-held rows give way to a **Couldn't load inbox entries** line and its **Retry**,
-never a zero count.
-**Remove** or **Dismiss** uses the original message key and the server's
-authorization and placement checks; rows without a permitted key are
-read-only. Held rows offer no local edit, reorder, send-now or steer action; an
-owned unconfirmed steer offers **Review and resend**. When a steer misses its
-target turn, **Restore to draft** is available to its sender. The sender can
-then edit the text and choose when to send it.
+The Queue list combines server-held follow-ups with this browser's outbox and
+retained local messages. A matching server-held copy replaces the local row.
+Waiting rows appear in send order with the next item highlighted. Pending
+steers appear in the transcript. Reads are silent: polling, turn-fact
+invalidation and focus or reconnect update the list. If the inbox cannot be
+read, the list offers Retry.
+
+Server-held actions use the original message identity and Station's placement
+and authority checks. The sender can edit a waiting message, swap it with an
+adjacent message they own, or steer an eligible text message. Promotion uses
+the observed turn identity so streaming does not invalidate the selection.
+When the selected turn has already ended, the waiting message stays queued.
+
 A busy-composer Queue submission requests inbox admission. Eligible submissions
 may be held; Station may instead return a started-turn receipt if the turn has
 ended or the request takes the live path. Apply a pending approval choice before

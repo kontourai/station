@@ -314,9 +314,9 @@ Sending a message to an ACP-connected agent is identical, from the UI's perspect
 3. A later turn uses the bound continuation endpoint. The `acp` adapter forwards it to the runtime via `connection.prompt()`.
 4. The runtime's ACP session-update and extension notifications are translated by the adapter into [Canonical runtime events](../glossary.md) and streamed back over `GET /api/orchestration/events` (SSE), exactly like any other provider.
 
-The chat composer reads the live session's steering declaration. A confirmed
-native channel defaults to Steer; cancel-and-reprompt defaults to Queue. You
-can select Steer on the fallback too: Station cancels the active prompt, waits
+The chat composer reads the live session's steering declaration and defaults
+to Queue. Switch to Steer for a native channel or a declared interrupting
+fallback. On the fallback, Station cancels the active prompt, waits
 up to ten seconds for its terminal answer, then sends the additional instruction
 with a short continuation instruction on the same session and Station turn.
 The continuation keeps the current task unless your instruction changes it.

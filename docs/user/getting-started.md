@@ -1114,16 +1114,18 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. **Send** defaults to **Queue**. Station holds the
-message and delivers it after the turn finishes. The message appears in the
-pending list as soon as Station accepts it. The dropdown switches between the
-available modes. For an ACP engine without native steering, choosing **Steer**
-stops its current step and continues the task with your instruction once cancellation
-finishes. Station-owned steering waits for the next safe boundary. A Muse chat
-on `muse exec` supports Queue only. Each pending row shows its mode.
-For a locally queued message, **Send now** stops the active turn and sends the
-selected message after Station confirms the stop. Messages held by Station can
-be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
+Keep typing during a turn. The amber **Queue** button holds your message until
+the turn finishes. Use the chevron to switch to the green **Steer** button
+when the engine supports it. A Station-managed turn takes the steer at its
+next safe boundary. An ACP engine with interrupting steering stops the running
+step before continuing with your instruction. A steer appears with an outline
+while waiting for acknowledgement.
+
+Open the Queue count to review waiting messages. Use the grip to move a
+message, tap its text to edit it, or swipe left to reveal the trash icon. The
+More button reveals the same action. On a supported running turn, the green
+arrow on a queued text message steers with that message. **Stop** remains
+separate.
 You can attach files or dictate during a turn. In the parent chat, Steer carries text only, so a
 message with files is queued: Station keeps the files with it and sends them
 when the turn ends, and the pending row names them. On a Station that cannot

@@ -13,13 +13,16 @@ import type {
 import type { InboxEntryRecord, InboxEntryState } from '../records.js';
 
 /**
- * The inbox rule (station#3568). One inbox is one FIFO queue of entries the
- * host places one at a time, each at a turn boundary of the host's choosing.
+ * One inbox has ordered follow-ups and turn-bound steers. The host places
+ * one entry at a time.
  *
  * - A submission is idempotent by key: the same digest answers the stored
  *   entry, a different digest is a conflict. A refused or never-placed
- *   cancelled entry can be queued again; dismissing an unknown effect cannot.
- * - The head is the oldest unsettled entry. A `placing` head is in flight and
+ *   cancelled entry can be queued again unless the host retired the key
+ *   while replacing the input. Dismissing an unknown effect cannot requeue it.
+ * - Queued steers take precedence over queued follow-ups, with FIFO within
+ *   each kind. Existing placements and unknown effects take precedence over
+ *   both. A `placing` head is in flight and
  *   is never claimed afresh; the host re-drives it under the same key. An
  *   `unconfirmed` head may have had its effect: it blocks the inbox until the
  *   host cancels it, so nothing written after it overtakes an effect nobody
@@ -27,6 +30,15 @@ import type { InboxEntryRecord, InboxEntryState } from '../records.js';
  * - The placement is recorded in the same transaction as the move to
  *   `placing`, before the host's effect.
  */
+
+export const RETIRED_INBOX_INPUT_OUTCOME =
+  '{"reasonCode":"inbox_input_retired"}';
+
+export function inboxInputIsRetired(entry: InboxEntryRecord): boolean {
+  return (
+    entry.state === 'cancelled' && entry.outcome === RETIRED_INBOX_INPUT_OUTCOME
+  );
+}
 
 /** Entries that still hold a place in the queue. */
 const UNSETTLED: ReadonlySet<InboxEntryState> = new Set([
@@ -39,17 +51,26 @@ function inboxEntryIsUnsettled(entry: InboxEntryRecord): boolean {
   return UNSETTLED.has(entry.state);
 }
 
-/** The head: the unsettled entry with the lowest sequence. */
+function placementPriority(entry: InboxEntryRecord): number {
+  if (entry.state === 'placing') return 0;
+  if (entry.state === 'unconfirmed') return 1;
+  return entry.kind === 'steer' ? 2 : 3;
+}
+
 export function inboxHead(
   entries: readonly InboxEntryRecord[],
 ): InboxEntryRecord | undefined {
   let head: InboxEntryRecord | undefined;
-  for (const entry of entries)
+  for (const entry of entries) {
+    if (!inboxEntryIsUnsettled(entry)) continue;
+    const priority = placementPriority(entry);
     if (
-      inboxEntryIsUnsettled(entry) &&
-      (!head || entry.sequence < head.sequence)
+      !head ||
+      priority < placementPriority(head) ||
+      (priority === placementPriority(head) && entry.sequence < head.sequence)
     )
       head = entry;
+  }
   return head;
 }
 
@@ -71,7 +92,9 @@ export function decideInboxSubmit(
   const { existing } = inputs;
   if (
     existing &&
-    (existing.digest !== command.digest || existing.kind !== command.kind)
+    (inboxInputIsRetired(existing) ||
+      existing.digest !== command.digest ||
+      existing.kind !== command.kind)
   )
     return { result: { kind: 'conflict' } };
   const requeue =
@@ -196,6 +219,12 @@ export function decideInboxCancel(
       const entry: InboxEntryRecord = {
         ...existing,
         state: 'cancelled',
+        outcome:
+          command.retireKey &&
+          existing.state === 'queued' &&
+          existing.placement === null
+            ? RETIRED_INBOX_INPUT_OUTCOME
+            : existing.outcome,
         updatedAt: command.now,
       };
       return { put: entry, result: { kind: 'cancelled', entry } };
