@@ -207,6 +207,22 @@ handoff. A private LAN peer does not become a local operator: internal lifecycle
 credentials still require a loopback socket. If either bind fails, startup
 fails rather than falling back to a wildcard listener.
 
+When a launcher supplies a readiness file, the UI also requires a private
+snapshot declaring the expected SHA ready before authenticating the backend's
+boot identity. POSIX files must belong to the current user with no group or
+other permissions. On Windows, synthetic mode bits are not ACL evidence: a
+bounded [asynchronous verifier](../../packages/cli/src/commands/windows-readiness-reader.ts)
+checks the [shared current-user-only DACL policy](../../packages/shared/src/windows-path-trust.ts)
+on the same open handle used to read the snapshot, rejects reparse paths, and
+compares the final path's file identity. It checks each new observation rather
+than caching an ACL verdict by `ctime` or `mtime`. Concurrent requests share
+the next pending observation, not an earlier result. The verifier is owned by
+the UI listener and closed with it; startup warms it before binding so a cold
+PowerShell launch does not consume the HTTP identity budget. Failed or timed-out
+file verification leaves the original file unchanged and reports unavailable;
+a connected backend that misses its identity deadline remains degraded, not
+ready. A private file alone never substitutes for the authenticated matching boot.
+
 ### Handing a running instance to the operator
 
 Starting the app is not the whole handoff. The UI signs in through a

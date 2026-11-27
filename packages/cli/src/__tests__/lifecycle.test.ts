@@ -55,6 +55,10 @@ import {
   STATION_HOME_SCHEMA_FILE,
   STATION_HOME_SCHEMA_VERSION,
 } from '@kontourai/station-shared/station-home-schema';
+import {
+  hardenWindowsPathsTrusted,
+  runWindowsTrustCommand,
+} from '@kontourai/station-shared/windows-path-trust';
 import { buildSync } from 'esbuild';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
@@ -6482,6 +6486,11 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     const crypto = await import('node:crypto');
     const path = await import('node:path');
     const lifecycle = await import('../commands/lifecycle.js');
+    if (opts?.readinessFile && existsSync(opts.readinessFile)) {
+      hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+        { kind: 'file', path: opts.readinessFile },
+      ]);
+    }
     const handler = lifecycle.uiRequestHandler({
       http,
       crypto,
@@ -6509,6 +6518,8 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
       hostedTenantAuthorities: opts?.hostedTenantAuthorities,
     });
     const server = http.createServer(handler);
+    server.once('close', handler.close);
+    await handler.ready;
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     const addr = server.address();
     const port = typeof addr === 'object' && addr ? addr.port : 0;
@@ -8051,6 +8062,107 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
 // generated script) rather than relying on Vitest to produce it — the
 // `globalThis.__name` shim in `buildUiServerScript` is what's asserted, not
 // this test's own transform.
+describe('Windows readiness verifier lifecycle', () => {
+  it('coalesces waiting readers into a fresh next observation and closes the worker', async () => {
+    const { createWindowsReadinessReader } = await import(
+      '../commands/windows-readiness-reader.js'
+    );
+    const childProcess =
+      await vi.importActual<typeof import('node:child_process')>(
+        'node:child_process',
+      );
+    const trust = await import('@kontourai/station-shared/windows-path-trust');
+    const program = `
+      require('node:readline').createInterface({input:process.stdin}).on('line', sequence => {
+        setTimeout(()=>process.stdout.write(JSON.stringify({sequence,trusted:true,content:JSON.stringify({pid:process.pid,sequence})})+'\\n'),50);
+      });
+    `;
+    const reader = createWindowsReadinessReader({
+      spawn: childProcess.spawn,
+      command: process.execPath,
+      args: ['-e', program],
+      taskkill: trust.windowsSystemUtilityPath('taskkill'),
+      timeoutMs: 5_000,
+    });
+    let workerPid: number | undefined;
+    try {
+      const first = reader.read();
+      const second = reader.read();
+      const third = reader.read();
+      expect(third).toBe(second);
+      const observations = (await Promise.all([first, second, third])).map(
+        (content) => JSON.parse(content!),
+      );
+      workerPid = observations[0].pid;
+      expect(observations.map((observation) => observation.sequence)).toEqual([
+        '1',
+        '2',
+        '2',
+      ]);
+      expect(observations.map((observation) => observation.pid)).toEqual([
+        workerPid,
+        workerPid,
+        workerPid,
+      ]);
+      expect(JSON.parse((await reader.read())!).sequence).toBe('3');
+    } finally {
+      reader.close();
+    }
+    expect(workerPid).toBeTypeOf('number');
+    await vi.waitFor(
+      () => expect(() => process.kill(workerPid!, 0)).toThrow(),
+      { timeout: 10_000 },
+    );
+    await expect(reader.read()).resolves.toBeNull();
+  });
+
+  it.each(['stalled', 'wrong-sequence', 'oversized'])(
+    'fails closed and reaps a %s worker',
+    async (failure) => {
+      const { createWindowsReadinessReader } = await import(
+        '../commands/windows-readiness-reader.js'
+      );
+      const childProcess =
+        await vi.importActual<typeof import('node:child_process')>(
+          'node:child_process',
+        );
+      const trust = await import(
+        '@kontourai/station-shared/windows-path-trust'
+      );
+      const launch = vi.fn(childProcess.spawn);
+      const program = `
+      process.stdin.on('data',()=>{
+        if(${JSON.stringify(failure)}==='wrong-sequence') process.stdout.write(JSON.stringify({sequence:'9',trusted:true,content:'ready'})+'\\n');
+        if(${JSON.stringify(failure)}==='oversized') process.stdout.write('x'.repeat(1048577));
+      });
+    `;
+      const reader = createWindowsReadinessReader({
+        spawn: launch,
+        command: process.execPath,
+        args: ['-e', program],
+        taskkill: trust.windowsSystemUtilityPath('taskkill'),
+        timeoutMs: 1_000,
+      });
+      try {
+        const first = reader.read();
+        const queued = reader.read();
+        await expect(first).resolves.toBeNull();
+        await expect(queued).resolves.toBeNull();
+        const child = launch.mock.results[0]!.value;
+        await vi.waitFor(
+          () =>
+            expect(child.exitCode !== null || child.signalCode !== null).toBe(
+              true,
+            ),
+          { timeout: 10_000 },
+        );
+      } finally {
+        reader.close();
+      }
+    },
+  );
+});
+
 describe('buildUiServerScript output runs as a real standalone node process (code-review M2)', () => {
   const makeUiDir = trackTempDirs();
 
@@ -8221,6 +8333,157 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
         status: 'degraded',
       });
       expect(server.stderr()).toBe('');
+    } finally {
+      await reapLongRunningFixtureChild(server.child);
+      upstream.closeAllConnections();
+      await new Promise<void>((resolve) => upstream.close(() => resolve()));
+    }
+  }, 15_000);
+
+  it('admits a private readiness snapshot but refuses a later permissive ACL and a foreign boot in the generated listener', async () => {
+    const lifecycle = await import('../commands/lifecycle.js');
+    const trust = await import('@kontourai/station-shared/windows-path-trust');
+    const uiDir = makeUiDir('station-ui-private-readiness-');
+    writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
+    const readinessFile = join(uiDir, 'state.json');
+    const identity = {
+      instanceId: 'private-ready',
+      bootId: '11111111-1111-4111-8111-111111111111',
+      sha: 'a'.repeat(40),
+    };
+    writeFileSync(
+      readinessFile,
+      JSON.stringify({ health: { status: 'ready', sha: identity.sha } }),
+      { mode: 0o600 },
+    );
+    trust.hardenWindowsPathsTrusted(trust.runWindowsTrustCommand, [
+      { kind: 'file', path: readinessFile },
+    ]);
+    const original = readFileSync(readinessFile);
+    let backendIdentity = identity;
+    const observedCredentials: string[] = [];
+    const upstream = createHttpServer((request, response) => {
+      observedCredentials.push(
+        String(request.headers['x-station-internal-token']),
+      );
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify(backendIdentity));
+    });
+    await new Promise<void>((resolve) =>
+      upstream.listen(0, '127.0.0.1', resolve),
+    );
+    const address = upstream.address();
+    if (!address || typeof address === 'string')
+      throw new Error('backend did not listen');
+    const server = spawnUiScript(
+      lifecycle.buildUiServerScript({
+        uiDir,
+        upstreamPort: address.port,
+        uiPort: 0,
+        host: '127.0.0.1',
+        readinessFile,
+        identity,
+      }),
+    );
+    try {
+      const uiPort = await server.listening;
+      const readiness = () =>
+        fetch(`http://127.0.0.1:${uiPort}/api/system/readiness`);
+      const ready = await readiness();
+      expect(ready.status).toBe(200);
+      await expect(ready.json()).resolves.toEqual({
+        ready: true,
+        status: 'ready',
+      });
+      expect(observedCredentials).toEqual(['test-only-internal-api-token']);
+      backendIdentity = {
+        ...identity,
+        bootId: '22222222-2222-4222-8222-222222222222',
+      };
+      expect((await readiness()).status).toBe(503);
+      backendIdentity = identity;
+      const replacement = join(uiDir, 'next-state.json');
+      writeFileSync(replacement, original, { mode: 0o600 });
+      trust.hardenWindowsPathsTrusted(trust.runWindowsTrustCommand, [
+        { kind: 'file', path: replacement },
+      ]);
+      const previousGeneration = statSync(readinessFile).ino;
+      renameSync(replacement, readinessFile);
+      expect(statSync(readinessFile).ino).not.toBe(previousGeneration);
+      expect((await readiness()).status).toBe(200);
+      writeFileSync(
+        readinessFile,
+        JSON.stringify({ health: { status: 'ready', sha: 'b'.repeat(40) } }),
+      );
+      expect((await readiness()).status).toBe(503);
+      expect(observedCredentials).toHaveLength(3);
+      writeFileSync(readinessFile, original);
+      const before = statSync(readinessFile);
+      if (process.platform === 'win32') {
+        const encodedPath = Buffer.from(readinessFile).toString('base64');
+        const program = `$ErrorActionPreference='Stop'; $file=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedPath}')); $acl=[IO.File]::GetAccessControl($file); $everyone=New-Object Security.Principal.SecurityIdentifier('S-1-1-0'); $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($everyone,'Modify','Allow'))); [IO.File]::SetAccessControl($file,$acl)`;
+        const result = realSpawnSync(
+          trust.windowsSystemUtilityPath('powershell'),
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-EncodedCommand',
+            Buffer.from(program, 'utf16le').toString('base64'),
+          ],
+          {
+            encoding: 'utf8',
+            windowsHide: true,
+            timeout: trust.WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+          },
+        );
+        expect(result.error).toBeUndefined();
+        expect(result.status, result.stderr).toBe(0);
+      } else {
+        chmodSync(readinessFile, 0o666);
+      }
+      const after = statSync(readinessFile);
+      expect(after.ino).toBe(before.ino);
+      expect(after.mtimeMs).toBe(before.mtimeMs);
+      const permissive = await readiness();
+      expect(permissive.status).toBe(503);
+      await expect(permissive.json()).resolves.toEqual({
+        ready: false,
+        status: 'unavailable',
+      });
+      expect(observedCredentials).toHaveLength(3);
+      expect(readFileSync(readinessFile)).toEqual(original);
+      if (process.platform === 'win32') {
+        trust.hardenWindowsPathsTrusted(trust.runWindowsTrustCommand, [
+          { kind: 'file', path: readinessFile },
+        ]);
+        expect((await readiness()).status).toBe(200);
+        const junction = join(uiDir, 'redirected');
+        symlinkSync(uiDir, junction, 'junction');
+        const redirected = spawnUiScript(
+          lifecycle.buildUiServerScript({
+            uiDir,
+            upstreamPort: address.port,
+            uiPort: 0,
+            host: '127.0.0.1',
+            readinessFile: join(junction, 'state.json'),
+            identity,
+          }),
+        );
+        try {
+          const port = await redirected.listening;
+          const response = await fetch(
+            `http://127.0.0.1:${port}/api/system/readiness`,
+          );
+          expect(response.status).toBe(503);
+          await expect(response.json()).resolves.toEqual({
+            ready: false,
+            status: 'unavailable',
+          });
+          expect(observedCredentials).toHaveLength(4);
+        } finally {
+          await reapLongRunningFixtureChild(redirected.child);
+        }
+      }
     } finally {
       await reapLongRunningFixtureChild(server.child);
       upstream.closeAllConnections();
