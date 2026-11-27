@@ -39,10 +39,11 @@ import {
 } from 'node:fs';
 import http from 'node:http';
 import { createConnection, createServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH } from '@kontourai/station-contracts/environment-security';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { findListeningPidsForPorts } from '../commands/lifecycle.js';
@@ -91,16 +92,13 @@ function rebake(from: string, to: string): void {
 }
 
 /** The UI proxy's own readiness answer: 200 only for an identified backend. */
-function uiReadiness(port: number): Promise<number> {
+function uiReadiness(port: number, host = '127.0.0.1'): Promise<number> {
   return new Promise((resolveStatus) => {
     http
-      .get(
-        { host: '127.0.0.1', port, path: '/api/system/readiness' },
-        (res) => {
-          res.resume();
-          res.on('end', () => resolveStatus(res.statusCode ?? 0));
-        },
-      )
+      .get({ host, port, path: '/api/system/readiness' }, (res) => {
+        res.resume();
+        res.on('end', () => resolveStatus(res.statusCode ?? 0));
+      })
       .on('error', () => resolveStatus(0));
   });
 }
@@ -530,138 +528,190 @@ describe('station start, restart and stop under the process supervisor', () => {
     CLI_TIMEOUT_MS + 10_000,
   );
 
-  it('starts a supervised core, restarts it with no refused connection, and stops every process', async () => {
-    const root = makeHomeRoot('svl-');
-    const home = join(root, 'h');
-    const env = isolatedEnv(root);
-    const ports = await freePorts();
-    const target = [`--home=${home}`, `--instance=${INSTANCE}`];
+  it.each(['loopback', 'concrete interface'])(
+    'starts a supervised core on %s, restarts it with no refused connection, and stops every process',
+    async (binding) => {
+      const host =
+        binding === 'loopback'
+          ? '127.0.0.1'
+          : Object.values(networkInterfaces())
+              .flat()
+              .find((entry) => entry?.family === 'IPv4' && !entry.internal)
+              ?.address;
+      if (!host)
+        throw new Error(
+          'A local LAN interface is required for the concrete-interface lifecycle proof',
+        );
+      const root = makeHomeRoot('svl-');
+      const home = join(root, 'h');
+      const env = isolatedEnv(root);
+      const ports = await freePorts();
+      const target = [`--home=${home}`, `--instance=${INSTANCE}`];
 
-    const started = await station(
-      [
-        'start',
-        ...target,
-        `--port=${ports.server}`,
-        `--ui-port=${ports.ui}`,
-        '--host=127.0.0.1',
-      ],
-      env,
-    );
-    expect(started.code, `${started.stdout}\n${started.stderr}`).toBe(0);
-    expect(started.stdout).toContain('✓ Supervisor: pid');
-    const record = readRecord();
-    launchedPids.add(record.serverPid);
-    launchedPids.add(record.uiPid);
-    // The launcher did not bypass the supervisor: the record names it, and
-    // the core serving the API is its child, not the recorded process.
-    expect(record.supervised).toBe(true);
-    const before = await station(
-      ['supervisor', 'status', '--json', ...target],
-      env,
-    );
-    expect(before.code, before.stderr).toBe(0);
-    const status1 = JSON.parse(before.stdout);
-    expect(status1).toMatchObject({
-      state: 'serving',
-      supervisor: { pid: record.serverPid, instance: INSTANCE },
-      active: { generation: 1, state: 'serving' },
-    });
-    const core1 = status1.active.pid as number;
-    launchedPids.add(core1);
-    expect(core1).not.toBe(record.serverPid);
-    expect(parentOf(core1)).toBe(record.serverPid);
-    expect(
-      status1.listeners.map((l: { port: number }) => l.port).sort(),
-    ).toEqual([ports.server, ports.server + 2, ports.server + 3].sort());
-    // The former terminal slot stays reserved but is never bound.
-    expect(await refused(ports.server + 1)).toBe(true);
-
-    // `station service run` tears down an instance whose recorded pid is
-    // not among its port's listeners; the supervisor holds the socket.
-    // The listing comes from lsof, which Windows lacks: empty there.
-    const listeners = findListeningPidsForPorts([ports.server]);
-    if (listeners.length > 0) expect(listeners).toContain(record.serverPid);
-
-    const poller = startPoller(ports.server);
-    try {
-      await waitUntil(() => poller.stats.ok > 50, REQUEST_TIMEOUT_MS, 'load');
-      const restarted = await station(['restart', ...target], env);
-      expect(restarted.code, `${restarted.stdout}\n${restarted.stderr}`).toBe(
-        0,
+      const started = await station(
+        [
+          'start',
+          ...target,
+          `--port=${ports.server}`,
+          `--ui-port=${ports.ui}`,
+          `--host=${host}`,
+        ],
+        env,
       );
-      expect(restarted.stdout).toContain('✓ Restarted: generation 2 serves');
-      const servedAtHandoff = poller.stats.ok;
-      await waitUntil(
-        () => poller.stats.ok > servedAtHandoff + 50,
-        REQUEST_TIMEOUT_MS,
-        'load after the handoff',
+      expect(started.code, `${started.stdout}\n${started.stderr}`).toBe(0);
+      expect(started.stdout).toContain('✓ Supervisor: pid');
+      expect(started.stdout).toContain(`✓ Consent: http://${host}:`);
+      expect(started.stdout).not.toContain('Consent listener unavailable');
+      const record = readRecord();
+      launchedPids.add(record.serverPid);
+      launchedPids.add(record.uiPid);
+      // The launcher did not bypass the supervisor: the record names it, and
+      // the core serving the API is its child, not the recorded process.
+      expect(record.supervised).toBe(true);
+      if (binding === 'concrete interface') {
+        const body = JSON.stringify({
+          secret: readFileSync(
+            join(home, 'runtime', 'local-grant.secret'),
+            'utf8',
+          ).trim(),
+          deviceName: 'LAN binding proof',
+          clientInstanceId: randomUUID(),
+        });
+        for (const [peer, expected] of [
+          [host, 403],
+          ['127.0.0.1', 200],
+        ] as const) {
+          const response = await fetch(
+            `http://${peer}:${ports.server}${PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body,
+              signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            },
+          );
+          await response.arrayBuffer();
+          expect(response.status, `local-grant exchange through ${peer}`).toBe(
+            expected,
+          );
+        }
+      }
+      const before = await station(
+        ['supervisor', 'status', '--json', ...target],
+        env,
       );
-    } finally {
-      const stats = await poller.stop();
-      expect(stats.errors).toEqual({});
-      expect(Object.keys(stats.statuses)).toEqual(['200']);
-    }
-    const after = JSON.parse(
-      (await station(['supervisor', 'status', '--json', ...target], env))
-        .stdout,
-    );
-    expect(after).toMatchObject({
-      supervisor: { pid: record.serverPid },
-      active: { generation: 2, state: 'serving' },
-    });
-    const core2 = after.active.pid as number;
-    launchedPids.add(core2);
-    expect(core2).not.toBe(core1);
-    expect(alive(core1)).toBe(false);
-    expect(readRecord().serverPid).toBe(record.serverPid);
+      expect(before.code, before.stderr).toBe(0);
+      const status1 = JSON.parse(before.stdout);
+      expect(status1).toMatchObject({
+        state: 'serving',
+        supervisor: { pid: record.serverPid, instance: INSTANCE },
+        active: { generation: 1, state: 'serving' },
+      });
+      const core1 = status1.active.pid as number;
+      launchedPids.add(core1);
+      expect(core1).not.toBe(record.serverPid);
+      expect(parentOf(core1)).toBe(record.serverPid);
+      expect(
+        status1.listeners.map((l: { port: number }) => l.port).sort(),
+      ).toEqual(
+        [
+          ports.server,
+          ...(binding === 'concrete interface' ? [ports.server] : []),
+          ports.server + 2,
+          ports.server + 3,
+        ].sort(),
+      );
+      // The former terminal slot stays reserved but is never bound.
+      expect(await refused(ports.server + 1)).toBe(true);
 
-    // Restart into a genuinely different build, as `station build` would
-    // leave it: another baked sha in the bundle and its stamp. The UI
-    // proxy, which never restarts, must still find the backend ready.
-    expect(await uiReadiness(ports.ui)).toBe(200);
-    const oldSha = readRecord().build?.sha ?? '';
-    const newSha = 'd'.repeat(40);
-    rebake(oldSha, newSha);
-    rebaked = { from: newSha, to: oldSha };
-    const rebuilt = await station(['restart', ...target], env);
-    expect(rebuilt.code, `${rebuilt.stdout}\n${rebuilt.stderr}`).toBe(0);
-    expect(bootedWithSha(home, newSha)).toBe(true);
-    expect(readRecord().build?.sha).toBe(newSha);
-    // The proxy answers from a fresh probe: ready now, and still ready.
-    expect(await uiReadiness(ports.ui)).toBe(200);
-    await new Promise((resolveWait) => setTimeout(resolveWait, 2_000));
-    expect(await uiReadiness(ports.ui)).toBe(200);
-    const status3 = JSON.parse(
-      (await station(['supervisor', 'status', '--json', ...target], env))
-        .stdout,
-    );
-    launchedPids.add(status3.active.pid);
+      // `station service run` tears down an instance whose recorded pid is
+      // not among its port's listeners; the supervisor holds the socket.
+      // The listing comes from lsof, which Windows lacks: empty there.
+      const listeners = findListeningPidsForPorts([ports.server]);
+      if (listeners.length > 0) expect(listeners).toContain(record.serverPid);
 
-    const stopped = await station(['stop', ...target], env);
-    expect(stopped.code, `${stopped.stdout}\n${stopped.stderr}`).toBe(0);
-    expect(stopped.stderr).not.toContain('did not take a stop request');
-    for (const pid of [
-      record.serverPid,
-      core2,
-      status3.active.pid as number,
-      record.uiPid,
-    ]) {
-      expect(alive(pid), `pid ${pid}`).toBe(false);
-    }
-    expect(existsSync(RECORD)).toBe(false);
-    // It stopped on the control channel's request, not on a signal.
-    const log = readFileSync(
-      join(home, 'logs', `station-${INSTANCE}.log`),
-      'utf8',
-    );
-    // On every platform: a signalled supervisor logs `received SIGTERM`
-    // (on Windows a signal kills it outright and it logs nothing).
-    expect(log).toContain('shutting down with exit code 0');
-    expect(log).not.toContain('received SIGTERM');
-    for (const port of [ports.server, ports.server + 2, ports.ui]) {
-      expect(await refused(port), `port ${port}`).toBe(true);
-    }
-  }, 600_000);
+      const poller = startPoller(ports.server);
+      try {
+        await waitUntil(() => poller.stats.ok > 50, REQUEST_TIMEOUT_MS, 'load');
+        const restarted = await station(['restart', ...target], env);
+        expect(restarted.code, `${restarted.stdout}\n${restarted.stderr}`).toBe(
+          0,
+        );
+        expect(restarted.stdout).toContain('✓ Restarted: generation 2 serves');
+        const servedAtHandoff = poller.stats.ok;
+        await waitUntil(
+          () => poller.stats.ok > servedAtHandoff + 50,
+          REQUEST_TIMEOUT_MS,
+          'load after the handoff',
+        );
+      } finally {
+        const stats = await poller.stop();
+        expect(stats.errors).toEqual({});
+        expect(Object.keys(stats.statuses)).toEqual(['200']);
+      }
+      const after = JSON.parse(
+        (await station(['supervisor', 'status', '--json', ...target], env))
+          .stdout,
+      );
+      expect(after).toMatchObject({
+        supervisor: { pid: record.serverPid },
+        active: { generation: 2, state: 'serving' },
+      });
+      const core2 = after.active.pid as number;
+      launchedPids.add(core2);
+      expect(core2).not.toBe(core1);
+      expect(alive(core1)).toBe(false);
+      expect(readRecord().serverPid).toBe(record.serverPid);
+
+      // Restart into a genuinely different build, as `station build` would
+      // leave it: another baked sha in the bundle and its stamp. The UI
+      // proxy, which never restarts, must still find the backend ready.
+      expect(await uiReadiness(ports.ui, host)).toBe(200);
+      const oldSha = readRecord().build?.sha ?? '';
+      const newSha = 'd'.repeat(40);
+      rebake(oldSha, newSha);
+      rebaked = { from: newSha, to: oldSha };
+      const rebuilt = await station(['restart', ...target], env);
+      expect(rebuilt.code, `${rebuilt.stdout}\n${rebuilt.stderr}`).toBe(0);
+      expect(bootedWithSha(home, newSha)).toBe(true);
+      expect(readRecord().build?.sha).toBe(newSha);
+      // The proxy answers from a fresh probe: ready now, and still ready.
+      expect(await uiReadiness(ports.ui, host)).toBe(200);
+      await new Promise((resolveWait) => setTimeout(resolveWait, 2_000));
+      expect(await uiReadiness(ports.ui, host)).toBe(200);
+      const status3 = JSON.parse(
+        (await station(['supervisor', 'status', '--json', ...target], env))
+          .stdout,
+      );
+      launchedPids.add(status3.active.pid);
+
+      const stopped = await station(['stop', ...target], env);
+      expect(stopped.code, `${stopped.stdout}\n${stopped.stderr}`).toBe(0);
+      expect(stopped.stderr).not.toContain('did not take a stop request');
+      for (const pid of [
+        record.serverPid,
+        core2,
+        status3.active.pid as number,
+        record.uiPid,
+      ]) {
+        expect(alive(pid), `pid ${pid}`).toBe(false);
+      }
+      expect(existsSync(RECORD)).toBe(false);
+      // It stopped on the control channel's request, not on a signal.
+      const log = readFileSync(
+        join(home, 'logs', `station-${INSTANCE}.log`),
+        'utf8',
+      );
+      // On every platform: a signalled supervisor logs `received SIGTERM`
+      // (on Windows a signal kills it outright and it logs nothing).
+      expect(log).toContain('shutting down with exit code 0');
+      expect(log).not.toContain('received SIGTERM');
+      for (const port of [ports.server, ports.server + 2, ports.ui]) {
+        expect(await refused(port), `port ${port}`).toBe(true);
+      }
+    },
+    600_000,
+  );
 
   // SIGSTOP has no Windows equivalent to freeze the supervisor with.
   it.skipIf(!POSIX)(
