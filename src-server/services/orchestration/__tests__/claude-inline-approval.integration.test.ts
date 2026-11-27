@@ -443,6 +443,70 @@ describe('#2316 inline approval card → Claude adapter', () => {
     ).rejects.toThrow(/not-a-real-request/);
   });
 
+  test('a server log read resumes only after the owner answers its exact chat approval', async () => {
+    const threadId = 'claude-inline';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'claude' },
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Check recent warnings' },
+    });
+    await eventually(() =>
+      eventStore
+        .listEvents(threadId)
+        .find(({ payload }) => payload.method === 'turn.started'),
+    );
+    const controller = new AbortController();
+    try {
+      const read = service.requestServerLogRead(
+        threadId,
+        'Severity: warn',
+        controller.signal,
+      );
+      const opened = eventStore.listEvents(threadId).at(-1)?.payload;
+      if (opened?.method !== 'request.opened')
+        throw new Error('Expected the log approval card');
+      expect(opened).toMatchObject({
+        title: 'Allow this server log query?',
+        description: 'Severity: warn',
+      });
+      const answer = {
+        type: 'respondToRequest',
+        threadId,
+        requestId: opened.requestId,
+        expectedRequestEventId: opened.eventId,
+        decision: 'accept',
+      } as const;
+      await expect(
+        service.dispatchWithReceipt(answer, { personAnswer: true }),
+      ).rejects.toThrow('The Station owner must answer');
+      const owner = { serverLogReadDecisionAuthorized: () => true };
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            ...answer,
+            expectedRequestEventId: 'stale-event',
+          },
+          owner,
+        ),
+      ).rejects.toThrow();
+      await service.dispatchWithReceipt(answer, owner);
+      await expect(read).resolves.toBe(true);
+      expect(eventStore.listEvents(threadId).at(-1)?.payload).toMatchObject({
+        method: 'request.resolved',
+        requestId: opened.requestId,
+        status: 'approved',
+      });
+      await expect(
+        service.dispatchWithReceipt(answer, owner),
+      ).rejects.toThrow();
+    } finally {
+      controller.abort();
+    }
+  });
+
   test('a reload during the pending approval reads as a wait on the active turn, not read-only', async () => {
     // The public start command records the conversation the open read
     // resolves; the bare adapter dispatch above does not.

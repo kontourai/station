@@ -4434,6 +4434,14 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService,
     ),
   );
+  const chatLogApproval = isHostedTenantExecutionRequired()
+    ? undefined
+    : context.featurePreviews.bind({
+        id: 'chat-server-log-approval',
+        label: 'Server log approvals in chat',
+        description:
+          'Let the Station owner approve a single agent log query from its chat.',
+      });
   context.app.route(
     '/api/diagnostics',
     createDiagnosticsRoutes(
@@ -4459,6 +4467,16 @@ export function configureRuntimeRoutes(
             JSON.stringify({ kind: 'diagnostics-session', sessionId }),
             'station-control:read_logs',
           ),
+        requestLogRead: (sessionId, description, signal) =>
+          chatLogApproval?.select({
+            enabled: () =>
+              context.orchestrationService.requestServerLogRead(
+                sessionId,
+                description,
+                signal,
+              ),
+            disabled: () => Promise.resolve(false),
+          }) ?? Promise.resolve(false),
         // #4470: in-app troubleshooting writes its run under this Station's
         // home with the same owner-only rules as `station triage`.
         troubleshoot: new TroubleshootService(

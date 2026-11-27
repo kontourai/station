@@ -2429,8 +2429,10 @@ machine", and the difference is the residue, stated without softening:
   secret and operator credential files. API redaction defends paired
   principals **without** terminal/agent authority (a phone using Developer →
   Logs or a scoped grant that cannot spawn a shell). Agent `read_logs` calls
-  are denied unless an operator grants their verified bound session; the grant
-  is not available to caller-less or weaker-assurance channels.
+  require a verified bound session and operator authorization. The operator
+  can grant access to the session through the existing API or approve a single
+  redacted query from the active chat when the personal Station preview is on.
+  Caller-less and weaker-assurance channels cannot use either path.
   Scrubbing the token from PTY/engine env closes the cheaper path that used
   to turn `printenv` into an ephemeral `home-possession` principal.
 
