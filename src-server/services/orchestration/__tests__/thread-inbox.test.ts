@@ -706,6 +706,84 @@ describe('thread inbox (#3568)', () => {
     expect(world.adapter.steers).toEqual([]);
   });
 
+  test.each(['follow-up first', 'steer first'] as const)(
+    'a steer reaches the open turn before its queued follow-up (%s)',
+    async (order) => {
+      let world: World;
+      let allowSteer!: () => void;
+      let steerIsWaiting!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        steerIsWaiting = resolve;
+      });
+      const ready = new Promise<void>((resolve) => {
+        allowSteer = resolve;
+      });
+      world = boot(path(), {
+        steerFidelity: (threadId) =>
+          world.service.steerFidelityForThread(threadId),
+        inspectSteer: (input) => world.store.readSteerInput(input),
+        steer: async ({ threadId, turnId, clientInputId, payload }) => {
+          steerIsWaiting();
+          await ready;
+          const dispatched = await world.service.dispatchWithReceipt(
+            {
+              type: 'steerTurn',
+              threadId,
+              turnId,
+              clientInputId,
+              input: payload.message,
+            },
+            { userId: payload.actor.userId },
+          );
+          if (!dispatched.result || !('outcome' in dispatched.result))
+            throw new Error('Steer dispatch did not return an outcome.');
+          return dispatched.result;
+        },
+      });
+      const turn = await runningFirstTurn(world);
+      const steerText = 'Keep using the current turn';
+      if (order === 'follow-up first') {
+        expect(queueFollowUp(world).outcome).toBe('queued');
+      }
+      try {
+        expect(
+          world.inbox.submitSteer({
+            conversationId: THREAD,
+            clientTurnId: 'priority-steer',
+            payload: { ...payload, message: steerText },
+            expectedHead: world.inbox.currentHead(THREAD),
+          }).outcome,
+        ).toBe('queued');
+        await waiting;
+        if (order === 'steer first') {
+          expect(queueFollowUp(world).outcome).toBe('queued');
+        }
+        expect(
+          world.store.threadInboxStore().read(THREAD, 'follow-up-1')?.state,
+        ).toBe('queued');
+        expect(world.adapter.steers).toEqual([]);
+        expect(sends).toEqual(['read the file']);
+      } finally {
+        allowSteer();
+      }
+      await world.inbox.idle();
+      expect(world.adapter.steers).toEqual([steerText]);
+      expect(sends).toEqual(['read the file']);
+      expect(
+        world.store.readSteerInput({
+          threadId: THREAD,
+          turnId: 'turn-1',
+          clientInputId: 'priority-steer',
+          input: steerText,
+        }),
+      ).toMatchObject({ outcome: 'steered' });
+      await emit(world, 'turn.completed', { turnId: 'turn-1' }, turn);
+      await settle(world);
+      expect(sends).toEqual(['read the file', FOLLOW_UP]);
+      expect(world.adapter.steers).toEqual([steerText]);
+    },
+  );
+
   test('the inbox drives a scripted adapter through the real receipted orchestration dispatch', async () => {
     const file = path();
     let world: World;
