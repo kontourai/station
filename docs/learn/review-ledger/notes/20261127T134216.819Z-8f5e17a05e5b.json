@@ -1,0 +1,9 @@
+{
+  "revision": "33a050452b848589a5ef31e5cff4e886b3f6367d",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed the outside-agent OAuth reference and R3 evidence against the unchanged lifecycle UI proxy exclusions and the standalone generated UI child fixture. Built on #5625 final commit 61492c6b6f64ea2baa577786481b4ac2a0184e38 without overwriting its installer fixtures. #5626 only switches this fixture from node -e to the production node - stdin transport; no prose change is needed because production exclusions, nonce bootstrap and auth behavior are unchanged. Windows standalone child tests pass 3/3; restoring the old transport catches spawn ENAMETOOLONG and byte-exact restoration returns 3/3. Full Windows lifecycle remains red with 43 inherited failures (201 pass, 3 skip). No POSIX execution or new OAuth/native-client qualification is claimed.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the outside-agent OAuth reference and R3 evidence against the unchanged lifecycle UI proxy exclusions and the standalone generated UI child fixture. Built on #5625 final commit 61492c6b6f64ea2baa577786481b4ac2a0184e38 without overwriting its installer fixtures. #5626 only switches this fixture from node -e to the production node - stdin transport; no prose change is needed because production exclusions, nonce bootstrap and auth behavior are unchanged. Windows standalone child tests pass 3/3; restoring the old transport catches spawn ENAMETOOLONG and byte-exact restoration returns 3/3. Full Windows lifecycle remains red with 43 inherited failures (201 pass, 3 skip). No POSIX execution or new OAuth/native-client qualification is claimed.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "3f12a3de6d619440cf04e02ee2b697a6098878c4",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed the Windows running-service fixture delta at 3f12a3de6d: canonical cmd wrapper/task registration, matching current-user Task Scheduler identity and Running enum now exercise the existing source-upgrade guards. Outside-agent OAuth proxy exclusions and protocol fixtures are unchanged, so both cited documents remain accurate without prose changes. Windows named upgrade cases: 3/3 pass; complete lifecycle baseline 43 failures/201 passes/3 skips becomes 41 failures/203 passes/3 skips, exactly the two repaired safety cases. Clean-commit production guard bypass causes both refusal assertions to fail while the different-checkout control passes; byte-exact restoration returns 3/3 green. This is simulated Task Scheduler caller integration, not a live Windows service install or POSIX execution claim.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the Windows running-service fixture delta at 3f12a3de6d: canonical cmd wrapper/task registration, matching current-user Task Scheduler identity and Running enum now exercise the existing source-upgrade guards. Outside-agent OAuth proxy exclusions and protocol fixtures are unchanged, so both cited documents remain accurate without prose changes. Windows named upgrade cases: 3/3 pass; complete lifecycle baseline 43 failures/201 passes/3 skips becomes 41 failures/203 passes/3 skips, exactly the two repaired safety cases. Clean-commit production guard bypass causes both refusal assertions to fail while the different-checkout control passes; byte-exact restoration returns 3/3 green. This is simulated Task Scheduler caller integration, not a live Windows service install or POSIX execution claim.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}
