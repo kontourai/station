@@ -542,9 +542,14 @@ async function main() {
       async () =>
         driver.execute((project) => {
           const text = document.body.textContent ?? '';
+          const heading = document.querySelector(
+            '.project-page h2.project-page__name',
+          );
+          const path = `/projects/${project}`;
           return (
-            window.location.pathname.startsWith(`/projects/${project}`) &&
-            text.includes(project) &&
+            (window.location.pathname === path ||
+              window.location.pathname.startsWith(`${path}/`)) &&
+            heading?.textContent === project &&
             !text.includes('Page not found')
           );
         }, remoteProject),
