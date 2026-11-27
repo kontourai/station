@@ -7363,7 +7363,9 @@ fn profile_lock_owner_liveness(pid: u32) -> ProfileLockOwnerLiveness {
         // look reclaimable.
         return ProfileLockOwnerLiveness::Ambiguous;
     };
-    Command::new(powershell)
+    let mut command = Command::new(powershell);
+    apply_no_window(&mut command);
+    command
         .args(windows_process_probe_arguments(pid))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

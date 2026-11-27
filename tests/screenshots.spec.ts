@@ -6488,7 +6488,130 @@ function projectCoordinationScreens(): Screen[] {
   );
 }
 
+function externalHistoryScreens(): Screen[] {
+  return [DESKTOP, MOBILE].flatMap((viewport) =>
+    (['dark', 'light'] as const).map((theme): Screen => {
+      const device = viewport === MOBILE ? 'mobile' : 'desktop';
+      const id = 'a'.repeat(64);
+      let cleanups: Array<() => Promise<void>> = [];
+      const read = (data: unknown) => async (route: Route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        await route.fulfill({ json: { success: true, data } });
+      };
+      return {
+        name: `external-history-${theme}-${device}`,
+        title: `Third-party history — ${theme} (${device})`,
+        path: '/?dock=open',
+        viewport,
+        beforeGoto: async (page) => {
+          await clearDockGalleryStorage(page);
+          cleanups = [
+            await withRoute(page, '**/.well-known/station/v1', (route) =>
+              fulfillGalleryStationHandshake(route, true),
+            ),
+            await withRoute(
+              page,
+              '**/api/feature-previews',
+              read([
+                {
+                  id: 'external-session-history',
+                  label: 'Third-party history',
+                  description: 'Browse older conversations.',
+                  enabled: true,
+                },
+              ]),
+            ),
+            await withRoute(
+              page,
+              '**/api/orchestration/external-history?**',
+              read({
+                sessions: [
+                  {
+                    id,
+                    provider: 'claude',
+                    cwd: '/work/atlas',
+                    updatedAt: '2026-04-01T12:00:00.000Z',
+                    hasTranscript: true,
+                  },
+                ],
+                nextOffset: null,
+                partial: false,
+              }),
+            ),
+            await withRoute(
+              page,
+              `**/api/orchestration/external-history/${id}/transcript**`,
+              read({
+                messages: [
+                  {
+                    id: 'user',
+                    role: 'user',
+                    text: 'Check which tests cover the refresh behavior.',
+                  },
+                  {
+                    id: 'reply',
+                    role: 'assistant',
+                    text: 'The project tests cover refresh after a successful save and after a connection error.',
+                  },
+                ],
+                nextCursor: null,
+                startsNearEnd: false,
+              }),
+            ),
+          ];
+        },
+        afterGoto: async (page) => {
+          await page.evaluate(
+            (mode) => document.documentElement.setAttribute('data-theme', mode),
+            theme,
+          );
+          const dock = page.getByRole('region', { name: 'Chat dock' });
+          const inbox = dock.getByRole(
+            viewport === MOBILE ? 'region' : 'complementary',
+            { name: 'Chats', exact: true },
+          );
+          const browse = inbox.getByRole('button', {
+            name: 'Browse all conversations',
+            exact: true,
+          });
+          await expect(dock).toBeVisible();
+          const toggle = dock.getByRole('button', {
+            name: /^(Show )?Chats(?: [—·].*)?$/i,
+          });
+          await expect
+            .poll(
+              async () =>
+                (await browse.isVisible()) || (await toggle.isVisible()),
+            )
+            .toBe(true);
+          if (!(await browse.isVisible())) await toggle.click();
+          await browse.click();
+          await page
+            .getByRole('button', { name: 'Third-party history', exact: true })
+            .click();
+          const dialog = page.getByRole('dialog', {
+            name: 'Third-party history',
+          });
+          await dialog.getByRole('button', { name: /^Claude Code/ }).click();
+          await expect(
+            dialog.getByText('Check which tests cover the refresh behavior.'),
+          ).toBeVisible();
+          await expect(
+            dialog.getByRole('button', { name: 'Import conversation' }),
+          ).toBeVisible();
+        },
+        cleanup: async () => {
+          for (const cleanup of cleanups) await cleanup();
+          cleanups = [];
+        },
+      };
+    }),
+  );
+}
+
 const SCREENS: Screen[] = [
+  ...externalHistoryScreens(),
   ...projectCoordinationScreens(),
   ...roomConversationScreens(),
   ...roomCoordinatorScreens(),

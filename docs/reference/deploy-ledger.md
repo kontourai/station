@@ -28,6 +28,11 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-27T15:10:44Z | nightly-desktop | 0.2.0-nightly.20261127.1 | `5b58007` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/46015301036) |
+| 2026-11-27T15:10:44Z | nightly-android | 0.2.0-nightly.20261127.1 | `5b58007` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/46015301036) |
+| 2026-11-27T06:53:56Z | nightly-desktop | 0.2.0-nightly.20261127 | `3dba664` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45949032474) |
+| 2026-11-27T06:53:56Z | nightly-android | 0.2.0-nightly.20261127 | `3dba664` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45949032474) |
+| 2026-11-27T06:06:17Z | nightly-npm | 0.12.0-nightly.20261127.45949032474 | `3dba664` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45949032474) |
 | 2026-11-26T23:19:11Z | nightly-desktop | 0.2.0-nightly.20261126.1 | `0897000` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45905814460) |
 | 2026-11-26T23:19:11Z | nightly-android | 0.2.0-nightly.20261126.1 | `0897000` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45905814460) |
 | 2026-11-26T22:43:44Z | nightly-npm | 0.12.0-nightly.20261126.45905814460 | `0897000` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45905814460) |
@@ -569,6 +574,131 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-27T15:10:44Z · nightly-desktop · 0.2.0-nightly.20261127.1
+
+- Ship SHA: `5b580071865b98550e88fcdcd613043131ca109c`
+- Artifact built at: `2026-11-27T14:28:55.580Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 46015301036)
+
+### Changelog
+
+Commits since `3dba664` ([full sha](https://github.com/kontourai/station/commit/3dba664548727f58bfa9cf5ecabd12b3c80444e8)):
+
+**Features**
+
+- [#5619](https://github.com/kontourai/station/pull/5619) feat: browse third-party history on demand
+
+**Fixes**
+
+- [#5629](https://github.com/kontourai/station/pull/5629) fix(runtime): retain loopback control for concrete interface binds
+- [#5623](https://github.com/kontourai/station/pull/5623) fix(diagnostics): approve server log reads in chat
+- [#5620](https://github.com/kontourai/station/pull/5620) fix(connect): preserve native controller authority during nearby pairing
+- [#5616](https://github.com/kontourai/station/pull/5616) fix(ui): preserve chat navigation intent and baseline responsiveness
+
+**Other**
+
+- [#5631](https://github.com/kontourai/station/pull/5631) test(cli): make trusted installer fixture modes explicit (#5625)
+- [#5624](https://github.com/kontourai/station/pull/5624) test(native): repair Windows hostile-plugin containment proof
+- [#5621](https://github.com/kontourai/station/pull/5621) perf(ui): skip empty relationship joins in Home and Inbox
+
+## 2026-11-27T15:10:44Z · nightly-android · 0.2.0-nightly.20261127.1
+
+- Ship SHA: `5b580071865b98550e88fcdcd613043131ca109c`
+- Artifact built at: `2026-11-27T14:27:38.833Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 46015301036)
+
+### Changelog
+
+Commits since `3dba664` ([full sha](https://github.com/kontourai/station/commit/3dba664548727f58bfa9cf5ecabd12b3c80444e8)):
+
+**Features**
+
+- [#5619](https://github.com/kontourai/station/pull/5619) feat: browse third-party history on demand
+
+**Fixes**
+
+- [#5629](https://github.com/kontourai/station/pull/5629) fix(runtime): retain loopback control for concrete interface binds
+- [#5623](https://github.com/kontourai/station/pull/5623) fix(diagnostics): approve server log reads in chat
+- [#5620](https://github.com/kontourai/station/pull/5620) fix(connect): preserve native controller authority during nearby pairing
+- [#5616](https://github.com/kontourai/station/pull/5616) fix(ui): preserve chat navigation intent and baseline responsiveness
+
+**Other**
+
+- [#5631](https://github.com/kontourai/station/pull/5631) test(cli): make trusted installer fixture modes explicit (#5625)
+- [#5624](https://github.com/kontourai/station/pull/5624) test(native): repair Windows hostile-plugin containment proof
+- [#5621](https://github.com/kontourai/station/pull/5621) perf(ui): skip empty relationship joins in Home and Inbox
+
+## 2026-11-27T06:53:56Z · nightly-desktop · 0.2.0-nightly.20261127
+
+- Ship SHA: `3dba664548727f58bfa9cf5ecabd12b3c80444e8`
+- Artifact built at: `2026-11-27T06:05:39.326Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 45949032474)
+
+### Changelog
+
+Commits since `0897000` ([full sha](https://github.com/kontourai/station/commit/0897000fa013d9746bba02c12fb000705f082bf6)):
+
+**Features**
+
+- [#5617](https://github.com/kontourai/station/pull/5617) feat: add action and settings control stories
+- [#5614](https://github.com/kontourai/station/pull/5614) feat: add a developer UI component catalog
+
+**Fixes**
+
+- [#5615](https://github.com/kontourai/station/pull/5615) fix(review): route ordinary runtime and documentation changes
+- [#5609](https://github.com/kontourai/station/pull/5609) fix(acp): advertise Kiro-compatible Station Control tool schemas
+- [#5610](https://github.com/kontourai/station/pull/5610) fix(connections): load first-run browser route publications
+- [#5604](https://github.com/kontourai/station/pull/5604) fix: explain conversation read refusals
+
+## 2026-11-27T06:53:56Z · nightly-android · 0.2.0-nightly.20261127
+
+- Ship SHA: `3dba664548727f58bfa9cf5ecabd12b3c80444e8`
+- Artifact built at: `2026-11-27T06:04:35.784Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 45949032474)
+
+### Changelog
+
+Commits since `0897000` ([full sha](https://github.com/kontourai/station/commit/0897000fa013d9746bba02c12fb000705f082bf6)):
+
+**Features**
+
+- [#5617](https://github.com/kontourai/station/pull/5617) feat: add action and settings control stories
+- [#5614](https://github.com/kontourai/station/pull/5614) feat: add a developer UI component catalog
+
+**Fixes**
+
+- [#5615](https://github.com/kontourai/station/pull/5615) fix(review): route ordinary runtime and documentation changes
+- [#5609](https://github.com/kontourai/station/pull/5609) fix(acp): advertise Kiro-compatible Station Control tool schemas
+- [#5610](https://github.com/kontourai/station/pull/5610) fix(connections): load first-run browser route publications
+- [#5604](https://github.com/kontourai/station/pull/5604) fix: explain conversation read refusals
+
+## 2026-11-27T06:06:17Z · nightly-npm · 0.12.0-nightly.20261127.45949032474
+
+- Ship SHA: `3dba664548727f58bfa9cf5ecabd12b3c80444e8`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261127.45949032474 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `0897000` ([full sha](https://github.com/kontourai/station/commit/0897000fa013d9746bba02c12fb000705f082bf6)):
+
+**Features**
+
+- [#5617](https://github.com/kontourai/station/pull/5617) feat: add action and settings control stories
+- [#5614](https://github.com/kontourai/station/pull/5614) feat: add a developer UI component catalog
+
+**Fixes**
+
+- [#5615](https://github.com/kontourai/station/pull/5615) fix(review): route ordinary runtime and documentation changes
+- [#5609](https://github.com/kontourai/station/pull/5609) fix(acp): advertise Kiro-compatible Station Control tool schemas
+- [#5610](https://github.com/kontourai/station/pull/5610) fix(connections): load first-run browser route publications
+- [#5604](https://github.com/kontourai/station/pull/5604) fix: explain conversation read refusals
 
 ## 2026-11-26T23:19:11Z · nightly-desktop · 0.2.0-nightly.20261126.1
 

@@ -8,6 +8,7 @@ import { once } from 'node:events';
 
 import type { Server as HttpServer } from 'node:http';
 import net from 'node:net';
+import { networkInterfaces } from 'node:os';
 import type { HttpBindings } from '@hono/node-server';
 import type { ServerProviderDeps } from '@voltagent/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -156,16 +157,19 @@ describe('stationHonoServer', () => {
     expect(provider.isRunning()).toBe(false);
   });
 
-  it('binds the configured hostname', async () => {
-    const { link, calls } = recordingLink();
-    const provider = stationHonoServer(
-      config({ hostname: '127.0.0.1' }),
-      () => link,
-    )(deps);
-    await provider.start();
-    expect(calls[0]?.host).toBe('127.0.0.1');
-    await provider.stop();
-  });
+  it.each(['127.0.0.1', '::ffff:127.0.0.1'])(
+    'binds the configured hostname %s without a duplicate loopback socket',
+    async (hostname) => {
+      const { link, calls } = recordingLink();
+      const provider = stationHonoServer(
+        config({ hostname }),
+        () => link,
+      )(deps);
+      await provider.start();
+      expect(calls.map(({ host }) => host)).toEqual([hostname]);
+      await provider.stop();
+    },
+  );
 
   it('propagates a bind failure and stays stopped', async () => {
     const taken = net.createServer();
@@ -185,6 +189,73 @@ describe('stationHonoServer', () => {
       code: 'EADDRINUSE',
     });
     expect(provider.isRunning()).toBe(false);
+  });
+
+  it('serves a concrete interface and a distinct loopback control hop on the same port', async () => {
+    const address = Object.values(networkInterfaces())
+      .flat()
+      .find((entry) => entry?.family === 'IPv4' && !entry.internal)?.address;
+    expect(
+      address,
+      'a local LAN interface is required for this bind proof',
+    ).toBeDefined();
+    const { link, calls } = recordingLink();
+    const provider = stationHonoServer(
+      config({
+        hostname: address,
+        configureFullApp: ({ app }) => {
+          app.get('/probe', (context) =>
+            context.text(
+              (context.env as HttpBindings).incoming.socket.remoteAddress ?? '',
+            ),
+          );
+        },
+      }),
+      () => link,
+    )(deps);
+    cleanups.push(() => provider.stop());
+    const { port } = await provider.start();
+    expect(calls.map(({ name, host }) => ({ name, host }))).toEqual([
+      { name: 'api', host: address },
+      { name: 'api-local', host: '127.0.0.1' },
+    ]);
+    expect(await (await fetch(`http://127.0.0.1:${port}/probe`)).text()).toBe(
+      '127.0.0.1',
+    );
+    expect(await (await fetch(`http://${address}:${port}/probe`)).text()).toBe(
+      address,
+    );
+    await provider.stop();
+    expect(calls.every(({ server }) => !server.listening)).toBe(true);
+  });
+
+  it('closes the public listener if its local control port is already owned', async () => {
+    const address = Object.values(networkInterfaces())
+      .flat()
+      .find((entry) => entry?.family === 'IPv4' && !entry.internal)?.address;
+    expect(
+      address,
+      'a local LAN interface is required for this bind proof',
+    ).toBeDefined();
+    const taken = net.createServer();
+    await new Promise<void>((resolve) =>
+      taken.listen(0, '127.0.0.1', () => resolve()),
+    );
+    cleanups.push(
+      () => new Promise<void>((resolve) => taken.close(() => resolve())),
+    );
+    const { port } = taken.address() as net.AddressInfo;
+    const { link, calls } = recordingLink();
+    const provider = stationHonoServer(
+      config({ hostname: address, port }),
+      () => link,
+    )(deps);
+    await expect(provider.start()).rejects.toMatchObject({
+      code: 'EADDRINUSE',
+    });
+    expect(provider.isRunning()).toBe(false);
+    expect(calls.every(({ server }) => !server.listening)).toBe(true);
+    expect(taken.listening).toBe(true);
   });
 
   it('stops cleanly after a drain already stopped its listener', async () => {

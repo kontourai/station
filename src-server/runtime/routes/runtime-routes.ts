@@ -507,6 +507,10 @@ import { createTaskCodeReviewRoutes } from '../../routes/evidence/task-code-revi
 import { createTrustBundleRoutes } from '../../routes/evidence/trust-bundles.js';
 import { createVeritasReadinessRoutes } from '../../routes/evidence/veritas-readiness.js';
 import { createWorkflowSidecarRoutes } from '../../routes/evidence/workflow-sidecars.js';
+import {
+  createExternalSessionHistoryRoutes,
+  type ExternalSessionHistoryRouteDeps,
+} from '../../routes/external-session-history.js';
 import { createFleetInferenceRoutes } from '../../routes/inference/fleet-inference.js';
 import { createIntegrationStatusRoutes } from '../../routes/integrations/integration-status-routes.js';
 import {
@@ -1326,6 +1330,7 @@ export interface ConfigureRuntimeRoutesContext {
   nativeSurfaceRegistry?: NativeSurfaceRegistry;
   relayEnrollment?: RelayEnrollmentService;
   runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
+  externalSessionHistory?: ExternalSessionHistoryRouteDeps;
   app: HonoApp;
   logger: Logger;
   eventBus: EventBus;
@@ -4429,6 +4434,14 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService,
     ),
   );
+  const chatLogApproval = isHostedTenantExecutionRequired()
+    ? undefined
+    : context.featurePreviews.bind({
+        id: 'chat-server-log-approval',
+        label: 'Server log approvals in chat',
+        description:
+          'Let the Station owner approve a single agent log query from its chat.',
+      });
   context.app.route(
     '/api/diagnostics',
     createDiagnosticsRoutes(
@@ -4454,6 +4467,16 @@ export function configureRuntimeRoutes(
             JSON.stringify({ kind: 'diagnostics-session', sessionId }),
             'station-control:read_logs',
           ),
+        requestLogRead: (sessionId, description, signal) =>
+          chatLogApproval?.select({
+            enabled: () =>
+              context.orchestrationService.requestServerLogRead(
+                sessionId,
+                description,
+                signal,
+              ),
+            disabled: () => Promise.resolve(false),
+          }) ?? Promise.resolve(false),
         // #4470: in-app troubleshooting writes its run under this Station's
         // home with the same owner-only rules as `station triage`.
         troubleshoot: new TroubleshootService(
@@ -13663,6 +13686,24 @@ export function configureRuntimeRoutes(
   };
   generalEventProducer = createEventStreamProducer(eventRouteDeps);
   context.app.route('/events', createEventRoutes(eventRouteDeps));
+  if (context.externalSessionHistory) {
+    context.app.route(
+      '/api/orchestration/external-history',
+      createExternalSessionHistoryRoutes({
+        ...context.externalSessionHistory,
+        isOwnerCurrent: (request) => {
+          const security = context.environmentSecurityService;
+          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+          return (
+            isRuntimeRequestPrincipalCurrent(request, security) &&
+            (principal?.locality === 'home-possession' ||
+              (principal?.authority === 'device-credential' &&
+                security.credentialHasOwnerStanding(principal.credential)))
+          );
+        },
+      }),
+    );
+  }
   context.app.route(
     '/api/presence',
     createFocusPresenceRoutes({

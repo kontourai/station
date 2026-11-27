@@ -1,0 +1,9 @@
+{
+  "revision": "778660a84ce1069aa2a9d5bca0bc0cb4c4bef39d",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed 778660a hydration-race correction: fixture now awaits seeded default activation rather than racing it with manual profile input. Native Windows containment passed in 14.6 seconds; this does not qualify Station chooser interaction, real keyring custody or exact-source packaged artifacts. Pending probe report demonstrates hostile code execution before native invocation. Recovery contract is unchanged.","inputs":["tests/tauri-shell/plugin-host-security.e2e.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed 778660a hydration-race correction: fixture now awaits seeded default activation rather than racing it with manual profile input. Native Windows containment passed in 14.6 seconds; this does not qualify Station chooser interaction, real keyring custody or exact-source packaged artifacts. Pending probe report demonstrates hostile code execution before native invocation. Recovery contract is unchanged.","inputs":["tests/tauri-shell/plugin-host-security.e2e.ts"]}
+  ]
+}

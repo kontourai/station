@@ -199,6 +199,14 @@ Agent and contributor smoke runs should use unique ports and `--temp-home`
 unless the task explicitly needs the selected channel's default runtime home.
 See [release channel ports](release-channel-ports.md) for the canonical map.
 
+A concrete `--host` keeps the public API bound to that interface and adds a
+separate `127.0.0.1` API listener on the same port for lifecycle readiness and
+the UI proxy. Both listeners serve the same authorization middleware and share
+terminal capacity. The supervisor retains both sockets across generation
+handoff. A private LAN peer does not become a local operator: internal lifecycle
+credentials still require a loopback socket. If either bind fails, startup
+fails rather than falling back to a wildcard listener.
+
 ### Handing a running instance to the operator
 
 Starting the app is not the whole handoff. The UI signs in through a

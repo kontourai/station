@@ -102,6 +102,7 @@ interface ChatDockContentAreaProps {
   onTitleUpdate: (sessionId: string, title: string) => void;
   onDeleteSession: (sessionId: string) => void;
   onFocusSession: (sessionId: string) => void;
+  onOpenImportedSession?: (threadId: string) => void;
   onOpenConversation: (
     conversationId: string,
     agentSlug: string,
@@ -168,6 +169,7 @@ function ChatDockContentAreaImpl({
   onDeleteSession,
   onFocusSession,
   onOpenConversation,
+  onOpenImportedSession,
   onForkFromTurn,
   onResendFromMessage,
   onNewChat,
@@ -246,6 +248,7 @@ function ChatDockContentAreaImpl({
               onTitleUpdate,
               onDelete: onDeleteSession,
               onSelect: onFocusSession,
+              onOpenImportedSession,
               onOpenConversation,
               onClose: onCloseHistory,
             }}

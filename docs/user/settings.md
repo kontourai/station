@@ -206,6 +206,7 @@ only when this Station's build can run it; if none is, the section says
 | ID | Name | What turning it on does | Notable cost/risk |
 | --- | --- | --- | --- |
 | `dynamic-route-publications` | Dynamic HTTPS routes | Discovers this Station's existing Tailscale Serve app and separate approval origins live. The local operator can persist **Approval HTTPS origin** in Routes settings without restarting; enabled requests read the current saved configuration. See [HTTPS deployment](https://github.com/kontourai/station/blob/main/docs/guides/deployment.md#reaching-the-consent-origin-over-https). | Off by default. Saving a changed origin is refused while off; legacy environment/HTTP behavior remains. Does not provision Serve or grant access. Nearby TXT `appOrigin` is only an untrusted connection hint; Request Access and identity verification still apply. Installed Android/iOS physical-device behavior is not established by adapter tests. |
+| `chat-server-log-approval` | Server log approvals in chat | On a personal Station, lets the owner approve one server-log query from the Agent’s active chat. The card shows severity, time bounds, and the maximum number of entries. | Approval expires after one minute. Results are redacted and may still contain private conversation content. |
 | `durable-station-agent` | Crash-durable Station Agent | Keeps Station-engine text turns running after a client disconnect and resumes journaled steps after restart. Stop still cancels. | Experimental; writes every model/tool step to private SQLite and can add substantial latency. An uncertain model request is surfaced without automatic resend; pending approvals still require an answer. |
 | `reviewed-usage-tariffs` | Reviewed usage tariffs | Lets the operator review exact Bearing source bytes and route/model tariff bindings for later usage capture. | No default price or live fetching. Retail values remain separate from billing, subscription fees and quota. Historical snapshots stay frozen. |
 | `codex-bound-browser-device-tools` | Codex browser and device tools | Offers eligible Codex Sessions the built-in browser and device tools over a bound channel. A new Codex Session whose Agent has Station Control also gets every Station Control tool on that channel instead of a header token, which adds about 110 KB of tool definitions to each thread. | Calls require current Project access and tool approval policy; browser pages and device contents can contain private data. Changing this choice retires existing bindings; start a new Session to use it again. |
@@ -224,6 +225,7 @@ only when this Station's build can run it; if none is, the section says
 | `coordinator-session` | Coordinator chat | Lets you make one chat your personal agent ([Houston](https://github.com/kontourai/station/blob/main/docs/user/houston.md)), shown on Home and woken when work you can read needs you, fails or finishes. | Each wake is a model call. On an engine with Station tools it acts with your permissions. Turning it off keeps your choice of chat; nothing is woken and queued updates are not sent. |
 | `coordinator-picture` | Coordinator working picture | Lets the designated coordinator keep short notes about readable work, shown on Home. | Needs Coordinator chat. Notes can contain work details; access to each source is rechecked. Finished notes expire after seven days. |
 | `conversation-resolution` | Open and Settled inbox | Keeps conversations Open until explicitly settled. Task closure follows the existing Task close-on-merge setting. | Personal resolution state syncs across devices. Turning it off preserves saved choices and restores turn-based grouping; no provider cost. |
+| `external-session-history` | Third-party history | In global History, browse older conversations and choose which to import. | Browsing reads local provider stores. Imports save messages in Station. |
 | `appearance-studio` | Appearance studio | Adds visual background and styling controls, saved themes, portable theme files and inline chat proposal previews. | Off by default. Themes and images are stored per person on this Station. Disabling hides the new actions and retains the accepted appearance; approvals pause custom styling. |
 | `attention-snooze` | Attention snooze | Lets the attention API temporarily hide any inbox item until a chosen time, up to 30 days. A newer source version resurfaces immediately. | Local per-user state only; no provider cost or background jobs. Off by default; disabling keeps saved snoozes but omits their effect while off. |
 | `private-memory` | Private memory | Private memory you can check and search. New chats start with what you confirmed. No erasure yet. | Memory can contain personal information. Off by default. Only chats on the Station engine get the brief. Create it through the API. Disabling hides access but retains the store. Hosted Stations do not offer it. |
@@ -481,6 +483,11 @@ Each host's menu also offers **Share devices…**, **Disable helper**, **Edit** 
 explains what you can do with the devices once a host is ready.
 
 ## Nearby Stations
+
+In **Connect a Station**, choose **Nearby Stations** when discovery is available.
+Select a suggestion to check its identity, then request access. Finding a
+Station does not grant access or switch your selected Station; saving Device
+access to another Station keeps your current connection.
 
 On the computer running Station, **Settings → Pairing → Discover this Station
 nearby** makes its name and local address visible to nearby devices. It starts

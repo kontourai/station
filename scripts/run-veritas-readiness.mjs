@@ -14,7 +14,9 @@ if (process.platform === 'win32') {
   const shellDir = resolve(git.stdout.trim(), '../../..', 'bin');
   if (!existsSync(resolve(shellDir, 'sh.exe')))
     throw new Error(`Git shell is missing from ${shellDir}`);
-  env.PATH = `${shellDir}${delimiter}${env.PATH ?? ''}`;
+  const pathKey =
+    Object.keys(env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
+  env[pathKey] = `${shellDir}${delimiter}${env[pathKey] ?? ''}`;
 }
 
 /**

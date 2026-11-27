@@ -164,14 +164,14 @@ describe('terminal gateway admission (#3994)', () => {
     vi.useRealTimers();
   });
 
-  function rawSocket(protocols: string[], options = {}) {
-    const socket = new WebSocket(socketURL, protocols, options);
+  function rawSocket(protocols: string[], options = {}, url = socketURL) {
+    const socket = new WebSocket(url, protocols, options);
     socket.on('error', () => undefined);
     sockets.push(socket);
     return socket;
   }
-  async function upgradeStatus(protocols: string[]) {
-    const socket = rawSocket(protocols);
+  async function upgradeStatus(protocols: string[], url = socketURL) {
+    const socket = rawSocket(protocols, {}, url);
     const [, response] = (await Promise.race([
       once(socket, 'unexpected-response'),
       once(socket, 'open').then(() => [undefined, { statusCode: 101 }]),
@@ -290,26 +290,71 @@ describe('terminal gateway admission (#3994)', () => {
     ).toBe(401);
   });
 
-  test('one identity cannot take every slot and reserved slots keep the operator in', async () => {
-    await start({ connections: 4, perIdentity: 2, reserved: 1 });
+  test('shares identity and reserved capacity across listeners and restores heartbeat after teardown and remount', async () => {
+    await start({
+      connections: 4,
+      perIdentity: 2,
+      reserved: 1,
+      heartbeatMs: 50,
+    });
     grants.set('tablet', 'terminal:operate');
-    const admit = async (principal: string) =>
-      (
-        await upgradeStatus([
+    const second = createServer((_request, response) => {
+      response.writeHead(404).end();
+    });
+    gateway.mount(second, { upgraded: () => undefined });
+    second.listen(0, '127.0.0.1');
+    await once(second, 'listening');
+    const address = second.address();
+    if (!address || typeof address === 'string') throw new Error('No port');
+    const secondURL = `ws://127.0.0.1:${address.port}/api/terminal/socket`;
+    const admitted: WebSocket[] = [];
+    const admit = async (principal: string, url: string) => {
+      const result = await upgradeStatus(
+        [
           TERMINAL_SOCKET_PROTOCOL,
           `${TERMINAL_TICKET_PROTOCOL_PREFIX}${ticketFor(principal)}`,
-        ])
-      ).status;
-    expect(await admit('phone')).toBe(101);
-    expect(await admit('phone')).toBe(101);
-    // Per-identity fairness: a third socket for the same device is refused.
-    expect(await admit('phone')).toBe(429);
-    // Unreserved capacity is connections - reserved = 3.
-    expect(await admit('tablet')).toBe(101);
-    expect(await admit('tablet')).toBe(429);
-    // The operator in person still gets the reserved slot.
-    expect(await admit('operator')).toBe(101);
-    expect(await admit('operator')).toBe(429);
+        ],
+        url,
+      );
+      if (result.status === 101) admitted.push(result.socket);
+      return result.status;
+    };
+    try {
+      expect(await admit('phone', socketURL)).toBe(101);
+      expect(await admit('phone', secondURL)).toBe(101);
+      expect(await admit('phone', secondURL)).toBe(429);
+      expect(await admit('tablet', secondURL)).toBe(101);
+      expect(await admit('tablet', socketURL)).toBe(429);
+      expect(await admit('operator', socketURL)).toBe(101);
+      expect(await admit('operator', secondURL)).toBe(429);
+
+      const closed = admitted.map((socket) => once(socket, 'close'));
+      gateway.stop();
+      await Promise.all(closed);
+      expect(server.listenerCount('upgrade')).toBe(0);
+      expect(second.listenerCount('upgrade')).toBe(0);
+
+      gateway.mount(server, { upgraded: () => undefined });
+      gateway.mount(second, { upgraded: () => undefined });
+      expect(await admit('phone', socketURL)).toBe(101);
+      const remounted = rawSocket(
+        [
+          TERMINAL_SOCKET_PROTOCOL,
+          `${TERMINAL_TICKET_PROTOCOL_PREFIX}${ticketFor('phone')}`,
+        ],
+        { autoPong: false },
+        secondURL,
+      );
+      const ping = vi.fn();
+      remounted.on('ping', ping);
+      const terminated = once(remounted, 'close');
+      await once(remounted, 'open');
+      await expect.poll(() => ping.mock.calls.length).toBeGreaterThan(0);
+      expect((await terminated)[0]).toBe(1006);
+    } finally {
+      gateway.stop();
+      await new Promise<void>((resolve) => second.close(() => resolve()));
+    }
   });
 
   test('a half-open peer that stops answering pings is terminated', async () => {

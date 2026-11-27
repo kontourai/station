@@ -1635,32 +1635,8 @@ export class NativeStationProfileStorage
 
       this.replaceProfileStore(nextStore);
       const connectionId = profileConnectionId(updatedProfile);
-      const exactOrigin = normalizedPairingEndpoint(
-        updatedProfile.endpoint,
-        updatedProfile.developmentHttpOrigin,
-      );
-      const result = await this.bridge.invoke<unknown>(
-        'station_profile_authorize_active',
-        { profileName: updatedProfile.name },
-      );
-      const binding = parseNativeProfileAuthorizationReceipt(
-        result,
-        exactOrigin,
-      );
-      if (!binding)
-        throw new Error(
-          'native Station authorization did not return a binding',
-        );
-      if (!updatedProfile.credentialRef)
-        throw new Error('paired Station has no native credential reference');
-      this.activeRequestBinding = {
-        connectionId,
-        credentialRef: updatedProfile.credentialRef,
-        ...(updatedProfile.environmentId
-          ? { environmentId: updatedProfile.environmentId }
-          : {}),
-        ...binding,
-      };
+      if (this.values.get(ACTIVE_KEY) === connectionId)
+        await this.authorizeActiveConnection(connectionId);
       // Desktop's temporary ConnectionStore entry is deliberately replaced by
       // the shared saved Station projection above. Return its real service identity
       // so the caller cannot continue reconciling or selecting the discarded

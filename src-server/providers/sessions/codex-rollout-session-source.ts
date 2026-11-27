@@ -18,6 +18,7 @@ import {
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
+  AttachedSessionDiscoveryPage,
   AttachedSessionDiscoveryResult,
   AttachedSessionReadResult,
   AttachedSessionSource,
@@ -219,7 +220,9 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
       (() => new Promise<void>((resolve) => setImmediate(resolve)));
   }
 
-  async discover(): Promise<AttachedSessionDiscoveryResult> {
+  async discover(
+    page?: AttachedSessionDiscoveryPage,
+  ): Promise<AttachedSessionDiscoveryResult> {
     const { homes, homeLimitSeen } = await this.resolveHomes();
     if (homes.length === 0) return { outcome: 'missing_root', sessions: [] };
     this.handles.clear();
@@ -234,17 +237,20 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
     }> = [];
     let candidateLimitSeen = homeLimitSeen;
     let rejected = false;
+    const offset = page?.offset ?? 0;
+    const archiveEnd = offset + (page?.limit ?? 0);
+    const perHomeLimit = page ? archiveEnd + 1 : this.maxCandidates;
     for (const [index, home] of homes.entries()) {
       // Full: the remaining homes are not walked, and may hold more.
-      if (candidates.length >= this.maxTotalCandidates) {
+      if (!page && candidates.length >= this.maxTotalCandidates) {
         candidateLimitSeen = true;
         break;
       }
-      const scan = this.scanHome(home.root);
+      const scan = await this.scanHome(home.root, perHomeLimit);
       candidateLimitSeen ||= scan.limitSeen;
       rejected ||= scan.rejected;
       for (const candidate of scan.candidates.sort(compareCandidates)) {
-        if (candidates.length >= this.maxTotalCandidates) {
+        if (!page && candidates.length >= this.maxTotalCandidates) {
           candidateLimitSeen = true;
           break;
         }
@@ -263,7 +269,8 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
     // one would hide the other's turns, and a winner that changed between
     // polls would mint a new thread for the same conversation.
     const sessions: AttachedSessionDescriptor[] = [];
-    for (const candidate of candidates.sort(compareCandidates)) {
+    const sorted = candidates.sort(compareCandidates);
+    for (const candidate of page ? sorted.slice(offset, archiveEnd) : sorted) {
       const home = homes[candidate.home]!;
       const result = this.discoverFile(
         home.root,
@@ -279,9 +286,16 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
         result.registration.descriptor.sourceHandle,
         result.registration,
       );
-      sessions.push(result.registration.descriptor);
+      sessions.push({
+        ...result.registration.descriptor,
+        modifiedAtMs: candidate.modifiedAt,
+      });
     }
-    return { outcome, sessions };
+    return {
+      outcome,
+      sessions,
+      ...(page && sorted.length > archiveEnd ? { nextOffset: archiveEnd } : {}),
+    };
   }
 
   /**
@@ -345,17 +359,20 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
   }
 
   /** Bounded, symlink-refusing walk of one home's `sessions` tree. */
-  private scanHome(root: string): {
+  private async scanHome(
+    root: string,
+    limit: number,
+  ): Promise<{
     candidates: Array<{ path: string; modifiedAt: number }>;
     limitSeen: boolean;
     rejected: boolean;
-  } {
+  }> {
     const candidates: Array<{ path: string; modifiedAt: number }> = [];
     let visitedEntries = 0;
     let candidateLimitSeen = false;
     let traversalExhausted = false;
     let rejected = false;
-    const visit = (directory: string, depth: number): void => {
+    const visit = async (directory: string, depth: number): Promise<void> => {
       if (traversalExhausted) return;
       if (depth > this.maxDepth) {
         candidateLimitSeen = true;
@@ -376,6 +393,9 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
             traversalExhausted = true;
             return;
           }
+          if (visitedEntries % 128 === 0) {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+          }
           const candidate = join(directory, entry.name);
           let stat: import('node:fs').Stats;
           try {
@@ -389,17 +409,12 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
             rejected = true;
           } else if (stat.isDirectory()) {
             const canonical = canonicalInside(root, candidate);
-            if (canonical) visit(canonical, depth + 1);
+            if (canonical) await visit(canonical, depth + 1);
             else rejected = true;
           } else if (stat.isFile() && entry.name.endsWith('.jsonl')) {
             const canonical = canonicalRegularFile(root, candidate);
             if (canonical) {
               candidates.push({ path: canonical, modifiedAt: stat.mtimeMs });
-              if (candidates.length > this.maxCandidates) {
-                candidates.sort(compareCandidates);
-                candidates.length = this.maxCandidates;
-                candidateLimitSeen = true;
-              }
             } else {
               rejected = true;
             }
@@ -410,10 +425,11 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
         directoryHandle.closeSync();
       }
     };
-    visit(root, 0);
+    await visit(root, 0);
     return {
-      candidates,
-      limitSeen: candidateLimitSeen || traversalExhausted,
+      candidates: candidates.sort(compareCandidates).slice(0, limit),
+      limitSeen:
+        candidateLimitSeen || traversalExhausted || candidates.length > limit,
       rejected,
     };
   }
@@ -520,6 +536,9 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
         return {
           outcome: 'line_limit',
           events,
+          ...(cursor.offset + content.length < fileSize
+            ? { hasMore: true as const }
+            : {}),
           cursor: encodeCursor(cursor.offset + content.length, state),
         };
       }
@@ -592,6 +611,7 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
         return {
           outcome,
           events,
+          hasMore: true,
           cursor: encodeCursor(
             absoluteLineStart,
             beforeRecord,
@@ -607,6 +627,10 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
     return {
       outcome,
       events,
+      ...(cursor.offset + content.length < fileSize ||
+      (events.length === this.maxEvents && localOffset < content.length)
+        ? { hasMore: true as const }
+        : {}),
       cursor: encodeCursor(cursor.offset + localOffset, state),
     };
   }

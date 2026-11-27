@@ -8,6 +8,22 @@
     "src-ui/src/components/ServerOlderLaunchCheck.tsx"
   ],
   "screens": {
+    "external-history-dark-desktop": [
+      "src-ui/src/components/chat/ConversationHistory.tsx",
+      "src-ui/src/components/chat/ExternalSessionHistory.tsx"
+    ],
+    "external-history-light-desktop": [
+      "src-ui/src/components/chat/ConversationHistory.tsx",
+      "src-ui/src/components/chat/ExternalSessionHistory.tsx"
+    ],
+    "external-history-dark-mobile": [
+      "src-ui/src/components/chat/ConversationHistory.tsx",
+      "src-ui/src/components/chat/ExternalSessionHistory.tsx"
+    ],
+    "external-history-light-mobile": [
+      "src-ui/src/components/chat/ConversationHistory.tsx",
+      "src-ui/src/components/chat/ExternalSessionHistory.tsx"
+    ],
     "member-project-channels-light": [
       "src-ui/src/views/ProjectPage.tsx",
       "src-ui/src/views/project-page/MemberProjectPage.tsx"

@@ -342,7 +342,11 @@
 
     "tests/child-transcript-chat.spec.ts",
 
-    "src-ui/src/hooks/useSwipeActions.ts"
+    "src-ui/src/hooks/useSwipeActions.ts",
+
+    "src-server/routes/external-session-history.ts",
+
+    "src-ui/src/components/chat/ExternalSessionHistory.tsx"
   ],
 
   "checks": [

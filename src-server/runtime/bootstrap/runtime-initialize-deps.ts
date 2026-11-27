@@ -66,6 +66,7 @@ interface RuntimeInitializationContext {
   codexToolFamiliesAdmitted?: InitializeRuntimeDeps['codexToolFamiliesAdmitted'];
   stationControlCallerRecords?: InitializeRuntimeDeps['stationControlCallerRecords'];
   attachedSessionSources?: AttachedSessionSource[];
+  externalSessionHistoryPreview?: FeaturePreviewSelector;
   port: number;
   host?: string;
   logger: Logger;
@@ -169,7 +170,7 @@ interface RuntimeInitializationContext {
   copilotSdkAdapter: CopilotSdkAdapter;
   ollamaAdapter: OllamaAdapter;
   createVoltAgentInstance: (slug: string) => Promise<Agent>;
-  configureRoutes: (app: any) => void;
+  configureRoutes: InitializeRuntimeDeps['configureRoutes'];
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
@@ -206,6 +207,7 @@ export function createRuntimeInitializationDeps(
 ): InitializeRuntimeDeps {
   return {
     attachedSessionSources: context.attachedSessionSources ?? [],
+    externalSessionHistoryPreview: context.externalSessionHistoryPreview,
     port: context.port,
     host: context.host,
     logger: context.logger,

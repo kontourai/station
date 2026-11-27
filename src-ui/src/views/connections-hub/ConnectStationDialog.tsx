@@ -1,4 +1,5 @@
 import {
+  ConnectionManagerDiscoverPanel,
   completeVerifiedPairing,
   decodeDevicePairingPayload,
   hasCameraApi,
@@ -7,6 +8,7 @@ import {
   type PendingPairingExchange,
   QRScanner,
   savePendingExchange,
+  useConnectionCandidates,
   useConnections,
   usePendingPairingApproval,
 } from '@kontourai/station-connect';
@@ -22,7 +24,7 @@ import {
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
@@ -39,6 +41,12 @@ interface Destination {
   apiBase: string;
   environmentId: string;
   label: string;
+}
+
+interface IdentifyStationInput {
+  address: string;
+  payload?: string;
+  manualCode?: string;
 }
 
 export interface ConnectStationDialogProps {
@@ -84,13 +92,23 @@ export function ConnectStationDialog({
   }).current;
   const [address, setAddress] = useState('');
   const [code, setCode] = useState('');
-  const [method, setMethod] = useState<'address' | 'code' | 'scan'>('address');
+  const [method, setMethod] = useState<'address' | 'code' | 'scan' | 'nearby'>(
+    'address',
+  );
+  const discovery = useConnectionCandidates();
+  const identificationInFlight = useRef(false);
+  const { refresh: refreshCandidates, cancel: cancelCandidates } = discovery;
   // Offer scanning only where this browser can have a camera; a capture that
   // finds none also withdraws it.
   const [cameraUnavailable, setCameraUnavailable] = useState(
     () => !hasCameraApi(),
   );
   const [destination, setDestination] = useState<Destination | null>(null);
+  useEffect(() => {
+    if (!isOpen || method !== 'nearby' || destination) return;
+    refreshCandidates();
+    return cancelCandidates;
+  }, [isOpen, method, destination, refreshCandidates, cancelCandidates]);
   const [pairingPayload, setPairingPayload] = useState<string>();
   const [peerInvitation, setPeerInvitation] = useState(false);
   const [manualPairingCode, setManualPairingCode] = useState<string>();
@@ -119,11 +137,7 @@ export function ConnectStationDialog({
     `station-peer-enrollment:${controller.apiBase}:${scope?.authorityKey ?? 'unscoped'}:${target.apiBase}:${target.environmentId}`;
 
   const identify = useMutation({
-    mutationFn: async (input: {
-      address: string;
-      payload?: string;
-      manualCode?: string;
-    }) => {
+    mutationFn: async (input: IdentifyStationInput) => {
       const url = new URL(normalizeHostInput(input.address));
       if (
         !['http:', 'https:'].includes(url.protocol) ||
@@ -272,6 +286,15 @@ export function ConnectStationDialog({
       }
     },
   });
+  const identifyStation = (input: IdentifyStationInput) => {
+    if (identificationInFlight.current) return;
+    identificationInFlight.current = true;
+    identify.mutate(input, {
+      onSettled: () => {
+        identificationInFlight.current = false;
+      },
+    });
+  };
   const peerStatus = usePeerEnrollmentQuery(
     controller.apiBase,
     reservation,
@@ -364,14 +387,14 @@ export function ConnectStationDialog({
     const offer = decodeDevicePairingPayload(payload);
     if (!offer) {
       if (address.trim() && /^[A-Za-z0-9]{6,16}$/.test(payload)) {
-        identify.mutate({ address, manualCode: payload.toUpperCase() });
+        identifyStation({ address, manualCode: payload.toUpperCase() });
       } else
         setError(
           'Enter an unexpired invitation, or the Station address and its short pairing code.',
         );
       return;
     }
-    identify.mutate({ address: offer.endpoint, payload });
+    identifyStation({ address: offer.endpoint, payload });
   };
   const close = () => onClose();
   const status = observed?.status;
@@ -466,15 +489,24 @@ export function ConnectStationDialog({
             onSubmit={(event) => {
               // Return in the address field submits, like Continue.
               event.preventDefault();
-              if (method === 'scan' || !canContinue) return;
+              if (method === 'scan' || method === 'nearby' || !canContinue)
+                return;
               if (method === 'code') acceptCode(code.trim());
-              else identify.mutate({ address });
+              else identifyStation({ address });
             }}
           >
             <fieldset
               className="connect-station-methods"
               aria-label="Identify a Station"
             >
+              {discovery.providerCount > 0 && (
+                <Button
+                  onClick={() => setMethod('nearby')}
+                  aria-pressed={method === 'nearby'}
+                >
+                  Nearby Stations
+                </Button>
+              )}
               <Button
                 onClick={() => setMethod('address')}
                 aria-pressed={method === 'address'}
@@ -496,7 +528,25 @@ export function ConnectStationDialog({
                 Pairing code
               </Button>
             </fieldset>
-            {method === 'scan' ? (
+            {method === 'nearby' ? (
+              <ConnectionManagerDiscoverPanel
+                discovering={discovery.discovering}
+                candidates={discovery.candidates}
+                providers={discovery.providers}
+                providerCount={discovery.providerCount}
+                existingUrls={
+                  new Set(
+                    connections.connections.map((connection) => connection.url),
+                  )
+                }
+                onRefresh={refreshCandidates}
+                onSelect={(candidate) => {
+                  cancelCandidates();
+                  setAddress(candidate.url);
+                  identifyStation({ address: candidate.url });
+                }}
+              />
+            ) : method === 'scan' ? (
               <QRScanner
                 onScan={acceptCode}
                 onCancel={() => setMethod('address')}
@@ -550,7 +600,7 @@ export function ConnectStationDialog({
                 />
               </label>
             )}
-            {method !== 'scan' ? (
+            {method !== 'scan' && method !== 'nearby' ? (
               <Button type="submit" variant="primary" disabled={!canContinue}>
                 {identify.isPending ? 'Checking Station…' : 'Continue'}
               </Button>

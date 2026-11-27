@@ -1,0 +1,9 @@
+{
+  "revision": "247642bd9e3398c7430e3310b7eb956bd48668ce",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the native plugin fixture delta through real WebDriver Station selection, mounted frame relay, CSP transport observation and explicit unavailable-service responses. Product APIs, sidecar ownership, recovery, native permission grants and release provenance are unchanged. The native verification guide now distinguishes absent child bridges from observed WebView2 native-fetch CSP refusal and explicitly excludes fallback transport and exhaustive command-origin qualification. Windows debug runtime passed using the retained build; this is not an exact-final-source packaged or real-keyring receipt.","inputs":["tests/tauri-shell/plugin-host-security.e2e.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed the native plugin fixture delta through real WebDriver Station selection, mounted frame relay, CSP transport observation and explicit unavailable-service responses. Product APIs, sidecar ownership, recovery, native permission grants and release provenance are unchanged. The native verification guide now distinguishes absent child bridges from observed WebView2 native-fetch CSP refusal and explicitly excludes fallback transport and exhaustive command-origin qualification. Windows debug runtime passed using the retained build; this is not an exact-final-source packaged or real-keyring receipt.","inputs":["tests/tauri-shell/plugin-host-security.e2e.ts"]}
+  ]
+}
