@@ -137,15 +137,23 @@ function custodyAccount(reference: string) {
   return `${prefix}:${createHash('sha256').update(Buffer.concat(parts)).digest('base64url')}`;
 }
 
-function assertStoredCredential(profile: ProfileStore['profiles'][number]) {
+async function assertStoredCredential(
+  profile: ProfileStore['profiles'][number],
+  beforeCredentials: string,
+) {
   assert.ok(profile.credentialRef);
   const reference = `${profile.credentialRef.kind}:${profile.credentialRef.id}`;
+  const target = `profile:${reference}.io.kontourai.station`;
+  assert.ok(
+    !beforeCredentials.includes(target),
+    'Read only fixture-owned credentials',
+  );
   const listing = execFileSync('cmdkey', ['/list'], {
     encoding: 'utf8',
     windowsHide: true,
   });
   assert.ok(
-    listing.includes(`profile:${reference}.io.kontourai.station`),
+    listing.includes(target),
     'The native bearer must exist in Windows Credential Manager',
   );
   assert.ok(
@@ -154,6 +162,17 @@ function assertStoredCredential(profile: ProfileStore['profiles'][number]) {
     ),
     'Native custody metadata must exist in Windows Credential Manager',
   );
+  const { AsyncEntry } = await import('@napi-rs/keyring');
+  const credential = await AsyncEntry.withTarget(
+    target,
+    'io.kontourai.station',
+    `profile:${reference}`,
+  ).getPassword();
+  assert.ok(
+    credential,
+    'The exact fixture-owned native bearer must be readable',
+  );
+  return createHash('sha256').update(`Bearer ${credential}`).digest('hex');
 }
 
 async function removeOwnedCredentials(
@@ -294,7 +313,10 @@ async function main() {
       (profile) => profile.name === 'local',
     );
     assert.ok(originalLocal);
-    assertStoredCredential(originalLocal);
+    const originalCredentialHash = await assertStoredCredential(
+      originalLocal,
+      beforeCredentials,
+    );
     const originalSelection = await driver.execute(() =>
       document
         .querySelector('button[aria-label^="Choose Station"]')
@@ -429,7 +451,10 @@ async function main() {
       (profile) => profile.endpoint === remoteOrigin,
     );
     assert.ok(paired?.credentialRef);
-    assertStoredCredential(paired);
+    const pairedCredentialHash = await assertStoredCredential(
+      paired,
+      beforeCredentials,
+    );
     assert.deepEqual(
       profiles(fixture).profiles.find(
         (profile) => profile.name === originalLocal.name,
@@ -510,9 +535,12 @@ async function main() {
       .digest('hex');
     assert.ok(
       authenticated.every(
-        (entry) => entry.authorizationHash !== localOperatorHash,
+        (entry) =>
+          entry.authorizationHash !== localOperatorHash &&
+          entry.authorizationHash !== originalCredentialHash &&
+          entry.authorizationHash === pairedCredentialHash,
       ),
-      'The local operator credential must never reach the advertised remote origin',
+      'Remote requests must use only the explicitly paired native credential, never the original controller or operator bearer',
     );
     const admissionTrafficOffset = remoteTraffic().length;
     assert.equal(
@@ -536,9 +564,13 @@ async function main() {
     );
     assert.ok(
       selectedAdmissionTraffic.every(
-        (entry) => entry.authorizationHash !== localOperatorHash,
+        (entry) =>
+          entry.authorizationHash !== localOperatorHash &&
+          entry.authorizationHash !== originalCredentialHash &&
+          (!entry.authenticated ||
+            entry.authorizationHash === pairedCredentialHash),
       ),
-      'Selected-host admission must not forward the original controller credential',
+      'Authenticated selected-host admission must use only the explicitly paired credential',
     );
     writeFileSync(
       join(output, 'nearby-paired-remote-project.png'),
