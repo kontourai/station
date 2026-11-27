@@ -6,6 +6,7 @@ import { Empty, ErrorState, SkeletonList } from '../components/state';
 import '../index.css';
 import '../tailwind.css';
 import './component-catalog.css';
+import { ActionRowStory, SettingsControlStory } from './ControlsStories';
 
 const sources = Object.keys(
   import.meta.glob(
@@ -39,6 +40,23 @@ const stories = [
     id: 'disclosure',
     title: 'Disclosure',
     files: ['../components/DisclosureToggle.tsx'],
+  },
+  {
+    id: 'action-row',
+    title: 'Action rows and overflow menus',
+    files: [
+      '../components/ActionRow.tsx',
+      '../components/ActionOverflowMenu.tsx',
+    ],
+  },
+  {
+    id: 'settings-controls',
+    title: 'Settings controls',
+    files: [
+      '../components/Toggle.tsx',
+      '../components/IconButton.tsx',
+      '../components/ProvenanceBadge.tsx',
+    ],
   },
   {
     id: 'states',
@@ -146,6 +164,14 @@ function Catalog() {
             <li>Review release notes</li>
             <li>Check the nightly report</li>
           </ul>
+        </section>
+        <section id="action-row">
+          <h2>Action rows and overflow menus</h2>
+          <ActionRowStory />
+        </section>
+        <section id="settings-controls">
+          <h2>Settings controls</h2>
+          <SettingsControlStory />
         </section>
         <section id="states">
           <h2>Empty, error and loading states</h2>
