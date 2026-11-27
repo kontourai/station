@@ -232,8 +232,9 @@ function QueueSwipeRow({
           aria-hidden={!swipe.open}
           inert={!swipe.open}
         >
-          <button
+          <Button
             type="button"
+            variant="ghost"
             className="queue-swipe-row__action"
             disabled={disabled}
             aria-label={dismiss ? 'Dismiss notice' : 'Cancel message'}
@@ -244,7 +245,7 @@ function QueueSwipeRow({
             }}
           >
             {dismiss ? <CloseGlyph /> : <TrashGlyph />}
-          </button>
+          </Button>
         </div>
       )}
     </div>
