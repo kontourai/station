@@ -7953,7 +7953,7 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
 // generated script) rather than relying on Vitest to produce it — the
 // `globalThis.__name` shim in `buildUiServerScript` is what's asserted, not
 // this test's own transform.
-describe('buildUiServerScript output runs as a real standalone node -e process (code-review M2)', () => {
+describe('buildUiServerScript output runs as a real standalone node process (code-review M2)', () => {
   const makeUiDir = trackTempDirs();
 
   function spawnUiScript(script: string) {
@@ -7969,8 +7969,8 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         };
       })();
     `;
-    const child = spawn(process.execPath, ['-e', observeListening + script], {
-      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    const child = spawn(process.execPath, ['-'], {
+      stdio: ['pipe', 'ignore', 'pipe', 'ipc'],
       windowsHide: true,
       env: {
         ...process.env,
@@ -8011,6 +8011,7 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         reject(new Error(`UI child exited (${code}, ${signal}): ${stderr}`));
       });
     });
+    child.stdin!.end(observeListening + script);
     return { child, listening, stderr: () => stderr };
   }
 
