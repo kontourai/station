@@ -163,8 +163,7 @@ async function assertStoredCredential(
     'Native custody metadata must exist in Windows Credential Manager',
   );
   const { AsyncEntry } = await import('@napi-rs/keyring');
-  const credential = await AsyncEntry.withTarget(
-    target,
+  const credential = await new AsyncEntry(
     'io.kontourai.station',
     `profile:${reference}`,
   ).getPassword();
