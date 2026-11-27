@@ -742,42 +742,47 @@ test('a pnpm link inside node_modules binds the external canonical driver before
   expect(existsSync(f.guard)).toBe(false);
 });
 
-test('the real command runner executes its bound external driver after the legacy tree containing its alias is gone', async () => {
-  const f = fixture();
-  seed(f.modules, '.package-lock.json');
-  const p = pipeline(f);
-  const aliasDirectory = join(f.modules, 'manager');
-  symlinkSync(join(f.root, 'tools'), aliasDirectory, 'junction');
-  p.execution.pnpmInvocation = () => ({
-    command: process.execPath,
-    args: [join(aliasDirectory, 'pnpm.cjs')],
-  });
-  writeFileSync(
-    p.pnpmCliPath,
-    `const fs = require('node:fs');
+test.each([undefined, 'pnpm alias'])(
+  'the real command runner executes its bound external driver after retirement with invocation name %s',
+  async (argv0) => {
+    const f = fixture();
+    seed(f.modules, '.package-lock.json');
+    const p = pipeline(f);
+    const aliasDirectory = join(f.modules, 'manager');
+    symlinkSync(join(f.root, 'tools'), aliasDirectory, 'junction');
+    p.execution.pnpmInvocation = () => ({
+      command: process.execPath,
+      args: [join(aliasDirectory, 'pnpm.cjs')],
+      ...(argv0 === undefined ? {} : { argv0 }),
+    });
+    writeFileSync(
+      p.pnpmCliPath,
+      `const fs = require('node:fs');
 if (!fs.existsSync('.station-dependency-install')) throw new Error('guard missing during driver execution');
 if (fs.existsSync('node_modules')) throw new Error('legacy tree was not retired');
 fs.mkdirSync('node_modules');
 fs.writeFileSync('node_modules/.modules.yaml', 'pnpm metadata');
-fs.writeFileSync('driver-result.json', JSON.stringify({ driver: __filename, args: process.argv.slice(2) }));`,
-  );
-  const execution = { ...p.execution, pnpmCommand };
-  await installWithExecution({}, execution as unknown as typeof p.execution);
-  const result = JSON.parse(
-    readFileSync(join(f.root, 'driver-result.json'), 'utf8'),
-  );
-  expect(result.driver).toBe(realpathSync(p.pnpmCliPath));
-  expect(result.args).toEqual([
-    'install',
-    '--ignore-scripts',
-    '--config.node-linker=hoisted',
-    '--config.enable-global-virtual-store=false',
-    '--package-import-method=clone-or-copy',
-    '--frozen-lockfile',
-  ]);
-  expect(existsSync(aliasDirectory)).toBe(false);
-  expect(existsSync(f.guard)).toBe(false);
-});
+fs.writeFileSync('driver-result.json', JSON.stringify({ driver: __filename, args: process.argv.slice(2), argv0: process.argv0 }));`,
+    );
+    const execution = { ...p.execution, pnpmCommand };
+    await installWithExecution({}, execution as unknown as typeof p.execution);
+    const result = JSON.parse(
+      readFileSync(join(f.root, 'driver-result.json'), 'utf8'),
+    );
+    expect(result.driver).toBe(realpathSync(p.pnpmCliPath));
+    expect(result.argv0).toBe(argv0 ?? realpathSync(process.execPath));
+    expect(result.args).toEqual([
+      'install',
+      '--ignore-scripts',
+      '--config.node-linker=hoisted',
+      '--config.enable-global-virtual-store=false',
+      '--package-import-method=clone-or-copy',
+      '--frozen-lockfile',
+    ]);
+    expect(existsSync(aliasDirectory)).toBe(false);
+    expect(existsSync(f.guard)).toBe(false);
+  },
+);
 
 test('an external alias cannot hide a driver target inside the retirement tree', async () => {
   const f = fixture();
