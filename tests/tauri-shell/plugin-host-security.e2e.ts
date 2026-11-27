@@ -366,6 +366,7 @@ async function setUp() {
       }
     });
     if (typeof ownIpc === 'function') {
+      report('pending');
       ownIpc('bundled_server_status').then(
         () => report('reachable'),
         (error) => report('rejected', { reason: String(error) })
@@ -513,38 +514,6 @@ async function runProof() {
       timeoutMsg: 'Tauri core bridge did not return after fixture reload.',
     },
   );
-  const managerSelector = '[data-testid="app-toolbar-connection"]';
-  await browser.waitUntil(
-    () =>
-      browser.execute((selector: string) => {
-        const element = document.querySelector<HTMLElement>(selector);
-        return Boolean(element && element.getClientRects().length > 0);
-      }, managerSelector),
-    { timeout: 20_000, timeoutMsg: 'Station manager button was not visible.' },
-  );
-  const managerElement = await browser.findElement(managerSelector);
-  assert.ok(
-    managerElement,
-    'Station manager control disappeared before input.',
-  );
-  await browser.clickElement(managerElement);
-  const selectRemoteSelector =
-    'button[role="menuitemradio"][aria-label^="remote-plugin-proof — "]';
-  await browser.waitUntil(
-    () =>
-      browser.execute((selector: string) => {
-        const element = document.querySelector<HTMLElement>(selector);
-        return Boolean(
-          element &&
-            element.getClientRects().length > 0 &&
-            !element.hasAttribute('disabled') &&
-            element.getAttribute('aria-disabled') !== 'true',
-        );
-      }, selectRemoteSelector),
-    { timeout: 20_000, timeoutMsg: 'Remote profile button was not visible.' },
-  );
-  const remoteElement = await browser.findElement(selectRemoteSelector);
-  assert.ok(remoteElement, 'Remote Station disappeared before input.');
   await browser.execute((frameOrigin: string) => {
     addEventListener('message', (event) => {
       const pluginFrame = document.querySelector<HTMLIFrameElement>(
@@ -561,48 +530,6 @@ async function runProof() {
       }
     });
   }, frame.origin);
-  await browser.clickElement(remoteElement);
-  try {
-    await browser.waitUntil(async () => hits.requests.length > 0, {
-      timeout: 5_000,
-      timeoutMsg: 'Selecting the remote profile made no handshake request.',
-    });
-  } catch (error) {
-    const selectionState = await browser.execute(() => ({
-      body: document.body.innerText.slice(0, 1_500),
-      activeConnection: localStorage.getItem(
-        'station-connect-connections-active',
-      ),
-    }));
-    const nativeState = await browser.execute(async () => {
-      const invoke = (
-        window as unknown as {
-          __TAURI_INTERNALS__: {
-            invoke<T>(command: string): Promise<T>;
-          };
-        }
-      ).__TAURI_INTERNALS__.invoke;
-      return {
-        profiles: await invoke<string>('station_profile_store_read'),
-        bundled: await invoke<unknown>('bundled_server_status'),
-      };
-    });
-    throw new Error(
-      `Remote profile selection produced no request: ${JSON.stringify({
-        ...selectionState,
-        ariaPressed: await browser.execute(
-          (selector: string) =>
-            document.querySelector(selector)?.getAttribute('aria-pressed') ??
-            null,
-          selectRemoteSelector,
-        ),
-        fixtureRequests: hits.requests,
-        nativeState,
-        remoteOrigin: remote.origin,
-      })}`,
-      { cause: error },
-    );
-  }
   await browser.execute(() => {
     (
       window as unknown as { __tauriShellErrors?: string[] }
@@ -631,7 +558,10 @@ async function runProof() {
           (selector: string) => Boolean(document.querySelector(selector)),
           outerFrameSelector,
         ),
-      { timeout: 10_000, timeoutMsg: 'Plugin frame did not enter the DOM.' },
+      {
+        timeout: 20_000,
+        timeoutMsg: 'The seeded remote Station did not mount its plugin frame.',
+      },
     );
   } catch (error) {
     const state = await browser.execute(() => ({
@@ -735,7 +665,7 @@ try {
   );
 } catch (error) {
   const renderer = await browser
-    .execute(() => ({
+    ?.execute(() => ({
       location: window.location.href,
       body: document.body.innerText.slice(0, 3_000),
       frames: [...document.querySelectorAll('iframe')].map((entry) => ({

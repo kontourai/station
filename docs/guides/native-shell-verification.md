@@ -564,7 +564,8 @@ npm run test:tauri-shell -- --build --lane=plugin-host-security
 [`scripts/run-tauri-shell-e2e.mjs`](../../scripts/run-tauri-shell-e2e.mjs)
 selects [`tests/tauri-shell/plugin-host-security.e2e.ts`](../../tests/tauri-shell/plugin-host-security.e2e.ts).
 Its isolated fixture waits for the bundled server, navigates the WebView and
-selects the remote Station through real WebDriver input. The hostile plugin
+awaits hydration of its seeded default remote Station. It does not reselect
+that Station while startup is already activating it. The hostile plugin
 cannot reach the parent's bridge, storage or DOM. Where the child has no
 callable native bridge, the fixture observes its absence. WebView2 can inject
 Tauri internals into child frames; there the fixture invokes a read-only native
