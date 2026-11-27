@@ -131,8 +131,8 @@ for (const [mode, width, theme, decision] of [
     }
     await expect(row.getByText(APPROVAL_BODY)).toBeVisible();
     if (width === 390) {
-      const details = row.getByRole('button', { name: /^Details for/ });
-      const box = await details.boundingBox();
+      const primary = row.getByRole('button', { name: /^Station session/ });
+      const box = await primary.boundingBox();
       const approvalBox = await row
         .getByRole('button', { name: 'Approve once', exact: true })
         .boundingBox();
@@ -145,6 +145,46 @@ for (const [mode, width, theme, decision] of [
       body: screenshot,
       contentType: 'image/png',
     });
+    if (width === 390) {
+      await page.getByRole('button', { name: 'Actions for Chats' }).click();
+      await page
+        .getByRole('menuitem', { name: 'Select conversations' })
+        .click();
+      await row.getByRole('button', { name: /^Station session/ }).click();
+      await page
+        .getByRole('region', { name: 'Selected conversations' })
+        .getByRole('button', { name: 'Details', exact: true })
+        .click();
+      const details = page.getByRole('dialog', {
+        name: 'Details for Station session',
+        exact: true,
+      });
+      await expect(
+        details.getByRole('button', { name: /^In 1 hour/ }),
+      ).toBeVisible();
+      await testInfo.attach('approval-details', {
+        body: await details.screenshot(),
+        contentType: 'image/png',
+      });
+      await details.getByRole('button', { name: 'Close details' }).click();
+      await expect(details).toHaveCount(0);
+    } else {
+      const trigger = row.getByRole('button', {
+        name: 'Actions for Station session',
+      });
+      await row.hover();
+      await trigger.click();
+      const menu = row.getByRole('menu');
+      await expect(
+        menu.getByRole('menuitem', { name: /^In 1 hour/ }),
+      ).toBeVisible();
+      await testInfo.attach('approval-actions', {
+        body: await menu.screenshot(),
+        contentType: 'image/png',
+      });
+      await menu.press('Escape');
+      await expect(trigger).toBeFocused();
+    }
     await row
       .getByRole('button', {
         name: decision === 'accept' ? 'Approve once' : 'Deny',

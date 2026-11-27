@@ -673,6 +673,31 @@ describe('two sizes and two chromes', () => {
     );
   });
 
+  it.each(['hover', 'touch'] as const)(
+    '%s chrome leaves snooze times unformatted until its actions open',
+    (chrome) => {
+      const formattedTime = vi.spyOn(Date.prototype, 'toLocaleTimeString');
+      try {
+        renderRow(rowFor(), { chrome, hoverCard: true, onSnoozeWake: vi.fn() });
+        expect(formattedTime).not.toHaveBeenCalled();
+        fireEvent.click(
+          screen.getByRole('button', {
+            name:
+              chrome === 'hover'
+                ? 'Actions for Migrate sessions table'
+                : 'Snooze Migrate sessions table',
+          }),
+        );
+        expect(
+          screen.getByRole('menuitem', { name: /^In 1 hour,/ }),
+        ).toBeTruthy();
+        expect(formattedTime).toHaveBeenCalled();
+      } finally {
+        formattedTime.mockRestore();
+      }
+    },
+  );
+
   it('hover chrome puts the row actions behind one ⋯ menu, in the one order', () => {
     const row = rowFor({ hasActiveTurn: false });
     const onActivate = vi.fn();

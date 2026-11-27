@@ -20,7 +20,7 @@ export interface InboxRowSnoozeAction extends ActionLabel {
   kind: 'snooze';
   id: 'snooze';
   isSnoozed: boolean;
-  choices: { label: string; hint: string; wakeAt: number }[];
+  choices: () => { label: string; hint: string; wakeAt: number }[];
   choose: (wakeAt: number | null, trigger: HTMLButtonElement) => void;
 }
 
@@ -99,7 +99,7 @@ export function inboxRowActions({
         ? `Wake ${title} now`
         : `Snooze ${title}`,
       isSnoozed: snooze.isSnoozed,
-      choices: snoozeChoices(now),
+      choices: () => snoozeChoices(now),
       choose: snooze.choose,
     });
   }
