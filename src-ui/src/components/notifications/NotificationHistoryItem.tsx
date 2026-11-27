@@ -103,6 +103,7 @@ export function NotificationHistoryItem({
       {detail && <div className="notification-history__detail">{detail}</div>}
       <NotificationEnvelopeControls
         notification={notification}
+        showAttribution={!context.some((part) => part.kind === 'agent')}
         detailClassName="notification-history__detail"
         actionsClassName="notification-history__actions"
         actionClassName="notification-history__action"

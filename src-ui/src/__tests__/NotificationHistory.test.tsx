@@ -41,6 +41,18 @@ const snoozeNotification = vi.fn();
 
 import { chooseRowAction, openRowAction } from './helpers/row-menu';
 
+const identityCatalog = vi.hoisted(() => ({
+  agents: [] as { slug: string; name: string; icon?: string }[],
+  projects: [] as { slug: string; id: string; name: string; icon?: string }[],
+}));
+
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => identityCatalog.agents,
+}));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: identityCatalog.projects }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({
@@ -115,6 +127,8 @@ import { NotificationHistory } from '../components/notifications/NotificationHis
  */
 beforeEach(() => {
   phone.isMobile = false;
+  identityCatalog.agents = [];
+  identityCatalog.projects = [];
   notifications = [];
   attention = { items: [], pendingCount: 0 };
   sessions = [];
@@ -1331,4 +1345,39 @@ describe('NotificationHistory on a phone (#4404 A43)', () => {
     );
     expect(screen.queryByRole('dialog', { name: 'Notifications' })).toBe(null);
   });
+});
+
+test('shows the project and agent display identities beside a session failure', () => {
+  identityCatalog.agents = [{ slug: 'reviewer', name: 'Build reviewer' }];
+  identityCatalog.projects = [
+    { slug: 'station', id: 'station', name: 'Station' },
+  ];
+  const stamp = new Date().toISOString();
+  attention = {
+    pendingCount: 1,
+    items: [
+      {
+        id: 'session-failed:review',
+        kind: 'session-failed',
+        title: 'Run main qualification',
+        body: 'Command execution failed',
+        projectSlug: 'station',
+        agent: 'reviewer',
+        engine: 'claude',
+        openHref: '/?chat=review&dock=open',
+        source: { threadId: 'review' },
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    ],
+  };
+  render(<NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />);
+  expect(
+    screen.getByRole('link', { name: 'Run main qualification' }),
+  ).toBeTruthy();
+  expect(screen.getByText('Build reviewer')).toBeTruthy();
+  expect(screen.getByText('Station')).toBeTruthy();
+  expect(screen.getByTestId('attention-cause').textContent).toContain(
+    'Command execution failed',
+  );
 });

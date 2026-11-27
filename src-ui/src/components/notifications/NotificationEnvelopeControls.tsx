@@ -29,11 +29,13 @@ import { NoticeAction } from './NoticeAction';
  */
 export function NotificationEnvelopeControls({
   notification,
+  showAttribution = true,
   detailClassName,
   actionsClassName,
   actionClassName,
 }: {
   notification: Pick<Notification, 'id' | 'metadata'>;
+  showAttribution?: boolean;
   detailClassName: string;
   actionsClassName: string;
   actionClassName: string;
@@ -43,9 +45,11 @@ export function NotificationEnvelopeControls({
   if (envelope.source.kind !== 'agent') return null;
   return (
     <div data-testid="notification-envelope-controls">
-      <div className={detailClassName} data-testid="notification-attribution">
-        {agentAttributionLabel(envelope.source)}
-      </div>
+      {showAttribution && (
+        <div className={detailClassName} data-testid="notification-attribution">
+          {agentAttributionLabel(envelope.source)}
+        </div>
+      )}
       <div className={actionsClassName}>
         <MuteActions
           source={envelope.source}

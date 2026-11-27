@@ -117,6 +117,7 @@ export function NotificationCard({
         {detail && <div className="notification-card__detail">{detail}</div>}
         <NotificationEnvelopeControls
           notification={notification}
+          showAttribution={!context.some((part) => part.kind === 'agent')}
           detailClassName="notification-card__detail"
           actionsClassName="notice-actions"
           actionClassName="notice-action--ghost"
