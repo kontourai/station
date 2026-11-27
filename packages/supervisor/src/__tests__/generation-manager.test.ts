@@ -1235,9 +1235,13 @@ describe('GenerationManager', () => {
     });
 
     it('keeps catchers open until none has accepted for the quiet window, or until the cap', async () => {
-      for (const busy of [false, true]) {
-        const { manager, log, catchers } = setupCatching(undefined, true, () =>
-          Date.now(),
+      for (const activity of ['none', 'quiet', 'busy']) {
+        vi.setSystemTime(new Date('2026-11-27T12:00:00Z'));
+        const busy = activity === 'busy';
+        const { manager, log, catchers } = setupCatching(
+          undefined,
+          true,
+          activity === 'none' ? undefined : () => Date.now(),
         );
         await manager.start();
         log.length = 0;
@@ -1320,6 +1324,7 @@ describe('GenerationManager', () => {
         outcome: 'rolled-back',
         generation: 3,
       });
+      await vi.advanceTimersByTimeAsync(CATCH_QUIET_MS);
       expect(adopted(generations[1])).toEqual([]);
       expect(adopted(generations[2]).map(({ handle }) => handle)).toEqual(
         heldConnections(catchers),
