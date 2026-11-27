@@ -1,0 +1,17 @@
+{
+  "revision": "778660a84ce1069aa2a9d5bca0bc0cb4c4bef39d",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed linked sidecar, broker, collaboration, testing and native instructions against the final narrowed fixture description. Only seeded default hydration replaces manual selection in containment setup; lifecycle and recovery contracts unchanged. Retained release and native credential qualification limits.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed linked sidecar, broker, collaboration, testing and native instructions against the final narrowed fixture description. Only seeded default hydration replaces manual selection in containment setup; lifecycle and recovery contracts unchanged. Retained release and native credential qualification limits.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed linked sidecar, broker, collaboration, testing and native instructions against the final narrowed fixture description. Only seeded default hydration replaces manual selection in containment setup; lifecycle and recovery contracts unchanged. Retained release and native credential qualification limits.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed linked sidecar, broker, collaboration, testing and native instructions against the final narrowed fixture description. Only seeded default hydration replaces manual selection in containment setup; lifecycle and recovery contracts unchanged. Retained release and native credential qualification limits.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed linked sidecar, broker, collaboration, testing and native instructions against the final narrowed fixture description. Only seeded default hydration replaces manual selection in containment setup; lifecycle and recovery contracts unchanged. Retained release and native credential qualification limits.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed linked sidecar, broker, collaboration, testing and native instructions against the final narrowed fixture description. Only seeded default hydration replaces manual selection in containment setup; lifecycle and recovery contracts unchanged. Retained release and native credential qualification limits.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}
