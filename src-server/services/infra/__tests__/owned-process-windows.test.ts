@@ -7,11 +7,14 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { probeExactProcessIdentity } from '@kontourai/station-shared/process-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   evaluateWindowsRegistryDirTrust,
   forgetOwnedProcess,
+  killWindowsProcesses,
+  listWindowsProcesses,
   type ProcessIdentityProbe,
   recordOwnedProcess,
   resolveOwnedProcessOwner,
@@ -379,8 +382,48 @@ describe.runIf(process.platform === 'win32')(
         expect(isAlive(engine)).toBe(true);
         expect(isAlive(grandchild)).toBe(true);
 
-        const result = await sweepOrphanedOwnedProcesses({ registryDir });
-        expect(result.reaped).toEqual([engine]);
+        const sweepLogs: Array<{ message: string; data?: unknown }> = [];
+        const helperOutcomes: unknown[] = [];
+        const result = await sweepOrphanedOwnedProcesses({
+          registryDir,
+          log: (message, data) => sweepLogs.push({ message, data }),
+          probeIdentity: (pid) => {
+            const probe = probeExactProcessIdentity(pid);
+            helperOutcomes.push({ helper: 'identity', pid, probe });
+            return probe;
+          },
+          listWindowsProcesses: async () => {
+            const table = await listWindowsProcesses();
+            helperOutcomes.push({
+              helper: 'process-table',
+              entries: table?.length ?? null,
+              engine: table?.find((entry) => entry.pid === engine),
+              grandchild: table?.find((entry) => entry.pid === grandchild),
+            });
+            return table;
+          },
+          killWindowsProcesses: async (pids) => {
+            helperOutcomes.push({ helper: 'taskkill', pids });
+            await killWindowsProcesses(pids);
+            helperOutcomes.push({ helper: 'taskkill', outcome: 'completed' });
+          },
+        });
+        expect(
+          result.reaped,
+          JSON.stringify(
+            {
+              record,
+              result,
+              sweepLogs,
+              helperOutcomes,
+              registryRecordExists: existsSync(
+                join(registryDir, `engine-${engine}.json`),
+              ),
+            },
+            (_key, value) =>
+              typeof value === 'bigint' ? value.toString() : value,
+          ),
+        ).toEqual([engine]);
         for (
           let i = 0;
           i < 200 && (isAlive(engine) || isAlive(grandchild));
