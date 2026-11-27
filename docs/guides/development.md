@@ -220,9 +220,13 @@ the next pending observation, not an earlier result. The verifier is owned by
 the UI listener inside the existing [parent-bound Windows Job guard](../../packages/shared/src/windows-command-guard.ts).
 Stop waits for the guard's empty-Job acknowledgment and process closure before
 allowing a replacement; unconfirmed cleanup fences further verification.
-Parent loss closes the owned Job without a PID-based tree kill. Startup warms it before binding so a cold
-PowerShell launch does not consume the HTTP identity budget. Failed or timed-out
-file verification leaves the original file unchanged and reports unavailable;
+Parent loss closes the owned Job without a PID-based tree kill. Startup warms
+the verifier before binding so a cold PowerShell launch does not consume the
+HTTP identity budget. Installed Windows runtimes use their digest-verified
+staged guard; source checkouts compile the existing guard when needed. The
+verifier's startup deadline cancels pending compilation and owner-identity
+lookup, and a cancelled lookup cannot subsequently start a worker. Failed or
+timed-out file verification leaves the original file unchanged and reports unavailable;
 a connected backend that misses its identity deadline remains degraded, not
 ready. A private file alone never substitutes for the authenticated matching boot.
 
