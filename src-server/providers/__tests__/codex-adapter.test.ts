@@ -90,6 +90,10 @@ vi.mock('../../telemetry/metrics.js', async (importOriginal) => ({
   },
 }));
 
+vi.mock('../adapters/codex-project-config-provenance.js', () => ({
+  findUnaccountedCodexConfig: vi.fn().mockResolvedValue(undefined),
+}));
+
 class FakeWritable extends Writable {
   readonly lines: string[] = [];
 
