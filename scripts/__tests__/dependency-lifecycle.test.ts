@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -40,7 +41,10 @@ import {
   REPOSITORY_LIFECYCLE_SOURCES,
 } from '../dependency-lifecycle-workflow-gate.mjs';
 import { installGitIntegration } from '../install-git-hooks.mjs';
-import { DEPENDENCY_INSTALL_GUARD } from '../lib/dependency-install-retirement.mjs';
+import {
+  DEPENDENCY_INSTALL_GUARD,
+  DEPENDENCY_INSTALL_RECORD_PREFIX,
+} from '../lib/dependency-install-retirement.mjs';
 import {
   allowlistDigest,
   assertNodePtyPrebuildConsistency,
@@ -74,7 +78,9 @@ import {
 const root = resolve(import.meta.dirname, '../..');
 const makeTempDir = trackTempDirs();
 
-async function installerCustodyJourney(mode: 'deadline' | 'owner-loss') {
+async function installerCustodyJourney(
+  mode: 'deadline' | 'owner-loss' | 'success',
+) {
   const directory = makeTempDir('station-installer-custody-');
   const checkout = join(directory, 'checkout');
   const controlRoot = join(directory, 'control');
@@ -110,7 +116,7 @@ fs.mkdirSync('node_modules');
 fs.writeFileSync('node_modules/partial', 'unverified');
 fs.writeFileSync('manager.json', JSON.stringify({pid:process.pid,parent:process.ppid}));
 spawn(process.execPath, [${JSON.stringify(writer)}, process.cwd()], {stdio:'ignore'});
-setInterval(() => { if(fs.existsSync('release')) process.exit(0); }, 25);
+setInterval(() => { if(fs.existsSync('release') || (${JSON.stringify(mode === 'success')} && fs.existsSync('heartbeat'))) process.exit(0); }, 25);
 setTimeout(() => process.exit(0), 45000);`,
   );
   const npm = join(directory, 'npm-cli.js');
@@ -121,14 +127,15 @@ const {spawn} = require('node:child_process');
 const args = process.argv.slice(2);
 if (JSON.stringify(args.slice(0,5)) !== JSON.stringify(['exec','--yes','--package=pnpm@11.25.0','--','pnpm'])) process.exit(73);
 fs.writeFileSync('launcher.json', JSON.stringify({pid:process.pid,parent:process.ppid}));
-spawn(process.execPath, [${JSON.stringify(manager)}, ...args.slice(5)], {stdio:'inherit'});
+const manager = spawn(process.execPath, [${JSON.stringify(manager)}, ...args.slice(5)], {stdio:'inherit'});
+if (${JSON.stringify(mode === 'success')}) manager.once('exit', status => process.exit(status ?? 74));
 setInterval(() => { if(fs.existsSync('release')) process.exit(0); }, 25);
 setTimeout(() => process.exit(0), 45000);`,
   );
   const ownerScript = join(directory, 'owner.mjs');
   writeFileSync(
     ownerScript,
-    `import {writeFileSync} from 'node:fs';
+    `import {writeFileSync,readFileSync} from 'node:fs';
 import {install,pnpmCommand,pnpmInvocation,reportCliFailure} from ${JSON.stringify(pathToFileURL(join(root, 'scripts/dependency-lifecycle.mjs')).href)};
 try {
   await install({}, {
@@ -136,7 +143,19 @@ try {
     pnpmInvocation: options => pnpmInvocation({...options,env:{PATH:'',npm_execpath:${JSON.stringify(npm)}}}),
     command:()=>{},check:()=>({entries:[]}),pnpmCommand,
     stageLifecyclePrebuilds:()=>{},runApprovedHooks:()=>{},stationOwnedHooks:()=>{},
-    verify:()=>{writeFileSync('verified','unexpected');},generateBuildInputs:()=>{}
+    verify:async()=>{
+      if (${JSON.stringify(mode !== 'success')}) throw new Error('verification ran before failed custody settled');
+      const stopped = readFileSync('heartbeat','utf8');
+      const writer = JSON.parse(readFileSync('writer.json','utf8'));
+      if (process.platform === 'win32') {
+        let alive = false;
+        try {process.kill(writer.pid,0); alive = true;} catch(error) {if(error.code !== 'ESRCH') throw error;}
+        if (alive) throw new Error('writer survived until verification');
+      }
+      await new Promise(resolve => setTimeout(resolve,150));
+      if (readFileSync('heartbeat','utf8') !== stopped) throw new Error('writer changed tree during verification');
+      writeFileSync('verified',stopped);
+    },generateBuildInputs:()=>{}
   });
 } catch(error) {process.exitCode=reportCliFailure(error);}`,
   );
@@ -188,6 +207,7 @@ try {
       expect(status, stderr).toBe(1);
       expect(stderr).toContain('10000 ms deadline');
     }
+    if (mode === 'success') expect(status, stderr).toBe(0);
     await vi.waitFor(
       () => {
         if (process.platform === 'win32') {
@@ -217,18 +237,32 @@ try {
       JSON.stringify(identities),
     ).toBe(stopped);
     expect(() => process.kill(control.pid!, 0)).not.toThrow();
-    expect(existsSync(join(checkout, 'verified'))).toBe(false);
+    expect(existsSync(join(checkout, 'verified'))).toBe(mode === 'success');
     expect(readFileSync(join(checkout, 'node_modules/partial'), 'utf8')).toBe(
       'unverified',
     );
-    expect(
-      JSON.parse(
-        readFileSync(
-          join(checkout, DEPENDENCY_INSTALL_GUARD, 'receipt.json'),
-          'utf8',
-        ),
-      ).phase,
-    ).toBe(mode === 'deadline' ? 'failed' : 'installing');
+    if (mode === 'success') {
+      expect(readFileSync(join(checkout, 'verified'), 'utf8')).toBe(stopped);
+      expect(existsSync(join(checkout, DEPENDENCY_INSTALL_GUARD))).toBe(false);
+      const records = readdirSync(checkout).filter((name) =>
+        name.startsWith(DEPENDENCY_INSTALL_RECORD_PREFIX),
+      );
+      expect(records).toHaveLength(1);
+      expect(
+        JSON.parse(
+          readFileSync(join(checkout, records[0], 'receipt.json'), 'utf8'),
+        ).phase,
+      ).toBe('verified');
+    } else {
+      expect(
+        JSON.parse(
+          readFileSync(
+            join(checkout, DEPENDENCY_INSTALL_GUARD, 'receipt.json'),
+            'utf8',
+          ),
+        ).phase,
+      ).toBe(mode === 'deadline' ? 'failed' : 'installing');
+    }
     console.log(
       'installer custody receipt',
       JSON.stringify({
@@ -2615,6 +2649,10 @@ if (!fs.existsSync('previous-attempt')) {
 
   it('settles the npm fallback installer descendants before publishing timeout failure while preserving an unrelated writer', async () => {
     await installerCustodyJourney('deadline');
+  }, 35000);
+
+  it('settles a status-zero npm fallback parent with a surviving writer before publishing verified dependencies', async () => {
+    await installerCustodyJourney('success');
   }, 35000);
 
   it.skipIf(process.platform !== 'win32')(

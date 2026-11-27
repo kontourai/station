@@ -584,6 +584,39 @@ const installWithExecution = install as unknown as (
   execution: ReturnType<typeof pipeline>['execution'],
 ) => Promise<unknown>;
 
+test('compound command and custody failure cannot publish a verified installer receipt', async () => {
+  const checkoutFixture = fixture();
+  const installer = pipeline(checkoutFixture);
+  const failure = new AggregateError(
+    [new Error('command deadline'), new Error('owned tree did not settle')],
+    'Inert pnpm command and cleanup failed',
+  );
+  installer.execution.pnpmCommand.mockImplementation(async () => {
+    seed(checkoutFixture.modules, 'partial');
+    throw failure;
+  });
+  await expect(
+    installWithExecution({}, installer.execution),
+  ).rejects.toMatchObject({
+    cause: failure,
+  });
+  expect(installer.execution.verify).not.toHaveBeenCalled();
+  expect(installer.execution.generateBuildInputs).not.toHaveBeenCalled();
+  expect(readFileSync(join(checkoutFixture.modules, 'partial'), 'utf8')).toBe(
+    'original',
+  );
+  expect(
+    JSON.parse(
+      readFileSync(join(checkoutFixture.guard, 'receipt.json'), 'utf8'),
+    ).phase,
+  ).toBe('failed');
+  expect(
+    readdirSync(checkoutFixture.root).some((name) =>
+      name.startsWith(DEPENDENCY_INSTALL_RECORD_PREFIX),
+    ),
+  ).toBe(false);
+});
+
 test('the production installer binds its selected driver and guards the actual phase order', async () => {
   const f = fixture();
   seed(f.modules);
