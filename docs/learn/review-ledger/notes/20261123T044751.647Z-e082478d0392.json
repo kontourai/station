@@ -1,0 +1,9 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Checked: api.md gains the Default for new chats section and names it among separately written fields. Pages citing api.md for other routes stay accurate.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked: api.md gains the Default for new chats section and names it among separately written fields. Pages citing api.md for other routes stay accurate.","inputs":["docs/reference/api.md"]}
+  ]
+}

@@ -1641,6 +1641,46 @@ describe('new-chat-modal-utils', () => {
       ]);
     });
 
+    test('a runnable alias stays beside an authored Agent: authoring never takes the engine away (#5401)', () => {
+      const runnableAlias = {
+        ...codexAlias,
+        available: true,
+        unavailableReason: undefined,
+        enable: undefined,
+      };
+      const viewModel = viewModelFor([runnableAlias, authoredCodexAgent]);
+      expect(viewModel.flatList.map((agent) => agent.slug).sort()).toEqual([
+        'codex',
+        'codex-agent',
+      ]);
+    });
+
+    test('an alias is still hidden behind an Agent the engine itself created, runnable or not (#5401)', () => {
+      const engineCreated = {
+        slug: 'codex-engine',
+        name: 'Codex',
+        available: true,
+        execution: { agentConnectionId: 'codex' },
+        provenance: {
+          origin: 'engine-detection',
+          engineId: 'codex',
+          detectedAt: '2026-11-23T00:00:00Z',
+        },
+      } as any;
+      const runnableAlias = {
+        ...codexAlias,
+        available: true,
+        unavailableReason: undefined,
+        enable: undefined,
+      };
+      for (const alias of [codexAlias, runnableAlias]) {
+        const viewModel = viewModelFor([alias, engineCreated]);
+        expect(viewModel.flatList.map((agent) => agent.slug)).toEqual([
+          'codex-engine',
+        ]);
+      }
+    });
+
     test('deleting the authored agent naturally un-hides the alias — derived state, no persistence', () => {
       const viewModel = viewModelFor([codexAlias]);
       expect(viewModel.flatList.map((agent) => agent.slug)).toEqual(['codex']);

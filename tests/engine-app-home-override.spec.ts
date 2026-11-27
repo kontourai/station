@@ -75,7 +75,7 @@ for (const width of [390, 1440]) {
       );
 
       const openAdvanced = async () => {
-        await page.goto('/connections/engines/claude');
+        await page.goto('/customize/engines/claude');
         await page.getByText('Advanced', { exact: true }).click();
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       };
@@ -96,7 +96,7 @@ for (const width of [390, 1440]) {
 
       await openAdvanced();
       const enabled = page.getByRole('checkbox', {
-        name: /Expose this engine in Connections and agent setup/,
+        name: /Expose this engine in Customize and agent setup/,
       });
       await expect(enabled).toBeChecked();
       await expect(

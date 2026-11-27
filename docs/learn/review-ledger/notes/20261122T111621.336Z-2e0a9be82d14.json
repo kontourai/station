@@ -1,0 +1,7 @@
+{
+  "revision": "c0eeea5ee41188c63199ea4c8fd702db3aa30408",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Inventory guidance still holds: the Codex import dialog composes the shared Dialog (already covered), so the deleted stepper row was removed rather than replaced; responsive-surface-ratchet passes.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

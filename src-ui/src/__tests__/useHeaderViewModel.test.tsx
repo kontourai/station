@@ -203,7 +203,7 @@ describe('useHeaderViewModel help launch', () => {
     );
   });
 
-  test('navigates to Connections and records no-target without attempting a send', () => {
+  test('navigates to Engines and records no-target without attempting a send', () => {
     const { result } = renderHook(() =>
       useHeaderViewModel({
         currentView: undefined,
@@ -215,7 +215,7 @@ describe('useHeaderViewModel help launch', () => {
     act(() => result.current.handleHelpPrompt('Help'));
 
     expect(launchChat).not.toHaveBeenCalled();
-    expect(navigate).toHaveBeenCalledWith('/connections/engines');
+    expect(navigate).toHaveBeenCalledWith('/customize/engines');
     expect(telemetryTrack).toHaveBeenCalledWith('ui.chat.entry', {
       source: 'header-help',
       outcome: 'no-target',

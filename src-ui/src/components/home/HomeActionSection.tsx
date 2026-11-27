@@ -143,7 +143,7 @@ export function HomeActionSection({
               ? // #4405 (A46): the card opens the Agents page, so it says
                 // what is there — not "pick one in the composer above".
                 'See the agents ready on this Station. Choose one in the composer when you start a chat.'
-              : 'Connect an AI app or configure a model in Connections.'
+              : 'Connect an AI app or configure a model in Customize.'
             : undefined
         }
         onClick={() =>

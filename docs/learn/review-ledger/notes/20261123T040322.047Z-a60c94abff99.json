@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Cites the theming guide for white-label branding; the guide's change is only where the Appearance page opens from, which this page does not describe.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]}
+  ]
+}

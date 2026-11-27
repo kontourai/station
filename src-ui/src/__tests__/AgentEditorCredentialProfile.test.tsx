@@ -231,7 +231,7 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
     );
     // The next action is visible and describes the field, not hidden in a tooltip.
     const hint = screen.getByText(
-      "No separate accounts yet. Add them on the engine's Connections page.",
+      "No separate accounts yet. Add them on the engine's page in Customize › Engines.",
     );
     expect(
       screen

@@ -174,7 +174,7 @@ export function AboutYouStep({
         />
       ) : (
         <p className="first-run-chapter__lede" id="first-run-devices-hint">
-          Optional. Also in Connections.
+          Optional. Also in the Station menu.
         </p>
       )}
       <ResponsiveSurfaceActions className="first-run-chapter__actions">

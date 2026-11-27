@@ -1,0 +1,7 @@
+{
+  "revision": "921cb67cfe76fd511684da5d15fd30ea5f2cf0fc",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"plugin-update still covers update success and failure; its dependency receipt assertion now reads the region Source verification for registry-dependency, which leaves the matrix row accurate.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/plugin-update.spec.ts"]}
+  ]
+}

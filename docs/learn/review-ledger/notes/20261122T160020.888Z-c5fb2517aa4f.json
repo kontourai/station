@@ -1,0 +1,13 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"One inventory row added for Discover's card actions; citing guides describe the inventory format, which is unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"One inventory row added for Discover's card actions; citing guides describe the inventory format, which is unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"One inventory row added for Discover's card actions; citing guides describe the inventory format, which is unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"One inventory row added for Discover's card actions; citing guides describe the inventory format, which is unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

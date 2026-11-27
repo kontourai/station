@@ -250,7 +250,7 @@ independent security review or hosted release behavior.
 
 ## Directory Structure
 
-A new plugin (what `station plugin create` and **Plugins → New plugin**
+A new plugin (what `station plugin create` and **Apps › Library → New plugin**
 scaffold, from `packages/shared/src/plugin-scaffold.ts`):
 
 ```
@@ -378,7 +378,7 @@ Common fields:
 | `serverModule` | string | no | Path to a server-side module that registers request-scoped plugin routes and lifecycle hooks |
 | `build` | string | no | Reserved; currently rejected so builds cannot execute manifest-supplied commands |
 | `capabilities` | string[] | no | Declared capabilities, e.g. `["chat", "navigation"]` |
-| `commands` | PluginCommandContribution[] | no | Palette-command declarations (at most 32). Each `id` must be `<name>.<command>` and unique; `navigate` names a destination id and uses the built-in palette's page behavior. Validated for both manifest formats; declarations that fail are dropped (the plugin still loads) and the inventory shows `commandsRejected.reason`. Declaration grants no execution authority, and every effect is admitted by Station (see [Plugin Command Effects](../reference/api.md#plugin-command-effects)) |
+| `commands` | PluginCommandContribution[] | no | Palette-command declarations (at most 32). Each `id` must be `<name>.<command>` and unique; `navigate` names a destination id (the retired ids `registry` and `connections` still name Apps and Customize) and uses the built-in palette's page behavior. Validated for both manifest formats; declarations that fail are dropped (the plugin still loads) and the inventory shows `commandsRejected.reason`. Declaration grants no execution authority, and every effect is admitted by Station (see [Plugin Command Effects](../reference/api.md#plugin-command-effects)) |
 | `commandsRejected` | `{ reason: string }` | no | Set by Station, not by authors: the loader discards any value in `plugin.json` and sets it only when `commands` failed validation and was dropped |
 | `permissions` | string[] | no | Permissions the plugin needs (see Permissions) |
 | `links` | unknown | no | Opaque link metadata returned by plugin preview; it grants no capability |
@@ -481,7 +481,7 @@ establish a consumer contract for it or for arbitrary `promptRegistry` or
 
 ### Settings
 
-Plugins can declare configurable settings that users edit in the Plugins UI.
+Plugins can declare configurable settings that users edit in Apps › Library.
 Values are persisted as plaintext JSON in
 `<STATION_HOME>/config/plugin-overrides.json` and passed to provider factory
 functions at load time. `secret: true` masks the UI input and suppresses the
@@ -542,7 +542,9 @@ For local agent-assisted visual Skill conversion, review and evaluation, use
 
 ## Plugin registry
 
-The Registry page browses installable plugins from a JSON manifest.
+**Apps › Discover** browses installable plugins from a JSON manifest. Skills,
+tool servers, layouts and agent entries from the same sources keep their own
+catalogue pages, reached from Skills, Tools and a project's **Add layout**.
 
 When `registryUrl` is unset,
 Station serves a bundled manifest at `examples/registry/default.json`, so a
@@ -587,20 +589,21 @@ Managing connected sources requires the Station operator and an
 `access:manage` credential. Standard paired clients can browse ordinary
 catalog items without gaining host source-management authority.
 
-The Registry's **Add source** flow connects additional sources without
+The **Add source** flow on Discover connects additional sources without
 changing `registryUrl`. A source is a location, with an optional ref for a
 GitHub repository. Station detects what it provides from its content:
 `SKILL.md` packages, a Station manifest's plugins and agents, and a Claude Code
 marketplace index or MCP definitions, which are recognized but not yet
 installable ([decision](../decisions/registry-sources-detected-by-structure.md)). Each
-source under **Manage sources** (opened from the Registry toolbar, so the
-catalog comes first) shows its trust tier
+source under **Manage sources** (opened from Discover's source picker, so the
+catalog comes first; Discover's list holds every source, including one that
+supplies only skills or agents) shows its trust tier
 (Station, Default, Plugin, or Unverified for one a person added), what it was
 detected to provide with counts (a default catalog shows its last count, or
 that it has not been scanned yet), and when it was last read and last changed
 upstream. Sources with the same name are told apart by their location, and a
 source that reads the same repository or folder as another says they overlap.
-Choosing a source keeps it selected across the Registry tabs. Sources persist separately, can be refreshed or disabled,
+Choosing a source keeps it selected across the catalogue tabs. Sources persist separately, can be refreshed or disabled,
 and report offline/stale/error status independently. Offline plugin rows retain
 the current installed state from the local Library, even after an update or
 removal; cached catalog metadata cannot declare a package installed. Removing one preserves
@@ -652,26 +655,39 @@ Entry `source` values (plugins and `tools`) are confined by
 
 A refused entry stays listed without a source, and installing it reports why.
 
+When a catalog is listed, each local plugin entry also says what it is: the
+provider reads its `plugin.json` and the layout files it names, and the row's
+`app` lists the layout tab labels, Workspace Pane names, where it opens, what
+it works with, the agents, prompt actions and knowledge it brings, the tool
+servers it requires, and whether a view is a sandboxed MCP tool UI. A plugin
+with no layout and no pane reads `{ "kind": "none" }`. A remote source is not
+fetched for this, and a manifest or layout that is missing, malformed or over
+a bound leaves only that row without `app`.
+
 ### Install and use a bundled layout
 
-Registry is the discovery and installation surface; **Plugins** is the
-installed-plugin management surface. On a fresh Station installation, open
-**Registry → Plugins**, select a bundled starter such as **Minimal Layout**,
-and choose **Install**. No local path is needed for a bundled item.
+**Apps › Discover** is the discovery and installation surface; **Apps ›
+Library** manages what is installed. On a fresh Station installation, open
+**Apps › Discover**, find a bundled starter such as **Minimal Workspace**,
+choose **Review**, and confirm the install. No local path is needed for a
+bundled item. Discover's filters and card facts come from each entry's `app`
+facts; an entry that has no screen, or whose facts Station could not read,
+appears only with no filter chosen.
 
-After installation, refresh Registry or open **Plugins** to confirm the item is
-installed and runtime activation is ready. A ready installation makes a layout
+After installation, its card reads **Added**; open **Apps › Library** to confirm
+that runtime activation is ready. A ready installation makes a layout
 contribution available; it does not add that layout to every project. Open the target project, choose **Add**, then
 select the installed layout and open it from the project's layout cards.
 
-Removing a plugin from Registry or Plugins removes its installed contribution
-and returns the registry item to Available. Existing project layout records are
+Removing a plugin from Discover or Library asks first, with the same question
+in both places; once confirmed it removes the installed contribution and
+returns the registry item to Available. Existing project layout records are
 preserved so a reinstall restores the same project choice; until then, opening
 one renders Station's explicit unavailable-component recovery state rather than
 silently substituting another layout. Reinstall the same registry item, refresh
 the project, and open the preserved layout again.
 
-If installed files remain but `plugin.json` is missing or rejected, Plugins
+If installed files remain but `plugin.json` is missing or rejected, Apps › Library
 keeps the folder visible with a **Rejected** badge, the validation reason, and
 specific repair guidance. Fix or restore the manifest, then choose **Reload
 plugins**. Station does not invent a version or expose normal settings, update,
@@ -696,11 +712,11 @@ activation rather than hold every other configuration change behind it, and it
 does not retry it on its own. Recovery runs under the same limit, so a retry may
 work and removing the plugin is the way out. While the server is still
 activating the plugin, its row reads **Activating…** with no recovery offered;
-it becomes ready by itself or, once stopped, **Needs recovery**. Plugins
+it becomes ready by itself or, once stopped, **Needs recovery**. Apps › Library
 then says the plugin was installed (or updated) but is not active, and opens
 its row, which reads **Needs recovery**. It did not fail, and installing it
 again would install a second copy: installing a plugin that reads **Needs
-recovery**, from Plugins, Registry or `station plugin install`, offers
+recovery**, from Apps › Discover, Apps › Library or `station plugin install`, offers
 recovery instead, and installs again only when you ask (**Install again
 anyway**, or `--reinstall`). Station does not ask for its trusted
 permissions yet, because their host approval needs an active plugin; a
@@ -710,7 +726,7 @@ outcome. A removal saved this way needs nothing from you: Station finishes
 unloading the plugin in the background.
 
 A **Needs recovery** plugin retains its code and data while its runtime
-contributions remain unavailable. Open **Plugins** and select it: the recovery
+contributions remain unavailable. Open **Apps › Library** and select it: the recovery
 review loads with the row. Review the permissions and retained dependencies,
 then choose **Recover plugin** and confirm the permission review. Recovery does
 not fetch replacement code or reset stored data. Once the plugin is active,
@@ -997,6 +1013,11 @@ registry resolves to a view. Absolute URLs, protocol-relative paths,
 traversals, queries, and fragments are rejected, so a plugin can never send the
 shell off Station.
 
+A retired address still resolves, through the same redirect a person typing it
+gets: `/plugins` and `/registry` land on Apps, and `/connections` on Customize.
+A redirect that ends below a page's root lands on that root, so `/plugins`
+opens Apps rather than Apps › Library.
+
 Two limits are deliberate, and a plugin should not be written around them:
 
 - **Nothing is persisted.** A plugin's project-layout navigation goes through
@@ -1038,7 +1059,9 @@ message; the host answers on the same channel.
 `{ kind: 'app-surface', surfaceId }`, `{ kind: 'project-layout', projectSlug,
 layoutSlug }`, `{ kind: 'project-workspace', projectSlug, taskSlug? }`. A typed
 target names a destination rather than a path: the host looks the route up in
-its own surface registry, so there is nowhere in the message to put one.
+its own surface registry, so there is nowhere in the message to put one. The retired
+surface ids still name their successors: `registry` is Apps and `connections`
+is Customize.
 
 Three things are worth knowing before writing against it:
 
@@ -1333,7 +1356,7 @@ failures; it can report `incomplete`, including when the runtime is unavailable.
 Recorded approval therefore does not establish that the server module or
 providers are active. Inspect the reconciliation result and current plugin
 status before treating trusted behavior as available. Denial does not grant the
-requested permissions. You can revisit an installed plugin from **Plugins**,
+requested permissions. You can revisit an installed plugin from **Apps › Library**,
 select it, and choose **Review Permissions**.
 
 Recorded permissions and currently effective permissions can also differ after
@@ -1411,7 +1434,7 @@ does not grant trusted permissions.
   Other dependency permissions (for example `network.fetch`) currently lack
   canonical dependency lifecycle support and are rejected by preview before
   offering approval; approving them does not expand the supported permission set.
-  The Plugins and Registry install flows route each installed dependency through
+  The Apps › Library and Apps › Discover install flows route each installed dependency through
   that existing host approval before claiming its providers are active.
 
 Physical cleanup depends on the installation format. The digest-bound legacy
@@ -1532,12 +1555,12 @@ DELETE /api/plugins/:name
 GET /api/plugins/check-updates
 ```
 
-Plugins shows when an update check was unavailable or incomplete and offers
+Apps › Library shows when an update check was unavailable or incomplete and offers
 a retry. A partial check keeps any updates it found. The view confirms that
 it found no updates only after the eligible sources complete.
 
-When reviewing installation or recovery, inspect the registry verification
-for each dependency to see the claim and pin bound to that
+When reviewing installation or recovery, inspect the Source verification
+section for each dependency to see the claim and pin bound to that
 dependency's consent. The installed view shows the selected plugin's recorded
 receipt.
 
@@ -2170,22 +2193,22 @@ may first offer review when its blocked view opens; preview bundle metadata
 currently describes the staged root plugin.
 
 Manage access in **Stations → current Station details → Extensions**, or from
-Registry. **Turn off extensions** removes the stored permission, verifies the
+Apps › Library or Apps › Discover. **Turn off extensions** removes the stored permission, verifies the
 removal, then reloads the window. Failed persistence stays in the review and
 does not report success. A Station switch while review is open cancels admission;
 permission is never rebound to the newly selected Station. Consent remains bound
 to the saved connection and its exact origin. These controls do not install a
 plugin or grant its server-side permissions.
 
-A failed inventory or bundle load produces a notification linking to Extensions.
-The screen retains the failure message and Retry extensions until the registry
-recovers. A rejected registry import on a healthy connection is retried once before a
+A failed inventory or bundle load produces a notification whose Open Apps action leads to Apps › Discover.
+Apps › Discover and Apps › Library keep the failure message ("Couldn't load: …")
+and its **Retry** until the registry recovers. A rejected registry import on a healthy connection is retried once before a
 persistent failure is reported. A failure to start the deferred registry itself produces a notification
 with Reload Station; it does not displace unrelated work with a global banner.
 Core shell and connection recovery retain their own failure surfaces.
 
 Owners: [registry bootstrap](../../src-ui/src/components/registry/PluginRegistryGate.tsx),
-[Extensions view](../../src-ui/src/views/RegistryView.tsx),
+[Apps › Library and Discover](../../src-ui/src/views/apps/AppsView.tsx),
 [shared access review](../../src-ui/src/components/registry/StationExtensionsAccess.tsx), and
 [deferred capability boundary](../../src-ui/src/components/DeferredCapabilityBoundary.tsx).
 Loading rules, consent storage and origin binding stay unchanged. These

@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/design/station-connection.md","note":"The conversation surface manifest moved one failure-surface entry from the Registry page to the shared catalogue install hook it now uses; this page's connection-surface claims and its spec citation are unaffected.","inputs":["docs/design/station-connection.md","scripts/conversation-surfaces.json"]}
+  ]
+}

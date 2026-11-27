@@ -1,0 +1,7 @@
+{
+  "revision": "c0eeea5ee41188c63199ea4c8fd702db3aa30408",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"People and setup access: the Settings System import is gone; Codex import now lives on Skills and still needs the operator's setup-import permission (route scope /api/setup-imports:manage).","inputs":["docs/user/settings.md"]}
+  ]
+}

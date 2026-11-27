@@ -1,0 +1,9 @@
+{
+  "revision": "0672bb70a7355525e1c217ebe9e4f713930638ff",
+
+  "notes": [
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Scaffold README now names Apps > Library > Install plugin; citing pages already name Apps > Library.","inputs":["packages/shared/src/plugin-scaffold.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Scaffold README now names Apps > Library > Install plugin; citing pages already name Apps > Library.","inputs":["packages/shared/src/plugin-scaffold.ts"]}
+  ]
+}

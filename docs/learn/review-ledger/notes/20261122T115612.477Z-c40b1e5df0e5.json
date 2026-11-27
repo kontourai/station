@@ -1,0 +1,15 @@
+{
+  "revision": "e595e723c1cbdd075ed0eeb971c12b278b1bba6e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only three helper types became module-private; no page names RegistryAppPlacement, RegistryAppWorksWith or RegistryAppManifest, and the described RegistryItem.app shape and helpers are unchanged.","inputs":["packages/contracts/src/catalog.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Only three helper types became module-private; no page names RegistryAppPlacement, RegistryAppWorksWith or RegistryAppManifest, and the described RegistryItem.app shape and helpers are unchanged.","inputs":["packages/contracts/src/catalog.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only three helper types became module-private; no page names RegistryAppPlacement, RegistryAppWorksWith or RegistryAppManifest, and the described RegistryItem.app shape and helpers are unchanged.","inputs":["packages/contracts/src/catalog.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only three helper types became module-private; no page names RegistryAppPlacement, RegistryAppWorksWith or RegistryAppManifest, and the described RegistryItem.app shape and helpers are unchanged.","inputs":["packages/contracts/src/catalog.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Only three helper types became module-private; no page names RegistryAppPlacement, RegistryAppWorksWith or RegistryAppManifest, and the described RegistryItem.app shape and helpers are unchanged.","inputs":["packages/contracts/src/catalog.ts"]}
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"App facts gained inProcessScreen and the host prompt-action filter, and two facet types are exported; api.md and contracts.md describe the field, other citing pages do not list app fact fields.","inputs":["packages/contracts/src/catalog.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"App facts gained inProcessScreen and the host prompt-action filter, and two facet types are exported; api.md and contracts.md describe the field, other citing pages do not list app fact fields.","inputs":["packages/contracts/src/catalog.ts"]},
+
+    {"path":"docs/reference/api.md","note":"App facts gained inProcessScreen and the host prompt-action filter, and two facet types are exported; api.md and contracts.md describe the field, other citing pages do not list app fact fields.","inputs":["packages/contracts/src/catalog.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"App facts gained inProcessScreen and the host prompt-action filter, and two facet types are exported; api.md and contracts.md describe the field, other citing pages do not list app fact fields.","inputs":["packages/contracts/src/catalog.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"App facts gained inProcessScreen and the host prompt-action filter, and two facet types are exported; api.md and contracts.md describe the field, other citing pages do not list app fact fields.","inputs":["packages/contracts/src/catalog.ts"]}
+  ]
+}

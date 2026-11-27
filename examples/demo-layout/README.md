@@ -32,7 +32,7 @@ To browse the local registry fixture:
 ./station registry
 ```
 
-Use the direct plugin install command above or the Registry UI's preview flow
+Use the direct plugin install command above or Apps › Discover's preview flow
 to install. The separate registry CLI lacks that consent step; see
 [#2809](https://github.com/kontourai/station/issues/2809).
 

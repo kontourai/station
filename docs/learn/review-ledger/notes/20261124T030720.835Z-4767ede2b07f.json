@@ -1,0 +1,7 @@
+{
+  "revision": "6d915d5b4b10105af08a917f08065ef6be13e058",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated content: the shipped module map now carries the DestinationRegistry alias rule; the reference's description of the shipped bundle is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -274,7 +274,7 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     const fixture = await seedCredentialRecoveryRoutes(page);
-    await page.goto('/connections/engines/claude');
+    await page.goto('/customize/engines/claude');
 
     // archive#1359 moved implementation-level engine controls behind the detail
     // view's Advanced disclosure. Credential profiles remain available there;
@@ -384,7 +384,7 @@ test('unsupported credential profile capability fails closed', async ({
   page,
 }) => {
   await seedCredentialRecoveryRoutes(page, { capability: 'unsupported' });
-  await page.goto('/connections/engines/claude');
+  await page.goto('/customize/engines/claude');
 
   const advanced = page.locator('details.provider-detail__advanced');
   await expect(advanced).toBeVisible();

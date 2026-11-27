@@ -67,6 +67,7 @@ describe('settings utils', () => {
           status: 'completed',
           completedAt: '2026-10-02T00:00:00.000Z',
         },
+        newChatDefault: { agent: 'codex', reason: 'first-signed-in' },
         // Internal, runtime-derived — never in APP_SETTINGS_REGISTRY, must
         // never appear in an exported file.
         mcpUiFrameOrigin: 'http://127.0.0.1:1234',
@@ -86,6 +87,7 @@ describe('settings utils', () => {
       expect(payload.station).not.toHaveProperty('managedChatOrchestration');
       expect(payload.station).not.toHaveProperty('someUnknownField');
       expect(payload.station).not.toHaveProperty('firstRun');
+      expect(payload.station).not.toHaveProperty('newChatDefault');
       expect(payload.device).toEqual(deviceSettingsStore.getEnvelope());
     });
 

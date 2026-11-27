@@ -1,0 +1,7 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Two baseline hashes changed for the moved screens; citing pages describe the baseline mechanism only.","inputs":["tests/screenshots.baseline.json"]}
+  ]
+}

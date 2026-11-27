@@ -1,0 +1,7 @@
+{
+  "revision": "62694dedd2ad88de44a5fa70962aeab935bfd143",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Unchanged from the Apps slice head; the install wording names Apps › Library, which still hosts the preview-and-approve install in the combined tree.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

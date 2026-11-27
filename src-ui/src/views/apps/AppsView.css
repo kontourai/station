@@ -1,0 +1,289 @@
+.apps-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.apps-view__tabs {
+  padding-inline: var(--k-space-6);
+}
+.apps-view__panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.discover {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-4);
+  padding: var(--k-space-5) var(--k-space-6) var(--k-space-6);
+}
+.discover__layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 264px) minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  grid-template-areas:
+    "works search"
+    "works results"
+    "facets results";
+  column-gap: var(--k-space-6);
+  row-gap: var(--k-space-4);
+  align-items: start;
+}
+.discover__layout > .discover__search {
+  grid-area: search;
+}
+.discover__facet-group--works {
+  grid-area: works;
+}
+.discover__facets {
+  grid-area: facets;
+}
+.discover__results {
+  grid-area: results;
+}
+.discover__facets,
+.discover__more-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-5);
+  min-width: 0;
+}
+.discover__facet-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+fieldset.discover__facet-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+legend.discover__facet-title {
+  margin-bottom: var(--k-space-2);
+}
+.discover__facet-title {
+  padding: 0;
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.discover__facet-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.discover__facet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  width: 100%;
+  min-height: 36px;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 0;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-text);
+  font: inherit;
+  font-size: var(--k-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.discover__facet:hover {
+  background: var(--k-panel);
+}
+.discover__facet[aria-pressed="true"] {
+  background: var(--k-panel-raised);
+  font-weight: 600;
+}
+.discover__facet:focus-visible,
+.discover__link:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+.discover__facet-count {
+  color: var(--k-text-muted);
+  font-weight: normal;
+}
+.discover__facets .marketplaces__toolbar {
+  flex-direction: column;
+  align-items: stretch;
+}
+.discover__elsewhere {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+}
+.discover__elsewhere-text {
+  margin: 0;
+}
+/* The links sit on their own row beneath the sentence. */
+.discover__elsewhere-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+}
+.discover__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--k-action);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.discover__results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-4);
+  min-width: 0;
+}
+.discover__search {
+  min-height: 44px;
+}
+.discover__notice {
+  margin: 0;
+  padding: var(--k-space-3) var(--k-space-4);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  font-size: var(--k-text-sm);
+}
+.discover__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: var(--k-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.discover__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  min-width: 0;
+  padding: var(--k-space-4);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+  overflow-wrap: anywhere;
+}
+.discover__card-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+.discover__card-name {
+  margin: 0;
+  font-size: var(--k-text-md);
+  font-weight: 600;
+}
+.discover__card-from,
+.discover__card-kind {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.discover__card-description {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+}
+.discover__facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  margin: 0;
+  font-size: var(--k-text-sm);
+}
+.discover__facts div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.discover__facts dt {
+  color: var(--k-text-muted);
+}
+.discover__facts dd {
+  margin: 0;
+}
+.discover__card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  margin-top: auto;
+}
+.discover__card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.discover__trust {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.discover__trust--sandboxed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  color: var(--k-positive);
+}
+
+/* The same breakpoint as useIsMobile, which folds the other filters. */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .apps-view__tabs {
+    padding-inline: var(--k-space-4);
+  }
+  .discover {
+    padding: var(--k-space-4);
+  }
+  /* One column in document order: search, what it works with, the More
+     filters control (the other filters and sources fold under it), then the
+     apps. */
+  .discover__layout {
+    display: flex;
+    flex-direction: column;
+    gap: var(--k-space-4);
+  }
+  .discover__facet-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .discover__facet {
+    width: auto;
+    min-height: 44px;
+    border: var(--k-border-thin) solid var(--k-line);
+    border-radius: var(--k-radius-control);
+  }
+  .discover__card-actions button {
+    min-height: 44px;
+  }
+  .discover__more-toggle {
+    min-height: var(--touch-target-min);
+  }
+  /* On a phone the Skills and Tools links are each a whole touch target. */
+  .discover__link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
+  }
+}

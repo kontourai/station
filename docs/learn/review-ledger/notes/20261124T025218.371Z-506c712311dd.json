@@ -1,0 +1,7 @@
+{
+  "revision": "32c2bcd30e4c5809d189cb03cb43a9180295bef9",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Re-read against this change: only the newChatDefault registry comment changed (no Customize control ships yet); no setting, help text or generated field changed.","inputs":["docs/design/settings-architecture.md","packages/contracts/src/settings-registry.ts"]}
+  ]
+}

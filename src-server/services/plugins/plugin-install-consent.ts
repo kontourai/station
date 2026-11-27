@@ -370,7 +370,7 @@ export function assertPluginInstallConsent(input: {
         message:
           `Plugin '${pluginName}' requires permissions that must be approved before it is installed ` +
           `(${basis.pendingConsent.map((entry) => entry.permission).join(', ')})${alsoContributes}, ` +
-          `and ${consent.caller} installs without asking. Install it from the Plugins page, ` +
+          `and ${consent.caller} installs without asking. Install it from Apps › Library, ` +
           `where the approval happens before anything is written.`,
       });
     }
@@ -382,7 +382,7 @@ export function assertPluginInstallConsent(input: {
         `Plugin '${pluginName}' contributes ${undisclosed.join(', ')} — code that runs in Station's ` +
         `own page, agent definitions, or further plugins — and no permission expresses any of it, ` +
         `so it cannot be installed without a decision taken on a preview. ` +
-        `${consent.caller} installs without asking. Install it from the Plugins page, ` +
+        `${consent.caller} installs without asking. Install it from Apps › Library, ` +
         `where the approval happens before anything is written.`,
     });
   }

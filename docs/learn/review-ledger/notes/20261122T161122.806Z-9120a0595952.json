@@ -1,0 +1,15 @@
+{
+  "revision": "a10b53012f257ef6b2ddde74cba5147e58161b85",
+
+  "notes": [
+    {"path":"README.md","note":"Only the in-app location of New plugin changed (Apps › Library); linking pages describe the CLI reference and stay accurate.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Only the in-app location of New plugin changed (Apps › Library); linking pages describe the CLI reference and stay accurate.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Only the in-app location of New plugin changed (Apps › Library); linking pages describe the CLI reference and stay accurate.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only the in-app location of New plugin changed (Apps › Library); linking pages describe the CLI reference and stay accurate.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Only the in-app location of New plugin changed (Apps › Library); linking pages describe the CLI reference and stay accurate.","inputs":["docs/reference/cli.md"]}
+  ]
+}

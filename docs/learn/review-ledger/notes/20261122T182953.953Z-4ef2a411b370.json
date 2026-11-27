@@ -1,0 +1,7 @@
+{
+  "revision": "dc418699cc4048c45468401e33b814aca4b056c4",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"The remove question moved to RemovePluginModal unchanged; plugins guide reviewed and updated for removal asking in Discover too.","inputs":["src-ui/src/views/plugin-management/PluginModalStack.tsx"]}
+  ]
+}

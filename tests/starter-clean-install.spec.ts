@@ -75,9 +75,9 @@ test('fresh Station completes real Work', async ({
     await expect(agentMenu).toBeVisible();
     await agentMenu.getByRole('button', { name: 'Connect Station' }).click();
     await expect(agentMenu).toHaveCount(0);
-    await expect(page).toHaveURL(/\/connections\/models(?:\?|$)/);
+    await expect(page).toHaveURL(/\/customize\/providers(?:\?|$)/);
     await page.getByRole('button', { name: 'Add model connection' }).click();
-    await expect(page).toHaveURL(/\/connections\/models\/new(?:\?|$)/);
+    await expect(page).toHaveURL(/\/customize\/providers\/new(?:\?|$)/);
     await page
       .locator('.provider-picker-modal')
       .getByRole('button', { name: /^Ollama/ })
@@ -86,7 +86,7 @@ test('fresh Station completes real Work', async ({
     await page.getByLabel('Name').fill('Clean Install Ollama');
     await page.getByLabel('Base URL').fill(ollama.origin);
     await page.getByRole('button', { name: 'Create', exact: true }).click();
-    await expect(page).toHaveURL(/\/connections\/models\/[^/?]+(?:\?|$)/);
+    await expect(page).toHaveURL(/\/customize\/providers\/[^/?]+(?:\?|$)/);
     await page.getByRole('button', { name: 'Test connection' }).click();
     await expect(page.getByText('Connection healthy')).toBeVisible();
 

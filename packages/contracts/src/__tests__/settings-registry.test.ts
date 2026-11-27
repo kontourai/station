@@ -130,6 +130,8 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         // UX audit RT-02 — the durable first-run record for this home.
         'firstRun',
         'fleetContribution',
+        // #5401 — the default for new chats; its own route writes it.
+        'newChatDefault',
         // #1521 — candidate registry signature policy; applied separately.
         'registryTrust',
         // Operator policy records are composite data without generic Settings editors.

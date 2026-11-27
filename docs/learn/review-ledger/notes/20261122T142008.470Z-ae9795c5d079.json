@@ -1,0 +1,7 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Asserts the Apps heading after the old Plugins address redirects; e2e matrix updated.","inputs":["tests/plugin-preview.spec.ts"]}
+  ]
+}

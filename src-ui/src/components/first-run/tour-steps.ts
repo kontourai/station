@@ -67,7 +67,7 @@ export const FIRST_RUN_TOUR_STEPS: readonly FirstRunTourStep[] = [
   {
     id: 'command-palette',
     title: 'Customize your Station',
-    body: 'Choose the agents, skills, engines, and plugins that power your work.',
+    body: 'Choose the agents, skills, engines, providers and tools that power your work.',
     view: { type: 'home' },
     anchor: 'customize',
   },

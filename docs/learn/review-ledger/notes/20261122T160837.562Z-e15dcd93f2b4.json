@@ -1,0 +1,7 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rechecked after the fix round; no route or prompt counting claims.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

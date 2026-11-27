@@ -5764,6 +5764,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/config/app/log-level' },
     { method: 'PUT', path: '/config/app/log-level' },
     { method: 'POST', path: '/config/first-run' },
+    { method: 'POST', path: '/config/new-chat-default' },
     { method: 'GET', path: '/events' },
     { method: 'POST', path: '/invoke' },
     { method: 'GET', path: '/monitoring/events' },

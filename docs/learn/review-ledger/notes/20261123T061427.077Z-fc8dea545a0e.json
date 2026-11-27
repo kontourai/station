@@ -1,0 +1,19 @@
+{
+  "revision": "ddb1d1a864db4b9c2f5f3d1a42f482f869591e62",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Checked: PUT /config/app now refuses firstRun and newChatDefault through one shared list (routeWrittenKeyRefusal), naming each route; behaviour for every other setting is unchanged.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked: PUT /config/app now refuses firstRun and newChatDefault through one shared list (routeWrittenKeyRefusal), naming each route; behaviour for every other setting is unchanged.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked: PUT /config/app now refuses firstRun and newChatDefault through one shared list (routeWrittenKeyRefusal), naming each route; behaviour for every other setting is unchanged.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked: PUT /config/app now refuses firstRun and newChatDefault through one shared list (routeWrittenKeyRefusal), naming each route; behaviour for every other setting is unchanged.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked: PUT /config/app now refuses firstRun and newChatDefault through one shared list (routeWrittenKeyRefusal), naming each route; behaviour for every other setting is unchanged.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked: PUT /config/app now refuses firstRun and newChatDefault through one shared list (routeWrittenKeyRefusal), naming each route; behaviour for every other setting is unchanged.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked: PUT /config/app now refuses firstRun and newChatDefault through one shared list (routeWrittenKeyRefusal), naming each route; behaviour for every other setting is unchanged.","inputs":["src-server/routes/system/config.ts"]}
+  ]
+}

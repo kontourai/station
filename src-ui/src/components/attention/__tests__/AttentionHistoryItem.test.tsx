@@ -510,7 +510,7 @@ describe.each(AMBIGUITY_CASES)(
       fireEvent.click(
         screen.getByRole('link', { name: 'Open model connections' }),
       );
-      expect(navigate).toHaveBeenCalledWith('/connections/models');
+      expect(navigate).toHaveBeenCalledWith('/customize/providers');
       expect(acknowledgeAsync).not.toHaveBeenCalled();
     });
   },

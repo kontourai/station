@@ -52,7 +52,7 @@ const signed: PluginRegistryTrust = {
 };
 
 function section() {
-  return screen.getByRole('region', { name: 'Registry verification' });
+  return screen.getByRole('region', { name: 'Source verification' });
 }
 
 test('a verified claim shows the persisted source, digest, signer, pin and policy outcome', () => {
@@ -99,9 +99,9 @@ test('an installation reports the recorded policy in the past tense', () => {
 });
 
 test.each([
-  [{ state: 'none' } as const, 'No verified registry claim.'],
+  [{ state: 'none' } as const, 'No verified source claim.'],
   [{ state: 'unavailable' } as const, 'could not be read'],
-  [undefined, 'did not report registry verification'],
+  [undefined, 'did not report source verification'],
 ])(
   'without a readable receipt (%o) it says so and shows no claim',
   (trust, says) => {
@@ -164,13 +164,13 @@ test('installation preview scopes each dependency to its own receipt', () => {
     />,
   );
   const child = screen.getByRole('region', {
-    name: 'Registry verification for child',
+    name: 'Source verification for child',
   });
   expect(child.textContent).toContain('Registry entry child');
   expect(child.textContent).toContain('Unsigned. No signer was verified.');
   expect(section().textContent).toContain('Key primary');
   expect(
-    screen.getByRole('region', { name: 'Registry verification for local' })
+    screen.getByRole('region', { name: 'Source verification for local' })
       .textContent,
   ).toContain('Treat it as unverified.');
 });
@@ -192,7 +192,7 @@ test('a preview with no verified claim says so instead of staying silent', () =>
     />,
   );
   expect(section().textContent).toContain(
-    'No verified registry claim. Station has no verified source, signer or registry pin for this package.',
+    'No verified source claim. Station has no verified source, signer or pin for this package.',
   );
 });
 
@@ -229,17 +229,17 @@ test('the recovery review shows the recovery viewâ€™s receipt, not the list rowâ
     />,
   );
   expect(
-    screen.queryByRole('region', { name: 'Registry verification' }),
+    screen.queryByRole('region', { name: 'Source verification' }),
   ).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
   await waitFor(() => expect(section().textContent).toContain(digest('d')));
   expect(
-    screen.getByRole('region', { name: 'Registry verification for child' })
+    screen.getByRole('region', { name: 'Source verification for child' })
       .textContent,
   ).toContain('Registry entry child');
   expect(section().textContent).toContain(
     'Recorded when this installation was verified.',
   );
-  expect(section().textContent).not.toContain('No verified registry claim');
+  expect(section().textContent).not.toContain('No verified source claim');
   recovery.data = undefined;
 });

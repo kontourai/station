@@ -433,7 +433,7 @@ describe('NewChatModal engine chips', () => {
     expect(onClose).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(navigationStore.getSnapshot().pathname).toBe(
-        '/connections/models',
+        '/customize/providers',
       ),
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

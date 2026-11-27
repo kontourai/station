@@ -1,0 +1,7 @@
+{
+  "revision": "aef7a1c513df4bedb5dc00e2559a303ec414e033",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked: the engine status event's refresh moved into invalidateEngineReadiness, unchanged, so the sign-in hooks can share it.","inputs":["packages/sdk/src/server-events.ts"]}
+  ]
+}

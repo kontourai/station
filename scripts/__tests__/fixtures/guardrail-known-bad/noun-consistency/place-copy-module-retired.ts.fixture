@@ -1,0 +1,1 @@
+export const refusal = 'Install one from the Registry › Integrations tab';
