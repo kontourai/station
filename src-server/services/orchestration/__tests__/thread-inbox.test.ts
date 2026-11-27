@@ -471,6 +471,95 @@ afterEach(async () => {
 describe('thread inbox (#3568)', () => {
   const path = () => join(makeTempDir('thread-inbox-'), 'orchestration.sqlite');
 
+  test('edits a queued message in place and sends the saved multiline text', async () => {
+    const world = boot(path());
+    const turn = await runningFirstTurn(world);
+    queueFollowUp(world, 'editable');
+    queueFollowUp(world, 'next');
+    const revised = 'Check the timeout.\nThen add a regression test.';
+    expect(
+      world.inbox.editQueued(
+        THREAD,
+        'editable',
+        FOLLOW_UP,
+        revised,
+        'another-user',
+      ),
+    ).toBe(false);
+    expect(
+      world.inbox.editQueued(THREAD, 'editable', FOLLOW_UP, revised, OWNER),
+    ).toBe(true);
+    expect(
+      world.inbox.editQueued(
+        THREAD,
+        'editable',
+        FOLLOW_UP,
+        'stale edit',
+        OWNER,
+      ),
+    ).toBe(false);
+    expect(world.inbox.list(THREAD, OWNER)).toMatchObject([
+      { clientTurnId: 'editable', position: 1, message: revised },
+      { clientTurnId: 'next', position: 2, message: FOLLOW_UP },
+    ]);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, turn);
+    await settle(world);
+    expect(sends).toContain(revised);
+    expect(
+      world.inbox.editQueued(THREAD, 'editable', revised, 'late edit', OWNER),
+    ).toBe(false);
+  });
+
+  test('moves adjacent queued messages and rejects a stale repeat', async () => {
+    const world = boot(path());
+    await runningFirstTurn(world);
+    queueFollowUp(world, 'first');
+    queueFollowUp(world, 'second');
+    expect(world.inbox.moveQueued(THREAD, 'second', 'first', 'up', OWNER)).toBe(
+      true,
+    );
+    expect(world.inbox.moveQueued(THREAD, 'second', 'first', 'up', OWNER)).toBe(
+      false,
+    );
+    expect(
+      world.inbox
+        .list(THREAD, OWNER)
+        .map((entry) => [entry.clientTurnId, entry.position]),
+    ).toEqual([
+      ['second', 1],
+      ['first', 2],
+    ]);
+  });
+
+  test('keeps the queued message on a stale steer and withdraws it on acceptance', async () => {
+    const world = boot(path());
+    await runningFirstTurn(world);
+    queueFollowUp(world, 'waiting');
+    const input = {
+      conversationId: THREAD,
+      clientTurnId: 'promoted',
+      payload,
+      expectedHead: world.inbox.currentHead(THREAD),
+    };
+    expect(
+      world.inbox.promoteQueued({ ...input, expectedHead: 'stale' }, 'waiting')
+        .outcome,
+    ).toBe('stale-head');
+    expect(world.store.threadInboxStore().read(THREAD, 'waiting')?.state).toBe(
+      'queued',
+    );
+    expect(world.inbox.promoteQueued(input, 'waiting').outcome).toBe('queued');
+    expect(world.store.threadInboxStore().read(THREAD, 'waiting')?.state).toBe(
+      'cancelled',
+    );
+    expect(world.store.threadInboxStore().read(THREAD, 'promoted')?.kind).toBe(
+      'steer',
+    );
+    expect(world.inbox.promoteQueued(input, 'waiting').outcome).toBe(
+      'conflict',
+    );
+  });
+
   test.each(['none', 'missing', 'missing-metadata'] as const)(
     'steer dispatch refuses %s steering declaration even for a native-named provider',
     async (declaration) => {
@@ -1700,12 +1789,13 @@ describe('thread inbox (#3568)', () => {
     },
   );
 
-  test('a possibly handed-off steer is surfaced and never repeated after restart', async () => {
+  test('a possibly handed-off steer checks for a late receipt after restart without sending again', async () => {
     const file = path();
     let world: World;
     let handoffs = 0;
     const ports: Partial<ThreadInboxDeliveryPorts> = {
       steerFidelity: () => 'native',
+      retryDelaysMs: [50],
       inspectSteer: (input) => world.store.readSteerInput(input),
       steer: async ({ threadId, clientInputId, payload, turnId }) => {
         const input = {
@@ -1734,6 +1824,19 @@ describe('thread inbox (#3568)', () => {
     world = boot(file, ports);
     await world.inbox.reconcile();
     expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'unconfirmed' }]);
+    world.store.confirmSteerInput(
+      {
+        threadId: THREAD,
+        turnId: 'turn-1',
+        clientInputId: 'uncertain-steer',
+        input: payload.message,
+      },
+      'turn-1',
+    );
+    await vi.waitFor(
+      () => expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sent' }]),
+      { timeout: 5_000 },
+    );
     expect(handoffs).toBe(1);
   });
 

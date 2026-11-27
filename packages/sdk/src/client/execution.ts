@@ -567,6 +567,38 @@ export async function readConversationInboxHead(
   return head;
 }
 
+export type ConversationQueueAction =
+  | { kind: 'edit'; key: string; previous: string; message: string }
+  | { kind: 'move'; key: string; neighbor: string; direction: 'up' | 'down' }
+  | {
+      kind: 'promote';
+      key: string;
+      source: string;
+      message: string;
+      expectedHead: string;
+    };
+
+export async function updateConversationQueue(
+  apiBase: string,
+  conversationId: string,
+  action: ConversationQueueAction,
+  opts?: ClientRequestOptions,
+): Promise<void> {
+  opts = snapshotExecutionOptions(opts);
+  const url = `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`;
+  const response = await mutateJson(url, 'POST', opts, action);
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    error?: string;
+    code?: string;
+  };
+  if (!response.ok || !result.success)
+    throw chatRefusal(response, result, 'Could not update the queue.', {
+      apiBase,
+      opts,
+    });
+}
+
 /** Submit a steer against the original observed head. */
 export async function submitConversationSteer(
   apiBase: string,

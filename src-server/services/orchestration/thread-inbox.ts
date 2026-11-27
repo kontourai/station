@@ -584,6 +584,7 @@ export function createSqliteThreadInboxStore(
         ? kernel.executeSync(
             { type: 'inbox.read', inboxId: command.inboxId, key: command.key },
             { liveness: NO_LIVENESS },
+            { withinHostTransaction: inHostTransaction },
           )
         : undefined;
     const result = kernel.executeSync(
@@ -612,6 +613,7 @@ export function createSqliteThreadInboxStore(
       kind?: 'follow-up' | 'steer' | 'display';
       expectedHead?: string;
       readHead?: () => string;
+      promoteKey?: string;
     }): InboxSubmitResult | { kind: 'stale-head'; currentHead: string } {
       const command = {
         type: 'inbox.submit',
@@ -648,10 +650,53 @@ export function createSqliteThreadInboxStore(
           prior.kind === 'found' &&
           prior.entry.state !== 'refused' &&
           (prior.entry.state !== 'cancelled' || prior.entry.placement !== null);
+        if (
+          input.promoteKey !== undefined &&
+          currentHead === input.expectedHead
+        ) {
+          const source = run(
+            {
+              type: 'inbox.read',
+              inboxId: input.conversationId,
+              key: input.promoteKey,
+            },
+            true,
+          );
+          const sourcePayload =
+            source.kind === 'found'
+              ? decodePayload(source.entry.payload)
+              : undefined;
+          if (
+            prior.kind !== 'absent' ||
+            source.kind !== 'found' ||
+            source.entry.kind !== 'follow-up' ||
+            source.entry.state !== 'queued' ||
+            source.entry.placement !== null ||
+            sourcePayload?.actor.userId !== input.payload.actor.userId ||
+            sourcePayload?.message !== input.payload.message
+          ) {
+            db.exec('ROLLBACK');
+            return { kind: 'conflict' };
+          }
+          run(
+            {
+              type: 'inbox.cancel',
+              inboxId: input.conversationId,
+              key: input.promoteKey,
+              now: input.now,
+            },
+            true,
+          );
+        }
         result =
-          replaysExisting || currentHead === input.expectedHead
+          (input.promoteKey === undefined && replaysExisting) ||
+          currentHead === input.expectedHead
             ? run(command, true)
             : { kind: 'stale-head', currentHead };
+        if (input.promoteKey !== undefined && result.kind !== 'accepted') {
+          db.exec('ROLLBACK');
+          return result;
+        }
         db.exec('COMMIT');
       } catch (error) {
         db.exec('ROLLBACK');
@@ -659,6 +704,30 @@ export function createSqliteThreadInboxStore(
       }
       if (result.kind === 'accepted') onChanged?.(input.conversationId);
       return result;
+    },
+    edit(entry: InboxEntryRecord, payload: ThreadInboxPayload, now: number) {
+      return run({
+        type: 'inbox.edit',
+        inboxId: entry.inboxId,
+        key: entry.key,
+        previousPayload: entry.payload,
+        payload: JSON.stringify(payload),
+        now,
+      });
+    },
+    move(
+      conversationId: string,
+      key: string,
+      neighbor: string,
+      direction: 'up' | 'down',
+    ) {
+      return run({
+        type: 'inbox.move',
+        inboxId: conversationId,
+        key,
+        neighbor,
+        direction,
+      });
     },
     claimNext(conversationId: string, placement: string, now: number) {
       return run({
@@ -1412,6 +1481,75 @@ export class ThreadInboxDelivery {
     return this.submitEntry(input, 'steer');
   }
 
+  editQueued(
+    conversationId: string,
+    key: string,
+    previous: string,
+    message: string,
+    userId: string,
+  ): boolean {
+    const inbox = this.inboxOf(conversationId);
+    const entry = this.ports.store.read(inbox, key);
+    const payload = entry && decodePayload(entry.payload);
+    if (
+      !entry ||
+      !payload ||
+      payload.actor.userId !== userId ||
+      payload.message !== previous ||
+      payload.serverAutomationIntentId ||
+      payload.automaticBackground ||
+      this.refusalFor(inbox, payload, this.now())
+    )
+      return false;
+    return (
+      this.ports.store.edit(entry, { ...payload, message }, this.now()).kind ===
+      'applied'
+    );
+  }
+
+  moveQueued(
+    conversationId: string,
+    key: string,
+    neighbor: string,
+    direction: 'up' | 'down',
+    userId: string,
+  ): boolean {
+    const inbox = this.inboxOf(conversationId);
+    if (!this.ports.mayContinue(inbox, userId)) return false;
+    for (const id of [key, neighbor]) {
+      const record = this.ports.store.read(inbox, id);
+      if (!record || decodePayload(record.payload)?.actor.userId !== userId)
+        return false;
+    }
+    return (
+      this.ports.store.move(inbox, key, neighbor, direction).kind === 'applied'
+    );
+  }
+
+  promoteQueued(
+    input: ThreadInboxInput & { expectedHead: string },
+    source: string,
+  ): ThreadInboxHeadSubmission {
+    const inbox = this.inboxOf(input.conversationId);
+    const record = this.ports.store.read(inbox, source);
+    const payload = record && decodePayload(record.payload);
+    if (
+      !record ||
+      record.kind !== 'follow-up' ||
+      record.state !== 'queued' ||
+      record.placement !== null ||
+      !payload ||
+      payload.actor.userId !== input.payload.actor.userId ||
+      payload.message !== input.payload.message ||
+      payload.attachments?.length ||
+      payload.serverAutomationIntentId
+    )
+      return { outcome: 'conflict' };
+    if (this.refusalFor(inbox, payload, this.now()))
+      return { outcome: 'not-permitted' };
+    return this.submitEntry(input, 'steer', source);
+  }
+
   submitDisplay(
     input: ThreadInboxInput & { expectedHead?: string },
   ): ThreadInboxHeadSubmission {
@@ -1428,6 +1566,7 @@ export class ThreadInboxDelivery {
   private submitEntry(
     input: ThreadInboxInput & { expectedHead?: string },
     kind: 'follow-up' | 'steer' | 'display',
+    promoteKey?: string,
   ): ThreadInboxHeadSubmission {
     // Only Station's own continuation may use its reserved key prefix: an
     // ordinary sender could otherwise pre-claim that key and turn Station's
@@ -1492,6 +1631,7 @@ export class ThreadInboxDelivery {
       conversationId: inbox,
       kind,
       now,
+      promoteKey,
       readHead: () => this.currentHead(inbox),
     });
     if (result.kind === 'stale-head')
@@ -2096,6 +2236,7 @@ export class ThreadInboxDelivery {
       if (!head) return;
       if (head.state === 'unconfirmed') {
         if (this.resolveAbandoned(conversationId, head)) continue;
+        if (head.kind === 'steer') this.scheduleRetry(conversationId);
         return;
       }
       if (attemptedKeys.has(head.key)) {
@@ -2461,7 +2602,12 @@ export class ThreadInboxDelivery {
     try {
       waiting = this.ports.store
         .list(conversationId)
-        .some((entry) => entry.state === 'queued' || entry.state === 'placing');
+        .some(
+          (entry) =>
+            entry.state === 'queued' ||
+            entry.state === 'placing' ||
+            (entry.kind === 'steer' && entry.state === 'unconfirmed'),
+        );
     } catch {
       // The store is failing: look again on schedule.
       waiting = true;

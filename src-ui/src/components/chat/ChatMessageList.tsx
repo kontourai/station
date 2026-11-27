@@ -142,6 +142,7 @@ interface ChatMessageListProps {
   preserveReading?: boolean;
   activeSession: ChatSession;
   scrollControlsTarget?: HTMLElement | null;
+  pendingSteerRef?: (element: HTMLDivElement | null) => void;
   /** The canonical window plus sequenced live events already renders this turn. */
   suppressStreamingRow?: boolean;
   fontSize: number;
@@ -388,6 +389,7 @@ function ChatMessageListComponent({
   agents,
   activeSession,
   scrollControlsTarget,
+  pendingSteerRef,
   suppressStreamingRow,
   fontSize,
   layoutHeight,
@@ -2829,6 +2831,7 @@ function ChatMessageListComponent({
                     }
                   />
                 )}
+                {pendingSteerRef && <div ref={pendingSteerRef} />}
                 {/* Room at the end for the composer's floating status row
                 (chat.css shows it). A row of its own, not a pseudo-element,
                 so the tail-follow sees it come and go. */}

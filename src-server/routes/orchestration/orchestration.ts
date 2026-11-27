@@ -1276,6 +1276,34 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
 export const conversationInboxBodySchema = z.discriminatedUnion('kind', [
   z
     .object({
+      kind: z.literal('edit'),
+      key: z.string().min(1).max(200),
+      previous: z.string().max(CHAT_INPUT_MAX_CHARS),
+      message: z
+        .string()
+        .max(CHAT_INPUT_MAX_CHARS)
+        .refine((message) => Boolean(message.trim())),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('move'),
+      key: z.string().min(1).max(200),
+      neighbor: z.string().min(1).max(200),
+      direction: z.enum(['up', 'down']),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('promote'),
+      key: z.string().uuid(),
+      source: z.string().min(1).max(200),
+      message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+      expectedHead: z.string().min(1).max(4096),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal('steer'),
       key: z.string().min(1).max(128),
       message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
@@ -4110,6 +4138,32 @@ export function createOrchestrationRoutes(
           { success: false, error: 'Receiver-local conversation required' },
           403,
         );
+      if (body.kind === 'edit') {
+        if (
+          !inbox.editQueued(
+            conversationId,
+            body.key,
+            body.previous,
+            body.message,
+            actor.userId,
+          )
+        )
+          return c.json({ success: false, error: 'The queue changed.' }, 409);
+        return c.json({ success: true });
+      }
+      if (body.kind === 'move') {
+        if (
+          !inbox.moveQueued(
+            conversationId,
+            body.key,
+            body.neighbor,
+            body.direction,
+            actor.userId,
+          )
+        )
+          return c.json({ success: false, error: 'The queue changed.' }, 409);
+        return c.json({ success: true });
+      }
       const input = {
         conversationId,
         clientTurnId: body.key,
@@ -4134,11 +4188,16 @@ export function createOrchestrationRoutes(
       let result: ReturnType<ThreadInboxDelivery['submitSteer']>;
       try {
         result =
-          body.kind === 'steer'
-            ? inbox.submitSteer({ ...input, expectedHead: body.expectedHead })
-            : body.kind === 'follow-up'
-              ? inbox.submit(input)
-              : inbox.submitDisplay(input);
+          body.kind === 'promote'
+            ? inbox.promoteQueued(
+                { ...input, expectedHead: body.expectedHead },
+                body.source,
+              )
+            : body.kind === 'steer'
+              ? inbox.submitSteer({ ...input, expectedHead: body.expectedHead })
+              : body.kind === 'follow-up'
+                ? inbox.submit(input)
+                : inbox.submitDisplay(input);
       } catch (error) {
         if (!isSteerConflictCode(errorCode(error))) throw error;
         return c.json(

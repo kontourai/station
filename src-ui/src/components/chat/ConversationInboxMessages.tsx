@@ -51,6 +51,24 @@ export function ConversationInboxMessages({
       void remove(key).catch(() => undefined);
     },
     onRetry: refresh,
+    ...(queue.nextFirst
+      ? {
+          updating: inbox.updating,
+          updateError: inbox.updateError,
+          onEdit: (key, previous, message) =>
+            inbox.updateQueue({ kind: 'edit', key, previous, message }),
+          onMove: (key, neighbor, direction) => {
+            void inbox
+              .updateQueue({ kind: 'move', key, neighbor, direction })
+              .catch(() => undefined);
+          },
+          onSteer: (source, message) => {
+            void inbox
+              .updateQueue({ kind: 'promote', source, message })
+              .catch(() => undefined);
+          },
+        }
+      : {}),
     ...(onResend
       ? {
           onResend: (entry) => {

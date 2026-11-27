@@ -1,10 +1,12 @@
 import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
+  type ConversationQueueAction,
   cancelConversationInboxEntry,
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
   listConversationInbox,
   StationHttpError,
+  updateConversationQueue,
 } from '@kontourai/station-sdk/client';
 import {
   type QueryClient,
@@ -221,6 +223,34 @@ export function useConversationInbox(
     },
   });
 
+  const queueUpdate = useMutation({
+    mutationKey: [...queryKey, 'update-queue'],
+    retry: false,
+    mutationFn: async (
+      request: Cancellation & { action: ConversationQueueAction },
+    ) => {
+      if (!request.scope.isCurrent())
+        throw new Error('The Station connection changed.');
+      await updateConversationQueue(
+        request.apiBase,
+        request.conversationId,
+        request.action,
+        {
+          requestScope: request.scope,
+          requireCredential: request.scope.requiresEnrolledCredential !== false,
+          timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+        },
+      );
+    },
+    onSettled: async (_result, _error, request) => {
+      if (request.scope.isCurrent())
+        await request.client.invalidateQueries({
+          queryKey: request.queryKey,
+          exact: true,
+        });
+    },
+  });
+
   return {
     availability,
     entries,
@@ -228,6 +258,34 @@ export function useConversationInbox(
     refresh: () => {
       if (enabled && scope?.isCurrent())
         void query.refetch({ cancelRefetch: false });
+    },
+    updating: queueUpdate.isPending,
+    updateError: queueUpdate.isError,
+    updateQueue: async (
+      action:
+        | Exclude<ConversationQueueAction, { kind: 'promote' }>
+        | { kind: 'promote'; source: string; message: string },
+    ) => {
+      if (!scope?.isCurrent())
+        throw new Error('The Station connection changed.');
+      const expectedHead = client.getQueryData<string>([...queryKey, 'head']);
+      if (action.kind === 'promote' && !expectedHead) return;
+      return queueUpdate.mutateAsync({
+        apiBase: apiBase!,
+        scope,
+        client,
+        queryKey,
+        conversationId,
+        key: action.kind === 'promote' ? action.source : action.key,
+        action:
+          action.kind !== 'promote'
+            ? action
+            : {
+                ...action,
+                key: crypto.randomUUID(),
+                expectedHead: expectedHead!,
+              },
+      });
     },
     removing: cancellation.isPending,
     removalError: cancellation.isError,

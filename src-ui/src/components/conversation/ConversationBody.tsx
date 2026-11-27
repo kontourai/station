@@ -1326,6 +1326,35 @@ function LiveConversationBody({
   );
   const nativeSteering = steerPlacement.state === 'native';
   const followUpPreview = import.meta.env.DEV;
+  const [queueToolbar, setQueueToolbar] = useState<HTMLDivElement | null>(null);
+  const [queueEditTarget, setQueueEditTarget] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const [queueDraft, setQueueDraft] = useState<{
+    sessionId: string;
+    text: string;
+    saving?: boolean;
+  } | null>(null);
+  const queueEdit =
+    followUpPreview && queueDraft?.sessionId === activeSession?.id
+      ? queueDraft
+      : null;
+  const queueEditing = queueEdit !== null;
+  const queueSessionId = activeSession?.id;
+  useEffect(() => {
+    setQueueDraft((draft) =>
+      draft?.sessionId === queueSessionId ? draft : null,
+    );
+  }, [queueSessionId]);
+  useEffect(() => {
+    if (!queueEditing) return;
+    const frame = requestAnimationFrame(() =>
+      chatInput.textareaRef.current?.focus(),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [queueEditing, chatInput.textareaRef]);
+  const [pendingSteerTarget, setPendingSteerTarget] =
+    useState<HTMLDivElement | null>(null);
   const steerEffect = nativeSteering
     ? 'Adds to the running turn'
     : steerPlacement.state === 'emulated' &&
@@ -2220,6 +2249,9 @@ function LiveConversationBody({
               fontSize: chatFontSize,
               layoutHeight: dockHeight,
               scrollControlsTarget,
+              pendingSteerRef: followUpPreview
+                ? setPendingSteerTarget
+                : undefined,
               showReasoning,
               showToolDetails,
               renderOverride,
@@ -2361,6 +2393,26 @@ function LiveConversationBody({
             messages: activeSession.queuedMessages,
             metadata: activeSession.queuedMessageMetadata,
             nextFirst: followUpPreview,
+            queueToolbar,
+            composerEdit: followUpPreview
+              ? {
+                  target: queueEditTarget,
+                  text: queueEdit?.text,
+                  start: (text: string) =>
+                    setQueueDraft({ sessionId: activeSession.id, text }),
+                  finish: () =>
+                    setQueueDraft((draft) =>
+                      draft?.sessionId === activeSession.id ? null : draft,
+                    ),
+                  setSaving: (saving: boolean) =>
+                    setQueueDraft((draft) =>
+                      draft?.sessionId === activeSession.id
+                        ? { ...draft, saving }
+                        : draft,
+                    ),
+                }
+              : undefined,
+            pendingSteerTarget,
             outbox: outboxRows,
             // The pill's fact when the server's turn record is here (it
             // survives a reload; the live parts do not), unless the user
@@ -3136,7 +3188,10 @@ function LiveConversationBody({
             }
             activityRef={setScrollControlsTarget}
             hasQuotedContext={chatInput.quotes.length > 0}
-            draftText={chatInput.quotedDraftText}
+            queueEditTargetRef={
+              followUpPreview ? setQueueEditTarget : undefined
+            }
+            draftText={queueEdit?.text ?? chatInput.quotedDraftText}
             quoteContext={chatInput.quotes}
             sessionId={activeSession.id}
             sendFailureNotice={sendFailureNotice}
@@ -3170,12 +3225,14 @@ function LiveConversationBody({
             }
             queuedRetryNotice={queuedRetryNotice}
             activeConversationId={activeSession.conversationId}
-            input={chatInput.input}
+            input={queueEdit?.text ?? chatInput.input}
+            editingQueue={queueEditing}
+            queueEditSaving={queueEdit?.saving}
             workingDirectory={workingDirectory}
             mentionProjectSlug={activeSession.projectSlug}
             mentionRequestScope={mentionRequestScope}
             mentionAuthority={mentionAuthority}
-            attachments={chatInput.attachments}
+            attachments={queueEditing ? [] : chatInput.attachments}
             textareaRef={chatInput.textareaRef}
             onEnabledChange={onComposerEnabledChange}
             disabled={
@@ -3200,9 +3257,13 @@ function LiveConversationBody({
             busyFollowUp={busyFollowUp}
             busyQueueTakesFiles={queueTakesFiles}
             busySteeringUnavailableReason={steeringUnavailableReason}
+            queueToolbarRef={followUpPreview ? setQueueToolbar : undefined}
             followUpPresentation={
               followUpPreview
-                ? { steerLabel: 'Steer', effect: steerEffect }
+                ? {
+                    effect: steerEffect,
+                    showEffect: !nativeSteering,
+                  }
                 : undefined
             }
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
@@ -3338,13 +3399,25 @@ function LiveConversationBody({
             }
             commandQuery={chatInput.commandQuery}
             slashCommands={chatInput.slashCommands}
-            onInputChange={chatInput.handleInputChange}
+            onInputChange={
+              queueEdit
+                ? (text) =>
+                    setQueueDraft({ sessionId: queueEdit.sessionId, text })
+                : chatInput.handleInputChange
+            }
             onSend={handleSendWithContext}
             onCancel={chatInput.handleCancel}
-            onClearInput={chatInput.handleClearInput}
-            selectAttachmentFiles={chatInput.selectAttachmentFiles}
+            onClearInput={
+              queueEdit
+                ? () =>
+                    setQueueDraft({ sessionId: queueEdit.sessionId, text: '' })
+                : chatInput.handleClearInput
+            }
+            selectAttachmentFiles={
+              queueEditing ? undefined : chatInput.selectAttachmentFiles
+            }
             attachmentError={chatInput.attachmentError}
-            attachmentStages={chatInput.attachmentStages}
+            attachmentStages={queueEditing ? [] : chatInput.attachmentStages}
             attachmentNotice={chatInput.attachmentNotice}
             attachUnavailableReason={chatInput.attachUnavailableReason}
             onAttachUnavailable={chatInput.setAttachmentError}

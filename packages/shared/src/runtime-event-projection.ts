@@ -1050,13 +1050,12 @@ function createRuntimeMessageProjection(
           if (steerParts.length > 0) {
             pushMessage('user', steerParts, 'steer');
             userRowSender = undefined;
-            if (ev.steerInterruptedRun) {
-              const steerRow = messages[messages.length - 1]!;
-              steerRow.metadata = {
-                ...steerRow.metadata,
-                steerInterruptedRun: true,
-              };
-            }
+            const steerRow = messages[messages.length - 1]!;
+            steerRow.metadata = {
+              ...steerRow.metadata,
+              steer: true,
+              ...(ev.steerInterruptedRun ? { steerInterruptedRun: true } : {}),
+            };
           }
           break;
         }
