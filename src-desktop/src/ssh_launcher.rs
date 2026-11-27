@@ -89,10 +89,7 @@ impl Runner for SystemRunner {
     fn run(&self, program: &str, args: &[String]) -> std::io::Result<Output> {
         let mut command = Command::new(program);
         crate::apply_no_window(&mut command);
-        command
-            .args(args)
-            .stdin(Stdio::null())
-            .output()
+        command.args(args).stdin(Stdio::null()).output()
     }
     fn spawn(&self, program: &str, args: &[String]) -> std::io::Result<Child> {
         let mut command = Command::new(program);
