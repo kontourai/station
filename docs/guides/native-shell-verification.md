@@ -977,6 +977,25 @@ frames, microphone capture, and persistence still require runtime acceptance.
 
 ## Nearby Station discovery
 
+Windows registers the same `station-discovery` IPC provider and shared candidate
+panel. Its Rust browser uses `mdns-sd` 0.22.0, with private/link-local IPv4
+interfaces, a five-second foreground scan, exact scan-ID cancellation, bounded
+results and confirmed daemon shutdown. The native host obtains `desktop-nearby`
+preview admission only from the selected host-authorized Station's exact origin;
+redirects are disabled and its credential never goes to an advertisement.
+Both `prepare` and `discover` fail closed while the default-off preview is
+disabled or unavailable. Each operation rechecks it; turning it off does not
+retroactively extend or authorize another scan. HTTPS TXT publication remains a
+different preview and untrusted hints never authorize pairing or selection.
+
+Owners: [Windows browser and lifecycle](../../src-desktop/plugins/station-discovery/src/windows.rs),
+[selected-controller admission](../../src-desktop/src/desktop_discovery.rs), and
+[manual Windows shell journey](../../tests/tauri-shell/native-nearby-discovery.e2e.ts).
+The journey uses an owned same-interface multicast advertisement separately
+from the remote host's supported Tailscale HTTPS ingress; a tailnet peer is not
+evidence of multicast reachability. Its [remote fixture](../../tests/tauri-shell/nearby-remote-host.ts)
+preserves existing Serve mappings and requires explicit operator approval.
+
 The mobile `station-discovery` plugin uses iOS NWBrowser/NetService and Android
 NsdManager for `_station._tcp.local.` services with TXT `v=1` and `transport`.
 It returns resolved private host/port hints and optional TXT `appOrigin`, never

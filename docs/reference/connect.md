@@ -1178,6 +1178,13 @@ reactive: removal or replacement cancels stale scan results. Scans default to an
 18-second outer deadline. Providers distinguish available, empty,
 permission-required, permission-denied, unavailable, timed-out, cancelled and failed.
 
+Trusted Windows shells register the native DNS-SD provider, gated by the
+selected authorized controller's default-off `desktop-nearby` Feature Preview.
+The browse window is five seconds with up to 1.5 seconds for confirmed shutdown;
+unconfirmed shutdown blocks another scan until restart. Windows returns at most
+32 untrusted private/link-local IPv4 hints through the same registry and access
+review. macOS/Linux desktop browsing is not enabled.
+
 Native iOS and Android 14+ shells register the system DNS-SD provider for
 `_station._tcp.local.`. It validates TXT version/transport and resolved private
 host/port hints, cancels on background or disposal, and sends no HTTP probes.

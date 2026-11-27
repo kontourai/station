@@ -11,13 +11,16 @@ const profileStorage = vi.hoisted(() => ({
   subscribeRelayRouteProfiles: vi.fn(() => () => {}),
 }));
 
+const nativeTarget = vi.hoisted(() => ({ platform: 'ios' }));
+const unregisterDiscovery = vi.hoisted(() => vi.fn());
+
 vi.mock('../native', () => ({
   nativePlatformPromise: Promise.resolve({
     platform: 'tauri',
     getCapabilityReport: async () => ({
       status: 'ok',
       value: {
-        platform: 'ios',
+        platform: nativeTarget.platform,
         capabilities: [],
         devBuild: true,
       },
@@ -28,7 +31,11 @@ vi.mock('../native', () => ({
 // Discovery IPC is covered by connectionDiscovery.test.ts; this notification
 // fixture owns only boot priming and waits for its unrelated lazy effect.
 vi.mock('../native/connectionDiscovery', () => ({
-  registerNativeConnectionDiscovery: vi.fn(() => () => {}),
+  registerNativeConnectionDiscovery: vi.fn(() => unregisterDiscovery),
+}));
+
+vi.mock('../native/bundledLocalProfileBootstrap', () => ({
+  bootstrapBundledLocalProfile: vi.fn(async () => ({})),
 }));
 
 vi.mock('../native/notify', () => ({
@@ -65,6 +72,7 @@ describe('PlatformBootstrap notification priming', () => {
     cleanup();
     vi.clearAllMocks();
     profileStorage.hasSavedProfiles.mockReturnValue(true);
+    nativeTarget.platform = 'ios';
   });
 
   it('primes notifications at boot when a saved Station exists', async () => {
@@ -77,5 +85,13 @@ describe('PlatformBootstrap notification priming', () => {
     profileStorage.hasSavedProfiles.mockReturnValue(false);
     const prime = await renderFreshBootstrap();
     expect(prime).not.toHaveBeenCalled();
+  });
+
+  it('registers Nearby in a trusted Windows shell and disposes its provider on unmount', async () => {
+    nativeTarget.platform = 'windows';
+    await renderFreshBootstrap();
+    expect(unregisterDiscovery).not.toHaveBeenCalled();
+    cleanup();
+    expect(unregisterDiscovery).toHaveBeenCalledOnce();
   });
 });

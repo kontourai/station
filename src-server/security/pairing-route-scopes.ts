@@ -5747,6 +5747,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // read the policy file itself.
     { method: 'GET', path: '/api/settings/managed-policy' },
     { method: 'GET', path: '/api/feature-previews' },
+    { method: 'GET', path: '/api/feature-previews/desktop-nearby/admission' },
     { method: 'PUT', path: '/api/feature-previews/:id' },
     { method: 'GET', path: '/bedrock/models' },
     { method: 'GET', path: '/bedrock/models/:modelId' },
