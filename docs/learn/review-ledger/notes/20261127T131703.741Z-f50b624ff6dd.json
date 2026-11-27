@@ -1,0 +1,7 @@
+{
+  "revision": "50ec7ffc47c4fe6fcdba5e9924348ea8e149814a",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the supervisor-link quiet-time change for #5628 against the STATION_SUPERVISOR_IPC/STATION_SUPERVISOR_GENERATION environment row and its real caller: IPC admission, promotion, inherited listener binding and child-environment filtering are unchanged. The internal 50 ms quiet interval now starts at drain start; no environment key, default or operator setting changes, so the existing reference remains accurate. This is not a service-reload or physical-device qualification.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/supervisor-link.ts"]}
+  ]
+}
