@@ -1,0 +1,7 @@
+{
+  "revision": "c0127ee5379123a36b89e5d020260019060d84e2",
+
+  "notes": [
+    {"path":"README.md","note":"Read the desktop and one-command Nightly install entry points against the added operator recovery paragraph: download/channel/installer claims are unchanged; receipt recovery is a workflow operator action and not a new end-user install step.","inputs":["README.md","docs/guides/nightly.md"]}
+  ]
+}

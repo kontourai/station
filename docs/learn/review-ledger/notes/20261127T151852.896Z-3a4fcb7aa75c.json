@@ -1,0 +1,7 @@
+{
+  "revision": "c0127ee5379123a36b89e5d020260019060d84e2",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed schema, generated projection and current inherited 3dba664 cohort entries against JSON. CLI recovery preserves registry-verified timestamp, exact ship identity and null native artifact build time; no ledger data is altered by this patch. Ledger completeness and live provider availability remain explicitly unproven by the projection.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}
