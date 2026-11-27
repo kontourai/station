@@ -112,6 +112,7 @@ import {
   type UntrustedContentLedger,
 } from '../plugins/untrusted-content-policy.js';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
+import type { SessionSenderIdentity } from './session-sender-identity.js';
 import {
   evaluateSessionWait,
   type SessionInterruptedTurn,
@@ -1579,6 +1580,11 @@ export interface DelegationResultDeliveryPorts {
   /** The recorded owner of a Session, read from its start record. */
   sessionOwnerId(threadId: string): string | undefined;
   /**
+   * The finished chat's title, Agent and engine, as `send_to_session` records
+   * its sender's. Absent, a delivered turn's sender names only its Session.
+   */
+  senderIdentity?(threadId: string): SessionSenderIdentity | undefined;
+  /**
    * Start a turn on the parent conversation as `actor`. Throws only when the
    * start was cleanly refused (no effect); an uncertain outcome is
    * `indeterminate`.
@@ -2709,6 +2715,20 @@ export class DelegationResultDelivery {
       ...(owner.childAgent ? { agent: owner.childAgent } : {}),
       requestKey: row.deliveryId,
     };
+    // The turn a reader opens names the chat the result came from, as a
+    // `send_to_session` message names its sender. The engine's text keeps
+    // `sender`: a row re-driven after this identity arrived must repeat the
+    // bytes an earlier attempt may have started.
+    const identity =
+      row.transition === 'pull_request'
+        ? undefined
+        : this.ports.senderIdentity?.(row.childSessionId);
+    const recorded: ClientOriginSender = {
+      ...sender,
+      ...(identity?.title ? { title: identity.title } : {}),
+      ...(!sender.agent && identity?.agent ? { agent: identity.agent } : {}),
+      ...(identity ? { engine: identity.engine } : {}),
+    };
     const ports: SessionMessageDeliveryPorts = {
       prepareText: (text) => frameAgentMessage(sender, text),
       isBusy: (thread) =>
@@ -2722,7 +2742,7 @@ export class DelegationResultDelivery {
           parentConversationId: owner.parentConversationId,
           threadId,
           actor: owner.actor,
-          sender,
+          sender: recorded,
           text,
           clientTurnId,
         });
@@ -2731,7 +2751,7 @@ export class DelegationResultDelivery {
         this.ports.steer({
           threadId: thread,
           actor: owner.actor,
-          sender,
+          sender: recorded,
           text,
           clientInputId,
         }),

@@ -1,5 +1,5 @@
 import type { SessionInventoryLiveItem } from '@kontourai/station-basis-pane/session-inventory-view';
-import type { CoordinationChild } from '@kontourai/station-contracts/orchestration';
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { AnySessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
 import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
@@ -11,7 +11,8 @@ import { selectSessionInventoryLiveNow } from './sessionInventoryLiveProjection'
 export type SessionInventoryLiveOverlay = {
   running: readonly ReturnType<typeof selectSessionInventoryLiveNow>[number][];
   pendingApprovalIds: readonly string[];
-  subscriptions?: readonly CoordinationChild[];
+  /** The chats and pull requests this Session is waiting on. */
+  waitingOn?: readonly SessionInventoryLiveItem[];
 };
 const EMPTY: SessionInventoryLiveOverlay = {
   running: [],
@@ -21,6 +22,31 @@ const floors = new Map<
   string,
   { authorityKey: string; startedAfter: number }
 >();
+
+/**
+ * Show chats by title and pull requests by number. Running entries already
+ * list delegated tasks.
+ */
+function waitingOnItems(
+  session: OrchestrationSessionSummary | undefined,
+  sessions: readonly OrchestrationSessionSummary[] | undefined,
+): readonly SessionInventoryLiveItem[] {
+  return (session?.coordination?.children ?? [])
+    .filter((child) => child.waiting && child.kind !== 'delegation')
+    .map((child) => ({
+      key: child.id,
+      // `kind` only namespaces the item key; the pane contract has no kind
+      // for a pull request.
+      kind: 'agent' as const,
+      label: `Waiting on ${
+        child.kind === 'pull-request'
+          ? `${child.identity.repository.owner}/${child.identity.repository.name} #${child.identity.ref}`
+          : (sessions?.find(
+              (candidate) => candidate.threadId === child.sessionId,
+            )?.displayTitle ?? `Session ${child.sessionId.slice(0, 8)}`)
+      }`,
+    }));
+}
 
 /** Activation-only, captured-session Live projection. No cache or persistence. */
 export function useSessionInventoryLive(
@@ -87,12 +113,11 @@ export function useSessionInventoryLive(
   );
   const overlay = useSyncExternalStore(subscribe, snapshot, snapshot);
   if (!current) return overlay;
-  const subscriptions = sessions.data
-    ?.find((session) => session.threadId === sessionId)
-    ?.coordination?.children.filter(
-      (child) => child.waiting && child.kind !== 'delegation',
-    );
-  return subscriptions?.length ? { ...overlay, subscriptions } : overlay;
+  const waitingOn = waitingOnItems(
+    sessions.data?.find((session) => session.threadId === sessionId),
+    sessions.data,
+  );
+  return waitingOn.length ? { ...overlay, waitingOn } : overlay;
 }
 
 /** Presentation overlay only: no rows, persistence, or cache payload mutation. */
@@ -100,10 +125,7 @@ export function overlaySessionInventoryLive(
   projection: AnySessionInventoryProjection,
   live: SessionInventoryLiveOverlay,
 ): AnySessionInventoryProjection {
-  const count =
-    live.running.length +
-    live.pendingApprovalIds.length +
-    (live.subscriptions?.length ?? 0);
+  const count = live.running.length + live.pendingApprovalIds.length;
   if (!count) return projection;
   return {
     ...projection,
@@ -127,14 +149,7 @@ export function sessionInventoryLiveItems(
       kind: entry.kind === 'tool' ? ('tool' as const) : ('agent' as const),
       label: entry.kind === 'tool' ? 'Running tool' : 'Running delegate',
     })),
-    ...(live.subscriptions ?? []).map((child) => ({
-      key: child.id,
-      kind: 'agent' as const,
-      label:
-        child.kind === 'pull-request'
-          ? `Watching ${child.identity.repository.owner}/${child.identity.repository.name} #${child.identity.ref}`
-          : `Waiting on Session ${child.sessionId}`,
-    })),
+    ...(live.waitingOn ?? []),
     ...live.pendingApprovalIds.map((key) => ({
       key,
       kind: 'approval' as const,

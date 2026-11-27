@@ -911,7 +911,10 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   projectSessionLifecycle,
 } from '../../services/orchestration/session-lifecycle-service.js';
-import { notificationChatTitle } from '../../services/orchestration/session-sender-identity.js';
+import {
+  notificationChatTitle,
+  sessionSenderIdentity,
+} from '../../services/orchestration/session-sender-identity.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
 import {
   createTaskLeadReader,
@@ -7340,6 +7343,7 @@ export function configureRuntimeRoutes(
     return new DelegationResultDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.delegationResultStore(),
+      senderIdentity: (threadId) => sessionSenderIdentity(eventStore, threadId),
       mayReadPullRequestWatch: (owner, authorization) => {
         const inProject = (conversationId: string) => {
           const threadId =

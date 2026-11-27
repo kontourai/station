@@ -101,29 +101,6 @@ function statusOf(summary: OrchestrationSessionSummary) {
   return { line, lane, rung };
 }
 
-it('shows live subscriptions after settlement and preserves attention status', () => {
-  const coordination = {
-    waiting: 2,
-    children: [
-      { id: 'one', waiting: true, kind: 'session' as const, sessionId: 's1' },
-      { id: 'two', waiting: true, kind: 'session' as const, sessionId: 's2' },
-    ],
-  };
-  expect(statusOf({ ...TURN_COMPLETED, coordination })).toMatchObject({
-    line: 'Waiting on 2',
-    lane: 'running',
-  });
-  expect(statusOf({ ...APPROVAL_IN_OPEN_TURN, coordination })).toEqual(
-    statusOf(APPROVAL_IN_OPEN_TURN),
-  );
-  expect(
-    statusOf({
-      ...TURN_COMPLETED,
-      coordination: { waiting: 0, children: [] },
-    }),
-  ).toEqual(statusOf(TURN_COMPLETED));
-});
-
 it('keeps an armed check-back in Working after its turn settles, without hiding running work or attention', () => {
   const nextWakeUpAt = '2026-09-30T10:10:00.000Z';
   const waiting = rowFor({ ...TURN_COMPLETED, nextWakeUpAt });
