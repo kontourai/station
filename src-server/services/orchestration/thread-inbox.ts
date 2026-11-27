@@ -6,6 +6,7 @@ import {
   type InboxEntryRecord,
   type InboxSubmitResult,
   inboxHead,
+  inboxInputIsRetired,
   type KernelCommand,
   type KernelResults,
   type OwnerLiveness,
@@ -55,6 +56,7 @@ import {
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import {
+  isProviderTriggeredTurn,
   TURN_DISPATCH_ORIGINS,
   type TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
@@ -551,17 +553,13 @@ const MAY_STILL_SEND: ReadonlySet<InboxEntryRecord['state']> = new Set([
   'unconfirmed',
 ]);
 
-/** Positions (1 = next) of the entries still waiting, by key. */
+/** Positions (1 = next) of the follow-ups still waiting, by key. */
 function waitingPositions(
   entries: readonly InboxEntryRecord[],
 ): Map<string, number> {
   const positions = new Map<string, number>();
   for (const entry of entries)
-    if (
-      entry.state === 'queued' ||
-      entry.state === 'placing' ||
-      entry.state === 'unconfirmed'
-    )
+    if (entry.kind === 'follow-up' && MAY_STILL_SEND.has(entry.state))
       positions.set(entry.key, positions.size + 1);
   return positions;
 }
@@ -588,6 +586,7 @@ export function createSqliteThreadInboxStore(
         ? kernel.executeSync(
             { type: 'inbox.read', inboxId: command.inboxId, key: command.key },
             { liveness: NO_LIVENESS },
+            { withinHostTransaction: inHostTransaction },
           )
         : undefined;
     const result = kernel.executeSync(
@@ -616,6 +615,7 @@ export function createSqliteThreadInboxStore(
       kind?: 'follow-up' | 'steer' | 'display';
       expectedHead?: string;
       readHead?: () => string;
+      promoteKey?: string;
     }): InboxSubmitResult | { kind: 'stale-head'; currentHead: string } {
       const command = {
         type: 'inbox.submit',
@@ -652,10 +652,54 @@ export function createSqliteThreadInboxStore(
           prior.kind === 'found' &&
           prior.entry.state !== 'refused' &&
           (prior.entry.state !== 'cancelled' || prior.entry.placement !== null);
+        if (
+          input.promoteKey !== undefined &&
+          currentHead === input.expectedHead
+        ) {
+          const source = run(
+            {
+              type: 'inbox.read',
+              inboxId: input.conversationId,
+              key: input.promoteKey,
+            },
+            true,
+          );
+          const sourcePayload =
+            source.kind === 'found'
+              ? decodePayload(source.entry.payload)
+              : undefined;
+          if (
+            prior.kind !== 'absent' ||
+            source.kind !== 'found' ||
+            source.entry.kind !== 'follow-up' ||
+            source.entry.state !== 'queued' ||
+            source.entry.placement !== null ||
+            sourcePayload?.actor.userId !== input.payload.actor.userId ||
+            sourcePayload?.message !== input.payload.message
+          ) {
+            db.exec('ROLLBACK');
+            return { kind: 'conflict' };
+          }
+          run(
+            {
+              type: 'inbox.cancel',
+              inboxId: input.conversationId,
+              key: input.promoteKey,
+              now: input.now,
+              retireKey: true,
+            },
+            true,
+          );
+        }
         result =
-          replaysExisting || currentHead === input.expectedHead
+          (input.promoteKey === undefined && replaysExisting) ||
+          currentHead === input.expectedHead
             ? run(command, true)
             : { kind: 'stale-head', currentHead };
+        if (input.promoteKey !== undefined && result.kind !== 'accepted') {
+          db.exec('ROLLBACK');
+          return result;
+        }
         db.exec('COMMIT');
       } catch (error) {
         db.exec('ROLLBACK');
@@ -663,6 +707,30 @@ export function createSqliteThreadInboxStore(
       }
       if (result.kind === 'accepted') onChanged?.(input.conversationId);
       return result;
+    },
+    edit(entry: InboxEntryRecord, payload: ThreadInboxPayload, now: number) {
+      return run({
+        type: 'inbox.edit',
+        inboxId: entry.inboxId,
+        key: entry.key,
+        previousPayload: entry.payload,
+        payload: JSON.stringify(payload),
+        now,
+      });
+    },
+    move(
+      conversationId: string,
+      key: string,
+      neighbor: string,
+      direction: 'up' | 'down',
+    ) {
+      return run({
+        type: 'inbox.move',
+        inboxId: conversationId,
+        key,
+        neighbor,
+        direction,
+      });
     },
     claimNext(conversationId: string, placement: string, now: number) {
       return run({
@@ -737,8 +805,9 @@ export function createSqliteThreadInboxStore(
         inboxId: conversationId,
         key: clientTurnId,
       });
-      if (result.kind !== 'found' || !MAY_STILL_SEND.has(result.entry.state))
-        return undefined;
+      if (result.kind !== 'found') return undefined;
+      const retired = inboxInputIsRetired(result.entry);
+      if (!retired && !MAY_STILL_SEND.has(result.entry.state)) return undefined;
       const payload = decodePayload(result.entry.payload);
       if (!payload)
         throw new Error('Station could not read this queued message.');
@@ -748,6 +817,7 @@ export function createSqliteThreadInboxStore(
           clientTurnId: result.entry.key,
         },
         userId: payload.actor.userId,
+        ...(retired ? { retired: true as const } : {}),
         ...(payload.inputDigest !== undefined
           ? { inputDigest: payload.inputDigest }
           : {}),
@@ -791,7 +861,9 @@ export function threadInboxRecordNonDelivery(
   record: ReturnType<ThreadInboxStore['read']>,
 ): 'refused' | 'cancelled' | undefined {
   if (record?.state === 'refused') return 'refused';
-  return record?.state === 'cancelled' && record.placement === null
+  return record?.state === 'cancelled' &&
+    record.placement === null &&
+    !inboxInputIsRetired(record)
     ? 'cancelled'
     : undefined;
 }
@@ -1137,8 +1209,19 @@ export class ThreadInboxDelivery {
         event.invocationId === invocationId &&
         event.inputKind !== 'steer'
       )
-        return { threadId, turnId, openingSequence: sequence };
+        return isProviderTriggeredTurn(event)
+          ? undefined
+          : { threadId, turnId, openingSequence: sequence };
     }
+  }
+
+  currentSteerTarget(conversationId: string): string | undefined {
+    const inbox = this.inboxOf(conversationId);
+    const target = this.observeSteerTurn(this.ports.currentSessionId(inbox));
+    return (
+      target &&
+      JSON.stringify([target.threadId, target.turnId, target.openingSequence])
+    );
   }
 
   private ownsSteerTurn(
@@ -1416,6 +1499,85 @@ export class ThreadInboxDelivery {
     return this.submitEntry(input, 'steer');
   }
 
+  editQueued(
+    conversationId: string,
+    key: string,
+    previous: string,
+    message: string,
+    userId: string,
+  ): boolean {
+    const inbox = this.inboxOf(conversationId);
+    const entry = this.ports.store.read(inbox, key);
+    const payload = entry && decodePayload(entry.payload);
+    if (
+      !entry ||
+      !payload ||
+      payload.actor.userId !== userId ||
+      payload.message !== previous ||
+      payload.serverAutomationIntentId ||
+      payload.automaticBackground ||
+      this.refusalFor(inbox, payload, this.now())
+    )
+      return false;
+    return (
+      this.ports.store.edit(entry, { ...payload, message }, this.now()).kind ===
+      'applied'
+    );
+  }
+
+  moveQueued(
+    conversationId: string,
+    key: string,
+    neighbor: string,
+    direction: 'up' | 'down',
+    userId: string,
+  ): boolean {
+    const inbox = this.inboxOf(conversationId);
+    if (!this.ports.mayContinue(inbox, userId)) return false;
+    for (const id of [key, neighbor]) {
+      const record = this.ports.store.read(inbox, id);
+      if (!record || decodePayload(record.payload)?.actor.userId !== userId)
+        return false;
+    }
+    return (
+      this.ports.store.move(inbox, key, neighbor, direction).kind === 'applied'
+    );
+  }
+
+  async promoteQueued(
+    input: ThreadInboxInput & { expectedTurn: string },
+    source: string,
+  ): Promise<ThreadInboxHeadSubmission | { outcome: 'steering-unavailable' }> {
+    const inbox = this.inboxOf(input.conversationId);
+    const record = this.ports.store.read(inbox, source);
+    const payload = record && decodePayload(record.payload);
+    if (
+      record?.kind !== 'follow-up' ||
+      record.state !== 'queued' ||
+      record.placement !== null ||
+      !payload ||
+      payload.actor.userId !== input.payload.actor.userId ||
+      payload.message !== input.payload.message ||
+      payload.attachments?.length ||
+      payload.automaticBackground ||
+      payload.serverAutomationIntentId
+    )
+      return { outcome: 'conflict' };
+    if (this.refusalFor(inbox, payload, this.now()))
+      return { outcome: 'not-permitted' };
+    if (this.currentSteerTarget(inbox) !== input.expectedTurn)
+      return { outcome: 'stale-head', currentHead: this.currentHead(inbox) };
+    const fidelity = await this.ports.steerFidelity?.(
+      this.ports.currentSessionId(inbox),
+    );
+    if (!fidelity || fidelity === 'none' || fidelity === 'pending')
+      return { outcome: 'steering-unavailable' };
+    const expectedHead = this.currentHead(inbox);
+    if (this.currentSteerTarget(inbox) !== input.expectedTurn)
+      return { outcome: 'stale-head', currentHead: expectedHead };
+    return this.submitEntry({ ...input, expectedHead }, 'steer', source);
+  }
+
   submitDisplay(
     input: ThreadInboxInput & { expectedHead?: string },
   ): ThreadInboxHeadSubmission {
@@ -1432,6 +1594,7 @@ export class ThreadInboxDelivery {
   private submitEntry(
     input: ThreadInboxInput & { expectedHead?: string },
     kind: 'follow-up' | 'steer' | 'display',
+    promoteKey?: string,
   ): ThreadInboxHeadSubmission {
     // Only Station's own continuation may use its reserved key prefix: an
     // ordinary sender could otherwise pre-claim that key and turn Station's
@@ -1449,6 +1612,7 @@ export class ThreadInboxDelivery {
       return { outcome: 'not-permitted' };
     this.inspectDelivery(inbox, input.clientTurnId, input.payload);
     const prior = this.ports.store.read(inbox, input.clientTurnId);
+    if (prior && inboxInputIsRetired(prior)) return { outcome: 'conflict' };
     const priorPayload = prior ? decodePayload(prior.payload) : undefined;
     let steerTarget = priorPayload?.steerTarget;
     if (
@@ -1496,6 +1660,7 @@ export class ThreadInboxDelivery {
       conversationId: inbox,
       kind,
       now,
+      promoteKey,
       readHead: () => this.currentHead(inbox),
     });
     if (result.kind === 'stale-head')
@@ -1564,7 +1729,7 @@ export class ThreadInboxDelivery {
     );
     return (
       record !== undefined &&
-      MAY_STILL_SEND.has(record.state) &&
+      (MAY_STILL_SEND.has(record.state) || inboxInputIsRetired(record)) &&
       decodePayload(record.payload)?.actor.userId !== userId
     );
   }
@@ -2100,6 +2265,7 @@ export class ThreadInboxDelivery {
       if (!head) return;
       if (head.state === 'unconfirmed') {
         if (this.resolveAbandoned(conversationId, head)) continue;
+        if (head.kind === 'steer') this.scheduleRetry(conversationId);
         return;
       }
       if (attemptedKeys.has(head.key)) {
@@ -2465,7 +2631,12 @@ export class ThreadInboxDelivery {
     try {
       waiting = this.ports.store
         .list(conversationId)
-        .some((entry) => entry.state === 'queued' || entry.state === 'placing');
+        .some(
+          (entry) =>
+            entry.state === 'queued' ||
+            entry.state === 'placing' ||
+            (entry.kind === 'steer' && entry.state === 'unconfirmed'),
+        );
     } catch {
       // The store is failing: look again on schedule.
       waiting = true;

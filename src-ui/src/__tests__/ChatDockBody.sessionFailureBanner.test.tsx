@@ -53,7 +53,6 @@ const queuedMessagesPropsMock = vi.hoisted(() => ({
   current: null as Record<string, any> | null,
 }));
 const realControlsMock = vi.hoisted(() => ({ enabled: false }));
-const realQueueControlsMock = vi.hoisted(() => ({ enabled: false }));
 const steerOrchestrationTurnMock = vi.hoisted(() => vi.fn());
 const inspectOrchestrationSteerInputMock = vi.hoisted(() => vi.fn());
 
@@ -218,7 +217,7 @@ vi.mock('../components/chat/QueuedMessages', async (importOriginal) => {
     QueuedMessages: (props: Record<string, any>) => {
       queuedMessagesPropsMock.current = props;
       const Actual = actual.QueuedMessages;
-      return realControlsMock.enabled || realQueueControlsMock.enabled ? (
+      return realControlsMock.enabled ? (
         <Actual {...(props as React.ComponentProps<typeof Actual>)} />
       ) : (
         <div data-testid="queued-messages" />
@@ -407,7 +406,6 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     chatInputPropsMock.current = null;
     queuedMessagesPropsMock.current = null;
     realControlsMock.enabled = false;
-    realQueueControlsMock.enabled = false;
     steerOrchestrationTurnMock.mockReset();
     inspectOrchestrationSteerInputMock.mockReset();
     inspectOrchestrationSteerInputMock.mockResolvedValue({
@@ -537,7 +535,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   ] as const)(
     'a mounted uncertain steering retry inspects delivery before any engine action: %s',
     async (inspection) => {
-      realQueueControlsMock.enabled = true;
+      realControlsMock.enabled = true;
       const metadata = [
         {
           id: 'held-steer-id',
@@ -585,7 +583,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       });
       fireEvent.click(
         await screen.findByRole('button', {
-          name: '1 pending message, needs review',
+          name: 'Queue · 1 pending',
         }),
       );
       fireEvent.click(screen.getByRole('button', { name: 'Retry steering' }));
@@ -625,7 +623,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   );
 
   test('a mounted queued steer cannot affect the engine when saving its delivery marker fails', async () => {
-    realQueueControlsMock.enabled = true;
+    realControlsMock.enabled = true;
     const metadata = [{ id: 'queued-protected-id', mode: 'queue' as const }];
     activeChatsStore.initChat('thread-alpha', {
       agentSlug: 'claude',
@@ -658,7 +656,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
     fireEvent.click(
-      await screen.findByRole('button', { name: '1 pending message' }),
+      await screen.findByRole('button', { name: 'Queue · 1 pending' }),
     );
     const write = vi
       .spyOn(Storage.prototype, 'setItem')
@@ -683,7 +681,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   });
 
   test('a rendered legacy row without a delivery identity never uses legacy native steering', async () => {
-    realQueueControlsMock.enabled = true;
+    realControlsMock.enabled = true;
     activeChatsStore.initChat('thread-alpha', {
       agentSlug: 'claude',
       agentName: 'Claude',
@@ -710,7 +708,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
     fireEvent.click(
-      await screen.findByRole('button', { name: '1 pending message' }),
+      await screen.findByRole('button', { name: 'Queue · 1 pending' }),
     );
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Send as steer' }));
@@ -796,7 +794,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   });
 
   test('a native acknowledgement retires B before a terminal SSE microtask can drain A', async () => {
-    realQueueControlsMock.enabled = true;
+    realControlsMock.enabled = true;
     const metadata = [
       { id: 'a-race-id', mode: 'queue' as const },
       { id: 'b-race-id', mode: 'queue' as const },
@@ -841,7 +839,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
     fireEvent.click(
-      await screen.findByRole('button', { name: '2 pending messages' }),
+      await screen.findByRole('button', { name: 'Queue · 2 pending' }),
     );
     ensureOrchestrationEventStream('http://localhost:3242');
     expect(nativeRaceTransport.onMessage).not.toBeNull();
@@ -882,8 +880,15 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     });
     try {
       await act(async () => {
+        const queuedSteer = within(
+          screen.getByRole('dialog', { name: 'Queue' }),
+        )
+          .getByRole('button', { name: 'Edit message: confirmed B' })
+          .closest('fieldset');
+        if (!queuedSteer)
+          throw new Error('Confirmed B is missing its queue row');
         fireEvent.click(
-          screen.getAllByRole('button', { name: 'Send as steer' })[0],
+          within(queuedSteer).getByRole('button', { name: 'Send as steer' }),
         );
       });
       expect(delivered).toBe(true);

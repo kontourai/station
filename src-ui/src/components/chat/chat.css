@@ -3195,6 +3195,12 @@
   display: none;
 }
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .chat-input
+    .chat-controls-row:has([data-follow-up-mode])
+    .composer-run-control__label {
+    display: none;
+  }
+
   /* A phone composer clips what overflows it (index.css), which would clip
      the status row floating above it too (see `data-status-floats` below):
      the clip reaches past the composer's edge by the room the row floats in.
@@ -3806,4 +3812,40 @@ div.chat-input
   margin: var(--k-space-1) 0;
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
+}
+
+.chat-follow-up-effect {
+  color: var(--k-caution);
+  display: block;
+  padding-inline: var(--k-space-2);
+  text-align: end;
+}
+
+.chat-input [data-follow-up-mode] {
+  --follow-up-fill: var(--k-action);
+  --follow-up-ink: var(--k-action-contrast);
+}
+
+.chat-input [data-follow-up-mode="queue"] {
+  --follow-up-fill: var(--k-caution);
+  --follow-up-ink: var(--k-panel);
+}
+
+.chat-input [data-follow-up-mode] .chat-input__send-btn,
+.chat-input [data-follow-up-mode] .chat-input__send-mode {
+  width: 44px;
+  min-width: 44px;
+  padding-inline: 0;
+  background: var(--follow-up-fill);
+  color: var(--follow-up-ink);
+}
+
+.chat-input [data-follow-up-mode] .chat-input__send-btn:not(:disabled):hover,
+.chat-input [data-follow-up-mode] .chat-input__send-mode:not(:disabled):hover {
+  background: color-mix(in srgb, var(--follow-up-fill) 85%, var(--k-text));
+}
+
+.chat-input__send-glyph {
+  width: 18px;
+  height: 18px;
 }

@@ -1,0 +1,9 @@
+{
+  "revision": "4cf64b91aee56c68fc1b3aeff1ab3fb5bebc603e",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Checked the exact inbox polling query selection and its missing-query failure path. The native path listener and polling behavior assertions keep their existing coverage.","inputs":["src-ui/src/__tests__/useConversationInbox.test.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Checked the exact inbox polling query selection and its missing-query failure path. The native path listener and polling behavior assertions keep their existing coverage.","inputs":["src-ui/src/__tests__/useConversationInbox.test.tsx"]}
+  ]
+}

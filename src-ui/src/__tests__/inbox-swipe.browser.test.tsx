@@ -800,3 +800,87 @@ test('an engine-list swipe reveals Remove without selecting the engine or invoki
     await browser.close();
   }
 });
+
+test('a queued message swipes like an Inbox row and cancels only from its tray', async () => {
+  const { page, browser, errors } = await scrollBrowserFixture(
+    `
+      import React, { useState } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { ActiveChatsProvider } from './src-ui/src/contexts/ActiveChatsContext';
+      import { NavigationProvider } from './src-ui/src/contexts/NavigationContext';
+      import { QueuedMessages } from './src-ui/src/components/chat/QueuedMessages';
+      function Queue() {
+        const [toolbar, setToolbar] = useState(null);
+        const [draft, setDraft] = useState();
+        const [entries, setEntries] = useState(['First follow-up', 'Second follow-up'].map((message, position) => ({
+          conversationId: 'conversation',
+          clientTurnId: message,
+          message,
+          position: position + 1,
+          kind: 'follow-up',
+          state: 'queued',
+          ownedByCaller: true,
+        })));
+        return <>
+          <div ref={setToolbar} />
+          <output>{draft}</output>
+          <QueuedMessages sessionId="session" messages={[]} nextFirst queueToolbar={toolbar}
+            composerEdit={{ target: null, start: setDraft, finish: () => setDraft(undefined), setSaving: () => {} }}
+            canSteer held={{
+              entries, unavailable: false, removing: false, removalError: false,
+              onEdit: async () => {}, onSteer: () => {}, onRetry: () => {},
+              onRemove: (key) => setEntries((rows) => rows.filter((row) => row.clientTurnId !== key)),
+            }}
+          />
+        </>;
+      }
+      createRoot(document.getElementById('root')).render(
+        <NavigationProvider><ActiveChatsProvider><Queue /></ActiveChatsProvider></NavigationProvider>,
+      );
+    `,
+    [],
+    { hasTouch: true, isMobile: true },
+  );
+  try {
+    await page.addStyleTag({
+      content: ['src-ui/src/index.css', 'src-ui/src/components/chat/chat.css']
+        .map((path) => resolveCssImports(resolve(path)))
+        .join('\n'),
+    });
+    await page.getByRole('button', { name: 'Queue · 2 pending' }).tap();
+    const cardName = 'Edit message: First follow-up';
+    const message = page.getByRole('button', { name: cardName });
+    const position = await message.boundingBox();
+    if (!position) throw new Error('Queued message did not render');
+    const cdp = await page.context().newCDPSession(page);
+    await swipe(cdp, page, -60, 0, {
+      name: cardName,
+      during: async () => {
+        await expect
+          .poll(async () => (await message.boundingBox())?.x)
+          .toBeCloseTo(position.x - 60, 1);
+        await expectBrowser(
+          page.getByRole('button', { name: 'Cancel message' }),
+        ).toHaveCount(0);
+      },
+    });
+    const cancel = page.getByRole('button', { name: 'Cancel message' });
+    await expectBrowser(cancel).toBeVisible();
+    await expectBrowser(
+      page.getByRole('status').filter({ hasText: 'First follow-up' }),
+    ).toHaveCount(0);
+    await expectBrowser(
+      page.getByRole('button', { name: 'Queue · 2 pending' }),
+    ).toBeVisible();
+    await cancel.tap();
+    await expectBrowser(
+      page.getByRole('button', { name: 'Queue · 1 pending' }),
+    ).toBeVisible();
+    await expectBrowser(
+      page.getByRole('button', { name: 'Edit message: Second follow-up' }),
+    ).toBeVisible();
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+}, 30_000);

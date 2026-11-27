@@ -1114,16 +1114,18 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. **Send** defaults to **Queue**. Station holds the
-message and delivers it after the turn finishes. The message appears in the
-pending list as soon as Station accepts it. The dropdown switches between the
-available modes. For an ACP engine without native steering, choosing **Steer**
-stops its current step and continues the task with your instruction once cancellation
-finishes. Station-owned steering waits for the next safe boundary. A Muse chat
-on `muse exec` supports Queue only. Each pending row shows its mode.
-For a locally queued message, **Send now** stops the active turn and sends the
-selected message after Station confirms the stop. Messages held by Station can
-be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
+Keep typing during a turn. The amber **Queue** button holds your message until
+the turn finishes. Use the chevron to switch to the green **Steer** button
+when the engine supports it. A Station-managed turn takes the steer at its
+next safe boundary. An ACP engine with interrupting steering stops the running
+step before continuing with your instruction. A steer appears with an outline
+while waiting for acknowledgement.
+
+Open the Queue count to review waiting messages. Use the grip to move a
+message, tap its text to edit it, or swipe left to reveal the trash icon. The
+More button reveals the same action. On a supported running turn, the green
+arrow on a queued text message steers with that message. **Stop** remains
+separate.
 You can attach files or dictate during a turn. In the parent chat, Steer carries text only, so a
 message with files is queued: Station keeps the files with it and sends them
 when the turn ends, and the pending row names them. On a Station that cannot
@@ -1289,6 +1291,11 @@ attachments and can refuse new files if its store is full. A Project channel
 keeps a file for as long as its message stands. If a Project channel
 pauses attachments while its file store is repaired, it says so; remove the
 files and your text still sends.
+
+On a phone, tap an image to open the full-screen preview. Swipe left or right
+while the image fits the screen, or tap the chevrons below the image. Pinch to
+zoom and drag to pan. Open **⋯** for fit, actual size, and zoom controls. Use
+the download icon to save the current image.
 
 An existing chat can become a Task through **New Task from this** in its More menu.
 The **Add to Task** picker also offers **New Task from this** for an answer or input.
@@ -1760,11 +1767,19 @@ permission has recorded request evidence, its row offers **Approve once** and
 **Deny**; **Details** shows the full request first. Both answer that exact
 request version, once. A review request with recorded evidence offers
 **Inspect request** instead, where **Request identity** shows its exact record.
-A row's ⋯ menu holds **Mark done**, and **Snooze** (the same choices as the
-chat list) when the Attention snooze preview is on. Mark done there waits behind its notice's **Undo** (or **⌘Z**) and is sent
-when the notice closes; reload, close the tab or switch Station before then and the
-item is not marked done (a background tab keeps the notice open). A failed run shows once:
-its row stands for the failed message too, and Mark done marks both done.
+On the Notifications page, use **Mark done** for attention items and
+**Dismiss** for Activity notifications. **Undo** (or **⌘Z**) cancels the write
+while the notice is open. Reloading, closing the tab or switching Stations
+during that window also cancels it. A failed run represents its related
+failure notification, so Mark done on the page clears both.
+
+In the bell panel, tap a notification to open its destination. **Mark done**
+is visible on failed sessions. Use **⋯** to find **Snooze** and **Dismiss**
+where available. Snooze uses the same time choices as Chats and is available
+with the Attention snooze preview. On phones with the Sheet gestures preview,
+drag the handle to resize and swipe a row to reveal its available actions.
+Snoozing or dismissing a notification keeps the panel open. A dismissal
+offers **Undo** in the list.
 
 A conversation’s Chats row also shows the request and **Approve once** or
 **Deny** when Station can inspect one exact request and you can answer it.

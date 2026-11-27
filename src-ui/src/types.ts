@@ -196,6 +196,7 @@ export interface ChatMessage {
    * step it stopped otherwise reads as cancelled for no reason.
    */
   steerInterruptedRun?: boolean;
+  steer?: true;
   /**
    * A check-back Station sent into the chat (the agent scheduled it): sent
    * as the person, written by nobody. The bubble shows it as Station's.
