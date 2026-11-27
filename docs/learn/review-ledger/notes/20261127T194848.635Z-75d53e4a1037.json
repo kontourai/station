@@ -1,0 +1,9 @@
+{
+  "revision": "59c92bdd4aa9b6f0a46d0d2b0b4b6c16ead33368",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Scoped terminal/module-map review: resolver extraction retains existing staged digest discovery/source compiler and terminal protocol; compiler120s and owner-identity30s are inherited at base9af0e31, not padded. New readiness launcher retains native Job custody until ENDED plus guard closure, fences false cleanup and aborts cancelled startup. Windows guard/command-process owners pass in four-owner result and Linux owner/packaging suites pass. Actual stalled compiler process cancellation was not separately exercised; unresolved resolver cancellation and real cold source startup were.","inputs":["src-server/services/terminal/windows-command-guard.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Scoped terminal/module-map review: resolver extraction retains existing staged digest discovery/source compiler and terminal protocol; compiler120s and owner-identity30s are inherited at base9af0e31, not padded. New readiness launcher retains native Job custody until ENDED plus guard closure, fences false cleanup and aborts cancelled startup. Windows guard/command-process owners pass in four-owner result and Linux owner/packaging suites pass. Actual stalled compiler process cancellation was not separately exercised; unresolved resolver cancellation and real cold source startup were.","inputs":["src-server/services/terminal/windows-command-guard.ts"]}
+  ]
+}

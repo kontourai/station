@@ -1,0 +1,7 @@
+{
+  "revision": "59c92bdd4aa9b6f0a46d0d2b0b4b6c16ead33368",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed the committed readiness paragraph against cd889719: private same-handle Windows DACL read, no timestamp cache, final file identity, authenticated matching boot, Job retirement settlement and pre-bind warmup. Windows source/staged generated listeners and startup/cleanup controls execute; staged discovery fixture does not qualify a full installed archive. Compilation cancellation signal is inspected; actual stalled csc cancellation is not separately executed. Session19855 typechecks exit0, Linux seven owners408pass21skip; Windows four owners257pass29 unchanged named failures6skip. Historical proof notes remain historical.","inputs":["docs/guides/development.md"]}
+  ]
+}

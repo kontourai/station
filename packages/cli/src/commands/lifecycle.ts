@@ -85,6 +85,7 @@ import {
 import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
+  resolveWindowsBirthHelper,
 } from '@kontourai/station-shared/process-identity';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
@@ -115,6 +116,15 @@ import {
   UI_IMMUTABLE_ASSET_PATTERN,
   uiDocumentContentSecurityPolicy,
 } from '@kontourai/station-shared/ui-document-policy';
+import {
+  createWindowsCommandGuardResolver,
+  createWindowsOwnedWorkerLauncher,
+} from '@kontourai/station-shared/windows-command-guard';
+import {
+  buildWindowsPrivateFileReadCommand,
+  WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+  windowsSystemUtilityPath,
+} from '@kontourai/station-shared/windows-path-trust';
 import { WORKLOAD_HOST_BUNDLE_NAME } from '@kontourai/station-supervisor/protocol';
 import {
   publishActiveLocalStation,
@@ -199,6 +209,7 @@ import {
   assertWindowsPathsTrusted,
   runWindowsTrustCommand,
 } from './windows-path-trust.js';
+import { createWindowsReadinessReader } from './windows-readiness-reader.js';
 
 // Moved to lifecycle-code-root.ts (#2675 B1); re-exported for existing importers.
 export {
@@ -287,6 +298,7 @@ interface UiServerDeps {
 interface UiRequestHandlerDeps extends UiServerDeps {
   immutableAsset: RegExp;
   documentCsp: (scriptNonce?: string) => string;
+  readPrivateReadiness?: () => Promise<string | null>;
 }
 
 /**
@@ -315,14 +327,40 @@ interface UiRequestHandlerDeps extends UiServerDeps {
  * the unit test — no drift between the two.
  */
 export function uiRequestHandler(deps: UiServerDeps) {
-  return createUiRequestHandler(
+  const launchWindowsReadinessWorker = createWindowsOwnedWorkerLauncher({
+    spawn,
+    resolveGuard: createWindowsCommandGuardResolver({
+      sourceDirectory: deps.dir,
+      fallbackDirectory: import.meta.dirname,
+      stagedGuard: resolveWindowsBirthHelper(),
+    }),
+    timeoutMs: WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+  });
+  const reader =
+    process.platform === 'win32' && deps.readinessFile && deps.identity
+      ? createWindowsReadinessReader({
+          launch: (signal) =>
+            launchWindowsReadinessWorker(
+              windowsSystemUtilityPath('powershell'),
+              buildWindowsPrivateFileReadCommand(deps.readinessFile!),
+              signal,
+            ),
+          timeoutMs: WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+        })
+      : undefined;
+  const handler = createUiRequestHandler(
     {
       immutableAsset: UI_IMMUTABLE_ASSET_PATTERN,
       documentCsp: uiDocumentContentSecurityPolicy,
       ...deps,
+      readPrivateReadiness: reader?.read,
     },
     (method, path) => mediaUploadPolicy(method, path, MEDIA_UPLOAD_POLICIES),
   );
+  return Object.assign(handler, {
+    ready: reader?.read() ?? Promise.resolve(null),
+    close: () => reader?.close(),
+  });
 }
 
 function createUiRequestHandler(
@@ -1039,10 +1077,19 @@ function createUiRequestHandler(
     }
   };
 
-  const declaredReady = () => {
+  const declaredReady = async () => {
     if (!readinessFile || !identity) return true;
     let fd: number | undefined;
     try {
+      if (process.platform === 'win32') {
+        const content = await deps.readPrivateReadiness?.();
+        if (content === null || content === undefined) return false;
+        const state = JSON.parse(content);
+        return (
+          state?.health?.status === 'ready' &&
+          state?.health?.sha === identity.sha
+        );
+      }
       fd = fs.openSync(
         readinessFile,
         fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
@@ -1103,10 +1150,6 @@ function createUiRequestHandler(
         answerRequestFailure(res, error);
       }
     };
-    if (!declaredReady()) {
-      respond('unavailable');
-      return;
-    }
     if (!internalApiToken) {
       respond('unavailable');
       return;
@@ -1114,73 +1157,17 @@ function createUiRequestHandler(
     let settled = false;
     let connected = false;
     let deadline: ReturnType<typeof setTimeout> | undefined;
+    let request: import('node:http').ClientRequest | undefined;
     const finish = (state: 'ready' | 'degraded' | 'unavailable') => {
       if (settled) return;
       settled = true;
       if (deadline) clearTimeout(deadline);
       respond(state);
     };
-    const request = http.request(
-      {
-        host: '127.0.0.1',
-        port: upstreamPort,
-        path: '/api/system/identity',
-        method: 'GET',
-        // This connection is made only to the sibling loopback backend. Use
-        // the per-boot internal credential instead of treating loopback as
-        // authority: it recreates this UI process's own internal token and, in
-        // hosted mode, its already-resolved tenant attestation. Ordinary local
-        // mode still authenticates explicitly, and no browser caller headers
-        // are ever forwarded.
-        headers: {
-          [INTERNAL_TOKEN_HEADER]: internalApiToken,
-          [INTERNAL_CALLER_HEADER]: 'local',
-          ...(tenantId ? { [INTERNAL_TENANT_HEADER]: tenantId } : {}),
-        },
-      },
-      (response) => {
-        let raw = '';
-        response.setEncoding('utf8');
-        response.on('data', (chunk) => (raw += chunk));
-        // A backend that dies mid-answer is a failed connection, not a slow
-        // one: settle now rather than at the deadline as 'degraded'. `close`
-        // alone covers it — it follows every abort, errored or not — and a
-        // second `error` listener would only be redundant, untestable cover.
-        response.once('close', () => {
-          if (!response.complete) finish('unavailable');
-        });
-        response.on('end', () => {
-          try {
-            const upstreamIdentity = JSON.parse(raw);
-            // A supervised backend may hand off to a rebuilt bundle: its
-            // sha changes while the boot id this start minted does not.
-            finish(
-              response.statusCode === 200 &&
-                (identity?.supervised === true ||
-                  (upstreamIdentity?.sha ?? upstreamIdentity?.fullSha) ===
-                    identity?.sha) &&
-                upstreamIdentity?.bootId === identity?.bootId &&
-                upstreamIdentity?.instanceId === identity?.instanceId
-                ? 'ready'
-                : 'unavailable',
-            );
-          } catch {
-            finish('unavailable');
-          }
-        });
-      },
-    );
-    // A pooled keep-alive socket arrives already connected; a fresh one
-    // reports it through `connect`.
-    request.once('socket', (socket) => {
-      if (!socket.connecting) connected = true;
-      else socket.once('connect', () => (connected = true));
-    });
     deadline = setTimeout(() => {
       finish(connected ? 'degraded' : 'unavailable');
-      request.destroy();
+      request?.destroy();
     }, budgetMs);
-    request.once('error', () => finish('unavailable'));
     // The caller went away before an answer was written: nobody is waiting
     // for this check, so release the backend socket and the timer now rather
     // than holding both until the budget runs out. Same signal, for the same
@@ -1189,9 +1176,78 @@ function createUiRequestHandler(
       if (res.writableEnded || settled) return;
       settled = true;
       if (deadline) clearTimeout(deadline);
-      request.destroy();
+      request?.destroy();
     });
-    request.end();
+    void declaredReady()
+      .then((ready) => {
+        if (settled) return;
+        if (!ready) {
+          finish('unavailable');
+          return;
+        }
+        request = http.request(
+          {
+            host: '127.0.0.1',
+            port: upstreamPort,
+            path: '/api/system/identity',
+            method: 'GET',
+            // This connection is made only to the sibling loopback backend. Use
+            // the per-boot internal credential instead of treating loopback as
+            // authority: it recreates this UI process's own internal token and, in
+            // hosted mode, its already-resolved tenant attestation. Ordinary local
+            // mode still authenticates explicitly, and no browser caller headers
+            // are ever forwarded.
+            headers: {
+              [INTERNAL_TOKEN_HEADER]: internalApiToken,
+              [INTERNAL_CALLER_HEADER]: 'local',
+              ...(tenantId ? { [INTERNAL_TENANT_HEADER]: tenantId } : {}),
+            },
+          },
+          (response) => {
+            let raw = '';
+            response.setEncoding('utf8');
+            response.on('data', (chunk) => (raw += chunk));
+            // A backend that dies mid-answer is a failed connection, not a slow
+            // one: settle now rather than at the deadline as 'degraded'. `close`
+            // alone covers it — it follows every abort, errored or not — and a
+            // second `error` listener would only be redundant, untestable cover.
+            response.once('close', () => {
+              if (!response.complete) finish('unavailable');
+            });
+            response.on('end', () => {
+              try {
+                const upstreamIdentity = JSON.parse(raw);
+                // A supervised backend may hand off to a rebuilt bundle: its
+                // sha changes while the boot id this start minted does not.
+                finish(
+                  response.statusCode === 200 &&
+                    (identity?.supervised === true ||
+                      (upstreamIdentity?.sha ?? upstreamIdentity?.fullSha) ===
+                        identity?.sha) &&
+                    upstreamIdentity?.bootId === identity?.bootId &&
+                    upstreamIdentity?.instanceId === identity?.instanceId
+                    ? 'ready'
+                    : 'unavailable',
+                );
+              } catch {
+                finish('unavailable');
+              }
+            });
+          },
+        );
+        // A pooled keep-alive socket arrives already connected; a fresh one
+        // reports it through `connect`.
+        request.once('socket', (socket) => {
+          if (!socket.connecting) connected = true;
+          else socket.once('connect', () => (connected = true));
+        });
+        request.once('error', () => finish('unavailable'));
+        request.end();
+      })
+      .catch(() => {
+        finish('unavailable');
+        request?.destroy();
+      });
   };
   const unavailable = (
     res: import('node:http').ServerResponse,
@@ -1461,6 +1517,10 @@ export function buildUiServerScript(opts: {
     const documentCsp=${uiDocumentContentSecurityPolicy.toString()};
     const readinessFile=${JSON.stringify(opts.readinessFile)};
     const identity=${JSON.stringify(opts.identity)};
+    const launchReadinessWorker=process.platform==='win32'?(${createWindowsOwnedWorkerLauncher.toString()})({spawn:require('child_process').spawn,resolveGuard:(${createWindowsCommandGuardResolver.toString()})({sourceDirectory:dir,fallbackDirectory:${JSON.stringify(import.meta.dirname)},stagedGuard:${JSON.stringify(process.platform === 'win32' ? resolveWindowsBirthHelper() : null)}}),timeoutMs:${WINDOWS_TRUST_COMMAND_TIMEOUT_MS}}):undefined;
+    const readinessReader=process.platform==='win32'&&readinessFile&&identity?(${createWindowsReadinessReader.toString()})({launch:(signal)=>launchReadinessWorker(${JSON.stringify(windowsSystemUtilityPath('powershell'))},${JSON.stringify(opts.readinessFile ? buildWindowsPrivateFileReadCommand(opts.readinessFile) : [])},signal),timeoutMs:${WINDOWS_TRUST_COMMAND_TIMEOUT_MS}}):undefined;
+    const readPrivateReadiness=readinessReader?.read;
+    const readinessWarmup=readinessReader?.read();
     const internalApiToken=process.env.STATION_INTERNAL_API_TOKEN;
     const trustedTailscaleServeOrigin=process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
     const hostedTenantAuthorities=${JSON.stringify(opts.hostedTenantAuthorities)};
@@ -1468,11 +1528,13 @@ export function buildUiServerScript(opts: {
     const classifyMediaUpload=${mediaUploadPolicy.toString()};
     const uploadPolicy=(method,path)=>classifyMediaUpload(method,path,mediaUploadPolicies);
     const uiRequestHandler=(deps)=>(${createUiRequestHandler.toString()})(deps,uploadPolicy);
-    const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities,immutableAsset,documentCsp}));
+    const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities,immutableAsset,documentCsp,readPrivateReadiness}));
+    server.once('close',()=>readinessReader?.close());
+    process.once('exit',()=>readinessReader?.close());
     (${configureHttpReceive.toString()})(server,uploadPolicy,mediaUploadPolicies.walkthrough.totalMs);
     (${configureHttpKeepAlive.toString()})(server);
     (${configureTerminalUpgrade.toString()})(server,require('net'),upstreamPort);
-    server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
+    Promise.resolve(readinessWarmup).then(()=>server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')}));
     ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;
 }
