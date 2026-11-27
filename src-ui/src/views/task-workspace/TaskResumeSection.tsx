@@ -216,6 +216,7 @@ function TaskResumeDialog({
           await dispatch.mutateAsync({
             taskId: task.id,
             apiBase: scope.apiBase,
+            requestScope: scope,
             dispatch: { agentId: task.agentId, sourceSurface: 'task-resume' },
           });
         } catch (error) {

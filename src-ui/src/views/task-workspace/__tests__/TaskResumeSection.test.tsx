@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   fireEvent,
@@ -97,7 +98,10 @@ function renderSection(task: TaskRecord = TASK) {
 }
 
 describe('TaskResumeSection (#4554)', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    setClientCredentialResolver(undefined);
+    vi.unstubAllGlobals();
+  });
   beforeEach(() => {
     toastStore.clear();
     fixture.flags = new Set(['task-resume']);
@@ -196,6 +200,56 @@ describe('TaskResumeSection (#4554)', () => {
       }),
     ]);
   });
+
+  test.each(['after resume', 'during credential resolution'])(
+    'Resume and dispatch refuses changed same-origin authority %s',
+    async (changeAt) => {
+      let authorityKey = 'operator';
+      const fetch = vi.fn(async () => Response.json({ success: true, data: {} }));
+      vi.stubGlobal('fetch', fetch);
+      setClientCredentialResolver(async () => {
+        const captured = authorityKey;
+        if (changeAt === 'during credential resolution') {
+          await Promise.resolve();
+          authorityKey = 'other-operator';
+        }
+        return {
+          origin: 'https://station.test',
+          requestAuthority: {
+            apiBase: 'https://station.test',
+            authorityKey: captured,
+            isCurrent: () => authorityKey === captured,
+          },
+        };
+      });
+      fixture.resume.mockImplementationOnce(async () => {
+        if (changeAt === 'after resume') authorityKey = 'other-operator';
+        return { task: { ...TASK, status: 'ready' }, resume: {}, replayed: false };
+      });
+      const { dispatchTask } = await vi.importActual<
+        typeof import('@kontourai/station-sdk')
+      >('@kontourai/station-sdk');
+      fixture.dispatch.mockImplementationOnce(dispatchTask);
+      renderSection();
+      fireEvent.click(await screen.findByRole('button', { name: 'Resume' }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText('Why resume it?'), {
+        target: { value: 'Go again' },
+      });
+      fireEvent.click(
+        within(dialog).getByRole('button', { name: 'More resume actions' }),
+      );
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: 'Resume and dispatch' }),
+      );
+      await screen.findByText(/Resumed, but dispatch failed:/);
+      expect(fixture.resume).toHaveBeenCalledOnce();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(toastStore.getSnapshot()).toEqual([
+        expect.objectContaining({ type: 'error', duration: 0 }),
+      ]);
+    },
+  );
 
   test('resume refusal shows contract recovery text and withholds raw server diagnostics', async () => {
     fixture.resume.mockRejectedValueOnce(
