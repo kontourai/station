@@ -1,0 +1,11 @@
+{
+  "revision": "e33d9cb2b03cc2c64e6ce01530b4be2e1de710e1",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Checked the request inspection capture dependency delta against the attention route. The only orchestration service change rejects a retired foreground message key before sending. The inspection surface still reads and responds to its original request.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked the request inspection walkthrough dependency delta against the attention route and exact-request fixture. Retirement of a promoted inbox key applies to foreground send admission and leaves the inspection flow applicable.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the cancellation tray's use of the shared Button. It remains the icon-only action exposed by touch swipe or More, with the same cancellation callback and accessible name.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/QueuedMessages.tsx"]}
+  ]
+}
