@@ -2548,8 +2548,13 @@ function ChatMessageListComponent({
     ],
   );
 
+  const readingAwayFromLatest = readerAway && !scrollingToBottom;
+  const canShowDownControls =
+    !touchTurnControls ||
+    !turnNavigation ||
+    turnViewport.latestPromptBelowViewport;
   const scrollToBottomControl =
-    (isUserScrolledUp || readerHeld) && !scrollingToBottom ? (
+    readingAwayFromLatest && canShowDownControls ? (
       <ScrollToBottomButton onClick={handleScrollToBottom} />
     ) : null;
   const scrollControls = scrollToBottomControl;
@@ -2866,7 +2871,8 @@ function ChatMessageListComponent({
                   nextTurn={nextTurn}
                   onStep={stepToTurn}
                   touchControls={touchTurnControls}
-                  touchStepsShown={isUserScrolledUp}
+                  touchStepsShown={readingAwayFromLatest}
+                  touchNextStepShown={canShowDownControls}
                   conversationId={activeSession.conversationId!}
                   activeStartVisible={turnViewport.activeStartVisible}
                   onAnnounceStep={announceIndexedTurnStep}
