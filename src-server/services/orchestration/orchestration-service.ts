@@ -10572,6 +10572,7 @@ export class OrchestrationService {
        * untrusted-content permission asks about at a Station seam.
        */
       personAnswer?: true;
+      serverLogReadDecisionAuthorized?: () => boolean;
       /**
        * Set by the orchestration command route on an `interruptTurn` that
        * passes Station's person check (`personCredentialRequest`). Recorded
@@ -13108,6 +13109,24 @@ export class OrchestrationService {
               'request_event_changed',
               settledRefusal,
             );
+          const logRead = this.serverLogReads.get(command.threadId);
+          if (logRead?.requestId === command.requestId) {
+            if (
+              context?.serverLogReadDecisionAuthorized?.() !== true ||
+              command.expectedRequestEventId !== logRead.eventId ||
+              this.activeTurnIdOfThread(command.threadId) !== logRead.turnId ||
+              (command.decision !== 'accept' && command.decision !== 'decline')
+            )
+              throw new RequestEventGuardError(
+                'request_event_changed',
+                'The Station owner must answer the current log request in chat.',
+              );
+            logRead.settle(
+              command.decision === 'accept' ? 'approved' : 'denied',
+            );
+            this.persistReceipt(receipt);
+            return { receipt, result: undefined };
+          }
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: command.threadId,
             threadProviders: this.threadProviders,
@@ -17029,6 +17048,70 @@ export class OrchestrationService {
         !this.quarantinedThreads.has(threadId) &&
         this.activeTurnIdOfThread(threadId) === turnId,
     };
+  }
+
+  private readonly serverLogReads = new Map<
+    string,
+    {
+      requestId: string;
+      eventId: string;
+      turnId: string;
+      settle: (status: 'approved' | 'denied' | 'cancelled' | 'expired') => void;
+    }
+  >();
+
+  async requestServerLogRead(
+    threadId: string,
+    description: string,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const provider = this.threadProviderForPosture(threadId);
+    const turnId = this.activeTurnIdOfThread(threadId);
+    if (
+      !provider ||
+      !turnId ||
+      signal.aborted ||
+      this.serverLogReads.has(threadId)
+    )
+      return false;
+
+    const requestId = crypto.randomUUID();
+    const eventId = crypto.randomUUID();
+    const base = { threadId, turnId, provider, requestId };
+    return new Promise<boolean>((resolve) => {
+      const cancel = () => settle('cancelled');
+      const timeout = setTimeout(() => settle('expired'), 60_000);
+      const settle = (
+        status: 'approved' | 'denied' | 'cancelled' | 'expired',
+      ) => {
+        clearTimeout(timeout);
+        signal.removeEventListener('abort', cancel);
+        this.serverLogReads.delete(threadId);
+        const persisted = this.projectAndPublishEvent({
+          ...base,
+          eventId: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          method: 'request.resolved',
+          status,
+        });
+        resolve(persisted && status === 'approved');
+      };
+      this.serverLogReads.set(threadId, { requestId, eventId, turnId, settle });
+      signal.addEventListener('abort', cancel, { once: true });
+      if (
+        !this.projectAndPublishEvent({
+          ...base,
+          eventId,
+          createdAt: new Date().toISOString(),
+          method: 'request.opened',
+          requestType: 'approval',
+          title: 'Allow this server log query?',
+          payload: { toolName: 'read_logs' },
+          description,
+        })
+      )
+        cancel();
+    });
   }
 
   private activeTurnIdOfThread(threadId: string): string | undefined {

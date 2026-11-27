@@ -543,9 +543,10 @@ export function createStationControlAuthorityGuard(
     }
     if (!refusal) {
       if (
-        method === 'POST' &&
-        path === '/api/orchestration/commands' &&
-        (body as { type?: unknown } | undefined)?.type === 'steerChildWork'
+        (method === 'GET' && path === '/api/diagnostics/logs') ||
+        (method === 'POST' &&
+          path === '/api/orchestration/commands' &&
+          (body as { type?: unknown } | undefined)?.type === 'steerChildWork')
       ) {
         const original = JSON.stringify(caller);
         bindStationControlRequestCurrent(request, () => {
