@@ -116,18 +116,14 @@ export function AttentionHistoryItem({
   ) : (
     item.title
   );
-  const recovery = failure?.action && (
+  const recoveryAction = failure?.action;
+  const recovery = recoveryAction && (
     <a
       className="notification-history__action"
-      href={failure.action.href}
-      onClick={(event) => {
-        if (!isPlainLeftClick(event)) return;
-        event.preventDefault();
-        navigateToAttentionTarget(failure.action.href);
-        onClose();
-      }}
+      href={recoveryAction.href}
+      onClick={(event) => follow(event, recoveryAction.href)}
     >
-      {failure.action.label}
+      {recoveryAction.label}
     </a>
   );
   return (
