@@ -1,0 +1,9 @@
+{
+  "revision": "3a0f1096401fb95696c71c6e971f3481f55e4946",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the bounded retained-reader navigation tests: deferred send admission cannot reclaim Inbox, another chat/page/imported identity or hidden fullscreen reader; selected draft promotion and header/browser Back retain intended behavior. The connection design's stale activation and authority partition claims remain unchanged. These mocked admission/component tests do not qualify real relay transport, provider delivery, physical phones or native shells.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Reviewed the bounded retained-reader navigation tests: deferred send admission cannot reclaim Inbox, another chat/page/imported identity or hidden fullscreen reader; selected draft promotion and header/browser Back retain intended behavior. The connection design's stale activation and authority partition claims remain unchanged. These mocked admission/component tests do not qualify real relay transport, provider delivery, physical phones or native shells.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]}
+  ]
+}
