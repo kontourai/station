@@ -59,7 +59,7 @@ import {
   registerSkillRegistryProvider,
 } from '../../providers/registries/registry.js';
 import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
-import { createExternalSessionHistoryRoutes } from '../../routes/external-session-history.js';
+import type { ExternalSessionHistoryRouteDeps } from '../../routes/external-session-history.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import { loadConfinedNetworkPlan } from '../../security/confinement/confinement-provider.js';
 import {
@@ -71,11 +71,7 @@ import {
   credentialAuthorizedForScope,
   PAIRING_WS_SCOPES,
 } from '../../security/pairing-route-scopes.js';
-import {
-  getRuntimeAuthenticatedRequestPrincipal,
-  isRuntimeRequestPrincipalCurrent,
-  RuntimeAuthFailureLimiter,
-} from '../../security/runtime-request-security.js';
+import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
 import { stationOriginPolicy } from '../../security/station-browser-origins.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
@@ -345,7 +341,10 @@ export interface InitializeRuntimeDeps {
   copilotSdkAdapter: CopilotSdkAdapter;
   ollamaAdapter: OllamaAdapter;
   createVoltAgentInstance: (slug: string) => Promise<Agent>;
-  configureRoutes: (app: any) => void;
+  configureRoutes: (
+    app: any,
+    externalSessionHistory?: ExternalSessionHistoryRouteDeps,
+  ) => void;
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
@@ -1295,27 +1294,12 @@ export async function initializeRuntime(
       routes,
       middlewares,
     }: Parameters<NonNullable<HonoServerConfig['configureFullApp']>>[0]) => {
-      configureRoutes(app);
-      if (archivePreview) {
-        app.route(
-          '/api/orchestration/external-history',
-          createExternalSessionHistoryRoutes({
-            follow: attachedSessionFollowService,
-            preview: archivePreview,
-            isOwnerCurrent: (request) => {
-              const security = deps.environmentSecurityService;
-              const principal =
-                getRuntimeAuthenticatedRequestPrincipal(request);
-              return (
-                isRuntimeRequestPrincipalCurrent(request, security) &&
-                (principal?.locality === 'home-possession' ||
-                  (principal?.authority === 'device-credential' &&
-                    security.credentialHasOwnerStanding(principal.credential)))
-              );
-            },
-          }),
-        );
-      }
+      configureRoutes(
+        app,
+        archivePreview
+          ? { follow: attachedSessionFollowService, preview: archivePreview }
+          : undefined,
+      );
       middlewares.landingPage();
       routes.agents();
       routes.workflows();

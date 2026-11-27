@@ -170,7 +170,7 @@ interface RuntimeInitializationContext {
   copilotSdkAdapter: CopilotSdkAdapter;
   ollamaAdapter: OllamaAdapter;
   createVoltAgentInstance: (slug: string) => Promise<Agent>;
-  configureRoutes: (app: any) => void;
+  configureRoutes: InitializeRuntimeDeps['configureRoutes'];
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;

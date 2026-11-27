@@ -2175,7 +2175,11 @@ function archiveText(
   const messages: ExternalSessionTranscriptPage['messages'] = [];
   let previousItem: string | undefined;
   for (const event of events) {
-    if (event.method === 'turn.started' && event.prompt) {
+    if (
+      event.method === 'turn.started' &&
+      typeof event.prompt === 'string' &&
+      event.prompt
+    ) {
       messages.push({ id: event.eventId, role: 'user', text: event.prompt });
       previousItem = undefined;
     } else if (event.method === 'content.text-delta' && event.delta) {

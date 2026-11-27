@@ -588,7 +588,10 @@ import {
   runRuntimeHealthChecks,
   startRuntimeHealthChecks,
 } from './runtime-health.js';
-import { initializeRuntime } from './runtime-initialize.js';
+import {
+  type InitializeRuntimeDeps,
+  initializeRuntime,
+} from './runtime-initialize.js';
 import { createRuntimeInitializationDeps } from './runtime-initialize-deps.js';
 import { rebuildOrClearRuntimeProjections } from './runtime-projection-recovery.js';
 import { createRuntimeServiceBundle } from './runtime-service-bootstrap.js';
@@ -4945,8 +4948,8 @@ export class StationRuntime {
           ollamaAdapter: this.ollamaAdapter,
           createVoltAgentInstance: async (slug) =>
             this.createVoltAgentInstance(slug),
-          configureRoutes: (app: any) => {
-            this.configureRoutes(app);
+          configureRoutes: (app, externalSessionHistory) => {
+            this.configureRoutes(app, externalSessionHistory);
             this.virtualApplication?.bind(app);
           },
           captureAgentConfigurationRevisions: () =>
@@ -5775,6 +5778,9 @@ export class StationRuntime {
    */
   private configureRoutes(
     app: Parameters<NonNullable<HonoServerConfig['configureApp']>>[0],
+    externalSessionHistory: Parameters<
+      InitializeRuntimeDeps['configureRoutes']
+    >[1],
   ): void {
     app.use('*', async (_context, next) =>
       this.consentChannel.withPublication(next),
@@ -5807,6 +5813,7 @@ export class StationRuntime {
       serverUpdate,
       analyticsMaintenance,
     } = configureRuntimeRoutes({
+      externalSessionHistory,
       bindPullRequestWatchPolicy: (policy) => {
         this.pullRequestWatchSlot.current = policy;
       },

@@ -21,14 +21,19 @@ const archiveId = z.string().regex(/^[0-9a-f]{64}$/);
 const archiveCursor = z.string().uuid().optional();
 const importOperationId = z.string().regex(/^[0-9a-f]{32}$/);
 
-export function createExternalSessionHistoryRoutes(options: {
+export interface ExternalSessionHistoryRouteDeps {
   follow: Pick<
     AttachedSessionFollowService,
     'listArchive' | 'readArchive' | 'importArchive' | 'cancelArchiveImport'
   >;
   preview: FeaturePreviewSelector;
-  isOwnerCurrent: (request: Request) => boolean;
-}) {
+}
+
+export function createExternalSessionHistoryRoutes(
+  options: ExternalSessionHistoryRouteDeps & {
+    isOwnerCurrent: (request: Request) => boolean;
+  },
+) {
   const app = new Hono();
   function assertCurrent(c: Context) {
     if (!isBoundRuntimeOwner(c.req.raw) || !options.isOwnerCurrent(c.req.raw)) {

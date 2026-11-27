@@ -69,7 +69,7 @@ export function useExternalSessionTranscriptQuery(
       scope?.authorityKey ?? null,
       id,
       cursor,
-      fromStart,
+      fromStart ? 'start' : 'latest',
     ],
     (signal) => {
       if (!scope) throw new StationRequestAuthorityError();

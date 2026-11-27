@@ -173,7 +173,7 @@ describe('AttachedSessionFollowService', () => {
     const source: AttachedSessionSource = {
       provider: 'claude',
       kind: 'claude-transcript',
-      discover: vi.fn(async () => ({ outcome: 'ok', sessions: [] })),
+      discover: vi.fn(async () => ({ outcome: 'ok' as const, sessions: [] })),
       read: vi.fn(),
     };
     const service = new AttachedSessionFollowService({

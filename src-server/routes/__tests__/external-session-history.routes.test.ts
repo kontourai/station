@@ -1,6 +1,11 @@
 import { mkdir, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { EXTERNAL_SESSION_HISTORY_PREVIEW } from '@kontourai/station-contracts/orchestration';
+import {
+  EXTERNAL_SESSION_HISTORY_PREVIEW,
+  type ExternalSessionHistoryImport,
+  type ExternalSessionHistoryPage,
+  type ExternalSessionTranscriptPage,
+} from '@kontourai/station-contracts/orchestration';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
@@ -14,6 +19,14 @@ import { createLogger } from '../../utils/logger.js';
 import { createExternalSessionHistoryRoutes } from '../external-session-history.js';
 
 const temp = trackTempDirs();
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
 
 test('owner can browse a provider transcript without saving it, then cancel or import explicitly', async () => {
   const home = temp('station-external-history-');
@@ -107,14 +120,18 @@ test('owner can browse a provider transcript without saving it, then cancel or i
     owner = true;
     const catalog = await app.request('/external-history?search=claude');
     expect(catalog.status).toBe(200);
-    const recent = (await catalog.json()).data;
+    const { data: recent } = (await catalog.json()) as {
+      data: ExternalSessionHistoryPage;
+    };
     expect(recent.sessions).toHaveLength(1);
     expect(recent.partial).toBe(true);
     const older = await app.request(
       '/external-history?provider=claude&offset=1',
     );
     expect(older.status).toBe(200);
-    const listed = (await older.json()).data.sessions;
+    const {
+      data: { sessions: listed },
+    } = (await older.json()) as { data: ExternalSessionHistoryPage };
     expect(listed).toHaveLength(1);
     expect(listed[0]).toMatchObject({
       provider: 'claude',
@@ -124,7 +141,9 @@ test('owner can browse a provider transcript without saving it, then cancel or i
     const id = listed[0].id;
     const transcript = await app.request(`/external-history/${id}/transcript`);
     expect(transcript.headers.get('Cache-Control')).toBe('no-store');
-    const firstPage = (await transcript.json()).data;
+    const { data: firstPage } = (await transcript.json()) as {
+      data: ExternalSessionTranscriptPage;
+    };
     expect(firstPage.messages).toMatchObject([
       { role: 'user', text: 'Read the old log.' },
     ]);
@@ -153,8 +172,8 @@ test('owner can browse a provider transcript without saving it, then cancel or i
     expect(canceled.status).toBe(409);
     expect(store.readSessions()).toEqual([]);
 
-    const entered = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
+    const entered = deferred();
+    const release = deferred();
     const read = source.read.bind(source);
     vi.spyOn(source, 'read').mockImplementationOnce(async (...args) => {
       entered.resolve();
@@ -187,7 +206,9 @@ test('owner can browse a provider transcript without saving it, then cancel or i
       },
     );
     expect(imported.status).toBe(200);
-    const { threadId } = (await imported.json()).data;
+    const {
+      data: { threadId },
+    } = (await imported.json()) as { data: ExternalSessionHistoryImport };
     expect(store.readSessionByThread(threadId)?.controlMode).toBe(
       'read-only-attached',
     );

@@ -507,6 +507,10 @@ import { createTaskCodeReviewRoutes } from '../../routes/evidence/task-code-revi
 import { createTrustBundleRoutes } from '../../routes/evidence/trust-bundles.js';
 import { createVeritasReadinessRoutes } from '../../routes/evidence/veritas-readiness.js';
 import { createWorkflowSidecarRoutes } from '../../routes/evidence/workflow-sidecars.js';
+import {
+  createExternalSessionHistoryRoutes,
+  type ExternalSessionHistoryRouteDeps,
+} from '../../routes/external-session-history.js';
 import { createFleetInferenceRoutes } from '../../routes/inference/fleet-inference.js';
 import { createIntegrationStatusRoutes } from '../../routes/integrations/integration-status-routes.js';
 import {
@@ -1326,6 +1330,7 @@ export interface ConfigureRuntimeRoutesContext {
   nativeSurfaceRegistry?: NativeSurfaceRegistry;
   relayEnrollment?: RelayEnrollmentService;
   runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
+  externalSessionHistory?: ExternalSessionHistoryRouteDeps;
   app: HonoApp;
   logger: Logger;
   eventBus: EventBus;
@@ -13663,6 +13668,24 @@ export function configureRuntimeRoutes(
   };
   generalEventProducer = createEventStreamProducer(eventRouteDeps);
   context.app.route('/events', createEventRoutes(eventRouteDeps));
+  if (context.externalSessionHistory) {
+    context.app.route(
+      '/api/orchestration/external-history',
+      createExternalSessionHistoryRoutes({
+        ...context.externalSessionHistory,
+        isOwnerCurrent: (request) => {
+          const security = context.environmentSecurityService;
+          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+          return (
+            isRuntimeRequestPrincipalCurrent(request, security) &&
+            (principal?.locality === 'home-possession' ||
+              (principal?.authority === 'device-credential' &&
+                security.credentialHasOwnerStanding(principal.credential)))
+          );
+        },
+      }),
+    );
+  }
   context.app.route(
     '/api/presence',
     createFocusPresenceRoutes({
