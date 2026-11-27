@@ -653,6 +653,8 @@ Every path becomes a generation handoff:
        them, and holds what it accepts, unread.
     2. The draining generation closes its listeners only once no connection
        has reached them for 50 ms, and at most 1 s after the drain began.
+       The initial quiet interval starts with the drain; earlier idle time
+       does not satisfy it.
     3. The first generation to report a listener listening
        (`listener.listening`) gets what was held for it, with
        `connection.adopt`, as the backlog would have handed it to the first
@@ -663,7 +665,9 @@ Every path becomes a generation handoff:
        set.
     4. The supervisor closes the spares once none has accepted for 50 ms,
        and at most 1 s later: the new generation's accepts are newer, but
-       one still booting can be slow to post its next. If that generation
+       one still booting can be slow to post its next. The initial quiet
+       interval starts when release begins, even if no spare has accepted.
+       If that generation
        exits or is being ended as a failed trial by then, the supervisor
        keeps holding for the generation that follows.
 
