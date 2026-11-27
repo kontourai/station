@@ -8507,11 +8507,13 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
     return { child, listening, stderr: () => stderr };
   }
 
-  it('spawns the generated script as a child process and makes one proxied request + one static request against it', async () => {
+  it('spawns the generated script with syntax-bearing configuration and makes one proxied request + one static request against it', async () => {
     const http = await import('node:http');
     const lifecycle = await import('../commands/lifecycle.js');
 
-    const uiDir = makeUiDir('station-ui-spawn-');
+    const uiDir = join(makeUiDir('station-ui-spawn-'), "app ' ` \u2028");
+    mkdirSync(uiDir);
+    const tenant = "alpha';throw new Error('configuration executed');//";
     writeFileSync(
       join(uiDir, 'index.html'),
       '<head></head><body>real-spawn-app</body>',
@@ -8550,7 +8552,7 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
       typeof upstreamAddr === 'object' && upstreamAddr ? upstreamAddr.port : 0;
 
     const script = lifecycle.buildUiServerScript({
-      hostedTenantAuthorities: { 'alpha.example.test': 'alpha' },
+      hostedTenantAuthorities: { 'alpha.example.test': tenant },
       uiDir,
       upstreamPort,
       uiPort: 0,
@@ -8593,7 +8595,7 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
       expect(proxiedRes.status).toBe(200);
       const proxiedBody = JSON.parse(proxiedRes.body);
       expect(proxiedBody).toEqual({ ready: true });
-      expect(upstreamTenant).toBe('alpha');
+      expect(upstreamTenant).toBe(tenant);
       expect(server.stderr()).toBe('');
 
       // The envelope, out of the real spawned process: an upstream that dropped
