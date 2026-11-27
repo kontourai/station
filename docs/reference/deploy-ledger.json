@@ -1,5 +1,81 @@
 [
   {
+    "timestampUtc": "2026-11-27T15:10:44Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261127.1",
+    "sha": "5b580071865b98550e88fcdcd613043131ca109c",
+    "artifactBuiltAt": "2026-11-27T14:28:55.580Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/46015301036",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 46015301036)"
+    ],
+    "changelog": {
+      "previousSha": "3dba664548727f58bfa9cf5ecabd12b3c80444e8",
+      "groups": {
+        "feat": [
+          "[#5619](https://github.com/kontourai/station/pull/5619) feat: browse third-party history on demand"
+        ],
+        "fix": [
+          "[#5629](https://github.com/kontourai/station/pull/5629) fix(runtime): retain loopback control for concrete interface binds",
+          "[#5623](https://github.com/kontourai/station/pull/5623) fix(diagnostics): approve server log reads in chat",
+          "[#5620](https://github.com/kontourai/station/pull/5620) fix(connect): preserve native controller authority during nearby pairing",
+          "[#5616](https://github.com/kontourai/station/pull/5616) fix(ui): preserve chat navigation intent and baseline responsiveness"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5631](https://github.com/kontourai/station/pull/5631) test(cli): make trusted installer fixture modes explicit (#5625)",
+          "[#5624](https://github.com/kontourai/station/pull/5624) test(native): repair Windows hostile-plugin containment proof",
+          "[#5621](https://github.com/kontourai/station/pull/5621) perf(ui): skip empty relationship joins in Home and Inbox"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-11-27T15:10:44Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261127.1",
+    "sha": "5b580071865b98550e88fcdcd613043131ca109c",
+    "artifactBuiltAt": "2026-11-27T14:27:38.833Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/46015301036",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 46015301036)"
+    ],
+    "changelog": {
+      "previousSha": "3dba664548727f58bfa9cf5ecabd12b3c80444e8",
+      "groups": {
+        "feat": [
+          "[#5619](https://github.com/kontourai/station/pull/5619) feat: browse third-party history on demand"
+        ],
+        "fix": [
+          "[#5629](https://github.com/kontourai/station/pull/5629) fix(runtime): retain loopback control for concrete interface binds",
+          "[#5623](https://github.com/kontourai/station/pull/5623) fix(diagnostics): approve server log reads in chat",
+          "[#5620](https://github.com/kontourai/station/pull/5620) fix(connect): preserve native controller authority during nearby pairing",
+          "[#5616](https://github.com/kontourai/station/pull/5616) fix(ui): preserve chat navigation intent and baseline responsiveness"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5631](https://github.com/kontourai/station/pull/5631) test(cli): make trusted installer fixture modes explicit (#5625)",
+          "[#5624](https://github.com/kontourai/station/pull/5624) test(native): repair Windows hostile-plugin containment proof",
+          "[#5621](https://github.com/kontourai/station/pull/5621) perf(ui): skip empty relationship joins in Home and Inbox"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
     "timestampUtc": "2026-11-27T06:53:56Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261127",

@@ -1,0 +1,9 @@
+{
+  "revision": "a40eb25b3b71ec6a2bcfcf792b695f5a30b89911",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed testing guide and scripts scope against the explicit orchestration process-heavy classification. Two real Git fixture initialization subprocesses use the existing bounded process-heavy lane; no scheduler or deadline contract changes.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed testing guide and scripts scope against the explicit orchestration process-heavy classification. Two real Git fixture initialization subprocesses use the existing bounded process-heavy lane; no scheduler or deadline contract changes.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
