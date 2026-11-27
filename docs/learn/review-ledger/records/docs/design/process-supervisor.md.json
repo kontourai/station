@@ -40,7 +40,11 @@
 
     "packages/supervisor/src/generation-manager.ts",
 
-    "packages/supervisor/src/__tests__/generation-manager.test.ts"
+    "packages/supervisor/src/__tests__/generation-manager.test.ts",
+
+    "src-server/runtime/frameworks/voltagent-hono-runtime.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts"
   ],
 
   "checks": []

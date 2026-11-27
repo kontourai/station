@@ -1,0 +1,7 @@
+{
+  "revision": "98931aee4f854337df8b6c9ec00f55c4bf0d9c6f",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed the cited production UI proxy exclusion catch and its unchanged lifecycle.test.ts HTTP assertions against the #5625 diff. Only trusted installer fixture directory/file creation now specifies safe POSIX modes; proxy exclusions and their assertions are unchanged. Complete lifecycle.test.ts passed 247 tests under umask 0002 and 0022 on source commit 98931aee4; removing fixture modes reproduced 13 permission failures, then byte-exact restoration passed both masks. This does not rerun or renew the historical R3 native-client or other fault-injection claims. No prose change needed.","inputs":["docs/design/outside-agent-mcp-r3-evidence.md","packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}

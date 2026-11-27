@@ -1,0 +1,7 @@
+{
+  "revision": "98931aee4f854337df8b6c9ec00f55c4bf0d9c6f",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the production UI proxy exclusion paragraph and lifecycle.test.ts evidence link against the #5625 diff and the existing real HTTP proxy test. The fixture-only safe-mode repair leaves OAuth/MCP routing and assertions unchanged. Complete lifecycle.test.ts passed 247 tests under umask 0002 and 0022 on source commit 98931aee4; mode removal reproduced 13 installer fixture permission failures and byte-exact restoration passed both masks. This review refreshes the changed test-file dependency only; it does not qualify outside OAuth release exposure, hosted clients, or native integrations. No prose change needed.","inputs":["docs/reference/outside-agent-oauth.md","packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}

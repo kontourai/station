@@ -45,6 +45,7 @@ import { sleep } from '../../utils/sleep.js';
 /** Stable listeners the supervisor holds across generations. */
 const SUPERVISOR_LISTENER_NAMES = Object.freeze([
   'api',
+  'api-local',
   'voice',
   'consent',
 ] as const);
