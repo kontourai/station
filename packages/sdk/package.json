@@ -50,6 +50,7 @@
     "./personal-board": "./src/personal-board.ts",
     "./setup-imports": "./src/client/setup-imports.ts",
     "./setup-imports-query": "./src/query-domains/setupImports.ts",
+    "./external-session-history-query": "./src/query-domains/externalSessionHistory.ts",
     "./plugin-local-sources-query": "./src/query-domains/pluginLocalSources.ts",
     "./secret-bindings": "./src/client/secret-bindings.ts",
     "./secret-bindings-query": "./src/query-domains/secret-bindings.ts",

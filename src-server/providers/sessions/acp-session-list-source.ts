@@ -52,6 +52,7 @@ interface AcpSessionListSourceOptions {
 export class AcpSessionListSource implements AttachedSessionSource {
   readonly provider = 'acp';
   readonly kind = 'acp-session-list';
+  readonly metadataOnly = true as const;
   private readonly listings: AcpSessionListSourceOptions['listings'];
   private readonly enabled: () => boolean;
   private readonly maxSessions: number;
@@ -114,6 +115,9 @@ export class AcpSessionListSource implements AttachedSessionSource {
           threadId: `external:acp:${digest([connection.id, listed.sessionId])}`,
           cwd: listed.cwd,
           createdAt,
+          ...(listed.updatedAt
+            ? { modifiedAtMs: Date.parse(listed.updatedAt) }
+            : {}),
           sourceHandle,
         };
         this.handles.set(sourceHandle, descriptor);

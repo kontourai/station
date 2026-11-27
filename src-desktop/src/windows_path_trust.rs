@@ -155,6 +155,7 @@ fn invoke(operation: &str, paths: &[(TrustKind, TrustPolicy, &Path)]) -> Result<
         &base64_utf8(&payload.to_string()),
     );
     let mut command = Command::new(powershell_path()?);
+    crate::apply_no_window(&mut command);
     command.args(encoded_powershell_command(&program));
     let output = command
         .output()

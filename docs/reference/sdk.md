@@ -1982,6 +1982,21 @@ production support. See the [hook](../../packages/sdk/src/hooks/operations.ts),
 
 ## Query Hooks
 
+
+### Third-party history
+
+The `@kontourai/station-sdk/external-session-history-query` subpath exports
+`useExternalSessionHistoryQuery(scope, offset, search, provider?)` and
+`useExternalSessionTranscriptQuery(scope, id, cursor, fromStart)`. Both use the
+selected Station's request authority and stop when their last observer closes.
+The catalog and transcript load on demand.
+
+`useImportExternalSessionHistory(scope)` accepts a catalog ID and an
+`AbortSignal` and a client operation ID. It saves bounded batches and returns the saved thread ID.
+Canceling leaves any committed messages available and a later request can
+resume from the saved cursor. Use the Station's **Third-party history** preview
+availability before mounting these queries.
+
 ### Unified search (backend and SDK slice)
 
 `searchStation(apiBase, request, { requestScope, signal? })` queries `POST /api/search` with the

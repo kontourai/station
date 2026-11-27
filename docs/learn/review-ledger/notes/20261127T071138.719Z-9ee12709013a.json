@@ -1,0 +1,429 @@
+{
+  "revision": "4fdcc9910f587d7cde68e060b4898b3f2dc47945",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Traced the History entry, read-only preview, explicit cancellation and saved-session reader through the host-bound queries and attached-session service. Verified the source limits and recent-follow default in code. Packaged Desktop and UI evidence are separate.","inputs":["docs/user/getting-started.md","src-server/providers/sessions/claude-transcript-session-source.ts","src-server/providers/sessions/codex-rollout-session-source.ts","src-server/providers/sessions/grok-session-source.ts","src-server/services/orchestration/attached-session-follow-service.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-server/routes/external-session-history.ts","src-ui/src/components/chat/ExternalSessionHistory.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the Third-party history entry against personal runtime registration, preview admission, and the History button. The off switch hides the browser. Published runtime evidence remains pending.","inputs":["docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/routes/external-session-history.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the outside-projects preference through runtime composition and the follower. The revised schedule checks the preference before importing an unattributed active conversation.","inputs":["docs/reference/config.md","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Traced the new query export, selected Station authority, inactive read cancellation, and explicit import operation through the SDK and runtime route. Scope covers the third-party history subpath.","inputs":["docs/reference/sdk.md","packages/sdk/package.json","packages/sdk/package.json#/exports","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","packages/sdk/src/query-domains/externalSessionHistory.ts","packages/sdk/src/client/external-session-history.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked archive inputs, owner and preview admission, bounded pages, callback-currentness and cancellation against the real route and attached-session writer. Provider-specific continuation still follows the existing attached-session contract.","inputs":["docs/reference/session-api.md","src-server/providers/sessions/attached-session-source.ts","src-server/providers/sessions/claude-transcript-session-source.ts","src-server/providers/sessions/codex-rollout-session-source.ts","src-server/providers/sessions/grok-session-source.ts","src-server/providers/sessions/opencode-session-source.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/attached-session-follow-service.ts","src-server/routes/external-session-history.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Confirmed the Windows launch flag with an isolated GUI parent and console child. The original flag-free launch acquired a console and the guarded launch did not. Packaged Station startup and process attribution remain separate.","inputs":["docs/guides/native-shell-verification.md","src-desktop/src/lib.rs","src-server/security/pairing-route-scopes.ts","src-desktop/src/windows_path_trust.rs"]},
+
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/connection-list-recovery.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"patches/android-native-keyring-store/README.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"Reviewed Windows profile-lock process launch. The command and output contract stay the same and the existing no-window helper now owns the process flags. The isolated Windows process test observed the flag behavior.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed the tray child process flags. Its already-piped service actions now use the existing no-window helper. Installation and binding semantics retain their existing paths.","inputs":["src-desktop/src/tray.rs"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed the tray child process flags. Its already-piped service actions now use the existing no-window helper. Installation and binding semantics retain their existing paths.","inputs":["src-desktop/src/tray.rs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the tray child process flags. Its already-piped service actions now use the existing no-window helper. Installation and binding semantics retain their existing paths.","inputs":["src-desktop/src/tray.rs"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed the tray child process flags. Its already-piped service actions now use the existing no-window helper. Installation and binding semantics retain their existing paths.","inputs":["src-desktop/src/tray.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed the tray child process flags. Its already-piped service actions now use the existing no-window helper. Installation and binding semantics retain their existing paths.","inputs":["src-desktop/src/tray.rs"]},
+
+    {"path":"docs/design/cloud-move.md","note":"Reviewed the headless SSH runner. It retains its subprocess arguments, captured output, and forwarding lifetime while applying the existing no-window flag.","inputs":["src-desktop/src/ssh_launcher.rs"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"Reviewed the headless SSH runner. It retains its subprocess arguments, captured output, and forwarding lifetime while applying the existing no-window flag.","inputs":["src-desktop/src/ssh_launcher.rs"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the headless SSH runner. It retains its subprocess arguments, captured output, and forwarding lifetime while applying the existing no-window flag.","inputs":["src-desktop/src/ssh_launcher.rs"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Reviewed the exact external-history leaves and the existing orchestration scope inheritance. Personal owner standing and current credential checks are separate requirements in the new route.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/design/strands-migration.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed personal-only history route registration, binding of current ownership and the tracked delayed follower start. Configuration and the other runtime compositions keep their established interfaces.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Reviewed the personal Station preview binding through the shared source composition. Hosted runtime still withholds this route. Engine registration and native continuation ownership keep their existing contracts.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed scheduled scan batches, archive browse admission, explicit cancellation at queued writes, and durable cursor reuse. Existing attached ownership, attribution and continuation are still enforced by their canonical writers.","inputs":["src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed scheduled scan batches, archive browse admission, explicit cancellation at queued writes, and durable cursor reuse. Existing attached ownership, attribution and continuation are still enforced by their canonical writers.","inputs":["src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed scheduled scan batches, archive browse admission, explicit cancellation at queued writes, and durable cursor reuse. Existing attached ownership, attribution and continuation are still enforced by their canonical writers.","inputs":["src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed scheduled scan batches, archive browse admission, explicit cancellation at queued writes, and durable cursor reuse. Existing attached ownership, attribution and continuation are still enforced by their canonical writers.","inputs":["src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed optional archive paging, metadata-only sources and the more-records indicator. Existing callers retain their normal discovery method, event identity and cursor codec.","inputs":["src-server/providers/sessions/attached-session-source.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed candidate windowing and forward progress past oversized transcript fragments. Native affinity, cursor and transcript verification remain attached to the Claude source owner.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed candidate windowing and forward progress past oversized transcript fragments. Native affinity, cursor and transcript verification remain attached to the Claude source owner.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed candidate windowing and forward progress past oversized transcript fragments. Native affinity, cursor and transcript verification remain attached to the Claude source owner.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed candidate windowing and forward progress past oversized transcript fragments. Native affinity, cursor and transcript verification remain attached to the Claude source owner.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed candidate windowing and forward progress past oversized transcript fragments. Native affinity, cursor and transcript verification remain attached to the Claude source owner.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed bounded candidate pages, filesystem yields and oversized record continuation. Codex source homes, replay cursors, and completed-turn native boundaries remain authoritative.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed bounded candidate pages, filesystem yields and oversized record continuation. Codex source homes, replay cursors, and completed-turn native boundaries remain authoritative.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed bounded candidate pages, filesystem yields and oversized record continuation. Codex source homes, replay cursors, and completed-turn native boundaries remain authoritative.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed bounded candidate pages, filesystem yields and oversized record continuation. Codex source homes, replay cursors, and completed-turn native boundaries remain authoritative.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed per-engine archive windows and the file paging boundary. The existing bounded Grok index and read-only source ownership remain authoritative.","inputs":["src-server/providers/sessions/grok-session-source.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed per-engine archive windows and the file paging boundary. The existing bounded Grok index and read-only source ownership remain authoritative.","inputs":["src-server/providers/sessions/grok-session-source.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed per-engine archive windows and the file paging boundary. The existing bounded Grok index and read-only source ownership remain authoritative.","inputs":["src-server/providers/sessions/grok-session-source.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed archive rank over raw ordered rows and cursor page availability. The existing database mode, v1-to-v2 ownership and replay mappings remain authoritative.","inputs":["src-server/providers/sessions/opencode-session-source.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the added History handoff to the existing imported-session reader. The active Station authority is checked by the archive caller and the docking, transcript and composer paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed the added History handoff to the existing imported-session reader. The active Station authority is checked by the archive caller and the docking, transcript and composer paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the added History handoff to the existing imported-session reader. The active Station authority is checked by the archive caller and the docking, transcript and composer paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the added History handoff to the existing imported-session reader. The active Station authority is checked by the archive caller and the docking, transcript and composer paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the added History handoff to the existing imported-session reader. The active Station authority is checked by the archive caller and the docking, transcript and composer paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the added History handoff to the existing imported-session reader. The active Station authority is checked by the archive caller and the docking, transcript and composer paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the added History handoff to the existing imported-session reader. The active Station authority is checked by the archive caller and the docking, transcript and composer paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the added History handoff to the existing imported-session reader. The active Station authority is checked by the archive caller and the docking, transcript and composer paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Reviewed the added History handoff to the existing imported-session reader. The active Station authority is checked by the archive caller and the docking, transcript and composer paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the callback from the dock history to its existing imported reader. The normal composer and session management paths retain their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDockContentArea.tsx"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed the additive third-party history read, page, and import shapes. Existing session summary, placement and read-authority fields keep their established contract.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the additive third-party history read, page, and import shapes. Existing session summary, placement and read-authority fields keep their established contract.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the additive third-party history read, page, and import shapes. Existing session summary, placement and read-authority fields keep their established contract.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the additive third-party history read, page, and import shapes. Existing session summary, placement and read-authority fields keep their established contract.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the additive third-party history read, page, and import shapes. Existing session summary, placement and read-authority fields keep their established contract.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the additive external-session-history query export. Existing package and application entry points remain as specified.","inputs":["packages/sdk/package.json"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed the archive gallery scenarios for both widths and themes through the global history entry. This source review covers the four new scenarios and leaves capture evidence to the Gallery run.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the archive gallery scenarios for both widths and themes through the global history entry. This source review covers the four new scenarios and leaves capture evidence to the Gallery run.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the archive gallery scenarios for both widths and themes through the global history entry. This source review covers the four new scenarios and leaves capture evidence to the Gallery run.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Verified the central runtime route mount, owner standing and exact pairing leaf coverage for the personal third-party history preview.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Traced the cross-references to runtime settings. The new history policy comment concerns only attached-session discovery and outside-Project eligibility.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Traced the cross-references to runtime settings. The new history policy comment concerns only attached-session discovery and outside-Project eligibility.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked client integration pointers and SDK ownership guidance. The added scoped history hook is a dedicated export; agent execution and plugin requirements are intact.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked client integration pointers and SDK ownership guidance. The added scoped history hook is a dedicated export; agent execution and plugin requirements are intact.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"The cross-references lead to the canonical Session API. The new personal archive endpoints and response size limit are separate from existing managed conversation and MCP operations.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Verified the Feature Preview cross-references still point to the current list. The new entry is personal and disabled by default.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Verified the Feature Preview cross-references still point to the current list. The new entry is personal and disabled by default.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Checked native verification cross-references against the new Windows console evidence. Existing relay, Project, platform qualification, and testing routes retain their documented conditions.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Checked native verification cross-references against the new Windows console evidence. Existing relay, Project, platform qualification, and testing routes retain their documented conditions.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked native verification cross-references against the new Windows console evidence. Existing relay, Project, platform qualification, and testing routes retain their documented conditions.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Checked native verification cross-references against the new Windows console evidence. Existing relay, Project, platform qualification, and testing routes retain their documented conditions.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked native verification cross-references against the new Windows console evidence. Existing relay, Project, platform qualification, and testing routes retain their documented conditions.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Checked native verification cross-references against the new Windows console evidence. Existing relay, Project, platform qualification, and testing routes retain their documented conditions.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","note":"Compared published SDK export keys and the cited agent and plugin guides. This adds the dedicated third-party history query export to the existing surface.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/architecture.md","note":"Compared published SDK export keys and the cited agent and plugin guides. This adds the dedicated third-party history query export to the existing surface.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Compared published SDK export keys and the cited agent and plugin guides. This adds the dedicated third-party history query export to the existing surface.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Compared published SDK export keys and the cited agent and plugin guides. This adds the dedicated third-party history query export to the existing surface.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/reference/sdk.md","note":"Compared published SDK export keys and the cited agent and plugin guides. This adds the dedicated third-party history query export to the existing surface.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Compared published SDK export keys and the cited agent and plugin guides. This adds the dedicated third-party history query export to the existing surface.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"packages/sdk/README.md","note":"Compared published SDK export keys and the cited agent and plugin guides. This adds the dedicated third-party history query export to the existing surface.","inputs":["packages/sdk/package.json#/exports"]}
+  ]
+}

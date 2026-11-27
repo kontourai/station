@@ -1,0 +1,19 @@
+{
+  "revision": "bbcc568b7d34715801fbe8f3c1cba52354192a36",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Checked owner-only archive refusal responses. The route now returns the bounded refusal text explicitly supplied by the attached-session service.","inputs":["src-server/routes/external-session-history.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked owner-only archive refusal responses. The route now returns the bounded refusal text explicitly supplied by the attached-session service.","inputs":["src-server/routes/external-session-history.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked owner-only archive refusal responses. The route now returns the bounded refusal text explicitly supplied by the attached-session service.","inputs":["src-server/routes/external-session-history.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Verified the typed archive refusal only carries curated public text. Background and import limits and the existing event persistence path keep their documented behavior.","inputs":["src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Verified the typed archive refusal only carries curated public text. Background and import limits and the existing event persistence path keep their documented behavior.","inputs":["src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Verified the typed archive refusal only carries curated public text. Background and import limits and the existing event persistence path keep their documented behavior.","inputs":["src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified the typed archive refusal only carries curated public text. Background and import limits and the existing event persistence path keep their documented behavior.","inputs":["src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}
