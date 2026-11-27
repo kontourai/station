@@ -136,9 +136,7 @@
 }
 
 /* Navigation and controls around flush content align with the page header. */
-.page-frame--flush
-  > .page-frame__body
-  :is(.page__tabs--frame-inset, .page-frame__body-inset) {
+.page-frame--flush > .page-frame__body .page-frame__body-inset {
   padding-inline: 1.5rem;
 }
 
@@ -155,9 +153,7 @@
     padding: 0;
   }
 
-  .page-frame--flush
-    > .page-frame__body
-    :is(.page__tabs--frame-inset, .page-frame__body-inset) {
+  .page-frame--flush > .page-frame__body .page-frame__body-inset {
     padding-inline: 1rem;
   }
 }
