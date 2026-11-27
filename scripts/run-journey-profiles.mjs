@@ -31,7 +31,7 @@ export function validateJourneyProfile(
   id,
   revision,
   expectedDirty,
-  { uiOnly = false, buildProvenanceSha256 } = {},
+  { uiOnly = false, buildProvenanceSha256 = '' } = {},
 ) {
   const errors = [];
   if (expectedDirty !== undefined && profile.dirty !== expectedDirty)
