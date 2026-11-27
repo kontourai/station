@@ -295,6 +295,18 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
   send_to_session: entry('Sent to', 'Sending to', 'Send to', (context) =>
     session(context, ['sessionId']),
   ),
+  watch_pull_request_status: entry(
+    'Watched',
+    'Watching',
+    'Watch',
+    fixed('pull request status'),
+  ),
+  cancel_coordination_subscription: entry(
+    'Cancelled',
+    'Cancelling',
+    'Cancel',
+    fixed('a coordination subscription'),
+  ),
   interrupt_session: entry('Stopped', 'Stopping', 'Stop', (context) =>
     session(context, ['sessionId']),
   ),

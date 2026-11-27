@@ -1,8 +1,5 @@
 import type { SessionInventoryLiveItem } from '@kontourai/station-basis-pane/session-inventory-view';
-import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { AnySessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
-import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
-import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
@@ -11,8 +8,6 @@ import { selectSessionInventoryLiveNow } from './sessionInventoryLiveProjection'
 export type SessionInventoryLiveOverlay = {
   running: readonly ReturnType<typeof selectSessionInventoryLiveNow>[number][];
   pendingApprovalIds: readonly string[];
-  /** The chats and pull requests this Session is waiting on. */
-  waitingOn?: readonly SessionInventoryLiveItem[];
 };
 const EMPTY: SessionInventoryLiveOverlay = {
   running: [],
@@ -23,34 +18,9 @@ const floors = new Map<
   { authorityKey: string; startedAfter: number }
 >();
 
-/**
- * Show chats by title and pull requests by number. Running entries already
- * list delegated tasks.
- */
-function waitingOnItems(
-  session: OrchestrationSessionSummary | undefined,
-  sessions: readonly OrchestrationSessionSummary[] | undefined,
-): readonly SessionInventoryLiveItem[] {
-  return (session?.coordination?.children ?? [])
-    .filter((child) => child.waiting && child.kind !== 'delegation')
-    .map((child) => ({
-      key: child.id,
-      // `kind` only namespaces the item key; the pane contract has no kind
-      // for a pull request.
-      kind: 'agent' as const,
-      label: `Waiting on ${
-        child.kind === 'pull-request'
-          ? `${child.identity.repository.owner}/${child.identity.repository.name} #${child.identity.ref}`
-          : (sessions?.find(
-              (candidate) => candidate.threadId === child.sessionId,
-            )?.displayTitle ?? `Session ${child.sessionId.slice(0, 8)}`)
-      }`,
-    }));
-}
-
 /** Activation-only, captured-session Live projection. No cache or persistence. */
 export function useSessionInventoryLive(
-  requestScope: ApiRequestScope | undefined,
+  requestScope: { authorityKey: string; isCurrent?: () => boolean } | undefined,
   sessionId: string,
   chatStoreId?: string,
 ) {
@@ -106,18 +76,7 @@ export function useSessionInventoryLive(
     cache.current = { encoded, value };
     return value;
   }, [chatStoreId, requestScope, sessionId]);
-  const current = requestScope?.isCurrent?.() === true;
-  const sessions = useOrchestrationSessionsQuery(
-    { enabled: current },
-    requestScope ?? null,
-  );
-  const overlay = useSyncExternalStore(subscribe, snapshot, snapshot);
-  if (!current) return overlay;
-  const waitingOn = waitingOnItems(
-    sessions.data?.find((session) => session.threadId === sessionId),
-    sessions.data,
-  );
-  return waitingOn.length ? { ...overlay, waitingOn } : overlay;
+  return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
 /** Presentation overlay only: no rows, persistence, or cache payload mutation. */
@@ -149,7 +108,6 @@ export function sessionInventoryLiveItems(
       kind: entry.kind === 'tool' ? ('tool' as const) : ('agent' as const),
       label: entry.kind === 'tool' ? 'Running tool' : 'Running delegate',
     })),
-    ...(live.waitingOn ?? []),
     ...live.pendingApprovalIds.map((key) => ({
       key,
       kind: 'approval' as const,

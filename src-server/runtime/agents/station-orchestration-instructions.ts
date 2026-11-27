@@ -182,7 +182,7 @@ function sessionsSection(
   if (has('send_to_session')) {
     lines.push(
       "`send_to_session` uses the Project Session's Agent settings. Fresh `requestKey` per message; reuse only to retry. `session_busy`: unsent. `indeterminate`: may have arrived; never resend with a new key.",
-      'Set `notifyOnSettle` and `notifyOnAttention` when coordinating across turns. Continue when Station delivers a wake. Use `schedule_wake_up` only as a long fallback heartbeat.',
+      'Set `notifyOnSettle` and `notifyOnAttention` when coordinating across turns. Continue when Station delivers a wake.',
     );
   }
   if (has('watch_pull_request_status')) {

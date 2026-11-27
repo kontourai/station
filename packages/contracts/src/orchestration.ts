@@ -4,10 +4,7 @@ import type { QueuedChatAttachmentDescriptor } from './chat-attachment.js';
 import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin, ClientOriginSender } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
-import type {
-  ConversationPullRequestLinkObservation,
-  PullRequestLinkIdentity,
-} from './conversation-pull-request-links.js';
+import type { ConversationPullRequestLinkObservation } from './conversation-pull-request-links.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
 import type {
   InputRequestContent,
@@ -1283,23 +1280,7 @@ export interface OrchestrationEngineStartWaitFrame {
   pendingStart?: true;
 }
 
-export type CoordinationChild = {
-  readonly id: string;
-  readonly waiting: boolean;
-} & (
-  | { readonly kind: 'session' | 'delegation'; readonly sessionId: string }
-  | {
-      readonly kind: 'pull-request';
-      readonly identity: PullRequestLinkIdentity;
-    }
-);
-
 export interface OrchestrationSessionSummary extends ProviderSession {
-  /** Caller-owned subscriptions and the delegated work they are waiting on. */
-  coordination?: {
-    readonly waiting: number;
-    readonly children: readonly CoordinationChild[];
-  };
   /** Soonest armed check-back in this conversation; approval proposals are excluded. */
   nextWakeUpAt?: string;
   /** Aggregate owned execution activity; the parent's own event fold is retained. */

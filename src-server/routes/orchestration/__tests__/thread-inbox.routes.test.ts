@@ -9,6 +9,7 @@ import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/te
 import { turnInterruptedContinueClientTurnId } from '@kontourai/station-shared/conversation-message';
 import { TURN_INTERRUPTED_CONTINUE_PROMPT } from '@kontourai/station-shared/runtime-event-projection';
 import { describe, expect, test, vi } from 'vitest';
+import { z } from 'zod';
 import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
 import { restartContinuationEntry } from '../../../services/orchestration/restart-continuation.js';
 import { turnDedupKey } from '../../../services/orchestration/station-turn-dedup-bindings.js';
@@ -71,7 +72,10 @@ describe('coordination wakes through the inbox harness', () => {
     first.adapter.holdTurns = true;
     const awaiting = await send('approval');
     expect(awaiting.status, await awaiting.clone().text()).toBe(200);
-    const { data: approval } = await awaiting.json();
+    const startedSend = z.object({
+      data: z.object({ sessionId: z.string(), turnId: z.string() }),
+    });
+    const { data: approval } = startedSend.parse(await awaiting.json());
     const approvalInvocation = first.adapter.turns.at(-1)?.invocationId;
     const requested = {
       eventId: 'coordination-approval',
@@ -96,7 +100,7 @@ describe('coordination wakes through the inbox harness', () => {
 
     const failed = await send('error');
     expect(failed.status, await failed.clone().text()).toBe(200);
-    const { data: broken } = await failed.json();
+    const { data: broken } = startedSend.parse(await failed.json());
     const errorInvocation = first.adapter.turns.at(-1)?.invocationId;
     first.adapter.events.push({
       eventId: 'coordination-engine-error',

@@ -766,8 +766,8 @@ describe('delegated task result delivery (#3158)', () => {
     await h.delivery.reconcile();
     expect(h.starts).toHaveLength(0);
     expect(
-      h.store.delegationResultStore().coordinationChildren(OWNER).get(PARENT),
-    ).toBeUndefined();
+      h.store.delegationResultStore().watchesForSession(CHILD),
+    ).not.toContain(watchId);
   });
 
   test('an attention-only watch stops waiting on an ordinary settlement without a wake', async () => {
@@ -791,8 +791,8 @@ describe('delegated task result delivery (#3158)', () => {
     await h.delivery.idle();
     expect(h.starts).toHaveLength(0);
     expect(
-      h.store.delegationResultStore().coordinationChildren(OWNER).get(PARENT),
-    ).toEqual([expect.objectContaining({ waiting: false, sessionId: CHILD })]);
+      h.store.delegationResultStore().watchesForSession(CHILD),
+    ).not.toContain('session-watch:attention-only');
   });
 
   test('a pull request merge queued for a busy subscriber survives restart', async () => {

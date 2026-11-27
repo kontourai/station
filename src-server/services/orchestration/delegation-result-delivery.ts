@@ -87,7 +87,6 @@ import {
 } from '@kontourai/station-contracts/client-origin';
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import {
-  type CoordinationChild,
   type InterruptTurnResult,
   PENDING_TURN_INTERRUPT_TTL_MS,
 } from '@kontourai/station-contracts/orchestration';
@@ -1014,64 +1013,6 @@ export function createSqliteDelegationResultStore(
         }
         return rows.map(({ watch_id }) => watch_id);
       });
-    },
-    coordinationChildren(
-      userId: string,
-      parentConversationId?: string,
-    ): Map<string, CoordinationChild[]> {
-      const rows = db
-        .prepare(
-          `SELECT owner.child_conversation_id as id, owner.parent_conversation_id as parent,
-           owner.task_id, sw.session_id, pr.identity_json,
-           CASE
-             WHEN EXISTS (SELECT 1 FROM delegation_result_deliveries delivery
-               WHERE delivery.child_conversation_id = owner.child_conversation_id
-                 AND delivery.state IN ('pending', 'claimed')) THEN 1
-             WHEN pr.watch_id IS NOT NULL THEN 1 - pr.closed
-             WHEN EXISTS (SELECT 1 FROM delegation_result_deliveries delivery
-               WHERE delivery.child_conversation_id = owner.child_conversation_id
-                 AND delivery.transition = 'settled') THEN 0
-             ELSE 1
-           END AS waiting
-         FROM delegation_result_owners owner
-         LEFT JOIN delegation_result_session_watches sw ON sw.watch_id = owner.child_conversation_id
-         LEFT JOIN delegation_result_pull_request_watches pr ON pr.watch_id = owner.child_conversation_id
-         WHERE owner.owner_user_id = ? AND coalesce(sw.cancelled, 0) = 0 AND coalesce(pr.cancelled, 0) = 0
-           AND sw.pending_json IS NULL
-           AND (? IS NULL OR owner.parent_conversation_id = ?)
-         ORDER BY waiting DESC, owner.last_activity_at DESC`,
-        )
-        .all(
-          userId,
-          parentConversationId ?? null,
-          parentConversationId ?? null,
-        ) as {
-        id: string;
-        parent: string;
-        task_id: string;
-        session_id: string | null;
-        identity_json: string | null;
-        waiting: number;
-      }[];
-      const byParent = new Map<string, CoordinationChild[]>();
-      for (const row of rows) {
-        const base = { id: row.id, waiting: row.waiting === 1 };
-        const child: CoordinationChild = row.identity_json
-          ? {
-              ...base,
-              kind: 'pull-request',
-              identity: JSON.parse(
-                row.identity_json,
-              ) as PullRequestLinkIdentity,
-            }
-          : row.session_id
-            ? { ...base, kind: 'session', sessionId: row.session_id }
-            : { ...base, kind: 'delegation', sessionId: row.id };
-        const children = byParent.get(row.parent);
-        if (children) children.push(child);
-        else byParent.set(row.parent, [child]);
-      }
-      return byParent;
     },
     cancelWatch(watchId: string, parentConversationId: string, userId: string) {
       return atomically(() => {

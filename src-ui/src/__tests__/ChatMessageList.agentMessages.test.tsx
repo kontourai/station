@@ -15,6 +15,7 @@
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import { _setApiBase } from '@kontourai/station-sdk';
 import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import {
@@ -434,7 +435,7 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
    * finished chat; the older one predates that and has only its Agent.
    */
   function deliveredResultEvents() {
-    const result = (sender: Record<string, unknown>, turnId: string) => [
+    const result = (sender: ClientOriginSender, turnId: string) => [
       runtimeEvent({
         method: 'turn.started',
         turnId,
@@ -442,7 +443,7 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
           sender,
           '[Station: the result of a task this Session delegated.]',
         ),
-        clientOrigin: agentOrigin(sender),
+        clientOrigin: agentOrigin({ ...sender }),
       }),
       runtimeEvent({ method: 'turn.completed', turnId }),
     ];

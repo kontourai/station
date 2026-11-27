@@ -7490,23 +7490,6 @@ export function configureRuntimeRoutes(
     });
   }
 
-  const coordinationPreview =
-    hostedTenantRegistry === undefined
-      ? context.featurePreviews.bind({
-          id: 'coordinating-sessions',
-          label: 'Coordinating Sessions',
-          description:
-            'Show the Sessions, delegated tasks and pull requests a chat is waiting on.',
-        })
-      : undefined;
-  context.orchestrationService.bindCoordinationPreview?.(
-    () =>
-      coordinationPreview?.select({
-        enabled: () => true,
-        disabled: () => false,
-      }) === true,
-  );
-
   // #3158: a delegated child's result goes back to the conversation that
   // delegated it. Personal Stations only: a hosted delivery would run outside
   // any request's tenant context.

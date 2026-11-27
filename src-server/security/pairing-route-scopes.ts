@@ -3752,6 +3752,14 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // family's tier reaches nothing. Send and interrupt mutate (the family's
     // operate tier); the wait only reads.
     { method: 'POST', path: '/api/orchestration/session-control/send' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/session-control/watch-pull-request',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/session-control/cancel-subscription',
+    },
     { method: 'POST', path: '/api/orchestration/session-control/interrupt' },
     {
       method: 'GET',
