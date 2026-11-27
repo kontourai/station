@@ -209,7 +209,9 @@
   cursor: pointer;
 }
 
-.transcript-turn-rail__step--previous {
+.transcript-turn-rail__step--previous,
+.transcript-turn-rail-host[data-touch-controls]
+  .transcript-turn-rail__step--next {
   bottom: calc(
     100% +
     var(--transcript-turn-rail-height, 0px) -
@@ -249,11 +251,7 @@
   opacity: 1;
 }
 
-/* Touch: no column is reserved for the steps, which on a phone cost every
-   line ~60px of width. They float stacked in the bottom-right corner over
-   the transcript, and only while they are useful: the reader has scrolled
-   away from the latest message (as Scroll to bottom appears), and only a
-   step that has a turn to go to. */
+/* Touch steps float at the top right without reserving transcript width. */
 .transcript-turn-rail-host[data-touch-controls] {
   --transcript-turn-step-size: 44px;
 }
@@ -268,28 +266,19 @@
   box-shadow: var(--k-elevation-overlay);
 }
 
-.transcript-turn-rail-host[data-touch-controls]
-  .transcript-turn-rail__step--previous {
-  bottom: calc(
-    100% +
-    var(--transcript-turn-rail-inset-bottom) +
-    var(--transcript-turn-step-size) +
-    var(--k-space-1)
+.transcript-turn-rail-host[data-touch-controls]:has(
+    .transcript-turn-rail__step--previous:not([aria-disabled])
+  )
+  .transcript-turn-rail__step--next {
+  margin-bottom: calc(
+    -1 *
+    (var(--transcript-turn-step-size) + var(--k-space-1))
   );
 }
 
-/* A step with nowhere to go is not drawn on touch (it read as a second,
-   faded scroll button); the other one takes the corner. */
 .transcript-turn-rail-host[data-touch-controls]
   .transcript-turn-rail__step[aria-disabled] {
   display: none;
-}
-
-.transcript-turn-rail-host[data-touch-controls]:has(
-    .transcript-turn-rail__step--next[aria-disabled]
-  )
-  .transcript-turn-rail__step--previous {
-  bottom: calc(100% + var(--transcript-turn-rail-inset-bottom));
 }
 
 /* Turn markers form a map beside the independent native scrollbar. At rest
