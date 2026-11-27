@@ -85,19 +85,7 @@ function offered(request: IncomingMessage): {
  * slots reserved for the operator in person.
  */
 export class TerminalGateway<Principal> {
-  private wss = new WebSocketServer({
-    noServer: true,
-    maxPayload: 64 * 1024 + 13,
-    perMessageDeflate: false,
-    // Never echo the ticket: select only the version subprotocol, the
-    // newest one offered (version 2 adds resize frames, #4625).
-    handleProtocols: (protocols) =>
-      protocols.has(TERMINAL_SOCKET_PROTOCOL_V2)
-        ? TERMINAL_SOCKET_PROTOCOL_V2
-        : protocols.has(TERMINAL_SOCKET_PROTOCOL)
-          ? TERMINAL_SOCKET_PROTOCOL
-          : false,
-  });
+  private wss?: WebSocketServer;
   private connections = new Map<
     TerminalChannelConnection<Principal>,
     { identity: string; reserved: boolean }
@@ -121,6 +109,19 @@ export class TerminalGateway<Principal> {
   }
 
   mount(server: Server, link: Pick<ListenerLink, 'upgraded'>): void {
+    const wss = (this.wss ??= new WebSocketServer({
+      noServer: true,
+      maxPayload: 64 * 1024 + 13,
+      perMessageDeflate: false,
+      // Never echo the ticket: select only the version subprotocol, the
+      // newest one offered (version 2 adds resize frames, #4625).
+      handleProtocols: (protocols) =>
+        protocols.has(TERMINAL_SOCKET_PROTOCOL_V2)
+          ? TERMINAL_SOCKET_PROTOCOL_V2
+          : protocols.has(TERMINAL_SOCKET_PROTOCOL)
+            ? TERMINAL_SOCKET_PROTOCOL
+            : false,
+    }));
     const upgrade = (
       request: IncomingMessage,
       socket: Socket,
@@ -149,7 +150,7 @@ export class TerminalGateway<Principal> {
         );
         return;
       }
-      this.wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.handleUpgrade(request, socket, head, (ws) => {
         link.upgraded(request.socket);
         this.accept(ws, admitted.principal, admitted.identity, reserved);
       });
@@ -165,11 +166,13 @@ export class TerminalGateway<Principal> {
   stop(): void {
     for (const unmount of this.unmounts.splice(0)) unmount();
     clearInterval(this.heartbeat);
+    this.heartbeat = undefined;
     for (const connection of this.connections.keys()) connection.stop();
     this.connections.clear();
     for (const ws of this.alive.keys()) ws.terminate();
     this.alive.clear();
-    this.wss.close();
+    this.wss?.close();
+    this.wss = undefined;
   }
 
   private hasCapacity(identity: string, reserved: boolean): boolean {
