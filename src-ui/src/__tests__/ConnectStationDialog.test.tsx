@@ -9,6 +9,7 @@ import {
   ConnectionStore,
   ConnectionsProvider,
   completeVerifiedPairing,
+  registerConnectionCandidateProvider,
   useConnections,
 } from '@kontourai/station-connect';
 import type {
@@ -287,6 +288,68 @@ describe('Connect Station grant composition', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     setClientCredentialResolver(undefined);
+  });
+
+  test('serializes nearby Station identification before requesting access', async () => {
+    let finishIdentification!: () => void;
+    wire.compatibility.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishIdentification = () =>
+            resolve({ blocking: false, verdict: 'compatible' });
+        }),
+    );
+    const discover = vi.fn(async () => [
+      {
+        candidateVersion: 1 as const,
+        name: 'Nearby Studio',
+        url: 'https://studio.example',
+        source: 'tailnet' as const,
+        discoveredAt: Date.now(),
+      },
+      {
+        candidateVersion: 1 as const,
+        name: 'Other Studio',
+        url: 'https://other.example',
+        source: 'tailnet' as const,
+        discoveredAt: Date.now(),
+      },
+    ]);
+    const unregister = registerConnectionCandidateProvider({
+      id: 'test.nearby',
+      discover,
+    });
+    const view = mount();
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Nearby Stations' }));
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: 'Request access to Nearby Studio',
+        }),
+      );
+      await waitFor(() => expect(wire.compatibility).toHaveBeenCalledOnce());
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole('button', {
+            name: 'Request access to Other Studio',
+          }),
+        );
+      });
+      expect(wire.compatibility).toHaveBeenCalledOnce();
+      await act(async () => finishIdentification());
+      await screen.findByText('remote-station');
+      expect(discover).toHaveBeenCalledOnce();
+      expect(wire.compatibility).toHaveBeenCalledWith(
+        'https://studio.example',
+        expect.any(AbortSignal),
+      );
+      expect(wire.start).not.toHaveBeenCalled();
+      expect(wire.commit).not.toHaveBeenCalled();
+      expect(wire.select).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      unregister();
+    }
   });
 
   test('identifies once, requests peer access from the captured controller, and saves Device access independently without activating it', async () => {

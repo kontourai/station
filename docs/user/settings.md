@@ -482,6 +482,11 @@ explains what you can do with the devices once a host is ready.
 
 ## Nearby Stations
 
+In **Connect a Station**, choose **Nearby Stations** when discovery is available.
+Select a suggestion to check its identity, then request access. Finding a
+Station does not grant access or switch your selected Station; saving Device
+access to another Station keeps your current connection.
+
 On the computer running Station, **Settings → Pairing → Discover this Station
 nearby** makes its name and local address visible to nearby devices. It starts
 off and only the computer's local operator can change it. The status below the
