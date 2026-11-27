@@ -298,7 +298,10 @@ export class DirectWebDriver {
   }
 
   async navigateApp(path: string) {
-    const currentUrl = await this.execute(() => window.location.href);
+    const currentUrl = await this.request<string>(
+      'GET',
+      this.sessionPath('/url'),
+    );
     await this.navigate(new URL(path, currentUrl).href);
   }
 
