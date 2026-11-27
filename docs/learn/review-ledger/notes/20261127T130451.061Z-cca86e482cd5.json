@@ -1,0 +1,7 @@
+{
+  "revision": "3287acb82bdc7e14eb4a7b00e9b43560a97b86aa",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Reviewed terminal design fairness and liveness against the changed real-socket owner: shared identity and reserved capacity across listeners, complete listener teardown, and heartbeat restoration on remount. The prior single-listener capacity case is extended rather than duplicated. Linux heartbeat mutation failed the missing-ping assertion and byte-exact restoration passed; this does not qualify Windows PTY cleanup or physical clients.","inputs":["src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts"]}
+  ]
+}
