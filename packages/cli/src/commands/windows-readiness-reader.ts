@@ -1,11 +1,12 @@
 import type { WindowsOwnedWorker } from '@kontourai/station-shared/windows-command-guard';
 
 export function createWindowsReadinessReader(options: {
-  launch: () => Promise<WindowsOwnedWorker>;
+  launch: (signal: AbortSignal) => Promise<WindowsOwnedWorker>;
   timeoutMs: number;
 }) {
   let worker: WindowsOwnedWorker | undefined;
   let starting: Promise<WindowsOwnedWorker> | undefined;
+  let startup: AbortController | undefined;
   let retiring: Promise<void> | undefined;
   let closed = false;
   let sequence = 0;
@@ -28,6 +29,7 @@ export function createWindowsReadinessReader(options: {
     if (retiring) return retiring;
     if (deadline) clearTimeout(deadline);
     deadline = undefined;
+    startup?.abort();
     retiring = (async () => {
       try {
         const child = worker ?? (await starting);
@@ -37,6 +39,7 @@ export function createWindowsReadinessReader(options: {
       } finally {
         worker = undefined;
         starting = undefined;
+        startup = undefined;
         output = '';
       }
     })();
@@ -55,7 +58,8 @@ export function createWindowsReadinessReader(options: {
     }, options.timeoutMs);
     try {
       if (!worker) {
-        starting = options.launch();
+        startup = new AbortController();
+        starting = options.launch(startup.signal);
         const child = await starting;
         worker = child;
         if (closed || retiring) return;

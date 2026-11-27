@@ -7,14 +7,14 @@ export function createWindowsCommandGuardResolver(options: {
   stagedGuard: string | null;
 }) {
   let resolved: Promise<string | null> | undefined;
-  return () => {
+  return (signal?: AbortSignal) => {
     resolved ??= (async () => {
       if (options.stagedGuard) return options.stagedGuard;
-      const fs = await import('node:fs');
-      const files = await import('node:fs/promises');
-      const path = await import('node:path');
-      const { tmpdir } = await import('node:os');
-      const { execFile } = await import('node:child_process');
+      const fs = process.getBuiltinModule('fs');
+      const files = fs.promises;
+      const path = process.getBuiltinModule('path');
+      const { tmpdir } = process.getBuiltinModule('os');
+      const { execFile } = process.getBuiltinModule('child_process');
       let source: string | undefined;
       for (const from of [options.sourceDirectory, options.fallbackDirectory]) {
         if (!from || source) continue;
@@ -57,7 +57,7 @@ export function createWindowsCommandGuardResolver(options: {
         execFile(
           compiler,
           ['/nologo', '/target:exe', `/out:${staged}`, sourceFile],
-          { encoding: 'utf8', timeout: 120_000, windowsHide: true },
+          { encoding: 'utf8', timeout: 120_000, windowsHide: true, signal },
           (error) => (error ? reject(error) : resolve()),
         );
       });
@@ -82,23 +82,26 @@ export function createWindowsOwnedWorkerLauncher(options: {
     args: readonly string[],
     options: SpawnOptions,
   ) => ChildProcess;
-  resolveGuard: () => Promise<string | null>;
+  resolveGuard: (signal?: AbortSignal) => Promise<string | null>;
   timeoutMs: number;
 }) {
   let owner: Promise<{ guard: string; birth: string }> | undefined;
   return async (
     command: string,
     args: readonly string[],
+    signal?: AbortSignal,
   ): Promise<WindowsOwnedWorker> => {
+    signal?.throwIfAborted();
     owner ??= (async () => {
-      const guard = await options.resolveGuard();
+      const guard = await options.resolveGuard(signal);
+      signal?.throwIfAborted();
       if (!guard) throw new Error('No Station Job guard is available');
-      const { execFile } = await import('node:child_process');
+      const { execFile } = process.getBuiltinModule('child_process');
       const birth = await new Promise<string>((resolve, reject) => {
         execFile(
           guard,
           ['--identity', String(process.pid)],
-          { encoding: 'utf8', timeout: 30_000, windowsHide: true },
+          { encoding: 'utf8', timeout: 30_000, windowsHide: true, signal },
           (error, stdout) => (error ? reject(error) : resolve(stdout.trim())),
         );
       });
@@ -106,6 +109,7 @@ export function createWindowsOwnedWorkerLauncher(options: {
       return { guard, birth };
     })();
     const { guard, birth } = await owner;
+    signal?.throwIfAborted();
     const quote = (argument: string) => {
       let quoted = '"';
       let backslashes = 0;
@@ -122,7 +126,7 @@ export function createWindowsOwnedWorkerLauncher(options: {
       }
       return `${quoted}${'\\'.repeat(backslashes * 2)}"`;
     };
-    const { Duplex } = await import('node:stream');
+    const { Duplex } = process.getBuiltinModule('stream');
     const child = options.spawn(
       guard,
       [
@@ -167,11 +171,16 @@ export function createWindowsOwnedWorkerLauncher(options: {
       })();
       return stopping;
     };
+    const abort = () => {
+      void stop();
+    };
+    signal?.addEventListener('abort', abort, { once: true });
     child.stdin?.on('error', () => child.stdin?.destroy());
     child.stderr?.resume();
     if (child.stdio[4] instanceof Duplex) child.stdio[4].resume();
     child.once('close', (code) => {
       closed = true;
+      signal?.removeEventListener('abort', abort);
       if (retirementDeadline) clearTimeout(retirementDeadline);
       finish(ended && code === 0);
     });
@@ -199,7 +208,12 @@ export function createWindowsOwnedWorkerLauncher(options: {
           const line = buffer.slice(0, newline).trim();
           buffer = buffer.slice(newline + 1);
           const binding = /^BOUND (\d+) \S+$/.exec(line);
-          if (binding && boundPid === undefined && !stopping) {
+          if (
+            binding &&
+            boundPid === undefined &&
+            !stopping &&
+            !signal?.aborted
+          ) {
             boundPid = Number(binding[1]);
             child.stdin?.write('RESUME\n');
             resolve(boundPid);
@@ -211,6 +225,7 @@ export function createWindowsOwnedWorkerLauncher(options: {
     const startupDeadline = setTimeout(() => {
       void stop();
     }, options.timeoutMs);
+    if (signal?.aborted) void stop();
     try {
       const pid = await started;
       if (!(input instanceof Duplex) || !(output instanceof Duplex))

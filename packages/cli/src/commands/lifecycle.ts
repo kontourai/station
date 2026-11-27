@@ -339,10 +339,11 @@ export function uiRequestHandler(deps: UiServerDeps) {
   const reader =
     process.platform === 'win32' && deps.readinessFile && deps.identity
       ? createWindowsReadinessReader({
-          launch: () =>
+          launch: (signal) =>
             launchWindowsReadinessWorker(
               windowsSystemUtilityPath('powershell'),
               buildWindowsPrivateFileReadCommand(deps.readinessFile!),
+              signal,
             ),
           timeoutMs: WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
         })
@@ -1517,7 +1518,7 @@ export function buildUiServerScript(opts: {
     const readinessFile=${JSON.stringify(opts.readinessFile)};
     const identity=${JSON.stringify(opts.identity)};
     const launchReadinessWorker=process.platform==='win32'?(${createWindowsOwnedWorkerLauncher.toString()})({spawn:require('child_process').spawn,resolveGuard:(${createWindowsCommandGuardResolver.toString()})({sourceDirectory:dir,fallbackDirectory:${JSON.stringify(import.meta.dirname)},stagedGuard:${JSON.stringify(process.platform === 'win32' ? resolveWindowsBirthHelper() : null)}}),timeoutMs:${WINDOWS_TRUST_COMMAND_TIMEOUT_MS}}):undefined;
-    const readinessReader=process.platform==='win32'&&readinessFile&&identity?(${createWindowsReadinessReader.toString()})({launch:()=>launchReadinessWorker(${JSON.stringify(windowsSystemUtilityPath('powershell'))},${JSON.stringify(opts.readinessFile ? buildWindowsPrivateFileReadCommand(opts.readinessFile) : [])}),timeoutMs:${WINDOWS_TRUST_COMMAND_TIMEOUT_MS}}):undefined;
+    const readinessReader=process.platform==='win32'&&readinessFile&&identity?(${createWindowsReadinessReader.toString()})({launch:(signal)=>launchReadinessWorker(${JSON.stringify(windowsSystemUtilityPath('powershell'))},${JSON.stringify(opts.readinessFile ? buildWindowsPrivateFileReadCommand(opts.readinessFile) : [])},signal),timeoutMs:${WINDOWS_TRUST_COMMAND_TIMEOUT_MS}}):undefined;
     const readPrivateReadiness=readinessReader?.read;
     const readinessWarmup=readinessReader?.read();
     const internalApiToken=process.env.STATION_INTERNAL_API_TOKEN;

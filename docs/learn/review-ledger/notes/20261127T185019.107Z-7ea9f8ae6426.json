@@ -1,0 +1,7 @@
+{
+  "revision": "0567c342c98ca58079eb062eadc91c17ad62c7f9",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed #5644 UI readiness from generated and in-process listeners through handle-bound Windows DACL reads, exact file generation comparison, authenticated backend boot identity, and existing parent-bound native Job custody. No metadata cache authorizes a current ACL. Retirement requires ENDED plus guard process close; unconfirmed cleanup fences replacements. Linux exact 0567c342 CLI types and focused owners passed; Windows revised owner evidence and fault injection remain pending, so this records source semantics rather than claiming completed Windows proof.","inputs":["docs/guides/development.md","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}
