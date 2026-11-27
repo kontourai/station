@@ -96,8 +96,15 @@ describe('connection catching during a handoff (real processes)', () => {
         }),
         supervisor.output(),
       ).toMatchObject({ outcome: 'rolled-back', generation: 4 });
-      expect(supervisor.output()).toMatch(
-        /passed \d+ connection\(s\) held during the handoff to generation 4/,
+      // Release starts when this generation listens. Its quiet window is
+      // measured from then, so the pass log follows handoff resolution.
+      await vi.waitFor(
+        () => {
+          expect(supervisor.output()).toMatch(
+            /passed \d+ connection\(s\) held during the handoff to generation 4/,
+          );
+        },
+        { timeout: 5_000 },
       );
       servedBefore = load.stats.ok;
       await vi.waitFor(() =>
@@ -117,8 +124,13 @@ describe('connection catching during a handoff (real processes)', () => {
       expect(supervisor.output()).toContain(
         'catching connections on 8 spare listener(s) while generation 5 drains',
       );
-      expect(supervisor.output()).toMatch(
-        /passed \d+ connection\(s\) held during the handoff to generation 6/,
+      await vi.waitFor(
+        () => {
+          expect(supervisor.output()).toMatch(
+            /passed \d+ connection\(s\) held during the handoff to generation 6/,
+          );
+        },
+        { timeout: 5_000 },
       );
       servedBefore = load.stats.ok;
       await vi.waitFor(() =>
