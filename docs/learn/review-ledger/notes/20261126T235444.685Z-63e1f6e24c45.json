@@ -1,0 +1,7 @@
+{
+  "revision": "6b5d892f5f0b49c1910ff3e86abd7c590f681a97",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Inspected the generated-only station-docs-content.ts delta against the reviewed module-map Browser test evidence section. Only the architecture-browser-test-evidence topic changes: mutation keeps canonical E2E lifecycle ownership, while opt-in UI-only profiling owns an isolated production preview and browser process trees without a Station server or Station home. All 16 manual topic payloads, bundle identity, search schema, tool handlers, provider execution and public privacy behavior are unchanged. The 7531f1653f production fixture run passed all five named journeys and owned preview settlement; those remain browser diagnostics, not native/device/provider or field performance evidence. docs:mcp:check validates the regenerated 139-topic bundle. The subsequent focused docs-index run caught this stale review binding, rather than a prose mismatch, and this bounded note addresses that exact dependency without upgrading unrelated prior claims.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

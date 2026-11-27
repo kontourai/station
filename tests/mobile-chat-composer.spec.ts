@@ -2954,6 +2954,54 @@ async function answerSheetLayout(sheet: Locator) {
   });
 }
 
+for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+  test(`direct-linked mobile Back retains the draft with motion ${reducedMotion}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ reducedMotion });
+    await page.addInitScript(() => {
+      const animate = Element.prototype.animate;
+      Element.prototype.animate = function (keyframes, options) {
+        if (this.matches('.mobile-inbox, .chat-dock__reader'))
+          performance.mark('mobile-reader-transition');
+        return animate.call(this, keyframes, options);
+      };
+    });
+    await seedMobileTaskSwitcher(page);
+    await page.goto('/?dock=open&maximize=true&chat=conv-running');
+    await dismissSetupLauncher(page);
+    const composer = page.locator('textarea[placeholder*="Type a message"]');
+    await expect(composer).toBeVisible();
+    await page.reload();
+    await expect(composer).toBeVisible();
+    await composer.fill('Keep this draft');
+    const retainedComposer = await composer.elementHandle();
+    await page.goBack();
+    const inbox = page.getByRole('region', { name: 'Chats', exact: true });
+    await expect(inbox).toBeVisible();
+    expect(new URL(page.url()).searchParams.get('chat')).toBeNull();
+    await inbox
+      .getByRole('button', { name: /^Station Chat.*Default/i })
+      .filter({ hasText: 'Running' })
+      .click();
+    await expect(inbox).toBeHidden();
+    await composer.fill('Keep this draft, still responsive');
+    await expect(composer).toHaveValue('Keep this draft, still responsive');
+    expect(
+      await retainedComposer!.evaluate((element) => element.isConnected),
+    ).toBe(true);
+    expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-running');
+    const transitions = await page.evaluate(
+      () => performance.getEntriesByName('mobile-reader-transition').length,
+    );
+    if (reducedMotion === 'reduce') expect(transitions).toBe(0);
+    else expect(transitions).toBeGreaterThan(0);
+    await page.goBack();
+    await expect(inbox).toBeVisible();
+  });
+}
+
 /**
  * Escape dismisses the sheet and does nothing else — including after a row
  * selection has rewritten the URL underneath it.
@@ -5123,7 +5171,7 @@ test('profiles switching between authoritative conversations', async ({
   await seedMobileTaskSwitcher(page);
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
-  const switcher = page.getByRole('button', { name: /^(Inbox|Back to chat)$/ });
+  const switcher = page.getByRole('button', { name: 'Chats', exact: true });
   const menu = page.getByRole('region', { name: 'Chats', exact: true });
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
   await expect(switcher).toBeVisible();

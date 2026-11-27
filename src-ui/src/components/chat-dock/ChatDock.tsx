@@ -14,6 +14,8 @@ import { describeStationFailure } from '../../utils/stationFailure';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import { ConversationHeaderActionSlot } from '../conversation/ConversationHeaderActionSlot';
 import { SessionReaderBindingProvider } from '../conversation/SessionReaderBinding';
+import { useDialogHistoryHost } from '../DialogHistoryHost';
+import { DIALOG_HISTORY_KEY, registerDialogHistory } from '../dialog-history';
 import { RefreshGlyph } from '../icons/Glyph';
 import { refreshListQueries, useListRefresh } from '../refresh/ListRefresh';
 import { ChildChatNavigation } from './ChildChatNavigation';
@@ -48,6 +50,7 @@ import {
   useContext,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -159,6 +162,7 @@ import {
   optionalRemoteInventoryRefetch,
   stationViewReadQueryOptions,
 } from '../../lib/queryDefaults';
+import { motionTokenMs, prefersReducedMotion } from '../../lib/reduced-motion';
 import {
   requestTaskShaping,
   TASK_SHAPING_INSTRUCTION,
@@ -1206,20 +1210,37 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   }, [activeChat, isMobile, setMobileInboxOpen]);
   const closeMobileInbox = useCallback(() => {
     cancelReaderOpen();
+    if (!activeChat && activeSessionId && !importedSessionId)
+      setActiveChat(
+        activeChatDurableId(
+          activeSessionId,
+          activeChatsStore.getSnapshot()[activeSessionId],
+        ),
+      );
     setMobileInboxOpen(false);
-  }, [cancelReaderOpen, setMobileInboxOpen]);
+  }, [
+    cancelReaderOpen,
+    activeChat,
+    activeSessionId,
+    importedSessionId,
+    setActiveChat,
+    setMobileInboxOpen,
+  ]);
   const toggleMobileInbox = useCallback(() => {
     cancelReaderOpen();
     if (!isPaneOpen) {
       setMobileInboxOpen(true);
       if (!isFullscreenPlacement) applyDockSnap('half');
-    } else setMobileInboxOpen((open) => !open);
+    } else if (mobileInboxShown) closeMobileInbox();
+    else setMobileInboxOpen(true);
   }, [
     isPaneOpen,
     isFullscreenPlacement,
     applyDockSnap,
     setMobileInboxOpen,
     cancelReaderOpen,
+    mobileInboxShown,
+    closeMobileInbox,
   ]);
   useEffect(
     () =>
@@ -1400,6 +1421,98 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // (`.fold-avoid-crease`).
   const workspaceRowRef = useRef<HTMLDivElement>(null);
   const readerRef = useRef<HTMLDivElement>(null);
+  const previousMobileInbox = useRef(mobileInboxShown);
+  useLayoutEffect(() => {
+    const changed = previousMobileInbox.current !== mobileInboxShown;
+    previousMobileInbox.current = mobileInboxShown;
+    if (
+      !changed ||
+      !isMobile ||
+      !isPaneOpen ||
+      (isFullscreenPlacement && !fullscreenOnScreen) ||
+      prefersReducedMotion()
+    )
+      return;
+    const incoming = mobileInboxShown
+      ? workspaceRowRef.current?.querySelector<HTMLElement>('.mobile-inbox')
+      : readerRef.current;
+    if (!incoming?.animate) return;
+    const animation = incoming.animate(
+      [
+        {
+          opacity: 0,
+          translate: mobileInboxShown
+            ? 'calc(-1 * var(--k-space-2)) 0'
+            : 'var(--k-space-2) 0',
+        },
+        { opacity: 1, translate: '0 0' },
+      ],
+      {
+        duration: motionTokenMs(getComputedStyle(incoming), '--motion-fast'),
+        easing: 'ease-out',
+      },
+    );
+    return () => animation.cancel();
+  }, [
+    isMobile,
+    isPaneOpen,
+    isFullscreenPlacement,
+    fullscreenOnScreen,
+    mobileInboxShown,
+  ]);
+  const [mobileReaderHistoryId] = useState(() => {
+    const marker = window.history.state?.[DIALOG_HISTORY_KEY];
+    return typeof marker === 'string' &&
+      marker.startsWith('station-mobile-reader:')
+      ? marker
+      : `station-mobile-reader:${randomCorrelationId()}`;
+  });
+  const readerHistoryHost = useDialogHistoryHost();
+  const readerHistoryVisible = useRef(false);
+  readerHistoryVisible.current =
+    isMobile && isPaneOpen && (!isFullscreenPlacement || fullscreenOnScreen);
+  useLayoutEffect(() => {
+    if (
+      !isMobile ||
+      !isPaneOpen ||
+      (isFullscreenPlacement && !fullscreenOnScreen) ||
+      (mobileInboxShown && !activeChat) ||
+      !(activeChat || importedSessionId)
+    )
+      return;
+    return registerDialogHistory(
+      mobileReaderHistoryId,
+      (reason) => {
+        if (reason !== 'back') return;
+        cancelReaderOpenAndChildren();
+        setMobileInboxOpen(true);
+        setActiveChat(null);
+      },
+      {
+        get removed() {
+          return (
+            !readerHistoryVisible.current ||
+            !workspaceRowRef.current?.isConnected ||
+            Boolean(readerHistoryHost?.removed)
+          );
+        },
+      },
+      { adoptLiveEntry: true },
+    );
+  }, [
+    isMobile,
+    isPaneOpen,
+    isFullscreenPlacement,
+    fullscreenOnScreen,
+    mobileInboxShown,
+    activeChat,
+    importedSessionId,
+    mobileReaderHistoryId,
+    readerHistoryHost,
+    cancelReaderOpenAndChildren,
+    setMobileInboxOpen,
+    setActiveChat,
+  ]);
   useFoldSplit(workspaceRowRef);
   useFoldSplit(readerRef);
   // The dock as it was before a phone draft forced it to full height, so a
@@ -1704,6 +1817,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         ]
       : profileExecutionRoutes;
   // Chat input hook - encapsulates autocomplete, history, and input handling
+  const sendReader = useRef({
+    sessionId: activeSessionId,
+    inboxShown: mobileInboxShown,
+    importedSessionId,
+    onScreen: isPaneOpen && (!isFullscreenPlacement || fullscreenOnScreen),
+  });
+  sendReader.current = {
+    sessionId: activeSessionId,
+    inboxShown: mobileInboxShown,
+    importedSessionId,
+    onScreen: isPaneOpen && (!isFullscreenPlacement || fullscreenOnScreen),
+  };
   const chatInput = useChatInput({
     apiBase: conversationConnection?.targetApiBase ?? apiBase,
     connection: conversationConnection,
@@ -1731,6 +1856,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         : mentionAuthority,
     defaultModelSource: activeSessionForHook?.defaultModelSource,
     onSessionMigrate: (newSessionId) => {
+      const navigation = navigationStore.getSnapshot();
+      if (
+        newSessionId !== sendReader.current.sessionId ||
+        sendReader.current.inboxShown ||
+        !sendReader.current.onScreen ||
+        sendReader.current.importedSessionId !== importedSessionId ||
+        !workspaceRowRef.current?.isConnected ||
+        navigation.activeChat !== activeChat ||
+        navigation.pathname !== pathname
+      )
+        return;
       // A send admission, not the person moving: a draft open over the dock
       // stays open.
       reanchorNewChatDraft(newSessionId);
