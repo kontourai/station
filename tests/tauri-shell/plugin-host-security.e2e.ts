@@ -68,6 +68,10 @@ let browser!: DirectWebDriver;
 let fixture: TauriShellFixture;
 let stationOrigin = 'tauri://localhost';
 let hostileBundle = '';
+let releaseHostileBundle!: () => void;
+const hostileBundleReady = new Promise<void>((resolve) => {
+  releaseHostileBundle = resolve;
+});
 const hits: AttackHits = {
   blockedFetch: 0,
   secretApi: 0,
@@ -253,7 +257,10 @@ function remoteResponse(
     });
   }
   if (pathname === `/api/plugins/${PLUGIN_NAME}/bundle.js`) {
-    return send(response, 200, hostileBundle, 'application/javascript');
+    void hostileBundleReady.then(() =>
+      send(response, 200, hostileBundle, 'application/javascript'),
+    );
+    return;
   }
   if (pathname === `/api/plugins/${PLUGIN_NAME}/bundle.css`) {
     return send(response, 200, '', 'text/css');
@@ -400,6 +407,7 @@ async function setUp() {
 }
 
 async function tearDown() {
+  releaseHostileBundle();
   await Promise.all([
     close(remote?.server),
     close(frame?.server),
@@ -545,6 +553,7 @@ async function runProof() {
       ).__tauriShellErrors.push(String(event.reason));
     });
   });
+  releaseHostileBundle();
   // The embedded macOS driver executes element lookup on the WebView's main
   // loop. Give the lazy isolation chunk one command-free turn to resolve;
   // tight findElement polling can otherwise starve the very asset load it is
