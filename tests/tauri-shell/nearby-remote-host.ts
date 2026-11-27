@@ -27,6 +27,7 @@ async function main() {
   const beforeServe = JSON.parse(
     execFileSync('tailscale', ['serve', 'status', '--json'], {
       encoding: 'utf8',
+      windowsHide: true,
     }),
   );
   let origin: string | undefined;
@@ -164,16 +165,20 @@ subscribe('http.server.response.finish', message => record('finish', message));
         const current = JSON.parse(
           execFileSync('tailscale', ['serve', 'status', '--json'], {
             encoding: 'utf8',
+            windowsHide: true,
           }),
         );
         const listener = new URL(origin).host;
         assert.deepEqual(current.Web?.[listener], {
           Handlers: { '/': { Proxy: live.api } },
         });
-        execFileSync('tailscale', ['serve', `--https=${servePort}`, 'off']);
+        execFileSync('tailscale', ['serve', `--https=${servePort}`, 'off'], {
+          windowsHide: true,
+        });
         const restored = JSON.parse(
           execFileSync('tailscale', ['serve', 'status', '--json'], {
             encoding: 'utf8',
+            windowsHide: true,
           }),
         );
         assert.deepEqual(restored, beforeServe);
