@@ -2,7 +2,7 @@
 
 import type { SavedConnection } from '@kontourai/station-connect';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, waitFor } from '@testing-library/react';
+import { render, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
@@ -46,7 +46,10 @@ vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
     new Set(state.publicationPreview ? ['dynamic-route-publications'] : []),
 }));
 
-import { StationRouteLearning } from '../useStationRoutes';
+import {
+  StationRouteLearning,
+  useStationRoutesQuery,
+} from '../useStationRoutes';
 
 const lanUrl = 'http://192.168.50.16:3774';
 const lanId = `endpoint:lan-http:${encodeURIComponent(lanUrl)}`;
@@ -127,6 +130,52 @@ beforeEach(() => {
 });
 
 describe('StationRouteLearning', () => {
+  it('reads first-run same-origin publication without granting alternate routes', async () => {
+    const connection = {
+      ...station(),
+      url: window.location.origin,
+      environmentId: null,
+    };
+    state.connections = {
+      ...state.connections,
+      activeConnection: connection,
+      apiBase: window.location.origin,
+    };
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderHook(
+      () => useStationRoutesQuery(connection, true),
+      {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>
+            <StationRouteLearning />
+            {children}
+          </QueryClientProvider>
+        ),
+      },
+    );
+    await waitFor(() => expect(result.current.data).toEqual(report));
+    expect(state.fetch).toHaveBeenCalledWith(
+      `${window.location.origin}/api/system/routes`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(applyAdvertisedRoutes).not.toHaveBeenCalled();
+    expect(state.nativeRepositoryAccess).not.toHaveBeenCalled();
+  });
+
+  it('does not read an unidentified remote Station publication', async () => {
+    state.connections = {
+      ...state.connections,
+      activeConnection: { ...station(), environmentId: null },
+    };
+    const client = mount();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(client.isFetching()).toBe(0);
+    expect(state.fetch).not.toHaveBeenCalled();
+    expect(applyAdvertisedRoutes).not.toHaveBeenCalled();
+  });
+
   it('learns routes with only the Station-wide publication preview enabled', async () => {
     state.devicePreview = false;
     state.publicationPreview = true;

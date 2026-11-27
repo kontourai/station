@@ -191,7 +191,23 @@ export function registerSessionInventoryTools(
   registry.appTool(
     STATION_SESSION_INVENTORY_MCP_TOOL_NAME,
     'Read one authorized Station Session inventory projection or bounded group page.',
-    stationSessionInventoryToolInputSchema,
+    z
+      .object({
+        operation: z.enum(['open', 'page']),
+        scope: scopeSchema,
+        version: z.literal(STATION_SESSION_INVENTORY_MCP_V2_VERSION).optional(),
+        occurrenceId: pageSchema.shape.occurrenceId
+          .optional()
+          .describe('Required for the page operation.'),
+        groupId: pageSchema.shape.groupId
+          .optional()
+          .describe('Required for the page operation.'),
+        continuationToken: pageSchema.shape.continuationToken
+          .optional()
+          .describe('Required for the page operation.'),
+      })
+      .strict()
+      .pipe(stationSessionInventoryToolInputSchema),
     {
       _meta: {
         ui: {
