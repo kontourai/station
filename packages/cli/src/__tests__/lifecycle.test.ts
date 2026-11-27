@@ -1,4 +1,8 @@
-import { execSync as realExecSync, spawn } from 'node:child_process';
+import {
+  execSync as realExecSync,
+  spawnSync as realSpawnSync,
+  spawn,
+} from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import {
@@ -686,6 +690,40 @@ function stoppedServiceProbe(
     return { status: 1, stderr: '', stdout: '' };
   }
   return null;
+}
+
+function expectServiceGuidance(
+  message: string | null,
+  action: 'install' | 'status' | 'uninstall',
+  expectedArguments: string[],
+): void {
+  const command = message?.match(
+    new RegExp(`"(station service ${action} [^\\r\\n]+)"`, 'u'),
+  )?.[1];
+  expect(command).toBeDefined();
+  const shell =
+    process.platform === 'win32'
+      ? resolve(
+          realExecSync('git --exec-path', {
+            encoding: 'utf8',
+            windowsHide: true,
+          }).trim(),
+          '../../..',
+          'bin/sh.exe',
+        )
+      : 'sh';
+  const result = realSpawnSync(
+    shell,
+    ['-c', `station() { printf '%s\\0' "$@"; }; ${command}`],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status).toBe(0);
+  expect(result.stdout.split('\0').slice(0, -1)).toEqual([
+    'service',
+    action,
+    ...expectedArguments,
+  ]);
 }
 
 function staleSchedulingSpawnSync(unitPath: string): Mock {
@@ -5487,9 +5525,13 @@ describe('upgrade', () => {
           }),
         ),
       ).toMatchObject({ sha: '0123456789abcdef0123456789abcdef01234567' });
-      expect(log.mock.calls.flat().join('\n')).toContain(
-        `station service install --instance=beta-upgrade --base='${channelHome}' --port=3141 --ui-port=3000 --host=127.0.0.1`,
-      );
+      expectServiceGuidance(log.mock.calls.flat().join('\n'), 'install', [
+        '--instance=beta-upgrade',
+        `--base=${channelHome}`,
+        '--port=3141',
+        '--ui-port=3000',
+        '--host=127.0.0.1',
+      ]);
     } finally {
       log.mockRestore();
     }
@@ -5568,12 +5610,12 @@ describe('upgrade', () => {
     expect(message).toContain(
       `manifest: ${join(serviceHome, 'service', 'service-unknown.json')}`,
     );
-    expect(message).toContain(
-      `"station service status --instance=service-unknown --base='${serviceHome}'"`,
-    );
-    expect(message).toContain(
-      `"station service uninstall --instance=service-unknown --base='${serviceHome}'"`,
-    );
+    const targetingArguments = [
+      '--instance=service-unknown',
+      `--base=${serviceHome}`,
+    ];
+    expectServiceGuidance(message, 'status', targetingArguments);
+    expectServiceGuidance(message, 'uninstall', targetingArguments);
     expect(message).toContain('--ignore-service-state');
     expect(execSync).not.toHaveBeenCalled();
   });
@@ -6035,9 +6077,13 @@ describe('upgrade', () => {
       expect(log.mock.calls.flat().join('\n')).toContain(
         'Service scheduling is stale for source-guidance',
       );
-      expect(log.mock.calls.flat().join('\n')).toContain(
-        `station service install --instance=source-guidance --base='${serviceHome}' --port=3141 --ui-port=3000 --host=127.0.0.1`,
-      );
+      expectServiceGuidance(log.mock.calls.flat().join('\n'), 'install', [
+        '--instance=source-guidance',
+        `--base=${serviceHome}`,
+        '--port=3141',
+        '--ui-port=3000',
+        '--host=127.0.0.1',
+      ]);
     } finally {
       log.mockRestore();
     }
