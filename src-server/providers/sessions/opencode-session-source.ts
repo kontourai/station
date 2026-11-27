@@ -20,6 +20,7 @@ import {
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
+  AttachedSessionDiscoveryPage,
   AttachedSessionDiscoveryResult,
   AttachedSessionReadResult,
   AttachedSessionSource,
@@ -402,7 +403,9 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     return boundedId(session.resumeCursor.acpSessionId);
   }
 
-  async discover(): Promise<AttachedSessionDiscoveryResult> {
+  async discover(
+    page?: AttachedSessionDiscoveryPage,
+  ): Promise<AttachedSessionDiscoveryResult> {
     const sourceHome = deriveConfigHomeAffinity(
       SOURCE_HOME_NAMESPACE,
       this.dataDir,
@@ -411,6 +414,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     const listed = this.listDatabases(sourceHome.canonicalRoot);
     const key = JSON.stringify([
       sourceHome.affinity.ref,
+      page,
       listed.outcome,
       listed.databases.map((database) => [
         database.fileName,
@@ -420,14 +424,14 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     ]);
     if (this.lastDiscovery?.key === key) {
       const cached = this.lastDiscovery.result;
-      return { outcome: cached.outcome, sessions: [...cached.sessions] };
+      return { ...cached, sessions: [...cached.sessions] };
     }
     this.lastDiscovery = undefined;
     this.handles.clear();
-    const result = await this.discoverDatabases(sourceHome, listed);
+    const result = await this.discoverDatabases(sourceHome, listed, page);
     this.lastDiscovery = {
       key,
-      result: { outcome: result.outcome, sessions: [...result.sessions] },
+      result: { ...result, sessions: [...result.sessions] },
     };
     return result;
   }
@@ -438,6 +442,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       outcome: AttachedSessionSourceOutcome;
       databases: DatabaseRegistration[];
     },
+    page?: AttachedSessionDiscoveryPage,
   ): Promise<AttachedSessionDiscoveryResult> {
     if (listed.databases.length === 0) {
       return {
@@ -447,9 +452,11 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     }
 
     let outcome = listed.outcome;
+    const end = page ? page.offset + page.limit : this.maxCandidates;
     const found: Array<{
       updatedAt: number;
-      registration: SourceRegistration;
+      sessionId: string;
+      registration: SourceRegistration | undefined;
     }> = [];
     // OpenCode 2.x's 1.x-to-2.x migration imports `opencode-next.db` into
     // `opencode.db` (every session row and its `session_message` rows, never
@@ -519,14 +526,14 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
                        AND session_message.type = 'user')
                  ORDER BY time_updated DESC, id ASC LIMIT ?`,
           )
-          .all(this.maxCandidates + 1);
+          .all(end + 1);
         return rows;
       });
       if (!result.ok) {
         outcome = mergeOutcome(outcome, result.outcome);
         continue;
       }
-      if (result.value.length > this.maxCandidates) {
+      if (!page && result.value.length > this.maxCandidates) {
         outcome = mergeOutcome(outcome, 'candidate_limit');
       }
       const held = besideV2
@@ -537,45 +544,50 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
         : new Set<string>();
       // Every database contributes its newest; the merged list is capped below.
       for (const row of result.value) {
-        if (held.has(String(row.id))) continue;
-        if (
-          importedThrough !== undefined &&
-          !(Number(row.time_created) > importedThrough)
-        ) {
-          continue;
-        }
-        const registration = this.registrationFor(
-          database,
-          sourceHome.affinity,
-          row,
-        );
-        if (!registration) {
+        const sessionId = String(row.id);
+        const eligible =
+          !held.has(sessionId) &&
+          (importedThrough === undefined ||
+            Number(row.time_created) > importedThrough);
+        const registration = eligible
+          ? (this.registrationFor(database, sourceHome.affinity, row) ??
+            undefined)
+          : undefined;
+        if (eligible && !registration)
           outcome = mergeOutcome(outcome, 'malformed_record');
-          continue;
+        // Archive offsets count raw sorted rows so a filtered prefix cannot
+        // hide more conversations or skip an eligible row on the next page.
+        if (page || registration) {
+          found.push({
+            updatedAt: Number(row.time_updated),
+            sessionId,
+            registration,
+          });
         }
-        found.push({
-          updatedAt: Number(row.time_updated),
-          registration,
-        });
       }
     }
     found.sort(
       (left, right) =>
         right.updatedAt - left.updatedAt ||
-        left.registration.descriptor.sessionId.localeCompare(
-          right.registration.descriptor.sessionId,
-        ),
+        left.sessionId.localeCompare(right.sessionId),
     );
-    if (found.length > this.maxCandidates) {
+    if (!page && found.length > this.maxCandidates) {
       found.length = this.maxCandidates;
       outcome = mergeOutcome(outcome, 'candidate_limit');
     }
     const sessions: AttachedSessionDescriptor[] = [];
-    for (const { registration } of found) {
+    for (const { registration, updatedAt } of page
+      ? found.slice(page.offset, end)
+      : found) {
+      if (!registration) continue;
       this.handles.set(registration.descriptor.sourceHandle, registration);
-      sessions.push(registration.descriptor);
+      sessions.push({ ...registration.descriptor, modifiedAtMs: updatedAt });
     }
-    return { outcome, sessions };
+    return {
+      outcome,
+      sessions,
+      ...(page && found.length > end ? { nextOffset: end } : {}),
+    };
   }
 
   async read(
@@ -675,7 +687,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
         if (oldest !== undefined) this.drainedReads.delete(oldest);
       }
     }
-    return read;
+    return reachedEnd ? read : { ...read, hasMore: true };
   }
 
   private async readMessages(

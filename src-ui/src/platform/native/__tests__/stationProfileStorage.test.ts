@@ -2401,9 +2401,15 @@ describe('NativeStationProfileStorage', () => {
     expect(connectionId).toBe('station-profile:kontour');
   });
 
-  it('keeps the shared default unchanged when pairing a different Station', async () => {
-    const { currentStore, storage } = storageWithKeyring();
+  it('keeps the selected Station and its native binding when pairing a different Station', async () => {
+    const { activeProfile, currentStore, storage } = storageWithKeyring();
     await storage.hydrate();
+    await storage.authorizeActiveConnection('station-profile:kontour');
+    const binding = storage.captureNativeRequestBinding(
+      'station-profile:kontour',
+      PROFILE_STORE.profiles[0].endpoint,
+    );
+    expect(binding).not.toBeNull();
 
     await storage.commitVerifiedPairing({
       connectionId: 'temporary-desktop-connection',
@@ -2419,6 +2425,19 @@ describe('NativeStationProfileStorage', () => {
     });
 
     expect(currentStore().defaultProfile).toBe('kontour');
+    expect(activeProfile()).toBe('kontour');
+    expect(
+      storage.captureNativeRequestBinding(
+        'station-profile:kontour',
+        PROFILE_STORE.profiles[0].endpoint,
+      ),
+    ).toEqual(binding);
+    expect(
+      storage.captureNativeRequestBinding(
+        'station-profile:other-station',
+        'https://other.example',
+      ),
+    ).toBeNull();
   });
 
   it('atomically selects the first paired Station and retains the exact client instance for cold authorization', async () => {

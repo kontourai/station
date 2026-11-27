@@ -59,6 +59,7 @@ import {
   registerSkillRegistryProvider,
 } from '../../providers/registries/registry.js';
 import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
+import type { ExternalSessionHistoryRouteDeps } from '../../routes/external-session-history.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import { loadConfinedNetworkPlan } from '../../security/confinement/confinement-provider.js';
 import {
@@ -214,6 +215,7 @@ export interface InitializeRuntimeDeps {
     | import('../mcp/station-control-caller.js').StationControlCallerRecordResolver
     | undefined;
   attachedSessionSources?: AttachedSessionSource[];
+  externalSessionHistoryPreview?: FeaturePreviewSelector;
   port: number;
   host?: string;
   logger: Logger;
@@ -339,7 +341,10 @@ export interface InitializeRuntimeDeps {
   copilotSdkAdapter: CopilotSdkAdapter;
   ollamaAdapter: OllamaAdapter;
   createVoltAgentInstance: (slug: string) => Promise<Agent>;
-  configureRoutes: (app: any) => void;
+  configureRoutes: (
+    app: any,
+    externalSessionHistory?: ExternalSessionHistoryRouteDeps,
+  ) => void;
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
@@ -979,6 +984,7 @@ export async function initializeRuntime(
   const attachedProjectResourceResolver = new ProjectResourceResolver({
     homeDir: configLoader.getProjectHomeDir(),
   });
+  const archivePreview = deps.externalSessionHistoryPreview;
   const attachedSessionFollowService = new AttachedSessionFollowService({
     sources: deps.attachedSessionSources ?? [],
     adapterRegistry: publicAdapterRegistry,
@@ -1288,7 +1294,12 @@ export async function initializeRuntime(
       routes,
       middlewares,
     }: Parameters<NonNullable<HonoServerConfig['configureFullApp']>>[0]) => {
-      configureRoutes(app);
+      configureRoutes(
+        app,
+        archivePreview
+          ? { follow: attachedSessionFollowService, preview: archivePreview }
+          : undefined,
+      );
       middlewares.landingPage();
       routes.agents();
       routes.workflows();
@@ -1440,13 +1451,8 @@ export async function initializeRuntime(
     browserOrigins: stationOriginPolicy({ port, host }),
     audit: (record) => logger.warn('Voice authentication denied', record),
   });
-  // Defer Claude-transcript follow so the first event-loop turns can answer
-  // identity/readiness probes. Immediate start() + bulk INSERT OR IGNORE of
-  // large attached histories was wedging launchd health checks (port bound,
-  // HTTP hung). Follow still runs; first poll is delayed slightly.
-  setTimeout(() => {
-    attachedSessionFollowService.start();
-  }, 2_500).unref?.();
+  // Keep external history scans off the initial readiness path (archive#1997).
+  attachedSessionFollowService.start(5_000);
   logger.info('Voice WebSocket listening', { port: port + 2 });
   logger.debug('Station Runtime initialized', { port });
 

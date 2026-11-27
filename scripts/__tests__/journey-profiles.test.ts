@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import {
+  main,
   summarizeJourneyProfiles,
   validateJourneyProfile,
 } from '../run-journey-profiles.mjs';
@@ -19,6 +20,16 @@ const profile = {
   },
   sampledAllocationBytes: 100,
 };
+test('refuses empty or unregistered spec selections before running a capture', async () => {
+  for (const args of [
+    ['--spec='],
+    ['--spec=tests/missing.spec.ts'],
+    ['--group='],
+    ['--group=missing'],
+    ['--group=home-history', '--spec=tests/mobile-chat-composer.spec.ts'],
+  ])
+    await expect(main(args)).rejects.toThrow('Usage:');
+});
 test('rejects missing work, invalid counters and mismatched identity', () => {
   expect(validateJourneyProfile(profile, 'home-history', 'sha')).toEqual([]);
   for (const changed of [
@@ -52,4 +63,64 @@ test('a clean profile run rejects a dirty per-journey receipt', () => {
       false,
     ),
   ).toContain('workspace changed during profiling');
+});
+
+test('UI-only captures require production assets and actual browser provenance', () => {
+  const captured = {
+    ...profile,
+    buildMode: 'production',
+    buildProvenanceSha256: 'build-digest',
+    viewport: { width: 390, height: 844 },
+    device: { userAgent: 'Chromium', devicePixelRatio: 1 },
+    responsiveness: {
+      scope: 'final-document',
+      phaseStartMs: 0,
+      phaseEndMs: 200,
+      longTaskCount: 2,
+      longestTaskMs: 90,
+      blockingOver50Ms: 60,
+      longTasks: [
+        { startTime: 10, duration: 70 },
+        { startTime: 100, duration: 90 },
+      ],
+    },
+  };
+  expect(
+    validateJourneyProfile(captured, 'home-history', 'sha', undefined, {
+      uiOnly: true,
+      buildProvenanceSha256: 'build-digest',
+    }),
+  ).toEqual([]);
+  for (const changed of [
+    { buildMode: 'development' },
+    { buildProvenanceSha256: undefined },
+    { buildProvenanceSha256: 'another-build' },
+    { viewport: null },
+    { device: null },
+    { responsiveness: null },
+    { responsiveness: { ...captured.responsiveness, phaseStartMs: 11 } },
+    { responsiveness: { ...captured.responsiveness, phaseEndMs: 180 } },
+    {
+      responsiveness: {
+        longTasks: [],
+        longTaskCount: 1,
+        longestTaskMs: 0,
+        blockingOver50Ms: 0,
+      },
+    },
+  ])
+    expect(
+      validateJourneyProfile(
+        { ...captured, ...changed },
+        'home-history',
+        'sha',
+        undefined,
+        { uiOnly: true, buildProvenanceSha256: 'build-digest' },
+      ).length,
+    ).toBeGreaterThan(0);
+  expect(
+    validateJourneyProfile(captured, 'home-history', 'sha', undefined, {
+      uiOnly: true,
+    }),
+  ).toContain('missing/mismatched production build provenance');
 });

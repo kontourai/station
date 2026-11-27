@@ -1,0 +1,7 @@
+{
+  "revision": "50ec7ffc47c4fe6fcdba5e9924348ea8e149814a",
+
+  "notes": [
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed #5628 initial quiet-window repair: SupervisorLink drain now measures quiet time from max(drain start,last accept); GenerationManager release does likewise, retaining 50 ms quiet and 1 s cap, rollback delivery and protocol admission. Owner files pass 84 tests; each owner mutation fails and byte restoration passes. Real CLI loopback passed once before and after; intermittent ECONNRESET attribution remains unconfirmed, and #5627 is not covered. Existing residual AcceptEx reset caveat remains accurate.","inputs":["docs/design/process-supervisor.md","packages/cli/src/commands/lifecycle.ts","src-server/runtime/bootstrap/__tests__/supervisor-link.test.ts","src-server/runtime/bootstrap/supervisor-link.ts","packages/supervisor/src/generation-manager.ts","packages/supervisor/src/__tests__/generation-manager.test.ts"]}
+  ]
+}

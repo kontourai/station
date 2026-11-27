@@ -563,10 +563,20 @@ npm run test:tauri-shell -- --build --lane=plugin-host-security
 
 [`scripts/run-tauri-shell-e2e.mjs`](../../scripts/run-tauri-shell-e2e.mjs)
 selects [`tests/tauri-shell/plugin-host-security.e2e.ts`](../../tests/tauri-shell/plugin-host-security.e2e.ts).
-Its isolated fixture checks that the host has Tauri internals while a hostile
-cross-origin plugin frame has no own bridge and cannot reach the parent's
-bridge, storage or DOM. It also checks blocked network/API destinations and
-navigation containment. The default sweep runs this lane and `device-pane`;
+Its isolated fixture waits for the bundled server, navigates the WebView and
+awaits hydration of its seeded default remote Station. It does not reselect
+that Station while startup is already activating it. The fixture releases the
+hostile bundle only after its diagnostic observers are installed. The hostile plugin
+cannot reach the parent's bridge, storage or DOM. Where the child has no
+callable native bridge, the fixture observes its absence. WebView2 can inject
+Tauri internals into child frames; there the fixture invokes a read-only native
+command and requires an actual CSP violation for its native fetch transport,
+not merely an unanswered promise. This does not independently qualify Tauri's
+fallback message transport or every native command's origin authorization.
+The fixture also checks blocked network/API destinations and navigation
+containment. Unrelated, explicitly named services return unavailable errors;
+unknown requests fail the proof instead of receiving empty success responses.
+The default sweep runs this lane and `device-pane`;
 the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
 availability is source evidence, not an executed platform result. Record the
 exact binary, revision, host and completed lane result when running it.
@@ -805,6 +815,12 @@ The check also verifies that unrelated access rules are rejected and file
 contents are preserved. It refuses elevated execution so administrator
 privileges cannot hide the regression. This is helper evidence; native GUI
 startup and in-app installation/relaunch remain separate checks.
+
+On Windows the ACL and profile-lock helpers run without allocating a console.
+During packaged-shell verification, capture child process names and parent
+PIDs along with visible-window events. Exercise a fresh profile and a second
+launch with a profile lock. Capture process identities without command-line
+arguments, which can contain credentials.
 
 The desktop host writes its own log through `tauri-plugin-log`. The configured
 application identifier selects the shell log directory, so each release channel

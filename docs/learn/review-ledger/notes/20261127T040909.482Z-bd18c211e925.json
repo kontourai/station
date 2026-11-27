@@ -1,0 +1,7 @@
+{
+  "revision": "bec3730fa62e8ec760413961b24f777041a01b2b",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed bec3730fa6 saved-answer quotation UI against SDK saved-quotation scope/access contract. Host request authority and post-guard admission remain checked; captured phone layer delegates its owner exactly once through closePhoneLayer, running navigation/reveal/anchor synchronously after restoration. Replacement/new guard or withdrawn request suppresses continuation. Existing quote integration plus phone guards/focus/reload29/29 passed92.42s; no SDK/network/capability contract change or broader timing claim.","inputs":["src-ui/src/components/chat/QuoteSourceLink.tsx"]}
+  ]
+}

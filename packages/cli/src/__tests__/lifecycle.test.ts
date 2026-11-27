@@ -25,7 +25,7 @@ import {
   createServer as createRawServer,
 } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, win32 } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { serve } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
@@ -65,6 +65,10 @@ import {
 import type { Logger } from '../../../../src-server/utils/logger.js';
 import { renderLaunchdPlist } from '../commands/service-launchd.js';
 import { renderSystemdUnit } from '../commands/service-systemd.js';
+import {
+  renderWindowsServiceCommand,
+  windowsRegistration,
+} from '../commands/service-windows.js';
 import { plutilJson } from './helpers/launchd-plist-fixture.js';
 import {
   reapAllLongRunningFixtureChildren,
@@ -545,6 +549,14 @@ function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true });
 }
 
+function ensureTrustedInstallDirectory(path: string): void {
+  mkdirSync(path, { recursive: true, mode: 0o755 });
+}
+
+function writeTrustedInstallFile(path: string, content: string): void {
+  writeFileSync(path, content, { mode: 0o644 });
+}
+
 /**
  * Station homes are read by the instance registry before `clean` removes
  * them. A home fixture therefore has to satisfy the same owner-only contract
@@ -585,7 +597,6 @@ function writeStaleServiceManifest(
 ): string {
   const platform = currentServicePlatform();
   const serviceDirectory = join(home, 'service');
-  const unitPath = join(serviceDirectory, `station-${instanceId}.unit`);
   ensureDir(serviceDirectory);
   const unit = {
     ...location,
@@ -599,17 +610,24 @@ function writeStaleServiceManifest(
     } as Parameters<typeof renderSystemdUnit>[0]['lifecycle'],
     servicePath: '/usr/bin:/bin',
   };
+  const registration =
+    platform === 'win32'
+      ? windowsRegistration(instanceId, unit.lifecycle)
+      : { unitPath: join(serviceDirectory, `station-${instanceId}.unit`) };
+  const { unitPath } = registration;
   writeFileSync(
     unitPath,
-    platform === 'linux'
-      ? renderSystemdUnit(unit)
-      : renderLaunchdPlist({
-          ...unit,
-          label: `io.kontourai.station.${instanceId}`,
-        }).replace(
-          '<key>ProcessType</key><string>Interactive</string>',
-          '<key>ProcessType</key><string>Background</string>',
-        ),
+    platform === 'win32'
+      ? renderWindowsServiceCommand(unit)
+      : platform === 'linux'
+        ? renderSystemdUnit(unit)
+        : renderLaunchdPlist({
+            ...unit,
+            label: `io.kontourai.station.${instanceId}`,
+          }).replace(
+            '<key>ProcessType</key><string>Interactive</string>',
+            '<key>ProcessType</key><string>Background</string>',
+          ),
   );
   writeFileSync(
     join(serviceDirectory, `${instanceId}.json`),
@@ -622,7 +640,7 @@ function writeStaleServiceManifest(
       platform,
       // The registration field a real `service install` records for each
       // backend — the status probe needs it to ask about the unit at all.
-      ...(platform === 'win32' ? { taskName: `\\Station-${instanceId}` } : {}),
+      ...registration,
       ...(platform === 'darwin'
         ? { label: `io.kontourai.station.${instanceId}` }
         : {}),
@@ -695,6 +713,44 @@ function runningServiceSpawnSync(unitPath: string): Mock {
     }
     if (command === 'systemctl' && args.includes('is-enabled')) {
       return { status: 0, stderr: '', stdout: 'enabled\n' };
+    }
+    if (process.platform === 'win32') {
+      if (/\\schtasks\.exe$/i.test(command) && args.includes('/XML')) {
+        const wrapper = unitPath
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&apos;');
+        const interpreter = win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'cmd.exe',
+        );
+        return {
+          status: 0,
+          stderr: '',
+          stdout: `<Task><Principals><Principal><UserId>S-1-5-21-1000</UserId><RunLevel>LeastPrivilege</RunLevel></Principal></Principals><Actions><Exec><Command>${interpreter}</Command><Arguments>/d /c &quot;${wrapper}&quot;</Arguments></Exec></Actions></Task>`,
+        };
+      }
+      if (/\\whoami\.exe$/i.test(command) && args.includes('/user')) {
+        return {
+          status: 0,
+          stderr: '',
+          stdout: '"DESKTOP-WIN\\fixture","S-1-5-21-1000"\n',
+        };
+      }
+      if (/\\powershell\.exe$/i.test(command)) {
+        const program = Buffer.from(args[3] ?? '', 'base64').toString(
+          'utf16le',
+        );
+        if (
+          program.includes('Get-ScheduledTask') &&
+          program.includes('[int]$task.State')
+        ) {
+          return { status: 0, stderr: '', stdout: '4\n' };
+        }
+      }
     }
     return fallback(command, args);
   });
@@ -5749,9 +5805,9 @@ describe('upgrade', () => {
       const installRoot = join(TEST_ROOT, `portable-${runtimeChannel}`);
       const release = join(installRoot, 'releases', 'a'.repeat(64));
       const stationHome = join(TEST_ROOT, `home-${runtimeChannel}`);
-      ensureDir(release);
+      ensureTrustedInstallDirectory(release);
       ensureDir(stationHome);
-      writeFileSync(
+      writeTrustedInstallFile(
         join(release, '.station-release.json'),
         `${JSON.stringify({
           schemaVersion: 2,
@@ -5770,7 +5826,7 @@ describe('upgrade', () => {
       writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
         mode: 0o700,
       });
-      writeFileSync(
+      writeTrustedInstallFile(
         join(installRoot, '.station-portable-install-root'),
         'station-portable-install-root-v1\n',
       );
@@ -5875,9 +5931,9 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-service');
     const release = join(installRoot, 'releases', 'e'.repeat(64));
     const stationHome = join(TEST_ROOT, 'home-service');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -5892,7 +5948,7 @@ describe('upgrade', () => {
     writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -5994,8 +6050,8 @@ describe('upgrade', () => {
     async ({ state }) => {
       const installRoot = join(TEST_ROOT, 'portable-unknown-ring');
       const release = join(installRoot, 'releases', 'd'.repeat(64));
-      ensureDir(release);
-      writeFileSync(
+      ensureTrustedInstallDirectory(release);
+      writeTrustedInstallFile(
         join(release, '.station-release.json'),
         `${JSON.stringify({
           schemaVersion: 2,
@@ -6070,9 +6126,9 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-mismatch');
     const release = join(installRoot, 'releases', 'c'.repeat(64));
     const stationHome = join(TEST_ROOT, 'home-mismatch');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -6087,7 +6143,7 @@ describe('upgrade', () => {
     writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -6120,9 +6176,9 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-permissive-root');
     const release = join(installRoot, 'releases', 'e'.repeat(64));
     const stationHome = join(TEST_ROOT, 'home-permissive-root');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -6137,7 +6193,7 @@ describe('upgrade', () => {
     writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -7945,7 +8001,7 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
 // generated script) rather than relying on Vitest to produce it — the
 // `globalThis.__name` shim in `buildUiServerScript` is what's asserted, not
 // this test's own transform.
-describe('buildUiServerScript output runs as a real standalone node -e process (code-review M2)', () => {
+describe('buildUiServerScript output runs as a real standalone node process (code-review M2)', () => {
   const makeUiDir = trackTempDirs();
 
   function spawnUiScript(script: string) {
@@ -7961,8 +8017,8 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         };
       })();
     `;
-    const child = spawn(process.execPath, ['-e', observeListening + script], {
-      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    const child = spawn(process.execPath, ['-'], {
+      stdio: ['pipe', 'ignore', 'pipe', 'ipc'],
       windowsHide: true,
       env: {
         ...process.env,
@@ -8003,6 +8059,7 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         reject(new Error(`UI child exited (${code}, ${signal}): ${stderr}`));
       });
     });
+    child.stdin!.end(observeListening + script);
     return { child, listening, stderr: () => stderr };
   }
 
@@ -10283,13 +10340,13 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     const installRoot = join(TEST_ROOT, 'archive-install');
     const version = join(installRoot, 'versions', '0.7.0-nightly.3');
     const stationHome = join(TEST_ROOT, 'home-archive');
-    ensureDir(version);
+    ensureTrustedInstallDirectory(version);
     ensureDir(stationHome);
     writeFileSync(
       join(version, '.station-prebuilt-archive'),
       'station-prebuilt-archive-v1\n',
     );
-    writeFileSync(
+    writeTrustedInstallFile(
       join(version, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -10304,7 +10361,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     writeFileSync(join(version, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -10541,9 +10598,9 @@ describe('station upgrade under the managed update limit (#4522)', () => {
     const installRoot = join(TEST_ROOT, `managed-portable-${releaseChannel}`);
     const release = join(installRoot, 'releases', 'a'.repeat(64));
     const stationHome = join(TEST_ROOT, `managed-home-${releaseChannel}`);
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -10558,7 +10615,7 @@ describe('station upgrade under the managed update limit (#4522)', () => {
     writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );

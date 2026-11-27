@@ -116,7 +116,9 @@
 
     "src-ui/src/views/settings/StationRoutesSection.tsx",
 
-    "src-ui/src/components/connections/useStationRoutes.ts"
+    "src-ui/src/components/connections/useStationRoutes.ts",
+
+    "src-server/routes/external-session-history.ts"
   ],
 
   "checks": [

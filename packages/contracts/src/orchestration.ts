@@ -127,6 +127,34 @@ export interface AttachedSourceActivity {
 /** How recent a transcript write keeps an open turn `active`. */
 export const ATTACHED_SOURCE_ACTIVE_WINDOW_MS = 5 * 60_000;
 
+export const EXTERNAL_SESSION_HISTORY_PREVIEW = 'external-session-history';
+
+export interface ExternalSessionHistoryEntry {
+  id: string;
+  provider: string;
+  cwd: string;
+  updatedAt: string;
+  hasTranscript: boolean;
+}
+
+export interface ExternalSessionHistoryPage {
+  sessions: ExternalSessionHistoryEntry[];
+  nextOffset: number | null;
+  partial: boolean;
+}
+
+export interface ExternalSessionTranscriptPage {
+  messages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
+  nextCursor: string | null;
+  startsNearEnd: boolean;
+  truncated?: boolean;
+}
+
+export interface ExternalSessionHistoryImport {
+  threadId: string;
+  more: boolean;
+}
+
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
   | {

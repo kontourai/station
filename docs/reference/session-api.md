@@ -2841,3 +2841,27 @@ reply**. This display does not enable Stop or Steer for a closed turn.
 
 Elapsed displays share `src-ui/src/utils/relativeTime.ts` and use `45s`,
 `2m 1s`, and `1h 4m`. Under an hour, live clocks retain seconds.
+
+## Third-party history preview
+
+A Station owner can browse the host's provider transcripts through the enabled
+**Third-party history** Feature Preview on a personal Station.
+
+- `GET /api/orchestration/external-history?offset=0&search=` returns one bounded
+  recent catalog page. Specify `provider` to page further through that engine.
+  It reports partial results when a scan reaches its budget or cannot complete.
+- `GET /api/orchestration/external-history/:id/transcript` reads a bounded text
+  preview without importing it. The response sets `truncated` when it shortens
+  or omits text to keep the preview small. Pass the returned `nextCursor` on a later
+  request to keep reading the same transcript. Pass `from=start` to start at the
+  beginning. Only sources that can read
+  transcripts expose this operation.
+- `POST /api/orchestration/external-history/:id/import?operationId=…` saves a bounded batch
+  through the ordinary attached-session owner. The returned `threadId` is
+  the saved Session. Repeat with the same operation ID while `more` is true.
+  Use `DELETE /api/orchestration/external-history/:id/import/:operationId` to
+  cancel independently of the HTTP transport. Canceling stops pending work
+  between writes. Already committed records and progress remain available.
+
+The catalog IDs and cursors are opaque and scoped to the serving Station.
+Refresh the catalog if a source or its cursor expires.

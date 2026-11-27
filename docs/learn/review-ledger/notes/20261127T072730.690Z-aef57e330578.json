@@ -1,0 +1,11 @@
+{
+  "revision": "a10a7a7401a5b3e939fc5b7399229ef89f53b430",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked gallery readiness, route teardown and fixture policy for the four third-party history screens.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked gallery readiness, route teardown and fixture policy for the four third-party history screens.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked gallery readiness, route teardown and fixture policy for the four third-party history screens.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

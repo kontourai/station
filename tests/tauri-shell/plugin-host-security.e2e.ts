@@ -16,6 +16,39 @@ const PLUGIN_NAME = 'hostile-plugin';
 const DECLARED_SLUG = 'hostile-panel';
 const PWNED_KEY = 'plugin-host-pwned';
 
+const unavailableFixtureRoutes = new Set([
+  'GET /acp/connections',
+  'GET /api/agents',
+  'GET /api/attention',
+  'GET /api/auth/authority',
+  'GET /api/boot',
+  'GET /api/connections/agents',
+  'GET /api/connections/models',
+  'GET /api/consent/native-eligibility',
+  'GET /api/conversations',
+  'GET /api/environments/ssh/sessions',
+  'GET /api/feature-previews',
+  'GET /api/me/appearance',
+  'GET /api/me/layouts',
+  'GET /api/models',
+  'GET /api/models/capabilities',
+  'GET /api/notifications/deliveries',
+  'GET /api/orchestration/events',
+  'GET /api/orchestration/pane-host/hostile/catalog',
+  'GET /api/orchestration/sessions/read-model',
+  'GET /api/orchestration/work-claims',
+  'GET /api/projects/hostile/channels',
+  'GET /api/projects/hostile/operating-state/availability',
+  'GET /api/settings/managed-policy',
+  'GET /api/system/capabilities',
+  'GET /api/system/core-update',
+  'GET /api/system/skills',
+  'GET /api/tasks',
+  'GET /notifications',
+  'POST /api/presence/focus',
+  'POST /api/telemetry/panes',
+]);
+
 type ListeningServer = {
   origin: string;
   server: Server;
@@ -25,6 +58,7 @@ type AttackHits = {
   blockedFetch: number;
   secretApi: number;
   requests: string[];
+  unexpectedRequests: string[];
 };
 
 let remote: ListeningServer;
@@ -34,7 +68,16 @@ let browser!: DirectWebDriver;
 let fixture: TauriShellFixture;
 let stationOrigin = 'tauri://localhost';
 let hostileBundle = '';
-const hits: AttackHits = { blockedFetch: 0, secretApi: 0, requests: [] };
+let releaseHostileBundle!: () => void;
+const hostileBundleReady = new Promise<void>((resolve) => {
+  releaseHostileBundle = resolve;
+});
+const hits: AttackHits = {
+  blockedFetch: 0,
+  secretApi: 0,
+  requests: [],
+  unexpectedRequests: [],
+};
 
 function send(
   response: import('node:http').ServerResponse,
@@ -214,7 +257,10 @@ function remoteResponse(
     });
   }
   if (pathname === `/api/plugins/${PLUGIN_NAME}/bundle.js`) {
-    return send(response, 200, hostileBundle, 'application/javascript');
+    void hostileBundleReady.then(() =>
+      send(response, 200, hostileBundle, 'application/javascript'),
+    );
+    return;
   }
   if (pathname === `/api/plugins/${PLUGIN_NAME}/bundle.css`) {
     return send(response, 200, '', 'text/css');
@@ -262,7 +308,23 @@ function remoteResponse(
   if (pathname === '/api/events' || pathname === '/events') {
     return send(response, 204, '');
   }
-  return json(response, { success: true, data: [] });
+  const route = `${request.method ?? 'GET'} ${pathname}`;
+  if (unavailableFixtureRoutes.has(route)) {
+    return send(
+      response,
+      503,
+      JSON.stringify({
+        success: false,
+        error: 'This service is unavailable in the plugin containment fixture',
+      }),
+    );
+  }
+  hits.unexpectedRequests.push(route);
+  return send(
+    response,
+    501,
+    JSON.stringify({ success: false, error: 'Unmodeled fixture request' }),
+  );
 }
 
 async function setUp() {
@@ -294,7 +356,31 @@ async function setUp() {
       parentTauri = 'blocked:' + String(error && error.name);
     }
     document.documentElement.dataset.parentTauri = parentTauri;
-    const ownTauri = typeof window.__TAURI_INTERNALS__;
+    const ownIpc = window.__TAURI_INTERNALS__?.invoke;
+    const nativeUri = typeof ownIpc === 'function'
+      ? window.__TAURI_INTERNALS__.convertFileSrc('bundled_server_status', 'ipc')
+      : null;
+    const report = (transport, details = {}) => {
+      window.parent.postMessage({ method: 'fill', params: {
+        ...details, transport, parentTauri,
+        height: parentTauri === 'blocked:SecurityError' &&
+          (transport === 'bridge-absent' || transport === 'csp-blocked') ? 721 : 999
+      } }, '*');
+    };
+    addEventListener('securitypolicyviolation', (event) => {
+      if (event.blockedURI === nativeUri && event.effectiveDirective === 'connect-src') {
+        report('csp-blocked', { blockedUri: event.blockedURI });
+      }
+    });
+    if (typeof ownIpc === 'function') {
+      report('pending');
+      ownIpc('bundled_server_status').then(
+        () => report('reachable'),
+        (error) => report('rejected', { reason: String(error) })
+      );
+    } else {
+      report('bridge-absent');
+    }
     try { window.top.localStorage.setItem(${JSON.stringify(PWNED_KEY)}, '1'); } catch {}
     try { window.top.document.body.setAttribute('data-plugin-pwned', '1'); } catch {}
     try { fetch(${JSON.stringify(`${blocked.origin}/exfiltrate`)}).catch(() => {}); } catch {}
@@ -302,11 +388,6 @@ async function setUp() {
       id: 'over-scoped', permission: 'network.fetch', path: '/api/secret', method: 'POST'
     } }, '*');
     window.parent.postMessage({ method: 'navigate', params: { target: '/settings' } }, '*');
-    window.parent.postMessage({ method: 'fill', params: {
-      height: ownTauri === 'undefined' && parentTauri === 'blocked:SecurityError'
-        ? 721
-        : 999
-    } }, '*');
     document.documentElement.dataset.hostileComplete = 'true';
     window.__station_ai_plugins = {
       [${JSON.stringify(PLUGIN_NAME)}]: {
@@ -326,6 +407,7 @@ async function setUp() {
 }
 
 async function tearDown() {
+  releaseHostileBundle();
   await Promise.all([
     close(remote?.server),
     close(frame?.server),
@@ -335,6 +417,7 @@ async function tearDown() {
 }
 
 async function runProof() {
+  const startupDeadline = Date.now() + 120_000;
   // Spans the shell's boot burst, which occupies the WebView main loop that
   // `execute/sync` runs on. The budget is long because the QUEUE is long; the
   // per-attempt bound (SCRIPT_TIMEOUT_MS, 5 s) stays short so this loop gets
@@ -362,11 +445,28 @@ async function runProof() {
       return mainBridge === 'object';
     },
     {
-      timeout: 30_000,
+      timeout: Math.min(30_000, Math.max(1, startupDeadline - Date.now())),
       timeoutMsg: 'The Tauri bridge was never installed on the main frame.',
     },
   );
   assert.equal(mainBridge, 'object');
+  await browser.waitUntil(
+    async () =>
+      (await browser.execute(async () => {
+        const nativeWindow = window as Window & {
+          __TAURI_INTERNALS__: {
+            invoke(command: string): Promise<{ phase: string }>;
+          };
+        };
+        return (
+          await nativeWindow.__TAURI_INTERNALS__.invoke('bundled_server_status')
+        ).phase;
+      })) === 'running',
+    {
+      timeout: Math.max(1, startupDeadline - Date.now()),
+      timeoutMsg: 'Fixture sidecar never became ready.',
+    },
+  );
   stationOrigin = await browser.execute(() =>
     window.location.origin === 'null'
       ? 'tauri://localhost'
@@ -407,7 +507,9 @@ async function runProof() {
     null,
   );
 
-  await browser.refresh();
+  const panePath =
+    '/projects/hostile/layouts/proof/panes/hostile-pane/hostile-instance';
+  await browser.navigate(new URL(panePath, stationOrigin).href);
   await browser.waitUntil(
     async () =>
       (await browser.execute(
@@ -420,81 +522,23 @@ async function runProof() {
       timeoutMsg: 'Tauri core bridge did not return after fixture reload.',
     },
   );
-  const managerSelector = '[data-testid="app-toolbar-connection"]';
-  await browser.waitUntil(
-    () =>
-      browser.execute((selector: string) => {
-        const element = document.querySelector<HTMLElement>(selector);
-        return Boolean(element && element.getClientRects().length > 0);
-      }, managerSelector),
-    { timeout: 20_000, timeoutMsg: 'Station manager button was not visible.' },
-  );
-  await browser.execute((selector: string) => {
-    document.querySelector<HTMLElement>(selector)?.click();
-  }, managerSelector);
-  const selectRemoteSelector =
-    'button[aria-label="Select remote-plugin-proof"]';
-  await browser.waitUntil(
-    () =>
-      browser.execute((selector: string) => {
-        const element = document.querySelector<HTMLElement>(selector);
-        return Boolean(element && element.getClientRects().length > 0);
-      }, selectRemoteSelector),
-    { timeout: 20_000, timeoutMsg: 'Remote profile button was not visible.' },
-  );
-  await browser.execute((selector: string) => {
-    document.querySelector<HTMLElement>(selector)?.click();
-  }, selectRemoteSelector);
-  try {
-    await browser.waitUntil(async () => hits.requests.length > 0, {
-      timeout: 5_000,
-      timeoutMsg: 'Selecting the remote profile made no handshake request.',
+  await browser.execute((frameOrigin: string) => {
+    addEventListener('message', (event) => {
+      const pluginFrame = document.querySelector<HTMLIFrameElement>(
+        'iframe[title="Plugin: hostile-panel"]',
+      );
+      if (
+        event.data?.method === 'fill' &&
+        event.origin === frameOrigin &&
+        event.source === pluginFrame?.contentWindow
+      ) {
+        const proofWindow = window as unknown as { __pluginProof?: unknown[] };
+        proofWindow.__pluginProof ??= [];
+        proofWindow.__pluginProof.push(event.data.params);
+      }
     });
-  } catch (error) {
-    const selectionState = await browser.execute(() => ({
-      body: document.body.innerText.slice(0, 1_500),
-      activeConnection: localStorage.getItem(
-        'station-connect-connections-active',
-      ),
-    }));
-    const nativeState = await browser.execute(async () => {
-      const invoke = (
-        window as unknown as {
-          __TAURI_INTERNALS__: {
-            invoke<T>(command: string): Promise<T>;
-          };
-        }
-      ).__TAURI_INTERNALS__.invoke;
-      return {
-        profiles: await invoke<string>('station_profile_store_read'),
-        bundled: await invoke<unknown>('bundled_server_status'),
-      };
-    });
-    throw new Error(
-      `Remote profile selection produced no request: ${JSON.stringify({
-        ...selectionState,
-        ariaPressed: await browser.execute(
-          (selector: string) =>
-            document.querySelector(selector)?.getAttribute('aria-pressed') ??
-            null,
-          selectRemoteSelector,
-        ),
-        fixtureRequests: hits.requests,
-        nativeState,
-        remoteOrigin: remote.origin,
-      })}`,
-      { cause: error },
-    );
-  }
+  }, frame.origin);
   await browser.execute(() => {
-    const closeManager = document.querySelector<HTMLElement>(
-      'button[aria-label="Close Station manager"]',
-    );
-    if (closeManager?.getClientRects().length) closeManager.click();
-  });
-  const panePath =
-    '/projects/hostile/layouts/proof/panes/hostile-pane/hostile-instance';
-  await browser.execute((path: string) => {
     (
       window as unknown as { __tauriShellErrors?: string[] }
     ).__tauriShellErrors = [];
@@ -508,9 +552,8 @@ async function runProof() {
         window as unknown as { __tauriShellErrors: string[] }
       ).__tauriShellErrors.push(String(event.reason));
     });
-    window.history.pushState({}, '', path);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  }, panePath);
+  });
+  releaseHostileBundle();
   // The embedded macOS driver executes element lookup on the WebView's main
   // loop. Give the lazy isolation chunk one command-free turn to resolve;
   // tight findElement polling can otherwise starve the very asset load it is
@@ -524,7 +567,10 @@ async function runProof() {
           (selector: string) => Boolean(document.querySelector(selector)),
           outerFrameSelector,
         ),
-      { timeout: 10_000, timeoutMsg: 'Plugin frame did not enter the DOM.' },
+      {
+        timeout: 20_000,
+        timeoutMsg: 'The seeded remote Station did not mount its plugin frame.',
+      },
     );
   } catch (error) {
     const state = await browser.execute(() => ({
@@ -540,6 +586,8 @@ async function runProof() {
       errors:
         (window as unknown as { __tauriShellErrors?: string[] })
           .__tauriShellErrors ?? [],
+      pluginProof: (window as unknown as { __pluginProof?: unknown })
+        .__pluginProof,
       resources: performance
         .getEntriesByType('resource')
         .map((entry) => entry.name)
@@ -566,7 +614,7 @@ async function runProof() {
     {
       timeout: 20_000,
       timeoutMsg:
-        'Hostile plugin did not report an IPC-blind, cross-origin frame.',
+        'Hostile plugin did not report a cross-origin frame with blocked native transport.',
     },
   );
   assert.equal(
@@ -602,6 +650,7 @@ async function runProof() {
     },
     { blockedFetch: 0, secretApi: 0 },
   );
+  assert.deepEqual(hits.unexpectedRequests, []);
 
   assert.equal(
     (
@@ -621,8 +670,33 @@ try {
   await setUp();
   await runProof();
   console.log(
-    `PASS: hostile plugin stayed IPC-blind in ${browser.capabilities.browserName ?? 'webview'} ${browser.capabilities.browserVersion ?? 'unknown'} (${Date.now() - started}ms)`,
+    `PASS: hostile plugin containment and native transport denial in ${browser.capabilities.browserName ?? 'webview'} ${browser.capabilities.browserVersion ?? 'unknown'} (${Date.now() - started}ms)`,
   );
+} catch (error) {
+  const renderer = await browser
+    ?.execute(() => ({
+      location: window.location.href,
+      body: document.body.innerText.slice(0, 3_000),
+      frames: [...document.querySelectorAll('iframe')].map((entry) => ({
+        src: entry.src,
+        height: getComputedStyle(entry).height,
+        style: entry.getAttribute('style'),
+      })),
+      pluginProof: (window as unknown as { __pluginProof?: unknown })
+        .__pluginProof,
+      errors:
+        (window as unknown as { __tauriShellErrors?: string[] })
+          .__tauriShellErrors ?? [],
+    }))
+    .catch(() => null);
+  console.error(
+    JSON.stringify({
+      renderer,
+      fixtureRequests: hits.requests,
+      unexpectedRequests: hits.unexpectedRequests,
+    }),
+  );
+  throw error;
 } finally {
   await tearDown();
 }
