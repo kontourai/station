@@ -25,7 +25,7 @@ import {
   createServer as createRawServer,
 } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, win32 } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { serve } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
@@ -65,6 +65,10 @@ import {
 import type { Logger } from '../../../../src-server/utils/logger.js';
 import { renderLaunchdPlist } from '../commands/service-launchd.js';
 import { renderSystemdUnit } from '../commands/service-systemd.js';
+import {
+  renderWindowsServiceCommand,
+  windowsRegistration,
+} from '../commands/service-windows.js';
 import { plutilJson } from './helpers/launchd-plist-fixture.js';
 import {
   reapAllLongRunningFixtureChildren,
@@ -593,7 +597,6 @@ function writeStaleServiceManifest(
 ): string {
   const platform = currentServicePlatform();
   const serviceDirectory = join(home, 'service');
-  const unitPath = join(serviceDirectory, `station-${instanceId}.unit`);
   ensureDir(serviceDirectory);
   const unit = {
     ...location,
@@ -607,17 +610,24 @@ function writeStaleServiceManifest(
     } as Parameters<typeof renderSystemdUnit>[0]['lifecycle'],
     servicePath: '/usr/bin:/bin',
   };
+  const registration =
+    platform === 'win32'
+      ? windowsRegistration(instanceId, unit.lifecycle)
+      : { unitPath: join(serviceDirectory, `station-${instanceId}.unit`) };
+  const { unitPath } = registration;
   writeFileSync(
     unitPath,
-    platform === 'linux'
-      ? renderSystemdUnit(unit)
-      : renderLaunchdPlist({
-          ...unit,
-          label: `io.kontourai.station.${instanceId}`,
-        }).replace(
-          '<key>ProcessType</key><string>Interactive</string>',
-          '<key>ProcessType</key><string>Background</string>',
-        ),
+    platform === 'win32'
+      ? renderWindowsServiceCommand(unit)
+      : platform === 'linux'
+        ? renderSystemdUnit(unit)
+        : renderLaunchdPlist({
+            ...unit,
+            label: `io.kontourai.station.${instanceId}`,
+          }).replace(
+            '<key>ProcessType</key><string>Interactive</string>',
+            '<key>ProcessType</key><string>Background</string>',
+          ),
   );
   writeFileSync(
     join(serviceDirectory, `${instanceId}.json`),
@@ -630,7 +640,7 @@ function writeStaleServiceManifest(
       platform,
       // The registration field a real `service install` records for each
       // backend — the status probe needs it to ask about the unit at all.
-      ...(platform === 'win32' ? { taskName: `\\Station-${instanceId}` } : {}),
+      ...registration,
       ...(platform === 'darwin'
         ? { label: `io.kontourai.station.${instanceId}` }
         : {}),
@@ -703,6 +713,44 @@ function runningServiceSpawnSync(unitPath: string): Mock {
     }
     if (command === 'systemctl' && args.includes('is-enabled')) {
       return { status: 0, stderr: '', stdout: 'enabled\n' };
+    }
+    if (process.platform === 'win32') {
+      if (/\\schtasks\.exe$/i.test(command) && args.includes('/XML')) {
+        const wrapper = unitPath
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&apos;');
+        const interpreter = win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'cmd.exe',
+        );
+        return {
+          status: 0,
+          stderr: '',
+          stdout: `<Task><Principals><Principal><UserId>S-1-5-21-1000</UserId><RunLevel>LeastPrivilege</RunLevel></Principal></Principals><Actions><Exec><Command>${interpreter}</Command><Arguments>/d /c &quot;${wrapper}&quot;</Arguments></Exec></Actions></Task>`,
+        };
+      }
+      if (/\\whoami\.exe$/i.test(command) && args.includes('/user')) {
+        return {
+          status: 0,
+          stderr: '',
+          stdout: '"DESKTOP-WIN\\fixture","S-1-5-21-1000"\n',
+        };
+      }
+      if (/\\powershell\.exe$/i.test(command)) {
+        const program = Buffer.from(args[3] ?? '', 'base64').toString(
+          'utf16le',
+        );
+        if (
+          program.includes('Get-ScheduledTask') &&
+          program.includes('[int]$task.State')
+        ) {
+          return { status: 0, stderr: '', stdout: '4\n' };
+        }
+      }
     }
     return fallback(command, args);
   });
@@ -7953,7 +8001,7 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
 // generated script) rather than relying on Vitest to produce it — the
 // `globalThis.__name` shim in `buildUiServerScript` is what's asserted, not
 // this test's own transform.
-describe('buildUiServerScript output runs as a real standalone node -e process (code-review M2)', () => {
+describe('buildUiServerScript output runs as a real standalone node process (code-review M2)', () => {
   const makeUiDir = trackTempDirs();
 
   function spawnUiScript(script: string) {
@@ -7969,8 +8017,8 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         };
       })();
     `;
-    const child = spawn(process.execPath, ['-e', observeListening + script], {
-      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    const child = spawn(process.execPath, ['-'], {
+      stdio: ['pipe', 'ignore', 'pipe', 'ipc'],
       windowsHide: true,
       env: {
         ...process.env,
@@ -8011,6 +8059,7 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         reject(new Error(`UI child exited (${code}, ${signal}): ${stderr}`));
       });
     });
+    child.stdin!.end(observeListening + script);
     return { child, listening, stderr: () => stderr };
   }
 

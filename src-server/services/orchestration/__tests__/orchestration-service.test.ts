@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createEngineOAuthProxyRoutes } from '../../../routes/mcp/engine-oauth-proxy-route.js';
 import {
   ACP_ENGINE_DURABILITY,
@@ -32137,6 +32138,7 @@ describe('OrchestrationService', () => {
     function createPolicyWorkspace(): string {
       const cwd = mkdtempSync(join(tmpdir(), 'orchestration-policy-'));
       policyWorkspaces.push(cwd);
+      execFileSync('git', ['init', '--quiet'], { cwd, windowsHide: true });
       mkdirSync(join(cwd, '.flow-agents'), { recursive: true });
       return cwd;
     }
@@ -32477,6 +32479,7 @@ describe('OrchestrationService', () => {
     function createTaskWorkspace(): string {
       const cwd = mkdtempSync(join(tmpdir(), 'orchestration-task-'));
       taskWorkspaces.push(cwd);
+      execFileSync('git', ['init', '--quiet'], { cwd, windowsHide: true });
       return cwd;
     }
 
