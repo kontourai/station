@@ -533,16 +533,25 @@ async function main() {
       `button[aria-label="Switch to ${paired.name}"]`,
     );
     await driver.clickElement(select);
-    await driver.navigateApp('/projects');
+    const workspace = await waitForElement(
+      driver,
+      `button[title="Open ${remoteProject} workspace"]`,
+    );
+    await driver.clickElement(workspace);
     await driver.waitUntil(
       async () =>
-        (await driver.execute(() => document.body.textContent ?? '')).includes(
-          remoteProject,
-        ),
+        driver.execute((project) => {
+          const text = document.body.textContent ?? '';
+          return (
+            window.location.pathname.startsWith(`/projects/${project}`) &&
+            text.includes(project) &&
+            !text.includes('Page not found')
+          );
+        }, remoteProject),
       {
         timeout: 45_000,
         timeoutMsg:
-          'The authenticated remote Project read did not reach the real shell',
+          'The paired remote Project workspace did not open in the real shell',
       },
     );
     assert.deepEqual(hintRequests, []);
