@@ -289,7 +289,7 @@ function TaskResumeDialog({
         {owner && (
           <p>
             The earlier lead ran as <strong>{owner}</strong>. New work runs
-            under your authority.
+            as you.
           </p>
         )}
         <h3>
