@@ -995,6 +995,8 @@ The journey uses an owned same-interface multicast advertisement separately
 from the remote host's supported Tailscale HTTPS ingress; a tailnet peer is not
 evidence of multicast reachability. Its [remote fixture](../../tests/tauri-shell/nearby-remote-host.ts)
 preserves existing Serve mappings and requires explicit operator approval.
+This journey is an execution procedure, not a qualification receipt; record its
+actual artifact, revision, interaction results and cleanup outcome separately.
 
 The mobile `station-discovery` plugin uses iOS NWBrowser/NetService and Android
 NsdManager for `_station._tcp.local.` services with TXT `v=1` and `transport`.

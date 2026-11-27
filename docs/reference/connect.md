@@ -1178,8 +1178,9 @@ reactive: removal or replacement cancels stale scan results. Scans default to an
 18-second outer deadline. Providers distinguish available, empty,
 permission-required, permission-denied, unavailable, timed-out, cancelled and failed.
 
-Trusted Windows shells register the native DNS-SD provider, gated by the
-selected authorized controller's default-off `desktop-nearby` Feature Preview.
+Trusted Windows Tauri shells register the native DNS-SD provider and separately
+check the selected authorized controller's default-off `desktop-nearby` Feature
+Preview before preparation and browsing.
 The browse window is five seconds with up to 1.5 seconds for confirmed shutdown;
 unconfirmed shutdown blocks another scan until restart. Windows returns at most
 32 untrusted private/link-local IPv4 hints through the same registry and access
