@@ -356,10 +356,8 @@ async function main() {
       originalLocal,
       beforeCredentials,
     );
-    const originalSelection = await driver.execute(() =>
-      document
-        .querySelector('button[aria-label^="Choose Station"]')
-        ?.getAttribute('aria-label'),
+    const originalSelection = await driver.execute(
+      () => document.querySelector('.app-toolbar__conn-label')?.textContent,
     );
     assert.ok(originalSelection);
     assert.equal(
@@ -428,10 +426,8 @@ async function main() {
       'Discovery must not cause application requests at the advertised HTTPS destination',
     );
     assert.equal(
-      await driver.execute(() =>
-        document
-          .querySelector('button[aria-label^="Choose Station"]')
-          ?.getAttribute('aria-label'),
+      await driver.execute(
+        () => document.querySelector('.app-toolbar__conn-label')?.textContent,
       ),
       originalSelection,
     );
@@ -515,17 +511,18 @@ async function main() {
     assert.ok(closeSetup);
     await driver.clickElement(closeSetup);
     assert.equal(
-      await driver.execute(() =>
-        document
-          .querySelector('button[aria-label^="Choose Station"]')
-          ?.getAttribute('aria-label'),
+      await driver.execute(
+        () => document.querySelector('.app-toolbar__conn-label')?.textContent,
       ),
       originalSelection,
       'Saving explicit access must not switch the controller',
     );
-    const chooseStation = await driver.findElement(
-      'button[aria-label^="Choose Station"]',
+    assert.equal(
+      (await ipc(driver, 'plugin:station-discovery|prepare')).status,
+      'ready',
+      'After pairing, the selected original controller must still authorize discovery',
     );
+    const chooseStation = await driver.findElement('button.app-toolbar__conn');
     assert.ok(chooseStation);
     await driver.clickElement(chooseStation);
     const manageStations = await waitForElement(
