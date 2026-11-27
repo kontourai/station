@@ -752,10 +752,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     layerEntryIdRef.current = entry;
     layerHistoryRef.current = registerDialogHistory(
       entry,
-      (reason) => {
-        if (reason === 'navigation') restorePhoneLayerRef.current();
-        else leavePhoneLayerByBackRef.current();
-      },
+      () => leavePhoneLayerByBackRef.current(),
       null,
       { adoptLiveEntry: adopted !== null },
     );
