@@ -1,5 +1,3 @@
-import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
-
 export { isCreateRequestHandle as isForegroundDispatchHandle } from '../../services/orchestration/create-request-claims.js';
 
 import { createHash, randomUUID } from 'node:crypto';
@@ -36,6 +34,7 @@ import type {
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
   CLIENT_PROTOCOL_HEADER,
+  pairingScopeIncludes,
   readClientProtocolHeader,
 } from '@kontourai/station-contracts/environment-security';
 import {
