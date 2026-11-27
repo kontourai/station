@@ -1290,6 +1290,11 @@ keeps a file for as long as its message stands. If a Project channel
 pauses attachments while its file store is repaired, it says so; remove the
 files and your text still sends.
 
+On a phone, tap an image to open the full-screen preview. Swipe left or right
+while the image fits the screen, or tap the chevrons below the image. Pinch to
+zoom and drag to pan. Open **⋯** for fit, actual size, and zoom controls. Use
+the download icon to save the current image.
+
 An existing chat can become a Task through **New Task from this** in its More menu.
 The **Add to Task** picker also offers **New Task from this** for an answer or input.
 **New Task from this** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or choose **Stop shaping this Task** in the chat’s More menu. No Task is created until acceptance.
