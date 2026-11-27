@@ -560,6 +560,8 @@ describe('station start, restart and stop under the process supervisor', () => {
       );
       expect(started.code, `${started.stdout}\n${started.stderr}`).toBe(0);
       expect(started.stdout).toContain('✓ Supervisor: pid');
+      expect(started.stdout).toContain('✓ Consent: http://127.0.0.1:');
+      expect(started.stdout).not.toContain('Consent listener unavailable');
       const record = readRecord();
       launchedPids.add(record.serverPid);
       launchedPids.add(record.uiPid);
