@@ -1,0 +1,7 @@
+{
+  "revision": "41d437f4aa1a6d6158005a9d5e9ccf6530206f0f",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked the documented and tested dedicated SDK subpath for the owner-scoped History query family.","inputs":["packages/sdk/src/__tests__/publicBarrel.test.ts"]}
+  ]
+}
