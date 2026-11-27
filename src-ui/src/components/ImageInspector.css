@@ -132,9 +132,9 @@
   position: absolute;
   inset-block-start: 100%;
   inset-inline-end: max(var(--k-space-1), var(--safe-right));
-  background: var(--bg-secondary);
+  background: var(--k-panel);
   border-radius: var(--k-radius-control);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--k-shadow);
 }
 
 .image-inspector--gallery .image-inspector__viewport {
@@ -146,7 +146,7 @@
 .image-preview-panel--gallery {
   gap: 0;
   padding: 0;
-  background: var(--bg-primary);
+  background: var(--k-bg);
   border: 0;
   overflow: hidden;
 }
@@ -173,5 +173,5 @@
 }
 .image-preview-navigation output {
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
+  color: var(--k-text-faint);
 }
