@@ -231,7 +231,6 @@ function sshView(
   } as SshEnvironmentView;
 }
 
-import { ConnectionsSectionFrame } from '../views/ConnectionsSectionFrame';
 import { ComputersSection } from '../views/connections-hub/ComputersSection';
 import {
   knownEnvironmentRegistry,
@@ -461,52 +460,6 @@ describe('ComputersSection', () => {
     expect(
       document.querySelectorAll('.connections-computers__row'),
     ).toHaveLength(1);
-  });
-
-  // The rail's count used to be `savedStations.length + sshComputers.length`,
-  // which is wrong in BOTH directions against the list it labels: it missed
-  // every manual entry, and counted a paired device and its SSH profile
-  // twice where the body folds them into one row. Both cases are present
-  // here, so a count that is merely "close" still fails.
-  test('the rail count is the number of rows the body renders', async () => {
-    connectionsState.data = [
-      makeConnection({ environmentId: 'environment-box-b' }),
-    ];
-    sshState.data = [
-      sshView({ id: 'ssh-env-1', environmentId: 'environment-box-b' }),
-      sshView({ id: 'ssh-env-2' }),
-    ];
-    localStorage.setItem(
-      'station-known-environments',
-      JSON.stringify([
-        {
-          schemaVersion: 1,
-          id: 'manual-1',
-          label: 'Manual host',
-          source: 'manual',
-          endpoints: [],
-          createdAt: 0,
-          updatedAt: 0,
-        },
-      ]),
-    );
-    resetKnownEnvironmentRegistry();
-
-    render(
-      <ConnectionsSectionFrame sectionId="computers">
-        <ComputersSection />
-      </ConnectionsSectionFrame>,
-    );
-
-    const renderedRows = document.querySelectorAll(
-      '.connections-computers__row',
-    ).length;
-    // 1 manual + 1 folded (paired + its SSH profile) + 1 standalone SSH.
-    expect(renderedRows).toBe(3);
-    const computersTab = screen
-      .getAllByRole('tab')
-      .find((element) => element.textContent?.startsWith('Computers'))!;
-    expect(computersTab.textContent).toContain(String(renderedRows));
   });
 
   test('unconfigured peer credentials keep the CLI command behind an advanced disclosure, not a row (CI-R13)', () => {

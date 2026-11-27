@@ -316,7 +316,7 @@ Users see one sentence wherever a switch refuses something, for example
 https://help.example.com/station". Settings shows it instead of the sharing
 choices, beside a refused marketplace and in the product and OpenTelemetry
 delivery status, where the connection checks are disabled;
-the Connections page shows it for webhooks, and `station telemetry status`
+Customize › Tools shows it for webhooks, and `station telemetry status`
 prints it. API refusals answer `403` with code
 `managed-policy-capability-disabled`. A refused registry install also carries
 `reason: "managed-signature-required"` when the signature requirement refused
@@ -696,7 +696,7 @@ fills only what the user left unset:
 The pins apply to every launch of the engine that runs it: chats, Claude's
 model discovery, ACP availability probes and sign-in, and the OpenCode model
 listing. Claude's version and sign-in checks run the pinned program. The
-Connections page's installed check for Claude, Codex and Muse still looks the
+Customize › Engines installed check for Claude, Codex and Muse still looks the
 program up by name, so with only the pinned program installed it can report
 the engine as missing even though chats run. A Claude
 launch that would not run the pinned program (for example because the path is

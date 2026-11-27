@@ -763,7 +763,7 @@ function buildSystemRecommendation(input: {
       type: 'providers',
       actionLabel: 'Review model connections',
       title: 'No model connection is ready for chat',
-      detail: 'Enable or repair a model connection in Connections.',
+      detail: 'Enable or repair a model connection in Customize → Providers.',
     };
   }
   if (detectedProvider) {
@@ -783,7 +783,7 @@ function buildSystemRecommendation(input: {
   return {
     code: 'unconfigured',
     type: 'connections',
-    actionLabel: 'Open Connections',
+    actionLabel: 'Open Customize',
     title: 'Choose what powers Station',
     detail: 'Add a model connection or engine for chat, agents, or both.',
   };

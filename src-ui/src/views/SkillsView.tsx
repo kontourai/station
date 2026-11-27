@@ -19,6 +19,7 @@ import {
   useUninstallSkillMutation,
   useUpdateLocalSkillMutation,
 } from '@kontourai/station-sdk';
+import { useSetupImportSourcesQuery } from '@kontourai/station-sdk/setup-imports-query';
 import { applyReturnFocus } from '@kontourai/station-shared/return-focus';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActionRow } from '../components/ActionRow';
@@ -28,6 +29,7 @@ import { EngineGlyph } from '../components/icons/Glyph';
 import { ImportSkillsModal } from '../components/modals/ImportSkillsModal';
 import { SkillRunModal } from '../components/modals/SkillRunModal';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
+import { CodexPromptImportDialog } from '../components/setup/CodexPromptImportDialog';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import {
@@ -41,6 +43,7 @@ import { useLaunchChat } from '../hooks/useActiveChatSessions';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../hooks/useUrlSelection';
+import { stationViewReadQueryOptions } from '../lib/queryDefaults';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { describeStationFailure } from '../utils/stationFailure';
 import { SkillCommandSection } from './skills/SkillCommandSection';
@@ -154,6 +157,13 @@ export function SkillsView({
   );
   const [showRunModal, setShowRunModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showCodexImport, setShowCodexImport] = useState(false);
+  // Offered only when this Station can read a Codex prompts folder. The
+  // check is operator-only, so anyone else simply does not see the entry.
+  const codexPromptsAvailable =
+    useSetupImportSourcesQuery(stationViewReadQueryOptions).data?.some(
+      (source) => source.id === 'codex-prompts' && source.available,
+    ) ?? false;
   const [importResults, setImportResults] = useState<
     SkillImportResultRow[] | null
   >(null);
@@ -665,7 +675,7 @@ export function SkillsView({
               size="sm"
               onClick={() => navigate('/registry/skills')}
             >
-              Browse Registry Skills
+              Browse skills
             </Button>
           )
         }
@@ -684,7 +694,7 @@ export function SkillsView({
                   className="split-pane__add-btn"
                   onClick={() => navigate('/registry/skills')}
                 >
-                  Browse Registry
+                  Browse skills
                 </button>
               ) : (
                 <button
@@ -713,6 +723,20 @@ export function SkillsView({
                 {importSkillsMutation.isPending ? 'Importing…' : 'Import .md'}
               </button>
             </div>
+            {/* Its own row: the list's action row carries at most two
+                labelled actions. The Skills page's New skill menu (first-run-08
+                change 4) is where this entry moves when the page gains it. */}
+            {codexPromptsAvailable && (
+              <div className="skill-library__codex-import-row">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowCodexImport(true)}
+                >
+                  Import from Codex…
+                </Button>
+              </div>
+            )}
           </>
         }
       >
@@ -851,7 +875,7 @@ export function SkillsView({
                         <p className="skill-detail__source-note">
                           {writeRefusal
                             ? `${mutationRefusal ? '' : 'Read-only. '}${skillWriteRefusalNote(writeRefusal)}`
-                            : 'This skill is read-only here. Browse Registry to discover or install skills; create a new workspace skill to author one.'}
+                            : 'This skill is read-only here. Browse skills to find more; create a new workspace skill to author one.'}
                         </p>
                         {/* The path is AUTHOR-CONTROLLED — a plugin names its
                             own directories and the last segment is usually the
@@ -1078,6 +1102,11 @@ export function SkillsView({
           setImportResults(null);
           setImportError(null);
         }}
+      />
+      <CodexPromptImportDialog
+        open={showCodexImport}
+        onClose={() => setShowCodexImport(false)}
+        existingSkillNames={skills.map((skill) => skill.name)}
       />
       <DiscardModal />
     </div>

@@ -1,0 +1,7 @@
+{
+  "revision": "f0a5aa689a0bc35fef79acdc615508c6fe9cde41",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"The shipped bundle changed only by the module map's corrected Customize group constant name; this page's description of the docs tools and the Apps › Library install wording is unaffected.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

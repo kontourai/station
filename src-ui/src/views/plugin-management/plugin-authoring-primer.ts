@@ -28,7 +28,7 @@ export function buildPluginAuthoringPrimer({
     '',
     'Before you change anything, read the station-docs `plugin-authoring` topic for the manifest format, Workspace Panes, renderer kinds and SDK hooks. After each change, run the `validate_plugin` tool on this folder and fix what it reports.',
     '',
-    "Don't install, update or remove plugins. When it's ready, tell me and I'll install it myself from Plugins → Install plugin.",
+    "Don't install, update or remove plugins. When it's ready, tell me and I'll install it myself from Apps › Library → Install plugin.",
     '',
     'What I want it to do: ',
   ].join('\n');

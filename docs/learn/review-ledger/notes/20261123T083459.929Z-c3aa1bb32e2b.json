@@ -1,0 +1,7 @@
+{
+  "revision": "909eb3da12fab9cf67a91ff2a1dcf2a0de0872e8",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Use a skill section re-read against the two Skills suites: the change only answers the page's setup-import sources check (no Codex prompts available), so the library, Import .md, open-imported, edit and removal claims they back are unchanged and all 66 tests pass; the Import from Codex offer stays covered by the launch suite.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/SkillsView.navigation.test.tsx","src-ui/src/__tests__/SkillsView.test.tsx"]}
+  ]
+}

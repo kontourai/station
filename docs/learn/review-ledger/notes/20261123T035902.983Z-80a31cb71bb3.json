@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Unchanged from the Apps slice head; it documents API routes only, which neither slice changed in the combined tree.","inputs":["docs/reference/api.md"]}
+  ]
+}

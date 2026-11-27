@@ -1,0 +1,7 @@
+{
+  "revision": "ac8fa3df765ba83130b45cde41332fedaf189e44",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Import .md sentence now matches lenientDescription in skill-metadata.ts: a refused header's description is kept only as a single plain-text line of at most 1,024 characters (MAX_DESCRIPTION_LENGTH) with no control or direction-changing character.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

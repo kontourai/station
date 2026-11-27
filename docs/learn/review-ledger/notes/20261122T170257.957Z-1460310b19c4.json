@@ -1,0 +1,7 @@
+{
+  "revision": "04bd4f768351f1ce7c2500c561698108b9c67e06",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Install wording names Apps > Library.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

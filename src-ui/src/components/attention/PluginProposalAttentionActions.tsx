@@ -6,7 +6,7 @@ import { PluginProposalSummary } from '../plugins/PluginProposalSummary';
 /**
  * #2323 S5: an agent proposed installing, updating or removing a plugin.
  *
- * Nothing on this row decides the change. "Open in Plugins" lands on the
+ * Nothing on this row decides the change. "Open in Apps" lands on the
  * ordinary flow — the install preview with its consent, or the update or
  * remove confirmation — and that is where the person decides. Dismiss closes
  * the proposal through `POST /api/plugin-proposals/:id/dismiss`, the one
@@ -37,7 +37,7 @@ export function PluginProposalAttentionActions({
           className="attention-item__action attention-item__action--primary"
           href={item.openHref}
         >
-          Open in Plugins
+          Open in Apps
         </a>
         <button
           type="button"

@@ -1,0 +1,7 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"No SDK surface changed; registry item fields are not listed here.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

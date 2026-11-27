@@ -1,0 +1,7 @@
+{
+  "revision": "f59331fd1f2dceb0e4fbac6fc6021d045e34168e",
+
+  "notes": [
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"The fix round only changes how listing resolves sources (once per entry, same refusals) and reads facts; install staging, consent and activation are unchanged.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/providers/registries/json-manifest-registry.ts"]}
+  ]
+}

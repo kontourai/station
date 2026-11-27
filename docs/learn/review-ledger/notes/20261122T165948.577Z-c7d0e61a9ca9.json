@@ -1,0 +1,7 @@
+{
+  "revision": "0672bb70a7355525e1c217ebe9e4f713930638ff",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Only the proposal message wording changed to Apps > Library; API reference route shapes unchanged.","inputs":["src-server/routes/plugins/plugin-person-approval.ts"]}
+  ]
+}

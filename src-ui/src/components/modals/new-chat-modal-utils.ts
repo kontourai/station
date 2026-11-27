@@ -474,8 +474,129 @@ interface NewChatModalViewModel {
   compatibilityMessage?: string;
 }
 
+/**
+ * Where an Agent stands in the fixed order for new chats: Claude Code, Codex,
+ * the other engines, then Station's own engine. `undefined` for an Agent
+ * someone authored: Station never picks one of those for a person.
+ */
+function newChatOrderRank(agent: AgentData): number | undefined {
+  if (isStationAgentIdentity(agent.slug)) return 3;
+  if (!isEngineProvenanceAgent(agent)) return undefined;
+  if (agent.engineId === 'claude') return 0;
+  if (agent.engineId === 'codex') return 1;
+  return 2;
+}
+
+/** Inside one rank, by engine id and then Agent id, never list position. */
+function newChatOrderKey(agent: AgentData): string {
+  return `${agent.engineId ?? ''}\u0000${agent.slug}`;
+}
+
+/**
+ * Whether an engine's own alias row (`engineDefault`) is folded away: another
+ * of that engine's own Agents stands in for it, or the alias cannot start and
+ * an Agent someone authored runs on the same engine connection (the
+ * archive#3027(c) dead row). A runnable alias stays: an authored Agent never
+ * takes its engine away. One rule for the picker's rows and the fixed order,
+ * so the default for new chats is always a row the picker shows.
+ */
+function aliasFoldedAway(
+  agents: Iterable<AgentData>,
+): (agent: AgentData) => boolean {
+  const engineOwned = new Set<string>();
+  const anyBound = new Set<string>();
+  for (const agent of agents) {
+    const connectionId = agent.execution?.agentConnectionId;
+    if (agent.engineDefault || !connectionId) continue;
+    anyBound.add(connectionId);
+    if (isEngineProvenanceAgent(agent)) engineOwned.add(connectionId);
+  }
+  return (agent) => {
+    const connectionId = agent.execution?.agentConnectionId;
+    if (!agent.engineDefault || !connectionId) return false;
+    return (
+      engineOwned.has(connectionId) ||
+      (anyBound.has(connectionId) && !agentRunnability(agent).runnable)
+    );
+  };
+}
+
+/**
+ * The row that shows the Station's default for new chats among `agents`: the
+ * stored Agent itself, or, when it is an engine's alias row that another of
+ * that engine's own Agents now stands in for, that Agent (the row the menu
+ * shows in its place). The stored record is left as it is.
+ */
+export function newChatDefaultRow(
+  agents: readonly AgentData[],
+  storedSlug: string | undefined,
+): string | undefined {
+  if (!storedSlug) return storedSlug;
+  const stored = agents.find((agent) => agent.slug === storedSlug);
+  const connectionId = stored?.execution?.agentConnectionId;
+  if (!stored?.engineDefault || !connectionId) return storedSlug;
+  if (!aliasFoldedAway(agents)(stored)) return storedSlug;
+  const standIns = agents
+    .filter(
+      (agent) =>
+        !agent.engineDefault &&
+        isEngineProvenanceAgent(agent) &&
+        agent.execution?.agentConnectionId === connectionId,
+    )
+    .sort(
+      (a, b) =>
+        Number(agentRunnability(b).runnable) -
+          Number(agentRunnability(a).runnable) || a.slug.localeCompare(b.slug),
+    );
+  return standIns[0]?.slug ?? storedSlug;
+}
+
+/** The runnable Agents the fixed order can pick, in that order. */
+function newChatOrder(agents: readonly AgentData[]): AgentData[] {
+  const folded = aliasFoldedAway(agents);
+  return agents
+    .filter(
+      (agent) =>
+        agentRunnability(agent).runnable &&
+        newChatOrderRank(agent) !== undefined &&
+        !folded(agent),
+    )
+    .sort(
+      (a, b) =>
+        (newChatOrderRank(a) ?? 0) - (newChatOrderRank(b) ?? 0) ||
+        newChatOrderKey(a).localeCompare(newChatOrderKey(b)),
+    );
+}
+
+/**
+ * What a new chat starts on when nothing names an Agent: the first runnable
+ * Agent in the fixed order, Station's own engine last. Never recorded by
+ * itself; see `firstSignedInEngine` for what Station records.
+ */
+export function newChatFallbackAgent(
+  agents: readonly AgentData[],
+): AgentData | undefined {
+  return newChatOrder(agents)[0];
+}
+
+/**
+ * What Station records as the default for new chats when it has none: the
+ * first engine in the fixed order whose sign-in Station has verified.
+ * Station's own engine is never one (nothing signs it in), and an engine
+ * whose sign-in Station cannot check stays only the fallback.
+ */
+export function firstSignedInEngine(
+  agents: readonly AgentData[],
+  signInVerified: (agent: AgentData) => boolean,
+): AgentData | undefined {
+  return newChatOrder(agents).find(
+    (agent) => !isStationAgentIdentity(agent.slug) && signInVerified(agent),
+  );
+}
+
 export function resolveNewChatDefaultSelection({
   flatList,
+  listedAgents = flatList,
   agentConnections,
   modelConnections,
   acpConnections,
@@ -485,6 +606,12 @@ export function resolveNewChatDefaultSelection({
   preferredAgentSlug,
 }: {
   flatList: AgentData[];
+  /**
+   * Every Agent this context offers before search and alias folding
+   * (`scopedAgents`): where a named Agent and the fixed order are looked up,
+   * so typing a search never moves the default.
+   */
+  listedAgents?: AgentData[];
   agentConnections: AgentConnectionView[];
   modelConnections: ConnectionConfig[];
   acpConnections: ACPSelectionConnection[];
@@ -495,13 +622,16 @@ export function resolveNewChatDefaultSelection({
   lastChosenModelByBinding?: LastChosenModelMap;
 }) {
   const preferredAgent = preferredAgentSlug
-    ? flatList.find((candidate) => candidate.slug === preferredAgentSlug)
+    ? listedAgents.find((candidate) => candidate.slug === preferredAgentSlug)
     : undefined;
   // Quick-start consumers need a runnable recommendation. The draft can show a preferred Agent needing repair.
+  // With nothing preferred, the fixed order, never list position: a list
+  // ordered by recency would move the default as engines come and go.
   const agent =
     preferredAgent && agentRunnability(preferredAgent).runnable
       ? preferredAgent
-      : flatList.find((candidate) => agentRunnability(candidate).runnable);
+      : (newChatFallbackAgent(listedAgents) ??
+        flatList.find((candidate) => agentRunnability(candidate).runnable));
   const runtimeConnection = agentConnections.find(
     (connection) => connection.id === agent?.execution?.agentConnectionId,
   );
@@ -688,25 +818,13 @@ export function buildNewChatModalViewModel({
     }
   }
   // archive#3027(c): an engine-default alias row exists to say "this engine
-  // has no authored Agent yet". Once an authored Agent bound to the same
-  // engine connection is in scope, the alias would sit as a permanently dead
-  // row beside the live one — hide it. Purely derived state: deleting the
-  // authored Agent un-hides the alias on the next build. Derived from the
-  // pre-search eligible set so typing a query matching only the alias cannot
-  // resurrect it.
-  const authoredBoundConnectionIds = new Set<string>();
-  for (const agent of eligibleAgents.values()) {
-    const boundConnectionId = agent.execution?.agentConnectionId;
-    if (!agent.engineDefault && boundConnectionId) {
-      authoredBoundConnectionIds.add(boundConnectionId);
-    }
-  }
-  const isDemotedAliasRow = (agent: AgentData) =>
-    Boolean(
-      agent.engineDefault &&
-        agent.execution?.agentConnectionId &&
-        authoredBoundConnectionIds.has(agent.execution.agentConnectionId),
-    );
+  // has no authored Agent yet". Once an Agent bound to the same engine
+  // connection stands in for it, the alias would sit as a dead row beside the
+  // live one — hide it (`aliasFoldedAway`, the rule the default for new chats
+  // also uses). Purely derived state: deleting that Agent un-hides the alias
+  // on the next build. Derived from the pre-search eligible set so typing a
+  // query matching only the alias cannot resurrect it.
+  const isDemotedAliasRow = aliasFoldedAway(eligibleAgents.values());
   const filtered = [...eligibleAgents.values()].filter(
     (agent) =>
       !isDemotedAliasRow(agent) &&

@@ -204,7 +204,7 @@ function status(overrides: Partial<SystemStatus> = {}): SystemStatus {
     recommendation: {
       code: 'unconfigured',
       type: 'connections',
-      actionLabel: 'Open Connections',
+      actionLabel: 'Open Customize',
       title: 'No usable AI path is configured yet',
       detail: 'Add a provider connection to make Station ready.',
     },

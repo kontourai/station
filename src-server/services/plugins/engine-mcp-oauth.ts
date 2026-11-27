@@ -48,7 +48,7 @@ export type EngineMcpOAuthResolver = (
 export class EngineMcpNeedsSignInError extends SessionStartRefusedError {
   constructor(id: string) {
     super(
-      `Integration '${id}' needs sign-in. Open Connections → Tools, sign in to its account, then start the session again.`,
+      `Integration '${id}' needs sign-in. Open Customize › Tools, sign in to its account, then start the session again.`,
       MCP_SIGN_IN_REQUIRED_CODE,
     );
   }
@@ -187,7 +187,7 @@ export function createEngineMcpOAuthResolver(options: {
           // addresses it reaches. Refused rather than handed over.
           if (isCatalogSuppliedIntegration(options.homeDir(), def.id))
             throw new StationOwnedToolServerError(
-              `Integration '${server.id}' came from a catalog and can only connect through Station. Sign in to its account under Connections → Tools.`,
+              `Integration '${server.id}' came from a catalog and can only connect through Station. Sign in to its account under Customize › Tools.`,
             );
           continue;
         }

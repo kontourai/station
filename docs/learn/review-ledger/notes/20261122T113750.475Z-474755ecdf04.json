@@ -1,0 +1,7 @@
+{
+  "revision": "f59331fd1f2dceb0e4fbac6fc6021d045e34168e",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"No SDK surface changed in the fix round; the page does not describe registry item fields.","inputs":["docs/reference/sdk.md","packages/contracts/src/catalog.ts","src-server/providers/registries/json-manifest-registry.ts"]}
+  ]
+}

@@ -62,9 +62,19 @@ describe('header utils', () => {
       section: 'Settings',
       sectionRoot: { type: 'settings' },
     });
+    // Connections' parts are Customize items now.
     expect(getHeaderBreadcrumb({ type: 'connections-tools' })).toEqual({
-      section: 'Connections',
-      sectionRoot: { type: 'connections' },
+      section: 'Customize',
+      sectionRoot: { type: 'customize' },
+    });
+    expect(getHeaderBreadcrumb({ type: 'customize' })).toEqual({
+      section: 'Customize',
+      sectionRoot: { type: 'customize' },
+    });
+    // Computers is not a Customize item.
+    expect(getHeaderBreadcrumb({ type: 'connections-computers' })).toEqual({
+      section: 'Computers',
+      sectionRoot: { type: 'connections-computers' },
     });
   });
 });

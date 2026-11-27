@@ -1,0 +1,7 @@
+{
+  "revision": "ddb1d1a864db4b9c2f5f3d1a42f482f869591e62",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Row now states PUT and station config set (online and offline) refuse newChatDefault, as firstRun; checked against the CLI test.","inputs":["docs/reference/config.md"]}
+  ]
+}

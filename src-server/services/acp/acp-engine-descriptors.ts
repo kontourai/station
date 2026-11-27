@@ -379,7 +379,7 @@ export class ManagedRuntimeNotInstalledError extends Error {
     engineName: string,
   ) {
     super(
-      `${engineName} isn't installed yet. Install it from the engine's sign-in panel in Connections.`,
+      `${engineName} isn't installed yet. Install it from the engine's sign-in panel in Customize › Engines.`,
     );
     this.name = 'ManagedRuntimeNotInstalledError';
   }

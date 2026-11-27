@@ -475,7 +475,7 @@ Station reads its own settings from \`extensions["io.kontourai.station"]\`.
 ${building}
 ## Installing
 
-Installing is a person's decision. Open **Plugins → Install plugin**, choose
+Installing is a person's decision. Open **Apps › Library → Install plugin**, choose
 this folder, review what the plugin asks for, and confirm.
 
 - ${usage}

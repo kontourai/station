@@ -1,0 +1,7 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Rechecked after the fix round: App and Tool server rows unchanged and accurate.","inputs":["docs/glossary.md"]}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "revision": "600df56c672411f40cead6538bb89ecc58976a57",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked every citing page against the latest ProjectSidebar.tsx change: it types the quiet sidebar Apps part as its literal for the type checker and changes no behaviour; the sidebar each page describes is unchanged with the quiet-sidebar preview off.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/README.md","note":"Checked every citing page against the latest ProjectSidebar.tsx change: it types the quiet sidebar Apps part as its literal for the type checker and changes no behaviour; the sidebar each page describes is unchanged with the quiet-sidebar preview off.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","note":"Checked every citing page against the latest ProjectSidebar.tsx change: it types the quiet sidebar Apps part as its literal for the type checker and changes no behaviour; the sidebar each page describes is unchanged with the quiet-sidebar preview off.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Checked every citing page against the latest ProjectSidebar.tsx change: it types the quiet sidebar Apps part as its literal for the type checker and changes no behaviour; the sidebar each page describes is unchanged with the quiet-sidebar preview off.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Checked every citing page against the latest ProjectSidebar.tsx change: it types the quiet sidebar Apps part as its literal for the type checker and changes no behaviour; the sidebar each page describes is unchanged with the quiet-sidebar preview off.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"examples/custom-branding/README.md","note":"Checked every citing page against the latest ProjectSidebar.tsx change: it types the quiet sidebar Apps part as its literal for the type checker and changes no behaviour; the sidebar each page describes is unchanged with the quiet-sidebar preview off.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]}
+  ]
+}

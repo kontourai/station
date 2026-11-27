@@ -1,0 +1,7 @@
+{
+  "revision": "32c2bcd30e4c5809d189cb03cb43a9180295bef9",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-read against this change: the destination registry adds retired-id aliases (registry for Apps, connections for Customize), a registry palette keyword and a note naming the Customize landing as a door to Apps; no claim here contradicts them.","inputs":["docs/design/placement.md","src-ui/src/app-shell/destination-registry.ts"]}
+  ]
+}

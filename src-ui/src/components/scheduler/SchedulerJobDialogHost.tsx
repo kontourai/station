@@ -11,7 +11,7 @@ import { StationUiError } from '../../utils/StationUiError';
 import { useNewChatSetupReturn } from '../modals/useNewChatSetupReturn';
 import { JobFormModal } from './JobFormModal';
 
-const SETUP_PATHS = ['/agents', '/connections'];
+const SETUP_PATHS = ['/agents', '/customize'];
 function SchedulerJobDialog({
   request,
 }: {

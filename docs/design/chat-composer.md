@@ -654,7 +654,15 @@ exact chip selection, which the dock starts through the same path. Setup actions
 through the authority-fenced return journey. A removed preference requires an
 explicit replacement. Only an Agent that can start is remembered or chosen by
 default: a remembered, recent or configured Agent that cannot start yields to
-the next one that can, and an Agent chosen on the way into setup shows only
+the next one that can, then to the Station's
+[default for new chats](../reference/api.md#default-for-new-chats), then to the
+first Agent in the fixed order (Claude Code, Codex, other engines by id,
+Station's own) that can start; a default that cannot start or is not offered
+here is passed over. The menu tags that default's row **Default for new chats**.
+An engine's own row is folded away only when another of that engine's own
+Agents stands in for it, or when it cannot start beside an Agent someone wrote
+for that engine, so the default is always a row the menu shows; a default
+naming a folded alias shows on, and starts with, the Agent standing in for it. An Agent chosen on the way into setup shows only
 once setup makes it ready. An Agent picked from the menu in this tab still
 shows with its repair, so it can run on another Station. The dock's setup card appears
 only when no Agent can start, with each reason under **Details**.
@@ -1801,7 +1809,7 @@ seven days; older rows sit behind **Show older**, and search shows every row.
 The window is a default, not a setting. With the preview off, Dismiss and both
 shelves behave as before.
 
-Customize → Appearance offers Comfortable, Wide and Full answer widths.
+Appearance offers Comfortable, Wide and Full answer widths.
 The compact context ring places its percentage inside the ring beside Send;
 Agent, model, Mode and Approval remain choices inside Agent & model. Basis stays
 answer-scoped. Chat inventory and Browse turns are conversation overflow actions.

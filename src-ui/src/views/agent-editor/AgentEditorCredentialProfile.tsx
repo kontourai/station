@@ -152,8 +152,8 @@ export function AgentEditorCredentialProfile({
       </select>
       {noAccounts && (
         <span className="editor-hint" id="ae-credential-profile-empty">
-          No separate accounts yet. Add them on the engine&apos;s Connections
-          page.
+          No separate accounts yet. Add them on the engine&apos;s page in
+          Customize › Engines.
         </span>
       )}
       {!pinnedIsKnown && (

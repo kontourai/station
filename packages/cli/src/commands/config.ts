@@ -56,6 +56,7 @@ import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   APP_SETTINGS_REGISTRY,
   NULLABLE_APP_CONFIG_KEYS,
+  routeWrittenKeyRefusal,
   type SettingProvenanceEntry,
   sanitizeAppConfigUpdate,
 } from '@kontourai/station-contracts/settings-registry';
@@ -326,6 +327,11 @@ function mergeConfigUpdate(
  * for exactly what this shares with the live route and what it does not.
  */
 function writeConfigOffline(key: string, rawValue: string): void {
+  // Shared with the live route: a key with its own route is never written
+  // here, so its rule (forward-only first run, a default recorded once)
+  // cannot be skipped offline.
+  const routeWritten = routeWrittenKeyRefusal({ [key]: true });
+  if (routeWritten) throw new Error(routeWritten);
   const config = loadConfigFile();
   const parsedValue = parseConfigValue(rawValue);
   const { accepted, ignored, violations } = sanitizeAppConfigUpdate({

@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
+import { rankCommands } from '../../components/command-palette-utils';
 import {
   APP_DESTINATION_REGISTRY,
   createDestinationRegistry,
+  customizeItemForView,
   DEVELOPER_TOOLS_FLAG,
   type DestinationDefinition,
 } from '../destination-registry';
@@ -12,7 +14,7 @@ describe('DestinationRegistry', () => {
     // the sole `sidebar` row — Home is `hiddenFromNav` and the panel renders
     // it directly, Notifications became the header's bell and Settings the
     // footer account menu's Open settings row, and the configuration
-    // destinations moved behind the footer's Customize chooser.
+    // destinations moved behind the footer's Customize button.
     expect(
       APP_DESTINATION_REGISTRY.getSidebar().map(
         (destination) => destination.id,
@@ -33,12 +35,16 @@ describe('DestinationRegistry', () => {
       'agents',
       'guidance-commands',
       'guidance-skills',
-      'registry',
-      'connections',
+      'customize',
+      'engines',
+      'providers',
+      'tools',
+      'knowledge',
       // 6-OPS-32: Notifications and Profile are top-level destinations that
       // ⌘K could not reach at all — "notif" and "prof" each returned zero
       // results in a palette carrying 72 entries.
       'notifications',
+      'computers',
       'plugins',
       'schedule',
       'feature-previews',
@@ -57,9 +63,13 @@ describe('DestinationRegistry', () => {
       'agents',
       'guidance-commands',
       'guidance-skills',
-      'registry',
-      'connections',
+      'customize',
+      'engines',
+      'providers',
+      'tools',
+      'knowledge',
       'notifications',
+      'computers',
       'plugins',
       'schedule',
       'feature-previews',
@@ -95,122 +105,173 @@ describe('DestinationRegistry', () => {
     }
   });
 
-  // #2144 slice 4 deleted the Manage grid. This is the other half of the same
-  // acceptance: every destination that grid used to list must still have a
-  // Settings entry point. The inventory is LITERAL, taken from the grid's own
-  // retired test, because deriving it from `getCustomizeNav()` would compare
-  // the projection with itself and pass however it changed — which is exactly
-  // how a surface disappears from the panel AND from the group that was
-  // supposed to hold what left it.
-  test('every destination the retired Manage grid listed is still reachable from Settings', () => {
+  // The first-release design took Plugins, Appearance, Developer and
+  // Settings out of the Customize list, and Connections stopped being a
+  // destination. Every surface the old chooser listed must still have a door:
+  // the palette. The inventory is LITERAL, taken from the old chooser, because
+  // deriving it from `getCustomizeNav()` would compare the projection with
+  // itself and pass however it changed.
+  test('every surface the old Customize chooser listed is still reachable from the palette', () => {
     const flags = new Set([DEVELOPER_TOOLS_FLAG]);
-    const settingsRoutes = new Set(
-      APP_DESTINATION_REGISTRY.getCustomizeNav(flags).map(
-        (entry) => entry.route,
+    const paletteRoutes = new Set(
+      APP_DESTINATION_REGISTRY.getPalette(flags).map(
+        (destination) => destination.route,
       ),
     );
-    const formerManageRoutes = [
-      ['agents', '/agents'],
-      ['guidance', '/guidance'],
-      // Entered at the section the row names, not the hub root.
-      ['connections', '/connections/engines'],
-      ['plugins', '/plugins'],
-      ['developer', '/developer'],
-    ] as const;
-    for (const [id, route] of formerManageRoutes) {
-      expect(
-        settingsRoutes,
-        `${id} left the Manage grid with no Customize nav row for ${route}`,
-      ).toContain(route);
+    for (const route of [
+      '/agents',
+      '/guidance',
+      // Connections was entered at its Engines section.
+      '/customize/engines',
+      // Plugins is Apps, which has no Customize item either.
+      '/apps',
+      '/developer',
+      '/appearance',
+      '/settings',
+      // Computers left Connections without becoming a Customize item.
+      '/connections/computers',
+    ]) {
+      expect(paletteRoutes, `${route} has no palette entry`).toContain(route);
     }
-    // Registry is the one FOLD (#2144 decision 4): it has no row of its own,
-    // so its reachability rests on the Plugins surface carrying a step to the
-    // catalogue. Asserted here as the fold's precondition — that Plugins IS
-    // listed — and end to end in tests/registry.spec.ts, which presses through
-    // Plugins to /registry. Without the fold named, a Registry row silently
-    // vanishing would read as this list simply being shorter.
-    expect(settingsRoutes).not.toContain('/registry');
-    expect(settingsRoutes).toContain('/plugins');
+    // The plugin catalogue is Apps › Discover; the Registry keeps no palette
+    // entry of its own.
+    expect(
+      APP_DESTINATION_REGISTRY.getPalette(flags).map(
+        (destination) => destination.id,
+      ),
+    ).not.toContain('registry');
   });
 
-  // #2144 slice 4: the Customize navigation's nav-only rows. A literal
-  // inventory, not a re-read of `getCustomizeNav()` — comparing the projection
-  // against itself would pass however it changed, including a destination
-  // silently losing the only entry point it has left.
-  test('projects the Customize nav-only rows with their overrides resolved', () => {
+  // Words people learned for the retired Connections tabs that the new
+  // labels do not contain. A literal list, so a keyword trim cannot drop one
+  // silently; ranked by the palette's own scorer over the same label and
+  // keywords the palette builds from each destination.
+  test.each([
+    ['tool servers', 'tools'],
+    ['tool server', 'tools'],
+    ['acp', 'engines'],
+    ['search', 'knowledge'],
+    ['set up', 'customize'],
+    // Apps has no Customize item, so the palette is its standing door.
+    ['apps', 'plugins'],
+    ['discover', 'plugins'],
+    ['library', 'plugins'],
+    ['plugins', 'plugins'],
+    // The Registry was replaced by Apps › Discover.
+    ['registry', 'plugins'],
+  ])('the palette answers "%s" with the %s destination first', (query, id) => {
+    const commands = APP_DESTINATION_REGISTRY.getPalette(
+      new Set([DEVELOPER_TOOLS_FLAG]),
+    ).map((destination) => ({
+      id: destination.id,
+      label: destination.label(),
+      group: 'Navigation',
+      keywords: destination.keywords ? [...destination.keywords] : undefined,
+      run: () => {},
+    }));
+    expect(rankCommands(query, commands)[0]?.id).toBe(id);
+  });
+
+  // A literal inventory, not a re-read of `getCustomizeNav()`: comparing the
+  // projection against itself would pass however it changed.
+  test('projects the six Customize items in their groups', () => {
     expect(APP_DESTINATION_REGISTRY.getCustomizeNav()).toEqual([
       {
         id: 'agents',
-        group: 'set-up',
+        group: 'your-agents',
         order: 10,
         label: 'Agents',
         route: '/agents',
       },
       {
         id: 'guidance',
-        group: 'set-up',
+        group: 'your-agents',
         order: 20,
         label: 'Skills',
-        route: '/guidance',
+        // Straight to the tab, so opening Skills is one history entry.
+        route: '/guidance?tab=skills',
       },
       {
-        id: 'connections',
-        group: 'set-up',
-        order: 30,
-        // Open the engine list directly while keeping the destination's name.
-        label: 'Connections',
-        route: '/connections/engines',
+        id: 'engines',
+        group: 'run-on',
+        order: 10,
+        label: 'Engines',
+        route: '/customize/engines',
       },
       {
-        id: 'plugins',
-        group: 'set-up',
-        order: 40,
-        label: 'Plugins',
-        route: '/plugins',
-      },
-      // The owner's ask: themes and their gallery live in Customize, and
-      // Settings is listed there too without losing its other doors; its
-      // palette entry is pinned in the inventory test above.
-      {
-        id: 'appearance',
-        group: 'this-station',
-        order: 90,
-        label: 'Appearance',
-        route: '/appearance',
+        id: 'providers',
+        group: 'run-on',
+        order: 20,
+        label: 'Providers',
+        route: '/customize/providers',
       },
       {
-        id: 'settings',
-        group: 'this-station',
-        order: 110,
-        label: 'Settings',
-        route: '/settings',
+        id: 'tools',
+        group: 'can-reach',
+        order: 10,
+        label: 'Tools',
+        route: '/customize/tools',
+      },
+      {
+        id: 'knowledge',
+        group: 'can-reach',
+        order: 20,
+        label: 'Knowledge',
+        route: '/customize/knowledge',
       },
     ]);
-    // Registry is deliberately absent: #2144 decision 4 folds it into Plugins,
-    // and it keeps its route, its palette entry and its keywords.
+    // Apps is not a Customize item: it is reached from the palette, the
+    // links that point at it and the old addresses' redirects. Registry is
+    // absent too: its plugin catalogue is Apps › Discover.
+    const ids = APP_DESTINATION_REGISTRY.getCustomizeNav().map(
+      (entry) => entry.id,
+    );
+    expect(ids).not.toContain('plugins');
+    expect(ids).not.toContain('registry');
     expect(
-      APP_DESTINATION_REGISTRY.getCustomizeNav().map((entry) => entry.id),
-    ).not.toContain('registry');
-  });
-
-  test('offers Developer as a Customize nav row only while developer tools are enabled', () => {
-    // archive#3313: the flag gates ADVERTISEMENT. /developer stays
-    // deep-linkable either way, which is why this is a row-level assertion and
-    // not a claim about routing.
-    expect(
-      APP_DESTINATION_REGISTRY.getCustomizeNav().map((entry) => entry.id),
-    ).not.toContain('developer');
+      APP_DESTINATION_REGISTRY.getCustomizeNav().map((entry) => entry.route),
+    ).not.toContain('/apps');
+    // The developer flag adds nothing: Developer is not a Customize item.
     expect(
       APP_DESTINATION_REGISTRY.getCustomizeNav(
         new Set([DEVELOPER_TOOLS_FLAG]),
-      ).find((entry) => entry.id === 'developer'),
-    ).toEqual({
-      id: 'developer',
-      group: 'this-station',
-      order: 100,
-      label: 'Developer',
-      route: '/developer',
-    });
+      ).map((entry) => entry.id),
+    ).toEqual([
+      'agents',
+      'guidance',
+      'engines',
+      'providers',
+      'tools',
+      'knowledge',
+    ]);
+  });
+
+  test('every view a Customize item hosts belongs to that item', () => {
+    const cases: Array<
+      [Parameters<typeof customizeItemForView>[0], string | null]
+    > = [
+      [{ type: 'customize' }, 'customize'],
+      [{ type: 'agents' }, 'agents'],
+      [{ type: 'agent-edit', slug: 'planner' }, 'agents'],
+      [{ type: 'guidance' }, 'guidance'],
+      [{ type: 'connections-engines' }, 'engines'],
+      [{ type: 'connections-engine-edit', id: 'claude' }, 'engines'],
+      [{ type: 'connections-engine-new', providerId: 'custom' }, 'engines'],
+      [{ type: 'connections-models' }, 'providers'],
+      [{ type: 'connections-model-edit', id: 'ollama' }, 'providers'],
+      [{ type: 'connections-tools' }, 'tools'],
+      [{ type: 'connections-tool-edit', id: 'docs' }, 'tools'],
+      [{ type: 'connections-knowledge' }, 'knowledge'],
+      // Not Customize items.
+      [{ type: 'connections-computers' }, null],
+      [{ type: 'apps', tab: 'discover' }, null],
+      [{ type: 'apps', tab: 'library' }, null],
+      [{ type: 'settings' }, null],
+      [{ type: 'home' }, null],
+    ];
+    for (const [view, item] of cases) {
+      expect(customizeItemForView(view), view.type).toBe(item);
+    }
   });
 
   test('refuses a destination that is both a panel place and a Customize nav entry', () => {
@@ -221,7 +282,7 @@ describe('DestinationRegistry', () => {
           route: '/both',
           label: () => 'Both',
           sidebar: { order: 1 },
-          customizeNav: { group: 'set-up', order: 1 },
+          customizeNav: { group: 'run-on', order: 1 },
         },
       ]),
     ).toThrow(/both a panel place and a Customize nav entry/);
@@ -235,7 +296,7 @@ describe('DestinationRegistry', () => {
           route: '/hidden',
           label: () => 'Hidden',
           hiddenFromNav: true,
-          customizeNav: { group: 'set-up', order: 1 },
+          customizeNav: { group: 'run-on', order: 1 },
         },
       ]),
     ).toThrow(/cannot be hidden from nav and a Customize nav entry/);
@@ -248,7 +309,7 @@ describe('DestinationRegistry', () => {
           id: 'relative',
           route: '/relative',
           label: () => 'Relative',
-          customizeNav: { group: 'set-up', order: 1, route: 'engines' },
+          customizeNav: { group: 'run-on', order: 1, route: 'engines' },
         },
       ]),
     ).toThrow(/absolute Station route for its Customize nav entry/);
@@ -266,18 +327,47 @@ describe('DestinationRegistry', () => {
         id: 'second',
         route: '/second',
         label: () => 'Second',
-        customizeNav: { group: 'set-up', order: 20 },
+        customizeNav: { group: 'run-on', order: 20 },
       },
       {
         id: 'first',
         route: '/first',
         label: () => 'First',
-        customizeNav: { group: 'set-up', order: 10 },
+        customizeNav: { group: 'run-on', order: 10 },
       },
     ]);
     expect(registry.getCustomizeNav().map((entry) => entry.id)).toEqual([
       'first',
       'second',
+    ]);
+  });
+
+  test('lists the groups in page order before ordering within each', () => {
+    // Declared against the grain: a later group with a lower order first.
+    const registry = createDestinationRegistry([
+      {
+        id: 'reach',
+        route: '/reach',
+        label: () => 'Reach',
+        customizeNav: { group: 'can-reach', order: 1 },
+      },
+      {
+        id: 'agent',
+        route: '/agent',
+        label: () => 'Agent',
+        customizeNav: { group: 'your-agents', order: 50 },
+      },
+      {
+        id: 'run',
+        route: '/run',
+        label: () => 'Run',
+        customizeNav: { group: 'run-on', order: 5 },
+      },
+    ]);
+    expect(registry.getCustomizeNav().map((entry) => entry.id)).toEqual([
+      'agent',
+      'run',
+      'reach',
     ]);
   });
 
@@ -288,16 +378,16 @@ describe('DestinationRegistry', () => {
           id: 'one',
           route: '/one',
           label: () => 'One',
-          customizeNav: { group: 'set-up', order: 1 },
+          customizeNav: { group: 'run-on', order: 1 },
         },
         {
           id: 'two',
           route: '/two',
           label: () => 'Two',
-          customizeNav: { group: 'set-up', order: 1 },
+          customizeNav: { group: 'run-on', order: 1 },
         },
       ]),
-    ).toThrow(/Duplicate Customize nav destination order: set-up:1/);
+    ).toThrow(/Duplicate Customize nav destination order: run-on:1/);
     // Order is unique within a group, not globally: two groups may each have a
     // first row, and refusing that would make the orders one shared sequence.
     expect(() =>
@@ -306,13 +396,13 @@ describe('DestinationRegistry', () => {
           id: 'one',
           route: '/one',
           label: () => 'One',
-          customizeNav: { group: 'set-up', order: 1 },
+          customizeNav: { group: 'run-on', order: 1 },
         },
         {
           id: 'two',
           route: '/two',
           label: () => 'Two',
-          customizeNav: { group: 'this-station', order: 1 },
+          customizeNav: { group: 'can-reach', order: 1 },
         },
       ]),
     ).not.toThrow();
@@ -378,7 +468,7 @@ describe('DestinationRegistry', () => {
         type: 'connections-model-edit',
         id: 'ollama',
       })?.id,
-    ).toBe('connections');
+    ).toBe('providers');
   });
 
   test('returns frozen definitions and projections from immutable composition', () => {
@@ -395,7 +485,7 @@ describe('DestinationRegistry', () => {
         id: 'two',
         route: '/two',
         label: () => 'Two',
-        customizeNav: { group: 'set-up', order: 1 },
+        customizeNav: { group: 'run-on', order: 1 },
       },
     ]);
     const [definition, navDefinition] = registry.getRegistered();
@@ -412,6 +502,13 @@ describe('DestinationRegistry', () => {
     expect(Object.isFrozen(navDefinition?.customizeNav)).toBe(true);
   });
 
+  // Published plugins still name the ids of the places Apps and Customize
+  // replaced.
+  test('the retired registry and connections ids name Apps and Customize', () => {
+    expect(APP_DESTINATION_REGISTRY.get('registry')?.id).toBe('plugins');
+    expect(APP_DESTINATION_REGISTRY.get('connections')?.id).toBe('customize');
+  });
+
   test.each([
     [
       'duplicate ids',
@@ -420,6 +517,37 @@ describe('DestinationRegistry', () => {
         { id: 'same', route: '/two', label: () => 'Two' },
       ],
       /Duplicate destination id/,
+    ],
+    [
+      'an alias that is another destination id',
+      [
+        {
+          id: 'one',
+          route: '/one',
+          label: (): string => 'One',
+          aliases: ['two'],
+        },
+        { id: 'two', route: '/two', label: (): string => 'Two' },
+      ],
+      /alias must be a free, nonempty id: two/,
+    ],
+    [
+      'an alias two destinations claim',
+      [
+        {
+          id: 'one',
+          route: '/one',
+          label: (): string => 'One',
+          aliases: ['old'],
+        },
+        {
+          id: 'two',
+          route: '/two',
+          label: (): string => 'Two',
+          aliases: ['old'],
+        },
+      ],
+      /alias must be a free, nonempty id: old/,
     ],
     [
       'relative routes',

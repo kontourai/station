@@ -1,21 +1,13 @@
 /**
- * The two facts the Connections IA renders about a section — how many items
- * it holds, and whether it needs attention — derived ONCE (lane design P5;
- *).
+ * The two facts the Customize list renders about each connection-backed item
+ * — how many things it holds, and whether it needs attention — derived ONCE
+ * (lane design P5).
  *
- * There used to be two attention derivations. The rail's
- * (`ConnectionsSectionFrame`) read the filtered model inventory, the agent
- * connections list, tool PROBE results and the knowledge status; the
- * `/connections` root resolver had its own, which read `/api/connections`
- * raw for both Models and Engines and ignored Knowledge entirely. So the
- * rail could show a warn dot on Knowledge while the resolver, asked which
- * section needs attention first, sent the user to Models. A redirect is a
- * claim about the same state the dots describe; two derivations of it will
- * disagree eventually, and here they already did.
- *
- * Counts have the same rule. `computers` comes from `useComputerRows`, the
- * list the Computers body itself renders, so the badge cannot count records
- * the body identity-folds into one row (or miss manual entries it shows).
+ * There used to be two attention derivations: the old section rail's, and
+ * the retired `/connections` resolver's, which read `/api/connections` raw
+ * and ignored Knowledge entirely. So the rail could show a warn dot on
+ * Knowledge while the resolver sent the user to Models. Anything that says
+ * which item needs attention asks this one derivation.
  */
 
 import {
@@ -32,34 +24,21 @@ import {
   engineHealthInput,
   modelHealthInput,
 } from './connection-health';
-import {
-  CONNECTION_SECTIONS,
-  type ConnectionSectionId,
-} from './connection-sections';
-import { useComputerRows } from './useComputerRows';
+import type { ConnectionSectionId } from './connection-sections';
 
 interface ConnectionSectionSignals {
-  count: (id: ConnectionSectionId) => number;
+  /** Null where a number would not mean anything to a reader. */
+  count: (id: ConnectionSectionId) => number | null;
   needsAttention: (id: ConnectionSectionId) => boolean;
-  /** The section `/connections` resolves to, or undefined when none needs it. */
-  firstNeedingAttention: (typeof CONNECTION_SECTIONS)[number] | undefined;
-  /**
-   * Every read attention depends on has answered (data or error). Before
-   * that, "nothing needs attention" only means "nothing has loaded yet".
-   */
-  settled: boolean;
 }
 
 export function useConnectionSectionSignals(): ConnectionSectionSignals {
-  const modelsQuery = useModelConnectionsQuery();
+  const { data: connections = [] } = useModelConnectionsQuery();
   const enginesQuery = useEngineConnectionsQuery();
   const toolsQuery = useIntegrationsQuery();
-  const knowledgeQuery = useGlobalKnowledgeStatusQuery();
-  const { data: connections = [] } = modelsQuery;
-  const { data: engines = [] } = enginesQuery;
-  const { data: tools = [] } = toolsQuery;
-  const { data: knowledge } = knowledgeQuery;
-  const { rows: computers } = useComputerRows();
+  const engines = enginesQuery.data ?? [];
+  const tools = toolsQuery.data ?? [];
+  const { data: knowledge } = useGlobalKnowledgeStatusQuery();
   const managedStateFor = useManagedEngineStateFor();
 
   /**
@@ -81,18 +60,21 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
    */
   const models = filterModelProviders(connections as ProviderConnection[], '');
 
-  const count = (id: ConnectionSectionId): number => {
-    if (id === 'models') return models.length;
-    if (id === 'engines') return engines.length;
-    if (id === 'tools') return tools.length;
-    if (id === 'knowledge')
-      return (knowledge?.vectorDb ? 1 : 0) + (knowledge?.embedding ? 1 : 0);
-    return computers.length;
+  // A count is a claim about a list, so it needs the list: while a read is
+  // pending, or after it failed with nothing to show, there is no number.
+  const count = (id: ConnectionSectionId): number | null => {
+    if (id === 'engines') return enginesQuery.data ? engines.length : null;
+    if (id === 'tools') return toolsQuery.data ? tools.length : null;
+    // Providers counts model connections today, which read as "0 providers"
+    // beside signed-in engines; it gets a number when the Providers slices
+    // define what one is. Knowledge holds one store and one search model,
+    // not a list: "2" beside it counted settings.
+    return null;
   };
 
   const needsAttention = (id: ConnectionSectionId): boolean => {
     // A store with no embedding model is a resting state (semantic search
-    // off), like an unconnected computer: the Knowledge page says so.
+    // off): the Knowledge page says so.
     if (id === 'knowledge') return Boolean(knowledge && !knowledge.vectorDb);
     // CI-R3: `connected` is "an agent session currently holds a client",
     // which is false for every tool server — including the built-ins — until
@@ -101,17 +83,12 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
     // attention; never-probed is not a failure.
     if (id === 'tools')
       return tools.some((item) => item.probe && !item.probe.ok);
-    // Computers claims nothing: this client holds no liveness evidence for a
-    // paired device or a manual entry, and an SSH profile's phase is "not
-    // connected" for every computer nobody has connected yet — which is a
-    // resting state, not a problem to fix.
-    if (id === 'computers') return false;
     // The same verdict its list row shows, and its own attention rule
     // (`ConnectionHealth.needsAttention`): an engine marks whenever it is not
     // dispatchable, including under managed policy; a model connection only
     // for something the reader must fix. Engines the list does not show
     // (supported, never added) claim nothing here either.
-    if (id === 'models')
+    if (id === 'providers')
       return models.some(
         (item) => deriveConnectionHealth(modelHealthInput(item)).needsAttention,
       );
@@ -125,19 +102,5 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
       );
   };
 
-  return {
-    count,
-    needsAttention,
-    // `isLoading` is a first fetch in flight. A disabled read (no Station
-    // to ask) is pending but not loading, and must not hold the redirect
-    // forever. Computers claims no attention, so its read is not waited on;
-    // the ACP reads behind managed policy are not waited on either, and the
-    // resolver's own time bound covers a slow one.
-    settled: [modelsQuery, enginesQuery, toolsQuery, knowledgeQuery].every(
-      (query) => !query.isLoading,
-    ),
-    firstNeedingAttention: CONNECTION_SECTIONS.find((section) =>
-      needsAttention(section.id),
-    ),
-  };
+  return { count, needsAttention };
 }

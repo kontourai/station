@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { type ApiRequestScope, getJson, mutateJson } from './client/http';
 import { unlessDeadline } from './client/request-deadline';
+import { invalidateEngineReadiness } from './server-events';
 
 export type {
   EngineHostAuthStatus,
@@ -279,8 +280,11 @@ export function useEngineSignInCheckMutation(
           ),
         ),
       ) as EngineSignInView,
-    onSuccess: (view) =>
-      client.setQueryData(viewKey(scope, connectionId), view),
+    onSuccess: (view) => {
+      client.setQueryData(viewKey(scope, connectionId), view);
+      if (view.status.state === 'authenticated')
+        invalidateEngineReadiness(client);
+    },
     retry: false,
   });
 }
@@ -290,6 +294,7 @@ export function useEngineSignInAttemptQuery(
   scope: ApiRequestScope,
   enabled: boolean,
 ) {
+  const client = useQueryClient();
   return useQuery({
     queryKey: attemptKey(scope, connectionId),
     queryFn: async ({ signal }) => {
@@ -299,7 +304,16 @@ export function useEngineSignInAttemptQuery(
           signal,
         }),
       );
-      return data === null ? null : attemptSchema.parse(data);
+      const attempt = data === null ? null : attemptSchema.parse(data);
+      const before = client.getQueryData<{ state?: string } | null>(
+        attemptKey(scope, connectionId),
+      );
+      // A sign-in that finished here emits no engine status event, so this
+      // client re-reads readiness itself; the default for new chats waits on
+      // it (#5401).
+      if (attempt?.state === 'succeeded' && before?.state !== 'succeeded')
+        invalidateEngineReadiness(client);
+      return attempt;
     },
     enabled,
     staleTime: 0,
@@ -383,6 +397,7 @@ export function useEngineHostAuthLoginQuery(
   scope: ApiRequestScope,
   enabled: boolean,
 ) {
+  const client = useQueryClient();
   return useQuery({
     queryKey: hostAuthLoginKey(scope, connectionId),
     queryFn: async ({ signal }) => {
@@ -392,9 +407,16 @@ export function useEngineHostAuthLoginQuery(
           signal,
         }),
       );
-      return data === null
-        ? null
-        : (hostAuthLoginSchema.parse(data) as HostAuthLoginStart);
+      const login =
+        data === null
+          ? null
+          : (hostAuthLoginSchema.parse(data) as HostAuthLoginStart);
+      const before = client.getQueryData<HostAuthLoginStart | null>(
+        hostAuthLoginKey(scope, connectionId),
+      );
+      if (login?.phase === 'completed' && before?.phase !== 'completed')
+        invalidateEngineReadiness(client);
+      return login;
     },
     enabled,
     staleTime: 0,

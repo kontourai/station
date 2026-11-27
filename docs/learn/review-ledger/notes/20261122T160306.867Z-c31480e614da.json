@@ -1,0 +1,7 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"The install and proposal paths now say Apps › Library (and Apps › Library → Install plugin), checked against the UI and the consent refusal; docs bundle regenerated.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

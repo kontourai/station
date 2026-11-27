@@ -464,6 +464,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4517: runs offline `station config set` and `station registry` as CLI
   // children on private homes with an injected managed policy.
   'packages/cli/src/__tests__/managed-settings-offline.test.ts',
+  // #5401: runs offline `station config set` as a CLI child on private homes.
+  'packages/cli/src/__tests__/config-route-written-offline.test.ts',
   // #4522: runs `station upgrade` as a CLI child in a private directory.
   'packages/cli/src/__tests__/upgrade-managed-policy.process.test.ts',
   // #4516: runs `mkfifo` once to create a FIFO fixture in a private temp dir.
@@ -1910,9 +1912,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // holds its toggles' width in an over-full phone toolbar. jsdom computes no
   // layout, and a rule-text check cannot see a cascade override.
   'src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx',
-  // Same shape: launches a real Chromium to measure the setup-import
-  // stepper's heading action at the 640px breakpoint.
-  'src-ui/src/components/setup/__tests__/ExistingSetupImportStepper.test.tsx',
   // #765 C1 and the collapsed bottom dock: both render the real region host in
   // jsdom, then launch a real Chromium to lay that DOM out against index.css —
   // whether the dock body scrolls inside the shell, and whether a collapsed

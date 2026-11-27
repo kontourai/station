@@ -1,0 +1,7 @@
+{
+  "revision": "aef7a1c513df4bedb5dc00e2559a303ec414e033",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked: the sign-in hooks re-read engine readiness when an attempt succeeds, a Station-run sign-in completes or a check answers authenticated; queries and keys otherwise unchanged.","inputs":["packages/sdk/src/engine-sign-in.ts"]}
+  ]
+}

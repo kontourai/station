@@ -60,7 +60,7 @@ export function getHelpPrompts(view?: NavigationView): HeaderHelpPrompt[] {
         },
         ...common,
       ];
-    case 'connections':
+    case 'customize':
     case 'connections-models':
       return [
         {
@@ -97,12 +97,16 @@ export function getHelpPrompts(view?: NavigationView): HeaderHelpPrompt[] {
 function sectionLabel(view: NavigationView): string | null {
   const t = view.type;
   if (t.startsWith('agent')) return 'Agents';
-  if (t.startsWith('connections')) return 'Connections';
+  if (t === 'connections-computers') return 'Computers';
+  if (t === 'customize' || t.startsWith('connections')) return 'Customize';
   switch (t) {
-    case 'plugins':
-      return 'Plugins';
+    case 'apps':
+      return 'Apps';
+    // A catalogue page's section is the place it is entered from.
     case 'registry':
-      return 'Registry';
+      return view.tab === 'skills' || view.tab === 'integrations'
+        ? 'Customize'
+        : 'Apps';
     case 'developer':
       return 'Developer';
     case 'schedule':
@@ -124,7 +128,12 @@ function sectionLabel(view: NavigationView): string | null {
 function sectionRootView(view: NavigationView): NavigationView {
   const t = view.type;
   if (t.startsWith('agent')) return { type: 'agents' };
-  if (t.startsWith('connections')) return { type: 'connections' };
+  if (t === 'connections-computers') return view;
+  if (t.startsWith('connections')) return { type: 'customize' };
+  if (t === 'registry')
+    return view.tab === 'skills' || view.tab === 'integrations'
+      ? { type: 'customize' }
+      : { type: 'apps', tab: 'discover' };
   return view;
 }
 

@@ -387,7 +387,10 @@ describe('PlatformProfile derivation', () => {
         expect(await screen.findByTestId('protected-shell')).toBeTruthy();
         expect(screen.queryByRole('alert')).toBeNull();
         const recovery = mod.nativeProfileBootstrapRecoveryError();
-        expect(recovery).toContain('Connections');
+        expect(recovery).toContain(
+          'Open the Station menu to pair this device again.',
+        );
+        expect(recovery).not.toContain('Connections');
         expect(recovery).not.toContain('not configured');
         expect(warned).toHaveBeenCalledOnce();
       } finally {

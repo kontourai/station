@@ -64,6 +64,8 @@ test.describe('Plugin Preview Modal (UI)', () => {
 
     // Close without installing
     await page.locator('.plugins__modal >> text=Cancel').click();
-    await expect(page.getByRole('heading', { name: 'Plugins' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Apps', level: 1 }),
+    ).toBeVisible();
   });
 });

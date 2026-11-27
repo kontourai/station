@@ -1,0 +1,7 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"The plugin update toast opens Apps › Library; the frontend patterns page does not describe this destination.","inputs":["src-ui/src/hooks/useServerEventsListener.ts"]}
+  ]
+}

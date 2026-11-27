@@ -499,12 +499,13 @@ async function assertReducedMotion(
 }
 
 /**
- * The Connections hub's shared tab bar (`ConnectionSectionFrame` via
- * `useConnectionSectionSignals`) renders a live count badge on every tab,
- * including Tools (`useIntegrationsQuery`, `GET /integrations`), Knowledge
- * (`useGlobalKnowledgeStatusQuery`, `GET /api/knowledge/status`), and
- * Computers (`useComputerRows` -> `useSshEnvironmentsQuery`,
- * `GET /api/environments/ssh`). None of the three is mocked (unlike
+ * The Customize list (`views/customize/CustomizeNav.tsx`, via
+ * `useConnectionSectionSignals`) renders a live count on its items, including
+ * Tools (`useIntegrationsQuery`, `GET /integrations`), the Knowledge dot
+ * (`useGlobalKnowledgeStatusQuery`, `GET /api/knowledge/status`), and Skills
+ * (`useSkillsQuery`, `GET /api/system/skills`). Before this list replaced the
+ * Connections section rail, the same race was measured on Computers
+ * (`GET /api/environments/ssh`), which the list no longer counts. None of the three is mocked (unlike
  * Models/Engines/sessions/action-operations above): each settles to a real,
  * deterministic value on a fresh temp-home (measured: Tools 2, Knowledge 1,
  * Computers 1 — matching what `connections-tools`/`connections-knowledge`
@@ -558,16 +559,17 @@ function armConnectionsHubBadgeSettle(page: Page): () => Promise<void> {
       );
       return undefined;
     });
-  const sshEnvironmentsSettled = page
+  // The Customize list also counts Skills, which nothing above waits for.
+  const skillsSettled = page
     .waitForResponse(
       (response) =>
         response.request().method() === 'GET' &&
-        new URL(response.url()).pathname.endsWith('/api/environments/ssh'),
+        new URL(response.url()).pathname.endsWith('/api/system/skills'),
       { timeout: 15_000 },
     )
     .catch(() => {
       console.warn(
-        '[screenshots.spec] armConnectionsHubBadgeSettle: no GET */api/environments/ssh ' +
+        '[screenshots.spec] armConnectionsHubBadgeSettle: no GET */api/system/skills ' +
           'response observed within 15s — the badge-settle guard did not fire ' +
           '(endpoint renamed/moved?). Proceeding without it.',
       );
@@ -577,7 +579,7 @@ function armConnectionsHubBadgeSettle(page: Page): () => Promise<void> {
     await Promise.all([
       integrationsSettled,
       knowledgeStatusSettled,
-      sshEnvironmentsSettled,
+      skillsSettled,
     ]);
   };
 }
@@ -869,7 +871,7 @@ function onboardingSetupBannerSettleHooks(): {
         recommendation: {
           code: 'unconfigured',
           type: 'connections',
-          actionLabel: 'Open Connections',
+          actionLabel: 'Open Customize',
           title: 'No usable AI path is configured yet',
           detail:
             'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',
@@ -6861,39 +6863,45 @@ const SCREENS: Screen[] = [
     path: '/guidance?tab=skills',
     viewport: DESKTOP,
   },
-  { name: 'registry', title: 'Registry', path: '/registry', viewport: DESKTOP },
+  // The plugin catalogue moved to Apps › Discover; the name is kept.
+  {
+    name: 'registry',
+    title: 'Apps › Discover',
+    path: '/apps/discover',
+    viewport: DESKTOP,
+  },
   {
     name: 'connections',
-    title: 'Connections',
-    path: '/connections',
+    title: 'Customize',
+    path: '/customize',
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
   {
     name: 'connections-models',
-    title: 'Connections — Models',
-    path: '/connections/providers',
+    title: 'Customize — Providers',
+    path: '/customize/providers',
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
   {
     name: 'connections-agent-apps',
-    title: 'Connections — Engines',
-    path: '/connections/engines',
+    title: 'Customize — Engines',
+    path: '/customize/engines',
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
   {
     name: 'connections-tools',
-    title: 'Connections — Tools',
-    path: '/connections/tools',
+    title: 'Customize — Tools',
+    path: '/customize/tools',
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
   {
     name: 'connections-knowledge',
-    title: 'Connections — Knowledge',
-    path: '/connections/knowledge',
+    title: 'Customize — Knowledge',
+    path: '/customize/knowledge',
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
@@ -6904,7 +6912,13 @@ const SCREENS: Screen[] = [
   // Flow reviews, review evidence) this spec does not stub, so pointing the
   // same entry at it would photograph an empty state under a name that claims
   // otherwise. A real capture is new work with its own fixtures.
-  { name: 'plugins', title: 'Plugins', path: '/plugins', viewport: DESKTOP },
+  // Installed plugins moved to Apps › Library; the name is kept.
+  {
+    name: 'plugins',
+    title: 'Apps › Library',
+    path: '/apps/library',
+    viewport: DESKTOP,
+  },
   (() => {
     let cleanup: () => Promise<void> = async () => {};
     return {
@@ -8459,8 +8473,8 @@ const SCREENS: Screen[] = [
   },
   {
     name: 'mobile-connections',
-    title: 'Mobile — Connections',
-    path: '/connections',
+    title: 'Mobile — Customize',
+    path: '/customize',
     viewport: MOBILE,
     ...connectionsHubBadgeSettleHooks(),
   },

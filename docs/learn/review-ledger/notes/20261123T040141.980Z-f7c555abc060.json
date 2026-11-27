@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"The theme and accent rows link to /appearance, opened from the palette and these rows; it no longer says Appearance is listed in Customize, which the combined tree does not do.","inputs":["docs/reference/settings-deep-links.md"]}
+  ]
+}

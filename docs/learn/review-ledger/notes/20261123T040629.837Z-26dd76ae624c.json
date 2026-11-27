@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"The footer test now checks Apps addresses instead of /plugins for 'no control current'; this dated review's claims about the footer are unaffected.","inputs":["docs/reviews/workspace-map-20261015/README.md","src-ui/src/__tests__/ProjectSidebarFooter.test.tsx"]}
+  ]
+}

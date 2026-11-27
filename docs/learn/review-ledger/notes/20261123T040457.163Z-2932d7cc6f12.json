@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"The manifest still owns conversation surfaces and failure publishers; the only change moves the Registry page's failure-surface entry to the shared catalogue install hook, so the routing rule this file states is unchanged.","inputs":["src-ui/AGENTS.md","scripts/conversation-surfaces.json"]}
+  ]
+}

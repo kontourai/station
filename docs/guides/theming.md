@@ -168,8 +168,8 @@ white-label branding, a custom accent and islands. A picker lists
 (load it lazily: it carries the full catalog) and writes the `colorTheme`,
 `colorThemeFlavor` and `colorThemeAccent` device settings.
 
-The picker is the Appearance page (`/appearance`, listed in Customize and the
-command palette): [AppearancePage](../../src-ui/src/pages/AppearancePage.tsx)
+The picker is the Appearance page (`/appearance`, opened from the command
+palette and from Settings' Theme and Accent color rows): [AppearancePage](../../src-ui/src/pages/AppearancePage.tsx)
 holds the System/Light/Dark mode, a gallery of every theme drawn from the catalog
 swatches for the current mode, the family's dark flavors, and its named
 accents (Station's own presets and custom color when Station is selected).

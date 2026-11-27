@@ -569,7 +569,10 @@ refuses corrupt/unsupported or nonregular files and bounds the file to 8 MiB
 and retained snapshots to 32. [Installed-state projection](../../src-server/providers/registries/registry-catalog-installed-state.ts)
 uses the current local inventory and source ownership aliases for live and
 offline plugin rows. Manifest providers supply one fresh coherent observation
-for rows, source locations and untrusted publisher claims. A snapshot is discovery evidence; source removal/disable and
+for rows, source locations and untrusted publisher claims. Each local plugin
+row also carries [what the app is](../../src-server/providers/registries/registry-app-facts.ts),
+read from its package's manifest and layouts within fixed bounds and cached
+until those files change; a remote package is not fetched to list it. A snapshot is discovery evidence; source removal/disable and
 plugin generation replacement/revocation are checked again before publication
 and use. A revoked provider cannot publish its in-flight result or fall back to
 its previously cached rows. Plugin-owned Skill catalogs also use the route's
@@ -698,9 +701,16 @@ live attention facts exist. The built-in application composition is
 
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate
 exact-route owners, duplicate management-view owners, and duplicate sidebar or palette
-order slots. Customize rows have unique order within each group and cannot also be
-sidebar entries or hidden from navigation. Composition and filtering do not invoke
-labels or badges; Customize projection resolves its optional label/route overrides. A
+order slots. A destination's `aliases` are retired ids published plugins may still name
+(`registry` for Apps, `connections` for Customize): `get` answers to them, no projection
+lists them, and an alias that is empty or already an id or another alias is rejected. Customize rows have unique order within each group and cannot also be
+sidebar entries or hidden from navigation. The Customize page's groups are
+`CUSTOMIZE_NAV_GROUP_ORDER` (Your agents, What they run on, What they can reach), and its
+projection orders by group, then by order within the group. `customizeItemForView`
+names the item a view belongs to, from the same management ownership, so the page's
+list and the sidebar's Customize button cannot disagree about it. Composition and
+filtering do not invoke labels or badges; Customize projection resolves its optional
+label/route overrides. A
 flag-gated surface stays registered and routable while `getAdvertised` hides it.
 Developer advertisement uses the device-scoped `device:developer-tools` flag; other
 flags can come from server previews. `hiddenFromNav` removes the sidebar affordance;
@@ -711,8 +721,9 @@ palette after static destination projection.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in
 descriptors. `routing.ts` consumes exact routes and semantic management ownership;
-`ProjectSidebarNav`, `CustomizeDialog`, `CommandPalette`, and notification header badge consume their
-ordered projections. Icons are a presentation Adapter keyed by the registry's finite
+`ProjectSidebarNav`, the Customize page (`app-shell/CustomizeShell.tsx` and
+`views/customize/`), the sidebar footer's Customize button, `CommandPalette`, and the
+notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite
 icon vocabulary. Future trusted plugin surface contributions must enter at registry
 composition and pass the same validation; there is no mutable global `register()`
 operation or renderer callback in persisted plugin data. Contract coverage is
@@ -1174,13 +1185,13 @@ currently returns a rejected row without that warning; collection visibility and
 are separate. Provider resolution and Registry installed-state consume only valid scan
 entries, while `GET /api/plugins` projects both valid and rejected entries. A rejected
 directory has no trustworthy plugin version, permissions, bundle, settings, update, or
-removal claim. The Plugins surface therefore gives it a distinct selection identity,
+removal claim. Apps › Library therefore gives it a distinct selection identity,
 renders the exact rejection and repair instruction, and offers only the existing Reload
 plugins recovery action.
 
 **Seam, Implementation, callers, and tests.** The canonical collection route, provider
 resolver, and JSON manifest registry share this scanner; the SDK validates the
-rejected-row union and the existing Plugins view renders it. Unit tests cover
+rejected-row union and Apps › Library renders it. Unit tests cover
 classification, secret/path suppression, fresh repair recovery, logger routing, SDK
 validation, view-model reload ordering, and visible detail controls.
 `tests/plugin-rejection-visibility.spec.ts` is the managed-browser repair/reload
@@ -3465,6 +3476,13 @@ every reviewed import item before it may publish a Skill, then exposes that jour
 the sole itemized receipt projection: relative source ID, reviewed target,
 state/outcome, stable reason/repair codes, known canonical target revision, and
 retryable rollback state—never source bytes or filesystem identities.
+Its source check applies the preview's own location checks, so a symlinked
+Codex home or prompts folder is reported unavailable rather than offered. A
+prompts folder past the 128-entry enumeration limit is refused as
+`TOO_MANY_FILES`, and a file name holding a control or direction-changing
+character is excluded as `unsafe-name`. A target that names an existing Skill in
+any letter case or Unicode composition is refused on every host, since a Mac's
+file system treats it as the same folder.
 
 **Contract.** Capabilities are keyed by the discovered local Skill directory and
 acquired in deterministic order for a rename, so ordinary, conditional, and registry
@@ -3496,13 +3514,14 @@ same-protocol coordination guarantee, not an upgrade-wide filesystem lock.
 **Seam, Implementation, callers, and tests.** `skill-local-mutation.ts` is the one local
 writer/revision capability; `SkillService`, registry installation, and the setup-import
 module compose it with their owned helpers and the guarded receipt-store Adapter.
-Routes, React-free SDK transport, React query Adapter, CLI JSON, and the shared stepper
-pass that canonical receipt through without client reconstruction. Focused evidence is
+Routes, React-free SDK transport, React query Adapter, CLI JSON, and the Skills page's
+Codex import dialog pass that canonical receipt through without client reconstruction. Focused evidence is
 `src-server/services/agents/__tests__/skill-revision.test.ts`,
 `src-server/services/agents/__tests__/skill-service-install.test.ts`,
 `src-server/services/agents/__tests__/skill-service.test.ts`,
-`src-server/services/setup/__tests__/existing-agent-setup-import.test.ts`, and
-`src-ui/src/components/setup/__tests__/ExistingSetupImportStepper.test.tsx`. **Do not
+`src-server/services/setup/__tests__/existing-agent-setup-import.test.ts`,
+`src-server/routes/__tests__/setup-imports.routes.test.ts`, and
+`src-ui/src/components/setup/__tests__/CodexPromptImportDialog.test.tsx`. **Do not
 reintroduce:** a setup-only lock, a conditional check outside the local capability,
 direct import target writes, pre-effect consumption without a durable item record, a
 terminal aggregate that hides an unresolved item, browser-invented receipt rows, or a
@@ -5067,8 +5086,8 @@ leaving it only on a transient event.
 **Seam, Implementation, callers, and tests.** Runtime route composition supplies the
 existing plugin-module quiescence, operational-event subscription quiescence/reconcile,
 provider registry, Adapter retirement, and engine-connection Adapters. Both direct
-revocation and the distinct-origin trusted regrant path invoke the same service. The
-Plugins surface renders terminal, winding, and incomplete truth with an actionable
+revocation and the distinct-origin trusted regrant path invoke the same service.
+Apps › Library renders terminal, winding, and incomplete truth with an actionable
 idempotent check/retry path. Adversarial evidence covers drain ordering, disjoint
 supersession, stale revoke/regrant generations, content-locked activation,
 content-generation replacement, timeout ownership, partial failure, retained consent

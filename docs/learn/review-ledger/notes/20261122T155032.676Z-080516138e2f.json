@@ -1,0 +1,7 @@
+{
+  "revision": "ac8fa3df765ba83130b45cde41332fedaf189e44",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Dialog change is element ids only (React useId instead of the entry id) so aria-describedby resolves; the SetupImportEffectJournal section makes no claim about the dialog's markup and is unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/components/setup/CodexPromptImportDialog.tsx"]}
+  ]
+}

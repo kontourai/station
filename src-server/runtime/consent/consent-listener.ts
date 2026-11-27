@@ -822,9 +822,9 @@ export function registerConsentRoutes(
               ? view.effect?.status === 'winding-down'
                 ? `${view.description.title} — approved. Runtime cleanup is still winding down under operation ${view.effect.operationId}.`
                 : view.effect?.status === 'incomplete'
-                  ? `${view.description.title} — approved, but runtime cleanup is incomplete under operation ${view.effect.operationId}. Retry from Plugins.`
+                  ? `${view.description.title} — approved, but runtime cleanup is incomplete under operation ${view.effect.operationId}. Retry from Apps › Library.`
                   : view.effect?.status === 'superseded'
-                    ? `${view.description.title} — approved, but the plugin changed again while runtime state was reconciling. Check Plugins for the current state.`
+                    ? `${view.description.title} — approved, but the plugin changed again while runtime state was reconciling. Check Apps › Library for the current state.`
                     : `${view.description.title} — approved. The requester is ready to continue.`
               : 'The request was approved.',
           )

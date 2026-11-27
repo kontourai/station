@@ -61,6 +61,6 @@ verification.
 Read `plugins[].id` in `manifest.json` for the current fixture entries.
 The CLI's `registry install <id>` submits no preview consent; executable or
 lifecycle-bearing entries are refused by the installer. [#2809](https://github.com/kontourai/station/issues/2809)
-tracks that caller. For now use the Registry UI's reviewed preview flow, or
+tracks that caller. For now use Apps › Discover's reviewed preview flow, or
 `./station plugin install ./examples/demo-layout` for the supported local
 target. Setting a local CLI catalog does not configure an unrelated remote host.

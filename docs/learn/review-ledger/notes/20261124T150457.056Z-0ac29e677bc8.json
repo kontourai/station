@@ -1,0 +1,29 @@
+{
+  "revision": "d60f53ccc69c2668d52b0c9da4faccea2c3fd9c3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"SkillService only gained hasSkillNamedLike, a read used by the Codex prompt import to compare names without case. No page citing the service describes import name matching, so their claims are unchanged.","inputs":["src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"SkillService only gained hasSkillNamedLike, a read used by the Codex prompt import to compare names without case. No page citing the service describes import name matching, so their claims are unchanged.","inputs":["src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"SkillService only gained hasSkillNamedLike, a read used by the Codex prompt import to compare names without case. No page citing the service describes import name matching, so their claims are unchanged.","inputs":["src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"SkillService only gained hasSkillNamedLike, a read used by the Codex prompt import to compare names without case. No page citing the service describes import name matching, so their claims are unchanged.","inputs":["src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"SkillService only gained hasSkillNamedLike, a read used by the Codex prompt import to compare names without case. No page citing the service describes import name matching, so their claims are unchanged.","inputs":["src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"SkillService only gained hasSkillNamedLike, a read used by the Codex prompt import to compare names without case. No page citing the service describes import name matching, so their claims are unchanged.","inputs":["src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"SkillService only gained hasSkillNamedLike, a read used by the Codex prompt import to compare names without case. No page citing the service describes import name matching, so their claims are unchanged.","inputs":["src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"SkillService only gained hasSkillNamedLike, a read used by the Codex prompt import to compare names without case. No page citing the service describes import name matching, so their claims are unchanged.","inputs":["src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"SkillService only gained hasSkillNamedLike, a read used by the Codex prompt import to compare names without case. No page citing the service describes import name matching, so their claims are unchanged.","inputs":["src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"SkillService only gained hasSkillNamedLike, a read used by the Codex prompt import to compare names without case. No page citing the service describes import name matching, so their claims are unchanged.","inputs":["src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"SkillService only gained hasSkillNamedLike, a read used by the Codex prompt import to compare names without case. No page citing the service describes import name matching, so their claims are unchanged.","inputs":["src-server/services/agents/skill-service.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"SkillService only gained hasSkillNamedLike, a read used by the Codex prompt import to compare names without case. No page citing the service describes import name matching, so their claims are unchanged.","inputs":["src-server/services/agents/skill-service.ts"]}
+  ]
+}
