@@ -1192,6 +1192,10 @@ esac
               ),
             ]),
           );
+          if (id === 'npm_idempotency' || id === 'cli_registry_provenance')
+            expect(environment.CLI_VERSION, `${id}: original run version`).toBe(
+              steps.identity.outputs.version,
+            );
           const result = spawnSync(
             'bash',
             ['-e', '-o', 'pipefail', '-c', step?.run ?? ''],
@@ -1199,6 +1203,7 @@ esac
               cwd: directory,
               encoding: 'utf8',
               windowsHide: true,
+              timeout: 15_000,
               env: {
                 ...process.env,
                 PATH: `${bin}:${process.env.PATH}`,
