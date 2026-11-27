@@ -630,7 +630,12 @@ async function main() {
         !shellLaunched || processGroupSettled,
         'Do not remove a running WebView profile',
       );
-      rmSync(webviewRoot, { recursive: true, force: true });
+      rmSync(webviewRoot, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 200,
+      });
     });
     await cleanup(
       'hint listener',
