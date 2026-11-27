@@ -58,6 +58,13 @@ async function commitMarkDone() {
   });
 }
 
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => [],
+}));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const sdk = await importOriginal<typeof import('@kontourai/station-sdk')>();
   return {
@@ -1211,7 +1218,7 @@ describe('NotificationsPage', () => {
     renderPage();
 
     expect(screen.getByText('Pairing request expired')).toBeTruthy();
-    chooseRowAction('Mark done');
+    chooseRowAction('Dismiss');
     // Held behind its Undo until the notice closes.
     expect(dismiss).not.toHaveBeenCalled();
     await commitMarkDone();
@@ -1930,7 +1937,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     snoozePreviews = [];
   });
 
-  test('every page row menu leads with Mark done, then the snooze list, as the dock does', () => {
+  test('page row menus put the clearing action before the snooze choices', () => {
     snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
     renderPage();
     const triggers = screen.getAllByRole('button', { name: 'More actions' });
@@ -1940,7 +1947,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       const names = screen
         .getAllByRole('menuitem')
         .map((item) => item.textContent ?? '');
-      expect(names[0]).toBe('Mark done');
+      expect(names[0]).toMatch(/^(Mark done|Dismiss)$/);
       expect(names[1]).toMatch(/^In 1 hour/);
       fireEvent.click(trigger);
       expect(screen.queryByRole('menu')).toBeNull();

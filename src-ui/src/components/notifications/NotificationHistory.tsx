@@ -30,7 +30,9 @@ import {
 import { sortNotifications } from '../../utils/notifications';
 import { AttentionHistoryItem } from '../attention/AttentionHistoryItem';
 import { Button } from '../Button';
+import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
+import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
 import { DecisionError } from './DecisionError';
 import { useInboxContext } from './inboxContext';
 import { NotificationHistoryItem } from './NotificationHistoryItem';
@@ -189,10 +191,11 @@ export function NotificationHistory({
   // #4404 (A43): a phone gets a bottom sheet over a dimmed page, exposed as
   // a dialog, instead of a cramped popover over the page's own controls.
   const isSheet = useIsMobile();
-  useClickOutside(isOpen, dropdownRef, onClose);
+  const sheetGestures = useSheetGesturesPreview();
+  useClickOutside(isOpen && !isSheet, dropdownRef, onClose);
   // Portalled to the document, so the popover is no longer next to its trigger
   // in tab order; move focus in on open and hand it back on close.
-  useMenuFocus(isOpen, onClose, dropdownRef);
+  useMenuFocus(isOpen && !isSheet, onClose, dropdownRef);
   useEffect(() => {
     void dismissals;
     setDismissals((current) => {
@@ -330,6 +333,7 @@ export function NotificationHistory({
         <DismissedRow
           key={id}
           id={id}
+          activity={recentNotifications.some((row) => row.id === id)}
           onUndo={phase === 'undoable' ? () => undoDismiss(id) : undefined}
         />
       )
@@ -367,6 +371,7 @@ export function NotificationHistory({
                 onAction={act}
                 onClose={onClose}
                 onDismiss={dismiss}
+                onManagementStart={holdFocus}
                 context={contextFor.forAttention(item)}
                 menuItems={
                   snooze.enabled
@@ -411,6 +416,8 @@ export function NotificationHistory({
           dismissalFor(notification.id) || (
             <NotificationHistoryItem
               key={notification.id}
+              onOpen={onClose}
+              onManagementStart={holdFocus}
               notification={notification}
               answerability={answerabilityFor(notification)}
               isActionPending={actionMutation.isPending}
@@ -432,92 +439,97 @@ export function NotificationHistory({
       )
     );
 
-  // Portalled out of the header: the mobile toolbar is a stacking context at
-  // z-index 200, so this popover's z-index could never lift it above the fixed
-  // coding tabs and dock while it rendered inside.
-  return createPortal(
+  const content = (
     <>
-      {isSheet ? (
-        <div
-          className="notification-history-backdrop"
-          aria-hidden="true"
-          data-testid="notification-history-backdrop"
-        />
-      ) : null}
-      <div
-        ref={dropdownRef}
-        className={`notification-history${isSheet ? ' notification-history--sheet' : ''}`}
-        tabIndex={-1}
-        {...(isSheet
-          ? { role: 'dialog', 'aria-labelledby': 'notification-history-title' }
-          : {})}
-      >
-        <div className="notification-history__header">
-          <h2
-            id="notification-history-title"
-            className="notification-history__title"
+      <div className="notification-history__header">
+        <h2
+          id="notification-history-title"
+          className="notification-history__title"
+        >
+          Notifications
+        </h2>
+        <div className="notification-history__header-actions">
+          <button
+            type="button"
+            className="notification-history__link"
+            onClick={viewAll}
           >
-            Notifications
-          </h2>
-          <div className="notification-history__header-actions">
-            <button
-              type="button"
-              className="notification-history__link"
-              onClick={viewAll}
-            >
-              View all notifications
-            </button>
-          </div>
+            View all notifications
+          </button>
         </div>
-        {itemCount === 0 ? (
-          <div className="notification-history__content">
-            {listsLoading ? (
-              <SkeletonList count={3} label="Loading notifications" />
-            ) : listsError ? (
-              <ErrorState
-                variant="compact"
-                title="Unable to load notifications"
-                description={describeReadFailure(listsError)}
-                action={
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      void refetchNotifications();
-                      void refetchAttention();
-                    }}
-                  >
-                    Retry
-                  </Button>
-                }
-              />
-            ) : (
-              /* empty-state action: notifications require no user setup */
-              <Empty
-                variant="compact"
-                label="All caught up"
-                description="Approvals, failures, and finished work show up here."
-              />
-            )}
-          </div>
-        ) : (
-          <>
-            <InboxTabs
-              tab={tab}
-              onChange={setChosenTab}
-              attentionBadge={attentionCount}
-            />
-            <div
-              className="notification-history__content"
-              role="tabpanel"
-              id={`notification-history-panel-${tab}`}
-              aria-labelledby={`notification-history-tab-${tab}`}
-            >
-              {tab === 'attention' ? attentionPanel : activityPanel}
-            </div>
-          </>
-        )}
       </div>
-    </>,
+      {itemCount === 0 ? (
+        <div className="notification-history__content">
+          {listsLoading ? (
+            <SkeletonList count={3} label="Loading notifications" />
+          ) : listsError ? (
+            <ErrorState
+              variant="compact"
+              title="Unable to load notifications"
+              description={describeReadFailure(listsError)}
+              action={
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    void refetchNotifications();
+                    void refetchAttention();
+                  }}
+                >
+                  Retry
+                </Button>
+              }
+            />
+          ) : (
+            /* empty-state action: notifications require no user setup */
+            <Empty
+              variant="compact"
+              label="All caught up"
+              description="Approvals, failures, and finished work show up here."
+            />
+          )}
+        </div>
+      ) : (
+        <>
+          <InboxTabs
+            tab={tab}
+            onChange={setChosenTab}
+            attentionBadge={attentionCount}
+          />
+          <div
+            className="notification-history__content"
+            role="tabpanel"
+            id={`notification-history-panel-${tab}`}
+            aria-labelledby={`notification-history-tab-${tab}`}
+          >
+            {tab === 'attention' ? attentionPanel : activityPanel}
+          </div>
+        </>
+      )}
+    </>
+  );
+  if (isSheet) {
+    return (
+      <ResponsiveDialogSurface
+        onClose={onClose}
+        ariaLabelledBy="notification-history-title"
+        layer="dialog"
+        overlayClassName="notification-history-overlay"
+        panelClassName={`notification-history notification-history--sheet${sheetGestures ? ' notification-history--with-handle' : ''}`}
+      >
+        <div
+          className="notification-history__sheet-content"
+          ref={dropdownRef}
+          tabIndex={-1}
+        >
+          {content}
+        </div>
+      </ResponsiveDialogSurface>
+    );
+  }
+  return createPortal(
+    <div ref={dropdownRef} className="notification-history" tabIndex={-1}>
+      {content}
+    </div>,
     document.body,
   );
 }
@@ -620,16 +632,29 @@ function useClickOutside(
  * rather than vanishing: the list must not jump under the user's finger while
  * they are still triaging it.
  */
-function DismissedRow({ id, onUndo }: { id: string; onUndo?: () => void }) {
+function DismissedRow({
+  id,
+  activity,
+  onUndo,
+}: {
+  id: string;
+  activity: boolean;
+  onUndo?: () => void;
+}) {
+  const message = activity
+    ? onUndo
+      ? 'Notification dismissed'
+      : 'Dismissing notification…'
+    : onUndo
+      ? 'Marked done'
+      : 'Marking done…';
   return (
     <div
       className="notification-history__dismissed"
       role="status"
       data-dismissal-id={id}
     >
-      <span className="notification-history__dismissed-label">
-        {onUndo ? 'Marked done' : 'Marking done…'}
-      </span>
+      <span className="notification-history__dismissed-label">{message}</span>
       {onUndo && (
         <button
           type="button"

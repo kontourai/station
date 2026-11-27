@@ -256,8 +256,7 @@ test.describe('Notifications hierarchy', () => {
       expect(box?.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
       expect(box?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     }
-    const viewport = page.viewportSize();
-    await page.mouse.click(2, (viewport?.height ?? 844) / 2);
+    await page.keyboard.press('Escape');
     await expect(compactNotifications).toBeHidden();
     await expect(
       page.getByText('Approval needed', { exact: true }),

@@ -52,3 +52,5 @@ export function snoozeChoices(
     wakeAt: preset.until.getTime(),
   }));
 }
+
+export const SNOOZE_ACTION_LABEL = 'Snooze';

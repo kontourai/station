@@ -68,7 +68,7 @@ function baseApproval(
 }
 
 describe('AttentionHistoryItem — approval kind', () => {
-  test('renders an "Open session" link when the item resolves a session target', () => {
+  test('links the approval title to its session', () => {
     render(
       <AttentionHistoryItem
         item={baseApproval({ openHref: '/?surface=activity&session=thread-1' })}
@@ -80,13 +80,13 @@ describe('AttentionHistoryItem — approval kind', () => {
       />,
     );
 
-    const link = screen.getByRole('link', { name: 'Open session' });
+    const link = screen.getByRole('link', { name: 'Approval needed' });
     expect(link.getAttribute('href')).toBe(
       '/?surface=activity&session=thread-1',
     );
   });
 
-  test('renders no "Open session" link when the item has no resolvable target', () => {
+  test('leaves the title as text when the item has no target', () => {
     render(
       <AttentionHistoryItem
         item={baseApproval()}
@@ -98,7 +98,7 @@ describe('AttentionHistoryItem — approval kind', () => {
       />,
     );
 
-    expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Approval needed' })).toBeNull();
     expect(screen.getByText('Approval needed')).toBeTruthy();
   });
 });
@@ -153,7 +153,7 @@ describe('AttentionHistoryItem — session-failed kind', () => {
       />,
     );
 
-    chooseRowAction('Mark done');
+    screen.getByRole('button', { name: 'Mark done' }).click();
 
     expect(acknowledge).toHaveBeenCalledWith('session-failed:thread-boom');
     expect(onDismiss).not.toHaveBeenCalled();
@@ -228,17 +228,18 @@ describe('AttentionHistoryItem — session-failed kind', () => {
   });
 
   // archive#3203 defect 2: the count stayed at 4 after acting on a row.
-  test('opening the row navigates in the app and acknowledges it', () => {
+  test('opening a failure navigates without marking it done', () => {
     const onClose = vi.fn();
     renderRow(baseFailure(), { onClose });
 
-    screen.getByRole('link', { name: 'Open session' }).click();
+    screen.getByRole('link', { name: 'Fix the login redirect' }).click();
 
     expect(onClose).toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledWith(
       '/?surface=activity&session=thread-boom',
     );
-    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
+    expect(acknowledge).not.toHaveBeenCalled();
+    expect(acknowledgeAsync).not.toHaveBeenCalled();
   });
 
   test('opening an approval row acknowledges nothing', () => {
@@ -249,10 +250,12 @@ describe('AttentionHistoryItem — session-failed kind', () => {
       baseApproval({ openHref: '/?surface=activity&session=thread-1' }),
     );
 
-    screen.getByRole('link', { name: 'Open session' }).click();
+    screen.getByRole('link', { name: 'Approval needed' }).click();
 
     expect(acknowledgeAsync).not.toHaveBeenCalled();
-    expect(navigate).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(
+      '/?surface=activity&session=thread-1',
+    );
   });
 });
 
@@ -330,7 +333,7 @@ describe('AttentionHistoryItem — decision kinds', () => {
       />,
     );
 
-    const link = screen.getByRole('link', { name: 'Open in Review' });
+    const link = screen.getByRole('link', { name: 'src/index.ts' });
     expect(link.getAttribute('href')).toBe(
       '/projects/campfit/layouts/review?change=change-1',
     );
@@ -367,7 +370,9 @@ describe('AttentionHistoryItem — decision kinds', () => {
     );
 
     expect(
-      screen.getByRole('link', { name: 'Open review' }).getAttribute('href'),
+      screen
+        .getByRole('link', { name: 'Survey gate review' })
+        .getAttribute('href'),
     ).toBe('/projects/campfit/layouts/review?review=review-session-1');
     expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
   });
@@ -448,9 +453,7 @@ describe('AttentionHistoryItem Flow gate rows', () => {
       renderRow(item);
 
       expect(
-        screen
-          .getByRole('link', { name: 'Open flow console' })
-          .getAttribute('href'),
+        screen.getByRole('link', { name: item.title }).getAttribute('href'),
       ).toBe(FLOW_HREF);
     },
   );
@@ -470,7 +473,9 @@ describe('AttentionHistoryItem Flow gate rows', () => {
     );
 
     expect(
-      screen.getByRole('link', { name: 'Open session' }).getAttribute('href'),
+      screen
+        .getByRole('link', { name: 'Approval needed' })
+        .getAttribute('href'),
     ).toBe('/?surface=activity&session=thread-1');
   });
 });
@@ -506,10 +511,7 @@ describe.each(AMBIGUITY_CASES)(
         screen.getByRole('link', { name: 'Open model connections' }),
       );
       expect(navigate).toHaveBeenCalledWith('/connections/models');
-      // Opening the fix's target acknowledges the row, as "Open session" does.
-      expect(acknowledgeAsync).toHaveBeenCalledWith(
-        'session-failed:thread-boom',
-      );
+      expect(acknowledgeAsync).not.toHaveBeenCalled();
     });
   },
 );

@@ -276,7 +276,7 @@ test.describe('Notifications: attention queue and activity log', () => {
       .filter({ hasText: ACTIVITY_TITLE });
     // Secondary actions live in the row's ⋯ menu.
     await row.getByRole('button', { name: 'More actions' }).click();
-    const dismiss = page.getByRole('menuitem', { name: 'Mark done' });
+    const dismiss = page.getByRole('menuitem', { name: 'Dismiss' });
     await expect(dismiss).toBeVisible();
 
     const dismissed = page.waitForResponse(
@@ -393,7 +393,7 @@ test.describe('Notifications at 390x844', () => {
     expect(rowBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(rowBox?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     await rowMenu.click();
-    const rowAction = page.getByRole('menuitem', { name: 'Mark done' });
+    const rowAction = page.getByRole('menuitem', { name: 'Dismiss' });
     await expect(rowAction).toBeVisible();
     const itemBox = await rowAction.boundingBox();
     expect(itemBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);

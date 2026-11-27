@@ -56,3 +56,12 @@
   background: transparent;
   color: var(--k-text-muted);
 }
+
+.notification-row-title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.notification-row-title-link:hover {
+  text-decoration: underline;
+}
