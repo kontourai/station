@@ -2851,7 +2851,8 @@ A Station owner can browse the host's provider transcripts through the enabled
   recent catalog page. Specify `provider` to page further through that engine.
   It reports partial results when a scan reaches its budget or cannot complete.
 - `GET /api/orchestration/external-history/:id/transcript` reads a bounded text
-  preview without importing it. Pass the returned `nextCursor` on a later
+  preview without importing it. The response sets `truncated` when it shortens
+  or omits text to keep the preview small. Pass the returned `nextCursor` on a later
   request to keep reading the same transcript. Pass `from=start` to start at the
   beginning. Only sources that can read
   transcripts expose this operation.

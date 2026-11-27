@@ -31,6 +31,7 @@ import {
   isSessionSourceAffinity,
   snapshotSessionSourceAffinity,
 } from '../../providers/sessions/session-source-affinity.js';
+import { truncateJsonString } from '../../providers/tool-output-projection.js';
 import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import {
@@ -73,6 +74,9 @@ const ARCHIVE_SELECTION_LIMIT = 512;
 const ARCHIVE_PAGE_CACHE_LIMIT = 32;
 const ARCHIVE_READ_CURSORS = 64;
 const ARCHIVE_IMPORT_PAGES_PER_REQUEST = 2;
+const ARCHIVE_PREVIEW_MAX_MESSAGES = 80;
+const ARCHIVE_PREVIEW_MAX_TEXT_BYTES = 256 * 1024;
+const ARCHIVE_PREVIEW_MAX_MESSAGE_BYTES = 24 * 1024;
 
 interface DiscoverySnapshot extends AttachedSessionDiscoveryResult {
   at: number;
@@ -896,7 +900,7 @@ export class AttachedSessionFollowService {
           if (oldest) this.archiveCursors.delete(oldest);
         }
       }
-      return { messages: archiveText(read.events), nextCursor, startsNearEnd };
+      return { ...archiveText(read.events), nextCursor, startsNearEnd };
     });
   }
 
@@ -2171,7 +2175,7 @@ function archiveId(
 
 function archiveText(
   events: readonly CanonicalRuntimeEvent[],
-): ExternalSessionTranscriptPage['messages'] {
+): Pick<ExternalSessionTranscriptPage, 'messages' | 'truncated'> {
   const messages: ExternalSessionTranscriptPage['messages'] = [];
   let previousItem: string | undefined;
   for (const event of events) {
@@ -2191,7 +2195,23 @@ function archiveText(
       previousItem = event.itemId;
     }
   }
-  return messages;
+  let remaining = ARCHIVE_PREVIEW_MAX_TEXT_BYTES;
+  let truncated = messages.length > ARCHIVE_PREVIEW_MAX_MESSAGES;
+  const preview: typeof messages = [];
+  for (const message of messages.slice(0, ARCHIVE_PREVIEW_MAX_MESSAGES)) {
+    if (remaining < 8) {
+      truncated = true;
+      break;
+    }
+    const text = truncateJsonString(
+      message.text,
+      Math.min(remaining, ARCHIVE_PREVIEW_MAX_MESSAGE_BYTES),
+    );
+    remaining -= Buffer.byteLength(JSON.stringify(text.value));
+    truncated ||= text.omittedBytes > 0;
+    preview.push({ ...message, text: text.value });
+  }
+  return { messages: preview, ...(truncated && { truncated }) };
 }
 
 /**

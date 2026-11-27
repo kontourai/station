@@ -284,6 +284,9 @@ function ArchiveTranscript({
                 </Button>
               </>
             )}
+            {query.data.truncated && (
+              <p>Some text was shortened for this preview.</p>
+            )}
             {query.data.messages.length === 0 && (
               <Empty label="No message text on this page" />
             )}

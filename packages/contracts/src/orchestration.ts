@@ -147,6 +147,7 @@ export interface ExternalSessionTranscriptPage {
   messages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
   nextCursor: string | null;
   startsNearEnd: boolean;
+  truncated?: boolean;
 }
 
 export interface ExternalSessionHistoryImport {

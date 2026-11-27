@@ -34,11 +34,12 @@ test('owner can browse a provider transcript without saving it, then cancel or i
   const transcripts = join(home, 'projects', 'work');
   await mkdir(cwd);
   await mkdir(transcripts, { recursive: true });
+  const prompt = `Read the old log. ${'x'.repeat(26 * 1024)}`;
   const rows = [
     {
       type: 'user',
       uuid: 'u',
-      message: { role: 'user', content: 'Read the old log.' },
+      message: { role: 'user', content: prompt },
     },
     {
       type: 'assistant',
@@ -145,8 +146,12 @@ test('owner can browse a provider transcript without saving it, then cancel or i
       data: ExternalSessionTranscriptPage;
     };
     expect(firstPage.messages).toMatchObject([
-      { role: 'user', text: 'Read the old log.' },
+      { role: 'user', text: expect.stringMatching(/^Read the old log[.]/) },
     ]);
+    expect(firstPage.truncated).toBe(true);
+    expect(
+      JSON.stringify(firstPage.messages[0].text).length,
+    ).toBeLessThanOrEqual(24 * 1024);
     expect(firstPage.nextCursor).toEqual(expect.any(String));
     const nextPage = await app.request(
       `/external-history/${id}/transcript?cursor=${firstPage.nextCursor}`,
