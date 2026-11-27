@@ -683,10 +683,10 @@ Scroll to bottom keep the row in the composer, so the status never covers a
 card or its controls and a short dock spends no line on room for it. While the
 row is back in the composer, the desktop turn rail's bottom step comes down.
 The transcript keeps its end's room, so the reader leaving the end moves no row.
-Scroll to bottom shows while the reader is scrolled up, and from the moment
-they open a row at the end that then grows past the view's end: that row stays
-where it is, and
-streaming text and new answers are not followed until the reader returns to the
+The reader can leave the end by scrolling up or by opening a row that grows
+past the viewport. On touch, **Scroll to bottom** appears once the latest user
+message is below the visible transcript. The reader’s position stays in place,
+and Station pauses following streamed text and new answers until they return to the
 end themselves (wheel, touch, a scroll key, End, a drag of the transcript's
 scrollbar, or Scroll to bottom), closes that row, or switches chats. It also
 ends when the row it protects goes away (a finished turn folding its tool
@@ -1061,8 +1061,9 @@ without the directory retain the explicitly labelled loaded-window map.
 - **Previous turn / Next turn.** Previous and next controls sit at the top and bottom of the turn rail.
   They appear on hover or keyboard focus on desktop. On touch they keep 44px
   targets but reserve no gutter: they float stacked in the transcript's
-  top-right corner while **Scroll to bottom** is available. Each arrow
-  appears only when it has a turn to go to.
+  top-right corner while the reader is away from the end. Each arrow appears
+  only when it has a turn to go to. **Next turn** and **Scroll to bottom**
+  appear on touch once the latest user message is below the visible transcript.
   **Browse turns** remains in the conversation overflow. The browser pages indexed turn summaries independently
   of transcript bodies; selecting a turn loads older bounded history pages until
   its complete prompt/body window is available, then reveals it. Each request

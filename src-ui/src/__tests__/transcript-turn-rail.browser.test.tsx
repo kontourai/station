@@ -275,6 +275,23 @@ test('phone turn steps appear at the top right only while reading away from the 
         ),
       );
     expect(textEdge).toBeGreaterThan(340);
+    await page.evaluate(() =>
+      (
+        window as unknown as { __setAnswerText(value: string): void }
+      ).__setAnswerText(
+        'The latest reply still has more to read. '.repeat(160),
+      ),
+    );
+    await page.getByRole('button', { name: 'Browse turns' }).click();
+    const latestDialog = page.getByRole('dialog', { name: 'Browse turns' });
+    await latestDialog.getByRole('button', { name: /Turn 36:/ }).click();
+    await latestDialog.waitFor({ state: 'hidden' });
+    await settledScrollTop(page);
+    await page.getByRole('button', { name: 'Previous turn' }).waitFor();
+    for (const name of ['Next turn', 'Scroll to bottom']) {
+      expect(await page.getByRole('button', { name }).isVisible()).toBe(false);
+    }
+
     await page.getByRole('button', { name: 'Browse turns' }).click();
     const browserDialog = page.getByRole('dialog', { name: 'Browse turns' });
     await browserDialog.waitFor();
@@ -477,14 +494,16 @@ test.each([
         await dialog.getByRole('button', { name: /Turn 1:/ }).click();
         await dialog.waitFor({ state: 'hidden' });
         await settledScrollTop(page);
-        await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
-        // Scrolled away: a step with somewhere to go shows.
-        const visible = await Promise.all(
-          ['Previous turn', 'Next turn'].map((name) =>
-            page.getByRole('button', { name }).isVisible(),
-          ),
-        );
-        expect(visible).toContain(true);
+        const transcript = (await page
+          .locator('.chat-messages')
+          .boundingBox())!;
+        const latestPrompt = (await page.locator(userRow(1)).boundingBox())!;
+        expect(latestPrompt.y).toBeLessThan(transcript.y + transcript.height);
+        for (const name of ['Next turn', 'Scroll to bottom']) {
+          expect(await page.getByRole('button', { name }).isVisible()).toBe(
+            false,
+          );
+        }
       }
       expect(errors).toEqual([]);
     } finally {
