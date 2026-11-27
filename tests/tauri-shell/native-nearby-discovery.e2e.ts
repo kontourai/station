@@ -555,7 +555,7 @@ async function main() {
     await cleanup('multicast responder', () => responder.shutdown());
     await cleanup('isolated WebView profile', async () => {
       assert.ok(
-        !fixture || fixture.cleanupReceipt?.processGroupSettled,
+        fixture?.cleanupReceipt?.processGroupSettled,
         'Do not remove a running WebView profile',
       );
       rmSync(webviewRoot, { recursive: true, force: true });
