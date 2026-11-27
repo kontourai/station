@@ -202,9 +202,8 @@ function QueueSwipeRow({
     triggerSelector: '.queue-card-text',
   });
   return (
-    <div
+    <fieldset
       className="queue-swipe-row"
-      role="group"
       ref={swipe.ref}
       style={swipe.style}
       data-dragging={swipe.dragging || undefined}
@@ -248,7 +247,7 @@ function QueueSwipeRow({
           </Button>
         </div>
       )}
-    </div>
+    </fieldset>
   );
 }
 
@@ -1025,7 +1024,7 @@ export function QueuedMessages({
           aria-controls={queueId}
           aria-label={
             nextFirst && nextMessage
-              ? `Up next: ${nextMessage} — ${queuedCount} queued`
+              ? `${queuedCount} queued. ${nextMessage}`
               : pendingCount > 0
                 ? `${pendingCount} pending message${pendingCount !== 1 ? 's' : ''}${needsReview ? `, ${attention.toLowerCase()}` : ''}`
                 : 'Held messages need review'

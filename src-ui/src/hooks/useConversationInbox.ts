@@ -8,6 +8,7 @@ import {
   StationHttpError,
   updateConversationQueue,
 } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type QueryClient,
   skipToken,
@@ -299,7 +300,7 @@ export function useConversationInbox(
             ? action
             : {
                 ...action,
-                key: crypto.randomUUID(),
+                key: randomCorrelationId(),
               },
       });
     },

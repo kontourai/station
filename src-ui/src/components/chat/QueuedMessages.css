@@ -412,6 +412,17 @@
   .queued-messages--pending .queued-messages__toggle {
     min-height: 44px;
   }
+
+  .queued-messages[data-next-first] .queued-message--held {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  .queued-messages[data-next-first]
+    .queued-message--held
+    .queued-message__text {
+    flex: 1 1 auto;
+  }
 }
 
 /* #3868 follow-up: the pending list, and each row in it, grows in and
@@ -511,19 +522,6 @@
   border-inline-start: 2px solid var(--k-caution);
 }
 
-@media (max-width: 768px) {
-  .queued-messages[data-next-first] .queued-message--held {
-    flex-wrap: nowrap;
-    align-items: center;
-  }
-
-  .queued-messages[data-next-first]
-    .queued-message--held
-    .queued-message__text {
-    flex: 1 1 auto;
-  }
-}
-
 .chat-steer-bubbles {
   display: grid;
   gap: var(--k-space-1);
@@ -578,7 +576,6 @@
 .chat-input .chat-queue-trigger {
   display: inline-flex;
   align-items: center;
-  gap: var(--k-space-1);
   min-width: 44px;
   min-height: 44px;
   padding-inline: var(--k-space-1);
@@ -592,12 +589,6 @@
 .chat-queue-empty {
   padding: var(--k-space-2);
   color: var(--k-text-muted);
-}
-
-@media (max-width: 420px) {
-  .chat-input .chat-queue-trigger {
-    gap: 0;
-  }
 }
 
 .chat-steer-bubble,
@@ -748,7 +739,7 @@
 .queue-card-text {
   display: block;
   width: 100%;
-  min-height: var(--k-space-7);
+  min-height: 44px;
   padding: 0;
   border: 0;
   border-radius: var(--k-radius-control);
@@ -763,12 +754,6 @@
 .queue-card-text:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-focus);
   outline-offset: var(--k-focus-ring-offset);
-}
-
-@media (max-width: 768px), (pointer: coarse) {
-  .queue-card-text {
-    min-height: 44px;
-  }
 }
 
 .queued-messages[data-next-first] .queued-message__steer {
@@ -792,6 +777,9 @@
 .queue-swipe-row {
   position: relative;
   min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
   overflow: hidden;
   border-radius: var(--k-radius-control);
   touch-action: pan-y;
