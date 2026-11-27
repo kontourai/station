@@ -15,12 +15,13 @@ import {
   createNotificationPreferencesClient,
   type NotificationMuteTarget,
 } from '../../lib/notification-preferences-client';
+import { isPlainLeftClick } from '../../utils/attentionOpen';
+import { notificationSessionTitle } from '../../utils/notifications';
 import { NoticeAction } from './NoticeAction';
 
 /**
  * Inbox row additions for an enveloped notification (#2587): who sent it,
- * an Open that goes to its target and records the read, and — for agent
- * notifications — Mute. Renders nothing for a legacy record.
+ * and its available mute actions. Renders nothing for a legacy record.
  *
  * Mute is feature-detected: it appears only once the preferences route has
  * answered (#2586). On a Station without it the buttons are absent rather
@@ -39,29 +40,17 @@ export function NotificationEnvelopeControls({
 }) {
   const envelope = readNotificationEnvelope(notification);
   if (!envelope) return null;
-  const source = envelope.source.kind === 'agent' ? envelope.source : null;
-  const canOpen = notificationOpenTarget(envelope) !== undefined;
-  if (!source && !canOpen) return null;
+  if (envelope.source.kind !== 'agent') return null;
   return (
     <div data-testid="notification-envelope-controls">
-      {source && (
-        <div className={detailClassName} data-testid="notification-attribution">
-          {agentAttributionLabel(source)}
-        </div>
-      )}
+      <div className={detailClassName} data-testid="notification-attribution">
+        {agentAttributionLabel(envelope.source)}
+      </div>
       <div className={actionsClassName}>
-        {canOpen && (
-          <NoticeAction
-            type="button"
-            className={actionClassName}
-            onClick={() => void activateNotification(notification)}
-          >
-            Open
-          </NoticeAction>
-        )}
-        {source && (
-          <MuteActions source={source} actionClassName={actionClassName} />
-        )}
+        <MuteActions
+          source={envelope.source}
+          actionClassName={actionClassName}
+        />
       </div>
     </div>
   );
@@ -123,5 +112,33 @@ function MuteActions({
         </span>
       )}
     </>
+  );
+}
+
+export function NotificationTitle({
+  notification,
+  onOpen,
+}: {
+  notification: Notification;
+  onOpen?: () => void;
+}) {
+  const envelope = readNotificationEnvelope(notification);
+  const target = envelope && notificationOpenTarget(envelope);
+  const title = notificationSessionTitle(notification) ?? notification.title;
+  if (!target) return title;
+  const search = new URLSearchParams(target.params).toString();
+  return (
+    <a
+      className="notification-row-title-link"
+      href={search ? `${target.path}?${search}` : target.path}
+      onClick={(event) => {
+        if (!isPlainLeftClick(event)) return;
+        event.preventDefault();
+        void activateNotification(notification);
+        onOpen?.();
+      }}
+    >
+      {title}
+    </a>
   );
 }
