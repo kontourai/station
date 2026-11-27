@@ -115,7 +115,7 @@ if (process.argv[2] !== 'install' || !process.argv.includes('--ignore-scripts') 
 fs.mkdirSync('node_modules');
 fs.writeFileSync('node_modules/partial', 'unverified');
 fs.writeFileSync('manager.json', JSON.stringify({pid:process.pid,parent:process.ppid}));
-spawn(process.execPath, [${JSON.stringify(writer)}, process.cwd()], {stdio:'ignore'});
+spawn(process.execPath, [${JSON.stringify(writer)}, process.cwd()], {stdio:'ignore',detached:process.platform === 'win32'});
 setInterval(() => { if(fs.existsSync('release') || (${JSON.stringify(mode === 'success')} && fs.existsSync('heartbeat'))) process.exit(0); }, 25);
 setTimeout(() => process.exit(0), 45000);`,
   );
