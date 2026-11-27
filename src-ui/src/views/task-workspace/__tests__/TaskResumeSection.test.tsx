@@ -205,7 +205,9 @@ describe('TaskResumeSection (#4554)', () => {
     'Resume and dispatch refuses changed same-origin authority %s',
     async (changeAt) => {
       let authorityKey = 'operator';
-      const fetch = vi.fn(async () => Response.json({ success: true, data: {} }));
+      const fetch = vi.fn(async () =>
+        Response.json({ success: true, data: {} }),
+      );
       vi.stubGlobal('fetch', fetch);
       setClientCredentialResolver(async () => {
         const captured = authorityKey;
@@ -224,7 +226,11 @@ describe('TaskResumeSection (#4554)', () => {
       });
       fixture.resume.mockImplementationOnce(async () => {
         if (changeAt === 'after resume') authorityKey = 'other-operator';
-        return { task: { ...TASK, status: 'ready' }, resume: {}, replayed: false };
+        return {
+          task: { ...TASK, status: 'ready' },
+          resume: {},
+          replayed: false,
+        };
       });
       const { dispatchTask } = await vi.importActual<
         typeof import('@kontourai/station-sdk')
