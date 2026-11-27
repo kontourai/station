@@ -288,8 +288,8 @@ function TaskResumeDialog({
       <div className="task-resume__dialog">
         {owner && (
           <p>
-            The earlier lead ran as <strong>{owner}</strong>. New work runs
-            as you.
+            The earlier lead ran as <strong>{owner}</strong>. New work runs as
+            you.
           </p>
         )}
         <h3>
