@@ -29,7 +29,9 @@ interface ProfileStore {
   }>;
 }
 
-function profiles(fixture: TauriShellFixture): ProfileStore {
+function profiles(
+  fixture: Pick<TauriShellFixture, 'stationRoot'>,
+): ProfileStore {
   return JSON.parse(
     readFileSync(join(fixture.stationRoot, 'config', 'profiles.json'), 'utf8'),
   );
@@ -57,6 +59,7 @@ function remoteTraffic() {
     .map(
       (line) =>
         JSON.parse(line) as {
+          stage: 'start' | 'finish';
           path: string;
           method: string;
           status: number;
@@ -153,6 +156,46 @@ function assertStoredCredential(profile: ProfileStore['profiles'][number]) {
   );
 }
 
+async function removeOwnedCredentials(
+  stationRoot: string,
+  beforeCredentials: string,
+) {
+  const errors: unknown[] = [];
+  for (const profile of profiles({ stationRoot }).profiles) {
+    if (!profile.credentialRef) continue;
+    const reference = `${profile.credentialRef.kind}:${profile.credentialRef.id}`;
+    for (const target of [
+      `profile:${reference}.io.kontourai.station`,
+      `${custodyAccount(reference)}.io.kontourai.station.credential-metadata`,
+    ]) {
+      try {
+        assert.ok(
+          !beforeCredentials.includes(target),
+          'Never remove a preexisting credential',
+        );
+        const listing = execFileSync('cmdkey', ['/list'], {
+          encoding: 'utf8',
+          windowsHide: true,
+        });
+        if (listing.includes(target))
+          execFileSync('cmdkey', [`/delete:${target}`], { windowsHide: true });
+        const after = execFileSync('cmdkey', ['/list'], {
+          encoding: 'utf8',
+          windowsHide: true,
+        });
+        assert.ok(
+          !after.includes(target),
+          'An owned native credential remained',
+        );
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+  }
+  if (errors.length)
+    throw new AggregateError(errors, 'Owned native credential cleanup failed');
+}
+
 async function main() {
   assert.equal(process.platform, 'win32', 'This is a real Windows shell lane');
   const address = process.env.STATION_NEARBY_INTERFACE;
@@ -190,6 +233,8 @@ async function main() {
   const webviewRoot = mkdtempSync(join(tmpdir(), 'station-nearby-webview-'));
   let service: ReturnType<typeof responder.createService> | undefined;
   let fixture: TauriShellFixture | undefined;
+  let shellLaunched = false;
+  let processGroupSettled = false;
   try {
     await new Promise<void>((resolve, reject) => {
       hintServer.once('error', reject);
@@ -207,6 +252,13 @@ async function main() {
     });
     await service.advertise();
     fixture = await startTauriShellFixture({
+      onProcessStarted: () => {
+        shellLaunched = true;
+      },
+      onProcessGroupSettled: async (stationRoot) => {
+        processGroupSettled = true;
+        await removeOwnedCredentials(stationRoot, beforeCredentials);
+      },
       seedRemoteProfile: false,
       realCredentialStore: true,
       env: { WEBVIEW2_USER_DATA_FOLDER: webviewRoot },
@@ -446,7 +498,10 @@ async function main() {
     assert.ok(
       authenticated.some(
         (entry) =>
-          entry.path.startsWith('/api/projects') && entry.status === 200,
+          entry.stage === 'finish' &&
+          entry.method === 'GET' &&
+          entry.path === '/api/projects' &&
+          entry.status === 200,
       ),
       'Remote authentication must reach the real protected Project route',
     );
@@ -459,10 +514,31 @@ async function main() {
       ),
       'The local operator credential must never reach the advertised remote origin',
     );
+    const admissionTrafficOffset = remoteTraffic().length;
     assert.equal(
       (await ipc(driver, 'plugin:station-discovery|prepare')).status,
       'unavailable',
       'After explicit switching, admission must come from the selected remote host, not the still-enabled original controller',
+    );
+    const selectedAdmissionTraffic = remoteTraffic().slice(
+      admissionTrafficOffset,
+    );
+    assert.ok(
+      selectedAdmissionTraffic.some(
+        (entry) =>
+          entry.stage === 'finish' &&
+          entry.method === 'GET' &&
+          entry.authenticated &&
+          entry.path === '/api/feature-previews/desktop-nearby/admission' &&
+          entry.status === 404,
+      ),
+      'The selected remote host must complete the authenticated preview refusal',
+    );
+    assert.ok(
+      selectedAdmissionTraffic.every(
+        (entry) => entry.authorizationHash !== localOperatorHash,
+      ),
+      'Selected-host admission must not forward the original controller credential',
     );
     writeFileSync(
       join(output, 'nearby-paired-remote-project.png'),
@@ -511,43 +587,7 @@ async function main() {
     };
     if (fixture) {
       const shell = fixture;
-      let capturedProfiles: ProfileStore | undefined;
-      await cleanup('profile references', async () => {
-        capturedProfiles = profiles(shell);
-      });
       await cleanup('native process group', () => shell.stop());
-      await cleanup('owned Windows credentials', async () => {
-        assert.ok(capturedProfiles);
-        for (const profile of capturedProfiles.profiles) {
-          if (!profile.credentialRef) continue;
-          const reference = `${profile.credentialRef.kind}:${profile.credentialRef.id}`;
-          for (const target of [
-            `profile:${reference}.io.kontourai.station`,
-            `${custodyAccount(reference)}.io.kontourai.station.credential-metadata`,
-          ]) {
-            assert.ok(
-              !beforeCredentials.includes(target),
-              'Never remove a preexisting credential',
-            );
-            const listing = execFileSync('cmdkey', ['/list'], {
-              encoding: 'utf8',
-              windowsHide: true,
-            });
-            if (listing.includes(target))
-              execFileSync('cmdkey', [`/delete:${target}`], {
-                windowsHide: true,
-              });
-            const after = execFileSync('cmdkey', ['/list'], {
-              encoding: 'utf8',
-              windowsHide: true,
-            });
-            assert.ok(
-              !after.includes(target),
-              'An owned native credential remained',
-            );
-          }
-        }
-      });
     }
     await cleanup('advertisement', async () => {
       await service?.end();
@@ -555,7 +595,7 @@ async function main() {
     await cleanup('multicast responder', () => responder.shutdown());
     await cleanup('isolated WebView profile', async () => {
       assert.ok(
-        fixture?.cleanupReceipt?.processGroupSettled,
+        !shellLaunched || processGroupSettled,
         'Do not remove a running WebView profile',
       );
       rmSync(webviewRoot, { recursive: true, force: true });
