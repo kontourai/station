@@ -1,0 +1,7 @@
+{
+  "revision": "ae6d4b3940cd4dafeb56e0abc3f3db6c0ddc9017",
+
+  "notes": [
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed the merged listener handoff sequence: concrete public binds retain api-local only when needed; initial generation and link quiet windows both start at the current handoff and keep the 50ms quiet period and existing cap. Retained both generation-manager and Hono/terminal source owners when merging main. The combined generation-manager and supervisor-link owner suites passed 84 tests at ae6d4b3940. Original intermittent Windows ECONNRESET causality remains unconfirmed; this is not an AcceptEx fix claim.","inputs":["docs/design/process-supervisor.md"]}
+  ]
+}
