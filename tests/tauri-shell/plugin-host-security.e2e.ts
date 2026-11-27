@@ -16,6 +16,39 @@ const PLUGIN_NAME = 'hostile-plugin';
 const DECLARED_SLUG = 'hostile-panel';
 const PWNED_KEY = 'plugin-host-pwned';
 
+const unavailableFixtureRoutes = new Set([
+  'GET /acp/connections',
+  'GET /api/agents',
+  'GET /api/attention',
+  'GET /api/auth/authority',
+  'GET /api/boot',
+  'GET /api/connections/agents',
+  'GET /api/connections/models',
+  'GET /api/consent/native-eligibility',
+  'GET /api/conversations',
+  'GET /api/environments/ssh/sessions',
+  'GET /api/feature-previews',
+  'GET /api/me/appearance',
+  'GET /api/me/layouts',
+  'GET /api/models',
+  'GET /api/models/capabilities',
+  'GET /api/notifications/deliveries',
+  'GET /api/orchestration/events',
+  'GET /api/orchestration/pane-host/hostile/catalog',
+  'GET /api/orchestration/sessions/read-model',
+  'GET /api/orchestration/work-claims',
+  'GET /api/projects/hostile/channels',
+  'GET /api/projects/hostile/operating-state/availability',
+  'GET /api/settings/managed-policy',
+  'GET /api/system/capabilities',
+  'GET /api/system/core-update',
+  'GET /api/system/skills',
+  'GET /api/tasks',
+  'GET /notifications',
+  'POST /api/presence/focus',
+  'POST /api/telemetry/panes',
+]);
+
 type ListeningServer = {
   origin: string;
   server: Server;
@@ -268,7 +301,18 @@ function remoteResponse(
   if (pathname === '/api/events' || pathname === '/events') {
     return send(response, 204, '');
   }
-  hits.unexpectedRequests.push(`${request.method ?? 'GET'} ${pathname}`);
+  const route = `${request.method ?? 'GET'} ${pathname}`;
+  if (unavailableFixtureRoutes.has(route)) {
+    return send(
+      response,
+      503,
+      JSON.stringify({
+        success: false,
+        error: 'This service is unavailable in the plugin containment fixture',
+      }),
+    );
+  }
+  hits.unexpectedRequests.push(route);
   return send(
     response,
     501,
@@ -305,7 +349,30 @@ async function setUp() {
       parentTauri = 'blocked:' + String(error && error.name);
     }
     document.documentElement.dataset.parentTauri = parentTauri;
-    const ownTauri = typeof window.__TAURI_INTERNALS__;
+    const ownIpc = window.__TAURI_INTERNALS__?.invoke;
+    const nativeUri = typeof ownIpc === 'function'
+      ? window.__TAURI_INTERNALS__.convertFileSrc('bundled_server_status', 'ipc')
+      : null;
+    const report = (transport, details = {}) => {
+      window.parent.postMessage({ method: 'fill', params: {
+        ...details, transport, parentTauri,
+        height: parentTauri === 'blocked:SecurityError' &&
+          (transport === 'bridge-absent' || transport === 'csp-blocked') ? 721 : 999
+      } }, '*');
+    };
+    addEventListener('securitypolicyviolation', (event) => {
+      if (event.blockedURI === nativeUri && event.effectiveDirective === 'connect-src') {
+        report('csp-blocked', { blockedUri: event.blockedURI });
+      }
+    });
+    if (typeof ownIpc === 'function') {
+      ownIpc('bundled_server_status').then(
+        () => report('reachable'),
+        (error) => report('rejected', { reason: String(error) })
+      );
+    } else {
+      report('bridge-absent');
+    }
     try { window.top.localStorage.setItem(${JSON.stringify(PWNED_KEY)}, '1'); } catch {}
     try { window.top.document.body.setAttribute('data-plugin-pwned', '1'); } catch {}
     try { fetch(${JSON.stringify(`${blocked.origin}/exfiltrate`)}).catch(() => {}); } catch {}
@@ -313,11 +380,6 @@ async function setUp() {
       id: 'over-scoped', permission: 'network.fetch', path: '/api/secret', method: 'POST'
     } }, '*');
     window.parent.postMessage({ method: 'navigate', params: { target: '/settings' } }, '*');
-    window.parent.postMessage({ method: 'fill', params: {
-      height: ownTauri === 'undefined' && parentTauri === 'blocked:SecurityError'
-        ? 721
-        : 999
-    } }, '*');
     document.documentElement.dataset.hostileComplete = 'true';
     window.__station_ai_plugins = {
       [${JSON.stringify(PLUGIN_NAME)}]: {
@@ -346,6 +408,7 @@ async function tearDown() {
 }
 
 async function runProof() {
+  const startupDeadline = Date.now() + 120_000;
   // Spans the shell's boot burst, which occupies the WebView main loop that
   // `execute/sync` runs on. The budget is long because the QUEUE is long; the
   // per-attempt bound (SCRIPT_TIMEOUT_MS, 5 s) stays short so this loop gets
@@ -373,11 +436,28 @@ async function runProof() {
       return mainBridge === 'object';
     },
     {
-      timeout: 30_000,
+      timeout: Math.min(30_000, Math.max(1, startupDeadline - Date.now())),
       timeoutMsg: 'The Tauri bridge was never installed on the main frame.',
     },
   );
   assert.equal(mainBridge, 'object');
+  await browser.waitUntil(
+    async () =>
+      (await browser.execute(async () => {
+        const nativeWindow = window as Window & {
+          __TAURI_INTERNALS__: {
+            invoke(command: string): Promise<{ phase: string }>;
+          };
+        };
+        return (
+          await nativeWindow.__TAURI_INTERNALS__.invoke('bundled_server_status')
+        ).phase;
+      })) === 'running',
+    {
+      timeout: Math.max(1, startupDeadline - Date.now()),
+      timeoutMsg: 'Fixture sidecar never became ready.',
+    },
+  );
   stationOrigin = await browser.execute(() =>
     window.location.origin === 'null'
       ? 'tauri://localhost'
@@ -443,7 +523,10 @@ async function runProof() {
     { timeout: 20_000, timeoutMsg: 'Station manager button was not visible.' },
   );
   const managerElement = await browser.findElement(managerSelector);
-  assert.ok(managerElement, 'Station manager control disappeared before input.');
+  assert.ok(
+    managerElement,
+    'Station manager control disappeared before input.',
+  );
   await browser.clickElement(managerElement);
   const selectRemoteSelector =
     'button[role="menuitemradio"][aria-label^="remote-plugin-proof — "]';
@@ -462,6 +545,22 @@ async function runProof() {
   );
   const remoteElement = await browser.findElement(selectRemoteSelector);
   assert.ok(remoteElement, 'Remote Station disappeared before input.');
+  await browser.execute((frameOrigin: string) => {
+    addEventListener('message', (event) => {
+      const pluginFrame = document.querySelector<HTMLIFrameElement>(
+        'iframe[title="Plugin: hostile-panel"]',
+      );
+      if (
+        event.data?.method === 'fill' &&
+        event.origin === frameOrigin &&
+        event.source === pluginFrame?.contentWindow
+      ) {
+        const proofWindow = window as unknown as { __pluginProof?: unknown[] };
+        proofWindow.__pluginProof ??= [];
+        proofWindow.__pluginProof.push(event.data.params);
+      }
+    });
+  }, frame.origin);
   await browser.clickElement(remoteElement);
   try {
     await browser.waitUntil(async () => hits.requests.length > 0, {
@@ -548,6 +647,8 @@ async function runProof() {
       errors:
         (window as unknown as { __tauriShellErrors?: string[] })
           .__tauriShellErrors ?? [],
+      pluginProof: (window as unknown as { __pluginProof?: unknown })
+        .__pluginProof,
       resources: performance
         .getEntriesByType('resource')
         .map((entry) => entry.name)
@@ -574,7 +675,7 @@ async function runProof() {
     {
       timeout: 20_000,
       timeoutMsg:
-        'Hostile plugin did not report an IPC-blind, cross-origin frame.',
+        'Hostile plugin did not report a cross-origin frame with blocked native transport.',
     },
   );
   assert.equal(
@@ -630,8 +731,33 @@ try {
   await setUp();
   await runProof();
   console.log(
-    `PASS: hostile plugin stayed IPC-blind in ${browser.capabilities.browserName ?? 'webview'} ${browser.capabilities.browserVersion ?? 'unknown'} (${Date.now() - started}ms)`,
+    `PASS: hostile plugin containment and native transport denial in ${browser.capabilities.browserName ?? 'webview'} ${browser.capabilities.browserVersion ?? 'unknown'} (${Date.now() - started}ms)`,
   );
+} catch (error) {
+  const renderer = await browser
+    .execute(() => ({
+      location: window.location.href,
+      body: document.body.innerText.slice(0, 3_000),
+      frames: [...document.querySelectorAll('iframe')].map((entry) => ({
+        src: entry.src,
+        height: getComputedStyle(entry).height,
+        style: entry.getAttribute('style'),
+      })),
+      pluginProof: (window as unknown as { __pluginProof?: unknown })
+        .__pluginProof,
+      errors:
+        (window as unknown as { __tauriShellErrors?: string[] })
+          .__tauriShellErrors ?? [],
+    }))
+    .catch(() => null);
+  console.error(
+    JSON.stringify({
+      renderer,
+      fixtureRequests: hits.requests,
+      unexpectedRequests: hits.unexpectedRequests,
+    }),
+  );
+  throw error;
 } finally {
   await tearDown();
 }
