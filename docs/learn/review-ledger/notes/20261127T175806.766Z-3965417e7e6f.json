@@ -1,0 +1,9 @@
+{
+  "revision": "afdf33f62c4a73469aeb7778ec09b26869819d05",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed the installation-design delivery checklist and node-pty prebuild README claims against afdf33f62c. Existing exact pin, inert-hook refusal, manifest/allowlist consistency, source/prebuild staging and native-header fixture assertions are unchanged and still executed by the complete lifecycle file (133 passed, one added Windows parent-loss case skipped on Linux). Added real npm-like launcher/manager/writer custody and unrelated-control coverage; converted actual installer callers to await the asynchronous guarded operation. Old synchronous-launcher mutation fails specifically on continued writer output after timeout; byte-exact restored full focused evidence is green. These tests do not newly qualify Windows, attested artifacts, libc compatibility or hosted release. No prose change is warranted.","inputs":["scripts/__tests__/dependency-lifecycle.test.ts"]},
+
+    {"path":"packaging/node-pty-prebuilds/README.md","note":"Reviewed the installation-design delivery checklist and node-pty prebuild README claims against afdf33f62c. Existing exact pin, inert-hook refusal, manifest/allowlist consistency, source/prebuild staging and native-header fixture assertions are unchanged and still executed by the complete lifecycle file (133 passed, one added Windows parent-loss case skipped on Linux). Added real npm-like launcher/manager/writer custody and unrelated-control coverage; converted actual installer callers to await the asynchronous guarded operation. Old synchronous-launcher mutation fails specifically on continued writer output after timeout; byte-exact restored full focused evidence is green. These tests do not newly qualify Windows, attested artifacts, libc compatibility or hosted release. No prose change is warranted.","inputs":["scripts/__tests__/dependency-lifecycle.test.ts"]}
+  ]
+}
