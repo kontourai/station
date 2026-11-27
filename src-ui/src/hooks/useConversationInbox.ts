@@ -128,6 +128,10 @@ export function useConversationInbox(
           if (!signal.aborted && scope.isCurrent())
             client.setQueryData([...queryKey, 'head'], head);
         },
+        onSteerHead: (head) => {
+          if (!signal.aborted && scope.isCurrent())
+            client.setQueryData([...queryKey, 'head'], head);
+        },
       });
       if (!scope.isCurrent())
         throw new Error('The Station connection changed.');

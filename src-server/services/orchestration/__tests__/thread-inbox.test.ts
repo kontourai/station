@@ -742,6 +742,14 @@ describe('thread inbox (#3568)', () => {
       });
       const turn = await runningFirstTurn(world);
       const steerText = 'Keep using the current turn';
+      const expectedHead = world.inbox.currentSteerHead(THREAD);
+      if (!expectedHead) throw new Error('The first turn has no steering head');
+      await emit(
+        world,
+        'content.text-delta',
+        { turnId: 'turn-1', delta: 'streaming' },
+        turn,
+      );
       if (order === 'follow-up first') {
         expect(queueFollowUp(world).outcome).toBe('queued');
       }
@@ -751,7 +759,7 @@ describe('thread inbox (#3568)', () => {
             conversationId: THREAD,
             clientTurnId: 'priority-steer',
             payload: { ...payload, message: steerText },
-            expectedHead: world.inbox.currentHead(THREAD),
+            expectedHead,
           }).outcome,
         ).toBe('queued');
         await waiting;
@@ -849,7 +857,7 @@ describe('thread inbox (#3568)', () => {
     expect(world.inbox.list(THREAD)).toEqual([]);
   });
 
-  test.each(['steer', 'follow-up'] as const)(
+  test.each(['steer', 'steer with a turn head', 'follow-up'] as const)(
     '%s cannot reuse a predecessor head with the same sequence',
     async (kind) => {
       let current = THREAD;
@@ -858,10 +866,14 @@ describe('thread inbox (#3568)', () => {
         headSequence: () => 1,
       });
       await runningFirstTurn(world);
-      const expectedHead = world.inbox.currentHead(THREAD);
+      const expectedHead =
+        kind === 'steer with a turn head'
+          ? world.inbox.currentSteerHead(THREAD)
+          : world.inbox.currentHead(THREAD);
+      if (!expectedHead) throw new Error('The predecessor has no head');
       current = 'successor-session';
       expect(
-        (kind === 'steer'
+        (kind !== 'follow-up'
           ? world.inbox.submitSteer.bind(world.inbox)
           : world.inbox.submit.bind(world.inbox))({
           conversationId: THREAD,
