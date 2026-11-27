@@ -1,5 +1,110 @@
 [
   {
+    "timestampUtc": "2026-11-27T06:53:56Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261127",
+    "sha": "3dba664548727f58bfa9cf5ecabd12b3c80444e8",
+    "artifactBuiltAt": "2026-11-27T06:05:39.326Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45949032474",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45949032474)"
+    ],
+    "changelog": {
+      "previousSha": "0897000fa013d9746bba02c12fb000705f082bf6",
+      "groups": {
+        "feat": [
+          "[#5617](https://github.com/kontourai/station/pull/5617) feat: add action and settings control stories",
+          "[#5614](https://github.com/kontourai/station/pull/5614) feat: add a developer UI component catalog"
+        ],
+        "fix": [
+          "[#5615](https://github.com/kontourai/station/pull/5615) fix(review): route ordinary runtime and documentation changes",
+          "[#5609](https://github.com/kontourai/station/pull/5609) fix(acp): advertise Kiro-compatible Station Control tool schemas",
+          "[#5610](https://github.com/kontourai/station/pull/5610) fix(connections): load first-run browser route publications",
+          "[#5604](https://github.com/kontourai/station/pull/5604) fix: explain conversation read refusals"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
+    "timestampUtc": "2026-11-27T06:53:56Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261127",
+    "sha": "3dba664548727f58bfa9cf5ecabd12b3c80444e8",
+    "artifactBuiltAt": "2026-11-27T06:04:35.784Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45949032474",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45949032474)"
+    ],
+    "changelog": {
+      "previousSha": "0897000fa013d9746bba02c12fb000705f082bf6",
+      "groups": {
+        "feat": [
+          "[#5617](https://github.com/kontourai/station/pull/5617) feat: add action and settings control stories",
+          "[#5614](https://github.com/kontourai/station/pull/5614) feat: add a developer UI component catalog"
+        ],
+        "fix": [
+          "[#5615](https://github.com/kontourai/station/pull/5615) fix(review): route ordinary runtime and documentation changes",
+          "[#5609](https://github.com/kontourai/station/pull/5609) fix(acp): advertise Kiro-compatible Station Control tool schemas",
+          "[#5610](https://github.com/kontourai/station/pull/5610) fix(connections): load first-run browser route publications",
+          "[#5604](https://github.com/kontourai/station/pull/5604) fix: explain conversation read refusals"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
+    "timestampUtc": "2026-11-27T06:06:17Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261127.45949032474",
+    "sha": "3dba664548727f58bfa9cf5ecabd12b3c80444e8",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45949032474",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261127.45949032474 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "0897000fa013d9746bba02c12fb000705f082bf6",
+      "groups": {
+        "feat": [
+          "[#5617](https://github.com/kontourai/station/pull/5617) feat: add action and settings control stories",
+          "[#5614](https://github.com/kontourai/station/pull/5614) feat: add a developer UI component catalog"
+        ],
+        "fix": [
+          "[#5615](https://github.com/kontourai/station/pull/5615) fix(review): route ordinary runtime and documentation changes",
+          "[#5609](https://github.com/kontourai/station/pull/5609) fix(acp): advertise Kiro-compatible Station Control tool schemas",
+          "[#5610](https://github.com/kontourai/station/pull/5610) fix(connections): load first-run browser route publications",
+          "[#5604](https://github.com/kontourai/station/pull/5604) fix: explain conversation read refusals"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
     "timestampUtc": "2026-11-26T23:19:11Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261126.1",
