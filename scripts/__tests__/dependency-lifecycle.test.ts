@@ -2601,6 +2601,10 @@ if (!fs.existsSync('previous-attempt')) {
           generateBuildInputs: () => {},
         },
       );
+    await pnpmCommand(['--version'], checkout, {
+      command: process.execPath,
+      args: [shim],
+    });
     vi.stubEnv(INERT_INSTALL_TIMEOUT_ENV, '1000');
     try {
       let failure: unknown;
