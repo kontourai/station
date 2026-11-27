@@ -81,7 +81,13 @@ const LEDGER_SCRIPTS = [
   'scripts/verify-npm-registry-provenance.mjs',
 ];
 
-type Step = { name?: string; run?: string; env?: Record<string, string> };
+type Step = {
+  id?: string;
+  if?: string;
+  name?: string;
+  run?: string;
+  env?: Record<string, string>;
+};
 type Job = {
   if?: string;
   needs?: string[];
@@ -1070,6 +1076,136 @@ describe.skipIf(process.platform === 'win32')(
       ).toEqual([BATCH_SUBJECT]);
       await checks(g);
     }, 120_000);
+  },
+);
+
+describe.skipIf(process.platform === 'win32')(
+  'Nightly CLI receipt recovery for its original run',
+  () => {
+    it.each([
+      { registryHead: 'a'.repeat(40), expectedReceipt: true },
+      { registryHead: null, expectedReceipt: false },
+      { registryHead: 'b'.repeat(40), expectedReceipt: false },
+    ])(
+      'recovers only exact published provenance: $registryHead',
+      ({ registryHead, expectedReceipt }) => {
+        const directory = makeTempDir('nightly-cli-receipt-');
+        const bin = join(directory, 'bin');
+        mkdirSync(bin);
+        for (const file of [
+          ...LEDGER_SCRIPTS,
+          'scripts/lib/nightly-build-identity.mjs',
+          'scripts/channel-platform-matrix.mjs',
+          'scripts/product-version.mjs',
+          'scripts/lib/native-release-config.mjs',
+          'scripts/lib/release-tag.mjs',
+          'packages/cli/package.json',
+        ]) {
+          const destination = join(directory, file);
+          mkdirSync(dirname(destination), { recursive: true });
+          copyFileSync(join(root, file), destination);
+        }
+        writeFileSync(
+          join(bin, 'gh'),
+          "#!/bin/sh\nprintf '2026-11-14T12:00:00Z\\n'\n",
+        );
+        writeFileSync(
+          join(bin, 'npm'),
+          `#!/bin/sh
+case "$*" in
+  'view @kontourai/station-cli@nightly gitHead --json') printf '"${'a'.repeat(40)}"\\n' ;;
+  *' gitHead --json') ${registryHead === null ? 'printf \'{"code":"E404"}\\n\'; exit 1' : `printf '"${registryHead}"\\n'`} ;;
+  *) printf 'unexpected npm invocation: %s\\n' "$*" >&2; exit 91 ;;
+esac
+`,
+        );
+        for (const executable of ['gh', 'npm'])
+          chmodSync(join(bin, executable), 0o755);
+        const cli = workflow('nightly.yml').jobs['nightly-cli'];
+        const steps: Record<
+          string,
+          { outcome: string; outputs: Record<string, string> }
+        > = {};
+        const packageVersion = JSON.parse(
+          readFileSync(join(directory, 'packages/cli/package.json'), 'utf8'),
+        ).version;
+        const version = `${packageVersion}-nightly.20261114.${RUN_ID}`;
+        for (const id of [
+          'cli_source_decide',
+          'identity',
+          'npm_idempotency',
+          'cli_registry_provenance',
+        ]) {
+          const step = cli.steps?.find((candidate) => candidate.id === id);
+          expect(step?.run, id).toBeTruthy();
+          steps.cli_npm_publish = { outcome: 'skipped', outputs: {} };
+          const priorSuccess = Object.values(steps).every(
+            (result) => result.outcome !== 'failure',
+          );
+          if (!evaluateIf(step?.if ?? 'success()', { steps, priorSuccess })) {
+            steps[id] = { outcome: 'skipped', outputs: {} };
+            continue;
+          }
+          const outputPath = join(directory, `${id}.output`);
+          writeFileSync(outputPath, '');
+          const result = spawnSync(
+            'bash',
+            ['-e', '-o', 'pipefail', '-c', step?.run ?? ''],
+            {
+              cwd: directory,
+              encoding: 'utf8',
+              windowsHide: true,
+              env: {
+                ...process.env,
+                PATH: `${bin}:${process.env.PATH}`,
+                GITHUB_OUTPUT: outputPath,
+                GITHUB_RUN_ID: RUN_ID,
+                GITHUB_REPOSITORY: 'kontourai/station',
+                SOURCE_SHA: 'a'.repeat(40),
+                BUILD_CLI: steps.cli_source_decide?.outputs.build ?? '',
+                CLI_VERSION: version,
+                RUNNER_TEMP: directory,
+              },
+            },
+          );
+          if (id !== 'npm_idempotency' || registryHead !== 'b'.repeat(40))
+            expect(result.status, `${id}: ${result.stderr}`).toBe(0);
+          else {
+            expect(result.status).not.toBe(0);
+            expect(result.stderr).toContain(
+              'already published from a different source',
+            );
+          }
+          steps[id] = {
+            outcome: result.status === 0 ? 'success' : 'failure',
+            outputs: Object.fromEntries(
+              readFileSync(outputPath, 'utf8')
+                .trim()
+                .split('\n')
+                .filter(Boolean)
+                .map((line) => line.split('=')),
+            ),
+          };
+        }
+        expect(steps.cli_registry_provenance.outcome).toBe(
+          expectedReceipt ? 'success' : 'skipped',
+        );
+        if (expectedReceipt) {
+          const receipt = JSON.parse(
+            readFileSync(
+              join(directory, 'provider-receipts/nightly-cli.json'),
+              'utf8',
+            ),
+          );
+          expect(receipt).toMatchObject({
+            sourceSha: 'a'.repeat(40),
+            registryGitHead: 'a'.repeat(40),
+            version,
+            artifactBuiltAt: null,
+          });
+        }
+      },
+    );
   },
 );
 
