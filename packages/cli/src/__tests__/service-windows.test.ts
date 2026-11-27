@@ -13,6 +13,12 @@ import {
   windowsRegistration,
   windowsServiceStatus,
 } from '../commands/service-windows.js';
+import {
+  formatTaskSettings,
+  schtasksDefaultSettings,
+  type TaskSettingName,
+  type TaskSettings,
+} from './helpers/windows-task-settings-fixture.js';
 
 const lifecycle = (baseDir: string) => ({
   baseDir,
@@ -104,31 +110,6 @@ function windowsTrustOperation(args: string[]): 'ensure' | 'verify' | null {
 // limit, the scheduler's restart settings, and no battery rules.
 const EXPECTED_TASK_SETTINGS =
   'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False';
-
-type TaskSettingName =
-  | 'Priority'
-  | 'ExecutionTimeLimit'
-  | 'RestartCount'
-  | 'RestartInterval'
-  | 'DisallowStartIfOnBatteries'
-  | 'StopIfGoingOnBatteries';
-type TaskSettings = Record<TaskSettingName, string>;
-
-/** What `schtasks /Create` leaves without settings XML. */
-function schtasksDefaultSettings(): TaskSettings {
-  return {
-    Priority: '7',
-    ExecutionTimeLimit: 'PT72H',
-    RestartCount: '0',
-    RestartInterval: '',
-    DisallowStartIfOnBatteries: 'True',
-    StopIfGoingOnBatteries: 'True',
-  };
-}
-
-function formatTaskSettings(settings: TaskSettings): string {
-  return `Priority=${settings.Priority}, ExecutionTimeLimit=${settings.ExecutionTimeLimit}, RestartCount=${settings.RestartCount}, RestartInterval=${settings.RestartInterval}, DisallowStartIfOnBatteries=${settings.DisallowStartIfOnBatteries}, StopIfGoingOnBatteries=${settings.StopIfGoingOnBatteries}`;
-}
 
 /**
  * Models the encoded settings program against a persisted task: each
