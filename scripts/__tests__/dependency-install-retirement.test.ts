@@ -193,17 +193,46 @@ test('a replaced retired tree cannot redirect cleanup', () => {
   ).toBe('original');
 });
 
-test('an asynchronous callback cannot release an unfinished install', () => {
-  const f = fixture();
-  expect(() =>
-    withDependencyInstallGuard({
+test.each(['resolve', 'reject'])(
+  'an asynchronous callback retains admission until it settles: %s',
+  async (outcome) => {
+    const f = fixture();
+    let resolveInstall!: (value: string) => void;
+    let rejectInstall!: (error: Error) => void;
+    const pending = new Promise<string>((resolve, reject) => {
+      resolveInstall = resolve;
+      rejectInstall = reject;
+    });
+    const installed = withDependencyInstallGuard({
       root: f.root,
       clean: true,
-      run: () => Promise.resolve(),
-    }),
-  ).toThrow(/not verified/i);
-  expect(existsSync(f.guard)).toBe(true);
-});
+      run: () => pending,
+    });
+    expect(existsSync(f.guard)).toBe(true);
+    expect(
+      JSON.parse(readFileSync(join(f.guard, 'receipt.json'), 'utf8')).phase,
+    ).toBe('installing');
+    expect(() =>
+      withDependencyInstallGuard({
+        root: f.root,
+        run: () => {
+          throw new Error('second installer entered');
+        },
+      }),
+    ).toThrow(/installer guard already exists/);
+    if (outcome === 'resolve') {
+      resolveInstall('verified');
+      await expect(installed).resolves.toBe('verified');
+      expect(existsSync(f.guard)).toBe(false);
+    } else {
+      rejectInstall(new Error('process cleanup failed'));
+      await expect(installed).rejects.toThrow(/not verified/i);
+      expect(
+        JSON.parse(readFileSync(join(f.guard, 'receipt.json'), 'utf8')).phase,
+      ).toBe('failed');
+    }
+  },
+);
 
 test('a retired-tree cleanup failure stops before npm and retains remaining generated data', () => {
   const f = fixture();
@@ -544,13 +573,13 @@ function pipeline(f: ReturnType<typeof fixture>, failed?: string) {
 const installWithExecution = install as unknown as (
   options: { developer?: boolean },
   execution: ReturnType<typeof pipeline>['execution'],
-) => unknown;
+) => Promise<unknown>;
 
-test('the production installer binds its selected driver and guards the actual phase order', () => {
+test('the production installer binds its selected driver and guards the actual phase order', async () => {
   const f = fixture();
   seed(f.modules);
   const p = pipeline(f);
-  installWithExecution({}, p.execution);
+  await installWithExecution({}, p.execution);
   expect(p.calls).toEqual([
     'node',
     'policy',
@@ -587,7 +616,7 @@ test('the production installer binds its selected driver and guards the actual p
 
 test.each(['npm-only', 'hybrid', 'unidentified'])(
   'the production installer retires a %s tree once and reuses its subsequent pnpm tree',
-  (kind) => {
+  async (kind) => {
     const f = fixture();
     seed(f.modules, 'old-extraneous-package');
     if (kind !== 'unidentified')
@@ -595,13 +624,13 @@ test.each(['npm-only', 'hybrid', 'unidentified'])(
     if (kind === 'hybrid')
       writeFileSync(join(f.modules, '.modules.yaml'), 'old hybrid');
     const first = pipeline(f);
-    installWithExecution({}, first.execution);
+    await installWithExecution({}, first.execution);
     expect(existsSync(join(f.modules, 'old-extraneous-package'))).toBe(false);
     expect(existsSync(join(f.modules, '.package-lock.json'))).toBe(false);
     const installed = statSync(f.modules);
     writeFileSync(join(f.modules, 'pnpm-preserved'), 'preserve this tree');
     const second = pipeline(f);
-    installWithExecution({}, second.execution);
+    await installWithExecution({}, second.execution);
     expect(statSync(f.modules).ino).toBe(installed.ino);
     expect(readFileSync(join(f.modules, 'pnpm-preserved'), 'utf8')).toBe(
       'preserve this tree',
@@ -610,12 +639,12 @@ test.each(['npm-only', 'hybrid', 'unidentified'])(
   },
 );
 
-test('developer installs preserve established pnpm trees while allowing an intentional lock refresh', () => {
+test('developer installs preserve established pnpm trees while allowing an intentional lock refresh', async () => {
   const f = fixture();
   seed(f.modules, '.modules.yaml');
   const before = statSync(f.modules);
   const p = pipeline(f);
-  installWithExecution({ developer: true }, p.execution);
+  await installWithExecution({ developer: true }, p.execution);
   expect(p.execution.pnpmCommand).toHaveBeenCalledWith(
     expect.arrayContaining([
       'install',
@@ -628,14 +657,16 @@ test('developer installs preserve established pnpm trees while allowing an inten
   expect(statSync(f.modules).ino).toBe(before.ino);
 });
 
-test('a failing build-input generator leaves a complete, unguarded install behind', () => {
+test('a failing build-input generator leaves a complete, unguarded install behind', async () => {
   // The generator runs after the guard releases: its failure is a source
   // defect, and the next `dependencies:ci` must not refuse with "installer
   // guard already exists" over a node_modules that is complete and verified.
   const f = fixture();
   seed(f.modules);
   const p = pipeline(f, 'generate');
-  expect(() => installWithExecution({}, p.execution)).toThrow('generate fault');
+  await expect(installWithExecution({}, p.execution)).rejects.toThrow(
+    'generate fault',
+  );
   expect(p.calls.at(-1)).toBe('generate');
   expect(p.execution.verify).toHaveBeenCalledTimes(1);
   expect(existsSync(f.guard)).toBe(false);
@@ -644,11 +675,11 @@ test('a failing build-input generator leaves a complete, unguarded install behin
 
 test.each(['hooks', 'owned', 'verify'])(
   'the actual installer retains the partial new tree after its %s phase fails',
-  (failed) => {
+  async (failed) => {
     const f = fixture();
     seed(f.modules);
     const p = pipeline(f, failed);
-    expect(() => installWithExecution({}, p.execution)).toThrow(
+    await expect(installWithExecution({}, p.execution)).rejects.toThrow(
       /not verified/i,
     );
     expect(p.execution.pnpmCommand).toHaveBeenCalledTimes(1);
@@ -663,7 +694,7 @@ test.each(['hooks', 'owned', 'verify'])(
 
 test.each(['node', 'pnpm script', 'pnpm executable'])(
   'an install refuses a %s driver within node_modules before acquiring a guard or executing the manager',
-  (kind) => {
+  async (kind) => {
     const f = fixture();
     seed(f.modules);
     const p = pipeline(f);
@@ -675,7 +706,7 @@ test.each(['node', 'pnpm script', 'pnpm executable'])(
         kind === 'pnpm executable'
           ? { command: inside, args: [] }
           : { command: process.execPath, args: [inside] };
-    expect(() => installWithExecution({}, p.execution)).toThrow(
+    await expect(installWithExecution({}, p.execution)).rejects.toThrow(
       /outside root node_modules/,
     );
     expect(p.execution.command).toHaveBeenCalledTimes(kind === 'node' ? 0 : 1);
@@ -685,7 +716,7 @@ test.each(['node', 'pnpm script', 'pnpm executable'])(
   },
 );
 
-test('a pnpm link inside node_modules binds the external canonical driver before incremental installation', () => {
+test('a pnpm link inside node_modules binds the external canonical driver before incremental installation', async () => {
   const f = fixture();
   seed(f.modules);
   const p = pipeline(f);
@@ -694,7 +725,7 @@ test('a pnpm link inside node_modules binds the external canonical driver before
     command: process.execPath,
     args: [join(f.modules, 'npm', 'pnpm.cjs')],
   });
-  installWithExecution({}, p.execution);
+  await installWithExecution({}, p.execution);
   expect(p.execution.pnpmCommand).toHaveBeenCalledWith(
     expect.arrayContaining([
       'install',
@@ -711,7 +742,7 @@ test('a pnpm link inside node_modules binds the external canonical driver before
   expect(existsSync(f.guard)).toBe(false);
 });
 
-test('the real command runner executes its bound external driver after the legacy tree containing its alias is gone', () => {
+test('the real command runner executes its bound external driver after the legacy tree containing its alias is gone', async () => {
   const f = fixture();
   seed(f.modules, '.package-lock.json');
   const p = pipeline(f);
@@ -731,7 +762,7 @@ fs.writeFileSync('node_modules/.modules.yaml', 'pnpm metadata');
 fs.writeFileSync('driver-result.json', JSON.stringify({ driver: __filename, args: process.argv.slice(2) }));`,
   );
   const execution = { ...p.execution, pnpmCommand };
-  installWithExecution({}, execution as unknown as typeof p.execution);
+  await installWithExecution({}, execution as unknown as typeof p.execution);
   const result = JSON.parse(
     readFileSync(join(f.root, 'driver-result.json'), 'utf8'),
   );
@@ -748,7 +779,7 @@ fs.writeFileSync('driver-result.json', JSON.stringify({ driver: __filename, args
   expect(existsSync(f.guard)).toBe(false);
 });
 
-test('an external alias cannot hide a driver target inside the retirement tree', () => {
+test('an external alias cannot hide a driver target inside the retirement tree', async () => {
   const f = fixture();
   seed(f.modules, 'pnpm.cjs');
   const p = pipeline(f);
@@ -757,7 +788,7 @@ test('an external alias cannot hide a driver target inside the retirement tree',
     command: process.execPath,
     args: [join(f.root, 'tools', 'local', 'pnpm.cjs')],
   });
-  expect(() => installWithExecution({}, p.execution)).toThrow(
+  await expect(installWithExecution({}, p.execution)).rejects.toThrow(
     /outside root node_modules/,
   );
   expect(p.execution.command).toHaveBeenCalledTimes(1);
