@@ -6493,7 +6493,6 @@ function externalHistoryScreens(): Screen[] {
     (['dark', 'light'] as const).map((theme): Screen => {
       const device = viewport === MOBILE ? 'mobile' : 'desktop';
       const id = 'a'.repeat(64);
-      const sessionId = 'gallery-external-history-chat';
       let cleanups: Array<() => Promise<void>> = [];
       const read = (data: unknown) => async (route: Route) => {
         if (route.request().method() !== 'GET')
@@ -6503,31 +6502,14 @@ function externalHistoryScreens(): Screen[] {
       return {
         name: `external-history-${theme}-${device}`,
         title: `Third-party history — ${theme} (${device})`,
-        path: `/?dock=open&chat=${sessionId}`,
+        path: '/?dock=open',
         viewport,
         beforeGoto: async (page) => {
           await clearDockGalleryStorage(page);
-          await seedActiveChatSession(page, {
-            conversationId: sessionId,
-            agentSlug: 'demo-agent',
-            title: 'Review chat',
-          });
-          await mockRuntimeConversation(page, {
-            id: sessionId,
-            agentSlug: 'demo-agent',
-            title: 'Review chat',
-            provider: 'claude',
-            model: 'test-model',
-            canContinue: true,
-            turns: () =>
-              buildLongSessionTurns({
-                threadId: sessionId,
-                provider: 'claude',
-                turnCount: 1,
-                replyText: () => 'Ready to review.',
-              }),
-          });
           cleanups = [
+            await withRoute(page, '**/.well-known/station/v1', (route) =>
+              fulfillGalleryStationHandshake(route, true),
+            ),
             await withRoute(
               page,
               '**/api/feature-previews',
@@ -6584,32 +6566,29 @@ function externalHistoryScreens(): Screen[] {
             (mode) => document.documentElement.setAttribute('data-theme', mode),
             theme,
           );
-          if (viewport === MOBILE) {
-            await page
-              .getByRole('button', { name: 'Chat actions', exact: true })
-              .click();
-            await page
-              .getByRole('menuitem', {
-                name: 'Browse all conversations',
-                exact: true,
-              })
-              .click();
-          } else {
-            await page
-              .getByRole('complementary', { name: 'Chats' })
-              .getByRole('button', {
-                name: 'Browse all conversations',
-                exact: true,
-              })
+          const dock = page.getByRole('region', { name: 'Chat dock' });
+          const inbox = dock.getByRole(
+            viewport === MOBILE ? 'region' : 'complementary',
+            { name: 'Chats', exact: true },
+          );
+          const browse = inbox.getByRole('button', {
+            name: 'Browse all conversations',
+            exact: true,
+          });
+          await expect(dock).toBeVisible();
+          if (!(await browse.isVisible())) {
+            await dock
+              .getByRole('button', { name: /^(Show )?Chats(?: [—·].*)?$/i })
               .click();
           }
+          await browse.click();
           await page
             .getByRole('button', { name: 'Third-party history', exact: true })
             .click();
           const dialog = page.getByRole('dialog', {
             name: 'Third-party history',
           });
-          await dialog.getByRole('button', { name: /^claude/ }).click();
+          await dialog.getByRole('button', { name: /^Claude Code/ }).click();
           await expect(
             dialog.getByText('Check which tests cover the refresh behavior.'),
           ).toBeVisible();
@@ -6619,7 +6598,11 @@ function externalHistoryScreens(): Screen[] {
         },
         cleanup: async () => {
           for (const cleanup of cleanups) await cleanup();
-          cleanups = [];
+          cleanups = [
+            await withRoute(page, '**/.well-known/station/v1', (route) =>
+              fulfillGalleryStationHandshake(route, true),
+            ),
+          ];
         },
       };
     }),

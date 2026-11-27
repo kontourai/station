@@ -4867,6 +4867,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               : (importedSessionId ?? activeSessionId),
                             triggerRef: inboxTriggerRef,
                             onClose: closeMobileInbox,
+                            onOpenHistory: () => {
+                              closeMobileInbox();
+                              openInboxHistory();
+                            },
                             onFocusChat: focusSessionInPane,
                             onOpenConversation:
                               openSelectedConversationInScopedPane,

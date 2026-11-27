@@ -12,7 +12,7 @@ import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { workStatus } from '../../views/home/work-status';
 import { Button } from '../Button';
-import { CloseGlyph } from '../icons/Glyph';
+import { CloseGlyph, MessageGlyph } from '../icons/Glyph';
 import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { NewChatAction } from '../NewChatAction';
 import {
@@ -45,6 +45,7 @@ export function MobileInboxPanel({
   onFocusChat,
   onOpenConversation,
   onOpenSession,
+  onOpenHistory,
   agentsLoaded,
   authority,
   taskQuestionsEnabled,
@@ -77,6 +78,7 @@ export function MobileInboxPanel({
   taskQuestionsEnabled?: boolean;
   onOpenConversation: InboxPanelControllerOptions['onOpenConversation'];
   onOpenSession: (threadId: string) => void;
+  onOpenHistory?: () => void;
   /** See WorkItemOpenHandlers.agentsLoaded (station#3687). */
   agentsLoaded?: boolean;
   /** A click that opened nothing reports why; the host owns the toast. */
@@ -483,6 +485,12 @@ export function MobileInboxPanel({
             actionsInDetails
             {...controller.rowActions}
           />
+          {onOpenHistory && !selecting && (
+            <Button variant="ghost" onClick={onOpenHistory}>
+              <MessageGlyph />
+              Browse all conversations
+            </Button>
+          )}
         </ListRefreshPull>
       </div>
       {open && refresh && (

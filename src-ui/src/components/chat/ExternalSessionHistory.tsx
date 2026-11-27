@@ -8,9 +8,18 @@ import {
 import { Field, Input, Select } from '@kontourai/ui/react';
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { Empty, ErrorState, SkeletonList } from '../state';
+
+const engineNames: Readonly<Record<string, string>> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  grok: 'Grok',
+  opencode: 'OpenCode',
+  acp: 'Custom engine',
+};
 
 export function ExternalSessionHistory({
   onClose,
@@ -62,11 +71,11 @@ export function ExternalSessionHistory({
                 }}
               >
                 <option value="">All engines</option>
-                <option value="claude">Claude Code</option>
-                <option value="codex">Codex</option>
-                <option value="grok">Grok</option>
-                <option value="opencode">OpenCode</option>
-                <option value="acp">ACP</option>
+                {Object.entries(engineNames).map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
               </Select>
             </Field>
             <Field
@@ -152,7 +161,8 @@ function ArchiveList({
           {data.sessions.map((entry) => (
             <li key={entry.id}>
               <Button onClick={() => select(entry)}>
-                {entry.provider} · {new Date(entry.updatedAt).toLocaleString()}
+                {engineNames[entry.provider] ?? entry.provider} ·{' '}
+                {new Date(entry.updatedAt).toLocaleString()}
               </Button>
               <div>{entry.cwd || 'Folder unavailable'}</div>
             </li>
@@ -288,7 +298,7 @@ function ArchiveTranscript({
               <p>Some text was shortened for this preview.</p>
             )}
             {query.data.messages.length === 0 && (
-              <Empty label="No message text on this page" />
+              <Empty label="This page has no message text" />
             )}
             {query.data.messages.map((message) => (
               <article key={message.id}>
@@ -298,43 +308,57 @@ function ArchiveTranscript({
                 </p>
               </article>
             ))}
-            {cursor && (
-              <Button
-                disabled={imported.isPending || canceling}
-                onClick={() => setCursor(null)}
-              >
-                First page
-              </Button>
-            )}
-            {nextCursor && (
-              <Button
-                disabled={imported.isPending || canceling}
-                onClick={() => setCursor(nextCursor)}
-              >
-                More messages
-              </Button>
-            )}
+            <ActionRow
+              label="Transcript pages"
+              overflowLabel="More transcript actions"
+              secondary={
+                cursor && (
+                  <Button
+                    disabled={imported.isPending || canceling}
+                    onClick={() => setCursor(null)}
+                  >
+                    First page
+                  </Button>
+                )
+              }
+              primary={
+                nextCursor && (
+                  <Button
+                    disabled={imported.isPending || canceling}
+                    onClick={() => setCursor(nextCursor)}
+                  >
+                    More messages
+                  </Button>
+                )
+              }
+            />
           </>
         )
       )}
       {(imported.isPending || canceling || imported.data || query.data) && (
         <>
-          {imported.isPending || canceling ? (
-            <>
-              <p role="status">
-                {canceling ? 'Stopping import…' : 'Importing conversation…'}
-              </p>
-              <Button onClick={() => void stopImport()} disabled={canceling}>
-                Cancel import
-              </Button>
-            </>
-          ) : imported.data ? (
-            <Button onClick={openSaved}>Open saved conversation</Button>
-          ) : (
-            <Button onClick={startImport}>
-              {canceled ? 'Resume import' : 'Import conversation'}
-            </Button>
+          {(imported.isPending || canceling) && (
+            <p role="status">
+              {canceling ? 'Stopping import…' : 'Importing conversation…'}
+            </p>
           )}
+          <ActionRow
+            label="Save conversation"
+            overflowLabel="More conversation actions"
+            primary={
+              imported.isPending || canceling ? (
+                <Button onClick={() => void stopImport()} disabled={canceling}>
+                  Cancel import
+                </Button>
+              ) : imported.data ? (
+                <Button onClick={openSaved}>Open saved conversation</Button>
+              ) : (
+                <Button onClick={startImport}>
+                  {canceled ? 'Resume import' : 'Import conversation'}
+                </Button>
+              )
+            }
+          />
           {canceled && !imported.data && (
             <p role="status">
               Import canceled. Any saved messages stay in History.
