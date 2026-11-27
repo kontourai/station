@@ -217,7 +217,10 @@ on the same open handle used to read the snapshot, rejects reparse paths, and
 compares the final path's file identity. It checks each new observation rather
 than caching an ACL verdict by `ctime` or `mtime`. Concurrent requests share
 the next pending observation, not an earlier result. The verifier is owned by
-the UI listener and closed with it; startup warms it before binding so a cold
+the UI listener inside the existing [parent-bound Windows Job guard](../../packages/shared/src/windows-command-guard.ts).
+Stop waits for the guard's empty-Job acknowledgment and process closure before
+allowing a replacement; unconfirmed cleanup fences further verification.
+Parent loss closes the owned Job without a PID-based tree kill. Startup warms it before binding so a cold
 PowerShell launch does not consume the HTTP identity budget. Failed or timed-out
 file verification leaves the original file unchanged and reports unavailable;
 a connected backend that misses its identity deadline remains degraded, not

@@ -8063,25 +8063,56 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
 // `globalThis.__name` shim in `buildUiServerScript` is what's asserted, not
 // this test's own transform.
 describe('Windows readiness verifier lifecycle', () => {
+  let resolveGuard: (() => Promise<string | null>) | undefined;
+  async function launchWorker(program: string) {
+    const native =
+      await vi.importActual<typeof import('node:child_process')>(
+        'node:child_process',
+      );
+    if (process.platform === 'win32') {
+      const guards = await import(
+        '@kontourai/station-shared/windows-command-guard'
+      );
+      resolveGuard ??= guards.createWindowsCommandGuardResolver({
+        sourceDirectory: import.meta.dirname,
+        stagedGuard: null,
+      });
+      return guards.createWindowsOwnedWorkerLauncher({
+        spawn: native.spawn,
+        resolveGuard,
+        timeoutMs: 5_000,
+      })(process.execPath, ['-e', program]);
+    }
+    const child = native.spawn(process.execPath, ['-e', program], {
+      stdio: ['pipe', 'pipe', 'ignore'],
+      windowsHide: true,
+    });
+    const settled = new Promise<boolean>((resolve) =>
+      child.once('close', () => resolve(true)),
+    );
+    return {
+      pid: child.pid!,
+      stdin: child.stdin!,
+      stdout: child.stdout!,
+      settled,
+      stop: () => {
+        child.kill();
+        return settled;
+      },
+    };
+  }
+
   it('coalesces waiting readers into a fresh next observation and closes the worker', async () => {
     const { createWindowsReadinessReader } = await import(
       '../commands/windows-readiness-reader.js'
     );
-    const childProcess =
-      await vi.importActual<typeof import('node:child_process')>(
-        'node:child_process',
-      );
-    const trust = await import('@kontourai/station-shared/windows-path-trust');
     const program = `
       require('node:readline').createInterface({input:process.stdin}).on('line', sequence => {
         setTimeout(()=>process.stdout.write(JSON.stringify({sequence,trusted:true,content:JSON.stringify({pid:process.pid,sequence})})+'\\n'),50);
       });
     `;
     const reader = createWindowsReadinessReader({
-      spawn: childProcess.spawn,
-      command: process.execPath,
-      args: ['-e', program],
-      taskkill: trust.windowsSystemUtilityPath('taskkill'),
+      launch: () => launchWorker(program),
       timeoutMs: 5_000,
     });
     let workerPid: number | undefined;
@@ -8106,13 +8137,10 @@ describe('Windows readiness verifier lifecycle', () => {
       ]);
       expect(JSON.parse((await reader.read())!).sequence).toBe('3');
     } finally {
-      reader.close();
+      await reader.close();
     }
     expect(workerPid).toBeTypeOf('number');
-    await vi.waitFor(
-      () => expect(() => process.kill(workerPid!, 0)).toThrow(),
-      { timeout: 10_000 },
-    );
+    expect(() => process.kill(workerPid!, 0)).toThrow();
     await expect(reader.read()).resolves.toBeNull();
   });
 
@@ -8122,25 +8150,18 @@ describe('Windows readiness verifier lifecycle', () => {
       const { createWindowsReadinessReader } = await import(
         '../commands/windows-readiness-reader.js'
       );
-      const childProcess =
-        await vi.importActual<typeof import('node:child_process')>(
-          'node:child_process',
-        );
-      const trust = await import(
-        '@kontourai/station-shared/windows-path-trust'
-      );
-      const launch = vi.fn(childProcess.spawn);
+      let worker: Awaited<ReturnType<typeof launchWorker>> | undefined;
       const program = `
-      process.stdin.on('data',()=>{
-        if(${JSON.stringify(failure)}==='wrong-sequence') process.stdout.write(JSON.stringify({sequence:'9',trusted:true,content:'ready'})+'\\n');
-        if(${JSON.stringify(failure)}==='oversized') process.stdout.write('x'.repeat(1048577));
-      });
-    `;
+        process.stdin.on('data',()=>{
+          if(${JSON.stringify(failure)}==='wrong-sequence') process.stdout.write(JSON.stringify({sequence:'9',trusted:true,content:'ready'})+'\\n');
+          if(${JSON.stringify(failure)}==='oversized') process.stdout.write('x'.repeat(1048577));
+        });
+      `;
       const reader = createWindowsReadinessReader({
-        spawn: launch,
-        command: process.execPath,
-        args: ['-e', program],
-        taskkill: trust.windowsSystemUtilityPath('taskkill'),
+        launch: async () => {
+          worker = await launchWorker(program);
+          return worker;
+        },
         timeoutMs: 1_000,
       });
       try {
@@ -8148,16 +8169,211 @@ describe('Windows readiness verifier lifecycle', () => {
         const queued = reader.read();
         await expect(first).resolves.toBeNull();
         await expect(queued).resolves.toBeNull();
-        const child = launch.mock.results[0]!.value;
+        expect(worker).toBeDefined();
+        expect(() => process.kill(worker!.pid, 0)).toThrow();
+      } finally {
+        await reader.close();
+      }
+    },
+  );
+
+  it.each([true, false])(
+    'fences replacements until cleanup settles and preserves its %s custody verdict',
+    async (confirmed) => {
+      const { createWindowsReadinessReader } = await import(
+        '../commands/windows-readiness-reader.js'
+      );
+      let entered!: () => void;
+      const stopping = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let launches = 0;
+      let firstSettled = false;
+      const reader = createWindowsReadinessReader({
+        launch: async () => {
+          launches++;
+          const program =
+            launches === 1
+              ? `process.stdin.on('data',()=>process.stdout.write(JSON.stringify({sequence:'wrong',trusted:true,content:'wrong'})+'\\n'));`
+              : `require('node:readline').createInterface({input:process.stdin}).on('line', sequence => process.stdout.write(JSON.stringify({sequence,trusted:true,content:'next'})+'\\n'));`;
+          const worker = await launchWorker(program);
+          if (launches !== 1) return worker;
+          return {
+            ...worker,
+            stop: async () => {
+              entered();
+              await released;
+              await worker.stop();
+              return confirmed;
+            },
+          };
+        },
+        timeoutMs: 5_000,
+      });
+      try {
+        const first = reader.read();
+        void first.then(() => {
+          firstSettled = true;
+        });
+        await stopping;
+        expect(firstSettled).toBe(false);
+        await expect(reader.read()).resolves.toBeNull();
+        expect(launches).toBe(1);
+        release();
+        await expect(first).resolves.toBeNull();
+        await expect(reader.read()).resolves.toBe(confirmed ? 'next' : null);
+        expect(launches).toBe(confirmed ? 2 : 1);
+      } finally {
+        release();
+        await reader.close();
+      }
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'fences verification after guard loss without ending an unrelated process',
+    async () => {
+      const native =
+        await vi.importActual<typeof import('node:child_process')>(
+          'node:child_process',
+        );
+      const guards = await import(
+        '@kontourai/station-shared/windows-command-guard'
+      );
+      const { createWindowsReadinessReader } = await import(
+        '../commands/windows-readiness-reader.js'
+      );
+      resolveGuard ??= guards.createWindowsCommandGuardResolver({
+        sourceDirectory: import.meta.dirname,
+        stagedGuard: null,
+      });
+      const processes: import('node:child_process').ChildProcess[] = [];
+      const launch = guards.createWindowsOwnedWorkerLauncher({
+        resolveGuard,
+        spawn: (command, args, options) => {
+          const child = native.spawn(command, args, options);
+          processes.push(child);
+          return child;
+        },
+        timeoutMs: 5_000,
+      });
+      const unrelated = native.spawn(
+        process.execPath,
+        ['-e', 'setTimeout(()=>{},20000)'],
+        { stdio: 'ignore', windowsHide: true },
+      );
+      let worker: Awaited<ReturnType<typeof launch>> | undefined;
+      const reader = createWindowsReadinessReader({
+        launch: async () => {
+          worker = await launch(process.execPath, [
+            '-e',
+            `require('node:readline').createInterface({input:process.stdin}).on('line',sequence=>process.stdout.write(JSON.stringify({sequence,trusted:true,content:'ready'})+'\\n'));`,
+          ]);
+          return worker;
+        },
+        timeoutMs: 5_000,
+      });
+      try {
+        await expect(reader.read()).resolves.toBe('ready');
+        expect(processes).toHaveLength(1);
+        processes[0]!.kill();
+        await expect(worker!.settled).resolves.toBe(false);
+        await expect(reader.read()).resolves.toBeNull();
+        expect(processes).toHaveLength(1);
         await vi.waitFor(
-          () =>
-            expect(child.exitCode !== null || child.signalCode !== null).toBe(
-              true,
-            ),
+          () => expect(() => process.kill(worker!.pid, 0)).toThrow(),
           { timeout: 10_000 },
         );
+        expect(() => process.kill(unrelated.pid!, 0)).not.toThrow();
       } finally {
-        reader.close();
+        await reader.close();
+        unrelated.kill();
+      }
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'ends the verifier and its descendants on parent loss without ending an unrelated process',
+    async () => {
+      const native =
+        await vi.importActual<typeof import('node:child_process')>(
+          'node:child_process',
+        );
+      const guards = await import(
+        '@kontourai/station-shared/windows-command-guard'
+      );
+      resolveGuard ??= guards.createWindowsCommandGuardResolver({
+        sourceDirectory: import.meta.dirname,
+        stagedGuard: null,
+      });
+      const guard = await resolveGuard();
+      expect(guard).toBeTypeOf('string');
+      const unrelated = native.spawn(
+        process.execPath,
+        ['-e', 'setTimeout(()=>{},20000)'],
+        { stdio: 'ignore', windowsHide: true },
+      );
+      const workerProgram = `
+      const child=require('node:child_process').spawn(process.execPath,['-e','setTimeout(()=>{},20000)'],{stdio:'ignore',windowsHide:true});
+      process.stdout.write(JSON.stringify({pid:process.pid,descendant:child.pid})+'\\n');
+      setTimeout(()=>{},20000);
+    `;
+      const parent = native.spawn(
+        process.execPath,
+        [
+          '-e',
+          `
+      const launch=(${guards.createWindowsOwnedWorkerLauncher.toString()})({spawn:require('node:child_process').spawn,resolveGuard:async()=>${JSON.stringify(guard)},timeoutMs:5000});
+      launch(process.execPath,['-e',${JSON.stringify(workerProgram)}]).then(worker=>{
+        worker.stdout.once('data',chunk=>process.send(JSON.parse(String(chunk))));
+      }).catch(error=>{process.stderr.write(error.stack);process.exitCode=1;});
+      setTimeout(()=>{},20000);
+    `,
+        ],
+        { stdio: ['ignore', 'ignore', 'pipe', 'ipc'], windowsHide: true },
+      );
+      try {
+        const descendants = await new Promise<{
+          pid: number;
+          descendant: number;
+        }>((resolve, reject) => {
+          parent.once('message', (message) => {
+            if (
+              typeof message !== 'object' ||
+              message === null ||
+              !('pid' in message) ||
+              !('descendant' in message) ||
+              typeof message.pid !== 'number' ||
+              typeof message.descendant !== 'number'
+            ) {
+              reject(new Error('Parent sent an invalid worker observation'));
+              return;
+            }
+            resolve({ pid: message.pid, descendant: message.descendant });
+          });
+          parent.once('error', reject);
+          parent.once('exit', () =>
+            reject(new Error('Parent exited before worker observation')),
+          );
+        });
+        expect(() => process.kill(descendants.pid, 0)).not.toThrow();
+        expect(() => process.kill(descendants.descendant, 0)).not.toThrow();
+        parent.kill();
+        await vi.waitFor(
+          () => {
+            expect(() => process.kill(descendants.pid, 0)).toThrow();
+            expect(() => process.kill(descendants.descendant, 0)).toThrow();
+          },
+          { timeout: 10_000 },
+        );
+        expect(() => process.kill(unrelated.pid!, 0)).not.toThrow();
+      } finally {
+        parent.kill();
+        unrelated.kill();
       }
     },
   );

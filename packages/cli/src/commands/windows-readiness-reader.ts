@@ -1,17 +1,12 @@
-import type { ChildProcess, SpawnOptions } from 'node:child_process';
+import type { WindowsOwnedWorker } from '@kontourai/station-shared/windows-command-guard';
 
 export function createWindowsReadinessReader(options: {
-  spawn: (
-    command: string,
-    args: readonly string[],
-    options: SpawnOptions,
-  ) => ChildProcess;
-  command: string;
-  args: string[];
-  taskkill: string;
+  launch: () => Promise<WindowsOwnedWorker>;
   timeoutMs: number;
 }) {
-  let worker: ChildProcess | undefined;
+  let worker: WindowsOwnedWorker | undefined;
+  let starting: Promise<WindowsOwnedWorker> | undefined;
+  let retiring: Promise<void> | undefined;
   let closed = false;
   let sequence = 0;
   let output = '';
@@ -29,58 +24,53 @@ export function createWindowsReadinessReader(options: {
     });
     return { promise, resolve };
   };
-  const stop = () => {
-    const child = worker;
-    worker = undefined;
-    output = '';
+  const stop = (): Promise<void> => {
+    if (retiring) return retiring;
     if (deadline) clearTimeout(deadline);
     deadline = undefined;
-    active?.resolve(null);
-    queued?.resolve(null);
-    active = queued = undefined;
-    if (!child || child.exitCode !== null) return;
-    child.stdin?.destroy();
-    if (child.pid) {
-      const killer = options.spawn(
-        options.taskkill,
-        ['/PID', String(child.pid), '/T', '/F'],
-        {
-          stdio: 'ignore',
-          windowsHide: true,
-          timeout: 5_000,
-        },
-      );
-      killer.once('error', () => child.kill());
-      killer.once('exit', (code) => {
-        if (code !== 0) child.kill();
-      });
-      killer.unref();
-    }
+    retiring = (async () => {
+      try {
+        const child = worker ?? (await starting);
+        if (child && !(await child.stop())) closed = true;
+      } catch {
+        closed = true;
+      } finally {
+        worker = undefined;
+        starting = undefined;
+        output = '';
+      }
+    })();
+    void retiring.then(() => {
+      retiring = undefined;
+      active?.resolve(null);
+      queued?.resolve(null);
+      active = queued = undefined;
+    });
+    return retiring;
   };
-  const start = () => {
-    if (!active || closed) return;
+  const start = async () => {
+    if (!active || closed || retiring) return;
+    deadline = setTimeout(() => {
+      void stop();
+    }, options.timeoutMs);
     try {
       if (!worker) {
-        const child = options.spawn(options.command, options.args, {
-          stdio: ['pipe', 'pipe', 'ignore'],
-          windowsHide: true,
-        });
+        starting = options.launch();
+        const child = await starting;
         worker = child;
-        child.stdin?.on('error', () => {
-          if (worker === child) stop();
+        if (closed || retiring) return;
+        child.stdin.on('error', () => {
+          if (worker === child) void stop();
         });
-        child.once('error', () => {
-          if (worker === child) stop();
+        void child.settled.then(() => {
+          if (worker === child) void stop();
         });
-        child.once('exit', () => {
-          if (worker === child) stop();
-        });
-        child.stdout?.setEncoding('utf8');
-        child.stdout?.on('data', (chunk: string) => {
-          if (worker !== child) return;
+        child.stdout.setEncoding('utf8');
+        child.stdout.on('data', (chunk: string) => {
+          if (worker !== child || retiring) return;
           output += chunk;
           if (output.length > 1_048_576) {
-            stop();
+            void stop();
             return;
           }
           const newline = output.indexOf('\n');
@@ -94,7 +84,7 @@ export function createWindowsReadinessReader(options: {
               result.sequence !== String(sequence) ||
               output.trim()
             ) {
-              stop();
+              void stop();
               return;
             }
             if (deadline) clearTimeout(deadline);
@@ -107,34 +97,33 @@ export function createWindowsReadinessReader(options: {
                 ? result.content
                 : null,
             );
-            if (active) start();
+            if (active) void start();
           } catch {
-            stop();
+            void stop();
           }
         });
       }
       sequence += 1;
-      deadline = setTimeout(stop, options.timeoutMs);
-      worker.stdin?.write(`${sequence}\n`);
+      worker.stdin.write(`${sequence}\n`);
     } catch {
-      stop();
+      void stop();
     }
   };
   return {
     read(): Promise<string | null> {
-      if (closed) return Promise.resolve(null);
+      if (closed || retiring) return Promise.resolve(null);
       if (active) {
         queued ??= batch();
         return queued.promise;
       }
       active = batch();
       const promise = active.promise;
-      start();
+      void start();
       return promise;
     },
-    close() {
+    close(): Promise<void> {
       closed = true;
-      stop();
+      return stop();
     },
   };
 }

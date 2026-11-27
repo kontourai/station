@@ -74,6 +74,7 @@
     "./station-curation": "./src/station-curation.ts",
     "./fs-windows-compat": "./src/fs-windows-compat.ts",
     "./windows-path-trust": "./src/windows-path-trust.ts",
+    "./windows-command-guard": "./src/windows-command-guard.ts",
     "./runtime-events": "./src/runtime-events.ts",
     "./runtime-path-resolver": "./src/runtime-path-resolver.ts",
     "./source-watch": "./src/source-watch.ts",

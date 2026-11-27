@@ -20,18 +20,15 @@ import {
   execFile,
   type SpawnOptions,
 } from 'node:child_process';
-import { existsSync, rmSync, statSync } from 'node:fs';
-import { mkdtemp, rename } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join, win32 } from 'node:path';
+import { statSync } from 'node:fs';
+import { win32 } from 'node:path';
 import { Duplex, type Readable, type Writable } from 'node:stream';
 import { resolveWindowsBirthHelper } from '@kontourai/station-shared/process-identity';
+import { createWindowsCommandGuardResolver } from '@kontourai/station-shared/windows-command-guard';
 import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger({ name: 'terminal-command-guard' });
 
-const GUARD_SOURCE = join('scripts', 'windows-owned-guard.cs');
-const COMPILE_TIMEOUT_MS = 120_000;
 const IDENTITY_TIMEOUT_MS = 30_000;
 
 /** The surface `CommandProcess` uses from a spawned command. */
@@ -75,51 +72,11 @@ function run(
   });
 }
 
-/** The guard source of a source checkout or unpacked build tree, if any. */
-function findGuardSource(from: string): string | null {
-  let directory = from;
-  for (let depth = 0; depth < 8; depth++) {
-    const candidate = join(directory, GUARD_SOURCE);
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(directory);
-    if (parent === directory) break;
-    directory = parent;
-  }
-  return null;
-}
-
-/**
- * Compiles the guard with the .NET Framework compiler every Windows host
- * carries, into a directory private to this process, removed on exit.
- */
-async function compileGuard(source: string): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), 'station-command-guard-'));
-  process.once('exit', () => {
-    try {
-      rmSync(directory, { recursive: true, force: true });
-    } catch {
-      // A crash can leave it; its random name is never trusted again.
-    }
-  });
-  const staged = join(directory, 'guard.partial.exe');
-  const output = join(directory, 'station-windows-owned-guard.exe');
-  const compiler = join(
-    process.env.WINDIR ?? 'C:\\Windows',
-    'Microsoft.NET',
-    'Framework64',
-    'v4.0.30319',
-    'csc.exe',
-  );
-  await run(
-    compiler,
-    ['/nologo', '/target:exe', `/out:${staged}`, source],
-    COMPILE_TIMEOUT_MS,
-  );
-  await rename(staged, output);
-  return output;
-}
-
 let resolvedGuard: Promise<string | null> | undefined;
+const resolveGuard = createWindowsCommandGuardResolver({
+  sourceDirectory: import.meta.dirname,
+  stagedGuard: resolveWindowsBirthHelper(),
+});
 
 /**
  * The guard this process runs commands through: the archive's staged guard
@@ -130,17 +87,13 @@ let resolvedGuard: Promise<string | null> | undefined;
  */
 export function resolveWindowsCommandGuard(): Promise<string | null> {
   resolvedGuard ??= (async () => {
-    const staged = resolveWindowsBirthHelper();
-    if (staged) return staged;
-    const source = findGuardSource(import.meta.dirname);
-    if (!source) {
-      logger.warn(
-        'No Station Job guard is available: Stop cannot reach a command process whose parent has exited',
-      );
-      return null;
-    }
     try {
-      return await compileGuard(source);
+      const guard = await resolveGuard();
+      if (!guard)
+        logger.warn(
+          'No Station Job guard is available: Stop cannot reach a command process whose parent has exited',
+        );
+      return guard;
     } catch (error) {
       logger.warn(
         'The Station Job guard could not be compiled: Stop cannot reach a command process whose parent has exited',

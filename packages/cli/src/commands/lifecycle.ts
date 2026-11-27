@@ -85,6 +85,7 @@ import {
 import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
+  resolveWindowsBirthHelper,
 } from '@kontourai/station-shared/process-identity';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
@@ -115,6 +116,10 @@ import {
   UI_IMMUTABLE_ASSET_PATTERN,
   uiDocumentContentSecurityPolicy,
 } from '@kontourai/station-shared/ui-document-policy';
+import {
+  createWindowsCommandGuardResolver,
+  createWindowsOwnedWorkerLauncher,
+} from '@kontourai/station-shared/windows-command-guard';
 import {
   buildWindowsPrivateFileReadCommand,
   WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
@@ -322,13 +327,23 @@ interface UiRequestHandlerDeps extends UiServerDeps {
  * the unit test — no drift between the two.
  */
 export function uiRequestHandler(deps: UiServerDeps) {
+  const launchWindowsReadinessWorker = createWindowsOwnedWorkerLauncher({
+    spawn,
+    resolveGuard: createWindowsCommandGuardResolver({
+      sourceDirectory: deps.dir,
+      fallbackDirectory: import.meta.dirname,
+      stagedGuard: resolveWindowsBirthHelper(),
+    }),
+    timeoutMs: WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+  });
   const reader =
     process.platform === 'win32' && deps.readinessFile && deps.identity
       ? createWindowsReadinessReader({
-          spawn,
-          command: windowsSystemUtilityPath('powershell'),
-          args: buildWindowsPrivateFileReadCommand(deps.readinessFile),
-          taskkill: windowsSystemUtilityPath('taskkill'),
+          launch: () =>
+            launchWindowsReadinessWorker(
+              windowsSystemUtilityPath('powershell'),
+              buildWindowsPrivateFileReadCommand(deps.readinessFile!),
+            ),
           timeoutMs: WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
         })
       : undefined;
@@ -1501,7 +1516,8 @@ export function buildUiServerScript(opts: {
     const documentCsp=${uiDocumentContentSecurityPolicy.toString()};
     const readinessFile=${JSON.stringify(opts.readinessFile)};
     const identity=${JSON.stringify(opts.identity)};
-    const readinessReader=process.platform==='win32'&&readinessFile&&identity?(${createWindowsReadinessReader.toString()})({spawn:require('child_process').spawn,command:${JSON.stringify(windowsSystemUtilityPath('powershell'))},args:${JSON.stringify(opts.readinessFile ? buildWindowsPrivateFileReadCommand(opts.readinessFile) : [])},taskkill:${JSON.stringify(windowsSystemUtilityPath('taskkill'))},timeoutMs:${WINDOWS_TRUST_COMMAND_TIMEOUT_MS}}):undefined;
+    const launchReadinessWorker=process.platform==='win32'?(${createWindowsOwnedWorkerLauncher.toString()})({spawn:require('child_process').spawn,resolveGuard:(${createWindowsCommandGuardResolver.toString()})({sourceDirectory:dir,fallbackDirectory:${JSON.stringify(import.meta.dirname)},stagedGuard:${JSON.stringify(process.platform === 'win32' ? resolveWindowsBirthHelper() : null)}}),timeoutMs:${WINDOWS_TRUST_COMMAND_TIMEOUT_MS}}):undefined;
+    const readinessReader=process.platform==='win32'&&readinessFile&&identity?(${createWindowsReadinessReader.toString()})({launch:()=>launchReadinessWorker(${JSON.stringify(windowsSystemUtilityPath('powershell'))},${JSON.stringify(opts.readinessFile ? buildWindowsPrivateFileReadCommand(opts.readinessFile) : [])}),timeoutMs:${WINDOWS_TRUST_COMMAND_TIMEOUT_MS}}):undefined;
     const readPrivateReadiness=readinessReader?.read;
     const readinessWarmup=readinessReader?.read();
     const internalApiToken=process.env.STATION_INTERNAL_API_TOKEN;
