@@ -41,7 +41,7 @@ export function ExternalSessionHistory({
       onClose={onClose}
     >
       {!scope ? (
-        <Empty label="Connect to Station to browse history" />
+        <Empty label="Connect to a Station to browse history" />
       ) : selected ? (
         <ArchiveTranscript
           key={selected.id}
