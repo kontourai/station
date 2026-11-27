@@ -108,7 +108,9 @@
 
     "src-ui/src/lib/notificationStationOpen.ts",
 
-    "src-ui/src/components/notifications/NotificationHistoryRow.tsx"
+    "src-ui/src/components/notifications/NotificationHistoryRow.tsx",
+
+    "src-ui/src/components/notifications/inboxContext.tsx"
   ],
 
   "checks": [
