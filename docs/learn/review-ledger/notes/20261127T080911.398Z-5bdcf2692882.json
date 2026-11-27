@@ -1,0 +1,7 @@
+{
+  "revision": "26d9e819151de7410e877359dc16d8a4cb33406e",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Confirmed the disconnected archive state uses the glossary wording for a Station instance.","inputs":["src-ui/src/components/chat/ExternalSessionHistory.tsx"]}
+  ]
+}
