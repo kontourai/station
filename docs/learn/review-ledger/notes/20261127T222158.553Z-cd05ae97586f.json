@@ -1,0 +1,17 @@
+{
+  "revision": "249fc963de5a4e982e2f4c21e3e3bd1331c715f2",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed Nearby fixture controls against ADR 0015, connection-broker, local-collaboration-lab, self-hosted-broker, testing and native scope claims. Exact observed-request approval and signal-safe cleanup affect only the manual fixture procedure; sidecar history, broker and relay authority, proof routing and source-versus-runtime distinctions remain accurate. No existing anchors or qualification claims changed; ADR remains historical.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed Nearby fixture controls against ADR 0015, connection-broker, local-collaboration-lab, self-hosted-broker, testing and native scope claims. Exact observed-request approval and signal-safe cleanup affect only the manual fixture procedure; sidecar history, broker and relay authority, proof routing and source-versus-runtime distinctions remain accurate. No existing anchors or qualification claims changed; ADR remains historical.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed Nearby fixture controls against ADR 0015, connection-broker, local-collaboration-lab, self-hosted-broker, testing and native scope claims. Exact observed-request approval and signal-safe cleanup affect only the manual fixture procedure; sidecar history, broker and relay authority, proof routing and source-versus-runtime distinctions remain accurate. No existing anchors or qualification claims changed; ADR remains historical.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed Nearby fixture controls against ADR 0015, connection-broker, local-collaboration-lab, self-hosted-broker, testing and native scope claims. Exact observed-request approval and signal-safe cleanup affect only the manual fixture procedure; sidecar history, broker and relay authority, proof routing and source-versus-runtime distinctions remain accurate. No existing anchors or qualification claims changed; ADR remains historical.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed Nearby fixture controls against ADR 0015, connection-broker, local-collaboration-lab, self-hosted-broker, testing and native scope claims. Exact observed-request approval and signal-safe cleanup affect only the manual fixture procedure; sidecar history, broker and relay authority, proof routing and source-versus-runtime distinctions remain accurate. No existing anchors or qualification claims changed; ADR remains historical.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed Nearby fixture controls against ADR 0015, connection-broker, local-collaboration-lab, self-hosted-broker, testing and native scope claims. Exact observed-request approval and signal-safe cleanup affect only the manual fixture procedure; sidecar history, broker and relay authority, proof routing and source-versus-runtime distinctions remain accurate. No existing anchors or qualification claims changed; ADR remains historical.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}
