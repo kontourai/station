@@ -545,6 +545,14 @@ function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true });
 }
 
+function ensureTrustedInstallDirectory(path: string): void {
+  mkdirSync(path, { recursive: true, mode: 0o755 });
+}
+
+function writeTrustedInstallFile(path: string, content: string): void {
+  writeFileSync(path, content, { mode: 0o644 });
+}
+
 /**
  * Station homes are read by the instance registry before `clean` removes
  * them. A home fixture therefore has to satisfy the same owner-only contract
@@ -5749,9 +5757,9 @@ describe('upgrade', () => {
       const installRoot = join(TEST_ROOT, `portable-${runtimeChannel}`);
       const release = join(installRoot, 'releases', 'a'.repeat(64));
       const stationHome = join(TEST_ROOT, `home-${runtimeChannel}`);
-      ensureDir(release);
+      ensureTrustedInstallDirectory(release);
       ensureDir(stationHome);
-      writeFileSync(
+      writeTrustedInstallFile(
         join(release, '.station-release.json'),
         `${JSON.stringify({
           schemaVersion: 2,
@@ -5770,7 +5778,7 @@ describe('upgrade', () => {
       writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
         mode: 0o700,
       });
-      writeFileSync(
+      writeTrustedInstallFile(
         join(installRoot, '.station-portable-install-root'),
         'station-portable-install-root-v1\n',
       );
@@ -5875,9 +5883,9 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-service');
     const release = join(installRoot, 'releases', 'e'.repeat(64));
     const stationHome = join(TEST_ROOT, 'home-service');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -5892,7 +5900,7 @@ describe('upgrade', () => {
     writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -5994,8 +6002,8 @@ describe('upgrade', () => {
     async ({ state }) => {
       const installRoot = join(TEST_ROOT, 'portable-unknown-ring');
       const release = join(installRoot, 'releases', 'd'.repeat(64));
-      ensureDir(release);
-      writeFileSync(
+      ensureTrustedInstallDirectory(release);
+      writeTrustedInstallFile(
         join(release, '.station-release.json'),
         `${JSON.stringify({
           schemaVersion: 2,
@@ -6070,9 +6078,9 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-mismatch');
     const release = join(installRoot, 'releases', 'c'.repeat(64));
     const stationHome = join(TEST_ROOT, 'home-mismatch');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -6087,7 +6095,7 @@ describe('upgrade', () => {
     writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -6120,9 +6128,9 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-permissive-root');
     const release = join(installRoot, 'releases', 'e'.repeat(64));
     const stationHome = join(TEST_ROOT, 'home-permissive-root');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -6137,7 +6145,7 @@ describe('upgrade', () => {
     writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -10283,13 +10291,13 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     const installRoot = join(TEST_ROOT, 'archive-install');
     const version = join(installRoot, 'versions', '0.7.0-nightly.3');
     const stationHome = join(TEST_ROOT, 'home-archive');
-    ensureDir(version);
+    ensureTrustedInstallDirectory(version);
     ensureDir(stationHome);
     writeFileSync(
       join(version, '.station-prebuilt-archive'),
       'station-prebuilt-archive-v1\n',
     );
-    writeFileSync(
+    writeTrustedInstallFile(
       join(version, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -10304,7 +10312,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     writeFileSync(join(version, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -10541,9 +10549,9 @@ describe('station upgrade under the managed update limit (#4522)', () => {
     const installRoot = join(TEST_ROOT, `managed-portable-${releaseChannel}`);
     const release = join(installRoot, 'releases', 'a'.repeat(64));
     const stationHome = join(TEST_ROOT, `managed-home-${releaseChannel}`);
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -10558,7 +10566,7 @@ describe('station upgrade under the managed update limit (#4522)', () => {
     writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
       mode: 0o700,
     });
-    writeFileSync(
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );

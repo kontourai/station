@@ -36,7 +36,11 @@
 
     "packages/cli/src/commands/supervisor-launch.ts",
 
-    "packages/cli/src/__tests__/supervised-lifecycle.real.test.ts"
+    "packages/cli/src/__tests__/supervised-lifecycle.real.test.ts",
+
+    "src-server/runtime/frameworks/voltagent-hono-runtime.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts"
   ],
 
   "checks": []
