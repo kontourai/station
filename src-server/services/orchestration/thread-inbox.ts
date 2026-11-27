@@ -1224,6 +1224,11 @@ export class ThreadInboxDelivery {
     );
   }
 
+  currentSteerHead(conversationId: string): string | null {
+    const target = this.currentSteerTarget(conversationId);
+    return target === undefined ? null : `turn:${target}`;
+  }
+
   private ownsSteerTurn(
     conversationId: string,
     target: InboxSteerTarget,
@@ -1661,7 +1666,10 @@ export class ThreadInboxDelivery {
       kind,
       now,
       promoteKey,
-      readHead: () => this.currentHead(inbox),
+      readHead: () =>
+        (kind === 'steer' && input.expectedHead?.startsWith('turn:')
+          ? this.currentSteerHead(inbox)
+          : null) ?? this.currentHead(inbox),
     });
     if (result.kind === 'stale-head')
       return { outcome: 'stale-head', currentHead: result.currentHead };
