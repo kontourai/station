@@ -616,6 +616,12 @@ describe('Windows Task Scheduler service backend', () => {
     fs.mkdirSync(win32.dirname(registration.unitPath), { recursive: true });
     fs.writeFileSync(registration.unitPath, '@echo off\r\necho prior\r\n');
     const run = vi.fn((command: string, args: string[]) => {
+      if (
+        isWindowsUtility(command, 'powershell') &&
+        windowsTrustOperation(args) !== null
+      ) {
+        return { status: 0, stdout: '{"trusted":true}' };
+      }
       if (args[0] === '/Query' && args.includes('/XML')) {
         return { status: 5, stderr: 'access denied' };
       }
@@ -645,6 +651,12 @@ describe('Windows Task Scheduler service backend', () => {
     const baseDir = `\\tmp\\station-win-conflict-${process.pid}`;
     const registration = windowsRegistration('agent', lifecycle(baseDir));
     const run = vi.fn((command: string, args: string[]) => {
+      if (
+        isWindowsUtility(command, 'powershell') &&
+        windowsTrustOperation(args) !== null
+      ) {
+        return { status: 0, stdout: '{"trusted":true}' };
+      }
       if (isWindowsUtility(command, 'whoami')) return whoamiIdentity();
       if (args.includes('/XML'))
         return {
@@ -734,6 +746,12 @@ describe('Windows Task Scheduler service backend', () => {
     const baseDir = `\\tmp\\station-win-rollback-${process.pid}`;
     const registration = windowsRegistration('agent', lifecycle(baseDir));
     const run = vi.fn((command: string, args: string[]) => {
+      if (
+        isWindowsUtility(command, 'powershell') &&
+        windowsTrustOperation(args) !== null
+      ) {
+        return { status: 0, stdout: '{"trusted":true}' };
+      }
       if (isWindowsUtility(command, 'whoami')) return whoamiIdentity();
       if (args[0] === '/Query') return { status: 1, stderr: 'not found' };
       if (args[0] === '/Create') return { status: 1, stderr: 'access denied' };
