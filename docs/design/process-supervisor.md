@@ -159,8 +159,9 @@ product decisions.
   `STATION_SUPERVISOR_IPC=1` parks before its temp and orphan sweeps, the
   home schema gate, and its log sink, which touch the home or the live
   generation's processes. Telemetry registers at import as usual, but its
-  home writes (schema gate, installation identity) wait for promotion. Its three listeners (API,
-  voice, consent) bind through one link: adopted handles when the
+  home writes (schema gate, installation identity) wait for promotion. Its API,
+  voice and consent listeners, and a same-port loopback API socket when the
+  public bind does not cover IPv4 loopback, bind through one link: adopted handles when the
   supervisor holds them, otherwise a normal bind reported with
   `listener.bound`. A later generation takes its base port from the held API
   socket, so `PORT=0` keeps one block across generations. `ready` carries a

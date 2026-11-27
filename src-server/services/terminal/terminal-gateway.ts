@@ -106,7 +106,7 @@ export class TerminalGateway<Principal> {
   private alive = new Map<WebSocket, boolean>();
   private readonly limits: TerminalGatewayLimits;
   private heartbeat?: ReturnType<typeof setInterval>;
-  private unmount?: () => void;
+  private unmounts: Array<() => void> = [];
 
   constructor(
     private options: {
@@ -155,13 +155,15 @@ export class TerminalGateway<Principal> {
       });
     };
     server.on('upgrade', upgrade);
-    this.heartbeat = setInterval(() => this.ping(), this.limits.heartbeatMs);
-    this.heartbeat.unref?.();
-    this.unmount = () => server.off('upgrade', upgrade);
+    if (!this.heartbeat) {
+      this.heartbeat = setInterval(() => this.ping(), this.limits.heartbeatMs);
+      this.heartbeat.unref?.();
+    }
+    this.unmounts.push(() => server.off('upgrade', upgrade));
   }
 
   stop(): void {
-    this.unmount?.();
+    for (const unmount of this.unmounts.splice(0)) unmount();
     clearInterval(this.heartbeat);
     for (const connection of this.connections.keys()) connection.stop();
     this.connections.clear();

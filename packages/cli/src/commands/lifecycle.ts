@@ -2861,7 +2861,7 @@ function activeLocalApiBase(
   if (host === '::1' || host.startsWith('127.')) {
     return `http://${hostForUrl(host)}:${serverPort}`;
   }
-  return undefined;
+  return `http://127.0.0.1:${serverPort}`;
 }
 
 function getReservedPorts(
@@ -5546,7 +5546,9 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         waitForIdentity(
           hostedProbeAuthority
             ? `http://${healthHost}:${uiPort}/api/system/identity`
-            : `http://${healthHost}:${serverPort}/api/system/identity`,
+            : host === '0.0.0.0'
+              ? `http://${healthHost}:${serverPort}/api/system/identity`
+              : `${activeLocalApiBase(host, serverPort)}/api/system/identity`,
           { instanceId, sha: serverEnv.STATION_BUILD_SHA, bootId },
           STARTUP_READINESS_TIMEOUT_MS,
           readinessHeaders,
