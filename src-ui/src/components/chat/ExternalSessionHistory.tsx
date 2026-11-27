@@ -133,7 +133,7 @@ function ArchiveList({
     return (
       <ErrorState
         title="Couldn’t load third-party history"
-        description={query.error.message}
+        description="Check the Station connection and try again."
         action={<Button onClick={() => void query.refetch()}>Retry</Button>}
       />
     );
@@ -274,7 +274,7 @@ function ArchiveTranscript({
       ) : query.isError ? (
         <ErrorState
           title="Couldn’t read the transcript"
-          description={query.error.message}
+          description="Try again or reopen the conversation from the results."
           action={<Button onClick={() => void query.refetch()}>Retry</Button>}
         />
       ) : (
@@ -369,7 +369,7 @@ function ArchiveTranscript({
             <ErrorState
               variant="compact"
               title="Import paused"
-              description={imported.error.message}
+              description="Any saved messages stay in History. You can try the import again."
             />
           )}
         </>
