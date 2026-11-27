@@ -35,6 +35,11 @@ export function useStationRoutesQuery(
 ) {
   const { apiBase } = useConnections();
   const { isTauri } = usePlatformProfile();
+  const sameOrigin =
+    !isTauri &&
+    typeof window !== 'undefined' &&
+    connection?.url === window.location.origin &&
+    apiBase === window.location.origin;
   const nativeConnection =
     isTauri &&
     connection?.id.startsWith('station-profile:') &&
@@ -55,7 +60,7 @@ export function useStationRoutesQuery(
       apiBase,
       nativeBindingId,
     ],
-    enabled: enabled && Boolean(connection?.environmentId),
+    enabled: enabled && Boolean(connection?.environmentId || sameOrigin),
     staleTime: 5 * 60_000,
     refetchInterval: nativeConnection ? 5 * 60_000 : false,
     retry: false,
@@ -67,7 +72,12 @@ export function useStationRoutesQuery(
       if ([401, 403, 404].includes(response.status)) return null;
       if (!response.ok) throw new Error('station_routes_unavailable');
       const parsed = parseStationRoutesResponse(await response.json());
-      if (!parsed || parsed.environmentId !== connection?.environmentId) {
+      if (
+        !parsed ||
+        (connection?.environmentId
+          ? parsed.environmentId !== connection.environmentId
+          : !sameOrigin)
+      ) {
         return null;
       }
       if (nativeConnection) {

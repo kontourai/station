@@ -1,0 +1,17 @@
+{
+  "revision": "07e8da4239af47c8b39d05ee451fe4b6c2b20f7b",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Verified the Vite-only component catalog entry in Chromium, with real Station primitives, width and theme controls, and the searchable inventory and unmapped filter. The existing Inbox comparison remains independently reachable.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the developer catalog workflow. Its new entry uses local fixture state and the existing Vite server. Existing setup, testing, release, and service behavior remains accurately described.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed the developer catalog workflow. Its new entry uses local fixture state and the existing Vite server. Existing setup, testing, release, and service behavior remains accurately described.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the developer catalog workflow. Its new entry uses local fixture state and the existing Vite server. Existing setup, testing, release, and service behavior remains accurately described.","inputs":["docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed the developer catalog workflow. Its new entry uses local fixture state and the existing Vite server. Existing setup, testing, release, and service behavior remains accurately described.","inputs":["docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the developer catalog workflow. Its new entry uses local fixture state and the existing Vite server. Existing setup, testing, release, and service behavior remains accurately described.","inputs":["docs/guides/development.md"]}
+  ]
+}

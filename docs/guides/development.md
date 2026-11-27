@@ -1313,18 +1313,27 @@ npm run docs:pages:build
 
 The generated `dist-pages/` directory is disposable and should not be edited by hand.
 
-### Inbox storyboard
+### UI component catalog
 
 Run `npm run dev:ui -- --host 127.0.0.1 --port 4178 --strictPort` and open
-`/inbox-storyboard.html` on that development server. The storyboard uses
+`/component-catalog.html` on that development server. The catalog lists UI
+source files in Station and its UI packages, including files that still
+need a story or coverage through a composed example. The first stories use
+the shared button, disclosure, and loading, empty, and error primitives.
+The control stories also exercise action overflow, editable and disabled
+switches, icon buttons, and settings provenance. Use the source filter and **Unmapped only** to check coverage.
+
+Open **Inbox Task rows** in the catalog to compare the current row with
+the proposed layout. The Inbox storyboard also has a direct entry at
+`/inbox-storyboard.html`. It uses
 Station’s Task row, status rendering, theme tokens, buttons, and swipe hook.
 Compare the shipping row anatomy and the proposed attention actions with the
 same fixtures. Toggle phone width and swipe left on a proposed row to reveal
 actions. Replies, approvals, retries, acknowledgements, and snoozes use
 temporary fixture state. They make no Station API requests.
 
-Use this pattern for another flow when it needs repeatable visual review.
-Import the production components, supply representative fixtures at their
-input boundary, and keep proposed interactions in the storyboard until they
-are wired to the owning runtime. The storyboard is a Vite development entry
-and is outside the product build inputs.
+When adding a story, give it a stable section ID and list the source files
+it actually exercises in the catalog. For composed flows, use the same
+fixtures for current and proposed views. Import the production components
+and keep fixtures local. Catalog and storyboard entries run through Vite
+in development and are outside the product build inputs.

@@ -108,6 +108,22 @@ function nodesWith(key: string, node: unknown, found: unknown[] = []) {
   return found;
 }
 
+test('the delegated tool catalog has no top-level schema combinators Kiro rejects', async () => {
+  const client = await connect(
+    'station-control',
+    undefined,
+    'delegated-custody',
+  );
+  const { tools } = await client.listTools();
+  expect(tools.map((tool) => tool.name)).toEqual(
+    expect.arrayContaining(['get_basis', 'get_session_inventory']),
+  );
+  const incompatible = tools.filter((tool) =>
+    ['anyOf', 'allOf', 'oneOf'].some((key) => key in tool.inputSchema),
+  );
+  expect(incompatible.map((tool) => tool.name)).toEqual([]);
+});
+
 test('no listing offers an argument only Station’s runtime writes, though the tools still declare them', async () => {
   const listed = [
     ...(await (await connect('station-control')).listTools()).tools,

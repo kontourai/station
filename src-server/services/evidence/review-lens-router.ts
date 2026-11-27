@@ -31,15 +31,12 @@ const POLICY_INPUTS = [
   '.veritas/repo-map.json',
   'config/review-lenses.json',
   'packages/contracts/src/review-evidence.ts',
-  'src-server/runtime/routes/runtime-routes.ts',
   'src-server/services/evidence/review-lens-router.ts',
   'src-server/services/evidence/git-review-workspace-source.ts',
   'src-server/services/evidence/orchestration-review-executor.ts',
   'src-server/services/evidence/repo-map-review-selection.ts',
   'src-server/services/evidence/review-evidence-module.ts',
   'src-server/providers/adapters/codex-approval-mode.ts',
-  'src-server/providers/adapters/codex-adapter.ts',
-  'src-server/services/orchestration/orchestration-service.ts',
 ] as const;
 const SHA = /^[0-9a-f]{40}$/;
 

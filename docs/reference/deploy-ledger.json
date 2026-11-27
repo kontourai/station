@@ -1,5 +1,125 @@
 [
   {
+    "timestampUtc": "2026-11-26T23:19:11Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261126.1",
+    "sha": "0897000fa013d9746bba02c12fb000705f082bf6",
+    "artifactBuiltAt": "2026-11-26T22:41:43.938Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45905814460",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45905814460)"
+    ],
+    "changelog": {
+      "previousSha": "b1970563c7d38992c0aa1124ee2b21d7b52c317c",
+      "groups": {
+        "feat": [
+          "[#5607](https://github.com/kontourai/station/pull/5607) feat: preview Task question shortcuts in the Inbox",
+          "[#5605](https://github.com/kontourai/station/pull/5605) feat: add a developer Inbox storyboard",
+          "[#5598](https://github.com/kontourai/station/pull/5598) feat(connections): discover and verify dynamic HTTPS routes",
+          "[#5595](https://github.com/kontourai/station/pull/5595) feat(pull-requests): speed up the list and redesign review",
+          "[#5596](https://github.com/kontourai/station/pull/5596) feat(ui): open the dock's New chat draft instead of a No chat open card",
+          "[#5591](https://github.com/kontourai/station/pull/5591) feat(chat): show linked pull request facts in Chats and Tasks",
+          "[#5571](https://github.com/kontourai/station/pull/5571) feat(ui): give Half a 380px floor on phones"
+        ],
+        "fix": [
+          "[#5567](https://github.com/kontourai/station/pull/5567) fix(browser): connect chat and pane views for live tabs",
+          "[#5580](https://github.com/kontourai/station/pull/5580) fix(desktop): shorten Windows runtime paths and guard installer extraction",
+          "[#5582](https://github.com/kontourai/station/pull/5582) fix(chat): reconcile completed tools in reconnect snapshots",
+          "[#5581](https://github.com/kontourai/station/pull/5581) fix(search): recover streamed ACP replies",
+          "[#5577](https://github.com/kontourai/station/pull/5577) fix(chat): restore an undelivered steer to the draft",
+          "[#5579](https://github.com/kontourai/station/pull/5579) fix(chat): release attachment staging after a busy send refusal",
+          "[#5575](https://github.com/kontourai/station/pull/5575) fix(chat): keep a pending row mounted across inbox admission",
+          "[#5574](https://github.com/kontourai/station/pull/5574) fix(chat): explain failed ACP tools, label delegated briefs, and hide an idle Steer/Queue picker",
+          "[#5578](https://github.com/kontourai/station/pull/5578) fix(acp): suppress identical tool start updates",
+          "[#5576](https://github.com/kontourai/station/pull/5576) fix(chat): explain the deadline for check-back approval",
+          "[#5573](https://github.com/kontourai/station/pull/5573) fix(chat): restore shared styling for composer approvals",
+          "[#5572](https://github.com/kontourai/station/pull/5572) fix(chat): reopen conversation links and unify the Chats dock"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 19
+    }
+  },
+  {
+    "timestampUtc": "2026-11-26T23:19:11Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261126.1",
+    "sha": "0897000fa013d9746bba02c12fb000705f082bf6",
+    "artifactBuiltAt": "2026-11-26T22:41:47.218Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45905814460",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45905814460)"
+    ],
+    "changelog": {
+      "previousSha": "43b37b0b61932bcaff05d24bee7169de7424c142",
+      "groups": {
+        "feat": [
+          "[#5607](https://github.com/kontourai/station/pull/5607) feat: preview Task question shortcuts in the Inbox",
+          "[#5605](https://github.com/kontourai/station/pull/5605) feat: add a developer Inbox storyboard",
+          "[#5598](https://github.com/kontourai/station/pull/5598) feat(connections): discover and verify dynamic HTTPS routes",
+          "[#5595](https://github.com/kontourai/station/pull/5595) feat(pull-requests): speed up the list and redesign review",
+          "[#5596](https://github.com/kontourai/station/pull/5596) feat(ui): open the dock's New chat draft instead of a No chat open card"
+        ],
+        "fix": [
+          "[#5567](https://github.com/kontourai/station/pull/5567) fix(browser): connect chat and pane views for live tabs",
+          "[#5580](https://github.com/kontourai/station/pull/5580) fix(desktop): shorten Windows runtime paths and guard installer extraction"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-11-26T22:43:44Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261126.45905814460",
+    "sha": "0897000fa013d9746bba02c12fb000705f082bf6",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45905814460",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261126.45905814460 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "43b37b0b61932bcaff05d24bee7169de7424c142",
+      "groups": {
+        "feat": [
+          "[#5607](https://github.com/kontourai/station/pull/5607) feat: preview Task question shortcuts in the Inbox",
+          "[#5605](https://github.com/kontourai/station/pull/5605) feat: add a developer Inbox storyboard",
+          "[#5598](https://github.com/kontourai/station/pull/5598) feat(connections): discover and verify dynamic HTTPS routes",
+          "[#5595](https://github.com/kontourai/station/pull/5595) feat(pull-requests): speed up the list and redesign review",
+          "[#5596](https://github.com/kontourai/station/pull/5596) feat(ui): open the dock's New chat draft instead of a No chat open card"
+        ],
+        "fix": [
+          "[#5567](https://github.com/kontourai/station/pull/5567) fix(browser): connect chat and pane views for live tabs",
+          "[#5580](https://github.com/kontourai/station/pull/5580) fix(desktop): shorten Windows runtime paths and guard installer extraction"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-11-26T14:27:01Z",
     "channel": "nightly-android",
     "version": "0.2.0-nightly.20261126",
