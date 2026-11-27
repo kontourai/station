@@ -455,7 +455,8 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     const end = page ? page.offset + page.limit : this.maxCandidates;
     const found: Array<{
       updatedAt: number;
-      registration: SourceRegistration;
+      sessionId: string;
+      registration: SourceRegistration | undefined;
     }> = [];
     // OpenCode 2.x's 1.x-to-2.x migration imports `opencode-next.db` into
     // `opencode.db` (every session row and its `session_message` rows, never
@@ -543,34 +544,32 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
         : new Set<string>();
       // Every database contributes its newest; the merged list is capped below.
       for (const row of result.value) {
-        if (held.has(String(row.id))) continue;
-        if (
-          importedThrough !== undefined &&
-          !(Number(row.time_created) > importedThrough)
-        ) {
-          continue;
-        }
-        const registration = this.registrationFor(
-          database,
-          sourceHome.affinity,
-          row,
-        );
-        if (!registration) {
+        const sessionId = String(row.id);
+        const eligible =
+          !held.has(sessionId) &&
+          (importedThrough === undefined ||
+            Number(row.time_created) > importedThrough);
+        const registration = eligible
+          ? (this.registrationFor(database, sourceHome.affinity, row) ??
+            undefined)
+          : undefined;
+        if (eligible && !registration)
           outcome = mergeOutcome(outcome, 'malformed_record');
-          continue;
+        // Archive offsets count raw sorted rows so a filtered prefix cannot
+        // hide more conversations or skip an eligible row on the next page.
+        if (page || registration) {
+          found.push({
+            updatedAt: Number(row.time_updated),
+            sessionId,
+            registration,
+          });
         }
-        found.push({
-          updatedAt: Number(row.time_updated),
-          registration,
-        });
       }
     }
     found.sort(
       (left, right) =>
         right.updatedAt - left.updatedAt ||
-        left.registration.descriptor.sessionId.localeCompare(
-          right.registration.descriptor.sessionId,
-        ),
+        left.sessionId.localeCompare(right.sessionId),
     );
     if (!page && found.length > this.maxCandidates) {
       found.length = this.maxCandidates;
@@ -580,6 +579,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     for (const { registration, updatedAt } of page
       ? found.slice(page.offset, end)
       : found) {
+      if (!registration) continue;
       this.handles.set(registration.descriptor.sourceHandle, registration);
       sessions.push({ ...registration.descriptor, modifiedAtMs: updatedAt });
     }

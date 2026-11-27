@@ -3,7 +3,7 @@ import {
   fetchExternalSessionTranscript,
   importExternalSessionHistory,
 } from '../client/external-session-history';
-import { StationRequestAuthorityError } from '../client/http';
+import { StationHttpError, StationRequestAuthorityError } from '../client/http';
 
 export { cancelExternalSessionHistoryImport } from '../client/external-session-history';
 
@@ -18,7 +18,12 @@ const queryConfig = {
   gcTime: 60_000,
   refetchOnMount: 'always',
   cancelWhenInactive: true,
-  retry: false,
+  retry: (count: number, error: Error) =>
+    count < 2 &&
+    error instanceof StationHttpError &&
+    error.code === 'external_history_busy',
+  retryDelay: 500,
+  refetchOnWindowFocus: false,
 } as const;
 
 export function useExternalSessionHistoryQuery(

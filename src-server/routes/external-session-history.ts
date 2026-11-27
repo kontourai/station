@@ -64,7 +64,10 @@ export function createExternalSessionHistoryRoutes(options: {
         409,
       );
     if (error instanceof ExternalSessionHistoryUnavailable)
-      return c.json({ success: false, error: error.message }, error.status);
+      return c.json(
+        { success: false, error: error.message, code: error.code },
+        error.status,
+      );
     return c.json(
       { success: false, error: 'Third-party history is unavailable.' },
       503,
@@ -97,12 +100,13 @@ export function createExternalSessionHistoryRoutes(options: {
     );
     return c.json({ success: true, data });
   });
-  app.delete('/:id/import/:operationId', (c) => {
-    admit(c);
-    options.follow.cancelArchiveImport(
+  app.delete('/:id/import/:operationId', async (c) => {
+    const assertAdmission = admit(c);
+    await options.follow.cancelArchiveImport(
       archiveId.parse(c.req.param('id')),
       importOperationId.parse(c.req.param('operationId')),
     );
+    assertAdmission();
     return c.body(null, 204);
   });
   return app;

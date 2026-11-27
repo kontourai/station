@@ -82,6 +82,7 @@ export class ExternalSessionHistoryUnavailable extends Error {
   constructor(
     readonly status: 404 | 409,
     message: string,
+    readonly code = 'external_history_unavailable',
   ) {
     super(message);
   }
@@ -354,6 +355,7 @@ export class AttachedSessionFollowService {
     id: string;
     operationId: string;
     controller: AbortController;
+    work: Promise<ExternalSessionHistoryImport>;
   };
   private readonly canceledArchiveImports = new Map<string, number>();
   private readonly discoveries = new Map<
@@ -361,6 +363,12 @@ export class AttachedSessionFollowService {
     DiscoverySnapshot
   >();
   private readonly archivePages = new Map<string, DiscoverySnapshot>();
+  private recentArchiveCatalog?: {
+    scope: string;
+    entries: ExternalSessionHistoryEntry[];
+    partial: boolean;
+    at: number;
+  };
   private readonly archiveLocations = new Map<
     string,
     { source: AttachedSessionSource; offset: number }
@@ -473,6 +481,7 @@ export class AttachedSessionFollowService {
     this.discoveries.clear();
     this.archiveCursors.clear();
     this.archivePages.clear();
+    this.recentArchiveCatalog = undefined;
     this.archiveLocations.clear();
     this.registeredArchivePages.clear();
     // A source may hold store handles (OpenCode's SQLite connections) between
@@ -737,8 +746,19 @@ export class AttachedSessionFollowService {
         : this.options.sources;
       const pagedSource =
         input.provider && sources.length === 1 && !sources[0]?.metadataOnly;
-      const reservations = this.adoptionLedger.reservations();
       const searchTerm = input.search.toLowerCase();
+      const catalogScope = JSON.stringify([input.provider, searchTerm]);
+      const recent = this.recentArchiveCatalog;
+      if (
+        !pagedSource &&
+        input.offset > 0 &&
+        recent?.scope === catalogScope &&
+        Date.now() - recent.at < DISCOVERY_SNAPSHOT_MS
+      ) {
+        return recentArchivePage(recent.entries, recent.partial, input.offset);
+      }
+
+      const reservations = this.adoptionLedger.reservations();
       let partial = false;
       for (const source of sources) {
         const found = pagedSource
@@ -795,16 +815,13 @@ export class AttachedSessionFollowService {
           partial,
         };
       }
-      const sessions = matches.slice(
-        input.offset,
-        input.offset + ARCHIVE_PAGE_SIZE,
-      );
-      const end = input.offset + sessions.length;
-      return {
-        sessions,
-        nextOffset: end < matches.length ? end : null,
+      this.recentArchiveCatalog = {
+        scope: catalogScope,
+        entries: matches,
         partial,
+        at: Date.now(),
       };
+      return recentArchivePage(matches, partial, input.offset);
     });
   }
 
@@ -890,7 +907,6 @@ export class AttachedSessionFollowService {
     requestSignal: AbortSignal,
   ): Promise<ExternalSessionHistoryImport> {
     const controller = new AbortController();
-    const operation = { id, operationId, controller };
     const signal = AbortSignal.any([requestSignal, controller.signal]);
     const assertCurrent = () => {
       assertAdmission();
@@ -955,6 +971,7 @@ export class AttachedSessionFollowService {
       }
       return { threadId: persisted.threadId, more };
     });
+    const operation = { id, operationId, controller, work };
     this.activeArchiveImport = operation;
     try {
       return await work;
@@ -964,7 +981,7 @@ export class AttachedSessionFollowService {
     }
   }
 
-  cancelArchiveImport(id: string, operationId: string): void {
+  async cancelArchiveImport(id: string, operationId: string): Promise<void> {
     const key = `${id}:${operationId}`;
     this.canceledArchiveImports.delete(key);
     this.canceledArchiveImports.set(key, Date.now() + 300_000);
@@ -977,6 +994,7 @@ export class AttachedSessionFollowService {
       active.controller.abort(
         new ExternalSessionHistoryUnavailable(409, 'Import canceled.'),
       );
+      await active.work.catch(() => undefined);
     }
   }
 
@@ -994,6 +1012,7 @@ export class AttachedSessionFollowService {
       throw new ExternalSessionHistoryUnavailable(
         409,
         'Another conversation request is in progress. Try again.',
+        'external_history_busy',
       );
     }
     const activePoll = this.activePoll;
@@ -2124,6 +2143,16 @@ function attachedSessionPersistenceFields(session: ProviderSession): unknown[] {
 
 /** A source write within this of the recorded one is not worth a row write. */
 const SOURCE_WRITE_STEP_MS = 30_000;
+
+function recentArchivePage(
+  entries: ExternalSessionHistoryEntry[],
+  partial: boolean,
+  offset: number,
+): ExternalSessionHistoryPage {
+  const sessions = entries.slice(offset, offset + ARCHIVE_PAGE_SIZE);
+  const end = offset + sessions.length;
+  return { sessions, nextOffset: end < entries.length ? end : null, partial };
+}
 
 function archiveId(
   source: AttachedSessionSource,

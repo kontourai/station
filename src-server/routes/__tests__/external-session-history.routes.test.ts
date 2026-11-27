@@ -166,12 +166,13 @@ test('owner can browse a provider transcript without saving it, then cancel or i
       { method: 'POST' },
     );
     await entered.promise;
-    const interrupted = await app.request(
+    const interrupted = app.request(
       `/external-history/${id}/import/${operationId}`,
       { method: 'DELETE' },
     );
+    await new Promise<void>((resolve) => setImmediate(resolve));
     release.resolve();
-    expect(interrupted.status).toBe(204);
+    expect((await interrupted).status).toBe(204);
     expect((await pending).status).toBe(409);
     for (const session of store.readSessions()) {
       expect(

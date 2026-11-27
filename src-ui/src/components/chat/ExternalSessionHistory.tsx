@@ -5,6 +5,7 @@ import {
   useExternalSessionTranscriptQuery,
   useImportExternalSessionHistory,
 } from '@kontourai/station-sdk/external-session-history-query';
+import { Field, Input, Select } from '@kontourai/ui/react';
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
@@ -42,41 +43,47 @@ export function ExternalSessionHistory({
       ) : (
         <div className="content-stack">
           <form
+            className="content-stack"
             onSubmit={(event) => {
               event.preventDefault();
-              setOffset(0);
+              if (!provider) setOffset(0);
               setSearch(searchInput.trim());
             }}
           >
-            <label htmlFor="external-history-provider">Engine</label>
-            <select
-              id="external-history-provider"
-              value={provider}
-              onChange={(event) => {
-                setProvider(event.target.value);
-                setOffset(0);
-                setSearch('');
-                setSearchInput('');
-              }}
+            <Field label="Engine" htmlFor="external-history-provider">
+              <Select
+                id="external-history-provider"
+                value={provider}
+                onChange={(event) => {
+                  setProvider(event.target.value);
+                  setOffset(0);
+                  setSearch('');
+                  setSearchInput('');
+                }}
+              >
+                <option value="">All engines</option>
+                <option value="claude">Claude Code</option>
+                <option value="codex">Codex</option>
+                <option value="grok">Grok</option>
+                <option value="opencode">OpenCode</option>
+                <option value="acp">ACP</option>
+              </Select>
+            </Field>
+            <Field
+              label={
+                provider
+                  ? 'Filter this page by folder'
+                  : 'Search by engine or folder'
+              }
+              htmlFor="external-history-search"
             >
-              <option value="">All engines</option>
-              <option value="claude">Claude Code</option>
-              <option value="codex">Codex</option>
-              <option value="grok">Grok</option>
-              <option value="opencode">OpenCode</option>
-              <option value="acp">ACP</option>
-            </select>
-            <label htmlFor="external-history-search">
-              {provider
-                ? 'Filter this page by folder'
-                : 'Search by engine or folder'}
-            </label>
-            <input
-              id="external-history-search"
-              value={searchInput}
-              maxLength={120}
-              onChange={(event) => setSearchInput(event.target.value)}
-            />
+              <Input
+                id="external-history-search"
+                value={searchInput}
+                maxLength={120}
+                onChange={(event) => setSearchInput(event.target.value)}
+              />
+            </Field>
             <Button type="submit">Search</Button>
           </form>
           <ArchiveList
@@ -197,11 +204,11 @@ function ArchiveTranscript({
     [],
   );
   const openSaved = () => {
-    if (!scope?.isCurrent() || !imported.data) return;
+    if (canceling || !scope?.isCurrent() || !imported.data) return;
     onOpen(imported.data.threadId);
   };
   const startImport = () => {
-    if (activeImport.current || !scope?.isCurrent()) return;
+    if (activeImport.current || canceling || !scope?.isCurrent()) return;
     const abort = new AbortController();
     const operationId = Array.from(
       crypto.getRandomValues(new Uint8Array(16)),
@@ -246,7 +253,7 @@ function ArchiveTranscript({
   const nextCursor = query.data?.nextCursor;
   return (
     <div className="content-stack">
-      <Button disabled={imported.isPending} onClick={onBack}>
+      <Button disabled={imported.isPending || canceling} onClick={onBack}>
         Back to results
       </Button>
       <p>{entry.cwd}</p>
@@ -267,7 +274,7 @@ function ArchiveTranscript({
               <>
                 <p>Preview starts near the end of this transcript.</p>
                 <Button
-                  disabled={imported.isPending}
+                  disabled={imported.isPending || canceling}
                   onClick={() => {
                     setCursor(null);
                     setFromStart(true);
@@ -290,7 +297,7 @@ function ArchiveTranscript({
             ))}
             {cursor && (
               <Button
-                disabled={imported.isPending}
+                disabled={imported.isPending || canceling}
                 onClick={() => setCursor(null)}
               >
                 First page
@@ -298,45 +305,47 @@ function ArchiveTranscript({
             )}
             {nextCursor && (
               <Button
-                disabled={imported.isPending}
+                disabled={imported.isPending || canceling}
                 onClick={() => setCursor(nextCursor)}
               >
                 More messages
               </Button>
             )}
-            {imported.isPending ? (
-              <>
-                <p role="status">
-                  {canceling ? 'Stopping import…' : 'Importing conversation…'}
-                </p>
-                <Button onClick={() => void stopImport()} disabled={canceling}>
-                  Cancel import
-                </Button>
-              </>
-            ) : imported.data ? (
-              <Button onClick={openSaved}>Open saved conversation</Button>
-            ) : (
-              <Button onClick={startImport}>
-                {canceled ? 'Resume import' : 'Import conversation'}
-              </Button>
-            )}
-            {canceled && (
-              <p role="status">
-                Import canceled. Any saved messages stay in History.
-              </p>
-            )}
-            {cancelError && (
-              <ErrorState variant="compact" title={cancelError} />
-            )}
-            {imported.error && !canceled && (
-              <ErrorState
-                variant="compact"
-                title="Import paused"
-                description={imported.error.message}
-              />
-            )}
           </>
         )
+      )}
+      {(imported.isPending || canceling || imported.data || query.data) && (
+        <>
+          {imported.isPending || canceling ? (
+            <>
+              <p role="status">
+                {canceling ? 'Stopping import…' : 'Importing conversation…'}
+              </p>
+              <Button onClick={() => void stopImport()} disabled={canceling}>
+                Cancel import
+              </Button>
+            </>
+          ) : imported.data ? (
+            <Button onClick={openSaved}>Open saved conversation</Button>
+          ) : (
+            <Button onClick={startImport}>
+              {canceled ? 'Resume import' : 'Import conversation'}
+            </Button>
+          )}
+          {canceled && !imported.data && (
+            <p role="status">
+              Import canceled. Any saved messages stay in History.
+            </p>
+          )}
+          {cancelError && <ErrorState variant="compact" title={cancelError} />}
+          {imported.error && !canceled && (
+            <ErrorState
+              variant="compact"
+              title="Import paused"
+              description={imported.error.message}
+            />
+          )}
+        </>
       )}
     </div>
   );
