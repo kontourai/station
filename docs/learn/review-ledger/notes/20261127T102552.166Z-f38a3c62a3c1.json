@@ -1,0 +1,7 @@
+{
+  "revision": "778660a84ce1069aa2a9d5bca0bc0cb4c4bef39d",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed final hostile-plugin lane paragraph against 778660a: explicitly seeded default hydration, actual WebView2 native-fetch CSP refusal, fail-closed unexpected APIs. No manual chooser claim; fallback message transport and exhaustive command-origin authorization remain unverified.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}

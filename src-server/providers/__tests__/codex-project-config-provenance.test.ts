@@ -15,6 +15,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
@@ -26,7 +27,10 @@ import {
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { findUnaccountedCodexConfig } from '../adapters/codex-project-config-provenance.js';
 
-const makeTempDir = trackTempDirs();
+const tempRoot = trackTempDirs({ lifetime: 'file', base: homedir() })(
+  'station-codex-provenance-',
+);
+const makeTempDir = trackTempDirs({ base: tempRoot });
 
 function execGit(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();

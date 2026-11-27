@@ -1,0 +1,39 @@
+{
+  "revision": "32107abdfce269e8c950741a93d8b097aa37b465",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Traced mobile History admission from the Chats panel through inbox closure to the same History overlay and host-scoped Session reader used by the desktop.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Traced mobile History admission from the Chats panel through inbox closure to the same History overlay and host-scoped Session reader used by the desktop.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Traced mobile History admission from the Chats panel through inbox closure to the same History overlay and host-scoped Session reader used by the desktop.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Traced mobile History admission from the Chats panel through inbox closure to the same History overlay and host-scoped Session reader used by the desktop.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Traced mobile History admission from the Chats panel through inbox closure to the same History overlay and host-scoped Session reader used by the desktop.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Traced mobile History admission from the Chats panel through inbox closure to the same History overlay and host-scoped Session reader used by the desktop.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Traced mobile History admission from the Chats panel through inbox closure to the same History overlay and host-scoped Session reader used by the desktop.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Traced mobile History admission from the Chats panel through inbox closure to the same History overlay and host-scoped Session reader used by the desktop.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Traced mobile History admission from the Chats panel through inbox closure to the same History overlay and host-scoped Session reader used by the desktop.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the mobile Chats footer opens conversation History with or without an active chat and remains outside bulk-selection controls.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the mobile Chats footer opens conversation History with or without an active chat and remains outside bulk-selection controls.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the mobile Chats footer opens conversation History with or without an active chat and remains outside bulk-selection controls.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the mobile Chats footer opens conversation History with or without an active chat and remains outside bulk-selection controls.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked browser controls against Station action rows, provider display names, read-only preview and explicit import.","inputs":["src-ui/src/components/chat/ExternalSessionHistory.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed the four archive Gallery scenarios. Each now enters via the visible Chats controls and opens the real History overlay before reading the fixture transcript.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the four archive Gallery scenarios. Each now enters via the visible Chats controls and opens the real History overlay before reading the fixture transcript.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the four archive Gallery scenarios. Each now enters via the visible Chats controls and opens the real History overlay before reading the fixture transcript.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

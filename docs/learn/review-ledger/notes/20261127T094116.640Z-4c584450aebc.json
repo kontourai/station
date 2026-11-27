@@ -1,0 +1,7 @@
+{
+  "revision": "69f1ccef94337f59b37c464e0b08571e3f7a2f6b",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"The diagnostics route now admits an exact-query approval from the active chat behind the personal Station preview. The documented durable grant API stays available, and the timed approval yields redacted query results.","inputs":["docs/reference/config.md","src-server/routes/orchestration/orchestration.ts","src-server/routes/system/diagnostics.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/station-control-authority-guard.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

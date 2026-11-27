@@ -1427,11 +1427,13 @@ sessions and capability checks are left out.
 `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 point Station at a different folder (for OpenCode, the folder holding the
 database). With `STATION_EXTERNAL_CODEX_SOURCE_ROOT` set, that folder is the
-only Codex home Station reads. Station checks every two seconds and reads the
-128 most recently changed conversations from each place (each Codex home is
-its own place, up to 512 Codex conversations in all, the default home first). Older ones stay in history once Station has read
-them, but new messages in them are not picked up until they are among
-the 128 again. Conversations Station has not listed before appear only after it
+only Codex home Station reads. By default, Station waits at least two seconds
+between checks and backs off to twelve seconds when nothing changes. It
+reads a few transcripts per source at a time and yields between batches. Discovery can find up to 128
+recently changed conversations per place (each Codex home is its own place,
+up to 512 Codex conversations in all, the default home first). Previous
+imports stay in history. A conversation outside the discovery limit becomes
+eligible for new messages when it moves back into the limit. Conversations Station has not listed before appear only after it
 finishes restoring its own sessions at startup; if that restore fails, already
 listed conversations keep updating but new ones wait until Station restarts.
 
@@ -1477,6 +1479,28 @@ Conversations inside a Project are read either way.
 
 A hosted Station never reads conversations outside your Projects. It reads the
 ones inside a Project, but no account can open them there.
+
+### Browse older third-party conversations
+
+Enable **Third-party history** in **Settings → Advanced → Feature previews**.
+Open global **History** and choose **Third-party history**. Choose an engine to
+browse older pages, or search the recent results by engine or folder. Open a conversation to read its text from the provider's local
+store. Browsing leaves its transcript with the provider. ACP entries from the
+optional external session list show metadata only.
+
+Choose **Import conversation** to save the transcript in Station. You can
+cancel and resume from the saved progress. After import, **Open saved
+conversation** opens the same reader that the inbox uses. Claude Code and
+Codex keep their usual **Continue in Station** behavior. Grok and OpenCode
+transcripts stay read only.
+
+Station follows sources with a known write time automatically for 30 minutes
+after their last change. New writes make an older
+conversation eligible again. Existing imported history stays available.
+The archive uses each provider's discovery cap and reports when results are
+partial. Claude's preview starts near the end of large transcripts, with
+**Read from the beginning** available. Import starts at the beginning of an
+archive that Station has never saved.
 
 ## Continue an Attached Session
 

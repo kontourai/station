@@ -85,7 +85,7 @@ import { DIALOG_HISTORY_KEY } from '../../components/dialog-history';
 import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
-import { NavigationProvider } from '../NavigationContext';
+import { NavigationProvider, useNavigation } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
 import { RegionModelProvider, useRegionModel } from '../RegionModelContext';
 import { UnsavedGuardOwnerContext } from '../UnsavedGuardOwnerContext';
@@ -96,10 +96,15 @@ let model: ReturnType<typeof useRegionModel> | null = null;
 
 function Probe() {
   const value = useRegionModel();
+  const { navigate } = useNavigation();
   useEffect(() => {
     model = value;
   }, [value]);
-  return null;
+  return (
+    <button type="button" onClick={() => navigate('/automations')}>
+      Automations
+    </button>
+  );
 }
 
 function current() {
@@ -196,6 +201,37 @@ afterEach(async () => {
 });
 
 describe('leaving a phone layer asks before discarding a review draft', () => {
+  test.each(['Project', 'page'])(
+    'selecting the current %s asks before closing a dirty phone pane',
+    async (destination) => {
+      if (destination === 'Project') navigationStore.setProject('station');
+      else navigationStore.navigate('/automations', { dock: 'open' });
+      const comment = await mountWithDraft();
+      const location = window.location.href;
+      const revisit = () => {
+        if (destination === 'Project')
+          act(() => navigationStore.setProject('station'));
+        else
+          fireEvent.click(screen.getByRole('button', { name: 'Automations' }));
+      };
+
+      revisit();
+      await screen.findByRole('dialog', { name: /Unsaved Changes/ });
+      expectLayerOpen();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(onLayerEntry()).toBe(true));
+      expectLayerOpen();
+      expect(comment.value).toBe('Half-written review');
+      expect(window.location.href).toBe(location);
+
+      revisit();
+      await screen.findByRole('dialog', { name: /Unsaved Changes/ });
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+      await waitFor(() => expect(current().phoneLayer).toBeNull());
+      expect(current().regions.bottom.occupant).toBe('chat');
+    },
+  );
+
   test.each(['replacement layer', 'new owner guard', 'caller withdrawn'])(
     'a pending explicit close is superseded by %s',
     async (change) => {

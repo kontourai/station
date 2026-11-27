@@ -356,7 +356,13 @@
 
     "src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts",
 
-    "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts"
+    "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts",
+
+    "src-ui/src/components/chat/TranscriptVirtualizer.tsx",
+
+    "src-ui/src/__tests__/ChatMessageList.scrollStability.test.tsx",
+
+    "src-ui/src/components/status/approvalReveal.ts"
   ],
 
   "checks": [

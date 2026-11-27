@@ -180,7 +180,9 @@
 
     "src-desktop/src/native_route_authorization.rs",
 
-    "src-ui/src/platform/native/stationProfileStorage.ts"
+    "src-ui/src/platform/native/stationProfileStorage.ts",
+
+    "src-desktop/src/windows_path_trust.rs"
   ],
 
   "checks": [

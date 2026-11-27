@@ -6221,8 +6221,10 @@ requires a clean committed baseline, owns child processes through the shared
 process helper, records exact replacement bytes, and verifies baseline,
 intended caught failure and restored pass. Restoration refuses to overwrite
 intervening edits. A nonzero exit from missing prerequisites or empty selection
-is not a caught behavioral defect. The existing E2E runner still owns the app,
-home and ports; these tools do not create a second app-lifecycle authority.
+is not a caught behavioral defect. The mutation runner retains the canonical
+E2E runner's ownership of the Station app, home and ports. The opt-in UI-only
+profiling lane separately owns a production UI preview and browser process
+trees; it does not start a Station server or use a Station home.
 
 Policy known-bad/control tests, factory-to-caller checks, profile-schema tests
 and mutation verdict/restoration tests exercise the named contracts. Preserve

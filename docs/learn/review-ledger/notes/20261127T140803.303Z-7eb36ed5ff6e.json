@@ -1,0 +1,9 @@
+{
+  "revision": "91d506bdc7f787090523966eaa8a332fdfc49602",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed connections account/quota projection and development unbound-Codex-workspace claims against the transport-unit fixture change. Only the existing config-provenance dependency is isolated here; actual scanner and adapter-refusal coverage remains in codex-project-config-provenance.test.ts and the process security owner. Production profile, quota, managed-workspace and confinement behavior is unchanged. Affected suites passed 824 tests with two case-insensitive-volume probes not available on this Linux filesystem; this is not live provider or Windows shell qualification.","inputs":["src-server/providers/__tests__/codex-adapter.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed connections account/quota projection and development unbound-Codex-workspace claims against the transport-unit fixture change. Only the existing config-provenance dependency is isolated here; actual scanner and adapter-refusal coverage remains in codex-project-config-provenance.test.ts and the process security owner. Production profile, quota, managed-workspace and confinement behavior is unchanged. Affected suites passed 824 tests with two case-insensitive-volume probes not available on this Linux filesystem; this is not live provider or Windows shell qualification.","inputs":["src-server/providers/__tests__/codex-adapter.test.ts"]}
+  ]
+}

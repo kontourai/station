@@ -34,6 +34,7 @@ import type {
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
   CLIENT_PROTOCOL_HEADER,
+  pairingScopeIncludes,
   readClientProtocolHeader,
 } from '@kontourai/station-contracts/environment-security';
 import {
@@ -129,9 +130,11 @@ import type { StationControlDispatchScope } from '../../runtime/mcp/station-cont
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   type FullAccessGrant,
+  isOperatorInPersonNotAgent,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
 import { managedEngineRefusalBody } from '../../security/managed-engine-limits.js';
+import { grantedPairingScope } from '../../security/pairing-route-scopes.js';
 import {
   personCredentialRequest,
   personTypedRequest,
@@ -8069,6 +8072,17 @@ export function createOrchestrationRoutes(
             ...(command.type === 'respondToRequest' &&
             isPersonRequest(c.req.raw)
               ? { personAnswer: true as const }
+              : {}),
+            ...(command.type === 'respondToRequest'
+              ? {
+                  serverLogReadDecisionAuthorized: () =>
+                    isOperatorInPersonNotAgent(c.req.raw) &&
+                    deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
+                    pairingScopeIncludes(
+                      grantedPairingScope(c) ?? 'access:manage',
+                      'access:manage',
+                    ),
+                }
               : {}),
             // A person's Stop, by Station's person check: never a delegation-
             // kind device or a request an Agent may have made. An automation

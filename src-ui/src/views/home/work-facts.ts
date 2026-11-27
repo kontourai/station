@@ -332,7 +332,7 @@ export function buildWorkFacts({
         : session.latestTurnTrigger === 'provider')
     )
       entry.engineOpenedTurn = true;
-    if (item.kind !== 'remote-session') {
+    if (unconfirmedByRow.size > 0 && item.kind !== 'remote-session') {
       const unconfirmed = [
         ...new Map(
           [
@@ -418,28 +418,31 @@ export function buildWorkFacts({
       if (conversation?.observedWorkspace)
         entry.observedWorkspace = conversation.observedWorkspace;
     }
-    if (Object.keys(entry).length > 0) facts.set(item.id, entry);
+    facts.set(item.id, entry);
   }
-  const itemByThread = new Map<string, HomeWorkItem>();
-  for (const item of items) {
-    if (item.kind === 'remote-session') continue;
-    for (const threadId of item.orchestrationThreadIds ??
-      (item.orchestrationThreadId ? [item.orchestrationThreadId] : [])) {
-      itemByThread.set(threadId, item);
+  if (sessions.some((session) => session.delegation?.parentTaskId)) {
+    const itemByThread = new Map<string, HomeWorkItem>();
+    for (const item of items) {
+      if (item.kind === 'remote-session') continue;
+      for (const threadId of item.orchestrationThreadIds ??
+        (item.orchestrationThreadId ? [item.orchestrationThreadId] : [])) {
+        itemByThread.set(threadId, item);
+      }
+    }
+    for (const presentation of groupDelegatedSessionRuns(sessions)) {
+      if (presentation.kind !== 'run') continue;
+      const root = itemByThread.get(presentation.run.parent.threadId);
+      if (!root) continue;
+      for (const member of presentation.run.members.slice(1)) {
+        const child = itemByThread.get(member.threadId);
+        if (!child || child.id === root.id) continue;
+        facts.set(child.id, { ...facts.get(child.id), runRootId: root.id });
+      }
     }
   }
-  for (const presentation of groupDelegatedSessionRuns(sessions)) {
-    if (presentation.kind !== 'run') continue;
-    const root = itemByThread.get(presentation.run.parent.threadId);
-    if (!root) continue;
-    for (const member of presentation.run.members.slice(1)) {
-      const child = itemByThread.get(member.threadId);
-      if (!child || child.id === root.id) continue;
-      facts.set(child.id, { ...facts.get(child.id), runRootId: root.id });
-    }
-  }
-  const taskById = new Map(tasks.map((task) => [task.id, task]));
   const taskItems = items.filter((item) => item.kind === 'task');
+  if (taskItems.length === 0) return facts;
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
   for (const item of items) {
     if (item.kind === 'task' || item.kind === 'remote-session') continue;
     const identities = new Set([

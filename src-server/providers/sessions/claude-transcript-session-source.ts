@@ -22,6 +22,7 @@ import {
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
+  AttachedSessionDiscoveryPage,
   AttachedSessionDiscoveryResult,
   AttachedSessionReadResult,
   AttachedSessionSource,
@@ -196,7 +197,9 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     { directoryMs: number; scannedAt: number; newest: number }
   >();
 
-  async discover(): Promise<AttachedSessionDiscoveryResult> {
+  async discover(
+    page?: AttachedSessionDiscoveryPage,
+  ): Promise<AttachedSessionDiscoveryResult> {
     const sourceHome = deriveConfigHomeAffinity(
       SOURCE_HOME_NAMESPACE,
       this.configDir,
@@ -338,19 +341,22 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         this.newestTranscriptByFolder.delete(project.path);
       }
     }
+    const offset = page?.offset ?? 0;
+    const end = offset + (page?.limit ?? this.maxCandidates);
     const candidateLimit =
-      candidatesTruncated || candidates.length > this.maxCandidates;
+      candidatesTruncated || (!page && candidates.length > end);
     // Only the selected files are canonicalized; their folder already is.
-    const files: string[] = [];
+    const files: Array<{ path: string; modifiedAt: number }> = [];
     for (const candidate of candidates
       .sort(
         (left, right) =>
           right.modifiedAt - left.modifiedAt ||
           left.path.localeCompare(right.path),
       )
-      .slice(0, this.maxCandidates)) {
+      .slice(offset, end)) {
       const canonical = this.canonicalInside(root, candidate.path);
-      if (canonical) files.push(canonical);
+      if (canonical)
+        files.push({ path: canonical, modifiedAt: candidate.modifiedAt });
       else rejected = true;
     }
 
@@ -363,7 +369,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     const refusals: Partial<Record<AttachedSessionSourceOutcome, number>> = {};
     const previousIdentities = this.leadingIdentities;
     this.leadingIdentities = new Map();
-    for (const file of files) {
+    for (const { path: file, modifiedAt } of files) {
       const descriptor = this.discoverFile(
         file,
         sourceHome.affinity,
@@ -378,7 +384,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         continue;
       }
       this.handles.set(descriptor.session.sourceHandle, file);
-      sessions.push(descriptor.session);
+      sessions.push({ ...descriptor.session, modifiedAtMs: modifiedAt });
     }
     this.warnWhenNothingAccepted(
       files.length,
@@ -386,7 +392,11 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
       outcome,
       refusals,
     );
-    return { outcome, sessions };
+    return {
+      outcome,
+      sessions,
+      ...(page && candidates.length > end ? { nextOffset: end } : {}),
+    };
   }
 
   /**
@@ -598,6 +608,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     let content: Buffer;
     let windowStart: number;
     let byteLimited = false;
+    let hasMoreBytes = false;
     try {
       const stat = lstatSync(canonical);
       if (cursorOffset > stat.size) {
@@ -636,7 +647,8 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         );
       }
       const bytesToRead = Math.min(this.maxBytes, stat.size - windowStart);
-      byteLimited = windowStart > 0 || windowStart + bytesToRead < stat.size;
+      hasMoreBytes = windowStart + bytesToRead < stat.size;
+      byteLimited = windowStart > 0 || hasMoreBytes;
       content = readWindow(canonical, windowStart, bytesToRead);
     } catch {
       return {
@@ -656,10 +668,13 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         return {
           outcome: 'byte_limit',
           events: [],
+          ...(hasMoreBytes ? { hasMore: true as const } : {}),
           cursor: {
             offset: windowStart + content.length,
             usageAggregationVersion: 1,
-            usageDeferred: true,
+            ...(activeTurnId ? { turnId: activeTurnId } : {}),
+            ...(usage ? { usage } : {}),
+            ...(usageDeferred ? { usageDeferred } : {}),
             sourceState: {
               ...encodeRecordTurns(recordTurns),
               skipPartialLine: true,
@@ -671,6 +686,33 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     }
     const finalNewline = content.lastIndexOf(0x0a);
     const completeEnd = finalNewline < start ? start : finalNewline + 1;
+    if (completeEnd === start && content.length - start > this.maxLineBytes) {
+      return {
+        outcome: 'line_limit',
+        events: [
+          transcriptLineSkippedWarning(
+            session,
+            windowStart + start,
+            content.length - start,
+            this.maxLineBytes,
+            activeTurnId,
+            session.createdAt,
+          ),
+        ],
+        ...(hasMoreBytes ? { hasMore: true as const } : {}),
+        cursor: {
+          offset: windowStart + content.length,
+          usageAggregationVersion: 1,
+          ...(activeTurnId ? { turnId: activeTurnId } : {}),
+          ...(usage ? { usage } : {}),
+          ...(usageDeferred ? { usageDeferred } : {}),
+          sourceState: {
+            ...encodeRecordTurns(recordTurns),
+            skipPartialLine: true,
+          },
+        },
+      };
+    }
     const incompleteTail = completeEnd < content.length;
     const events: CanonicalRuntimeEvent[] = [];
     let outcome: AttachedSessionSourceOutcome = byteLimited
@@ -782,6 +824,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         return {
           outcome,
           events,
+          hasMore: true,
           cursor: {
             offset: absoluteLineStart,
             usageAggregationVersion: 1,
@@ -814,6 +857,9 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     return {
       outcome,
       events,
+      ...(hasMoreBytes || offset < completeEnd
+        ? { hasMore: true as const }
+        : {}),
       cursor: {
         offset: windowStart + offset,
         usageAggregationVersion: 1,

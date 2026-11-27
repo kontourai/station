@@ -81,7 +81,9 @@ describe('cold-launch presentation in the browser', () => {
               }),
             );
             builder.onResolve({ filter: /^\.\/index$/ }, (args) =>
-              args.importer.endsWith('/native/startupPresentation.ts')
+              args.importer
+                .replaceAll('\\', '/')
+                .endsWith('/native/startupPresentation.ts')
                 ? { path: 'native-host', namespace: 'fixture' }
                 : undefined,
             );

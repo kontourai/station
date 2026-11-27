@@ -4858,6 +4858,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/orchestration/delegations/:taskId/respond' },
     { method: 'POST', path: '/api/orchestration/delegations/options' },
     { method: 'GET', path: '/api/orchestration/events' },
+    { method: 'GET', path: '/api/orchestration/external-history' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/external-history/:id/transcript',
+    },
+    { method: 'POST', path: '/api/orchestration/external-history/:id/import' },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/external-history/:id/import/:operationId',
+    },
     { method: 'GET', path: '/api/orchestration/processes/terminals' },
     {
       method: 'DELETE',
