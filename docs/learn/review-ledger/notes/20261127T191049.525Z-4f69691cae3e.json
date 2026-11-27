@@ -1,0 +1,13 @@
+{
+  "revision": "018a33bba0072be7ae39b9fb8b38c7e3063e74dd",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared ChatMessageList reading state, the touch turn steps and the desktop bottom-step inset. Updated touch placement and availability; the focused 390px Chromium case checked the layout, touch dimensions and hiding on return to the latest message. Native device behavior was not exercised.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/transcript-turn-rail.browser.test.tsx","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/TranscriptTurnRail.css"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked the cited ChatMessageList change. Sharing the return-to-latest state with turn navigation leaves the form sender and its delivery boundary intact.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the shared ChatMessageList caller and narrow layout. The floating steps remain in the transcript and the Browse turns overflow entry is unaffected.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the touch steps' 44px targets and transcript-local positioning. The header overflow and This chat inventory entry still use their documented paths.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/TranscriptTurnRail.css"]}
+  ]
+}
