@@ -548,7 +548,7 @@
 
 .chat-steer-bubble[data-delivery="refused"] {
   border-style: solid;
-  border-color: var(--k-danger);
+  border-color: var(--k-negative);
 }
 
 .chat-steer-bubble__meta {
@@ -566,7 +566,7 @@
 }
 
 .chat-steer-bubble[data-delivery="refused"] [role="status"] {
-  color: var(--k-danger);
+  color: var(--k-negative);
 }
 
 .chat-input__queue-slot:empty {
