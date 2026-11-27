@@ -92,15 +92,14 @@ async function fixture(
   });
   const featurePreviews = new FeaturePreviewRegistry(home, logger);
   await featurePreviews.setEnabled('task-review', true);
-  let checkout: string | undefined;
+  const checkout = join(root, 'checkout');
+  mkdirSync(checkout);
+  const git = async (...args: string[]) =>
+    (await execGit(args, { cwd: checkout, timeout: 5000 })).stdout.trim();
+  await git('init', '-b', 'main');
   let base: string | undefined;
   let head: string | undefined;
   if (options.codeReviewCheckout) {
-    checkout = join(root, 'checkout');
-    mkdirSync(checkout);
-    const git = async (...args: string[]) =>
-      (await execGit(args, { cwd: checkout, timeout: 5000 })).stdout.trim();
-    await git('init', '-b', 'main');
     await git('config', 'user.name', 'Room fixture');
     await git('config', 'user.email', 'room@example.test');
     writeFileSync(join(checkout, 'work.txt'), 'Task source\n');
@@ -188,7 +187,7 @@ async function fixture(
   const project = await projects.createProject({
     name: 'Review Project',
     slug: 'review-project',
-    ...(checkout ? { workingDirectory: checkout } : {}),
+    workingDirectory: checkout,
   });
   const { scope } = await membership.service.enable(
     project.slug,
