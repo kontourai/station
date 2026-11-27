@@ -6,6 +6,7 @@
  * and the real SQLite `EventStore`; only the engines are recording fakes, so
  * each assertion reads the exact start input an adapter would receive.
  */
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   ConfinementMechanism,
@@ -39,7 +40,12 @@ import {
   confinedNetworkPlan,
   observedConfinementRecord,
 } from '../../../security/confinement/confinement-provider.js';
+import {
+  DelegationGrantStore,
+  delegationGrantSettingsSchema,
+} from '../../../security/confinement/delegation-grants.js';
 import { createSeatbeltConfinementProvider } from '../../../security/confinement/seatbelt.js';
+import { createLogger } from '../../../utils/logger.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -282,6 +288,70 @@ describe('#2494: a start resolves its confinement before the engine is touched',
         : undefined,
     );
   }
+
+  test.each(['operator revoke', 'corrupt grant file'] as const)(
+    'a standing full-access child cannot inherit again or send another turn after %s',
+    async (loss) => {
+      await start('operator-parent', 'codex', {
+        operator: true,
+        approvalMode: 'never',
+      });
+      await waitForStarted('operator-parent');
+      expect(service.delegationParentHasFullAccess('operator-parent')).toBe(
+        true,
+      );
+
+      const grants = new DelegationGrantStore(
+        tmp,
+        createLogger({ name: 'confinement-start', level: 'error' }),
+      );
+      const grant = await grants.create(
+        delegationGrantSettingsSchema.parse({ access: 'full-access' }),
+        () => {},
+      );
+      const result = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: { threadId: 'standing-child', provider: 'codex' },
+        },
+        {},
+        {
+          delegationLaunch: {
+            grant,
+            current: () =>
+              grants.list().some(({ id }) => id === grant.id) &&
+              service.delegationParentHasFullAccess('operator-parent'),
+          },
+        },
+      );
+      expect(result.status, JSON.stringify(result)).toBe('accepted');
+      await waitForStarted('standing-child');
+      expect(codex.starts.at(-1)?.confinement).toBe('host');
+
+      await service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: 'standing-child', input: 'Before revoke' },
+      });
+      expect(codex.turns.at(-1)?.confinement).toBe('host');
+      expect(service.delegationParentHasFullAccess('standing-child')).toBe(
+        false,
+      );
+
+      if (loss === 'operator revoke') {
+        expect(await grants.revoke(grant.id, () => {})).toBe(true);
+      } else {
+        writeFileSync(join(tmp, 'config', 'delegation-grants.json'), '{');
+      }
+      const sent = codex.turns.length;
+      await expect(
+        service.dispatch({
+          type: 'sendTurn',
+          input: { threadId: 'standing-child', input: 'After revoke' },
+        }),
+      ).rejects.toThrow('Delegation grant expired or was revoked');
+      expect(codex.turns).toHaveLength(sent);
+    },
+  );
 
   /** The record the thread's latest persisted `session.started` carries. */
   function persistedRecord(threadId: string): unknown {

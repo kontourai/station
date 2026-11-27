@@ -1,0 +1,86 @@
+---
+status: current
+subject: Operator-controlled access for delegated sessions
+decided: 2026-11-26
+evidence:
+  - kind: url
+    ref: https://github.com/kontourai/station/issues/5589#issuecomment-7183493367
+  - kind: url
+    ref: https://github.com/kontourai/station/issues/5590#issuecomment-7183494397
+---
+
+# Delegation grants
+
+The operator can opt a Project into confined coding work and grant named
+delegations full access. The **Delegation grants** Feature Preview is off by
+default. With the preview off or no applicable grant, delegation uses the
+existing workspace floor.
+
+## Authority and defaults
+
+- The operator sets grants in person. Agent credentials can read grants within
+  their authorized scope. Only the operator can create, change, or revoke them.
+- A grant can cover the Station, a Project, or one parent conversation. Project
+  is the default. The narrowest matching scope wins.
+- Targets are explicit lists of Agents, models, and Projects. The default lists
+  are empty. A managed policy ceiling takes precedence over every grant.
+- Full access requires a parent currently at full access under its own
+  operator or qualified paired-device grant. Project members and shared Agents
+  cannot confer full access. A delegated child cannot pass the grant to another
+  delegation.
+- Expiry defaults to the end of the parent session. The operator can choose a
+  duration or keep the grant until revoked. Recheck standing authority before
+  each new turn. Loss of authority, including loss of the parent device grant,
+  refuses further turns in the existing child. A new session starts under the
+  policy currently in force.
+
+## Worktree and network
+
+The child's own worktree is on by default. Station provisions it before
+starting the child, using the Project’s configured worktree base or the
+fetched default branch. If that ref cannot resolve to a commit, Station
+refuses the delegation before creating a branch or checkout. For confined
+coding work, Station gives the worktree private objects and refs. Its object
+store reads the repository's shared objects as a read-only alternate. The
+primary branch registration stays at the base commit. A child pushes its
+private branch directly to the forge. Station preserves these worktrees on
+session exit and refuses settlement because its existing settlement checks read
+the primary branch tip. Manage private output through Git in the child's
+checkout. The operator can
+configure additional Git write paths per Project. Extra paths cannot include
+the common object store or any worktree administration directory. Paths under
+refs, hooks, and shared Git configuration require separate operator
+confirmation. Hooks and configuration can give the child code execution as
+the operator on a later Git command. The primary checkout and sibling
+worktrees stay outside the child's writable workspace.
+
+Egress defaults to an editable allowlist on engines that can enforce it. The
+initial list covers the Project forge, model endpoint, and package registries.
+Where the engine supports only open or disabled network, the default is open
+and the effective posture identifies it as open. If the operator explicitly
+requests an unsupported restriction, report the refusal. Any fallback must
+preserve or narrow the requested access.
+
+## Visibility and evidence
+
+Settings and configuration output show active grants with their scope, targets,
+worktree and Git write choices, egress, expiry, operator, time set, and running
+children. Settings offers revoke on each grant. Each child session and Task
+shows the effective posture and its reason, derived from the start record and
+current enforcement. Report a refusal or fallback before the first turn. Audit
+creation, widening, use, expiry, and revocation in the diagnostics log.
+If Station cannot read the grant file, it treats all standing grants as
+inactive and reports the outage in Settings and the diagnostics log.
+
+Station authenticates stored grants with an HMAC under a per-home signing key.
+Unsigned and invalid entries are ignored and reported in Settings. Operators
+must recreate unsigned grants from earlier preview builds. The signing key
+is private to the Station user and excluded from the confined Codex profile.
+A process running with full host access as the Station user can still read
+the key or restore previously signed state. This mechanism does not protect
+against a compromised host.
+
+Promotion requires real provider and forge evidence, negative filesystem and
+delegation tests, revocation through a live session harness, and independent
+security review. The control surface carries the cost of additional checkouts
+and makes any expanded network or host access visible.

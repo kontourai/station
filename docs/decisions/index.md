@@ -18,6 +18,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [browser-viewport-is-shared-fit-is-per-viewer](./browser-viewport-is-shared-fit-is-per-viewer.md) | current | The Browser page viewport is shared by every viewer; each viewer's fit and zoom are local |
 | [copilot-sdk-engine](./copilot-sdk-engine.md) | current | GitHub Copilot as a vendor-native engine through the Copilot SDK, run on the person's own Copilot CLI, behind a Feature Preview |
 | [custom-appearance](./custom-appearance.md) | current | A person's own palette and CSS; agents propose, the person previews and keeps |
+| [delegation-grants](./delegation-grants.md) | current | Operator-controlled access for delegated sessions |
 | [device-agent-control](./device-agent-control.md) | current | Bound agents control host-qualified device live surfaces through the shared lease |
 | [ended-task-resume](./ended-task-resume.md) | needs-decision | Resuming ended tracker-backed Tasks after GitHub follow-ups |
 | [engine-credential-provider](./engine-credential-provider.md) | current | Issue engine credentials only through a typed, scoped, reviewed provider |

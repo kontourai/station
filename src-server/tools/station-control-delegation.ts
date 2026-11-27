@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { resolve as resolveFilesystemPath } from 'node:path';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
@@ -95,6 +95,7 @@ import {
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
 import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-files';
+import { codexDelegatedGitPlan } from '../providers/adapters/codex-confinement.js';
 import {
   ACP_UNKNOWN_FAILURE_GUIDANCE,
   delegatedRuntimeFailureGuidance,
@@ -111,6 +112,13 @@ import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-te
 import type { FullAccessGrant } from '../security/coding-authority.js';
 import { WORKING_DIRECTORY_NOT_GRANTED_CODE } from '../security/coding-authority.js';
 import { readConfinementRecord } from '../security/confinement/confinement-provider.js';
+import {
+  type DelegationGrant,
+  type DelegationLaunch,
+  isHighRiskDelegationGitPath,
+  selectDelegationGrant,
+  type VerifiedDelegationGrantParent,
+} from '../security/confinement/delegation-grants.js';
 import { managedEngineRefusalFor } from '../security/managed-engine-limits.js';
 import {
   assertPreparationRequirementSupported,
@@ -183,8 +191,13 @@ import {
   ReceiverExecutionRefusal,
   receiverAdmittedCwd,
 } from '../services/projects/project-contribution-service.js';
+import { assertProjectWorktreeDirectory } from '../services/projects/project-service.js';
 import type { TaskDispatchAgentStart } from '../services/projects/task-dispatcher.js';
 import type { TaskRoomInvocationAdmission } from '../services/projects/task-room-work-module.js';
+import {
+  WorktreeBaseRefError,
+  type WorktreeProvisioningService,
+} from '../services/projects/worktree-provisioning-service.js';
 import {
   fetchRemoteStation,
   isRemoteStationTarget,
@@ -435,6 +448,7 @@ export interface DelegateTaskInput {
   appearanceProposal?: boolean;
   /** Composed from the verified parent at the local route. */
   delegatedAppearance?: { ownerId: string; parentSessionId: string };
+  delegationGrantParent?: VerifiedDelegationGrantParent;
   /** Server-only current-host staging authority, composed by the authenticated route. */
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
@@ -5742,10 +5756,52 @@ export function isInboundDelegationPeer(
   return inboundDeviceKind === 'delegation';
 }
 
+function bindDelegationGrantSelection(
+  readGrants: () => readonly DelegationGrant[],
+  orchestration: OrchestrationService,
+  parent: VerifiedDelegationGrantParent,
+  project: string,
+  agent: string,
+  model: string,
+): () => DelegationGrant | undefined {
+  return () => {
+    if (!parent.credentialCurrent()) return undefined;
+    const grant = selectDelegationGrant(
+      readGrants(),
+      {
+        agent,
+        model,
+        project,
+        parentConversationId: parent.conversationId,
+        parentSessionActive: orchestration.delegationParentActive(
+          parent.sessionId,
+        ),
+      },
+      Date.now(),
+    );
+    if (grant?.scope.kind === 'project' && parent.projectSlug !== project)
+      return undefined;
+    return grant?.access === 'full-access' &&
+      !orchestration.delegationParentHasFullAccess(parent.sessionId)
+      ? undefined
+      : grant;
+  };
+}
+
+function bindDelegationGrantCurrent(
+  read: (() => DelegationGrant | undefined) | undefined,
+  id: string,
+): () => boolean {
+  return () => read?.()?.id === id;
+}
+
 export async function delegateTask(
   input: DelegateTaskInput,
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
+  readDelegationGrants?: () => readonly DelegationGrant[],
+  operatorOnlyAgent?: (agentId: string) => Promise<boolean>,
+  delegationWorktrees?: WorktreeProvisioningService,
 ): Promise<DelegatedTaskHandle> {
   assertInheritedDelegationToolPolicy(input.delegation);
   input = snapshotTurnSubmissionFields(
@@ -6168,6 +6224,9 @@ export async function delegateTask(
   // conservative projection — it can only understate, never overstate,
   // and it never authorizes a resend.
   let attemptStartInvoked = false;
+  let provisionedWorktree:
+    | import('@kontourai/station-contracts/workspace-isolation').WorktreeSessionMetadata
+    | undefined;
   let attemptInitialTurnReturned = false;
   let attemptInitialTurnAccepted = false;
   const settleAttemptClaim = async (
@@ -6343,7 +6402,134 @@ export async function delegateTask(
         }
       : undefined;
     const create = async (sessionId: string): Promise<DelegatedTaskHandle> => {
-      const resolvedCwd = resolved.workspace?.cwd;
+      const workspace = resolved.workspace;
+      const parent = input.delegationGrantParent;
+      const applicableGrant =
+        readDelegationGrants &&
+        parent &&
+        input.delegationProvenance === 'caller-derived' &&
+        input.delegation?.depth === 1 &&
+        input.delegation.parentSessionId === parent.sessionId &&
+        workspace?.kind === 'project' &&
+        resolved.modelId
+          ? bindDelegationGrantSelection(
+              readDelegationGrants,
+              orchestrationService,
+              parent,
+              workspace.projectSlug,
+              resolved.agentId,
+              resolved.modelId,
+            )
+          : undefined;
+      const selected = applicableGrant?.();
+      const grant =
+        selected && (await operatorOnlyAgent?.(resolved.agentId))
+          ? selected
+          : undefined;
+      if (
+        grant &&
+        (resolved.provider !== 'codex' || grant.network.mode === 'allowlist')
+      ) {
+        throw new LocalStationRefusal(
+          'delegation_grant_network_unavailable',
+          'The selected delegation grant requires a network policy this engine cannot apply.',
+        );
+      }
+      if (grant && (input.stagedFiles || portableIntent || input.sessionId)) {
+        throw new LocalStationRefusal(
+          'delegation_grant_workspace_unavailable',
+          'This delegation cannot apply its grant to an existing or prepared workspace.',
+        );
+      }
+      const worktree =
+        grant?.ownWorktree && workspace?.kind === 'project'
+          ? await (async () => {
+              await assertProjectWorktreeDirectory(
+                workspace.projectSlug,
+                workspace.cwd,
+              );
+              input.dispatchCwdAdmission?.recheck(workspace.cwd, 'session');
+              if (
+                !delegationWorktrees ||
+                applicableGrant?.()?.id !== grant.id
+              ) {
+                throw new LocalStationRefusal(
+                  'delegation_grant_workspace_unavailable',
+                  'The grant or worktree service is no longer available to start this delegation.',
+                );
+              }
+              return delegationWorktrees
+                .provision({
+                  repoPath: workspace.cwd,
+                  threadId: sessionId,
+                  providerKind: resolved.provider,
+                  isolation: {
+                    mode: 'worktree',
+                    policy: {
+                      ...workspace.workspaceIsolation.policy,
+                      ...(grant.access === 'confined'
+                        ? { cleanupOnCompletion: false }
+                        : {}),
+                      branchPrefix: `station-delegation/${createHash('sha256').update(sessionId).digest('hex').slice(0, 32)}`,
+                      baseRef:
+                        workspace.workspaceIsolation.policy?.baseRef ??
+                        'refs/remotes/origin/HEAD',
+                    },
+                  },
+                })
+                .catch((error: unknown) => {
+                  if (error instanceof WorktreeBaseRefError) {
+                    throw new LocalStationRefusal(
+                      'delegation_grant_base_ref_unavailable',
+                      error.message,
+                    );
+                  }
+                  throw error;
+                });
+            })()
+          : undefined;
+      provisionedWorktree = worktree ?? undefined;
+      const resolvedCwd = worktree?.path ?? workspace?.cwd;
+      const executionWorkspace =
+        worktree && workspace?.kind === 'project'
+          ? await captureExecutionWorkspaceBinding({
+              threadId: sessionId,
+              ownerThreadId: sessionId,
+              projectSlug: workspace.projectSlug,
+              cwd: worktree.path,
+              worktree,
+            })
+          : undefined;
+      const delegationLaunch: DelegationLaunch | undefined =
+        grant && workspace?.kind === 'project'
+          ? {
+              grant,
+              highRiskGitWrites: Boolean(
+                worktree &&
+                  grant.access === 'confined' &&
+                  grant.extraGitWritePaths[workspace.projectSlug]?.some(
+                    isHighRiskDelegationGitPath,
+                  ),
+              ),
+              current: bindDelegationGrantCurrent(applicableGrant, grant.id),
+              ...(grant.access === 'confined'
+                ? {
+                    codexGit: worktree
+                      ? await codexDelegatedGitPlan(
+                          worktree,
+                          grant.extraGitWritePaths[workspace.projectSlug] ?? [],
+                          true,
+                          grant.highRiskGitWritesConfirmed,
+                        )
+                      : {
+                          writableDirectories: [],
+                          readOnlyPaths: [],
+                          openNetwork: true,
+                        },
+                  }
+                : {}),
+            }
+          : undefined;
       // #484 phase A: the server-minted admitted coordinate for the provider
       // effect path — the EXACT admitted cwd (execution root when it selects
       // the resource, else the resource's bound path), normalized exactly as
@@ -6543,6 +6729,9 @@ export async function delegateTask(
               metadata: {
                 agentId: resolved.agentId,
                 agentSlug: resolved.agentId,
+                ...(worktree
+                  ? { worktree, workspaceIsolation: { mode: 'worktree' } }
+                  : {}),
                 ...(input.title ? { delegationTitle: input.title } : {}),
                 ...(resolved.expectedDefinitionFingerprint
                   ? {
@@ -6564,7 +6753,7 @@ export async function delegateTask(
                 ...(project?.slug ? { projectSlug: project.slug } : {}),
                 // Preserve the resolved creation policy for continuation. The
                 // current Project default cannot certify an earlier launch.
-                ...(resolved.workspace?.kind === 'project'
+                ...(!worktree && resolved.workspace?.kind === 'project'
                   ? {
                       workspaceIsolation: resolved.workspace.workspaceIsolation,
                     }
@@ -6611,6 +6800,8 @@ export async function delegateTask(
               environmentId: target.environmentId,
             },
             resourceAdmissionIntent: 'delegated_background',
+            ...(executionWorkspace ? { executionWorkspace } : {}),
+            ...(delegationLaunch ? { delegationLaunch } : {}),
             ...(group
               ? {
                   beforeProviderStart: (threadId: string) =>
@@ -6872,6 +7063,19 @@ export async function delegateTask(
       async (id) => orchestrationService.hasSessionStartRecord(id),
     );
   } catch (attemptError) {
+    if (provisionedWorktree && !attemptStartInvoked && delegationWorktrees) {
+      try {
+        await delegationWorktrees.cleanup({
+          metadata: { ...provisionedWorktree, cleanupPolicy: 'cleanup' },
+          terminalState: 'completed',
+        });
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [attemptError, cleanupError],
+          'Delegation failed before session start, and Station could not remove its unused worktree.',
+        );
+      }
+    }
     // This local service's rejection must identify this exact command/thread;
     // unknown outcomes and another command's receipt cannot release these files.
     const failure = record(attemptError);

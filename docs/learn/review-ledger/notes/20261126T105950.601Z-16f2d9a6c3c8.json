@@ -1,0 +1,9 @@
+{
+  "revision": "520843ebf32b8573f1840b1755a3da5cfed5c6b5",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Placed the grant description within the existing SessionCommandModule section. Checked the generated Corpus topic for the same store, route, executor and profile links; these changes affect navigation and projected documentation only.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Compared regenerated topics with their sources. The SessionCommandModule topic now includes the delegation grant explanation. Existing topics, tool entry points, and usage claims are unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

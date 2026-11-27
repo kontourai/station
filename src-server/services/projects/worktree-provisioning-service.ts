@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, realpathSync, type Stats } from 'node:fs';
-import { mkdir, readdir, readFile, rm } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import {
   basename,
   dirname,
@@ -31,6 +31,7 @@ import {
 import { spawnGit } from '../../utils/git-exec.js';
 import { createKeyedSerialQueue } from '../../utils/keyed-serial-queue.js';
 import { expandTilde } from '../../utils/paths.js';
+import { locateGitDirectories } from './git-directory-confinement.js';
 import {
   type LiveRepository,
   RepositoryConfigRefusedError,
@@ -1163,6 +1164,20 @@ export class WorktreeProvisioningService {
       return { kind: 'refused', reason: shape, detail: SHAPE_DETAIL[shape] };
     const checkouts = await this.branchCheckouts(metadata);
     if (!checkouts.registered) return { kind: 'missing' };
+    const dotGit = join(metadata.path, '.git');
+    const layout = await locateGitDirectories(
+      metadata.path,
+      dotGit,
+      await lstat(dotGit, { bigint: true }),
+    );
+    if (layout && dirname(layout.commonDir) === layout.gitDir) {
+      return {
+        kind: 'refused',
+        reason: 'unsafe-config',
+        detail:
+          'This delegated worktree has private Git storage. Use Git in its checkout to manage its output.',
+      };
+    }
     const opened = await this.openCheckedForFinalization(metadata);
     if ('kept' in opened)
       return {
@@ -1655,11 +1670,14 @@ export class WorktreeProvisioningService {
 
     const startedAt = performance.now();
     try {
-      const metadata = await this.createWorktree({
-        repoPath: request.repoPath,
-        ownerKey: request.threadId,
-        policy: validateWorktreePolicy(request.isolation.policy),
-      });
+      const policy = validateWorktreePolicy(request.isolation.policy);
+      const metadata = await this.inRepositoryQueue(request.repoPath, () =>
+        this.createWorktree({
+          repoPath: request.repoPath,
+          ownerKey: request.threadId,
+          policy,
+        }),
+      );
       worktreeProvisionTotal.add(1, {
         outcome: 'success',
         provider_kind: request.providerKind,
@@ -2025,22 +2043,23 @@ export class WorktreeProvisioningService {
         throw new Error(`Worktree branch already exists: ${branch}`);
       }
 
-      const baseCommit = (
-        await this.git.run(
-          [
-            ...repo,
-            'rev-parse',
-            '--verify',
-            '--end-of-options',
-            `${policy.baseRef}^{commit}`,
-          ],
-          { env },
-        )
-      ).stdout.trim();
-      if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(baseCommit)) {
-        throw new Error(
-          'Cannot resolve the worktree base to a full Git commit',
-        );
+      const baseResult = await this.git.run(
+        [
+          ...repo,
+          'rev-parse',
+          '--verify',
+          '--quiet',
+          '--end-of-options',
+          `${policy.baseRef}^{commit}`,
+        ],
+        { allowCodes: [0, 1], env },
+      );
+      const baseCommit = baseResult.stdout.trim();
+      if (
+        baseResult.code !== 0 ||
+        !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(baseCommit)
+      ) {
+        throw new WorktreeBaseRefError(policy.baseRef);
       }
 
       const worktreeBaseDir = resolveWorktreeBaseDir(
@@ -2161,6 +2180,15 @@ export class WorktreeRepositoryConfigError extends Error {
         : "Station did not create an isolated worktree: git could not read this repository's configuration.",
     );
     this.name = 'WorktreeRepositoryConfigError';
+  }
+}
+
+export class WorktreeBaseRefError extends Error {
+  constructor(baseRef: string) {
+    super(
+      `Station could not resolve worktree base ${baseRef} to a Git commit.`,
+    );
+    this.name = 'WorktreeBaseRefError';
   }
 }
 

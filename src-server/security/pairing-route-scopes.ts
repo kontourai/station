@@ -5756,6 +5756,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PUT', path: '/config/app' },
     { method: 'GET', path: '/config/app/log-level' },
     { method: 'PUT', path: '/config/app/log-level' },
+    // The leaf also requires a current operator principal.
+    { method: 'GET', path: '/config/delegation-grants' },
+    { method: 'POST', path: '/config/delegation-grants' },
+    { method: 'DELETE', path: '/config/delegation-grants/:id' },
+    { method: 'GET', path: '/config/delegation-grants/sessions/:id' },
     { method: 'POST', path: '/config/first-run' },
     { method: 'GET', path: '/events' },
     { method: 'POST', path: '/invoke' },

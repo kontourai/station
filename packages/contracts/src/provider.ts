@@ -356,6 +356,7 @@ export const STATION_CONFINEMENT_GRANTOR_METADATA_KEY =
  * caller-supplied value is stripped before the route's own value is written.
  */
 export const DELEGATION_PROVENANCE_METADATA_KEY = 'stationDelegationProvenance';
+export const DELEGATION_GRANT_METADATA_KEY = 'stationDelegationGrant';
 
 export type DelegationProvenance =
   | 'caller-derived'
@@ -400,6 +401,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
   STATION_CONFINEMENT_RECORD_METADATA_KEY,
   DELEGATION_PROVENANCE_METADATA_KEY,
+  DELEGATION_GRANT_METADATA_KEY,
 ] as const;
 
 /**

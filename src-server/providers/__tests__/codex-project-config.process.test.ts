@@ -12,8 +12,10 @@
  */
 import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   writeFileSync,
@@ -25,9 +27,13 @@ import type {
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfinementRefusedError } from '../../security/confinement/confinement-provider.js';
+import {
+  DelegationGrantStore,
+  delegationGrantKeyPath,
+} from '../../security/confinement/delegation-grants.js';
 import {
   canonicalPath,
   createSeatbeltConfinementProvider,
@@ -35,6 +41,7 @@ import {
   SANDBOX_EXEC,
 } from '../../security/confinement/seatbelt.js';
 import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   confinedClaudeSpawn,
   prepareConfinedClaudeLaunch,
@@ -43,6 +50,7 @@ import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { createCodexProcess } from '../adapters/codex-adapter-transport.js';
 import {
   codexConfinementConfigArgs,
+  codexDelegatedGitPlan,
   STATION_CODEX_PERMISSION_PROFILE,
 } from '../adapters/codex-confinement.js';
 import { findCliBinaryAsync } from '../auth/cli-auth.js';
@@ -75,6 +83,215 @@ function commitAll(dir: string): void {
       throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
   }
 }
+
+describe.skipIf(!codexBinary || process.platform !== 'linux')(
+  'delegated worktree filesystem under the Linux Codex sandbox',
+  () => {
+    const makeTempDir = trackTempDirs({ base: process.cwd() });
+
+    test('permits committing in the delegated worktree and protects other checkouts and shared Git settings', async () => {
+      const root = realpathSync(makeTempDir('.delegated-codex-probe-'));
+      const repo = join(root, 'primary');
+      const worktree = join(root, 'child');
+      const other = join(root, 'other');
+      const codexHome = join(root, 'codex-home');
+      const stationHome = join(root, 'station-home');
+      new DelegationGrantStore(
+        stationHome,
+        createLogger({ name: 'delegated-key-test', level: 'error' }),
+      );
+      const signingKey = delegationGrantKeyPath(stationHome);
+      const keyBefore = readFileSync(signingKey);
+      mkdirSync(repo);
+      mkdirSync(codexHome);
+      writeFileSync(join(repo, 'base.txt'), 'base');
+      commitAll(repo);
+      const extension = spawnSync(
+        'git',
+        ['config', 'extensions.worktreeConfig', 'true'],
+        { cwd: repo, encoding: 'utf8', windowsHide: true },
+      );
+      expect(extension.status, extension.stderr).toBe(0);
+      const branch =
+        'station-delegation/0123456789abcdef0123456789abcdef/child';
+      for (const [name, dir] of [
+        [branch, worktree],
+        ['other', other],
+      ]) {
+        const added = spawnSync(
+          'git',
+          ['worktree', 'add', '-qb', name!, dir!],
+          {
+            cwd: repo,
+            windowsHide: true,
+            encoding: 'utf8',
+          },
+        );
+        expect(added.status, added.stderr).toBe(0);
+      }
+      const git = (cwd: string, args: string[], input?: string) => {
+        const result = spawnSync('git', args, {
+          cwd,
+          input,
+          windowsHide: true,
+          encoding: 'utf8',
+        });
+        expect(result.status, result.stderr).toBe(0);
+        return result.stdout.trim();
+      };
+      const baseCommit = git(repo, ['rev-parse', 'HEAD']);
+      const sharedObjects = join(repo, '.git', 'objects');
+      git(repo, ['repack', '-ad']);
+      const packName = readdirSync(join(sharedObjects, 'pack')).find((name) =>
+        name.endsWith('.pack'),
+      );
+      expect(packName).toBeDefined();
+      const pack = join(sharedObjects, 'pack', packName!);
+      const looseId = git(
+        repo,
+        ['hash-object', '-w', '--stdin'],
+        'shared loose object',
+      );
+      const loose = join(sharedObjects, looseId.slice(0, 2), looseId.slice(2));
+      chmodSync(loose, 0o600);
+      const looseBefore = readFileSync(loose);
+      const remote = join(worktree, 'test-forge.git');
+      git(worktree, ['init', '--bare', remote]);
+
+      const plan = await codexDelegatedGitPlan(
+        {
+          mode: 'worktree',
+          repoPath: repo,
+          path: worktree,
+          branch,
+          baseRef: 'HEAD',
+          baseCommit,
+          cleanupPolicy: 'preserve',
+          preserveOnFailure: true,
+          createdAt: new Date().toISOString(),
+        },
+        [],
+        false,
+      );
+      const env = {
+        ...process.env,
+        CODEX_HOME: codexHome,
+        GIT_AUTHOR_NAME: 'probe',
+        GIT_AUTHOR_EMAIL: 'probe@example.invalid',
+        GIT_COMMITTER_NAME: 'probe',
+        GIT_COMMITTER_EMAIL: 'probe@example.invalid',
+      };
+      vi.stubEnv('STATION_HOME', stationHome);
+      let profile: string[];
+      try {
+        profile = codexConfinementConfigArgs('workspace', plan);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      const run = (args: string[]) =>
+        spawnSync(
+          codexBinary!,
+          [
+            'sandbox',
+            '-C',
+            worktree,
+            '-P',
+            STATION_CODEX_PERMISSION_PROFILE,
+            ...profile,
+            '--',
+            ...args,
+          ],
+          {
+            cwd: worktree,
+            env,
+            encoding: 'utf8',
+            timeout: 30_000,
+            windowsHide: true,
+          },
+        );
+
+      expect(run(['cat', signingKey]).status).not.toBe(0);
+      expect(
+        run(['sh', '-ec', 'printf overwrite > "$1"', 'key-probe', signingKey])
+          .status,
+      ).not.toBe(0);
+      expect(readFileSync(signingKey)).toEqual(keyBefore);
+
+      const removePack = run(['rm', '--', pack]);
+      expect(removePack.status, removePack.stderr).toBe(1);
+      expect(existsSync(pack)).toBe(true);
+      const overwriteLoose = run([
+        'sh',
+        '-ec',
+        'printf changed > "$1"',
+        'object-probe',
+        loose,
+      ]);
+      expect(overwriteLoose.status, overwriteLoose.stderr).not.toBe(0);
+      expect(readFileSync(loose)).toEqual(looseBefore);
+
+      writeFileSync(join(worktree, 'child.txt'), 'child');
+      const commit = run([
+        'sh',
+        '-ec',
+        'git add child.txt && git -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -qm child',
+      ]);
+      expect(commit.status, commit.stderr).toBe(0);
+      const result = spawnSync('git', ['show', 'HEAD:child.txt'], {
+        cwd: worktree,
+        windowsHide: true,
+        encoding: 'utf8',
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toBe('child');
+      const push = run([
+        'git',
+        'push',
+        '--',
+        remote,
+        `HEAD:refs/heads/${branch}`,
+      ]);
+      expect(push.status, push.stderr).toBe(0);
+      expect(git(remote, ['show', `refs/heads/${branch}:child.txt`])).toBe(
+        'child',
+      );
+      expect(git(repo, ['rev-parse', `refs/heads/${branch}`])).toBe(baseCommit);
+      const worktreeGit = spawnSync(
+        'git',
+        ['rev-parse', '--absolute-git-dir'],
+        { cwd: worktree, encoding: 'utf8', windowsHide: true },
+      );
+      expect(worktreeGit.status, worktreeGit.stderr).toBe(0);
+      const worktreeConfig = join(worktreeGit.stdout.trim(), 'config.worktree');
+      expect(existsSync(worktreeConfig)).toBe(false);
+      const configWrite = run([
+        'git',
+        'config',
+        '--worktree',
+        'core.hooksPath',
+        worktree,
+      ]);
+      expect(configWrite.status, configWrite.stderr).not.toBe(0);
+      expect(configWrite.stderr).toMatch(
+        /Read-only file system|Permission denied|Device or resource busy/,
+      );
+      expect(existsSync(worktreeConfig)).toBe(false);
+
+      for (const path of [
+        join(repo, 'probe'),
+        join(other, 'probe'),
+        join(repo, '.git', 'hooks', 'post-commit'),
+        join(repo, '.git', 'config'),
+      ]) {
+        const denied = run(['touch', path]);
+        expect(denied.status, path).toBe(1);
+        expect(denied.stderr).toMatch(
+          /Read-only file system|Permission denied/,
+        );
+      }
+    });
+  },
+);
 
 const WORKSPACE_PLAN: ConfinementPlan = {
   requiredLevel: 'host',

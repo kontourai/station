@@ -2603,6 +2603,25 @@ run into a Task-bound chat reads `automation`), `coordinator-wake-dispatch.test.
 (a real dispatched Task Session) and the classifier table in
 `thread-inbox.test.ts`.
 
+### Delegation grants
+
+[DelegationGrantStore](../../src-server/security/confinement/delegation-grants.ts)
+stores operator choices and resolves the narrowest matching scope. The
+[configuration route](../../src-server/routes/system/delegation-grants.ts)
+requires a current operator principal. The
+[delegation executor](../../src-server/tools/station-control-delegation.ts)
+combines caller proof, resolved target, and verified workspace ownership
+before handing a grant to the session lifecycle. The runtime's worktree
+provisioner uses the same per-repository queue for delegation and Task
+worktrees. The
+[turn-admission boundary](../../src-server/services/orchestration/orchestration-service.ts)
+refuses further turns when the standing grant ends. The
+[Codex profile owner](../../src-server/providers/adapters/codex-confinement.ts)
+gives confined children private objects and refs, with the shared object
+store as a read-only alternate. It protects upstream reference snapshots and
+the grant signing key alongside worktree metadata such as `config.worktree`.
+Station preserves worktrees with private Git storage at session exit.
+
 ## SessionLifecycleModule
 
 Marking a Session complete can race a new turn. The [lifecycle module](../../src-server/services/orchestration/session-lifecycle-module.ts) coordinates the transition with provider invocation and reruns its checks after completion preparation, so an old view cannot close newly active work.

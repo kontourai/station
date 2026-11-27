@@ -1,3 +1,13 @@
+import { existsSync, realpathSync } from 'node:fs';
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  realpath,
+  rename,
+  writeFile,
+} from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type {
   ConfinementPlan,
   ConfinementPosture,
@@ -6,11 +16,20 @@ import {
   PROVIDER_CODEX,
   type StationConfinement,
 } from '@kontourai/station-contracts/provider';
+import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import {
   type ConfinementProvider,
   requiredConfinementLevel,
 } from '../../security/confinement/confinement-provider.js';
+import {
+  delegationGrantKeyPath,
+  isAllowedExtraDelegationGitPath,
+  isHighRiskDelegationGitPath,
+} from '../../security/confinement/delegation-grants.js';
+import { discoverSeatbeltGitLayout } from '../../security/confinement/seatbelt.js';
+import { execGit } from '../../utils/git-exec.js';
 import { isCanonicalPathWithin } from '../../utils/path-containment.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import type {
   CodexSandboxMode,
   CodexSandboxPolicy,
@@ -39,6 +58,121 @@ export interface CodexSandboxEvidence {
    */
   requestedProfile?: string | undefined;
   reportedProfile?: string | undefined;
+}
+
+/**
+ * Give this linked worktree private Git refs as well as private objects. A
+ * shared ref must never point at an object that only the child can read.
+ */
+export async function codexDelegatedGitPlan(
+  worktree: WorktreeSessionMetadata,
+  extraGitWritePaths: readonly string[],
+  openNetwork: boolean,
+  highRiskGitWritesConfirmed = false,
+): Promise<NonNullable<ConfinementPlan['delegatedCodexGit']>> {
+  const layout = await discoverSeatbeltGitLayout(worktree.path);
+  const commonDir = join(await realpath(worktree.repoPath), '.git');
+  if (
+    !layout ||
+    layout.commonDir !== commonDir ||
+    dirname(layout.gitDir) !== join(commonDir, 'worktrees') ||
+    layout.branch !== worktree.branch ||
+    !/^station-delegation\/[a-f0-9]{32}\/[^/]+$/.test(worktree.branch)
+  ) {
+    throw new Error(
+      'Delegated coding requires a verified worktree with its own Git ref namespace.',
+    );
+  }
+
+  if (!extraGitWritePaths.every(isAllowedExtraDelegationGitPath)) {
+    throw new Error('Delegation grant includes a protected Git write path.');
+  }
+
+  if (
+    !highRiskGitWritesConfirmed &&
+    extraGitWritePaths.some(isHighRiskDelegationGitPath)
+  ) {
+    throw new Error(
+      'High-risk Git writes require separate operator confirmation.',
+    );
+  }
+
+  const extraPaths = extraGitWritePaths.map((path) => join(commonDir, path));
+  const writableDirectories = [layout.gitDir, ...extraPaths];
+  for (const directory of new Set(writableDirectories)) {
+    const stats = await lstat(directory);
+    if (
+      !isCanonicalPathWithin(commonDir, directory) ||
+      directory === commonDir ||
+      (!stats.isDirectory() &&
+        !(extraPaths.includes(directory) && stats.isFile())) ||
+      (await realpath(directory)) !== directory
+    ) {
+      throw new Error(
+        'Codex delegated Git writes require an existing, canonical Git path.',
+      );
+    }
+  }
+  const commonObjects = join(commonDir, 'objects');
+  const sharedConfig = join(commonDir, 'config');
+  const base = worktree.baseCommit;
+  if (
+    !base ||
+    !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(base) ||
+    /[\r\n]/.test(commonObjects) ||
+    (await realpath(commonObjects)) !== commonObjects ||
+    (await realpath(sharedConfig)) !== sharedConfig ||
+    existsSync(join(commonDir, 'reftable'))
+  )
+    throw new Error(
+      'Delegated coding requires a verified Git object store and file-based refs.',
+    );
+
+  const { stdout: remoteRefs } = await execGit(
+    [
+      '-C',
+      worktree.repoPath,
+      'for-each-ref',
+      '--format=%(objectname) %(refname)',
+      'refs/remotes',
+    ],
+    { timeout: 10_000, maxBuffer: 1024 * 1024 },
+  );
+  const privateCommon = join(layout.gitDir, 'station-private-common');
+  const privateObjects = join(privateCommon, 'objects');
+  const privateBranch = join(privateCommon, 'refs', 'heads', worktree.branch);
+  const privateRemotes = join(privateCommon, 'refs', 'remotes');
+  const privateAlternates = join(privateObjects, 'info', 'alternates');
+  const privateConfig = join(privateCommon, 'config');
+  const packedRefs = join(privateCommon, 'packed-refs');
+  await mkdir(privateCommon, { mode: 0o700 });
+  await mkdir(dirname(privateAlternates), { recursive: true });
+  await mkdir(dirname(privateBranch), { recursive: true });
+  await mkdir(privateRemotes);
+  await copyFile(sharedConfig, privateConfig);
+  await writeFile(privateBranch, `${base}\n`, { flag: 'wx' });
+  await writeFile(privateAlternates, `${commonObjects}\n`, { flag: 'wx' });
+  await writeFile(packedRefs, remoteRefs, { flag: 'wx' });
+  const pointer = join(layout.gitDir, 'commondir.station-new');
+  await writeFile(pointer, 'station-private-common\n', { flag: 'wx' });
+  await rename(pointer, join(layout.gitDir, 'commondir'));
+
+  return {
+    writableDirectories: [...new Set(writableDirectories)],
+    readOnlyPaths: [
+      join(layout.gitDir, 'commondir'),
+      join(layout.gitDir, 'gitdir'),
+      join(layout.gitDir, 'config'),
+      join(layout.gitDir, 'config.worktree'),
+      join(layout.gitDir, 'hooks'),
+      commonObjects,
+      privateAlternates,
+      privateConfig,
+      privateRemotes,
+      packedRefs,
+    ],
+    openNetwork,
+  };
 }
 
 /**
@@ -143,19 +277,36 @@ function rootsConfined(
  */
 export function codexConfinementConfigArgs(
   confinement: StationConfinement | undefined,
+  git?: ConfinementPlan['delegatedCodexGit'],
 ): string[] {
-  return confinement === 'host'
-    ? []
-    : [
-        '-c',
-        `default_permissions="${STATION_CODEX_PERMISSION_PROFILE}"`,
-        '-c',
-        STATION_CODEX_PERMISSION_PROFILE_DEFINITION,
-        '-c',
-        'sandbox_workspace_write.writable_roots=[]',
-        '-c',
-        'approvals_reviewer="user"',
-      ];
+  if (confinement === 'host') return [];
+  const key = delegationGrantKeyPath(resolveHomeDir());
+  const rules = new Map<string, string>();
+  for (const path of git?.writableDirectories ?? []) rules.set(path, 'write');
+  for (const path of git?.readOnlyPaths ?? []) rules.set(path, 'read');
+  if (existsSync(key)) {
+    rules.set(key, 'deny');
+    rules.set(realpathSync(key), 'deny');
+  }
+  const paths = Array.from(
+    rules,
+    ([path, mode]) => `${JSON.stringify(path)}=${JSON.stringify(mode)}`,
+  );
+  const network = git ? `,network={enabled=${git.openNetwork}}` : '';
+  const profileDefinition = STATION_CODEX_PERMISSION_PROFILE_DEFINITION.replace(
+    /}}}$/,
+    () => `}${paths.length ? `,${paths.join(',')}` : ''}}${network}}`,
+  );
+  return [
+    '-c',
+    `default_permissions="${STATION_CODEX_PERMISSION_PROFILE}"`,
+    '-c',
+    profileDefinition,
+    '-c',
+    'sandbox_workspace_write.writable_roots=[]',
+    '-c',
+    'approvals_reviewer="user"',
+  ];
 }
 
 /**

@@ -73,6 +73,7 @@ import { createProjectRoomRoutes } from '../../routes/projects/project-room-rout
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
 import { createAccountSharingRoutes } from '../../routes/system/account-sharing-routes.js';
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
+import { createDelegationGrantRoutes } from '../../routes/system/delegation-grants.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
 import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
 import {
@@ -100,6 +101,10 @@ import {
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
 import { sessionNetworkRestricted } from '../../security/confinement/confinement-provider.js';
+import {
+  type DelegationGrant,
+  DelegationGrantStore,
+} from '../../security/confinement/delegation-grants.js';
 import {
   classifyOperatorCredentialPosition,
   isHostLocalOperatorCredentialUse,
@@ -979,6 +984,7 @@ import {
 import { createTaskGateEvaluationReferenceReadAdapter } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { WorkItemProviderService } from '../../services/projects/work-item-provider-service.js';
 import type { WorktreeOutputSettlementService } from '../../services/projects/worktree-output-settlement-service.js';
+import type { WorktreeProvisioningService } from '../../services/projects/worktree-provisioning-service.js';
 import { declaredPullRequestsForConversation } from '../../services/pull-requests/conversation-declared-pull-requests.js';
 import { ConversationPullRequestLinkStore } from '../../services/pull-requests/conversation-pull-request-link-store.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
@@ -1410,6 +1416,7 @@ export interface ConfigureRuntimeRoutesContext {
    * boots). Absent or returning nothing: the routes answer unavailable.
    */
   worktreeOutputSettlements?: () => WorktreeOutputSettlementService | undefined;
+  worktreeProvisioning?: WorktreeProvisioningService;
   /** The Project board aggregate; composed here when absent. */
   workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
@@ -5022,6 +5029,33 @@ export function configureRuntimeRoutes(
     ) &&
     (!operatorDeviceViewRequests.has(request) ||
       isOwnedOperatorDevice(request));
+  let readDelegationGrants: (() => readonly DelegationGrant[]) | undefined;
+  if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+    const delegationGrantsPreview = context.featurePreviews.bind({
+      id: 'delegation-grants',
+      label: 'Delegation grants',
+      description: 'Manage the access granted to named delegations.',
+    });
+    const delegationGrants = new DelegationGrantStore(
+      context.configLoader.getProjectHomeDir(),
+      context.logger,
+    );
+    readDelegationGrants = () =>
+      delegationGrantsPreview.select({
+        enabled: () => delegationGrants.list(),
+        disabled: () => [],
+      });
+    context.app.route(
+      '/config/delegation-grants',
+      createDelegationGrantRoutes(
+        delegationGrants,
+        delegationGrantsPreview,
+        isRequestPrincipalCurrent,
+        (id) => context.orchestrationService.delegationGrantChildren(id),
+        (id) => context.orchestrationService.delegationGrantPosture(id),
+      ),
+    );
+  }
   const admitOperatorDeviceView = (request: Request) => {
     if (!isRequestPrincipalCurrent(request) || !isOwnedOperatorDevice(request))
       return false;
@@ -8048,6 +8082,12 @@ export function configureRuntimeRoutes(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
           remoteStations,
+          readDelegationGrants,
+          async (agentId) => {
+            const agent = await context.configLoader.loadAgent(agentId);
+            return !agent.audience || agent.audience.kind === 'operator';
+          },
+          context.worktreeProvisioning,
         ),
       ),
       taskRoomWork: {
@@ -12812,6 +12852,40 @@ export function configureRuntimeRoutes(
           ),
         ).problem(directory),
       () => context.consentChannel.publication !== undefined,
+      (request) => {
+        if (!readDelegationGrants || !isRequestPrincipalCurrent(request))
+          return undefined;
+        if (isOperatorInPersonNotAgent(request))
+          return readDelegationGrants().map((grant) => ({
+            ...grant,
+            children: context.orchestrationService.delegationGrantChildren(
+              grant.id,
+            ),
+          }));
+        const caller = resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        );
+        const project =
+          caller?.assurance === 'bound'
+            ? stationControlDispatchScope.ownProjectSlug(caller)
+            : undefined;
+        if (!project || !caller) return undefined;
+        return readDelegationGrants()
+          .filter(
+            (grant) =>
+              grant.projects.includes(project) &&
+              (grant.scope.kind !== 'conversation' ||
+                grant.scope.conversationId === caller.conversationId),
+          )
+          .map((grant) => ({
+            ...grant,
+            projects: [project],
+            extraGitWritePaths: {
+              [project]: grant.extraGitWritePaths[project] ?? [],
+            },
+          }));
+      },
     ),
   );
   context.app.route(

@@ -117,6 +117,7 @@ import type {
 import {
   ACP_SESSION_STARTED_FRESH_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
+  DELEGATION_GRANT_METADATA_KEY,
   DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   isAcpFamilyEngine,
@@ -759,6 +760,7 @@ interface OrchestrationDispatchInternalOptions {
    */
   receiverExecutionAdmission?: ReceiverExecutionEffectAdmission;
   executionWorkspace?: ExecutionWorkspaceBinding;
+  delegationLaunch?: SessionCommandInternalOptions['delegationLaunch'];
   /** Skip the modelOptions per-provider support check for this one command. */
   skipModelOptionSupportCheck?: boolean;
   /**
@@ -1499,6 +1501,7 @@ interface OrchestrationServiceOptions {
   logger: {
     debug(message: string, meta?: Record<string, unknown>): void;
     warn(message: string, meta?: Record<string, unknown>): void;
+    info?(message: string, meta?: Record<string, unknown>): void;
     /**
      * Optional (archive#1897 logging slice 3): binds a session-scoped
      * child logger — see `sessionLogger()` below — so a session's own
@@ -2876,6 +2879,10 @@ export class OrchestrationService {
   readonly sessionCommands: SessionCommandModule;
   /** #2436: the conversation's server-ordered approval posture. */
   private readonly approvalPosture: ApprovalPosture;
+  private readonly activeDelegationGrants = new Map<
+    string,
+    NonNullable<SessionCommandInternalOptions['delegationLaunch']>
+  >();
   private readonly sessionCommandImplementation: SessionCommandImplementation;
   readonly sessionQueries: SessionQueryModule;
   /** Authoritative inventory-to-session open state; routes do not restitch it. */
@@ -9527,10 +9534,17 @@ export class OrchestrationService {
           // #2493: confinement is the caller's own authority (a grant the
           // route minted from the request, never JSON) or a recorded
           // concrete `never`; everything else is `workspace`.
-          const confinement = this.approvalPosture.startConfinement(
-            postureInput.threadId,
-            context.fullAccessGrant,
-          );
+          const delegationLaunch = internal?.delegationLaunch;
+          const inheritedHost =
+            delegationLaunch?.grant.access === 'full-access' &&
+            delegationLaunch.current() &&
+            !managedCeilingRefuses('never');
+          const confinement = inheritedHost
+            ? 'host'
+            : this.approvalPosture.startConfinement(
+                postureInput.threadId,
+                context.fullAccessGrant,
+              );
           const priorApplied = this.approvalPosture.appliedOf(
             postureInput.threadId,
           );
@@ -9570,7 +9584,9 @@ export class OrchestrationService {
                   },
                 }
               : {}),
-            modelOptions: postureInput.modelOptions,
+            modelOptions: inheritedHost
+              ? { ...postureInput.modelOptions, approvalMode: 'never' }
+              : postureInput.modelOptions,
             confinement,
           });
           const { modelOptions: _startOptions, ...startWithoutOptions } =
@@ -9744,6 +9760,22 @@ export class OrchestrationService {
             confinement,
             metadata: {
               ...startInput.metadata,
+              ...(delegationLaunch
+                ? {
+                    [DELEGATION_GRANT_METADATA_KEY]: {
+                      grantedVia: 'standing-delegation-grant',
+                      grantId: delegationLaunch.grant.id,
+                      access: inheritedHost ? 'full-access' : 'confined',
+                      scope: delegationLaunch.grant.scope.kind,
+                      worktree: delegationLaunch.grant.ownWorktree,
+                      egress: 'open',
+                      highRiskGitWrites:
+                        delegationLaunch.highRiskGitWrites === true,
+                      expiry: delegationLaunch.grant.expiry,
+                      grantor: delegationLaunch.grant.createdBy,
+                    },
+                  }
+                : {}),
               [STATION_CONFINEMENT_METADATA_KEY]: hostGranted
                 ? 'host'
                 : 'workspace',
@@ -9768,6 +9800,23 @@ export class OrchestrationService {
               ? 'worktree'
               : 'shared',
           );
+          if (delegationLaunch?.codexGit) {
+            if (
+              startInput.confinementPlan?.mechanism !== 'codex-sandbox' ||
+              (await this.options.confinedNetworkPolicy?.()) !== undefined
+            )
+              throw new Error(
+                'Delegated Codex coding cannot enforce the configured network restriction.',
+              );
+            startInput = {
+              ...startInput,
+              confinementPlan: {
+                ...startInput.confinementPlan,
+                requiredLevel: 'os-profile',
+                delegatedCodexGit: delegationLaunch.codexGit,
+              },
+            };
+          }
           // archive#2821 hardening L3: `stripReservedCapabilityMetadata`
           // above removed `sessionVisibility` from EVERY caller's metadata,
           // trusted or not, because it cannot tell them apart. Only an
@@ -10092,6 +10141,24 @@ export class OrchestrationService {
                                   internal?.forkContextRequester ?? context,
                                 );
                                 internal?.beforeProviderStart?.(input.threadId);
+                                if (internal?.delegationLaunch) {
+                                  if (!internal.delegationLaunch.current())
+                                    throw new Error(
+                                      'Delegation grant expired or was revoked before start.',
+                                    );
+                                  this.activeDelegationGrants.set(
+                                    input.threadId,
+                                    internal.delegationLaunch,
+                                  );
+                                  this.options.logger.info?.(
+                                    'Delegation grant used',
+                                    {
+                                      grantId:
+                                        internal.delegationLaunch.grant.id,
+                                      sessionId: input.threadId,
+                                    },
+                                  );
+                                }
                                 verifyReceiver();
                                 return invokeProvider(() =>
                                   adapter.startSession(input),
@@ -10458,6 +10525,13 @@ export class OrchestrationService {
     threadId: string,
     dispatchOrigin?: TurnDispatchOrigin,
   ): void {
+    const delegationLaunch = this.activeDelegationGrants.get(threadId);
+    if (delegationLaunch && !delegationLaunch.current()) {
+      throw new SendTurnRefusedError(
+        'Delegation grant expired or was revoked. Start a new session to continue under the current policy.',
+        'conflict',
+      );
+    }
     assertInheritedDelegationToolPolicy(
       this.firstStartedMetadataOfThread(threadId)?.delegation,
     );
@@ -16213,6 +16287,7 @@ export class OrchestrationService {
       this.nativeOutputGrants.retireTerminal(threadId, nativeTurnId);
     }
     this.stationControlPullRequests?.retireSession(threadId);
+    this.activeDelegationGrants.delete(threadId);
     this.sessionAdapters.delete(threadId);
     this.lastEngineActivityAt.delete(threadId);
     this.threadProviders.delete(threadId);
@@ -17431,7 +17506,9 @@ export class OrchestrationService {
       metadata: {
         ...withoutOptions.metadata,
         [STATION_CONFINEMENT_METADATA_KEY]:
-          stamp === 'host' ? 'host' : 'workspace',
+          stamp === 'host' && !this.activeDelegationGrants.has(input.threadId)
+            ? 'host'
+            : 'workspace',
         // #1796: the grantor rides forward with the stamp it explains.
         ...(grantor
           ? { [STATION_CONFINEMENT_GRANTOR_METADATA_KEY]: grantor }
@@ -17522,7 +17599,62 @@ export class OrchestrationService {
    * `workspace`: the grant it recorded has been taken back. The operator's
    * stamps, and stamps with no recorded grantor, apply as written.
    */
+  delegationGrantPosture(threadId: string) {
+    const launch = this.activeDelegationGrants.get(threadId);
+    if (!launch || !this.delegationParentActive(threadId)) return null;
+    const { grant } = launch;
+    return {
+      grantId: grant.id,
+      scope: grant.scope.kind,
+      access: launch.current() ? grant.access : 'expired',
+      ownWorktree: grant.ownWorktree,
+      network: 'open' as const,
+      highRiskGitWrites: launch.highRiskGitWrites === true,
+      expiresAt:
+        grant.expiry.kind === 'duration'
+          ? grant.createdAt + grant.expiry.seconds * 1000
+          : null,
+    };
+  }
+
+  delegationGrantChildren(id: string): string[] {
+    return [...this.activeDelegationGrants].flatMap(([threadId, launch]) =>
+      launch.grant.id === id && this.delegationParentActive(threadId)
+        ? [threadId]
+        : [],
+    );
+  }
+
+  delegationParentActive(threadId: string): boolean {
+    const status = this.sessionReadModel.get(threadId)?.status;
+    return (
+      this.sessionAdapters.has(threadId) &&
+      status !== 'closed' &&
+      status !== 'dead' &&
+      this.sessionAdapters.get(threadId)?.engineEnded?.(threadId) !== true
+    );
+  }
+
+  delegationParentHasFullAccess(threadId: string): boolean {
+    const actor = this.readStartConfinementGrantor(threadId);
+    const decision = this.approvalPosture.decision(threadId);
+    return (
+      !managedCeilingRefuses('never') &&
+      this.delegationParentActive(threadId) &&
+      !this.activeDelegationGrants.has(threadId) &&
+      this.readStartConfinementStampAsWritten(threadId) === 'host' &&
+      this.approvalPosture.appliedOf(threadId)?.mode === 'never' &&
+      (!decision || decision.approvalMode === 'never') &&
+      (actor?.kind === 'operator' ||
+        (actor?.kind === 'device' &&
+          this.options.isFullAccessGrantorCurrent?.(actor.deviceId) === true))
+    );
+  }
+
   private readStartConfinementStamp(threadId: string): unknown {
+    const delegated = this.activeDelegationGrants.get(threadId);
+    if (delegated?.grant.access === 'full-access')
+      return delegated.current() ? 'host' : 'workspace';
     const stamp = this.readStartConfinementStampAsWritten(threadId);
     if (stamp !== 'host' || !this.options.isFullAccessGrantorCurrent)
       return stamp;

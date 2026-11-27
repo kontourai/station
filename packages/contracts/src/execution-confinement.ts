@@ -389,6 +389,12 @@ export interface ConfinementPlan {
    * provider that can restrict it resolves such a plan.
    */
   network?: ConfinementNetworkPlan;
+  /** Server-verified Git paths for Codex in a delegated worktree. */
+  delegatedCodexGit?: {
+    writableDirectories: readonly string[];
+    readOnlyPaths: readonly string[];
+    openNetwork: boolean;
+  };
 }
 
 /**

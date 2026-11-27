@@ -333,6 +333,7 @@ export function createConfigRoutes(
     directory: string,
   ) => Promise<string | null>,
   routePublicationsEnabled?: () => boolean,
+  readDelegationGrants?: (request: Request) => readonly unknown[] | undefined,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -484,10 +485,12 @@ export function createConfigRoutes(
             ? 'COMSPEC'
             : 'SHELL';
       }
+      const delegationGrants = readDelegationGrants?.(c.req.raw);
       return c.json({
         success: true,
         data: {
           ...projectPublicAppConfig(config),
+          ...(delegationGrants?.length ? { delegationGrants } : {}),
           lanDiscoveryStatus: lanDiscoveryFor(configLoader).snapshot(),
           ...(frameOrigin ? { mcpUiFrameOrigin: frameOrigin } : {}),
           ...(pluginFrameOrigin ? { pluginFrameOrigin } : {}),
@@ -618,6 +621,18 @@ export function createConfigRoutes(
             { success: false, error: 'Invalid publisher telemetry policy.' },
             400,
           );
+      }
+      if (Object.hasOwn(body as object, 'delegationGrants')) {
+        logRefusal('delegation_grants_config_write_refused');
+        return c.json(
+          {
+            success: false,
+            code: COMMAND_NOT_GRANTED_CODE,
+            error:
+              'Use the operator delegation grants settings to change grants.',
+          },
+          403,
+        );
       }
       // The first-run record is a TRANSITION, not a setting (review M1). Left
       // on this route it was an ordinary composite: an `orchestration:operate`

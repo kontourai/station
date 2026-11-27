@@ -80,6 +80,7 @@ import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
 import { AutomationsSection } from './settings/AutomationsSection';
 import { BrowserDevicesSection } from './settings/BrowserDevicesSection';
+import { DelegationGrantSettings } from './settings/DelegationGrantSettings';
 import { DeviceHostsSection } from './settings/DeviceHostsSection';
 import { downloadDiagnosticsBundle } from './settings/diagnostics-download';
 import { EnvironmentStatus } from './settings/EnvironmentStatus';
@@ -1286,6 +1287,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   workload-budget-settings Feature Preview; workloads Station
                   couldn't stop show either way. */}
                     <WorkloadBudgetSettings />
+                    <DelegationGrantSettings />
                   </EnvironmentStatus>
                 )}
 

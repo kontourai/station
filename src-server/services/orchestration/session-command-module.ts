@@ -188,6 +188,7 @@ export type SessionCommandInternalOptions = {
   /** Receiver-owned portable-execution recheck, run inside the effect path. */
   receiverExecutionAdmission?: ReceiverExecutionEffectAdmission;
   executionWorkspace?: ExecutionWorkspaceBinding;
+  delegationLaunch?: import('../../security/confinement/delegation-grants.js').DelegationLaunch;
   /** Server-minted correlation for an exact higher-level start claim. */
   commandId?: string;
   skipModelOptionSupportCheck?: boolean;

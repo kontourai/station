@@ -762,6 +762,28 @@ A session spawned before this change has nothing recorded.
   read, the start fails, exactly as the credential-profile pin read beside it
   does. An unreadable default is not the same as no default.
 
+### Standing delegation grants
+
+The [delegation grants decision](../decisions/delegation-grants.md) authorizes
+an operator to grant named delegations confined coding access or full access.
+The local delegation route binds the initiating Station Control caller to its
+exact parent session. Target resolution matches the grant using the resolved
+Agent, model, and Project. A full-access parent must have its own attributed
+host stamp and an applied full-access mode. The inherited capability belongs
+to the child process and is not a new operator host stamp.
+
+The start boundary rechecks the selected grant before invoking the adapter.
+Turn admission rechecks the grant before dispatch and at the provider
+boundary, including prepared-turn replay. When the grant ends, the existing
+child refuses further turns. Start a fresh session so Codex launches with the
+profile required by the current policy.
+
+Standing-grant records are authenticated with a per-home key. The confined
+Codex profile denies access to that key. For confined coding, Station keeps
+the child's objects and refs private and reads shared objects as a read-only
+alternate. The launch record carries the fact that shared Git writes were
+explicitly confirmed whenever they apply.
+
 ### 4.10 Confinement providers (#2494)
 
 The `host | workspace` stamp above records the starter's grant. It names no

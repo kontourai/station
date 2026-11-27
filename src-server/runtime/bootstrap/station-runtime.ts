@@ -1355,6 +1355,7 @@ export class StationRuntime {
    * orchestration store; Session-exit cleanup then records nothing.
    */
   private worktreeOutputSettlements?: WorktreeOutputSettlementService;
+  private readonly worktreeProvisioning = new WorktreeProvisioningService();
   private ptyAdapter!: IPtyAdapter;
   private readonly scopedTerminals: { sessions?: TerminalSessions<Request> } =
     {};
@@ -2329,6 +2330,7 @@ export class StationRuntime {
         }),
         assignmentClaimService: this.taskDispatchAssignmentClaims,
         resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
+        worktreeProvisioning: this.worktreeProvisioning,
         // #4507: a Task worktree is never removed while a Session in it has a
         // running turn. Read when finalization runs, not at construction.
         isWorkspaceBusy: (path) => this.isWorkspaceBusy(path),
@@ -2360,13 +2362,12 @@ export class StationRuntime {
         conversationTitles.stop();
         unsubscribeTitles();
       };
-      const worktreeProvisioningService = new WorktreeProvisioningService();
       const settlementStore =
         this.orchestrationEventStore?.worktreeOutputSettlementStore();
       this.worktreeOutputSettlements = settlementStore
         ? new WorktreeOutputSettlementService({
             store: settlementStore,
-            worktrees: worktreeProvisioningService,
+            worktrees: this.worktreeProvisioning,
             pullRequestProviders: () =>
               listProviders('pullRequest').map((entry) => entry.provider),
             // A worktree is not settled while a turn runs in it, the rule
@@ -2475,7 +2476,7 @@ export class StationRuntime {
               finalizeWorktree: (exit) =>
                 this.worktreeOutputSettlements
                   ? this.worktreeOutputSettlements.finalizeSessionExit(exit)
-                  : worktreeProvisioningService.finalize(exit),
+                  : this.worktreeProvisioning.finalize(exit),
               warn: (message, fields) => this.logger.warn(message, fields),
             },
           ),
@@ -5898,6 +5899,7 @@ export class StationRuntime {
       workItemObserver: this.workItemObserver,
       taskFollowUps: this.taskFollowUps,
       worktreeOutputSettlements: () => this.worktreeOutputSettlements,
+      worktreeProvisioning: this.worktreeProvisioning,
       ptyAdapter: this.ptyAdapter,
       scopedTerminals: this.scopedTerminals,
       actionOperations: this.actionOperations,

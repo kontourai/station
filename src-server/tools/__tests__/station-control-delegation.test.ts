@@ -25,6 +25,7 @@ import type {
   ProviderSessionStartInput,
 } from '../../providers/adapter-shape.js';
 import { AsyncEventQueue } from '../../providers/sessions/async-event-queue.js';
+import { delegationGrantSettingsSchema } from '../../security/confinement/delegation-grants.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { ForegroundInvocationAdmission } from '../../services/orchestration/foreground-invocation-admission.js';
@@ -89,6 +90,8 @@ vi.mock('../station-control-delegation.js', async (importOriginal) => {
       input: Parameters<typeof actual.delegateTask>[0],
       service?: never,
       r?: Remote,
+      readGrants?: Parameters<typeof actual.delegateTask>[3],
+      operatorOnlyAgent?: Parameters<typeof actual.delegateTask>[4],
     ) =>
       actual.delegateTask(
         {
@@ -103,6 +106,8 @@ vi.mock('../station-control-delegation.js', async (importOriginal) => {
         },
         service,
         r ?? remote,
+        readGrants,
+        operatorOnlyAgent,
       ),
     executeExecutionTargetMessage: (
       input: never,
@@ -1126,6 +1131,94 @@ describe('Station Control canonical Environment + Agent execution', () => {
       ),
     ).rejects.toThrow('binding missing');
     expect(service.startSessionInternal).not.toHaveBeenCalled();
+  });
+
+  test('a matching standing grant reaches a direct child and the grandchild stays at the floor', async () => {
+    installCurrentStationFetch('/tmp/workspace');
+    const fallback = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/api/agents/reviewer`) {
+        return json({
+          success: true,
+          data: {
+            slug: 'reviewer',
+            available: true,
+            execution: { agentConnectionId: 'codex' },
+          },
+        });
+      }
+      if (url === `${CURRENT_API}/api/connections/codex`) {
+        return json({
+          success: true,
+          data: {
+            id: 'codex',
+            kind: 'agent',
+            type: 'codex',
+            enabled: true,
+            status: 'ready',
+            capabilities: ['agent-runtime'],
+            config: { provider: 'codex' },
+          },
+        });
+      }
+      return fallback(input, init);
+    });
+    const service = {
+      ...localService(),
+      delegationParentActive: () => true,
+      delegationParentHasFullAccess: () => true,
+    };
+    const grant = {
+      ...delegationGrantSettingsSchema.parse({
+        access: 'full-access',
+        agents: ['reviewer'],
+        models: ['coding-model'],
+        projects: ['workspace'],
+        ownWorktree: false,
+      }),
+      id: 'test-grant',
+      createdAt: 0,
+      createdBy: 'operator' as const,
+    };
+    const { delegateTask } = await import('../station-control-delegation.js');
+
+    for (const depth of [1, 2]) {
+      const parentSessionId = `parent-${depth}`;
+      await delegateTask(
+        {
+          prompt: 'Check the workspace',
+          target: {
+            ...currentTarget(),
+            workspace: { kind: 'project', projectSlug: 'workspace' },
+            model: { override: 'coding-model' },
+          },
+          delegation: {
+            mode: 'isolated-child',
+            depth,
+            maxDepth: 3,
+            parentSessionId,
+            parentAgentSlug: 'parent' as never,
+            rootAgentSlug: 'root' as never,
+          },
+          delegationProvenance: 'caller-derived',
+          delegationGrantParent: {
+            sessionId: parentSessionId,
+            conversationId: parentSessionId,
+            projectSlug: 'workspace',
+            credentialCurrent: () => true,
+          },
+        },
+        service as never,
+        undefined,
+        () => [grant],
+        async () => true,
+      );
+    }
+
+    const [child, grandchild] = service.startSessionInternal.mock.calls;
+    expect(child?.[2]).toMatchObject({ delegationLaunch: { grant } });
+    expect(grandchild?.[2]).not.toHaveProperty('delegationLaunch');
   });
 
   test('executes a local delegation through the injected canonical service', async () => {
