@@ -291,9 +291,27 @@ async function main() {
     });
     const shell = fixture;
     const driver = fixture.driver;
-    await driver.navigateApp('/connections/computers');
+    const bootstrapStarted = performance.now();
+    let navigated = false;
     await driver.waitUntil(
       async () => {
+        if (!navigated) {
+          const status = await driver.executeAsyncSource<
+            { value?: { phase: string }; error?: string },
+            []
+          >(
+            `const done = arguments[0];
+             window.__TAURI_INTERNALS__.invoke('bundled_server_status').then(
+               value => done({value}), error => done({error: String(error)}));`,
+          );
+          assert.equal(status.error, undefined);
+          if (status.value?.phase !== 'running') return false;
+          console.log(
+            `NEARBY_NATIVE_SIDECAR_READY ${JSON.stringify({ elapsedMs: performance.now() - bootstrapStarted })}`,
+          );
+          await driver.navigateApp('/connections/computers');
+          navigated = true;
+        }
         const store = profiles(shell);
         return (
           store.profiles.some(
@@ -312,6 +330,10 @@ async function main() {
         timeoutMsg:
           'The Windows shell did not initialize its authorized local profile',
       },
+    );
+    assert.ok(
+      performance.now() - bootstrapStarted < 90_000,
+      'Native local-profile initialization exceeded its bootstrap budget',
     );
     await clickButton(driver, 'Add computer');
     await clickButton(driver, 'Connect a Station');
