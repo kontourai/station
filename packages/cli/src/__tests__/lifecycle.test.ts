@@ -585,6 +585,36 @@ function writeTrustedInstallFile(path: string, content: string): void {
   writeFileSync(path, content, { mode: 0o644 });
 }
 
+function writePackagedInstallers(directory: string): void {
+  writeFileSync(join(directory, 'install.sh'), '#!/bin/sh\nexit 0\n', {
+    mode: 0o700,
+  });
+  writeFileSync(join(directory, 'install.ps1'), 'exit 0\n', { mode: 0o700 });
+}
+
+function expectedPackagedInstaller(directory: string): [string, string[]] {
+  return process.platform === 'win32'
+    ? [
+        win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'WindowsPowerShell',
+          'v1.0',
+          'powershell.exe',
+        ),
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          join(directory, 'install.ps1'),
+          'install',
+        ],
+      ]
+    : ['sh', ['./install.sh', 'install']];
+}
+
 /**
  * Station homes are read by the instance registry before `clean` removes
  * them. A home fixture therefore has to satisfy the same owner-only contract
@@ -5905,15 +5935,7 @@ describe('upgrade', () => {
           prerelease: releaseChannel !== 'stable',
         })}\n`,
       );
-      const installerFile =
-        process.platform === 'win32' ? 'install.ps1' : 'install.sh';
-      writeFileSync(
-        join(release, installerFile),
-        process.platform === 'win32' ? 'exit 0\n' : '#!/bin/sh\nexit 0\n',
-        {
-          mode: 0o700,
-        },
-      );
+      writePackagedInstallers(release);
       writeTrustedInstallFile(
         join(installRoot, '.station-portable-install-root'),
         'station-portable-install-root-v1\n',
@@ -5977,26 +5999,7 @@ describe('upgrade', () => {
         await lifecycle.upgrade();
 
         expect(execFileSync).toHaveBeenCalledWith(
-          process.platform === 'win32'
-            ? win32.join(
-                process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
-                'System32',
-                'WindowsPowerShell',
-                'v1.0',
-                'powershell.exe',
-              )
-            : 'sh',
-          process.platform === 'win32'
-            ? [
-                '-NoProfile',
-                '-NonInteractive',
-                '-ExecutionPolicy',
-                'Bypass',
-                '-File',
-                join(release, 'install.ps1'),
-                'install',
-              ]
-            : ['./install.sh', 'install'],
+          ...expectedPackagedInstaller(release),
           expect.objectContaining({
             cwd: release,
             env: expect.objectContaining({
@@ -6060,9 +6063,7 @@ describe('upgrade', () => {
         prerelease: false,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -6257,9 +6258,7 @@ describe('upgrade', () => {
         prerelease: true,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -6307,9 +6306,7 @@ describe('upgrade', () => {
         prerelease: false,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -10491,9 +10488,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
         prerelease: true,
       })}\n`,
     );
-    writeFileSync(join(version, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(version);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -10553,8 +10548,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     await lifecycle.upgrade();
 
     expect(execFileSync).toHaveBeenCalledWith(
-      'sh',
-      ['./install.sh', 'install'],
+      ...expectedPackagedInstaller(version),
       expect.objectContaining({
         cwd: version,
         env: expect.objectContaining({
@@ -10745,9 +10739,7 @@ describe('station upgrade under the managed update limit (#4522)', () => {
         prerelease: releaseChannel !== 'stable',
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
