@@ -3080,6 +3080,29 @@ describe('describeFailure surfaces the cause chain', () => {
     expect(describeFailure('plain string')).toBe('plain string');
   });
 
+  it('reports both command and cleanup failures without exceeding diagnostic bounds', () => {
+    const lines: string[] = [];
+    const failure = new AggregateError(
+      [
+        new Error('Inert pnpm command exceeded its 1000 ms deadline'),
+        new Error('Inert pnpm process tree did not settle', {
+          cause: new Error('owned tree still running'),
+        }),
+      ],
+      'Inert pnpm command and cleanup failed',
+    );
+    expect(
+      reportCliFailure(failure, { log: (line: string) => lines.push(line) }),
+    ).toBe(1);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('exceeded its 1000 ms deadline');
+    expect(lines[0]).toContain('process tree did not settle');
+    expect(lines[0]).toContain('owned tree still running');
+    expect(describeFailure(failure, { maxDepth: 2 }).split('\n')).toHaveLength(
+      2,
+    );
+  });
+
   it('reports the cause chain, not just the outermost message', () => {
     // The seam that actually matters. Testing `describeFailure` alone does
     // NOT cover this: reverting the reporter to `error.message` leaves every

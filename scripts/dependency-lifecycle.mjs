@@ -584,18 +584,28 @@ export function describeFailure(
 ) {
   const lines = [];
   const seen = new Set();
-  let current = error;
-  for (let depth = 0; current !== undefined && depth < maxDepth; depth += 1) {
+  const pending = [error];
+  for (let index = 0; index < pending.length && index < maxDepth; index += 1) {
+    const current = pending[index];
     if (typeof current === 'object' && current !== null) {
-      if (seen.has(current)) break;
+      if (seen.has(current)) continue;
       seen.add(current);
     }
     const message = String(
       current instanceof Error ? current.message : current,
     ).slice(0, maxLength);
     if (message !== '')
-      lines.push(depth === 0 ? message : `  caused by: ${message}`);
-    current = current instanceof Error ? current.cause : undefined;
+      lines.push(index === 0 ? message : `  caused by: ${message}`);
+    if (current instanceof AggregateError)
+      pending.push(
+        ...current.errors.slice(0, Math.max(0, maxDepth - pending.length)),
+      );
+    if (
+      current instanceof Error &&
+      current.cause !== undefined &&
+      pending.length < maxDepth
+    )
+      pending.push(current.cause);
   }
   return lines.length > 0 ? lines.join('\n') : String(error);
 }
