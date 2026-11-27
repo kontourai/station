@@ -5639,11 +5639,11 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     const consentState = hostedProbeAuthority
       ? null
       : await fetchConsentAvailability(
-          `http://${healthHost}:${serverPort}/api/system/instance`,
+          `${activeLocalApiBase(host, serverPort)}/api/system/instance`,
           readinessHeaders,
         );
     if (consentState?.status === 'listening') {
-      console.log(`  ✓ Consent: http://${healthHost}:${consentState.port}`);
+      console.log(`  ✓ Consent: http://127.0.0.1:${consentState.port}`);
     } else {
       // Truthful, never degrade-open: Station is up, approvals are not.
       console.log(
