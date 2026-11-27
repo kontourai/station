@@ -70,7 +70,7 @@ export function createExternalSessionHistoryRoutes(
       );
     if (error instanceof ExternalSessionHistoryUnavailable)
       return c.json(
-        { success: false, error: error.message, code: error.code },
+        { success: false, error: error.publicMessage, code: error.code },
         error.status,
       );
     return c.json(

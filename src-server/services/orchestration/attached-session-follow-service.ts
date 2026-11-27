@@ -85,10 +85,10 @@ interface DiscoverySnapshot extends AttachedSessionDiscoveryResult {
 export class ExternalSessionHistoryUnavailable extends Error {
   constructor(
     readonly status: 404 | 409,
-    message: string,
+    readonly publicMessage: string,
     readonly code = 'external_history_unavailable',
   ) {
-    super(message);
+    super(publicMessage);
   }
 }
 
