@@ -321,8 +321,12 @@ async function main() {
         );
         if (!configured) return false;
         if (!navigated) {
+          if (
+            !(await driver.findElement('button[aria-label^="Choose Station"]'))
+          )
+            return false;
           console.log(
-            `NEARBY_NATIVE_LOCAL_CONFIGURED ${JSON.stringify({ elapsedMs: performance.now() - bootstrapStarted })}`,
+            `NEARBY_NATIVE_LOCAL_CONNECTED ${JSON.stringify({ elapsedMs: performance.now() - bootstrapStarted })}`,
           );
           await driver.navigateApp('/connections/computers');
           navigated = true;
