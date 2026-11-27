@@ -43,6 +43,12 @@ interface Destination {
   label: string;
 }
 
+interface IdentifyStationInput {
+  address: string;
+  payload?: string;
+  manualCode?: string;
+}
+
 export interface ConnectStationDialogProps {
   isOpen: boolean;
   intent: OpenConnectionsModalDetail;
@@ -90,7 +96,7 @@ export function ConnectStationDialog({
     'address',
   );
   const discovery = useConnectionCandidates();
-  const identifyingCandidate = useRef(false);
+  const identificationInFlight = useRef(false);
   const { refresh: refreshCandidates, cancel: cancelCandidates } = discovery;
   // Offer scanning only where this browser can have a camera; a capture that
   // finds none also withdraws it.
@@ -131,11 +137,7 @@ export function ConnectStationDialog({
     `station-peer-enrollment:${controller.apiBase}:${scope?.authorityKey ?? 'unscoped'}:${target.apiBase}:${target.environmentId}`;
 
   const identify = useMutation({
-    mutationFn: async (input: {
-      address: string;
-      payload?: string;
-      manualCode?: string;
-    }) => {
+    mutationFn: async (input: IdentifyStationInput) => {
       const url = new URL(normalizeHostInput(input.address));
       if (
         !['http:', 'https:'].includes(url.protocol) ||
@@ -284,6 +286,15 @@ export function ConnectStationDialog({
       }
     },
   });
+  const identifyStation = (input: IdentifyStationInput) => {
+    if (identificationInFlight.current) return;
+    identificationInFlight.current = true;
+    identify.mutate(input, {
+      onSettled: () => {
+        identificationInFlight.current = false;
+      },
+    });
+  };
   const peerStatus = usePeerEnrollmentQuery(
     controller.apiBase,
     reservation,
@@ -376,14 +387,14 @@ export function ConnectStationDialog({
     const offer = decodeDevicePairingPayload(payload);
     if (!offer) {
       if (address.trim() && /^[A-Za-z0-9]{6,16}$/.test(payload)) {
-        identify.mutate({ address, manualCode: payload.toUpperCase() });
+        identifyStation({ address, manualCode: payload.toUpperCase() });
       } else
         setError(
           'Enter an unexpired invitation, or the Station address and its short pairing code.',
         );
       return;
     }
-    identify.mutate({ address: offer.endpoint, payload });
+    identifyStation({ address: offer.endpoint, payload });
   };
   const close = () => onClose();
   const status = observed?.status;
@@ -481,7 +492,7 @@ export function ConnectStationDialog({
               if (method === 'scan' || method === 'nearby' || !canContinue)
                 return;
               if (method === 'code') acceptCode(code.trim());
-              else identify.mutate({ address });
+              else identifyStation({ address });
             }}
           >
             <fieldset
@@ -530,19 +541,9 @@ export function ConnectStationDialog({
                 }
                 onRefresh={refreshCandidates}
                 onSelect={(candidate) => {
-                  if (identifyingCandidate.current || identify.isPending)
-                    return;
-                  identifyingCandidate.current = true;
                   cancelCandidates();
                   setAddress(candidate.url);
-                  identify.mutate(
-                    { address: candidate.url },
-                    {
-                      onSettled: () => {
-                        identifyingCandidate.current = false;
-                      },
-                    },
-                  );
+                  identifyStation({ address: candidate.url });
                 }}
               />
             ) : method === 'scan' ? (

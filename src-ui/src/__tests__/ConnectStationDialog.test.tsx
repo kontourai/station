@@ -9,6 +9,7 @@ import {
   ConnectionStore,
   ConnectionsProvider,
   completeVerifiedPairing,
+  encodeDevicePairingPayload,
   registerConnectionCandidateProvider,
   useConnections,
 } from '@kontourai/station-connect';
@@ -54,6 +55,7 @@ const wire = vi.hoisted(() => ({
   actualJoinPanel: null as
     | typeof import('@kontourai/station-connect')['JoinDevicePairingPanel']
     | null,
+  qrScanner: vi.fn(),
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const actual =
@@ -87,6 +89,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
     await importOriginal<typeof import('@kontourai/station-connect')>();
   wire.actualUseConnections = actual.useConnections;
   wire.actualJoinPanel = actual.JoinDevicePairingPanel;
+  wire.qrScanner.mockImplementation(actual.QRScanner);
   wire.fakeJoinPanel.mockImplementation(
     ({
       onPaired,
@@ -148,6 +151,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
     useConnections: wire.useConnections,
     completePendingPairing: wire.completePending,
     JoinDevicePairingPanel: wire.joinPanel,
+    QRScanner: wire.qrScanner,
   };
 });
 
@@ -239,6 +243,7 @@ describe('Connect Station grant composition', () => {
     }));
     wire.completePending.mockReset();
     wire.pairingFailure.mockReset();
+    wire.qrScanner.mockClear();
     wire.joinPanel.mockReset();
     wire.joinPanel.mockImplementation(wire.fakeJoinPanel);
     wire.compatibility.mockReset();
@@ -291,6 +296,10 @@ describe('Connect Station grant composition', () => {
   });
 
   test('serializes nearby Station identification before requesting access', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn(() => new Promise(() => {})) },
+    });
     let finishIdentification!: () => void;
     wire.compatibility.mockImplementationOnce(
       () =>
@@ -336,6 +345,21 @@ describe('Connect Station grant composition', () => {
         );
       });
       expect(wire.compatibility).toHaveBeenCalledOnce();
+      fireEvent.click(screen.getByRole('button', { name: 'Scan QR' }));
+      await act(async () => {
+        wire.qrScanner.mock.calls.at(-1)![0].onScan(
+          encodeDevicePairingPayload({
+            protocolVersion: 1,
+            environmentId: 'other-station',
+            offerId: 'scan-offer',
+            challenge: 'scan-challenge',
+            endpoint: 'https://scanned.example',
+            scope: 'orchestration:read',
+            expiresAt: Date.now() + 60_000,
+          }),
+        );
+      });
+      expect(wire.compatibility).toHaveBeenCalledOnce();
       await act(async () => finishIdentification());
       await screen.findByText('remote-station');
       expect(discover).toHaveBeenCalledOnce();
@@ -349,6 +373,7 @@ describe('Connect Station grant composition', () => {
     } finally {
       view.unmount();
       unregister();
+      Reflect.deleteProperty(navigator, 'mediaDevices');
     }
   });
 
