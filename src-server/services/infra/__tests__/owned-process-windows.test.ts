@@ -408,8 +408,7 @@ describe.runIf(process.platform === 'win32')(
             helperOutcomes.push({ helper: 'taskkill', outcome: 'completed' });
           },
         });
-        expect(
-          result.reaped,
+        const sweepDiagnostics = () =>
           JSON.stringify(
             {
               record,
@@ -422,8 +421,8 @@ describe.runIf(process.platform === 'win32')(
             },
             (_key, value) =>
               typeof value === 'bigint' ? value.toString() : value,
-          ),
-        ).toEqual([engine]);
+          );
+        expect(result.reaped, sweepDiagnostics()).toEqual([engine]);
         for (
           let i = 0;
           i < 200 && (isAlive(engine) || isAlive(grandchild));
@@ -431,11 +430,12 @@ describe.runIf(process.platform === 'win32')(
         ) {
           await new Promise((r) => setTimeout(r, 25));
         }
-        expect(isAlive(engine)).toBe(false);
-        expect(isAlive(grandchild)).toBe(false);
-        expect(existsSync(join(registryDir, `engine-${engine}.json`))).toBe(
-          false,
-        );
+        expect(isAlive(engine), sweepDiagnostics()).toBe(false);
+        expect(isAlive(grandchild), sweepDiagnostics()).toBe(false);
+        expect(
+          existsSync(join(registryDir, `engine-${engine}.json`)),
+          sweepDiagnostics(),
+        ).toBe(false);
       } finally {
         for (const pid of [owner.pid, engine, grandchild]) {
           if (!pid || !isAlive(pid)) continue;
