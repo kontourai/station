@@ -1,4 +1,4 @@
-import { snoozeChoices } from './snooze-presets';
+import { SNOOZE_ACTION_LABEL, snoozeChoices } from './snooze-presets';
 
 type SelectAction = (trigger: HTMLButtonElement) => void;
 
@@ -94,7 +94,7 @@ export function inboxRowActions({
     actions.push({
       kind: 'snooze',
       id: 'snooze',
-      label: snooze.isSnoozed ? 'Wake now' : 'Snooze',
+      label: snooze.isSnoozed ? 'Wake now' : SNOOZE_ACTION_LABEL,
       accessibleLabel: snooze.isSnoozed
         ? `Wake ${title} now`
         : `Snooze ${title}`,

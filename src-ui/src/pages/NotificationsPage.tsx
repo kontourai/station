@@ -249,9 +249,9 @@ export function NotificationsPage() {
     const base = apiBase;
     offerUndoableAction({
       key: notificationDoneKey(id),
-      message: 'Marked done',
-      restoredMessage: 'Reopened',
-      failureMessage: "Couldn't mark it done.",
+      message: 'Notification dismissed',
+      restoredMessage: 'Notification restored',
+      failureMessage: "Couldn't dismiss the notification.",
       isCurrent: () => currentApiBase.current === base,
       commit: async () => {
         await dismissNotification(id);

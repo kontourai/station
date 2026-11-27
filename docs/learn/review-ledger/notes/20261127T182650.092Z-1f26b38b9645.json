@@ -1,0 +1,11 @@
+{
+  "revision": "2b94d20c33c633aac07b32cd99f0fa602a523c69",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Checked the shared context resolver used by the bell and full Notifications page. It joins local agent and Project display metadata, preserves remote attribution, and deduplicates the chat title and agent attribution. Exact approval requests still use the server-projected sanitized tool summary.","inputs":["docs/design/notification-delivery.md","src-ui/src/components/notifications/inboxContext.tsx"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed the linked notification delivery change. Agent and Project display identities are added at the shared row renderer. Automation production and repair workflows are untouched.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked the envelope UI reader after moving known agent identity into the shared context line. Attribution still reads the verified envelope, and the target, read marker and mute controls retain their existing behavior.","inputs":["docs/reference/shared.md","src-ui/src/components/notifications/NotificationEnvelopeControls.tsx"]}
+  ]
+}
