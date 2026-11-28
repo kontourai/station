@@ -15,7 +15,9 @@ Limits, refusal codes, the single-frame API and evidence live in the
    Android SDK with an emulator image (Android).
 3. Open **Device** and follow setup to turn on Station's device helper.
    Station installs it with its own bundled Node.js and npm, so a current
-   Station needs no separate Node.js installation.
+   Station needs no separate Node.js installation. If an install fails, setup
+   keeps the reason across restarts; a tool that is turned on but missing
+   shows **Install**.
 
 To use another machine as a device host, add it under **Settings →
 Advanced → Device hosts**. See
