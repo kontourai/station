@@ -151,6 +151,7 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  'packages/shared/src/__tests__/fs-windows-compat.test.ts',
   'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
   'src-server/services/evidence/__tests__/task-code-review-module.test.ts',
   // Real launcher exit/stderr protocol with in-memory ChildProcess/streams
