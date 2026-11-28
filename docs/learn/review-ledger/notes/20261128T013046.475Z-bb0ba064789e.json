@@ -1,0 +1,7 @@
+{
+  "revision": "145b57d67732c43debbad00ef8533dd657ce0295",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Traced package scripts into scripts/run-veritas-readiness.mjs and the pinned Veritas bash runner. Verified Git shell resolution, case-insensitive PATH preservation, unchanged readiness check selection, and separation of shell-launch probes from readiness receipts. Linux wrapper owner tests pass 3 with one Windows-only skip; the earlier native ENOENT/restored-shell discovery is retained in #5632. Upstream #346 owns raw CLI diagnostics; this documentation does not claim that defect fixed.","inputs":[".veritas/README.md"]}
+  ]
+}
