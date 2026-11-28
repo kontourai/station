@@ -74,7 +74,7 @@ in the panel that reported the error.
 | Message | Next step |
 | --- | --- |
 | **Could not load Projects** | In the board's Projects section, select **Retry Projects**. |
-| **Station connection unavailable** | In **Connections → Computers**, connect to a Station with access to the Project. |
+| **Station connection unavailable** | Open the Station menu at the top right and connect to a Station with access to the Project. |
 | **Could not load project** | Select **Retry** on the Project page. |
 | **Project is taking longer than expected** | Select **Retry** to reload the Project. |
 | **Could not load Tasks** | Select **Retry Tasks** in the Project overview. |
@@ -165,9 +165,9 @@ and [Task-owned pull requests](https://github.com/kontourai/station/blob/main/do
 - An **External agent** is executed by another supported engine. That engine
   owns its behavior and tool loop.
 - A **Model connection** is a local or hosted model service that Station's
-  engine runs inference on. Connections lists these on its **Models** tab.
+  engine runs inference on. **Customize → Providers** lists these.
 - An **Engine** is an installed agent CLI, or a custom engine you connected,
-  that runs its own agent loop. Connections lists these on its **Engines** tab.
+  that runs its own agent loop. **Customize → Engines** lists these.
 - A **Model** is the inference option selected within a Model connection or
   offered by an Engine.
 
@@ -336,6 +336,19 @@ refusal if the turn ends before placement. If a handoff may have reached an
 engine, it shows **Unconfirmed** while Station checks the original delivery.
 Reviewing a resend can restore the text to an empty composer for an explicit send.
 Display-only notes appear immediately without sending anything to an engine.
+
+### Resume an ended Task
+
+With **Resume ended Tasks** on in Settings → Advanced → Feature previews, a
+`done` Task on a GitHub item from the Project board shows when it ended, when
+it can no longer be resumed (14 days later) and how many GitHub follow-ups were
+recorded since. If you are the Station operator, in person, choose **Resume**,
+read the follow-ups, say why, and confirm. The Task moves back to **Ready** and
+nothing starts: dispatch it, or choose **Resume and dispatch**, to start a new
+lead with the retained follow-ups in its brief. The earlier lead is not woken.
+A canceled Task stays ended; start a new Task on the work item instead. Agents,
+other people's devices, account members and GitHub comments cannot resume a
+Task.
 
 ## Gates, Evidence, And Receipts
 

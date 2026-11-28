@@ -404,7 +404,7 @@ describe('KnowledgeStoreSection', () => {
 
   // archive#settings-revamp 1.
   describe('unsaved-guard wiring for the "Open Knowledge infrastructure" cross-link', () => {
-    test('navigates to /connections/knowledge when the page is not dirty', () => {
+    test('navigates to /customize/knowledge when the page is not dirty', () => {
       navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty={false} />);
@@ -413,8 +413,8 @@ describe('KnowledgeStoreSection', () => {
         screen.getByRole('button', { name: 'Open Knowledge infrastructure' }),
       );
 
-      expect(navigateMock).toHaveBeenCalledWith('/connections/knowledge');
-      expect(window.location.pathname).toBe('/connections/knowledge');
+      expect(navigateMock).toHaveBeenCalledWith('/customize/knowledge');
+      expect(window.location.pathname).toBe('/customize/knowledge');
       expect(screen.queryByText('Unsaved Changes')).toBeNull();
     });
 

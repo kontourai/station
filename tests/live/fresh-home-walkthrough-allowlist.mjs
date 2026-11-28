@@ -17,19 +17,17 @@
  */
 export const WALKTHROUGH_ALLOWLIST = [
   {
-    // Observed on every fresh boot (2026-08-29, this suite's first runs): the
-    // first-run Home chapter's existing-setup import step requests
-    // GET /api/setup-imports/sources, but /api/setup-imports/* requires the
+    // The Skills page asks GET /api/setup-imports/sources on every visit to
+    // decide whether to offer "Import from Codex…". The route needs the
     // access:manage pairing scope (src-server/security/pairing-route-scopes.ts
-    // '/api/setup-imports:manage'), which the ui-bootstrap-paired local UI
-    // session does not present — so the very first screen a new user sees
-    // logs a 403. Fresh-home console-noise class from the archive#765 audit,
-    // tracked under kontourai/station#766 (this suite's issue); remove when
-    // the chapter stops requesting a route its session cannot read, or the
-    // scope model admits it.
+    // '/api/setup-imports:manage'). The same-machine local UI session minted
+    // from `station open --print` is the operator and is answered 200; a
+    // session without that scope (a paired device, or a local UI reached from
+    // another machine) is answered 403, and the page simply offers no import.
+    // Console-budget class tracked under kontourai/station#766.
     pattern: /^request-error GET 403 \/api\/setup-imports\/sources$/,
     reason:
-      'kontourai/station#766: first-run chapter requests /api/setup-imports/sources, refused (403, access:manage scope) for the ui-bootstrap-paired local UI session on every fresh boot',
+      'kontourai/station#766: the Skills page asks /api/setup-imports/sources to decide whether to offer the Codex import; a session without the access:manage scope is refused (403) and sees no import',
   },
   {
     // Observed 2026-08-29 while plugin layouts are open: the layout chrome's

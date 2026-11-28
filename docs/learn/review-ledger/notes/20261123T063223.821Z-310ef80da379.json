@@ -1,0 +1,7 @@
+{
+  "revision": "ddb1d1a864db4b9c2f5f3d1a42f482f869591e62",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"The offline config write row now lists firstRun and newChatDefault as refused; checked against config-route-written-offline.test.ts.","inputs":["docs/reference/cli.md"]}
+  ]
+}

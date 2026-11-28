@@ -1,0 +1,7 @@
+{
+  "revision": "921cb67cfe76fd511684da5d15fd30ea5f2cf0fc",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"The install and recovery dialogs now title the registry receipt Source verification; the guide names that section. Rest of the reviewing paragraph unchanged and still accurate.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

@@ -18,7 +18,10 @@ vi.mock('../views/CommandsView', () => ({
   CommandsView: () => <div>Commands body</div>,
 }));
 
+import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
+import { resolveViewFromPath } from '../app-shell/routing';
 import { PageFrame } from '../components/page-frame';
+import type { NavigationView } from '../types';
 import { GuidanceView } from '../views/GuidanceView';
 
 describe('GuidanceView', () => {
@@ -56,6 +59,23 @@ describe('GuidanceView', () => {
 
     expect(screen.getByText('Commands body')).toBeTruthy();
     expect(screen.queryByText('Skills body')).toBeNull();
+  });
+
+  test("the Customize list's Skills link is a complete address, so opening it adds no second history entry", () => {
+    // Even with Commands remembered: the link names its tab, so the view
+    // has nothing to rewrite and Back leaves Skills in one press.
+    sessionStorage.setItem('station-guidance-tab', 'commands');
+    const skills = APP_DESTINATION_REGISTRY.getCustomizeNav().find(
+      (entry) => entry.id === 'guidance',
+    );
+    const route = resolveViewFromPath(skills!.route) as Extract<
+      NavigationView,
+      { type: 'guidance' }
+    >;
+    expect(route.type).toBe('guidance');
+    render(<GuidanceView route={route} />);
+    expect(screen.getByText('Skills body')).toBeTruthy();
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   test('uses session memory during first render when the URL has no tab', () => {

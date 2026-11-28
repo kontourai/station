@@ -146,7 +146,7 @@ export function PluginRegistryBootstrap() {
       message,
       undefined,
       9000,
-      [{ label: 'Open Extensions', onClick: () => navigate('/registry') }],
+      [{ label: 'Open Apps', onClick: () => navigate('/apps/discover') }],
       undefined,
       'warning',
     );

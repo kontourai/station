@@ -1970,7 +1970,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     // The composer is NOT disabled by a transcript read: nothing about an
     // unrendered history stops a new message, and disabling it here would be a
     // new refusal wearing the fix's name.
-    expect(chatInputPropsMock.current?.disabled).toBe(false);
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(false),
+    );
   });
 
   test('#1582 E3 a settled empty transcript still says the chat is empty', async () => {
@@ -2012,7 +2014,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(await screen.findByText("Couldn't check this chat.")).toBeTruthy();
     expect(screen.queryByText(/is read-only/)).toBeNull();
     expect(screen.queryByLabelText('Loading chat')).toBeNull();
-    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(true),
+    );
     // The notice carries the explanation and the Retry; the composer does not
     // repeat it, and above all does not call the chat read-only.
     expect(chatInputPropsMock.current?.sendBlockedReason).toBeUndefined();
@@ -2091,7 +2095,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
 
     expect(await screen.findByText("Couldn't check this chat.")).toBeTruthy();
     expect(screen.queryByText(/is read-only/)).toBeNull();
-    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(true),
+    );
   });
 
   test('#2424 a continuation the server denied still reads as read-only', async () => {

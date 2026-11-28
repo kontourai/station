@@ -7,6 +7,8 @@ mod android_dns;
 #[cfg(not(mobile))]
 mod bundled_server_state;
 mod channel_ports_generated;
+#[cfg(target_os = "windows")]
+mod desktop_discovery;
 #[cfg(not(mobile))]
 mod desktop_companion;
 #[cfg(not(mobile))]
@@ -15334,6 +15336,8 @@ If a stable instance is running, this launch will focus its window and exit.",
     let builder = builder.plugin(tauri_plugin_station_agent_activity::init());
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_station_discovery::init());
+    #[cfg(target_os = "windows")]
+    let builder = builder.plugin(tauri_plugin_station_discovery::init(desktop_discovery::admitted));
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_station_media_intake::init());
     // iOS-only, with its own capability file (ios-fold.json) for the same

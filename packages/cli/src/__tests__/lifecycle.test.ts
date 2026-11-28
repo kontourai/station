@@ -1,4 +1,5 @@
 import {
+  execFileSync as realExecFileSync,
   execSync as realExecSync,
   spawnSync as realSpawnSync,
   spawn,
@@ -58,10 +59,19 @@ import {
 import {
   hardenWindowsPathsTrusted,
   runWindowsTrustCommand,
+  type WindowsTrustCommandRunner,
 } from '@kontourai/station-shared/windows-path-trust';
 import { buildSync } from 'esbuild';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../../src-server/runtime/bootstrap/runtime-http.js';
 import type { EventBus } from '../../../../src-server/services/orchestration/event-bus.js';
@@ -87,6 +97,7 @@ import {
   formatTaskSettings,
   schtasksDefaultSettings,
 } from './helpers/windows-task-settings-fixture.js';
+import { windowsTrustOperation } from './helpers/windows-trust-fixture.js';
 
 type LifecycleModule = typeof import('../commands/lifecycle.js');
 type PlatformModule = typeof import('../commands/platform.js');
@@ -561,12 +572,57 @@ function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true });
 }
 
+const runFixtureWindowsTrust: WindowsTrustCommandRunner = (
+  command,
+  args,
+  options,
+) =>
+  realSpawnSync(command, args, {
+    ...options,
+    encoding: 'utf8',
+    shell: false,
+    windowsHide: true,
+  });
+
 function ensureTrustedInstallDirectory(path: string): void {
   mkdirSync(path, { recursive: true, mode: 0o755 });
+  hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+    { kind: 'directory', path: resolve(path, '../..') },
+  ]);
 }
 
 function writeTrustedInstallFile(path: string, content: string): void {
   writeFileSync(path, content, { mode: 0o644 });
+}
+
+function writePackagedInstallers(directory: string): void {
+  writeFileSync(join(directory, 'install.sh'), '#!/bin/sh\nexit 0\n', {
+    mode: 0o700,
+  });
+  writeFileSync(join(directory, 'install.ps1'), 'exit 0\n', { mode: 0o700 });
+}
+
+function expectedPackagedInstaller(directory: string): [string, string[]] {
+  return process.platform === 'win32'
+    ? [
+        win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'WindowsPowerShell',
+          'v1.0',
+          'powershell.exe',
+        ),
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          join(directory, 'install.ps1'),
+          'install',
+        ],
+      ]
+    : ['sh', ['./install.sh', 'install']];
 }
 
 /**
@@ -700,9 +756,10 @@ function expectServiceGuidance(
   message: string | null,
   action: 'install' | 'status' | 'uninstall',
   expectedArguments: string[],
+  launcher = 'station',
 ): void {
   const command = message?.match(
-    new RegExp(`"(station service ${action} [^\\r\\n]+)"`, 'u'),
+    new RegExp(`"(${launcher} service ${action} [^\\r\\n]+)"`, 'u'),
   )?.[1];
   expect(command).toBeDefined();
   const shell =
@@ -718,7 +775,10 @@ function expectServiceGuidance(
       : 'sh';
   const result = realSpawnSync(
     shell,
-    ['-c', `station() { printf '%s\\0' "$@"; }; ${command}`],
+    [
+      '-c',
+      `station() { printf '%s\\0' "$@"; }; station${command?.slice(launcher.length)}`,
+    ],
     { encoding: 'utf8', windowsHide: true },
   );
   expect(result.error).toBeUndefined();
@@ -731,25 +791,38 @@ function expectServiceGuidance(
 }
 
 function staleSchedulingSpawnSync(unitPath: string): Mock {
-  return vi.fn((command: string, args: string[]) => {
-    const probe = stoppedServiceProbe(command, args);
-    if (probe) return probe;
-    if (process.platform === 'darwin') {
-      return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
-    }
-    if (process.platform === 'win32') {
+  return vi.fn(
+    (
+      command: string,
+      args: string[],
+      options?: Parameters<WindowsTrustCommandRunner>[2],
+    ) => {
+      if (
+        process.platform === 'win32' &&
+        /\\powershell\.exe$/i.test(command) &&
+        windowsTrustOperation(args) !== null
+      ) {
+        return runFixtureWindowsTrust(command, args, options);
+      }
+      const probe = stoppedServiceProbe(command, args);
+      if (probe) return probe;
+      if (process.platform === 'darwin') {
+        return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
+      }
+      if (process.platform === 'win32') {
+        return {
+          status: 0,
+          stderr: '',
+          stdout: `${formatTaskSettings(schtasksDefaultSettings())}\n`,
+        };
+      }
       return {
         status: 0,
         stderr: '',
-        stdout: `${formatTaskSettings(schtasksDefaultSettings())}\n`,
+        stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
       };
-    }
-    return {
-      status: 0,
-      stderr: '',
-      stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
-    };
-  });
+    },
+  );
 }
 
 function runningServiceSpawnSync(unitPath: string): Mock {
@@ -1960,7 +2033,7 @@ describe('lifecycle instance state', () => {
     expect(readFileSync(target, 'utf8')).toBe('{}');
   });
 
-  it('fails publication when the instance directory cannot be fsynced', async () => {
+  it('honors platform directory-fsync behavior when publishing instance state', async () => {
     ensureDir(TEST_CWD);
     ensureBuildOutputs('dir-sync');
     ensureDir(TEST_ALT_HOME);
@@ -1969,12 +2042,29 @@ describe('lifecycle instance state', () => {
       .fn()
       .mockReturnValueOnce({ pid: 43101, unref: vi.fn() })
       .mockReturnValueOnce({ pid: 43102, unref: vi.fn() });
+    const killSpy = vi
+      .spyOn(process, 'kill')
+      .mockImplementation((() => true) as typeof process.kill);
+    let directorySyncAttempts = 0;
+    const instanceDirectoryDescriptors = new Set<number>();
     vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
       fsOverrides: {
+        openSync: (path, flags, mode) => {
+          const descriptor = actualFs.openSync(path, flags, mode);
+          if (path === TEST_INSTANCE_STATE_DIR) {
+            instanceDirectoryDescriptors.add(descriptor);
+          }
+          return descriptor;
+        },
+        closeSync: (descriptor) => {
+          instanceDirectoryDescriptors.delete(descriptor);
+          actualFs.closeSync(descriptor);
+        },
         fsyncSync: (fd) => {
-          if (actualFs.fstatSync(fd).isDirectory()) {
+          if (instanceDirectoryDescriptors.has(fd)) {
+            directorySyncAttempts += 1;
             throw new Error('directory fsync failed');
           }
           actualFs.fsyncSync(fd);
@@ -1982,15 +2072,30 @@ describe('lifecycle instance state', () => {
       },
       platformOverrides: { sleepSync: vi.fn() },
     });
-    await expect(
-      lifecycle.start({
+    try {
+      const started = lifecycle.start({
         baseDir: TEST_ALT_HOME,
         instanceName: 'dir-sync',
         serverPort: 3250,
         uiPort: 5280,
-      }),
-    ).rejects.toThrow('directory fsync failed');
-    expect(existsSync(getInstanceStatePath('dir-sync'))).toBe(false);
+      });
+      const statePath = getInstanceStatePath('dir-sync');
+      if (process.platform === 'win32') {
+        await expect(started).resolves.toBeUndefined();
+        expect(directorySyncAttempts).toBe(0);
+        expect(JSON.parse(readFileSync(statePath, 'utf8'))).toMatchObject({
+          instanceId: 'dir-sync',
+          serverPid: 43101,
+          uiPid: 43102,
+        });
+      } else {
+        await expect(started).rejects.toThrow('directory fsync failed');
+        expect(directorySyncAttempts).toBeGreaterThan(0);
+        expect(existsSync(statePath)).toBe(false);
+      }
+    } finally {
+      killSpy.mockRestore();
+    }
   });
 
   it('detects a final-path replacement instead of claiming another record', async () => {
@@ -5822,7 +5927,7 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-missing-provenance');
     const releasesRoot = join(installRoot, 'releases');
     const release = join(releasesRoot, 'unsigned');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     for (const path of [installRoot, releasesRoot, release]) {
       chmodSync(path, 0o700);
     }
@@ -5876,9 +5981,7 @@ describe('upgrade', () => {
           prerelease: releaseChannel !== 'stable',
         })}\n`,
       );
-      writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-        mode: 0o700,
-      });
+      writePackagedInstallers(release);
       writeTrustedInstallFile(
         join(installRoot, '.station-portable-install-root'),
         'station-portable-install-root-v1\n',
@@ -5942,8 +6045,7 @@ describe('upgrade', () => {
         await lifecycle.upgrade();
 
         expect(execFileSync).toHaveBeenCalledWith(
-          'sh',
-          ['./install.sh', 'install'],
+          ...expectedPackagedInstaller(release),
           expect.objectContaining({
             cwd: release,
             env: expect.objectContaining({
@@ -5970,8 +6072,17 @@ describe('upgrade', () => {
         // The reinstall names the ring's launcher, which owns this install
         // (#4189). A Windows remedy reads the manifest, which this fixture
         // writes without the archive fields.
-        expect(log.mock.calls.flat().join('\n')).toContain(
-          `Run "${process.platform === 'win32' ? 'station' : launcher} service install --instance=packaged-guidance --base=${stationHome} --port=3141 --ui-port=3000 --host=127.0.0.1"`,
+        expectServiceGuidance(
+          log.mock.calls.flat().join('\n'),
+          'install',
+          [
+            '--instance=packaged-guidance',
+            `--base=${stationHome}`,
+            '--port=3141',
+            '--ui-port=3000',
+            '--host=127.0.0.1',
+          ],
+          process.platform === 'win32' ? 'station' : launcher,
         );
         expect(execSync).not.toHaveBeenCalled();
       } finally {
@@ -5998,9 +6109,7 @@ describe('upgrade', () => {
         prerelease: false,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -6195,9 +6304,7 @@ describe('upgrade', () => {
         prerelease: true,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -6245,9 +6352,7 @@ describe('upgrade', () => {
         prerelease: false,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -6263,7 +6368,21 @@ describe('upgrade', () => {
       { mode: 0o600 },
     );
     symlinkSync(release, join(installRoot, 'current'));
-    chmodSync(installRoot, 0o777);
+    if (process.platform === 'win32') {
+      const result = realSpawnSync(
+        win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'icacls.exe',
+        ),
+        [installRoot, '/grant', '*S-1-1-0:(W)'],
+        { encoding: 'utf8', windowsHide: true },
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
+    } else {
+      chmodSync(installRoot, 0o777);
+    }
 
     const execFileSync = vi.fn();
     const { lifecycle } = await loadLifecycleModule({
@@ -6272,7 +6391,9 @@ describe('upgrade', () => {
     });
 
     await expect(lifecycle.upgrade()).rejects.toThrow(
-      'packaged install root must be a same-user directory that is not group/world writable',
+      process.platform === 'win32'
+        ? 'Windows current-user ACL verification failed'
+        : 'packaged install root must be a same-user directory that is not group/world writable',
     );
     expect(execFileSync).not.toHaveBeenCalled();
   });
@@ -8446,6 +8567,11 @@ describe('Windows readiness verifier lifecycle', () => {
 
 describe('buildUiServerScript output runs as a real standalone node process (code-review M2)', () => {
   const makeUiDir = trackTempDirs();
+  let generatedScriptLifecycle: LifecycleModule;
+
+  beforeAll(async () => {
+    generatedScriptLifecycle = await import('../commands/lifecycle.js');
+  });
 
   function spawnUiScript(script: string, environment: NodeJS.ProcessEnv = {}) {
     // Observe the child's real listener; a peer's HTTP response is not readiness.
@@ -8507,11 +8633,13 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
     return { child, listening, stderr: () => stderr };
   }
 
-  it('spawns the generated script as a child process and makes one proxied request + one static request against it', async () => {
+  it('spawns the generated script with syntax-bearing configuration and makes one proxied request + one static request against it', async () => {
     const http = await import('node:http');
-    const lifecycle = await import('../commands/lifecycle.js');
+    const lifecycle = generatedScriptLifecycle;
 
-    const uiDir = makeUiDir('station-ui-spawn-');
+    const uiDir = join(makeUiDir('station-ui-spawn-'), "app ' ` \u2028");
+    mkdirSync(uiDir);
+    const tenant = "alpha';throw new Error('configuration executed');//";
     writeFileSync(
       join(uiDir, 'index.html'),
       '<head></head><body>real-spawn-app</body>',
@@ -8550,7 +8678,7 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
       typeof upstreamAddr === 'object' && upstreamAddr ? upstreamAddr.port : 0;
 
     const script = lifecycle.buildUiServerScript({
-      hostedTenantAuthorities: { 'alpha.example.test': 'alpha' },
+      hostedTenantAuthorities: { 'alpha.example.test': tenant },
       uiDir,
       upstreamPort,
       uiPort: 0,
@@ -8593,7 +8721,7 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
       expect(proxiedRes.status).toBe(200);
       const proxiedBody = JSON.parse(proxiedRes.body);
       expect(proxiedBody).toEqual({ ready: true });
-      expect(upstreamTenant).toBe('alpha');
+      expect(upstreamTenant).toBe(tenant);
       expect(server.stderr()).toBe('');
 
       // The envelope, out of the real spawned process: an upstream that dropped
@@ -9472,8 +9600,25 @@ describe('lifecycle build + restart ergonomics', () => {
           STATION_LOG_FILE: canonicalLogFile,
         }),
       );
-      expect(String(uiStdinEnd.mock.calls[0]?.[0])).toContain(
-        'listen(5274,"127.0.0.1")',
+      const { runInNewContext } = await import('node:vm');
+      const uiServer = Object.assign(new EventEmitter(), { listen: vi.fn() });
+      await runInNewContext(String(uiStdinEnd.mock.calls[0]?.[0]), {
+        require: (id: string) =>
+          id === 'http'
+            ? { createServer: () => uiServer }
+            : process.getBuiltinModule(id),
+        process: {
+          platform: 'linux',
+          env: {},
+          connected: true,
+          once: vi.fn(),
+          on: vi.fn(),
+          exit: vi.fn(),
+        },
+      });
+      expect(uiServer.listen).toHaveBeenCalledExactlyOnceWith(
+        5274,
+        '127.0.0.1',
       );
       expect(fetchMock).toHaveBeenCalledWith(
         'http://127.0.0.1:3242/api/system/identity',
@@ -9621,6 +9766,14 @@ describe('lifecycle build + restart ergonomics', () => {
   it('rejects a relative explicit log path without mutating the working directory', async () => {
     ensureDir(TEST_CWD);
     chmodSync(TEST_CWD, 0o755);
+    const originalMode = statSync(TEST_CWD).mode;
+    const originalAcl =
+      process.platform === 'win32'
+        ? realExecFileSync('icacls', [TEST_CWD], {
+            encoding: 'utf8',
+            windowsHide: true,
+          })
+        : undefined;
     const spawn = vi.fn();
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
@@ -9634,7 +9787,15 @@ describe('lifecycle build + restart ergonomics', () => {
       }),
     ).rejects.toThrow('Explicit log path must be absolute');
 
-    expect(statSync(TEST_CWD).mode & 0o777).toBe(0o755);
+    expect(statSync(TEST_CWD).mode).toBe(originalMode);
+    if (originalAcl !== undefined) {
+      expect(
+        realExecFileSync('icacls', [TEST_CWD], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }),
+      ).toBe(originalAcl);
+    }
     expect(spawn).not.toHaveBeenCalled();
   });
 
@@ -11002,9 +11163,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
         prerelease: true,
       })}\n`,
     );
-    writeFileSync(join(version, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(version);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -11064,8 +11223,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     await lifecycle.upgrade();
 
     expect(execFileSync).toHaveBeenCalledWith(
-      'sh',
-      ['./install.sh', 'install'],
+      ...expectedPackagedInstaller(version),
       expect.objectContaining({
         cwd: version,
         env: expect.objectContaining({
@@ -11256,9 +11414,7 @@ describe('station upgrade under the managed update limit (#4522)', () => {
         prerelease: releaseChannel !== 'stable',
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',

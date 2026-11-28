@@ -435,6 +435,11 @@ export class SkillPublicationIndeterminateError extends Error {
   }
 }
 
+/** A skill name as a case-insensitive file system compares folder names. */
+function foldSkillName(name: string): string {
+  return name.normalize('NFC').toLowerCase();
+}
+
 export class SkillService {
   private experienceExecution = false;
   enableExperienceExecution(): void {
@@ -1379,6 +1384,20 @@ export class SkillService {
   /** Whether a skill of this exact name has been discovered. */
   hasSkill(name: string): boolean {
     return this.registry.has(name);
+  }
+
+  /**
+   * Whether a skill holds this name in any letter case or Unicode
+   * composition. A skill is a folder, and a Mac's or Windows' file system
+   * treats `Mine` and `mine` as the same folder while Linux does not; a
+   * caller deciding whether a new package may claim a name asks this, so
+   * the answer is the same on every host.
+   */
+  hasSkillNamedLike(name: string): boolean {
+    const folded = foldSkillName(name);
+    for (const existing of this.registry.keys())
+      if (foldSkillName(existing) === folded) return true;
+    return false;
   }
 
   /**

@@ -1,0 +1,7 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fix round: AppsView no longer takes onNavigate; citing pages describe the route switch generically.","inputs":["src-ui/src/app-shell/AppViewContent.tsx"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked: settings export now also skips newChatDefault, like firstRun. Device settings, shortcuts and other exported keys are unchanged.","inputs":["src-ui/src/views/settings/utils.ts"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Checked: settings export now also skips newChatDefault, like firstRun. Device settings, shortcuts and other exported keys are unchanged.","inputs":["src-ui/src/views/settings/utils.ts"]}
+  ]
+}

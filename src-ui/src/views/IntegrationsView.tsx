@@ -12,9 +12,11 @@ import {
 } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { Button } from '../components/Button';
 import { SettingsGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
+import { useNavigation } from '../contexts/NavigationContext';
 import { useUrlSelection } from '../hooks/useUrlSelection';
 import { DeleteIntegrationModal } from './integrations/DeleteIntegrationModal';
 import { IntegrationEditorPanel } from './integrations/IntegrationEditorPanel';
@@ -95,7 +97,7 @@ function blankIntegration(): IntegrationDef {
 
 /* ── Integrations View ── */
 export function IntegrationsView({
-  basePath = '/connections/tools',
+  basePath = '/customize/tools',
   selection,
   onDirtyChange,
 }: {
@@ -108,6 +110,7 @@ export function IntegrationsView({
   };
   onDirtyChange?: (dirty: boolean) => void;
 }) {
+  const { navigate } = useNavigation();
   const {
     data: integrations = [],
     isLoading,
@@ -257,7 +260,7 @@ export function IntegrationsView({
       ?.renderAllowed ?? true;
 
   /**
-   * `/connections/tools/new` is the section frame's add action, so the blank
+   * `/customize/tools/new` is the section frame's add action, so the blank
    * form has to exist for a route the user reached directly — not only for
    * the in-page click that used to seed it. Without this the add action
    * selected `new` and rendered nothing.
@@ -312,7 +315,7 @@ export function IntegrationsView({
   return (
     <div className="integration-editor-stack">
       <SplitPaneLayout
-        label="connections / tools"
+        label="customize / tools"
         title="Tool servers"
         items={items}
         loading={isLoading}
@@ -338,14 +341,27 @@ export function IntegrationsView({
         listFilteredEmptyNoun="tool servers"
         collectionEmpty={integrations.length === 0}
         searchPlaceholder="Search tool servers…"
-        /* The Connections section frame owns this section's single add action
-           (design P3: exactly one add entry per section). This view used to
-           add two more beside it — a `+ Add Tool Server` list button and a
-           Browse Registry header action — which is the CI-R9 shape: several
-           differently-styled ways to add the same thing on one screen. The
-           Registry keeps its own sidebar entry. */
+        /* The Customize item frame owns this section's single add action
+           (design P3: exactly one add entry per section), so the catalogue
+           of tool servers is opened from the list, not the header, until
+           Add tool server offers it in place. Inside the agent editor's
+           tool picker (`selection`), which has its own catalogue, it is
+           left out. */
+        listIntro={
+          selection ? undefined : (
+            <div className="integrations-view__list-actions">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => navigate('/registry/integrations')}
+              >
+                Browse tool servers
+              </Button>
+            </div>
+          )
+        }
         listEmptyTitle="No tool servers yet"
-        listEmptyDescription="Add a tool server or install one from the Registry."
+        listEmptyDescription="Add your own tool server, or browse the list of tool servers."
         emptyIcon={<SettingsGlyph />}
         emptyDescription="Select a tool server to edit, or add a new one."
       >

@@ -7,7 +7,7 @@ import {
 describe('trayNavigationTarget', () => {
   it('maps only the fixed native tray destinations', () => {
     expect(trayNavigationTarget('connections')).toEqual({
-      pathname: '/connections',
+      pathname: '/customize',
     });
     expect(trayNavigationTarget('coreUpdates')).toEqual({
       pathname: '/settings',
@@ -53,7 +53,7 @@ describe('trayNavigationTarget', () => {
     listener?.({ destination: 'desktopUpdates' });
     listener?.({ destination: 'serverUpdates' });
     listener?.({ destination: 'pairedDevices' });
-    expect(navigate).toHaveBeenCalledWith('/connections', undefined);
+    expect(navigate).toHaveBeenCalledWith('/customize', undefined);
     expect(navigate).toHaveBeenCalledWith('/settings', {
       view: 'system',
       highlight: 'core-app-updates',

@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -16,6 +17,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -39,7 +41,10 @@ import {
   REPOSITORY_LIFECYCLE_SOURCES,
 } from '../dependency-lifecycle-workflow-gate.mjs';
 import { installGitIntegration } from '../install-git-hooks.mjs';
-import { DEPENDENCY_INSTALL_GUARD } from '../lib/dependency-install-retirement.mjs';
+import {
+  DEPENDENCY_INSTALL_GUARD,
+  DEPENDENCY_INSTALL_RECORD_PREFIX,
+} from '../lib/dependency-install-retirement.mjs';
 import {
   allowlistDigest,
   assertNodePtyPrebuildConsistency,
@@ -72,6 +77,222 @@ import {
 
 const root = resolve(import.meta.dirname, '../..');
 const makeTempDir = trackTempDirs();
+
+async function installerCustodyJourney(
+  mode: 'deadline' | 'owner-loss' | 'success',
+) {
+  const directory = makeTempDir('station-installer-custody-');
+  const checkout = join(directory, 'checkout');
+  const controlRoot = join(directory, 'control');
+  mkdirSync(checkout);
+  mkdirSync(controlRoot);
+  writeFileSync(
+    join(checkout, 'package.json'),
+    JSON.stringify({ packageManager: 'pnpm@11.25.0' }),
+  );
+  const writer = join(directory, 'writer.cjs');
+  writeFileSync(
+    writer,
+    `const fs = require('node:fs');
+const path = require('node:path');
+const directory = process.argv[2];
+fs.writeFileSync(path.join(directory, 'writer.json'), JSON.stringify({pid: process.pid, parent: process.ppid}));
+setInterval(() => {
+  if (fs.existsSync(path.join(directory, 'release'))) {
+    fs.writeFileSync(path.join(directory, 'released'), 'released');
+    process.exit(0);
+  }
+  fs.appendFileSync(path.join(directory, 'heartbeat'), '.');
+}, 25);
+setTimeout(() => process.exit(0), 45000);`,
+  );
+  const manager = join(directory, 'pnpm.cjs');
+  writeFileSync(
+    manager,
+    `const fs = require('node:fs');
+const {spawn} = require('node:child_process');
+if (process.argv[2] !== 'install' || !process.argv.includes('--ignore-scripts') || !process.argv.includes('--frozen-lockfile') || process.env.npm_config_ignore_scripts !== 'true') process.exit(72);
+fs.mkdirSync('node_modules');
+fs.writeFileSync('node_modules/partial', 'unverified');
+fs.writeFileSync('manager.json', JSON.stringify({pid:process.pid,parent:process.ppid}));
+spawn(process.execPath, [${JSON.stringify(writer)}, process.cwd()], {stdio:'ignore',detached:process.platform === 'win32'});
+setInterval(() => { if(fs.existsSync('release') || (${JSON.stringify(mode === 'success')} && fs.existsSync('heartbeat'))) process.exit(0); }, 25);
+setTimeout(() => process.exit(0), 45000);`,
+  );
+  const npm = join(directory, 'npm-cli.js');
+  writeFileSync(
+    npm,
+    `const fs = require('node:fs');
+const {spawn} = require('node:child_process');
+const args = process.argv.slice(2);
+if (JSON.stringify(args.slice(0,5)) !== JSON.stringify(['exec','--yes','--package=pnpm@11.25.0','--','pnpm'])) process.exit(73);
+fs.writeFileSync('launcher.json', JSON.stringify({pid:process.pid,parent:process.ppid}));
+const manager = spawn(process.execPath, [${JSON.stringify(manager)}, ...args.slice(5)], {stdio:'inherit'});
+if (${JSON.stringify(mode === 'success')}) manager.once('exit', status => process.exit(status ?? 74));
+setInterval(() => { if(fs.existsSync('release')) process.exit(0); }, 25);
+setTimeout(() => process.exit(0), 45000);`,
+  );
+  const ownerScript = join(directory, 'owner.mjs');
+  writeFileSync(
+    ownerScript,
+    `import {writeFileSync,readFileSync} from 'node:fs';
+import {install,pnpmCommand,pnpmInvocation,reportCliFailure} from ${JSON.stringify(pathToFileURL(join(root, 'scripts/dependency-lifecycle.mjs')).href)};
+try {
+  await install({}, {
+    root:${JSON.stringify(checkout)}, nodePath:process.execPath,
+    pnpmInvocation: options => pnpmInvocation({...options,env:{PATH:'',npm_execpath:${JSON.stringify(npm)}}}),
+    command:()=>{},check:()=>({entries:[]}),pnpmCommand,
+    stageLifecyclePrebuilds:()=>{},runApprovedHooks:()=>{},stationOwnedHooks:()=>{},
+    verify:async()=>{
+      if (${JSON.stringify(mode !== 'success')}) throw new Error('verification ran before failed custody settled');
+      const stopped = readFileSync('heartbeat','utf8');
+      const writer = JSON.parse(readFileSync('writer.json','utf8'));
+      if (process.platform === 'win32') {
+        let alive = false;
+        try {process.kill(writer.pid,0); alive = true;} catch(error) {if(error.code !== 'ESRCH') throw error;}
+        if (alive) throw new Error('writer survived until verification');
+      }
+      await new Promise(resolve => setTimeout(resolve,150));
+      if (readFileSync('heartbeat','utf8') !== stopped) throw new Error('writer changed tree during verification');
+      writeFileSync('verified',stopped);
+    },generateBuildInputs:()=>{}
+  });
+} catch(error) {process.exitCode=reportCliFailure(error);}`,
+  );
+  const control = spawn(process.execPath, [writer, controlRoot], {
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  const owner = spawn(process.execPath, [ownerScript], {
+    cwd: checkout,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+    env: {
+      ...process.env,
+      [INERT_INSTALL_TIMEOUT_ENV]: mode === 'deadline' ? '10000' : '60000',
+    },
+  });
+  let stderr = '';
+  owner.stderr.on('data', (chunk) => {
+    stderr += chunk.toString();
+  });
+  owner.stdout.resume();
+  const ownerExit = new Promise<number | null>((resolve, reject) => {
+    owner.once('error', reject);
+    owner.once('exit', resolve);
+  });
+  const controlExit = new Promise((resolve, reject) => {
+    control.once('error', reject);
+    control.once('exit', resolve);
+  });
+  try {
+    await vi.waitFor(
+      () => {
+        expect(existsSync(join(checkout, 'heartbeat')), stderr).toBe(true);
+        expect(existsSync(join(controlRoot, 'heartbeat'))).toBe(true);
+      },
+      { timeout: 20000, interval: 25 },
+    );
+    const identities = Object.fromEntries(
+      ['launcher', 'manager', 'writer'].map((name) => [
+        name,
+        JSON.parse(readFileSync(join(checkout, `${name}.json`), 'utf8')),
+      ]),
+    );
+    expect(identities.manager.parent).toBe(identities.launcher.pid);
+    expect(identities.writer.parent).toBe(identities.manager.pid);
+    if (mode === 'owner-loss') expect(owner.kill('SIGKILL')).toBe(true);
+    const status = await ownerExit;
+    if (mode === 'deadline') {
+      expect(status, stderr).toBe(1);
+      expect(stderr).toContain('10000 ms deadline');
+    }
+    if (mode === 'success') expect(status, stderr).toBe(0);
+    await vi.waitFor(
+      () => {
+        if (process.platform === 'win32') {
+          for (const identity of Object.values(identities))
+            expect(
+              () => process.kill(identity.pid, 0),
+              JSON.stringify(identities),
+            ).toThrow();
+        }
+      },
+      { timeout: 5000, interval: 25 },
+    );
+    const stopped = readFileSync(join(checkout, 'heartbeat'), 'utf8');
+    const controlBefore = readFileSync(
+      join(controlRoot, 'heartbeat'),
+      'utf8',
+    ).length;
+    await vi.waitFor(
+      () =>
+        expect(
+          readFileSync(join(controlRoot, 'heartbeat'), 'utf8').length,
+        ).toBeGreaterThan(controlBefore + 3),
+      { timeout: 2000, interval: 25 },
+    );
+    expect(
+      readFileSync(join(checkout, 'heartbeat'), 'utf8'),
+      JSON.stringify(identities),
+    ).toBe(stopped);
+    expect(() => process.kill(control.pid!, 0)).not.toThrow();
+    expect(existsSync(join(checkout, 'verified'))).toBe(mode === 'success');
+    expect(readFileSync(join(checkout, 'node_modules/partial'), 'utf8')).toBe(
+      'unverified',
+    );
+    if (mode === 'success') {
+      expect(readFileSync(join(checkout, 'verified'), 'utf8')).toBe(stopped);
+      expect(existsSync(join(checkout, DEPENDENCY_INSTALL_GUARD))).toBe(false);
+      const records = readdirSync(checkout).filter((name) =>
+        name.startsWith(DEPENDENCY_INSTALL_RECORD_PREFIX),
+      );
+      expect(records).toHaveLength(1);
+      expect(
+        JSON.parse(
+          readFileSync(join(checkout, records[0], 'receipt.json'), 'utf8'),
+        ).phase,
+      ).toBe('verified');
+    } else {
+      expect(
+        JSON.parse(
+          readFileSync(
+            join(checkout, DEPENDENCY_INSTALL_GUARD, 'receipt.json'),
+            'utf8',
+          ),
+        ).phase,
+      ).toBe(mode === 'deadline' ? 'failed' : 'installing');
+    }
+    console.log(
+      'installer custody receipt',
+      JSON.stringify({
+        mode,
+        owner: owner.pid,
+        control: control.pid,
+        identities,
+        status,
+      }),
+    );
+  } finally {
+    writeFileSync(join(checkout, 'release'), 'release');
+    writeFileSync(join(controlRoot, 'release'), 'release');
+    owner.kill('SIGKILL');
+    await ownerExit;
+    await controlExit;
+    if (existsSync(join(checkout, 'writer.json'))) {
+      const writerPid = JSON.parse(
+        readFileSync(join(checkout, 'writer.json'), 'utf8'),
+      ).pid;
+      await vi.waitFor(
+        () => {
+          if (existsSync(join(checkout, 'released'))) return;
+          expect(() => process.kill(writerPid, 0)).toThrow();
+        },
+        { timeout: 5000, interval: 25 },
+      );
+    }
+  }
+}
 const policy = JSON.parse(
   readFileSync(
     resolve(root, 'config/dependency-lifecycle-allowlist.json'),
@@ -2333,7 +2554,7 @@ describe('dependency lifecycle policy', () => {
     }
   });
 
-  it('reports the real inert timeout and refuses a retry until the failed install is isolated', () => {
+  it('reports the real inert timeout and refuses a retry until the failed install is isolated', async () => {
     const fixture = makeTempDir('station-inert-timeout-');
     const checkout = join(fixture, 'checkout');
     const shim = join(fixture, 'pnpm.cjs');
@@ -2380,11 +2601,15 @@ if (!fs.existsSync('previous-attempt')) {
           generateBuildInputs: () => {},
         },
       );
+    await pnpmCommand(['--version'], checkout, {
+      command: process.execPath,
+      args: [shim],
+    });
     vi.stubEnv(INERT_INSTALL_TIMEOUT_ENV, '1000');
     try {
       let failure: unknown;
       try {
-        run();
+        await run();
       } catch (error) {
         failure = error;
       }
@@ -2402,13 +2627,11 @@ if (!fs.existsSync('previous-attempt')) {
       });
       expect(existsSync(join(checkout, 'node_modules/partial'))).toBe(true);
       expect(verify).not.toHaveBeenCalled();
-      expect(run).toThrow(/installer guard already exists/);
+      await expect(run()).rejects.toThrow(/installer guard already exists/);
       expect(readFileSync(join(checkout, 'attempts'), 'utf8')).toBe(
         'install\n',
       );
 
-      // This disposable shim creates no descendants, and the synchronous
-      // subprocess already exited. Preserve the failed receipt and tree.
       const evidence = join(checkout, 'previous-attempt');
       mkdirSync(evidence);
       renameSync(
@@ -2416,7 +2639,7 @@ if (!fs.existsSync('previous-attempt')) {
         join(evidence, 'node_modules'),
       );
       renameSync(guard, join(evidence, DEPENDENCY_INSTALL_GUARD));
-      run();
+      await run();
       expect(verify).toHaveBeenCalledOnce();
       expect(readFileSync(join(checkout, 'attempts'), 'utf8')).toBe(
         'install\ninstall\n',
@@ -2427,6 +2650,22 @@ if (!fs.existsSync('previous-attempt')) {
       vi.unstubAllEnvs();
     }
   });
+
+  it('settles the npm fallback installer descendants before publishing timeout failure while preserving an unrelated writer', async () => {
+    await installerCustodyJourney('deadline');
+  }, 35000);
+
+  it('settles a status-zero npm fallback parent with a surviving writer before publishing verified dependencies', async () => {
+    await installerCustodyJourney('success');
+  }, 35000);
+
+  it.skipIf(process.platform !== 'win32')(
+    'settles the admitted installer Job on coordinator loss without touching an unrelated writer',
+    async () => {
+      await installerCustodyJourney('owner-loss');
+    },
+    35000,
+  );
 
   shellLauncherTest(
     'delegates cold launcher bootstrap to the lifecycle runner and preserves symlink, cwd, and arguments',
@@ -2883,6 +3122,29 @@ describe('describeFailure surfaces the cause chain', () => {
     expect(describeFailure('plain string')).toBe('plain string');
   });
 
+  it('reports both command and cleanup failures without exceeding diagnostic bounds', () => {
+    const lines: string[] = [];
+    const failure = new AggregateError(
+      [
+        new Error('Inert pnpm command exceeded its 1000 ms deadline'),
+        new Error('Inert pnpm process tree did not settle', {
+          cause: new Error('owned tree still running'),
+        }),
+      ],
+      'Inert pnpm command and cleanup failed',
+    );
+    expect(
+      reportCliFailure(failure, { log: (line: string) => lines.push(line) }),
+    ).toBe(1);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('exceeded its 1000 ms deadline');
+    expect(lines[0]).toContain('process tree did not settle');
+    expect(lines[0]).toContain('owned tree still running');
+    expect(describeFailure(failure, { maxDepth: 2 }).split('\n')).toHaveLength(
+      2,
+    );
+  });
+
   it('reports the cause chain, not just the outermost message', () => {
     // The seam that actually matters. Testing `describeFailure` alone does
     // NOT cover this: reverting the reporter to `error.message` leaves every
@@ -3023,7 +3285,7 @@ process.exit(4);
       }
     });
 
-    it('carries argv0 through the real install caller into the child marker', () => {
+    it('carries argv0 through the real install caller into the child marker', async () => {
       const f = aliasFixture();
       const marker = join(f.outside, 'install.marker');
       const previousMarker = process.env.STATION_TEST_PNPM_SHIM_MARKER;
@@ -3038,7 +3300,7 @@ process.exit(4);
           exec: seam,
         });
         let runtimeContractCalls = 0;
-        install(
+        await install(
           {},
           {
             root: f.fixtureRoot,
@@ -3085,7 +3347,7 @@ process.exit(4);
       }
     });
 
-    it('retires an alias living under root node_modules while the canonical driver still installs', () => {
+    it('retires an alias living under root node_modules while the canonical driver still installs', async () => {
       const f = aliasFixture();
       const marker = join(f.outside, 'install.marker');
       const previousMarker = process.env.STATION_TEST_PNPM_SHIM_MARKER;
@@ -3106,7 +3368,7 @@ process.exit(4);
           exec: seam,
         });
         expect(invocation.argv0).toBe(alias);
-        install(
+        await install(
           {},
           {
             root: f.fixtureRoot,

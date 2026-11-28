@@ -1,0 +1,9 @@
+{
+  "revision": "9b96d3aef744ab0cd442ddf598b3747da64fbf01",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Bounded review of 9b96d3aef: formatting-only expansion of the Vitest import after readiness identified its sole error. The fixture behavior reviewed at 1d58183ca is unchanged. Linux complete owners passed 272 with two platform skips. After bulk Windows checkout completed, the uninstrumented hostile-config child passed within its unchanged 15-second deadline, and the generated source and staged native listener controls passed 2/2. Native validation used the owned 35126df935 dependency-ready overlay, not a full-head Windows qualification. No OAuth or production contract change, scanner suppression or deadline padding. Hosted repaired CodeQL remains unverified.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Bounded review of 9b96d3aef: formatting-only expansion of the Vitest import after readiness identified its sole error. The fixture behavior reviewed at 1d58183ca is unchanged. Linux complete owners passed 272 with two platform skips. After bulk Windows checkout completed, the uninstrumented hostile-config child passed within its unchanged 15-second deadline, and the generated source and staged native listener controls passed 2/2. Native validation used the owned 35126df935 dependency-ready overlay, not a full-head Windows qualification. No OAuth or production contract change, scanner suppression or deadline padding. Hosted repaired CodeQL remains unverified.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}

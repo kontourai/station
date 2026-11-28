@@ -8,7 +8,7 @@ conversation the channel is bound to, and posts the reply back to the channel.
 It is off by default. There is no Settings editor, CLI command or environment
 variable for configuring it yet: an operator writes one private JSON file in
 the Station home and restarts Station. With the Chat apps preview on, the
-operator can inspect gateway capability status in [Connections](connections.md#integration-capability-status).
+operator can inspect gateway capability status in [Customize › Tools](connections.md#integration-capability-status).
 
 The runtime starts the gateway in
 [station-runtime.ts](../../src-server/runtime/bootstrap/station-runtime.ts). The

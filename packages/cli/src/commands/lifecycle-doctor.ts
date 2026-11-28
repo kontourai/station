@@ -802,13 +802,13 @@ export async function collectDoctorReport(
   });
   const recommendation =
     enabledLlmProviders.length > 0
-      ? 'Chat looks reachable. Review Connections if you want to change the default path.'
+      ? 'Chat looks reachable. Change the default path in Customize.'
       : ollamaReachable
-        ? 'Ollama is reachable, but no saved model connection exists yet. Add an Ollama connection in Connections.'
+        ? 'Ollama is reachable, but no saved model connection exists yet. Add an Ollama connection in Customize → Providers.'
         : awsConfigured
-          ? 'AWS credentials are available. Add or enable a Bedrock model connection in Connections.'
+          ? 'AWS credentials are available. Add or enable a Bedrock model connection in Customize → Providers.'
           : engineChatReady
-            ? 'Chat can run on a connected engine. Add a model connection in Connections if you also want Station-managed models.'
+            ? 'Chat can run on a connected engine. Add a model connection in Customize → Providers if you also want Station-managed models.'
             : 'No chat-capable path is ready yet. Start Ollama locally or add a model connection first.';
 
   return {

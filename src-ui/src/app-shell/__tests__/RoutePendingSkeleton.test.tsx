@@ -3,6 +3,7 @@
  */
 
 import { act, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
@@ -30,8 +31,8 @@ vi.mock('../../views/AgentsView', async () => {
   };
 });
 
-vi.mock('../../views/PluginManagementView', () => ({
-  PluginManagementView: () => <div>Installed plugins list</div>,
+vi.mock('../../views/apps/AppsView', () => ({
+  AppsView: () => <div>Installed apps list</div>,
 }));
 
 /** Guidance's chunk, held open the same way, for the tab-shape case. */
@@ -47,6 +48,48 @@ vi.mock('../../views/GuidanceView', async () => {
   await guidanceChunk.arrived;
   return { GuidanceView: () => <div>Slash commands list</div> };
 });
+
+/**
+ * A Customize item and a page outside Customize, each held open the same way,
+ * for the moves across the Customize boundary and between two items.
+ */
+const knowledgeChunk = vi.hoisted(() => {
+  let release!: () => void;
+  const arrived = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { arrived, release: () => release() };
+});
+
+vi.mock('../../views/KnowledgeConnectionView', async () => {
+  await knowledgeChunk.arrived;
+  return { KnowledgeConnectionView: () => <div>Knowledge sources</div> };
+});
+
+const scheduleChunk = vi.hoisted(() => {
+  let release!: () => void;
+  const arrived = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { arrived, release: () => release() };
+});
+
+vi.mock('../../views/ScheduleView', async () => {
+  await scheduleChunk.arrived;
+  return { ScheduleView: () => <div>Automations list</div> };
+});
+
+/** A Customize item whose chunk is already there: the page being left. */
+vi.mock('../../views/IntegrationsView', () => ({
+  IntegrationsView: () => <div>Tool servers list</div>,
+}));
+
+/** The item frame's own data is not what these cases are about. */
+vi.mock('../../views/CustomizeSectionFrame', () => ({
+  CustomizeSectionFrame: ({ children }: { children: ReactNode }) => (
+    <>{children}</>
+  ),
+}));
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ activeConnection: null }),
@@ -144,7 +187,7 @@ describe('routePendingShape — read off the destination’s own frame', () => {
   test('a split-pane route’s placeholder is a split pane', () => {
     // Asserted through the REAL route table, not a hand-written spec: the
     // claim is about what Plugins and Agents are declared to be.
-    expect(shapeOf({ type: 'plugins' })).toBe('split-pane');
+    expect(shapeOf({ type: 'apps', tab: 'library' })).toBe('split-pane');
     expect(shapeOf({ type: 'agents' })).toBe('split-pane');
     expect(shapeOf({ type: 'task', taskId: 't1' })).toBe('split-pane');
   });
@@ -213,7 +256,9 @@ describe('routePendingShape — read off the destination’s own frame', () => {
 
     test('a route that names none opens on its list', () => {
       expect(shapeOf({ type: 'agents' }, true)).toBe('split-pane');
-      expect(shapeOf({ type: 'plugins' }, true)).toBe('split-pane');
+      expect(shapeOf({ type: 'apps', tab: 'library' }, true)).toBe(
+        'split-pane',
+      );
       expect(shapeOf({ type: 'connections-models' }, true)).toBe('split-pane');
     });
 
@@ -254,7 +299,7 @@ describe('routePendingShape — read off the destination’s own frame', () => {
       expect(shapeOf({ type: 'connections-models' })).toBe('split-pane');
       // Plugins persists nothing at all — it mounts its pane without an id,
       // so it always starts expanded.
-      expect(shapeOf({ type: 'plugins' })).toBe('split-pane');
+      expect(shapeOf({ type: 'apps', tab: 'library' })).toBe('split-pane');
     });
 
     test('an expanded or unreadable entry is not a collapse', () => {
@@ -417,11 +462,14 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     unsubscribe();
   });
 
-  test('cold: the header names Agents, and the body holds Agents’ shape — not the Plugins list', async () => {
+  test('cold: the header names Agents, and the body holds Agents’ shape — not the Apps Library list', async () => {
     const { container, rerender } = render(
-      <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'apps', tab: 'library' }}
+      />,
     );
-    expect(await screen.findByText('Installed plugins list')).toBeTruthy();
+    expect(await screen.findByText('Installed apps list')).toBeTruthy();
 
     rerender(
       <AppViewContent {...baseProps} currentView={{ type: 'agents' }} />,
@@ -435,8 +483,8 @@ describe('the body while a route chunk is in flight (#3660)', () => {
 
     // The departing page is off screen. It is still in the DOM — React hid it
     // rather than unmounting it — so this must be a visibility assertion.
-    expect(container.textContent).toContain('Installed plugins list');
-    expect(visibleText(container)).not.toContain('Installed plugins list');
+    expect(container.textContent).toContain('Installed apps list');
+    expect(visibleText(container)).not.toContain('Installed apps list');
 
     //.and what replaced it holds the shape Agents will arrive in: a list
     // rail beside a detail pane, not a generic full-width row list.
@@ -462,7 +510,10 @@ describe('the body while a route chunk is in flight (#3660)', () => {
       // A suspended module may start before the test installs its clock.
       // Start a fresh pending route instance under the fake clock.
       rerender(
-        <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
+        <AppViewContent
+          {...baseProps}
+          currentView={{ type: 'apps', tab: 'library' }}
+        />,
       );
       rerender(
         <AppViewContent {...baseProps} currentView={{ type: 'agents' }} />,
@@ -502,9 +553,12 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     warmUp.unmount();
 
     const { container, rerender } = render(
-      <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'apps', tab: 'library' }}
+      />,
     );
-    expect(await screen.findByText('Installed plugins list')).toBeTruthy();
+    expect(await screen.findByText('Installed apps list')).toBeTruthy();
     published.length = 0;
 
     rerender(
@@ -512,7 +566,7 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     );
 
     expect(screen.getByText('Agents detail')).toBeTruthy();
-    expect(visibleText(container)).not.toContain('Installed plugins list');
+    expect(visibleText(container)).not.toContain('Installed apps list');
     // No skeleton flashed. The fallback publishes on mount, so an empty
     // publication log is the same fact as an absent placeholder, observed a
     // second way.
@@ -528,9 +582,12 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     // frame alone would have drawn a rail here and then jumped to a
     // single-column list. The tab is in the URL before the chunk exists.
     const { container, rerender } = render(
-      <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'apps', tab: 'library' }}
+      />,
     );
-    expect(await screen.findByText('Installed plugins list')).toBeTruthy();
+    expect(await screen.findByText('Installed apps list')).toBeTruthy();
 
     rerender(
       <AppViewContent
@@ -541,12 +598,84 @@ describe('the body while a route chunk is in flight (#3660)', () => {
 
     expect(container.querySelector('.route-pending--split-pane')).toBeNull();
     expect(container.querySelector('.skeleton-block')).not.toBeNull();
-    expect(visibleText(container)).not.toContain('Installed plugins list');
+    expect(visibleText(container)).not.toContain('Installed apps list');
 
     await act(async () => {
       guidanceChunk.release();
       await guidanceChunk.arrived;
     });
     expect(await screen.findByText('Slash commands list')).toBeTruthy();
+  });
+
+  // The Customize shell wraps every route, so crossing into or out of
+  // Customize, or moving between two of its items, keeps the routed outlet
+  // at one place in the tree and the departing page is held, not unmounted.
+  test('cold, leaving a Customize item: the Tools page is held while Automations loads', async () => {
+    const { container, rerender } = render(
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'connections-tools' }}
+      />,
+    );
+    expect(await screen.findByText('Tool servers list')).toBeTruthy();
+
+    rerender(
+      <AppViewContent {...baseProps} currentView={{ type: 'schedule' }} />,
+    );
+
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+      'Automations',
+    );
+    expect(container.textContent).toContain('Tool servers list');
+    expect(visibleText(container)).not.toContain('Tool servers list');
+    expect(
+      container.querySelectorAll('[role="status"][aria-busy="true"]'),
+    ).toHaveLength(1);
+    // The list leaves with the Customize item's header: the frame on screen
+    // is the arriving page's, and Automations is not a Customize item.
+    expect(container.querySelector('.customize-shell__nav')).toBeNull();
+
+    await act(async () => {
+      scheduleChunk.release();
+      await scheduleChunk.arrived;
+    });
+    expect(await screen.findByText('Automations list')).toBeTruthy();
+    expect(container.textContent).not.toContain('Tool servers list');
+  });
+
+  test('cold, between two Customize items: the Tools page is held while Knowledge loads, beside the same list', async () => {
+    const { container, rerender } = render(
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'connections-tools' }}
+      />,
+    );
+    expect(await screen.findByText('Tool servers list')).toBeTruthy();
+    const list = container.querySelector('.customize-shell__nav');
+    expect(list).not.toBeNull();
+
+    rerender(
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'connections-knowledge' }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+      'Knowledge',
+    );
+    expect(container.textContent).toContain('Tool servers list');
+    expect(visibleText(container)).not.toContain('Tool servers list');
+    expect(
+      container.querySelectorAll('[role="status"][aria-busy="true"]'),
+    ).toHaveLength(1);
+    // The list is the same element throughout: it is not torn down either.
+    expect(container.querySelector('.customize-shell__nav')).toBe(list);
+
+    await act(async () => {
+      knowledgeChunk.release();
+      await knowledgeChunk.arrived;
+    });
+    expect(await screen.findByText('Knowledge sources')).toBeTruthy();
   });
 });

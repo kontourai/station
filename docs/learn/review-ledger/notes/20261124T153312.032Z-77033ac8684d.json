@@ -1,0 +1,9 @@
+{
+  "revision": "0d4fdf3620c09afe097b37edf2ad570c7e69961c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"The owned-descendant cancellation test's fixture now writes its ready file beside the path and renames it into place; neither page describes how that fixture file is written, and the cancellation behaviour they describe is unchanged.","inputs":["scripts/__tests__/changed-verification.test.ts"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"The owned-descendant cancellation test's fixture now writes its ready file beside the path and renames it into place; neither page describes how that fixture file is written, and the cancellation behaviour they describe is unchanged.","inputs":["scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}

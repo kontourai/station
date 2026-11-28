@@ -139,6 +139,20 @@ export function withDependencyInstallGuard({
         'Dependency installer ownership changed; refusing cleanup.',
       );
   };
+  const fail = (error) => {
+    if (receiptFd !== undefined) {
+      try {
+        record('failed');
+      } catch {}
+      try {
+        closeSync(receiptFd);
+      } catch {}
+    }
+    throw new Error(
+      `Dependencies are not verified. Installer state is retained at ${JSON.stringify(guard)}; inspect it before recovery or another install. Do not run gates against a partial node_modules tree.`,
+      { cause: error },
+    );
+  };
   try {
     receiptFd = openSync(receiptPath, 'wx', 0o600);
     receiptIdentity = fstatSync(receiptFd);
@@ -180,101 +194,99 @@ export function withDependencyInstallGuard({
       );
     record('installing');
     result = run();
-    if (result && typeof result.then === 'function')
-      throw new Error('Dependency installation must settle synchronously.');
-    assertOwned();
-    record('verified');
-    closeSync(receiptFd);
-    receiptFd = undefined;
   } catch (error) {
-    if (receiptFd !== undefined) {
-      // The descriptor still names our own receipt even if its pathname moved.
-      try {
-        record('failed');
-      } catch {
-        /* Existing guard still blocks admission. */
-      }
-      try {
-        closeSync(receiptFd);
-      } catch {
-        /* Preserve the original failure. */
-      }
-    }
-    throw new Error(
-      `Dependencies are not verified. Installer state is retained at ${JSON.stringify(guard)}; inspect it before recovery or another install. Do not run gates against a partial node_modules tree.`,
-      { cause: error },
-    );
+    return fail(error);
   }
-  try {
-    assertOwned();
-    // Publish only exact entries, then use rmdir as the atomic empty check.
-    const children = readdirSync(guard);
-    if (
-      !sameEntry(guard, guardIdentity) ||
-      !sameEntry(receiptPath, receiptIdentity)
-    )
-      throw new Error('Dependency installer cleanup ownership changed.');
-    const metadataPath = join(guard, '.DS_Store');
-    const metadata = entry(metadataPath);
-    const ordinaryMetadata =
-      !metadata ||
-      (metadata.isFile() &&
-        !metadata.isSymbolicLink() &&
-        metadata.size <= 65_536);
-    if (
-      !ordinaryMetadata ||
-      children.some((name) => name !== 'receipt.json' && name !== '.DS_Store')
-    )
-      throw new Error('Dependency installer guard has unknown children.');
-    recordDirectory = mkdtempSync(
-      join(canonicalRoot, `${DEPENDENCY_INSTALL_RECORD_PREFIX}${process.pid}-`),
-    );
-    const archivedReceipt = join(recordDirectory, 'receipt.json');
-    moveEntry(receiptPath, archivedReceipt);
-    const receiptPublished = sameEntry(archivedReceipt, receiptIdentity);
-    let metadataPublished = true;
-    if (metadata) {
-      const current = entry(metadataPath);
+  if (result && typeof result.then === 'function')
+    return Promise.resolve(result).then(complete, fail);
+  return complete(result);
+
+  function complete(value) {
+    result = value;
+    try {
+      assertOwned();
+      record('verified');
+      closeSync(receiptFd);
+      receiptFd = undefined;
+    } catch (error) {
+      return fail(error);
+    }
+    try {
+      assertOwned();
+      // Publish only exact entries, then use rmdir as the atomic empty check.
+      const children = readdirSync(guard);
       if (
-        !current ||
-        current.dev !== metadata.dev ||
-        current.ino !== metadata.ino ||
-        !current.isFile() ||
-        current.isSymbolicLink() ||
-        current.size > 65_536
+        !sameEntry(guard, guardIdentity) ||
+        !sameEntry(receiptPath, receiptIdentity)
+      )
+        throw new Error('Dependency installer cleanup ownership changed.');
+      const metadataPath = join(guard, '.DS_Store');
+      const metadata = entry(metadataPath);
+      const ordinaryMetadata =
+        !metadata ||
+        (metadata.isFile() &&
+          !metadata.isSymbolicLink() &&
+          metadata.size <= 65_536);
+      if (
+        !ordinaryMetadata ||
+        children.some((name) => name !== 'receipt.json' && name !== '.DS_Store')
+      )
+        throw new Error('Dependency installer guard has unknown children.');
+      recordDirectory = mkdtempSync(
+        join(
+          canonicalRoot,
+          `${DEPENDENCY_INSTALL_RECORD_PREFIX}${process.pid}-`,
+        ),
+      );
+      const archivedReceipt = join(recordDirectory, 'receipt.json');
+      moveEntry(receiptPath, archivedReceipt);
+      const receiptPublished = sameEntry(archivedReceipt, receiptIdentity);
+      let metadataPublished = true;
+      if (metadata) {
+        const current = entry(metadataPath);
+        if (
+          !current ||
+          current.dev !== metadata.dev ||
+          current.ino !== metadata.ino ||
+          !current.isFile() ||
+          current.isSymbolicLink() ||
+          current.size > 65_536
+        )
+          throw new Error(
+            'Dependency installer metadata changed before publication.',
+          );
+        // A fresh record directory may acquire its own .DS_Store concurrently;
+        // publish the captured source under a name Finder does not own.
+        const archivedMetadata = join(
+          recordDirectory,
+          'macos-directory-metadata',
+        );
+        moveEntry(metadataPath, archivedMetadata);
+        const published = entry(archivedMetadata);
+        metadataPublished =
+          Boolean(published) &&
+          published.dev === metadata.dev &&
+          published.ino === metadata.ino &&
+          published.isFile() &&
+          !published.isSymbolicLink() &&
+          published.size <= 65_536;
+      }
+      if (
+        !receiptPublished ||
+        !metadataPublished ||
+        readdirSync(guard).length !== 0
       )
         throw new Error(
-          'Dependency installer metadata changed before publication.',
+          'Dependency installer guard changed during publication.',
         );
-      // A fresh record directory may acquire its own .DS_Store concurrently;
-      // publish the captured source under a name Finder does not own.
-      const archivedMetadata = join(
-        recordDirectory,
-        'macos-directory-metadata',
+      // rmdir is the atomic final check: a raced-in child retains the fixed guard.
+      rmdirSync(guard);
+      return result;
+    } catch {
+      warn(
+        `[dependency-lifecycle] Dependencies verified; installer guard cleanup is pending at ${JSON.stringify(guard)}${recordDirectory ? `; record state ${JSON.stringify(recordDirectory)}` : ''}. Inspect retained state before the next install.`,
       );
-      moveEntry(metadataPath, archivedMetadata);
-      const published = entry(archivedMetadata);
-      metadataPublished =
-        Boolean(published) &&
-        published.dev === metadata.dev &&
-        published.ino === metadata.ino &&
-        published.isFile() &&
-        !published.isSymbolicLink() &&
-        published.size <= 65_536;
     }
-    if (
-      !receiptPublished ||
-      !metadataPublished ||
-      readdirSync(guard).length !== 0
-    )
-      throw new Error('Dependency installer guard changed during publication.');
-    // rmdir is the atomic final check: a raced-in child retains the fixed guard.
-    rmdirSync(guard);
     return result;
-  } catch {
-    warn(
-      `[dependency-lifecycle] Dependencies verified; installer guard cleanup is pending at ${JSON.stringify(guard)}${recordDirectory ? `; record state ${JSON.stringify(recordDirectory)}` : ''}. Inspect retained state before the next install.`,
-    );
   }
-  return result;
 }

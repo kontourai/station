@@ -2254,8 +2254,7 @@
       "bespoke-action:\"editor-btn editor-btn--danger\"": 1
     },
     "src-ui/src/views/plugin-management/PluginModalStack.tsx": {
-      "bespoke-action:\"plugins__confirm-cancel\"": 2,
-      "bespoke-action:\"plugins__confirm-delete\"": 1
+      "bespoke-action:\"plugins__confirm-cancel\"": 1
     },
     "src-ui/src/views/plugin-management/PluginPermissionsSection.css": {
       "legacy-token:--bg-secondary": 1,
@@ -2272,6 +2271,10 @@
       "legacy-token:--error-bg": 1,
       "legacy-token:--error-border": 1,
       "legacy-token:--error-text": 1
+    },
+    "src-ui/src/views/plugin-management/RemovePluginModal.tsx": {
+      "bespoke-action:\"plugins__confirm-cancel\"": 1,
+      "bespoke-action:\"plugins__confirm-delete\"": 1
     },
     "src-ui/src/views/project-page-frame.css": {
       "legacy-token:--bg-primary": 1,

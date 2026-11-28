@@ -1,0 +1,15 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fix round: prompt actions are counted once per distinct prompt; api.md and the plugins guide describe the field without a counting rule, and apps-04 was amended to 4 prompts.","inputs":["packages/contracts/src/catalog.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Fix round: prompt actions are counted once per distinct prompt; api.md and the plugins guide describe the field without a counting rule, and apps-04 was amended to 4 prompts.","inputs":["packages/contracts/src/catalog.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix round: prompt actions are counted once per distinct prompt; api.md and the plugins guide describe the field without a counting rule, and apps-04 was amended to 4 prompts.","inputs":["packages/contracts/src/catalog.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round: prompt actions are counted once per distinct prompt; api.md and the plugins guide describe the field without a counting rule, and apps-04 was amended to 4 prompts.","inputs":["packages/contracts/src/catalog.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Fix round: prompt actions are counted once per distinct prompt; api.md and the plugins guide describe the field without a counting rule, and apps-04 was amended to 4 prompts.","inputs":["packages/contracts/src/catalog.ts"]}
+  ]
+}

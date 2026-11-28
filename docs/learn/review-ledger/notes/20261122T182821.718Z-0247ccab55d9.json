@@ -1,0 +1,7 @@
+{
+  "revision": "dc418699cc4048c45468401e33b814aca4b056c4",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Registry row names the Discover remove confirmation and the 390px touch-target test in registry.spec.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/registry.spec.ts"]}
+  ]
+}

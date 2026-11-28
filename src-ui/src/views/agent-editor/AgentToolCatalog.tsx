@@ -91,7 +91,7 @@ export function AgentToolCatalog({
           const from =
             item.catalogSourceName ||
             item.toolOrigin?.registryName ||
-            'Registry provider';
+            'A tool catalogue';
           return (
             <article
               className="agent-tool-picker__source agent-tool-catalog__item"

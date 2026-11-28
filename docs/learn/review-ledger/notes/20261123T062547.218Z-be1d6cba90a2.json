@@ -1,0 +1,7 @@
+{
+  "revision": "ddb1d1a864db4b9c2f5f3d1a42f482f869591e62",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked: only a verified engine is recorded, Station's own and unverifiable engines are fallback only, other engines ordered by id, a stale default passed over everywhere, and the tag is the row's description. Composer docs updated to match.","inputs":["src-ui/src/__tests__/useNewChatSelectionModel.revalidation.test.tsx"]}
+  ]
+}

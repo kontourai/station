@@ -35,6 +35,7 @@
     "packaging/portable-server/bin/station.mjs",
     "scripts/check-prepush-docs-freshness.mjs",
     "scripts/check-prepush-push-range.mjs",
+    "scripts/dependency-pnpm-command.mjs",
     "scripts/lib/floor-worker-exits.mjs",
     "scripts/lib/telemetry-station-child.mjs",
     "scripts/lib/vitest-error-reporter.mjs",

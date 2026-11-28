@@ -954,7 +954,7 @@ back to the Kit record it came from (`examples/meeting-notes/src/AskPane.tsx`, b
 so it needs an embedding-capable Model connection configured (the same requirement
 `./station knowledge reindex`/`migrate` already have, described earlier in this guide). If none is
 configured, Ask shows an honest "No embedding model configured" state with a direct link to
-`Connections → Models` — never a silent empty-results screen. Once you configure one, existing
+`Customize → Providers` — never a silent empty-results screen. Once you configure one, existing
 records still need an index before they are searchable. Run
 `./station knowledge reindex` after capturing, compiling, or editing records.
 The current route composition has no record-change subscriber that automatically

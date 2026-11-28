@@ -1,0 +1,7 @@
+{
+  "revision": "fe3aafb9d61f45ec7e5403f36f84041486ac96cc",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Checked the new paragraph on catalog app facts against registry-app-facts.ts and the provider's appFactsOf: local plugin.json and named layouts, listed fields, none for screenless plugins, remote not fetched, per-row absence on failure. The confinement bullets are unchanged.","inputs":["docs/guides/plugins.md","packages/contracts/src/catalog.ts","src-server/providers/registries/json-manifest-registry.ts","src-server/providers/registries/registry-source-configuration.ts"]}
+  ]
+}

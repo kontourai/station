@@ -1,0 +1,25 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fix round: /registry/, /registry/plugins/… and trailing-slash Apps paths now redirect; the bare /registry still resolves to the catalogue view if reached without the redirect. Citing pages do not describe these paths.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/developer-surface.md","note":"Fix round: /registry/, /registry/plugins/… and trailing-slash Apps paths now redirect; the bare /registry still resolves to the catalogue view if reached without the redirect. Citing pages do not describe these paths.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/modality-ladder.md","note":"Fix round: /registry/, /registry/plugins/… and trailing-slash Apps paths now redirect; the bare /registry still resolves to the catalogue view if reached without the redirect. Citing pages do not describe these paths.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/pane-or-shell.md","note":"Fix round: /registry/, /registry/plugins/… and trailing-slash Apps paths now redirect; the bare /registry still resolves to the catalogue view if reached without the redirect. Citing pages do not describe these paths.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Fix round: /registry/, /registry/plugins/… and trailing-slash Apps paths now redirect; the bare /registry still resolves to the catalogue view if reached without the redirect. Citing pages do not describe these paths.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Fix round: /registry/, /registry/plugins/… and trailing-slash Apps paths now redirect; the bare /registry still resolves to the catalogue view if reached without the redirect. Citing pages do not describe these paths.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Fix round: /registry/, /registry/plugins/… and trailing-slash Apps paths now redirect; the bare /registry still resolves to the catalogue view if reached without the redirect. Citing pages do not describe these paths.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Fix round: /registry/, /registry/plugins/… and trailing-slash Apps paths now redirect; the bare /registry still resolves to the catalogue view if reached without the redirect. Citing pages do not describe these paths.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Fix round: /registry/, /registry/plugins/… and trailing-slash Apps paths now redirect; the bare /registry still resolves to the catalogue view if reached without the redirect. Citing pages do not describe these paths.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Fix round: /registry/, /registry/plugins/… and trailing-slash Apps paths now redirect; the bare /registry still resolves to the catalogue view if reached without the redirect. Citing pages do not describe these paths.","inputs":["src-ui/src/app-shell/routing.ts"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Checked: sdk.md gains the two new-chat default hooks. Pages citing it for other hooks stay accurate.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked: sdk.md gains the two new-chat default hooks. Pages citing it for other hooks stay accurate.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

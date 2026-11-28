@@ -24,7 +24,7 @@ const DESTINATION_TARGETS: Record<
   Exclude<TrayNavigationDestination, 'pairedDevices'>,
   TrayNavigationTarget
 > = {
-  connections: { pathname: '/connections' },
+  connections: { pathname: '/customize' },
   coreUpdates: SERVER_UPDATES_TARGET,
   desktopUpdates: DESKTOP_UPDATES_TARGET,
   serverUpdates: SERVER_UPDATES_TARGET,

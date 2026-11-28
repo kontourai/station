@@ -173,8 +173,9 @@ authenticated ingress.
 
 ## First steps
 
-1. Open **Customize → Connections** and choose **Add model connection** (a local or
-   hosted model service) or **Add engine** (an installed agent CLI). Startup
+1. Open **Customize**, then **Providers** to choose **Add model connection** (a
+   local or hosted model service) or **Engines** to choose **Add engine** (an
+   installed agent CLI). Startup
    can register supported native CLIs and their default Agents; check their
    readiness before starting work. The
    [Connections guide](docs/guides/connections.md#add-an-engine) lists the

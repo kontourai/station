@@ -5,11 +5,14 @@ import {
   deleteAgent,
   openChatWithAgent,
   readyAgentConnections,
+  seedAgent,
   sendComposerTurn,
   startingPoint,
+  waitForSeededAgent,
 } from './helpers/agents-journey';
 import {
   type AuthenticatedE2ERequest,
+  authenticatedE2EFetch,
   test,
 } from './helpers/authenticated-request';
 
@@ -43,10 +46,21 @@ test.afterEach(async ({ authenticatedRequest }) => {
 /** Claude Code or Codex, as the server reports them, preferring Claude Code. */
 async function requireInstalledCli(
   request: AuthenticatedE2ERequest,
+  requested?: 'claude' | 'codex',
 ): Promise<AgentConnectionRecord> {
-  const named = (await readyAgentConnections(request)).filter((connection) =>
-    ['claude', 'codex'].includes(connection.id),
-  );
+  const matches = (connection: AgentConnectionRecord) =>
+    requested
+      ? connection.id === requested
+      : ['claude', 'codex'].includes(connection.id);
+  if (requested) {
+    await expect
+      .poll(
+        async () => (await request.get('/api/connections/agents')).status(),
+        { timeout: 75_000 },
+      )
+      .toBe(200);
+  }
+  const named = (await readyAgentConnections(request)).filter(matches);
   if (named.length === 0) {
     const response = await request.get('/api/connections/agents');
     expect(response.ok()).toBe(true);
@@ -54,12 +68,13 @@ async function requireInstalledCli(
       data: Array<
         AgentConnectionRecord & {
           setup?: { state?: string; detected?: boolean };
+          config?: Record<string, unknown>;
         }
       >;
     };
     const available = body.data.filter(
       (connection) =>
-        ['claude', 'codex'].includes(connection.id) &&
+        matches(connection) &&
         connection.enabled !== false &&
         connection.setup?.state === 'available' &&
         connection.setup.detected === true,
@@ -71,11 +86,50 @@ async function requireInstalledCli(
       candidate,
       'A real installed Claude Code or Codex engine is required',
     ).toBeDefined();
+    let proxyConnectionId: string | undefined;
+    if (requested) {
+      const baseUrl = process.env.STATION_LIVE_CLI_PROXY_URL;
+      const apiKey = process.env.STATION_ENGINE_PROXY_KEY;
+      if (!baseUrl || !apiKey || !process.env.PW_BASE_URL)
+        throw new Error(
+          'Live CLIProxy routing needs the host-supplied endpoint and key',
+        );
+      proxyConnectionId = `live-cli-proxy-${requested}`;
+      const proxy = await authenticatedE2EFetch(
+        new URL('/api/connections', process.env.PW_BASE_URL),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: proxyConnectionId,
+            kind: 'model',
+            type: 'openai-compat',
+            name: 'CLIProxy',
+            enabled: true,
+            capabilities: ['llm'],
+            config: { baseUrl, apiKey },
+            status: 'ready',
+            prerequisites: [],
+          }),
+        },
+      );
+      expect(
+        proxy.ok,
+        `Saving the live proxy returned HTTP ${proxy.status}`,
+      ).toBe(true);
+    }
     // The fresh test home has discovered CLIs but has not added them yet.
     // This is the same real save used by Connections' one-click Add action.
     const saved = await request.put(
       `/api/connections/${encodeURIComponent(candidate!.id)}`,
-      { data: candidate },
+      {
+        data: proxyConnectionId
+          ? {
+              ...candidate,
+              config: { ...candidate?.config, proxyConnectionId },
+            }
+          : candidate,
+      },
     );
     expect(
       saved.ok(),
@@ -107,7 +161,7 @@ async function createCliAgent(
   engine: AgentConnectionRecord,
 ): Promise<string> {
   await page.goto('/agents/new');
-  await startingPoint(page, 'cli').click();
+  await startingPoint(page, 'cli').click({ timeout: 75_000 });
 
   // §4: nothing is bound yet, so Create refuses — the engine is the question
   // that has not been answered, and the button says so before it is pressed.
@@ -181,3 +235,106 @@ test.describe('New agent — Wrap an installed agent CLI at 390x844', () => {
     await sendComposerTurn(page, PROMPT, EXPECTED, 120_000);
   });
 });
+
+const proxyEngines = process.env.STATION_LIVE_CLI_PROXY_URL
+  ? (['claude', 'codex'] as const)
+  : [];
+for (const cli of proxyEngines) {
+  test(`live Queue and Steer ordering on ${cli}`, async ({
+    page,
+    authenticatedRequest,
+  }) => {
+    test.setTimeout(300_000);
+    const engine = await requireInstalledCli(authenticatedRequest, cli);
+    const name = `Live Queue ${cli} ${Date.now()}`;
+    const agent = await seedAgent(authenticatedRequest, {
+      slug: `live-queue-${cli}`,
+      name,
+      execution: {
+        agentConnectionId: engine.id,
+        ...(cli === 'claude' ? { modelId: 'claude-opus-5-5-high' } : {}),
+      },
+    });
+    createdSlugs.push(agent.slug);
+    await waitForSeededAgent(authenticatedRequest, agent.slug);
+    await page.goto(`/agents/${agent.slug}`);
+    await page
+      .locator('.agent-inline-editor')
+      .getByRole('button', { name: 'Chat', exact: true })
+      .click();
+    const initial = page.getByRole('region', { name: 'New chat', exact: true });
+    await expect(
+      initial.getByRole('button', { name: new RegExp(name) }),
+    ).toBeVisible();
+
+    const composer = page.getByRole('textbox', { name: 'Message' });
+    const transcript = page.getByRole('log', {
+      name: 'Conversation transcript',
+    });
+    const queue = page.getByRole('button', {
+      name: 'Queue for next turn',
+      exact: true,
+    });
+    const steer = page.getByRole('button', {
+      name: 'Steer current turn',
+      exact: true,
+    });
+    await initial
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill(
+        'Write a long numbered list of 180 original fictional observatory names, one per line. Do not run commands or open files. Begin now.',
+      );
+    await initial.getByRole('button', { name: 'Start', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Steering mode', pressed: false }),
+    ).toBeEnabled({ timeout: 90_000 });
+
+    const firstQueued =
+      'When you start the next turn, reply exactly with QUEUE-RECEIPT-ONE.';
+    const steerText =
+      'Course correction for the running turn: end your answer with STEER-RECEIPT.';
+    const secondQueued =
+      'When this later turn starts, reply exactly with QUEUE-RECEIPT-TWO.';
+    await composer.fill(firstQueued);
+    await queue.click();
+    await expect(
+      page.getByRole('button', { name: 'Queue · 1 pending' }),
+    ).toBeVisible();
+    await page
+      .getByRole('button', { name: 'Steering mode', pressed: false })
+      .click();
+    await composer.fill(steerText);
+    await steer.click();
+    await expect(composer).toHaveValue('');
+    await page
+      .getByRole('button', { name: 'Steering mode', pressed: true })
+      .click();
+    await composer.fill(secondQueued);
+    await queue.click();
+    await expect(
+      page.getByRole('button', { name: 'Queue · 2 pending' }),
+    ).toBeVisible();
+
+    const assistant = transcript.locator('.message.assistant');
+    await expect(
+      assistant.filter({ hasText: 'QUEUE-RECEIPT-TWO' }).last(),
+    ).toBeVisible({ timeout: 180_000 });
+    const visibleInputs = (
+      await transcript.locator('.message.user').allTextContents()
+    ).map((message) => message.trim());
+    for (const input of [steerText, firstQueued, secondQueued])
+      expect(
+        visibleInputs.filter((message) => message.includes(input)),
+      ).toHaveLength(1);
+    expect(
+      visibleInputs.findIndex((message) => message.includes(steerText)),
+    ).toBeLessThan(
+      visibleInputs.findIndex((message) => message.includes(firstQueued)),
+    );
+    expect(
+      visibleInputs.findIndex((message) => message.includes(firstQueued)),
+    ).toBeLessThan(
+      visibleInputs.findIndex((message) => message.includes(secondQueued)),
+    );
+  });
+}

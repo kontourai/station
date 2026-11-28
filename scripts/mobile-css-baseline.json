@@ -133,10 +133,6 @@
       "count": 1,
       "reason": "FORK: hand-rolled bottom sheet. Retire with the sheet primitive."
     },
-    "src-ui/src/components/setup/ExistingSetupImportStepper.css": {
-      "count": 1,
-      "reason": "The embedded setup-import workflow stacks its own heading and full-width Review import control inside both First Run and Settings; neither host nor the shared action-row primitive owns that internal heading geometry."
-    },
     "src-ui/src/components/status/live-status.css": {
       "count": 1,
       "reason": "The shared chat status pill owns its actionable 44px touch floor at phone width or on a coarse pointer. The host-qualified selector preserves that floor against the composer button reset. Stacked popup positioning is owned by the composer container rule in chat.css."
@@ -192,6 +188,10 @@
     "src-ui/src/views/ProjectPage.css": {
       "count": 3,
       "reason": "Three blocks at two breakpoints: task grids single-column at 760px, then two that both open at 768px \u2014 the live-work row's touch floor, and the touch floors, card grid, git-commit rows and namespace config bar of the page's own content. The narrow gutters this reason used to name moved to project-page-frame.css with the frame itself (#1636); this file no longer declares them."
+    },
+    "src-ui/src/views/apps/AppsView.css": {
+      "count": 1,
+      "reason": "Apps › Discover's own phone layout: one column with Works with as a row of chips, the other filters folded under a More filters control, then the apps. No shared primitive lays this out."
     },
     "src-ui/src/views/project-page-frame.css": {
       "count": 1,

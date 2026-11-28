@@ -1,7 +1,13 @@
+import type { ConversationAgentSchedule } from '@kontourai/station-contracts/agent-schedule';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import { expect, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { mockChatShell } from './helpers/chat-shell-fixture';
-import { test } from './helpers/fixture-audit';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import {
+  installJourneyProfile,
+  profileJourney,
+} from './helpers/journey-profile';
 import { mockLongTranscriptConversation } from './helpers/long-transcript-conversation';
 import {
   dismissSetupLauncher,
@@ -120,6 +126,65 @@ async function openThrottledConversation(
     turns: () => turns,
     onWindow: (url) => requestedWindows.push(url),
   });
+  await page.route('**/api/projects/default/chat-defaults', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          json: {
+            success: true,
+            data: {
+              version: 'station.project-chat-defaults/v1',
+              projectSlug: 'default',
+              model: { selection: 'fixed', lastUsed: [] },
+              approvalMode: {
+                selection: 'fixed',
+                resolved: { source: 'none' },
+              },
+            } satisfies ProjectChatDefaultsView,
+          },
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route(
+    (url) =>
+      url.pathname === '/api/terminal/runs' &&
+      url.searchParams.get('conversationId') === THREAD_ID,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({ json: { success: true, data: { runs: [] } } })
+        : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route(
+    `**/api/orchestration/agent-schedule/${THREAD_ID}`,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            json: {
+              success: true,
+              data: {
+                wakeUps: [],
+                jobProposals: [],
+                jobs: [],
+              } satisfies ConversationAgentSchedule,
+            },
+          })
+        : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route(
+    (url) =>
+      url.pathname ===
+      `/api/orchestration/session-reads/${THREAD_ID}/turn-directory`,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            status: 404,
+            json: {
+              success: false,
+              code: 'session_not_found',
+              error: 'Session not found',
+            },
+          })
+        : rejectUnexpectedFixtureRequest(route),
+  );
   // Registered after the fixture, so these run first and fall back to it.
   await page.route(
     `**/api/conversations/${THREAD_ID}/open`,
@@ -304,6 +369,7 @@ test('the composer measuring itself never opens a gap under the newest message',
   page,
 }, testInfo) => {
   test.setTimeout(120_000);
+  await installJourneyProfile(page);
   const { conversationOpen, lateChunks, transcript } =
     await openThrottledConversation(page, { holdMarkdownRenderer: false });
   lateChunks.release();
@@ -314,18 +380,34 @@ test('the composer measuring itself never opens a gap under the newest message',
   await page.screenshot({ path: testInfo.outputPath('composer-loaded.png') });
   // A draft that grows past one line, then is cleared again.
   const draft = page.locator('.chat-input textarea');
-  await draft.click();
-  await page.keyboard.type('first line', { delay: 30 });
-  await page.keyboard.press('Shift+Enter');
-  await page.keyboard.type('second line', { delay: 30 });
-  await page.keyboard.press('Shift+Enter');
-  await page.keyboard.type('third', { delay: 30 });
-  await waitForStableTranscript(page, 10);
-  await markTimeline(page, 'typed');
-  await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.press('Backspace');
-  await waitForStableTranscript(page, 10);
-  await markTimeline(page, 'cleared');
+  const draftText = 'first line\nsecond line\nthird';
+  await profileJourney(
+    page,
+    testInfo,
+    'reply-composer',
+    {
+      turns: 400,
+      cpuThrottleRate: CPU_THROTTLE_RATE,
+      draftCharacters: draftText.length,
+    },
+    async () => {
+      await draft.click();
+      await page.keyboard.type('first line', { delay: 30 });
+      await page.keyboard.press('Shift+Enter');
+      await page.keyboard.type('second line', { delay: 30 });
+      await page.keyboard.press('Shift+Enter');
+      await page.keyboard.type('third', { delay: 30 });
+      await expect(draft).toHaveValue(draftText);
+      await expect(draft).toBeFocused();
+      await waitForStableTranscript(page, 10);
+      await markTimeline(page, 'typed');
+      await page.keyboard.press('ControlOrMeta+a');
+      await page.keyboard.press('Backspace');
+      await expect(draft).toHaveValue('');
+      await waitForStableTranscript(page, 10);
+      await markTimeline(page, 'cleared');
+    },
+  );
   const timeline = await attachTimeline(page, testInfo, 'composer-timeline');
   const rowsVisible = timeline.marks.find(
     (mark) => mark.label === 'rows-visible',

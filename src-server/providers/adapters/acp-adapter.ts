@@ -4068,10 +4068,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             ? `Station could not tell whether ${config.name} is signed in.`
             : `Station has no way to check whether ${config.name} is signed in. If a chat reports that it needs a sign-in, sign in from this engine's page.`,
           installStep: managed
-            ? `Install ${config.name} from its sign-in panel in Connections.`
+            ? `Install ${config.name} from its sign-in panel in Customize › Engines.`
             : `Install ${config.name} and ensure \`${config.command}\` is on PATH.`,
           authStep: ownsSignIn
-            ? `Sign in to ${config.name} from its sign-in panel in Connections.`
+            ? `Sign in to ${config.name} from its sign-in panel in Customize › Engines.`
             : `Sign in with ${config.name} itself if it asks you to.`,
         });
       }),

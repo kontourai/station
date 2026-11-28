@@ -185,7 +185,7 @@ let nativeBootstrapRecoveryError: string | undefined;
 
 /** Safe copy for a mobile launch whose saved Station the host would not authorize. */
 const LAUNCH_AUTHORIZATION_FAILURE =
-  'Station couldn’t reconnect to your saved Station. Open Connections to pair this device again.';
+  'Station couldn’t reconnect to your saved Station. Open the Station menu to pair this device again.';
 
 export function nativeProfileRepository(): NativeStationProfileStorage {
   if (!profileRepository)
@@ -494,7 +494,11 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
   }, [profile]);
 
   useEffect(() => {
-    if (!profile?.isMobile || !profile.isTauri) return;
+    if (
+      !profile?.isTauri ||
+      (!profile.isMobile && profile.target !== 'windows')
+    )
+      return;
     let disposed = false;
     let unregister: (() => void) | undefined;
     void import('./native/connectionDiscovery').then((module) => {

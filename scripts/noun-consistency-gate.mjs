@@ -111,6 +111,15 @@ export const COPY_SOURCE_FILES = [
  * senses (`agent`, `prompt`) a literal scan cannot tell from copy.
  */
 export const LITERAL_COPY_FILES = [
+  // Catalogue page copy, skill source labels and plugin messages: the
+  // retired place phrases (Registry, Plugins, Connections) reach the screen
+  // from these modules.
+  'src-ui/src/components/registry/registryCatalogModel.ts',
+  'src-ui/src/views/skills/skill-view-utils.ts',
+  'src-ui/src/views/plugin-management/view-utils.ts',
+  'src-ui/src/views/plugin-management/usePluginManagementViewModel.ts',
+  'src-ui/src/workspace-panes/workspacePaneAvailabilityPresentation.ts',
+  // Chat dock and inbox row copy.
   'src-ui/src/components/inbox-row/inbox-row-actions.ts',
   'src-ui/src/components/inbox-row/snooze-presets.ts',
   'src-ui/src/components/chat-dock/mobile-activity-groups.ts',
@@ -330,6 +339,40 @@ export const RETIRED_USER_TERMS = Object.freeze([
     use: 'Start fresh context',
     pattern: /\breset agent context\b/i,
     pending: true,
+  },
+  // Navigation area (first-release-navigation.md, slice 1.2): Connections is
+  // no longer a destination, so copy that sends a reader to it or to one of
+  // its tabs names a place that is gone. Enforced: slice 1.2 removed the last
+  // uses. Only the place sense is matched: "open/review/configure in/in/under/
+  // from Connections" and "Connections › <tab>". The bare word, and phrases
+  // such as "set up connections", stay legal: the phone header's Station menu
+  // row is still labelled Connections until the Station page slices.
+  {
+    term: 'Connections as a place',
+    use: 'Customize, its item, or the Station menu',
+    pattern:
+      /\b(?:(?:open|review|configure in|in|under|from) connections\b(?![-\w])|connections\s*[›→>]\s*(?:models|engines|tools|knowledge|computers)\b)/i,
+  },
+  // Apps area (first-release-apps.md, slice 1.4): Registry and Plugins are
+  // no longer places. Installable things are Apps (Discover, Library); the
+  // other catalogues are pages entered from where their kind is used. Only the
+  // place sense is matched: "browse/open/in/from/through/under the Registry",
+  // "Registry › <tab>", "Registry page/tab", and "open/in/under Plugins",
+  // "Plugins › …", "Plugins page/tab"; "Reload plugins" is an action on the
+  // packages, not a place, and stays legal. Technical registries
+  // (npm, the ACP public registry, "Registry URL") and the developer word
+  // "plugin" stay legal.
+  {
+    term: 'Registry as a place',
+    use: 'Apps › Discover, or the catalogue page of the kind (Browse skills)',
+    pattern:
+      /\b(?:(?:browse|open|in|from|through|under|via) (?:the )?registry\b(?![-\w])|registry\s*[›→>]\s*(?:agents|skills|integrations|plugins|layouts|kits)\b|registry (?:page|tab)s?\b)/i,
+  },
+  {
+    term: 'Plugins as a place',
+    use: 'Apps, Apps › Library or Apps › Discover',
+    pattern:
+      /\b(?:(?:open|in|under) plugins\b(?![-\w]|\.\w)|plugins\s*[›→>]\s*\w|plugins (?:page|tab)s?\b)/i,
   },
   // Inbox (first-release-automations-inbox.md, automations-inbox-13): one
   // verb, Mark done, and Reopen undoes it; one snooze list with Wake now.
@@ -913,8 +956,12 @@ export function scanFileContent(
   findings.push(...scanObjectLiteralCopy(file, content, retiredTerms));
   // Notice text, labels in object literals and `{'…'}` children: any string
   // literal in a scanned component, for the retired user terms. A literal
-  // the attribute scanners already reported is not reported twice.
-  const literals = scanStringLiterals(file, rawContent, retiredTerms);
+  // the attribute scanners already reported is not reported twice. Test
+  // sources are skipped: their titles and fixtures name retired places on
+  // purpose ("the Registry tab redirects"), and they never reach the screen.
+  const literals = isTestSource(file)
+    ? []
+    : scanStringLiterals(file, rawContent, retiredTerms);
 
   function collectAttr(pattern) {
     pattern.lastIndex = 0;
@@ -955,12 +1002,23 @@ export function scanFileContent(
       end: tagMatch.index + tagMatch[0].length,
       text: tagMatch[0],
     });
+    // A tag whose attribute value holds JSX (`listIntro={<div>…</div>}`)
+    // matches as one span that hides the elements inside it. Resume the walk
+    // just inside that tag so those elements are tags too, and their text is
+    // scanned like any other. The outer tag overlaps them, so it pairs with
+    // none of them below.
+    if (tagMatch[0].indexOf('<', 1) !== -1) {
+      TAG_PATTERN.lastIndex = tagMatch.index + 1;
+    }
   }
 
   for (let i = 0; i < tags.length - 1; i++) {
     const current = tags[i];
-    const next = tags[i + 1];
-    if (current.end >= next.start) continue;
+    // The next tag after this one ends. For a tag that holds JSX in an
+    // attribute, that skips the elements inside it, so its own children
+    // are read exactly as before.
+    const next = tags.slice(i + 1).find((tag) => tag.start >= current.end);
+    if (!next || current.end >= next.start) continue;
     findings.push(
       ...scanChildrenBetweenTags(
         file,
@@ -976,6 +1034,11 @@ export function scanFileContent(
   for (const finding of literals)
     if (!reported.has(allowlistKey(finding))) findings.push(finding);
   return findings;
+}
+
+/** Test sources name retired words in titles and fixtures, not as copy. */
+function isTestSource(file) {
+  return /(^|\/)__tests__\/|\.test\.[jt]sx?$/.test(file);
 }
 
 /**
@@ -1186,7 +1249,7 @@ function main() {
     roots: SCAN_ROOTS,
     extensions: SCAN_EXTENSIONS,
     pinned: PINNED_SCOPE_INVENTORY,
-    files: [...files, ...COPY_SOURCE_FILES],
+    files: [...files, ...COPY_SOURCE_FILES, ...LITERAL_COPY_FILES],
   });
   // A listed literal source that no longer exists is a scope that shrank.
   for (const file of LITERAL_COPY_FILES)

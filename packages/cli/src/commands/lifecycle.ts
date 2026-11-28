@@ -1506,25 +1506,40 @@ export function buildUiServerScript(opts: {
   return `
     ${nameHelperShim}
     const http=require('http'),crypto=require('crypto'),fs=require('fs'),path=require('path');
-    const dir=${JSON.stringify(opts.uiDir)};
-    const mime=${JSON.stringify(UI_MIME_TYPES)};
-    const inject=${JSON.stringify(inject)};
-    const upstreamPort=${JSON.stringify(opts.upstreamPort)};
-    const backendPrefixes=${JSON.stringify(UI_PROXY_BACKEND_PREFIXES)};
-    const backendExcludedPrefixes=${JSON.stringify(UI_PROXY_EXCLUDED_PREFIXES)};
-    const backendNavigationPrefixes=${JSON.stringify(UI_PROXY_BACKEND_NAVIGATION_PREFIXES)};
-    const immutableAsset=new RegExp(${JSON.stringify(UI_IMMUTABLE_ASSET_PATTERN.source)});
+    const {dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,immutableAssetPattern,readinessFile,identity,guardFallbackDirectory,stagedGuard,workerExecutable,workerArguments,workerTimeoutMs,hostedTenantAuthorities,mediaUploadPolicies,uiPort,host}=${JSON.stringify(
+      {
+        dir: opts.uiDir,
+        mime: UI_MIME_TYPES,
+        inject,
+        upstreamPort: opts.upstreamPort,
+        backendPrefixes: UI_PROXY_BACKEND_PREFIXES,
+        backendExcludedPrefixes: UI_PROXY_EXCLUDED_PREFIXES,
+        backendNavigationPrefixes: UI_PROXY_BACKEND_NAVIGATION_PREFIXES,
+        immutableAssetPattern: UI_IMMUTABLE_ASSET_PATTERN.source,
+        readinessFile: opts.readinessFile,
+        identity: opts.identity,
+        guardFallbackDirectory: import.meta.dirname,
+        stagedGuard:
+          process.platform === 'win32' ? resolveWindowsBirthHelper() : null,
+        workerExecutable: windowsSystemUtilityPath('powershell'),
+        workerArguments: opts.readinessFile
+          ? buildWindowsPrivateFileReadCommand(opts.readinessFile)
+          : [],
+        workerTimeoutMs: WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+        hostedTenantAuthorities: opts.hostedTenantAuthorities,
+        mediaUploadPolicies: MEDIA_UPLOAD_POLICIES,
+        uiPort: opts.uiPort,
+        host: opts.host ?? '0.0.0.0',
+      },
+    )};
+    const immutableAsset=new RegExp(immutableAssetPattern);
     const documentCsp=${uiDocumentContentSecurityPolicy.toString()};
-    const readinessFile=${JSON.stringify(opts.readinessFile)};
-    const identity=${JSON.stringify(opts.identity)};
-    const launchReadinessWorker=process.platform==='win32'?(${createWindowsOwnedWorkerLauncher.toString()})({spawn:require('child_process').spawn,resolveGuard:(${createWindowsCommandGuardResolver.toString()})({sourceDirectory:dir,fallbackDirectory:${JSON.stringify(import.meta.dirname)},stagedGuard:${JSON.stringify(process.platform === 'win32' ? resolveWindowsBirthHelper() : null)}}),timeoutMs:${WINDOWS_TRUST_COMMAND_TIMEOUT_MS}}):undefined;
-    const readinessReader=process.platform==='win32'&&readinessFile&&identity?(${createWindowsReadinessReader.toString()})({launch:(signal)=>launchReadinessWorker(${JSON.stringify(windowsSystemUtilityPath('powershell'))},${JSON.stringify(opts.readinessFile ? buildWindowsPrivateFileReadCommand(opts.readinessFile) : [])},signal),timeoutMs:${WINDOWS_TRUST_COMMAND_TIMEOUT_MS}}):undefined;
+    const launchReadinessWorker=process.platform==='win32'?(${createWindowsOwnedWorkerLauncher.toString()})({spawn:require('child_process').spawn,resolveGuard:(${createWindowsCommandGuardResolver.toString()})({sourceDirectory:dir,fallbackDirectory:guardFallbackDirectory,stagedGuard}),timeoutMs:workerTimeoutMs}):undefined;
+    const readinessReader=process.platform==='win32'&&readinessFile&&identity?(${createWindowsReadinessReader.toString()})({launch:(signal)=>launchReadinessWorker(workerExecutable,workerArguments,signal),timeoutMs:workerTimeoutMs}):undefined;
     const readPrivateReadiness=readinessReader?.read;
     const readinessWarmup=readinessReader?.read();
     const internalApiToken=process.env.STATION_INTERNAL_API_TOKEN;
     const trustedTailscaleServeOrigin=process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
-    const hostedTenantAuthorities=${JSON.stringify(opts.hostedTenantAuthorities)};
-    const mediaUploadPolicies=${JSON.stringify(MEDIA_UPLOAD_POLICIES)};
     const classifyMediaUpload=${mediaUploadPolicy.toString()};
     const uploadPolicy=(method,path)=>classifyMediaUpload(method,path,mediaUploadPolicies);
     const uiRequestHandler=(deps)=>(${createUiRequestHandler.toString()})(deps,uploadPolicy);
@@ -1534,7 +1549,7 @@ export function buildUiServerScript(opts: {
     (${configureHttpReceive.toString()})(server,uploadPolicy,mediaUploadPolicies.walkthrough.totalMs);
     (${configureHttpKeepAlive.toString()})(server);
     (${configureTerminalUpgrade.toString()})(server,require('net'),upstreamPort);
-    Promise.resolve(readinessWarmup).then(()=>server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')}));
+    Promise.resolve(readinessWarmup).then(()=>server.listen(uiPort,host));
     ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;
 }

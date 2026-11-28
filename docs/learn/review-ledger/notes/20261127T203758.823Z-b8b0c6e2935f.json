@@ -1,0 +1,7 @@
+{
+  "revision": "3017561b092ddd7ca44a3cd0155bb2560f6ad36d",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Checked the Task Overview Resume entry point, Feature Preview and ended-status checks, the host confirmation view, and the separate dispatch action. Confirming returns an eligible done Task to Ready and detaches the previous lead. The new Task workspace section sits alongside upstream automation history and related Tasks. Source review.","inputs":["docs/user/concepts.md","src-ui/src/views/TaskWorkspaceView.tsx"]}
+  ]
+}

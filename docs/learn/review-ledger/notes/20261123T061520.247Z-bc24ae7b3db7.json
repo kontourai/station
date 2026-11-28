@@ -1,0 +1,13 @@
+{
+  "revision": "ddb1d1a864db4b9c2f5f3d1a42f482f869591e62",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Checked: adds ROUTE_WRITTEN_APP_CONFIG_KEYS and routeWrittenKeyRefusal, used by the config route and the CLI. No registry entry changed.","inputs":["packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Checked: adds ROUTE_WRITTEN_APP_CONFIG_KEYS and routeWrittenKeyRefusal, used by the config route and the CLI. No registry entry changed.","inputs":["packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Checked: adds ROUTE_WRITTEN_APP_CONFIG_KEYS and routeWrittenKeyRefusal, used by the config route and the CLI. No registry entry changed.","inputs":["packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked: adds ROUTE_WRITTEN_APP_CONFIG_KEYS and routeWrittenKeyRefusal, used by the config route and the CLI. No registry entry changed.","inputs":["packages/contracts/src/settings-registry.ts"]}
+  ]
+}

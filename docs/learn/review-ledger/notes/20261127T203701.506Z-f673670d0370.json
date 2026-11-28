@@ -1,0 +1,7 @@
+{
+  "revision": "3017561b092ddd7ca44a3cd0155bb2560f6ad36d",
+
+  "notes": [
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked the pairing route delta and the credential prerequisites in this guide. The two new resume leaves use the Task family scope plus the in-person operator guard. The home transfer scope and its participant and peer routes have the same grants. Source review.","inputs":["docs/guides/home-transfer-controller.md","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

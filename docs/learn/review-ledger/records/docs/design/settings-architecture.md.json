@@ -30,8 +30,6 @@
 
     "src-server/routes/system/config.ts",
 
-    "src-ui/src/components/project-sidebar/CustomizeDialog.tsx",
-
     "src-ui/src/lib/device-settings-store.ts",
 
     "src-ui/src/views/SettingsView.tsx",
@@ -116,7 +114,9 @@
 
     "src-ui/src/hooks/useSectionNavigation.ts",
 
-    "src-ui/src/contexts/__tests__/AccountPreferencesContext.test.tsx"
+    "src-ui/src/contexts/__tests__/AccountPreferencesContext.test.tsx",
+
+    "src-ui/src/views/customize/CustomizeNav.tsx"
   ],
 
   "checks": [

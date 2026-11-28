@@ -1,0 +1,9 @@
+{
+  "revision": "7f58622413a1d0f9ba73783c8944d65d18dd2d6f",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed the Windows packaged-upgrade fixture repair and POSIX shell-oracle correction against the unchanged production UI proxy exclusion case and its real HTTP assertions. Changes are isolated install-root ACL setup, scheduler/trust command fixture routing, native installer fixtures and scheduling-guidance argv checks; the outside OAuth/MCP/well-known exclusion implementation and its mutation fallback test are unchanged. The Windows full owner executed that proxy exclusion case without failure, while separately disclosing the remaining lifecycle/readiness failures. Historical R3 client captures were not rerun; this note does not requalify clients, release exposure, or later Connections UI. No prose change warranted for either citing document.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the Windows packaged-upgrade fixture repair and POSIX shell-oracle correction against the unchanged production UI proxy exclusion case and its real HTTP assertions. Changes are isolated install-root ACL setup, scheduler/trust command fixture routing, native installer fixtures and scheduling-guidance argv checks; the outside OAuth/MCP/well-known exclusion implementation and its mutation fallback test are unchanged. The Windows full owner executed that proxy exclusion case without failure, while separately disclosing the remaining lifecycle/readiness failures. Historical R3 client captures were not rerun; this note does not requalify clients, release exposure, or later Connections UI. No prose change warranted for either citing document.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}

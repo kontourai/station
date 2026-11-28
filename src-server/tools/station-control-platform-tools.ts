@@ -108,8 +108,8 @@ function proposalToolResult(
     ...changed,
     ...envelope,
     message: envelope.deduplicated
-      ? 'This change was already proposed and is still open. A person completes it from Plugins; nothing was changed.'
-      : 'Proposed. A person sees this in Needs attention and completes it from Plugins; nothing was changed yet. Tell them what you proposed and why.',
+      ? 'This change was already proposed and is still open. A person completes it from Apps › Library; nothing was changed.'
+      : 'Proposed. A person sees this in Needs attention and completes it from Apps › Library; nothing was changed yet. Tell them what you proposed and why.',
   };
 }
 
@@ -356,7 +356,7 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
     // It is auto-approved as read-only, so it takes LOCAL folders only: a git
     // URL would make it a network fetch on an agent's say-so. The route
     // refuses those too; refusing here as well means no request is made.
-    'Validate an absolute local plugin folder: manifest, Workspace Panes, prompt safety and installed conflicts. Returns diagnostics; no dependencies, install or build. Refuses git URLs/network paths. A person reviews Plugins → Install plugin. Format: station-docs `plugin-authoring`.',
+    'Validate an absolute local plugin folder: manifest, Workspace Panes, prompt safety and installed conflicts. Returns diagnostics; no dependencies, install or build. Refuses git URLs/network paths. A person installs one from Apps › Library. Format: station-docs `plugin-authoring`.',
     {
       source: z
         .string()
@@ -394,7 +394,7 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
     // #2323 S5 (owner decision 3): an update pulls new code into Station, so
     // it is a person's decision like an install. This records a proposal;
     // `POST /api/plugins/:name/update` refuses this caller class.
-    'Propose an installed plugin update in Needs attention. Updates nothing; a person runs it from Plugins.',
+    'Propose a plugin update in Needs attention. Updates nothing yet; a person runs it in Apps › Library.',
     {
       name: z.string().describe('Plugin name'),
       rationale: z
@@ -426,7 +426,7 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
   server.tool(
     'remove_plugin',
     // #2323 S5 (owner decision 3): same path as update.
-    'Propose plugin removal in Needs attention. Removes nothing; a person confirms in Plugins.',
+    'Propose plugin removal in Needs attention. Removes nothing; a person confirms in Apps.',
     {
       name: z.string().describe('Plugin name'),
       rationale: z
