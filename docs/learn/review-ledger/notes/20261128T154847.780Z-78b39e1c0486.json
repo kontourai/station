@@ -1,0 +1,7 @@
+{
+  "revision": "7d0ce1e1fce5718942ceef5616fb6c4ee690c72d",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Documented the account-scoped Default send mode preference under Your account and verified settings catalog/registry parity.","inputs":["docs/user/settings.md","src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}

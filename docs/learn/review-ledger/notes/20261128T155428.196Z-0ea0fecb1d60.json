@@ -1,0 +1,7 @@
+{
+  "revision": "7d0ce1e1fce5718942ceef5616fb6c4ee690c72d",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Verified account-preferences architecture remains accurate after adding sibling .chat.json store for chatDefaultSendMode.","inputs":["docs/design/settings-architecture.md","packages/contracts/src/account-preferences.ts","src-server/services/identity/account-preferences.ts","src-ui/src/lib/account-preference-values.ts","src-ui/src/views/settings/AccountPreferencesSection.tsx"]}
+  ]
+}
