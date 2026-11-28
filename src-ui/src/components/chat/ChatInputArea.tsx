@@ -784,7 +784,7 @@ export function ChatInputArea({
   };
   const closeModel = () => {
     restoreModelDraft();
-    onModelClose();
+    onModelClose?.();
   };
   const selectModel = (model: SelectableModel) => {
     if (isMobile && model.executionAgentId !== currentExecutionAgentId)

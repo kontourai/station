@@ -390,11 +390,12 @@ test.each(['steer', 'queue'])(
       composerFixture,
       [controls],
       { hasTouch: true, isMobile: true },
-      (page) =>
-        page.addInitScript(
+      async (page) => {
+        await page.addInitScript(
           (busy) => Reflect.set(window, 'composerFixtureBusy', busy),
           busy,
-        ),
+        );
+      },
     );
     try {
       await page.addStyleTag({ content: cascade });
@@ -433,10 +434,11 @@ test('Run setup keeps touch focus, restores focus during model selection, and tr
     composerFixture,
     [controls],
     { hasTouch: true, isMobile: true },
-    (page) =>
-      page.addInitScript(() =>
+    async (page) => {
+      await page.addInitScript(() =>
         Reflect.set(window, 'composerFixtureModels', true),
-      ),
+      );
+    },
   );
   try {
     await page.addStyleTag({ content: cascade });
