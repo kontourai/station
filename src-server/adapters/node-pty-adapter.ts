@@ -303,8 +303,9 @@ class NodePtyProcess implements IPtyProcess {
             -2048,
           );
         });
-      }).catch((error: unknown): ExecFileException =>
-        error instanceof Error ? error : new Error(String(error)),
+      }).catch(
+        (error: unknown): ExecFileException =>
+          error instanceof Error ? error : new Error(String(error)),
       );
       this.trace.taskkillDone = Date.now();
       this.trace.taskkillResult = failure
