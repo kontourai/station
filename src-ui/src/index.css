@@ -8928,6 +8928,21 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   clip: rect(0 0 0 0);
 }
 
+/* Let the radio receive the press directly while the draft holds focus.
+   A label's default click forwards activation and gives focus to its input. */
+[data-preserved-draft-focus] .composer-mode-sheet__option {
+  position: relative;
+}
+
+[data-preserved-draft-focus] .composer-mode-sheet__option-input {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  clip: auto;
+  opacity: 0;
+}
+
 .composer-mode-sheet__option:has(
   .composer-mode-sheet__option-input:focus-visible
 ) {

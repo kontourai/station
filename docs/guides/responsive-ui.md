@@ -53,6 +53,11 @@ by themselves produce a complete visual dialog.
 - the phone-sheet drag handle, behind the Sheet gestures device preview
   (see [Sheet drag handle](#sheet-drag-handle)).
 
+Compact composer popovers may opt into `preserveComposerFocus`. If a pointer
+press leaves the draft textarea focused, the surface opens without moving focus
+and Escape dismisses it from the draft. A keyboard-focused trigger opens the
+modal surface with its usual focus management.
+
 A consumer may keep its content mounted with `open={false}` to preserve a
 pending decision. The closed surface is hidden, is not a `dialog` (no role, no
 modal claim, `inert`), and releases dialog history and focus; reopening reuses

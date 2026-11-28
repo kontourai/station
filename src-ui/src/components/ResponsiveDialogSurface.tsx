@@ -20,6 +20,7 @@ import { createPortal } from 'react-dom';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
 import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../utils/focusable';
+import { ComposerTextarea } from './ComposerChoiceSummary';
 import { useDialogHistoryHost } from './DialogHistoryHost';
 import { registerDialogHistory } from './dialog-history';
 import { type OverlayLayer, OverlayLayerContext } from './overlay-layer';
@@ -60,6 +61,9 @@ export interface ResponsiveDialogSurfaceProps {
   initialFocusRef?: RefObject<HTMLElement | null>;
   initialFocusPolicy?: InitialFocusPolicy;
   returnFocusTarget?: HTMLElement | null;
+  /** A compact composer popover can leave an already focused draft active. */
+  preserveComposerFocus?: boolean;
+  composerTextareaRef?: RefObject<HTMLTextAreaElement | null>;
   dismissible?: boolean;
   /** Required: see {@link ResponsiveSurfaceLayer}. There is no default. */
   layer: ResponsiveSurfaceLayer;
@@ -208,6 +212,8 @@ export function ResponsiveDialogSurface({
   initialFocusRef,
   initialFocusPolicy = 'panel',
   returnFocusTarget,
+  preserveComposerFocus = false,
+  composerTextareaRef,
   dismissible = true,
   layer,
   historyMode = 'entry',
@@ -215,6 +221,10 @@ export function ResponsiveDialogSurface({
   sheetGesture = true,
   yieldToChildPopover = false,
 }: ResponsiveDialogSurfaceProps) {
+  const inheritedTextareaRef = useContext(ComposerTextarea);
+  const textareaRef = composerTextareaRef ?? inheritedTextareaRef;
+  const [preservedTextarea, setPreservedTextarea] =
+    useState<HTMLTextAreaElement | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -363,12 +373,25 @@ export function ResponsiveDialogSurface({
   useLayoutEffect(() => {
     if (!open) {
       capturedReturnFocus.current = false;
+      setPreservedTextarea(null);
       return;
     }
     if (!capturedReturnFocus.current) {
+      const textarea = textareaRef?.current;
+      if (
+        preserveComposerFocus &&
+        textarea &&
+        textarea === document.activeElement
+      ) {
+        capturedReturnFocus.current = true;
+        returnFocusRef.current = captureReturnFocus(textarea);
+        setPreservedTextarea(textarea);
+        return;
+      }
       returnFocusRef.current = captureReturnFocus(returnFocusTarget);
       capturedReturnFocus.current = true;
     }
+    if (preservedTextarea) return;
     const focusInitial =
       initialFocusPolicy === 'always' ||
       (initialFocusPolicy === 'desktop' && !isMobile);
@@ -376,7 +399,32 @@ export function ResponsiveDialogSurface({
       ? (initialFocusRef?.current ?? panelRef.current)
       : panelRef.current;
     focusTarget?.focus();
-  }, [initialFocusPolicy, initialFocusRef, isMobile, returnFocusTarget, open]);
+  }, [
+    initialFocusPolicy,
+    initialFocusRef,
+    isMobile,
+    returnFocusTarget,
+    open,
+    preservedTextarea,
+    preserveComposerFocus,
+    textareaRef,
+  ]);
+
+  useEffect(() => {
+    if (!open || !preservedTextarea || !dismissible) return;
+    const dismissFromDraft = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      const surfaces = document.querySelectorAll(
+        '[data-preserved-draft-focus]',
+      );
+      if (surfaces[surfaces.length - 1] !== overlayRef.current) return;
+      event.preventDefault();
+      onCloseRef.current();
+    };
+    preservedTextarea.addEventListener('keydown', dismissFromDraft);
+    return () =>
+      preservedTextarea.removeEventListener('keydown', dismissFromDraft);
+  }, [dismissible, open, preservedTextarea]);
 
   // Focus restoration, with a fallback for the case the trigger did not
   // survive (archive#1126). The behaviour lives in
@@ -405,7 +453,7 @@ export function ResponsiveDialogSurface({
       onClose();
       return;
     }
-    if (event.key !== 'Tab') return;
+    if (event.key !== 'Tab' || preservedTextarea) return;
     const panel = panelRef.current;
     // React portal events bubble through owners outside their DOM subtree;
     // Tab order there belongs to the portaled content, not this panel.
@@ -435,7 +483,7 @@ export function ResponsiveDialogSurface({
     'data-surface': 'dialog',
     className: `${panelClassName} responsive-surface-panel`.trim(),
     style: panelStyle,
-    'aria-modal': true,
+    'aria-modal': preservedTextarea ? undefined : true,
     'aria-label': ariaLabel,
     'aria-labelledby': ariaLabelledBy,
     tabIndex: -1,
@@ -529,8 +577,17 @@ export function ResponsiveDialogSurface({
       data-anchor-side={anchorVars ? anchorSide : undefined}
       role="presentation"
       data-yielded={yieldedTo > 0 && open ? '' : undefined}
+      onMouseDown={(event) => {
+        if (event.button === 0 && preservedTextarea === document.activeElement)
+          event.preventDefault();
+      }}
+      data-preserved-draft-focus={preservedTextarea ? '' : undefined}
       onPointerDown={(event) => {
+        if (event.button === 0 && preservedTextarea === document.activeElement)
+          event.preventDefault();
         if (dismissible && event.target === event.currentTarget) {
+          if (returnFocusTarget instanceof HTMLTextAreaElement)
+            event.preventDefault();
           onClose();
           // Outside both: the hidden parent closes too.
           yieldingParent?.dismiss();
