@@ -173,8 +173,11 @@ export function useStagedAgentChange({
         retained.key !== key ||
         retained.request.idempotencyKey !== restoredKey
       ) {
-        if (!observed) setWithdrawKey(restoredKey);
-        return 'settled';
+        if (!observed) {
+          setWithdrawKey(restoredKey);
+          return 'settled';
+        }
+        return 'pending';
       }
       setRetryKey(restoredKey);
       return 'settled';

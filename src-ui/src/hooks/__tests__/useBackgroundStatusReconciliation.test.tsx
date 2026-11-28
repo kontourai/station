@@ -81,13 +81,13 @@ describe('useBackgroundStatusReconciliation', () => {
     expect(result.current.exhausted).toBe(false);
   });
 
-  test('coalesces overlapping checks and ignores stale completions after resetKey changes', async () => {
+  test('coalesces overlapping checks and serializes across resetKey changes without accepting stale results', async () => {
     vi.useFakeTimers();
-    let resolveFirst!: (value: 'pending') => void;
+    const resolvers: Array<(value: 'pending' | 'settled') => void> = [];
     const check = vi.fn(
       () =>
-        new Promise<'pending'>((resolve) => {
-          resolveFirst = resolve;
+        new Promise<'pending' | 'settled'>((resolve) => {
+          resolvers.push(resolve);
         }),
     );
 
@@ -113,16 +113,62 @@ describe('useBackgroundStatusReconciliation', () => {
     void result.current.checkNow();
     expect(check).toHaveBeenCalledTimes(1);
 
-    // Changing resetKey invalidates the in-flight generation.
+    // Changing resetKey invalidates the in-flight generation without allowing overlap.
     rerender({ resetKey: 'req-2' });
     expect(result.current.checking).toBe(false);
     expect(result.current.exhausted).toBe(false);
 
+    // While the prior request is still running, advancing into the new schedule does not overlap it.
     await act(async () => {
-      resolveFirst('pending');
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(check).toHaveBeenCalledTimes(1);
+
+    // Once the stale request finishes, req-2 starts its own fresh check instead of exhausting on req-1's result.
+    await act(async () => {
+      resolvers[0]?.('pending');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(check).toHaveBeenCalledTimes(2);
+    expect(result.current.exhausted).toBe(false);
+
+    await act(async () => {
+      resolvers[1]?.('settled');
       await Promise.resolve();
     });
     expect(result.current.exhausted).toBe(false);
+  });
+
+  test('stops event-triggered checks after a check settles', async () => {
+    vi.useFakeTimers({ now: 10_000 });
+    const check = vi.fn(async () => 'settled' as const);
+
+    renderHook(() =>
+      useBackgroundStatusReconciliation({
+        active: true,
+        check,
+        initialDelayMs: 1_000,
+        intervalsMs: [2_000],
+      }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(check).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+      await vi.advanceTimersByTimeAsync(2_000);
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        value: 'visible',
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+      await Promise.resolve();
+    });
+    expect(check).toHaveBeenCalledTimes(1);
   });
 
   test('rechecks on online, visibilitychange, and debounced focus in event-only mode', async () => {

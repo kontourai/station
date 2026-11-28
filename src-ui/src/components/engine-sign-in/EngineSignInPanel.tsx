@@ -299,6 +299,7 @@ function ScopedEngineSignInPanel({
     active: Boolean(
       view.data &&
         view.data.status.state !== 'authenticated' &&
+        !view.isFetching &&
         !check.isPending &&
         current?.state !== 'running',
     ),
@@ -308,8 +309,11 @@ function ScopedEngineSignInPanel({
     recheckOnVisible: true,
     recheckOnOnline: false,
     eventDebounceMs: 1_500,
-    check: () => {
-      check.mutate();
+    check: async () => {
+      const fresh = await view.refetch();
+      return fresh.data?.status.state === 'authenticated'
+        ? 'settled'
+        : 'pending';
     },
   });
 

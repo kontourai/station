@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export type BackgroundStatusOutcome = 'settled' | 'pending' | boolean | void;
+export type BackgroundStatusOutcome =
+  | 'settled'
+  | 'pending'
+  | boolean
+  | undefined;
 
 export interface BackgroundStatusReconciliationOptions {
   /** Only schedule timers and listen for recovery events while active. */
@@ -11,7 +15,11 @@ export interface BackgroundStatusReconciliationOptions {
    * Read-only status check. Never trigger or retry a write/mutation here.
    * Returning `true` or `'settled'` stops further scheduled checks.
    */
-  check: () => Promise<BackgroundStatusOutcome> | BackgroundStatusOutcome;
+  check: () =>
+    | Promise<BackgroundStatusOutcome>
+    | Promise<void>
+    | BackgroundStatusOutcome
+    | void;
   /**
    * Delay before the first scheduled check. Pass `null` (or omit) to disable
    * timer-based polling and react only to browser visibility/online/focus
@@ -48,7 +56,7 @@ export interface BackgroundStatusReconciliationState {
 
 const DEFAULT_INTERVALS_MS: readonly number[] = [2_000, 4_000, 8_000];
 
-function isSettledOutcome(outcome: BackgroundStatusOutcome): boolean {
+function isSettledOutcome(outcome: BackgroundStatusOutcome | void): boolean {
   return outcome === true || outcome === 'settled';
 }
 
@@ -84,7 +92,9 @@ export function useBackgroundStatusReconciliation({
   const activeRef = useRef(active);
   activeRef.current = active;
   const generationRef = useRef(0);
-  const inFlightRef = useRef<Promise<boolean> | null>(null);
+  const inFlightRef = useRef<{ gen: number; task: Promise<boolean> } | null>(
+    null,
+  );
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastEventCheckAtRef = useRef(0);
 
@@ -96,7 +106,21 @@ export function useBackgroundStatusReconciliation({
   }, []);
 
   const runOnce = useCallback(async (expectedGen: number): Promise<boolean> => {
-    if (inFlightRef.current) return inFlightRef.current;
+    const existing = inFlightRef.current;
+    if (existing) {
+      if (existing.gen === expectedGen) return existing.task;
+      // Wait for the previous generation's read to finish so two checks never
+      // overlap, then run a fresh check for the current generation if still live.
+      await existing.task;
+      if (generationRef.current !== expectedGen || !activeRef.current)
+        return true;
+      if (inFlightRef.current?.gen === expectedGen)
+        return inFlightRef.current.task;
+    }
+    const entry: { gen: number; task: Promise<boolean> } = {
+      gen: expectedGen,
+      task: Promise.resolve(false),
+    };
     const task = (async () => {
       if (generationRef.current !== expectedGen || !activeRef.current)
         return true;
@@ -108,10 +132,11 @@ export function useBackgroundStatusReconciliation({
         return false;
       } finally {
         if (generationRef.current === expectedGen) setChecking(false);
-        inFlightRef.current = null;
+        if (inFlightRef.current === entry) inFlightRef.current = null;
       }
     })();
-    inFlightRef.current = task;
+    entry.task = task;
+    inFlightRef.current = entry;
     return task;
   }, []);
 
@@ -120,7 +145,6 @@ export function useBackgroundStatusReconciliation({
     generationRef.current += 1;
     const gen = generationRef.current;
     clearTimer();
-    inFlightRef.current = null;
     setChecking(false);
 
     if (!active) {
@@ -131,21 +155,27 @@ export function useBackgroundStatusReconciliation({
     setExhausted(!hasSchedule);
 
     let cancelled = false;
+    let settled = false;
     const delays = hasSchedule ? [initialDelayMs, ...intervalsMs] : [];
 
+    const markSettled = () => {
+      settled = true;
+      clearTimer();
+    };
+
     const scheduleStep = (index: number) => {
-      if (cancelled || generationRef.current !== gen) return;
+      if (cancelled || settled || generationRef.current !== gen) return;
       if (index >= delays.length) {
         setExhausted(true);
         return;
       }
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
-        if (cancelled || generationRef.current !== gen) return;
-        void runOnce(gen).then((settled) => {
-          if (cancelled || generationRef.current !== gen) return;
-          if (settled) {
-            clearTimer();
+        if (cancelled || settled || generationRef.current !== gen) return;
+        void runOnce(gen).then((didSettle) => {
+          if (cancelled || settled || generationRef.current !== gen) return;
+          if (didSettle) {
+            markSettled();
             return;
           }
           scheduleStep(index + 1);
@@ -156,13 +186,18 @@ export function useBackgroundStatusReconciliation({
     if (hasSchedule) scheduleStep(0);
 
     const triggerFromEvent = () => {
-      if (cancelled || generationRef.current !== gen || !activeRef.current)
+      if (
+        cancelled ||
+        settled ||
+        generationRef.current !== gen ||
+        !activeRef.current
+      )
         return;
       const now = Date.now();
       if (now - lastEventCheckAtRef.current < eventDebounceMs) return;
       lastEventCheckAtRef.current = now;
-      void runOnce(gen).then((settled) => {
-        if (settled && generationRef.current === gen) clearTimer();
+      void runOnce(gen).then((didSettle) => {
+        if (didSettle && generationRef.current === gen) markSettled();
       });
     };
 
