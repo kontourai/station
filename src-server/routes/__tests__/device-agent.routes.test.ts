@@ -1862,7 +1862,12 @@ test('device access requests require operator consent and report approval, decli
       ),
     );
 
-  expect(await request()).toMatchObject({ ok: false, code: 'unavailable' });
+  expect(await request()).toMatchObject({
+    ok: false,
+    code: 'feature_preview_disabled',
+    previewId: 'device-access-chat-approval',
+    settingsPath: '/settings?view=feature-previews&highlight=feature-previews',
+  });
   h.setAccessPreview();
   expect(parsed(await h.run('device_list'))).toMatchObject({
     ok: false,
