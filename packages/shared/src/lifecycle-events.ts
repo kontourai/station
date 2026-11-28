@@ -237,10 +237,7 @@ function openJournal(file: string): number {
 
 function readExistingJournal(file: string): string {
   if (process.platform === 'win32') {
-    return readWindowsPrivateFile(
-      file,
-      DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES,
-    ).toString('utf8');
+    return readWindowsPrivateFile(file, 2 ** 31 - 1).toString('utf8');
   }
   const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   try {

@@ -587,7 +587,7 @@ export function appendWindowsPrivateJournal(
     if (journal.size() + content.length > maxBytes) {
       withPrivateFile(temporary, 'create', (retained) => {
         try {
-          retained.write(journal.read(Math.max(maxBytes, content.length)));
+          retained.write(journal.read(2 ** 31 - 1));
           retained.rename(`${file}.previous`);
           fsyncDirectorySync(dirname(file));
         } catch (error) {

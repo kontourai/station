@@ -490,7 +490,7 @@ describe('lifecycle event journal', () => {
   );
 
   it.runIf(process.platform === 'win32')(
-    'retains a full-size journal and refuses reads beyond its bound',
+    'retains full-size journals and accepts configured thresholds and oversized records',
     () => {
       const root = createJournalRoot('station-journal-capacity-');
       const file = join(root, 'events.jsonl');
@@ -526,14 +526,41 @@ describe('lifecycle event journal', () => {
           ...records,
           appended,
         ]);
-        writeFileSync(
+        writeFileSync(file, content);
+        const configured = appendLifecycleEvent(
           file,
-          Buffer.alloc(DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES + 1, 0x20),
+          {
+            ...identity,
+            type: 'process_exit',
+            exitCode: 0,
+            timestamp: '2026-07-10T12:00:02.000Z',
+          },
+          { maxBytes: DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES * 2 },
         );
-        expect(() => readLifecycleEvents(file)).toThrow(
-          /exceeds its read bound/,
+        expect(statSync(file).size).toBeGreaterThan(
+          DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES,
         );
-        expect(readFileSync(`${file}.previous`, 'utf8')).toBe(content);
+        expect(readLifecycleEvents(file, records.length + 1)).toEqual([
+          ...records,
+          configured,
+        ]);
+        const oversized = appendLifecycleEvent(file, {
+          ...identity,
+          type: 'process_exit',
+          signal: 'x'.repeat(DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES),
+          timestamp: '2026-07-10T12:00:03.000Z',
+        });
+        expect(readLifecycleEvents(file, 1)).toEqual([oversized]);
+        appendLifecycleEvent(file, event);
+        expect(readLifecycleEvents(file, 2)).toEqual([oversized, event]);
+        const retained = openWindowsPrivateFile(`${file}.previous`, 'read');
+        try {
+          expect(() =>
+            retained.read(DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES),
+          ).toThrow(/exceeds its read bound/);
+        } finally {
+          retained.close();
+        }
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
