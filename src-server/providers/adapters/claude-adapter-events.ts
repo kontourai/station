@@ -234,6 +234,7 @@ export interface ClaudeMessageState extends ClaudeUsageLimitState {
   requireNativeResumeIdentity?: true;
   /** Live SDK permission mode; unset until Station sent one or init reported it. */
   currentPermissionMode?: PermissionMode;
+  allGranted?: boolean;
   allowsBypassPermissions?: boolean;
   /** The latest `init` proved the in-process Station browser is the only server of its name (`stationBrowserVerifiedByInit`). */
   stationBrowserVerified?: boolean;
@@ -483,13 +484,17 @@ function stationBrowserVerifiedByInit(
 }
 
 export function reportClaudePermissionMode(
-  record: Pick<ClaudeMessageState, 'currentPermissionMode' | 'session'>,
+  record: Pick<
+    ClaudeMessageState,
+    'currentPermissionMode' | 'allGranted' | 'session'
+  >,
   mode: PermissionMode,
   publish: (event: CanonicalRuntimeEvent) => void,
   provider: ProviderSession['provider'],
 ): void {
   if (record.currentPermissionMode === mode) return;
   record.currentPermissionMode = mode;
+  record.allGranted = false;
   const approvalMode = mapPermissionModeToApprovalMode(mode);
   publish({
     eventId: crypto.randomUUID(),
@@ -615,6 +620,8 @@ export function mapClaudeSdkMessage({
     record.session.status = 'ready';
     record.session.updatedAt = createdAt;
     if (message.permissionMode) {
+      if (record.currentPermissionMode !== message.permissionMode)
+        record.allGranted = false;
       record.currentPermissionMode = message.permissionMode;
       if (message.permissionMode === 'bypassPermissions') {
         record.allowsBypassPermissions = true;
