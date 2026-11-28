@@ -306,7 +306,13 @@
 
     "tests/helpers/lazy-surface-readiness.ts",
 
-    "scripts/required-test-profiles.json"
+    "scripts/required-test-profiles.json",
+
+    "scripts/run-journey-profiles.mjs",
+
+    "tests/task-first-home.spec.ts",
+
+    "tests/transcript-load-stability.spec.ts"
   ],
 
   "checks": [
