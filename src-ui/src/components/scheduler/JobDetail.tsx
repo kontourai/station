@@ -18,7 +18,13 @@ import {
   TimeGlyph,
   WarningGlyph,
 } from '../icons/Glyph';
-import { Empty, SkeletonBlock } from '../state';
+import {
+  describeReadFailure,
+  Empty,
+  ErrorState,
+  SkeletonBlock,
+  useRetainedReadFailure,
+} from '../state';
 import { jobLabel } from './jobName';
 
 /**
@@ -111,7 +117,9 @@ export function JobDetail({
   providerId?: string;
 }) {
   const { navigate } = useNavigation();
-  const { data: runs = [] } = useRunsQuery();
+  const runsQuery = useRunsQuery();
+  const { data: runs = [] } = runsQuery;
+  const retainedFailure = useRetainedReadFailure(runsQuery);
   const { data: jobs = [] } = useSchedulerJobs();
   const restartMonitor = useRestartJobMonitor();
   const resolveMonitor = useResolveIndeterminateJobMonitor();
@@ -286,18 +294,45 @@ export function JobDetail({
     </section>
   ) : null;
 
-  // empty-state action: run history appears after the scheduled job runs
+  const historyFailure =
+    retainedFailure ??
+    (runsQuery.error
+      ? {
+          error: runsQuery.error,
+          retrying: runsQuery.fetchStatus !== 'idle',
+        }
+      : null);
+  const historyNotice = historyFailure ? (
+    <ErrorState
+      variant="compact"
+      title="Run history unavailable"
+      description={describeReadFailure(historyFailure.error)}
+      action={
+        <Button
+          size="sm"
+          pending={historyFailure.retrying}
+          onClick={() => void runsQuery.refetch()}
+        >
+          Retry
+        </Button>
+      }
+    />
+  ) : runsQuery.isPending ? (
+    <SkeletonBlock count={3} label="Loading run history" />
+  ) : null;
+
   if (!reversedRuns.length)
     return (
       <>
         {monitorDetail}
-        <Empty variant="compact" label="No run history" />
+        {historyNotice ?? <Empty variant="compact" label="No run history" />}
       </>
     );
 
   return (
     <div className="schedule__detail-logs-wrap">
       {monitorDetail}
+      {historyNotice}
       <table className="schedule__logs">
         <thead>
           <tr>

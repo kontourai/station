@@ -1,0 +1,7 @@
+{
+  "revision": "0e69da51bbddef47f22c0e73415f4996b742f814",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Scoped source review at 0e69da51bbddef47f22c0e73415f4996b742f814 of the JobDetail input since covering revision 5b21059fd66c. The change replaces false empty run history during pending/refused reads with shared loading/error controls and a Retry that refetches the same runs query. Scheduler endpoint, admission, request/response, Task navigation and RunOutputRef preview/output contracts are unchanged; no API prose change is needed. The intended pending false-empty regression failed before repair; both complete JobDetail owners then passed 11 tests with real SDK QueryClient and controlled HTTP responses. The later removed RED-narration comment changes no executable logic. This is narrow mounted UI/controlled-HTTP evidence, not renewal of other API claims or proof of real authorization, parent expansion, browser geometry, server persistence, providers, native or release behavior.","inputs":["docs/reference/api.md","src-ui/src/components/scheduler/JobDetail.tsx"]}
+  ]
+}

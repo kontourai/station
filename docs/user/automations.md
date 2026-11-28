@@ -136,6 +136,15 @@ continuation create a card. Nothing is created unless you confirm it, so
 read each card before confirming. The fix is tracked in
 [#4882](https://github.com/kontourai/station/issues/4882).
 
+## Run history
+
+Expand an automation to see its run history. With the keyboard, focus the
+automation name and press Enter or Space to expand or collapse it.
+While Station reads the history,
+it shows a loading indicator. If the read fails, choose **Retry**. This retries
+the history read; it does not run the automation again. **No run history** means
+the read succeeded but found no matching runs.
+
 ## Failures, missed runs and turning off
 
 - A run that fails is listed as failed and notifies you. The notice is generic;

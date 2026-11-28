@@ -6,7 +6,13 @@ import { PageSection } from '../components/PageSection';
 import { PageFrameActions } from '../components/page-frame';
 import { JobDetail, relTime } from '../components/scheduler';
 import { jobLabel } from '../components/scheduler/jobName';
-import { ErrorState, FilteredEmpty, SkeletonBlock } from '../components/state';
+import {
+  describeReadFailure,
+  ErrorState,
+  FilteredEmpty,
+  SkeletonBlock,
+  useRetainedReadFailure,
+} from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useProjects } from '../contexts/ProjectsContext';
@@ -72,7 +78,14 @@ export function ScheduleView() {
     refetch: refetchStatus,
     isFetching: fetchingStatus,
   } = useSchedulerStatus();
-  const { data: runs = [], isLoading: runsLoading } = useRunsQuery();
+  const runsQuery = useRunsQuery();
+  const { data: runs = [], isPending: runsLoading } = runsQuery;
+  const retainedRunsFailure = useRetainedReadFailure(runsQuery);
+  const runsFailure =
+    retainedRunsFailure ??
+    (runsQuery.error
+      ? { error: runsQuery.error, retrying: runsQuery.fetchStatus !== 'idle' }
+      : null);
   const agents = useAgents();
   const { projects } = useProjects();
   const schedulerAvailable = !jobsError && !statusError;
@@ -315,7 +328,26 @@ export function ScheduleView() {
           )}
           {runError && <p role="alert">{runError}</p>}
 
-          {runTarget && !runsLoading && !exactRun && (
+          {runTarget && runsFailure ? (
+            <ErrorState
+              variant="compact"
+              title="Run history unavailable"
+              description={describeReadFailure(runsFailure.error)}
+              action={
+                <Button
+                  size="sm"
+                  pending={runsFailure.retrying}
+                  onClick={() => void runsQuery.refetch()}
+                >
+                  Retry
+                </Button>
+              }
+            />
+          ) : runTarget && runsLoading && !exactRun ? (
+            <SkeletonBlock count={1} label="Loading scheduled run" />
+          ) : null}
+
+          {runTarget && !runsLoading && !runsFailure && !exactRun && (
             <p role="status">That run is no longer available.</p>
           )}
 

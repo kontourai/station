@@ -1,0 +1,7 @@
+{
+  "revision": "0d6ea4ec1f1b34e93656ba6dace849353fdf059c",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Scoped review at 0d6ea4ec1f1b34e93656ba6dace849353fdf059c of only the Automations row and fixture/evidence limits affected by tests/schedule-runs.spec.ts. The first existing browser case now authors ordinary Tab/Enter/Space history disclosure, focus retention, actual controlled-history identity, settled minimum44px geometry and center hit/pointer activation at1440px and390px, while preserving Output assertions; the other two case bodies remain unchanged. The touched owner now uses audited test setup and rejects undeclared API/scheduler requests. The matrix remains an ownership/inspection map and explicitly disclaims a latest successful run; no prose change is needed. ROOT628 canonical typecheck:e2e and fixture-policy exited0, and ROOT630 read-only Biome exited0 after the sole formatting correction. These are compile/policy/style prerequisites only. All new browser assertions remain UNEXECUTED; controlled HTTP and shell authority do not establish real authentication, persisted server history, parent read-failure recovery, providers, native/device or release behavior. No other matrix row or coverage tier is recertified.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/schedule-runs.spec.ts"]}
+  ]
+}

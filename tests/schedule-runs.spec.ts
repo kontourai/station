@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 const runId = 'schedule:built-in:daily-report:log-1';
@@ -16,8 +17,9 @@ async function mockScheduleRunsApi(
 ) {
   await page.route('**/api/**', async (route) => {
     if (await fulfillStationShellRead(route)) return;
-    await route.fallback();
+    await rejectUnexpectedFixtureRequest(route);
   });
+  await page.route('**/scheduler/**', rejectUnexpectedFixtureRequest);
   const job = {
     name: 'daily-report',
     provider: 'built-in',
@@ -145,41 +147,108 @@ test.describe('Schedule run history', () => {
     page,
   }) => {
     await mockScheduleRunsApi(page);
-    await page.goto('/automations');
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/automations');
 
-    await expect(
-      page.getByRole('heading', { name: 'Automations', exact: true, level: 1 }),
-    ).toBeVisible({
-      timeout: 15_000,
-    });
-    const row = page.getByTestId('job-row-daily-report');
-    // The list's own facts: the rule as a sentence, the next run, the run
-    // strip and the state word.
-    await expect(row).toContainText(/Every day at 9:00 AM/);
-    await expect(row).toContainText(/Next: /);
-    await expect(
-      row.getByRole('img', { name: 'One run: 1 worked' }),
-    ).toBeVisible();
-    await expect(row.locator('.automations-row__status')).toHaveText('Active');
+      await expect(
+        page.getByRole('heading', {
+          name: 'Automations',
+          exact: true,
+          level: 1,
+        }),
+      ).toBeVisible({
+        timeout: 15_000,
+      });
+      const row = page.getByTestId('job-row-daily-report');
+      // The list's own facts: the rule as a sentence, the next run, the run
+      // strip and the state word.
+      await expect(row).toContainText(/Every day at 9:00 AM/);
+      await expect(row).toContainText(/Next: /);
+      await expect(
+        row.getByRole('img', { name: 'One run: 1 worked' }),
+      ).toBeVisible();
+      await expect(row.locator('.automations-row__status')).toHaveText(
+        'Active',
+      );
 
-    const name = row.getByRole('button', { name: 'daily-report', exact: true });
-    await expect(name).toHaveAttribute('aria-expanded', 'false');
-    // The name is the row's disclosure: Enter and Space toggle it.
-    await name.press('Enter');
-    await expect(name).toHaveAttribute('aria-expanded', 'true');
-    await name.press('Space');
-    await expect(name).toHaveAttribute('aria-expanded', 'false');
-    await name.click();
-    await expect(name).toHaveAttribute('aria-expanded', 'true');
-    const runs = page.getByRole('region', { name: 'Runs of daily-report' });
-    await expect(runs).toBeVisible();
-    await runs.getByRole('button', { name: 'Output' }).click();
-    await expect(
-      page.getByRole('dialog', { name: 'daily-report — Run Output' }),
-    ).toBeVisible();
-    await expect(
-      page.getByText('Daily report output from opaque run ref'),
-    ).toBeVisible();
+      const name = row.getByRole('button', {
+        name: 'daily-report',
+        exact: true,
+      });
+      await expect(name).toHaveAttribute('aria-expanded', 'false');
+      for (
+        let step = 0;
+        step < 40 &&
+        !(await name.evaluate(
+          (button) => button === button.ownerDocument.activeElement,
+        ));
+        step += 1
+      ) {
+        await page.keyboard.press('Tab');
+      }
+      await expect(name).toBeFocused();
+      const controls = await name.getAttribute('aria-controls');
+      expect(controls).toBeTruthy();
+      const history = page.locator(`[id="${controls}"]`);
+      await expect(history).toHaveCount(0);
+      await page.keyboard.press('Enter');
+      await expect(name).toHaveAttribute('aria-expanded', 'true');
+      await expect(history).toBeVisible();
+      await page.keyboard.press('Space');
+      await expect(name).toHaveAttribute('aria-expanded', 'false');
+      await expect(history).toHaveCount(0);
+      await expect(name).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(name).toHaveAttribute('aria-expanded', 'true');
+      await expect(history).toBeVisible();
+      await name.evaluate(async (button) => {
+        await Promise.all(
+          button
+            .getAnimations({ subtree: true })
+            .filter(
+              (animation) =>
+                animation.playState === 'running' &&
+                animation.effect?.getTiming().iterations !== Infinity &&
+                animation.timeline === button.ownerDocument.timeline,
+            )
+            .map((animation) => animation.finished),
+        );
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
+      });
+      const box = await name.boundingBox();
+      expect(box).not.toBeNull();
+      if (!box) throw new Error('Automation history disclosure has no box');
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(
+        await name.evaluate((button) => {
+          const bounds = button.getBoundingClientRect();
+          const hit = button.ownerDocument.elementFromPoint(
+            bounds.x + bounds.width / 2,
+            bounds.y + bounds.height / 2,
+          );
+          return hit === button || (hit !== null && button.contains(hit));
+        }),
+      ).toBe(true);
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(name).toHaveAttribute('aria-expanded', 'false');
+      await expect(history).toHaveCount(0);
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(name).toHaveAttribute('aria-expanded', 'true');
+      await expect(history).toBeVisible();
+      const runs = page.getByRole('region', { name: 'Runs of daily-report' });
+      await expect(runs).toBeVisible();
+      await runs.getByRole('button', { name: 'Output' }).click();
+      await expect(
+        page.getByRole('dialog', { name: 'daily-report — Run Output' }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('Daily report output from opaque run ref'),
+      ).toBeVisible();
+    }
   });
 
   test('deep-links to the exact run and opens its output', async ({ page }) => {

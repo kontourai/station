@@ -252,6 +252,8 @@
 }
 
 .automations-row__name {
+  min-height: 44px;
+  min-width: 44px;
   display: block;
   max-width: 100%;
   padding: 0;

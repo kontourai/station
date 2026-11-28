@@ -175,7 +175,7 @@ export function ScheduleAutomationList({
                 type="button"
                 className="automations-row__name"
                 aria-expanded={open}
-                aria-controls={open ? detailId : undefined}
+                aria-controls={detailId}
                 onClick={() => onExpand(open ? null : key)}
               >
                 {label}
