@@ -4193,15 +4193,21 @@ export class OrchestrationService {
             detail,
             authority,
           );
+        const describesHandoffPredecessor =
+          session.threadId !== lineageTail &&
+          !this.sessionReadModel.has(lineageTail) &&
+          this.conversationLineage.unstartedHandoffPredecessor(
+            conversationId,
+            lineageTail,
+          ) === session.threadId;
         return {
           sessionId: session.threadId,
-          // Only `readCurrentConversationSession`'s reserved-tail fallback
-          // answers with a Session other than the lineage tail, and only a
-          // plain reservation may be described by it (#2424). A handoff or
-          // context-boundary tail stays a mismatch, as before.
-          ...(session.threadId !== lineageTail &&
-          session.threadId ===
-            this.conversationLineage.plainReservationPredecessor(conversationId)
+          ...(describesHandoffPredecessor ||
+          (session.threadId !== lineageTail &&
+            session.threadId ===
+              this.conversationLineage.plainReservationPredecessor(
+                conversationId,
+              ))
             ? { reservedSuccessorSessionId: lineageTail }
             : {}),
           ...(session.assignedAgentSlug
@@ -4239,8 +4245,12 @@ export class OrchestrationService {
           // does not become writable merely because the selected Agent has a
           // provider today.
           canContinue:
-            !disconnected && canResolveConversationContinuation(detail),
-          continuationPending: isConversationContinuationPending(detail),
+            !describesHandoffPredecessor &&
+            !disconnected &&
+            canResolveConversationContinuation(detail),
+          continuationPending: describesHandoffPredecessor
+            ? this.startsUnderway.has(lineageTail)
+            : isConversationContinuationPending(detail),
           ...(disconnected || nextTurnStartsSession === undefined
             ? {}
             : { nextTurnStartsSession }),
@@ -4249,8 +4259,9 @@ export class OrchestrationService {
             : {}),
         };
       },
-      reportUnavailable: (error) =>
+      reportUnavailable: (conversationId, error) =>
         options.logger.warn('Conversation open resolution is unavailable', {
+          conversationId,
           error: errorMessage(error),
         }),
     });
@@ -9093,7 +9104,15 @@ export class OrchestrationService {
       detail.session.threadId !== currentSessionId &&
       (freshContextPredecessor ||
         detail.session.threadId ===
-          this.conversationLineage.plainReservationPredecessor(conversationId))
+          this.conversationLineage.plainReservationPredecessor(
+            conversationId,
+          ) ||
+        (!this.sessionReadModel.has(currentSessionId) &&
+          detail.session.threadId ===
+            this.conversationLineage.unstartedHandoffPredecessor(
+              conversationId,
+              currentSessionId,
+            )))
         ? detail.session.threadId
         : currentSessionId;
     // One whole-history read per open: the conversation query and the

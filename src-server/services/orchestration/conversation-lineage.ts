@@ -922,12 +922,11 @@ export class ConversationLineage {
       ['reserved', 'claimed', 'failed', 'indeterminate'].includes(
         boundary.status,
       );
-    const activeHandoff =
-      handoff &&
-      handoff.conversationId === conversationId &&
-      handoff.predecessorSessionId === currentLineage.predecessorSessionId &&
-      handoff.sessionId === currentSessionId;
-    if (!activeBoundary && !activeHandoff) return null;
+    if (
+      !activeBoundary &&
+      !this.unstartedHandoffPredecessor(conversationId, currentSessionId)
+    )
+      return null;
     return this.deps.readSession(
       currentLineage.predecessorSessionId,
       authority,
@@ -939,8 +938,7 @@ export class ConversationLineage {
    * tail with no handoff marker and no context boundary. Only that tail is
    * one the next ordinary send reuses (`resolveConversationContinuation`
    * refuses a handoff tail and an unstartable boundary, and starts a
-   * fresh-context child for a startable one), so only it may be described by
-   * its predecessor when the conversation is opened. Says nothing about
+   * fresh-context child for a startable one). Says nothing about
    * whether the tail has started; callers establish that separately.
    */
   plainReservationPredecessor(conversationId: string): string | undefined {
@@ -950,6 +948,30 @@ export class ConversationLineage {
     if (
       store.conversationHandoffForSession(tail.sessionId) ||
       store.conversationContextBoundaryForSuccessor(tail.sessionId)
+    )
+      return undefined;
+    return tail.predecessorSessionId;
+  }
+
+  /** The exact predecessor of a handoff whose target Session has not started. */
+  unstartedHandoffPredecessor(
+    conversationId: string,
+    reservedSessionId: string,
+  ): string | undefined {
+    const store = this.deps.eventStore;
+    const tail = store?.conversationSessions(conversationId).at(-1);
+    if (
+      !store ||
+      tail?.sessionId !== reservedSessionId ||
+      !tail.predecessorSessionId ||
+      store.readSessionByThread(reservedSessionId)
+    )
+      return undefined;
+    const handoff = store.conversationHandoffForSession(reservedSessionId);
+    if (
+      handoff?.conversationId !== conversationId ||
+      handoff.sessionId !== reservedSessionId ||
+      handoff.predecessorSessionId !== tail.predecessorSessionId
     )
       return undefined;
     return tail.predecessorSessionId;

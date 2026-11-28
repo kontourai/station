@@ -40,7 +40,8 @@ export function createConversationOpenResolver<Prefetched = never>(deps: {
     /**
      * #2424: set when `sessionId` is the authorized predecessor of a reserved
      * lineage child that has not started yet. The conversation is then
-     * described by that predecessor; the reservation is the next send's.
+     * described by that predecessor. Continuation eligibility is reported
+     * separately.
      */
     reservedSuccessorSessionId?: string;
     execution?: ConversationOpenExecution;
@@ -54,7 +55,7 @@ export function createConversationOpenResolver<Prefetched = never>(deps: {
     /** #2309: the conversation's activity, read with the current child. */
     activity?: ConversationTurnActivity;
   } | null>;
-  reportUnavailable?(error: unknown): void;
+  reportUnavailable?(conversationId: string, error: unknown): void;
 }): ConversationOpenResolver<Prefetched> {
   return {
     async resolve({ conversation, authority, expectedSessionId, prefetched }) {
@@ -127,7 +128,7 @@ export function createConversationOpenResolver<Prefetched = never>(deps: {
           recoveryActions: [],
         };
       } catch (error) {
-        deps.reportUnavailable?.(error);
+        deps.reportUnavailable?.(conversation.id, error);
         return {
           status: 'unavailable',
           conversation,
