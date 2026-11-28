@@ -307,8 +307,9 @@ describe('Windows owned-process registry (#3873)', () => {
           callback(
             failure === 'execution'
               ? Object.assign(new Error('private probe error'), {
+                  cmd: 'private probe command',
                   code: 'ETIMEDOUT',
-                  signal: 'SIGKILL',
+                  signal: 'SIGKILL' as const,
                   killed: true,
                 })
               : null,
