@@ -1,0 +1,7 @@
+{
+  "revision": "7d0ce1e1fce5718942ceef5616fb6c4ee690c72d",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Verified e2e-coverage-matrix.md remains accurate after updating composer mode button selector in agents-new-cli-turn.spec.ts.","inputs":["tests/agents-new-cli-turn.spec.ts"]}
+  ]
+}
