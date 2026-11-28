@@ -15,6 +15,7 @@ declare global {
       wait(): void;
       fail(): void;
       admit(): void;
+      motion(value: 'reduce' | 'system'): void;
       nativeReads: number;
       glyphs: number[];
     };
@@ -39,9 +40,11 @@ describe('cold-launch presentation in the browser', () => {
           import {StartupHandoff} from './src-ui/src/components/StartupHandoff';
           import {StartupScreen} from './src-ui/src/components/StartupScreen';
           import {SplitPaneLayout} from './src-ui/src/components/SplitPaneLayout';
+          import {applyMotion} from './src-ui/src/lib/display-preferences';
           import {observeInitialStartupVisibility} from './src-ui/src/platform/native/startupPresentation';
           let admitted = new URL(location.href).searchParams.get('native') !== 'covered';
           const fixture = window.startupFixture = {nativeReads: 0, glyphs: [], admit(){admitted = true}};
+          fixture.motion = value => applyMotion(document.documentElement, value);
           window.fixtureAdapter = {
             platform: new URL(location.href).searchParams.has('native') ? 'tauri' : 'web',
             async getCapabilityReport(){return {status:'ok',value:{platform:'macos'}}},
@@ -120,7 +123,12 @@ describe('cold-launch presentation in the browser', () => {
     await browser?.close();
   });
 
-  async function open({ query = '', reduced = false, mobile = false } = {}) {
+  async function open({
+    query = '',
+    reduced = false,
+    mobile = false,
+    stationReduced = false,
+  } = {}) {
     const page = await browser.newPage({
       reducedMotion: reduced ? 'reduce' : 'no-preference',
       viewport: mobile ? { width: 390, height: 844 } : undefined,
@@ -128,6 +136,13 @@ describe('cold-launch presentation in the browser', () => {
     const epoch = new Date('2026-10-15T00:00:00Z');
     await page.clock.install({ time: epoch });
     await page.clock.pauseAt(epoch);
+    if (stationReduced)
+      await page.addInitScript(() => {
+        localStorage.setItem(
+          'station-device-settings-v1',
+          JSON.stringify({ values: { motion: 'reduce' } }),
+        );
+      });
     const html = readFileSync(
       resolve(ROOT, 'src-ui/index.html'),
       'utf8',
@@ -330,6 +345,104 @@ describe('cold-launch presentation in the browser', () => {
     }
   });
 
+  test('cached Station Reduced paints a static lockup and hands off immediately when ready', async () => {
+    const page = await open({ stationReduced: true });
+    try {
+      expect(await page.locator('html').getAttribute('data-motion')).toBe(
+        'reduce',
+      );
+      expect(
+        await page.evaluate(
+          () => matchMedia('(prefers-reduced-motion: reduce)').matches,
+        ),
+      ).toBe(false);
+      await page.clock.runFor(100);
+      expect(
+        await intro(page).locator('canvas').getAttribute('data-ready'),
+      ).toBe('true');
+      const glyphs = await page.evaluate(() => window.startupFixture.glyphs);
+      expect(glyphs.length).toBeGreaterThan(0);
+      expect.soft(glyphs.slice(-6)).toEqual([1, 1, 1, 1, 1, 1]);
+      await page.clock.runFor(100);
+      expect
+        .soft(await page.evaluate(() => window.startupFixture.glyphs.length))
+        .toBe(glyphs.length);
+      expect(await intro(page).count()).toBe(1);
+      await page.evaluate(() => window.startupFixture.ready());
+      expect(await intro(page).count()).toBe(0);
+      expect(
+        await page
+          .locator('#root')
+          .evaluate((root) => root instanceof HTMLElement && root.inert),
+      ).toBe(false);
+    } finally {
+      await page.close();
+    }
+  });
+
+  test.each(['waiting', 'ready', 'fading'] as const)(
+    'live Station Reduced respects pending work and immediately releases a %s intro',
+    async (phase) => {
+      const page = await open();
+      try {
+        await page.clock.runFor(100);
+        expect(
+          await intro(page).locator('canvas').getAttribute('data-ready'),
+        ).toBe('true');
+        expect(
+          await page.evaluate(() => window.startupFixture.glyphs.length),
+        ).toBeGreaterThan(0);
+        if (phase !== 'waiting')
+          await page.evaluate(() => window.startupFixture.ready());
+        if (phase === 'fading') {
+          await page.clock.runFor(950);
+          expect(await intro(page).getAttribute('class')).toContain(
+            'station-startup--leaving',
+          );
+        }
+        await page.evaluate(() => window.startupFixture.motion('reduce'));
+        expect(await page.locator('html').getAttribute('data-motion')).toBe(
+          'reduce',
+        );
+        if (phase === 'waiting') {
+          await page.clock.runFor(100);
+          expect(await intro(page).count()).toBe(1);
+          expect(await intro(page).getAttribute('aria-label')).toBe(
+            'Preparing this device',
+          );
+          const glyphs = await page.evaluate(
+            () => window.startupFixture.glyphs,
+          );
+          expect.soft(glyphs.slice(-6)).toEqual([1, 1, 1, 1, 1, 1]);
+          await page.clock.runFor(100);
+          expect
+            .soft(
+              await page.evaluate(() => window.startupFixture.glyphs.length),
+            )
+            .toBe(glyphs.length);
+          await page.evaluate(() => window.startupFixture.motion('system'));
+          expect(
+            await page.locator('html').getAttribute('data-motion'),
+          ).toBeNull();
+          await page.clock.runFor(100);
+          expect(
+            await page.evaluate(() => window.startupFixture.glyphs.length),
+          ).toBeGreaterThan(glyphs.length);
+          await page.evaluate(() => window.startupFixture.motion('reduce'));
+          await page.evaluate(() => window.startupFixture.ready());
+        }
+        expect(await intro(page).count()).toBe(0);
+        expect(
+          await page
+            .locator('#root')
+            .evaluate((root) => root instanceof HTMLElement && root.inert),
+        ).toBe(false);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
   test('time behind the native startup cover does not consume the visible intro', async () => {
     const page = await open({ query: '?native=covered' });
     try {
@@ -347,6 +460,59 @@ describe('cold-launch presentation in the browser', () => {
       expect(await intro(page).count()).toBe(1);
       await page.clock.runFor(450);
       expect(await intro(page).count()).toBe(0);
+    } finally {
+      await page.close();
+    }
+  });
+
+  test('cached Station Reduced paints after native admission while readiness is pending', async () => {
+    const page = await open({ query: '?native=covered', stationReduced: true });
+    try {
+      await page.waitForFunction(() => {
+        const logo = document.querySelector<HTMLImageElement>(
+          '.station-startup__logo',
+        );
+        return logo?.complete && logo.naturalWidth > 0;
+      });
+      await page.clock.runFor(200);
+      expect(await page.locator('html').getAttribute('data-motion')).toBe(
+        'reduce',
+      );
+      expect(
+        await page.evaluate(
+          () => matchMedia('(prefers-reduced-motion: reduce)').matches,
+        ),
+      ).toBe(false);
+      expect(
+        await intro(page).locator('canvas').getAttribute('data-ready'),
+      ).toBeNull();
+      expect(await page.evaluate(() => window.startupFixture.glyphs)).toEqual(
+        [],
+      );
+      expect(
+        await page.evaluate(() => window.startupFixture.nativeReads),
+      ).toBeGreaterThan(1);
+      await page.evaluate(() => window.startupFixture.admit());
+      await page.clock.runFor(150);
+      expect(
+        await intro(page).locator('canvas').getAttribute('data-ready'),
+      ).toBe('true');
+      const glyphs = await page.evaluate(() => window.startupFixture.glyphs);
+      expect(glyphs.slice(-6)).toEqual([1, 1, 1, 1, 1, 1]);
+      expect(await intro(page).getAttribute('aria-label')).toBe(
+        'Preparing this device',
+      );
+      await page.clock.runFor(100);
+      expect(
+        await page.evaluate(() => window.startupFixture.glyphs.length),
+      ).toBe(glyphs.length);
+      await page.evaluate(() => window.startupFixture.ready());
+      expect(await intro(page).count()).toBe(0);
+      expect(
+        await page
+          .locator('#root')
+          .evaluate((root) => root instanceof HTMLElement && root.inert),
+      ).toBe(false);
     } finally {
       await page.close();
     }

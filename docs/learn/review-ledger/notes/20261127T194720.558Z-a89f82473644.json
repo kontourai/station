@@ -1,0 +1,9 @@
+{
+  "revision": "59c92bdd4aa9b6f0a46d0d2b0b4b6c16ead33368",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Scoped #5644 review of cited historical outside-agent/OAuth evidence: new real serialized Windows readiness listener source/staged-discovery fixtures do not change consent or OAuth claims. Source cold/warm and verified staged helper paths execute; staged discovery fixture is not a complete installed archive journey. Clean cd889719 DACL mutation caused both intended listener failures, restored both pass; startup abort-fence mutation caused two intended late-identity-call failures, restored full owner contains passing controls. Existing 29 Windows failures remain disclosed, not waived.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Scoped #5644 review of cited historical outside-agent/OAuth evidence: new real serialized Windows readiness listener source/staged-discovery fixtures do not change consent or OAuth claims. Source cold/warm and verified staged helper paths execute; staged discovery fixture is not a complete installed archive journey. Clean cd889719 DACL mutation caused both intended listener failures, restored both pass; startup abort-fence mutation caused two intended late-identity-call failures, restored full owner contains passing controls. Existing 29 Windows failures remain disclosed, not waived.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}

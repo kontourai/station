@@ -887,6 +887,22 @@ export const STATION_CONTROL_TOOL_POLICY = {
     personOnly: 'never',
     routes: [post('/api/orchestration/session-control/send')],
   },
+  cancel_coordination_subscription: {
+    assurance: 'any',
+    role: 'project',
+    projectAction: 'execute',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/session-control/cancel-subscription')],
+  },
+  watch_pull_request_status: {
+    assurance: 'any',
+    role: 'project',
+    projectAction: 'execute',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/session-control/watch-pull-request')],
+  },
   interrupt_session: {
     assurance: 'any',
     role: 'project',

@@ -22,6 +22,22 @@ npm run veritas:readiness:diff  # readiness --changed-from main --changed-to HEA
 npm run veritas:coverage        # readiness --check coverage --working-tree
 ```
 
+On Windows, use these package scripts or invoke
+`node scripts/run-veritas-readiness.mjs` with the readiness arguments. The
+wrapper locates Git for Windows, verifies its `sh.exe`, and prepends that
+directory to the child process's PATH without changing the machine PATH.
+Install Git for Windows if the wrapper reports that it cannot locate Git or
+its shell. This supplies a check-launch prerequisite; it does not change the
+selected checks or establish that they passed.
+
+Raw `npx --no @kontourai/veritas readiness` does not use Station's wrapper.
+Without `sh` in PATH, the pinned runner can return failed receipts with null
+exit codes and empty output because checks never launched (#5632;
+[upstream diagnostic](https://github.com/kontourai/veritas/issues/346)). Treat
+those receipts as failed launch evidence, not executed checks. Use the
+supported wrapper to obtain a new readiness report; a successful shell probe
+alone is not a readiness result.
+
 For the installed CLI's readiness command, exit 0 means no blocking failures;
 1 means an evidence-check or blocking-policy failure; 2 means a configuration
 or runtime error. Read the report's selected scope, warnings, skipped checks

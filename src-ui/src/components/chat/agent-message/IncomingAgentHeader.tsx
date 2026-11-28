@@ -50,7 +50,9 @@ export function incomingMessageLabel(
   if (sender.kind === 'pull-request-feedback')
     return `${PULL_REQUEST_FEEDBACK_LABEL}, not from you`;
   const agent = senderAgentLabel(sender);
-  const source = agent ?? senderSessionLabel(sender);
+  // A result names the chat it came from when that was recorded; a turn from
+  // before that has only its Agent or Session.
+  const source = sender.title ?? agent ?? senderSessionLabel(sender);
   if (sender.kind === 'delegation-result') return `Task result from ${source}`;
   return `Message from another agent: ${senderSessionLabel(sender)}${agent ? `, ${agent}` : ''}`;
 }
