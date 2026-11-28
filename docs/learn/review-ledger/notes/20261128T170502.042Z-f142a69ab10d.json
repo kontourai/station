@@ -1,0 +1,47 @@
+{
+  "revision": "37ebc35fe377de232a732f787f6368b03749e5a2",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Updated approval delivery section for background read-only reconciliation on sent and unconfirmed decisions; verified ToolCallDisplay no longer flashes Check status on happy-path sent approvals and offers Check status as fallback only after background checks exhaust.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Updated staged Agent switch reload recovery prose to match automatic read-only observation in useStagedAgentChange and ConversationBody, with Check status as fallback.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ConversationHandoffDialog.test.tsx","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Updated companion archive preparation section to document bounded background read-only polling without panel collapse and fallback Check preparation status.","inputs":["deployment/telemetry/README.md","src-ui/src/views/developer/CompanionManaged.tsx"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Updated Companion archive preparation guidance to describe background read-only status checks in place without collapsing loaded controls, with Check preparation status as fallback.","inputs":["docs/guides/monitoring.md","src-ui/src/views/developer/CompanionArchivePreparation.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Updated uncertain Agent change section to reflect bounded background handoff status observation in ConversationHandoffDialog with Check status as fallback.","inputs":["docs/reference/session-api.md","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Updated Request outcome unknown row to note automatic background review status checking with Check request as fallback.","inputs":["docs/user/concepts.md","src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked module-map claims against ToolCallDisplay, ConversationBody, and CompanionManaged edits: no module boundary, route, or contract changed; only read-only UI status checks moved to background backoff.","inputs":["docs/architecture/module-map.md","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/views/developer/CompanionManaged.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked ChatSetupHelper citations: Check again remains available alongside debounced focus/visibility recheck; no documented setup contract changed.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/chat-start/ChatSetupHelper.tsx"]},
+
+    {"path":"docs/design/developer-surface.md","note":"Checked developer-surface claims against CompanionArchivePreparation and CompanionManaged: route, prerequisite gating, lock blocking, and stopped-service install rules are unchanged.","inputs":["docs/design/developer-surface.md","src-ui/src/views/developer/CompanionArchivePreparation.tsx","src-ui/src/views/developer/CompanionManaged.tsx","src-ui/src/views/developer/__tests__/TelemetryCompanion.test.tsx"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked ToolCallDisplay edits: MCP Apps host rendering, CSP, and preview boundaries are untouched; change only affects approval decision status checking.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked ConversationBody edits: shell/board ownership and composer boundaries are unchanged; only stale busy-turn and staged-switch status checks run in the background.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked ConversationBody edits: Station connection routing, authority scope, and delivery ownership are unchanged.","inputs":["docs/design/station-connection.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked EngineAccountOverview and EngineSignInPanel edits: Check again remains available with debounced focus/visibility recheck, and account login errors auto-reconcile in the background with Check status fallback; no sign-in or permission contract changed.","inputs":["docs/guides/connections.md","src-ui/src/__tests__/EngineAccountOverview.test.tsx","src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx","src-ui/src/views/EngineAccountOverview.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked RequestInspectionDialog edit: only changed useExactRequestDecision.recheck return type from void to Promise<'settled'|'pending'> for ExactRequestInline background checks; inspection dialog behavior is unchanged.","inputs":["docs/guides/starter-work.md","src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked RequestInspectionDialog edit: non-visual return-type change on recheck; walkthrough scenes remain accurate.","inputs":["docs/learn/walkthroughs.md","src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked CompanionArchivePreparation and CompanionManaged edits: SDK query/mutation hook signatures and public API surface are unchanged.","inputs":["docs/reference/sdk.md","src-ui/src/views/developer/CompanionArchivePreparation.tsx","src-ui/src/views/developer/CompanionManaged.tsx","src-ui/src/views/developer/__tests__/TelemetryCompanion.test.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked RequestInspectionDialog, ChatSetupHelper, and MessageDeliveryNote edits: user-visible setup actions, Check again, and honest delivery state labels remain accurate while read-only checks also run in the background.","inputs":["docs/user/getting-started.md","src-ui/src/components/attention/RequestInspectionDialog.tsx","src-ui/src/components/chat-start/ChatSetupHelper.tsx","src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked TaskCodeReviewPanel edits: Task review feature-preview settings and availability rules are unchanged.","inputs":["docs/user/settings.md","src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked ConversationBody edits: UI ownership and conversation boundary guidance remains accurate.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Checked RequestInspectionDialog edit: only changed useExactRequestDecision.recheck return value for ExactRequestInline background checking; rendered RequestInspectionDialog UI and screenshot pixels are unchanged.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked RequestInspectionDialog edit: only changed useExactRequestDecision.recheck return value for ExactRequestInline background checking; rendered RequestInspectionDialog UI and walkthrough recording are unchanged.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/components/attention/RequestInspectionDialog.tsx"]}
+  ]
+}
