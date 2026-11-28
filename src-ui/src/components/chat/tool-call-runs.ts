@@ -29,18 +29,10 @@ import { claudeArtifactLinkOf } from './claude-artifact-link';
 /** A call shown as its own row rather than one line of a collapsed run. */
 function hasOwnCallRow(part: ToolCallLike): boolean {
   return (
+    part.needsApproval === true ||
     hasStationControlCallRow(part) ||
     isAppearanceProposalCall(part) ||
     claudeArtifactLinkOf(part) !== undefined
-  );
-}
-
-/** A single-call run whose call is a published Claude Code artifact. */
-function isArtifactRun(block: { calls: { part: ToolCallLike }[] }): boolean {
-  return (
-    block.calls.length === 1 &&
-    (claudeArtifactLinkOf(block.calls[0]!.part) !== undefined ||
-      isAppearanceProposalCall(block.calls[0]!.part))
   );
 }
 
@@ -287,9 +279,11 @@ function foldToolRuns<P extends ToolCallLike>(
   const interludes: { part: P; index: number }[] = [];
   const kept: RunBlock<P>[] = [];
   for (const block of blocks.slice(firstRun, lastRun + 1)) {
-    // A published artifact is something the agent produced: like a file, it
-    // stays in the transcript instead of folding into the work sheet.
-    if (block.type === 'tool-call-run' && isArtifactRun(block)) {
+    if (
+      block.type === 'tool-call-run' &&
+      block.calls.length === 1 &&
+      hasOwnCallRow(block.calls[0].part)
+    ) {
       kept.push(block);
     } else if (block.type === 'tool-call-run') {
       calls.push(...block.calls);
