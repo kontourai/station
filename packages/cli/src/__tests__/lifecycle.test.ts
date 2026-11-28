@@ -62,7 +62,7 @@ import {
 } from '@kontourai/station-shared/windows-path-trust';
 import { buildSync } from 'esbuild';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, type Mock, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../../src-server/runtime/bootstrap/runtime-http.js';
 import type { EventBus } from '../../../../src-server/services/orchestration/event-bus.js';
@@ -8526,6 +8526,11 @@ describe('Windows readiness verifier lifecycle', () => {
 
 describe('buildUiServerScript output runs as a real standalone node process (code-review M2)', () => {
   const makeUiDir = trackTempDirs();
+  let generatedScriptLifecycle: LifecycleModule;
+
+  beforeAll(async () => {
+    generatedScriptLifecycle = await import('../commands/lifecycle.js');
+  });
 
   function spawnUiScript(script: string, environment: NodeJS.ProcessEnv = {}) {
     // Observe the child's real listener; a peer's HTTP response is not readiness.
@@ -8589,7 +8594,7 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
 
   it('spawns the generated script with syntax-bearing configuration and makes one proxied request + one static request against it', async () => {
     const http = await import('node:http');
-    const lifecycle = await import('../commands/lifecycle.js');
+    const lifecycle = generatedScriptLifecycle;
 
     const uiDir = join(makeUiDir('station-ui-spawn-'), "app ' ` \u2028");
     mkdirSync(uiDir);
