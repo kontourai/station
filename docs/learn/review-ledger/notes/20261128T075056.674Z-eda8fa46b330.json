@@ -1,0 +1,7 @@
+{
+  "revision": "a1dcc5ddea2552b81d888252424c0edebea8c8d5",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the explicit Inbox refresh group against the registered runner and complete caller-boundary fixture: desktop1440/mobile-width390,64 fixed sessions, writable retained reader, ordinary Refresh chats click, successful post-click four-source responses, changed title, focus and final list scroll, then retained URL/draft/answer position. IDs/timestamps/order are fixture inputs rather than independently asserted rendered outcomes. Clean7a1 production capture passed3samples per width; timings include harness/profiling overhead. Transient frames, long scrolled transcript, failure recovery, backend/device/native performance and p95 remain unqualified. Other guide sections unchanged.","inputs":["docs/guides/testing.md"]}
+  ]
+}
