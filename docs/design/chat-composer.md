@@ -1323,11 +1323,16 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 ### Turn activity and follow-up delivery
 
-During a running turn, the trailing segment of Send toggles between amber
-**Queue** and green **Steer**. The Send button changes icon and color with the
-mode. Queue is the default and the selection lasts for that conversation
-while the composer is mounted. Stop remains with the Working status when that
-status is visible.
+During a running turn, the Send mode segment sits before Send. Its 18 px
+crossing-arrows icon opens the Queue and Steer choices. In the compact
+composer the split button color reflects the current mode. Stop remains
+with the Working status when that status is visible.
+
+Queue is the initial default. Signed-in users can save Queue or Steer under
+**Settings → Your account preferences → Default send mode**, or save the
+selected mode from the Send mode menu. A change made in the menu applies
+to the current Session until switching Sessions. Unsupported steering and
+drafts with files on a host that queues attachments use Queue for that send.
 
 The Queue count opens the list from the composer toolbar. Move changes the
 order of waiting messages. Tap a message to edit its full text in the

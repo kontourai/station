@@ -25,6 +25,7 @@ import {
   endConversationReferenceDrag,
   startConversationReferenceDrag,
 } from '../components/chat/conversationReferenceDrag';
+import { AccountPreferencesContext } from '../contexts/AccountPreferencesContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 /** A custom-appearance hook selector, from the contract (APPEARANCE_HOOKS). */
@@ -145,7 +146,143 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
   return props;
 }
 
+function accountSendMode(
+  mode?: 'steer' | 'queue',
+  status: React.ContextType<
+    typeof AccountPreferencesContext
+  >['status'] = 'account',
+): React.ContextType<typeof AccountPreferencesContext> {
+  return {
+    status,
+    data: { schemaVersion: 1, values: { chatDefaultSendMode: mode } },
+    saving: false,
+    retrying: false,
+    waitingForConnection: false,
+    error: false,
+    conflict: false,
+    save: vi.fn(),
+    retry: vi.fn(),
+  };
+}
+
 describe('ChatInputArea', () => {
+  test('follows the account default until choosing a mode for this Session', async () => {
+    const props = chatInputAreaProps({
+      turnInFlight: true,
+      busyFollowUp: 'steer',
+      onQueueFollowUp: vi.fn(),
+    });
+    const account = accountSendMode('steer');
+    const view = (value: typeof account, sessionId = 'first') => (
+      <AccountPreferencesContext.Provider value={value}>
+        <ChatInputArea {...props} sessionId={sessionId} />
+      </AccountPreferencesContext.Provider>
+    );
+    const { rerender } = render(view(accountSendMode('steer', 'loading')));
+    expect(
+      screen.getByRole('button', { name: 'Send mode: Queue' }),
+    ).toBeTruthy();
+    rerender(view(account));
+    const mode = screen.getByRole('button', { name: 'Send mode: Steer' });
+    const send = screen.getByRole('button', { name: 'Send', exact: true });
+    expect(mode.nextElementSibling).toBe(send);
+    expect(mode.querySelector('svg path')?.getAttribute('d')).toMatch(
+      /M2\.5 4\.5.*M2\.5 11\.5/,
+    );
+    await act(async () => fireEvent.click(send));
+    expect(props.onSend).toHaveBeenCalledWith('steer');
+
+    rerender(view(accountSendMode('queue')));
+    fireEvent.click(screen.getByRole('button', { name: 'Send mode: Queue' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Queue for next turn' }),
+    );
+    rerender(view(account));
+    fireEvent.click(screen.getByRole('button', { name: 'Send mode: Queue' }));
+    expect(account.save).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save Queue as default' }),
+    );
+    expect(account.save).toHaveBeenCalledWith({ chatDefaultSendMode: 'queue' });
+
+    rerender(view(account, 'second'));
+    expect(screen.queryByRole('dialog', { name: 'Send mode' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Send mode: Steer' }),
+    ).toBeTruthy();
+    rerender(view(account, 'first'));
+    expect(
+      screen.getByRole('button', { name: 'Send mode: Steer' }),
+    ).toBeTruthy();
+  });
+
+  test.each<[string, Partial<React.ComponentProps<typeof ChatInputArea>>]>([
+    ['unsupported steering', { busyFollowUp: 'queue' }],
+    [
+      'attached file',
+      {
+        attachments: [
+          {
+            id: 'file',
+            name: 'test.txt',
+            type: 'text/plain',
+            size: 4,
+            data: 'dGVzdA==',
+          },
+        ],
+      },
+    ],
+    [
+      'staged attachment',
+      {
+        attachmentStages: [
+          {
+            name: 'test.txt',
+            mimeType: 'text/plain',
+            clientAttachmentId: 'file',
+            size: 4,
+            state: 'complete',
+            progress: 100,
+          },
+        ],
+      },
+    ],
+  ])(
+    'queues with a saved Steer default when the draft has %s',
+    async (_, overrides) => {
+      const props = chatInputAreaProps({
+        turnInFlight: true,
+        busyFollowUp: 'steer',
+        busyQueueTakesFiles: true,
+        onQueueFollowUp: vi.fn(),
+      });
+      const account = accountSendMode('steer');
+      const view = (
+        options: Partial<React.ComponentProps<typeof ChatInputArea>> = {},
+      ) => (
+        <AccountPreferencesContext.Provider value={account}>
+          <ChatInputArea {...props} {...options} />
+        </AccountPreferencesContext.Provider>
+      );
+      const { rerender } = render(view(overrides));
+      expect(
+        screen.getByRole('button', { name: 'Send mode: Queue' }),
+      ).toBeTruthy();
+      await act(async () =>
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Send', exact: true }),
+        ),
+      );
+      expect(props.onQueueFollowUp).toHaveBeenCalledOnce();
+      expect(props.onSend).not.toHaveBeenCalled();
+      expect(account.save).not.toHaveBeenCalled();
+      rerender(view());
+      expect(
+        screen.getByRole('button', { name: 'Send mode: Steer' }),
+      ).toBeTruthy();
+    },
+  );
+
   test('queues with Send on a native steering engine and keeps Stop available', () => {
     const onQueueFollowUp = vi.fn(async () => {});
     const onSend = vi.fn(async () => {});

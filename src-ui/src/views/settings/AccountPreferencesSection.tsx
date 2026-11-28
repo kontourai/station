@@ -12,6 +12,7 @@ import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { ErrorState } from '../../components/state';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
+import { DEFAULT_CHAT_SEND_MODE } from '../../lib/account-preference-values';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
@@ -135,6 +136,31 @@ export function AccountPreferencesSection() {
           >
             Import previous preferences
           </Button>
+        }
+      />
+      <PageRow
+        {...settingsRow('chat-default-send-mode')}
+        description="Choose how messages are sent during a running turn."
+        control={
+          <select
+            className="editor-select"
+            aria-label="Default send mode"
+            disabled={account.saving || account.status !== 'account'}
+            value={
+              account.data?.values.chatDefaultSendMode ?? DEFAULT_CHAT_SEND_MODE
+            }
+            onChange={(event) =>
+              account.save({
+                chatDefaultSendMode:
+                  event.target.value === 'steer'
+                    ? 'steer'
+                    : DEFAULT_CHAT_SEND_MODE,
+              })
+            }
+          >
+            <option value="queue">Queue</option>
+            <option value="steer">Steer</option>
+          </select>
         }
       />
       {engines.map((engine) => (

@@ -1,3 +1,4 @@
+import type { ChatSendMode } from '@kontourai/station-contracts/account-preferences';
 import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import type {
   AcpApprovalControl,
@@ -12,12 +13,14 @@ import {
 import type { STTState as VoiceState } from '@kontourai/station-sdk';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
 import { hasUploadsInFlight } from '../../hooks/useComposerAttachments';
 import { useDockSlotDevice, useIsMobile } from '../../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { SlashCommand } from '../../hooks/useSlashCommands';
+import { DEFAULT_CHAT_SEND_MODE } from '../../lib/account-preference-values';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import type {
   ComposerAttachmentStageSnapshot,
@@ -60,9 +63,9 @@ import { AgentIcon } from '../icons/AgentIcon';
 import { BrandIcon } from '../icons/BrandIcon';
 import {
   AgentGlyph,
-  ArrowDownGlyph,
   EngineGlyph,
   SendGlyph,
+  SendModeGlyph,
   TrashGlyph,
 } from '../icons/Glyph';
 import { ModelIcon } from '../icons/ModelIcon';
@@ -795,6 +798,8 @@ export function ChatInputArea({
     followUpPresentation &&
     !submitAction &&
     !workspaceRefused;
+  const showSendMode =
+    turnInFlight && onQueueFollowUp && (hasSendableDraft || compactSendMode);
   const hideMobileSubmit = isMobile && !hasSendableDraft && !compactSendMode;
   // #3290: while Station governs OpenCode (it reports running a Station
   // mode), only build and plan are offered: the server refuses the user's own
@@ -826,9 +831,21 @@ export function ChatInputArea({
   const removalUnblocksSend =
     removalUnblocksSendProp ||
     (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
-  const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
+  const account = useAccountPreferences();
+  const accountSendMode =
+    (account.status === 'account'
+      ? account.data?.values.chatDefaultSendMode
+      : undefined) ?? DEFAULT_CHAT_SEND_MODE;
+  const [sendModeOverride, setSendModeOverride] = useState<ChatSendMode>();
   const [sendModeOpen, setSendModeOpen] = useState(false);
-  const steeringSelected = sendMode === 'steer' && busyFollowUp === 'steer';
+  const sendMode = sendModeOverride ?? accountSendMode;
+  const queuesFiles =
+    turnInFlight &&
+    busyQueueTakesFiles &&
+    (attachments.length > 0 || attachmentStages.length > 0);
+  const canSteer = busyFollowUp === 'steer' && !queuesFiles;
+  const steeringSelected = sendMode === 'steer' && canSteer;
+  const modeLabel = `Send mode: ${steeringSelected ? 'Steer' : 'Queue'}`;
   const sendLabel = compactSendMode
     ? steeringSelected
       ? 'Steer current turn'
@@ -836,7 +853,7 @@ export function ChatInputArea({
     : (submitAction?.label ?? 'Send');
   useEffect(() => {
     void sessionId;
-    setSendMode('queue');
+    setSendModeOverride(undefined);
     setSendModeOpen(false);
     setSendAfterUploads(false);
   }, [sessionId]);
@@ -854,7 +871,7 @@ export function ChatInputArea({
   const uploadsInFlight = hasUploadsInFlight(attachmentStages);
   const [sendAfterUploads, setSendAfterUploads] = useState(false);
   const waitingForUploads = sendQueuedForUploads || sendAfterUploads;
-  const submit = async (intent = sendMode) => {
+  const submit = async () => {
     if (editingQueue || submitPending.current || sendQueuedForUploads) return;
     if (uploadsInFlight) {
       setSendAfterUploads(true);
@@ -863,7 +880,7 @@ export function ChatInputArea({
     submitPending.current = true;
     setSubmitting(true);
     try {
-      if (turnInFlight && intent === 'steer' && busyFollowUp === 'steer') {
+      if (turnInFlight && steeringSelected) {
         await onSend('steer');
       } else if (turnInFlight && onQueueFollowUp) {
         await onQueueFollowUp();
@@ -1060,7 +1077,7 @@ export function ChatInputArea({
             : turnInFlight
               ? followUpPresentation
                 ? 'Write a message…'
-                : sendMode === 'steer' && busyFollowUp === 'steer'
+                : steeringSelected
                   ? busySteeringKind === 'native'
                     ? 'Steer this turn…'
                     : 'Send at a safe boundary…'
@@ -2386,6 +2403,27 @@ export function ChatInputArea({
               aria-hidden={hideMobileSubmit || undefined}
               data-concealed={hideMobileSubmit || undefined}
             >
+              {showSendMode && (
+                <button
+                  type="button"
+                  className={`chat-input__send-mode ${
+                    sendReady ? 'chat-input__send-mode--active' : ''
+                  }`}
+                  aria-label={modeLabel}
+                  title={modeLabel}
+                  tabIndex={hideMobileSubmit ? -1 : 0}
+                  aria-haspopup="dialog"
+                  aria-expanded={sendModeOpen}
+                  onClick={() => setSendModeOpen(true)}
+                >
+                  {!compactSendMode && (
+                    <span className="chat-input__mode-label">
+                      {steeringSelected ? 'Steer' : 'Queue'}
+                    </span>
+                  )}
+                  <SendModeGlyph />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={async () => {
@@ -2450,73 +2488,11 @@ export function ChatInputArea({
                     : 'chat-input__send-btn--inactive'
                 }`}
               >
-                {compactSendMode && !steeringSelected ? (
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="18"
-                    height="18"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    aria-hidden="true"
-                    focusable="false"
-                  >
-                    <path d="M9 6h10M9 12h10M9 18h10M5 6h.01M5 12h.01M5 18h.01" />
-                  </svg>
-                ) : (
-                  <SendGlyph className="chat-input__send-glyph" />
-                )}
+                <SendGlyph className="chat-input__send-glyph" />
                 {!compactSendMode && (
                   <span className="chat-input__send-label">{sendLabel}</span>
                 )}
               </button>
-              {/* The mode is a choice about a draft: with nothing to send it
-                  takes no room, on any screen. */}
-              {turnInFlight &&
-                onQueueFollowUp &&
-                (hasSendableDraft || compactSendMode) && (
-                  <button
-                    type="button"
-                    className={`chat-input__send-mode ${
-                      sendReady ? 'chat-input__send-mode--active' : ''
-                    }`}
-                    aria-label={
-                      compactSendMode
-                        ? 'Steering mode'
-                        : `Send mode: ${steeringSelected ? 'Steer' : 'Queue'}`
-                    }
-                    title={
-                      compactSendMode && busyFollowUp === 'steer'
-                        ? steeringSelected
-                          ? 'Switch to Queue'
-                          : 'Switch to Steer'
-                        : (busySteeringUnavailableReason ??
-                          `Send mode: ${steeringSelected ? 'Steer' : 'Queue'}`)
-                    }
-                    disabled={!!compactSendMode && busyFollowUp !== 'steer'}
-                    aria-pressed={
-                      compactSendMode ? steeringSelected : undefined
-                    }
-                    tabIndex={hideMobileSubmit ? -1 : 0}
-                    aria-haspopup={compactSendMode ? undefined : 'dialog'}
-                    aria-expanded={compactSendMode ? undefined : sendModeOpen}
-                    onClick={() => {
-                      if (compactSendMode)
-                        setSendMode(steeringSelected ? 'queue' : 'steer');
-                      else setSendModeOpen(true);
-                    }}
-                  >
-                    {!compactSendMode && (
-                      <span className="chat-input__mode-label">
-                        {sendMode === 'steer' && busyFollowUp === 'steer'
-                          ? 'Steer'
-                          : 'Queue'}
-                      </span>
-                    )}
-                    <ArrowDownGlyph />
-                  </button>
-                )}
             </div>
             {turnInFlight && onCancel && !stopInActivity && isMobile && (
               <ConversationStopControl
@@ -2525,7 +2501,7 @@ export function ChatInputArea({
               />
             )}
           </div>
-          {sendModeOpen && !compactSendMode && hasSendableDraft && (
+          {sendModeOpen && showSendMode && (
             <ResponsiveDialogSurface
               layer="popover"
               ariaLabel="Send mode"
@@ -2538,7 +2514,7 @@ export function ChatInputArea({
                 className="chat-input__mode-option"
                 type="button"
                 onClick={() => {
-                  setSendMode('queue');
+                  setSendModeOverride('queue');
                   setSendModeOpen(false);
                 }}
               >
@@ -2548,9 +2524,9 @@ export function ChatInputArea({
                 variant="ghost"
                 className="chat-input__mode-option"
                 type="button"
-                disabled={busyFollowUp !== 'steer'}
+                disabled={!canSteer}
                 onClick={() => {
-                  setSendMode('steer');
+                  setSendModeOverride('steer');
                   setSendModeOpen(false);
                 }}
               >
@@ -2558,6 +2534,29 @@ export function ChatInputArea({
                   ? 'Steer this turn'
                   : 'Steer when safe'}
               </Button>
+              {account.status === 'account' && (
+                <Button
+                  variant="ghost"
+                  className="chat-input__mode-option"
+                  type="button"
+                  disabled={account.saving || accountSendMode === sendMode}
+                  onClick={() =>
+                    account.save({ chatDefaultSendMode: sendMode })
+                  }
+                >
+                  Save {sendMode === 'steer' ? 'Steer' : 'Queue'} as default
+                </Button>
+              )}
+              {queuesFiles && (
+                <p className="chat-input__mode-note">
+                  Messages with attachments are queued.
+                </p>
+              )}
+              {account.status === 'account' && account.error && (
+                <p role="status" className="chat-input__mode-note">
+                  Couldn’t confirm the save. Check your account preferences.
+                </p>
+              )}
               {busySteeringUnavailableReason && (
                 <p role="status" className="chat-input__mode-note">
                   {busySteeringUnavailableReason}

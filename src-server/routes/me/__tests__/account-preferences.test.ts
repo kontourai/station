@@ -244,7 +244,7 @@ describe('account preference HTTP persistence', () => {
     expect((await f.call({ colorThemeAccent: 'x y' })).status).toBe(400);
   });
 
-  test('a server from before color themes still reads what this one writes', async () => {
+  test('a strict older server can read and update preferences without losing newer choices', async () => {
     // Verbatim from src-server/services/identity/account-preferences.ts at
     // e880e9c9203 (the last main without color themes): that reader parses
     // its document strictly, so one unknown key would fail every account
@@ -292,23 +292,33 @@ describe('account preference HTTP persistence', () => {
           colorThemeAccent: 'pink',
           density: 'compact',
           motion: 'reduce',
+          chatDefaultSendMode: 'steer',
         })
       ).status,
     ).toBe(200);
     const dir = join(f.home, 'config', 'account-preferences');
     const files = (await readdir(dir)).filter((name) => name.endsWith('.json'));
-    const mainFile = files.find((name) => !name.includes('.appearance.'))!;
-    expect(files).toHaveLength(2);
+    const mainFile = files.find((name) => /^[a-f0-9]{64}\.json$/.test(name))!;
+    expect(files).toHaveLength(3);
     // The old reader opens only <key>.json, and it parses.
     const old = oldDocument.parse(
       JSON.parse(await readFile(join(dir, mainFile), 'utf8')),
     );
     expect(old.values).toEqual({ theme: 'light' });
-    // This server reads both and returns one view.
+    await writeFile(
+      join(dir, mainFile),
+      JSON.stringify(
+        oldDocument.parse({
+          ...old,
+          values: { ...old.values, theme: 'dark' },
+        }),
+      ),
+    );
     expect(await (await f.call()).json()).toMatchObject({
       data: {
         values: {
-          theme: 'light',
+          theme: 'dark',
+          chatDefaultSendMode: 'steer',
           colorTheme: 'catppuccin',
           colorThemeFlavor: 'frappe',
           colorThemeAccent: 'pink',
@@ -318,6 +328,35 @@ describe('account preference HTTP persistence', () => {
       },
     });
   });
+
+  test.each([null, 'queue'])(
+    'persists a scoped Steer default and clears it with %s',
+    async (reset) => {
+      const f = await fixture();
+      expect((await f.call({ chatDefaultSendMode: 'steer' })).status).toBe(200);
+      expect((await f.call({ chatDefaultSendMode: 'later' })).status).toBe(400);
+      const restarted = new Hono().route('/api/me', f.build());
+      expect(
+        await (await f.call(undefined, undefined, restarted)).json(),
+      ).toMatchObject({
+        data: { values: { chatDefaultSendMode: 'steer' } },
+      });
+      for (const headers of [
+        { 'x-test-person': 'other' },
+        { 'x-test-tenant': 'other' },
+      ]) {
+        const result = await (
+          await f.call(undefined, headers, restarted)
+        ).json();
+        expect(result.data.values).not.toHaveProperty('chatDefaultSendMode');
+      }
+      expect((await f.call({ chatDefaultSendMode: reset })).status).toBe(200);
+      const result = await (
+        await f.call(undefined, undefined, restarted)
+      ).json();
+      expect(result.data.values).not.toHaveProperty('chatDefaultSendMode');
+    },
+  );
 
   test('density and motion persist across devices and restart, validate choices, and reset (#4692)', async () => {
     const f = await fixture();

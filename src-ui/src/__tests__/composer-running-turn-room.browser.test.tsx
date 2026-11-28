@@ -71,6 +71,7 @@ async function runningTurnGeometry(input: string, width = 390) {
   const { browser, page, errors } = await scrollBrowserFixture(
     runningTurn(input, width),
     [controls],
+    { viewport: { width, height: 844 } },
   );
   try {
     await page.waitForSelector('[data-testid="run-setup-trigger"]');
@@ -80,11 +81,20 @@ async function runningTurnGeometry(input: string, width = 390) {
       content: resolveCssImports(resolve(import.meta.dirname, '../index.css')),
     });
     return await page.evaluate(() => {
+      const mode = document.querySelector('.chat-input__send-mode');
+      const send = document.querySelector('.chat-input__send-btn');
+      const icon = mode?.querySelector('svg');
+      const row = document.querySelector('.chat-controls-row')!;
       const submit = document.querySelector('.chat-input__submit-controls')!;
       const trigger = document.querySelector(
         '[data-testid="run-setup-trigger"]',
       )!;
       return {
+        modeRight: mode?.getBoundingClientRect().right,
+        sendLeft: send?.getBoundingClientRect().left,
+        modeWidth: mode?.getBoundingClientRect().width,
+        iconWidth: icon?.getBoundingClientRect().width,
+        overflows: row.scrollWidth > row.clientWidth,
         submitWidth: submit.getBoundingClientRect().width,
         submitDisplay: getComputedStyle(submit).display,
         triggerWidth: trigger.getBoundingClientRect().width,
@@ -104,4 +114,16 @@ test('an empty phone draft during a turn gives Send/Steer room to Run setup', as
   // With a draft, Send and Steer appear and take their room back.
   expect(typed.submitWidth).toBeGreaterThanOrEqual(44);
   expect(empty.triggerWidth).toBeGreaterThan(typed.triggerWidth);
+  expect(typed.modeRight).toBeCloseTo(typed.sendLeft!, 0);
+  expect(typed.modeWidth).toBeGreaterThanOrEqual(44);
+  expect(typed.iconWidth).toBe(18);
+  expect(typed.overflows).toBe(false);
+});
+
+test('the desktop split button puts Send after a wider mode control', async () => {
+  const desktop = await runningTurnGeometry('a follow-up', 1440);
+  expect(desktop.modeRight).toBeCloseTo(desktop.sendLeft!, 0);
+  expect(desktop.modeWidth).toBeGreaterThan(44);
+  expect(desktop.iconWidth).toBe(18);
+  expect(desktop.overflows).toBe(false);
 });

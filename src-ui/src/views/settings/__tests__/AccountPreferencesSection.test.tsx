@@ -1,11 +1,13 @@
 /** @vitest-environment jsdom */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision-surfaces';
 
 const engineConnections = vi.fn();
 const accountValues = vi.fn();
+const sendMode = vi.fn();
+const save = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
   useEngineConnectionsQuery: () => ({ data: engineConnections() }),
@@ -15,8 +17,13 @@ vi.mock('../../../contexts/AccountPreferencesContext', () => ({
   useAccountPreferences: () => ({
     status: 'account',
     saving: false,
-    data: { values: { interactiveApprovalModes: accountValues() } },
-    save: vi.fn(),
+    data: {
+      values: {
+        interactiveApprovalModes: accountValues(),
+        chatDefaultSendMode: sendMode(),
+      },
+    },
+    save,
     retry: vi.fn(),
   }),
 }));
@@ -28,6 +35,17 @@ const { AccountPreferencesSection } = await import(
 beforeEach(() => {
   engineConnections.mockReturnValue([]);
   accountValues.mockReturnValue({});
+  sendMode.mockReturnValue(undefined);
+  save.mockClear();
+});
+
+test('shows the saved default send mode and saves Queue to the account', () => {
+  sendMode.mockReturnValue('steer');
+  render(<AccountPreferencesSection />);
+  const select = screen.getByRole('combobox', { name: 'Default send mode' });
+  expect(select).toHaveProperty('value', 'steer');
+  fireEvent.change(select, { target: { value: 'queue' } });
+  expect(save).toHaveBeenCalledWith({ chatDefaultSendMode: 'queue' });
 });
 
 const engine = (id: string) => ({ id, config: { engineId: id } });
