@@ -322,17 +322,18 @@ export class AccountPreferencesStore {
         : await mutateJsonFile(
             this.path(owner, '.chat'),
             EMPTY as { schemaVersion: 1; values: StoredValues },
-            (raw) => ({
-              schemaVersion: 1,
-              values: applyPatch(
-                chatDocument.parse(raw).values,
-                {
-                  chatDefaultSendMode:
-                    chatDefaultSendMode === 'steer' ? 'steer' : null,
-                },
-                onlyMissing,
-              ),
-            }),
+            (raw) =>
+              chatDocument.parse({
+                schemaVersion: 1,
+                values: applyPatch(
+                  chatDocument.parse(raw).values,
+                  {
+                    chatDefaultSendMode:
+                      chatDefaultSendMode === 'steer' ? 'steer' : null,
+                  },
+                  onlyMissing,
+                ),
+              }),
             limits,
           );
     return this.view(main.values, appearance.values, chat.values);

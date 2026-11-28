@@ -345,15 +345,15 @@ describe('account preference HTTP persistence', () => {
         { 'x-test-person': 'other' },
         { 'x-test-tenant': 'other' },
       ]) {
-        const result = await (
+        const result = (await (
           await f.call(undefined, headers, restarted)
-        ).json();
+        ).json()) as { data: { values: Record<string, unknown> } };
         expect(result.data.values).not.toHaveProperty('chatDefaultSendMode');
       }
       expect((await f.call({ chatDefaultSendMode: reset })).status).toBe(200);
-      const result = await (
+      const result = (await (
         await f.call(undefined, undefined, restarted)
-      ).json();
+      ).json()) as { data: { values: Record<string, unknown> } };
       expect(result.data.values).not.toHaveProperty('chatDefaultSendMode');
     },
   );

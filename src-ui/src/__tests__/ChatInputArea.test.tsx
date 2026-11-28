@@ -184,7 +184,7 @@ describe('ChatInputArea', () => {
     ).toBeTruthy();
     rerender(view(account));
     const mode = screen.getByRole('button', { name: 'Send mode: Steer' });
-    const send = screen.getByRole('button', { name: 'Send', exact: true });
+    const send = screen.getByRole('button', { name: /^Send$/ });
     expect(mode.nextElementSibling).toBe(send);
     expect(mode.querySelector('svg path')?.getAttribute('d')).toMatch(
       /M2\.5 4\.5.*M2\.5 11\.5/,
@@ -270,7 +270,7 @@ describe('ChatInputArea', () => {
       ).toBeTruthy();
       await act(async () =>
         fireEvent.click(
-          screen.getByRole('button', { name: 'Send', exact: true }),
+          screen.getByRole('button', { name: /^Send$/ }),
         ),
       );
       expect(props.onQueueFollowUp).toHaveBeenCalledOnce();
