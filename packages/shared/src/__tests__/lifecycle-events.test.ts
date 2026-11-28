@@ -438,9 +438,9 @@ describe('lifecycle event journal', () => {
     },
   );
 
-  it.runIf(process.platform === 'win32').each(
-    Array.from({ length: 16 }, (_, index) => index + 1),
-  )(
+  it
+    .runIf(process.platform === 'win32')
+    .each(Array.from({ length: 16 }, (_, index) => index + 1))(
     'renames a retained UTF-16 filename with %i suffix code units without extra bytes',
     (suffixLength) => {
       const root = createJournalRoot('station-journal-rename-');
