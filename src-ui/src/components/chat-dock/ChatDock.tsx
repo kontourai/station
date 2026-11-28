@@ -4283,6 +4283,20 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     }
   };
 
+  const messageActionsRef = useRef({ openForkDraft, resendFromMessage });
+  useLayoutEffect(() => {
+    messageActionsRef.current = { openForkDraft, resendFromMessage };
+  });
+  const handleForkFromTurn = useCallback((source: ForkTurnSource) => {
+    void messageActionsRef.current.openForkDraft(source);
+  }, []);
+  const handleResendFromMessage = useCallback(
+    (request: MessageResendRequest) => {
+      void messageActionsRef.current.resendFromMessage(request);
+    },
+    [],
+  );
+
   const parentRequestScope =
     conversationConnection?.requestScope ?? requestAuthority;
   const canInstructChild =
@@ -5452,16 +5466,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   }
                                   onForkFromTurn={
                                     hostConversation
-                                      ? (source) => {
-                                          void openForkDraft(source);
-                                        }
+                                      ? handleForkFromTurn
                                       : undefined
                                   }
                                   onResendFromMessage={
                                     hostConversation
-                                      ? (request) => {
-                                          void resendFromMessage(request);
-                                        }
+                                      ? handleResendFromMessage
                                       : undefined
                                   }
                                   onOpenBackgroundTasks={showBackgroundTasks}

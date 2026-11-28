@@ -1,0 +1,7 @@
+{
+  "revision": "d56886ea2bb003ea3a0b55c1b0674b14a6d4b299",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed ChatDock row-action callback stabilization against child-reader ownership, shared rendering and retained-parent claims. Stack, return actions and mounted-parent boundaries are unchanged. Source inspection only; no broader relationship or runtime qualification.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

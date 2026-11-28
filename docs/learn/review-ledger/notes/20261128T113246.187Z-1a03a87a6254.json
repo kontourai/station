@@ -1,0 +1,7 @@
+{
+  "revision": "d56886ea2bb003ea3a0b55c1b0674b14a6d4b299",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Reviewed Chat attachments missing-blob resend refusal in context. Regenerate/Edit and resend still resolve the original file parts before creating a fork or new chat; failed attachment resolution surfaces an error and returns without sending a partial message. The wrappers preserve this path. Retention defaults, reclamation, preview rendering, and storage behavior were not revalidated.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

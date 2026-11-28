@@ -1,0 +1,7 @@
+{
+  "revision": "d56886ea2bb003ea3a0b55c1b0674b14a6d4b299",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed Fork from here, Regenerate, and Edit and resend through menu eligibility, picker composition, attachment resolution, fork/new-chat selection, and follow-up handling. No candidate-introduced contradiction found. The existing statement that both use the message Agent is not blanket-certified: selection follows the preceding completed answer Agent, or the active Agent for an initial-message resend, so mixed-Agent histories require qualification. Mobile layout and engine-native rewind behavior were not exercised.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

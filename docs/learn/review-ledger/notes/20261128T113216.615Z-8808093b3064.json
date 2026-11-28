@@ -1,0 +1,7 @@
+{
+  "revision": "d56886ea2bb003ea3a0b55c1b0674b14a6d4b299",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed the dock orchestration-consumer description, frontend usage summary, and fork-history explanation against the row-action caller chain and existing SDK fork request. The candidate changes callback identity, not request fields, endpoint selection, or fork-history ownership. No introduced contradiction found. API authorization, history limits, persistence, and retry guarantees were not independently requalified.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
