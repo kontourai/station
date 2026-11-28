@@ -2022,7 +2022,7 @@ describe('lifecycle instance state', () => {
     expect(readFileSync(target, 'utf8')).toBe('{}');
   });
 
-  it('fails publication when the instance directory cannot be fsynced', async () => {
+  it('honors platform directory-fsync behavior when publishing instance state', async () => {
     ensureDir(TEST_CWD);
     ensureBuildOutputs('dir-sync');
     ensureDir(TEST_ALT_HOME);
@@ -2031,12 +2031,17 @@ describe('lifecycle instance state', () => {
       .fn()
       .mockReturnValueOnce({ pid: 43101, unref: vi.fn() })
       .mockReturnValueOnce({ pid: 43102, unref: vi.fn() });
+    const killSpy = vi
+      .spyOn(process, 'kill')
+      .mockImplementation((() => true) as typeof process.kill);
+    let directorySyncAttempts = 0;
     vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
       fsOverrides: {
         fsyncSync: (fd) => {
           if (actualFs.fstatSync(fd).isDirectory()) {
+            directorySyncAttempts += 1;
             throw new Error('directory fsync failed');
           }
           actualFs.fsyncSync(fd);
@@ -2044,15 +2049,30 @@ describe('lifecycle instance state', () => {
       },
       platformOverrides: { sleepSync: vi.fn() },
     });
-    await expect(
-      lifecycle.start({
+    try {
+      const started = lifecycle.start({
         baseDir: TEST_ALT_HOME,
         instanceName: 'dir-sync',
         serverPort: 3250,
         uiPort: 5280,
-      }),
-    ).rejects.toThrow('directory fsync failed');
-    expect(existsSync(getInstanceStatePath('dir-sync'))).toBe(false);
+      });
+      const statePath = getInstanceStatePath('dir-sync');
+      if (process.platform === 'win32') {
+        await expect(started).resolves.toBeUndefined();
+        expect(directorySyncAttempts).toBe(0);
+        expect(JSON.parse(readFileSync(statePath, 'utf8'))).toMatchObject({
+          instanceId: 'dir-sync',
+          serverPid: 43101,
+          uiPid: 43102,
+        });
+      } else {
+        await expect(started).rejects.toThrow('directory fsync failed');
+        expect(directorySyncAttempts).toBeGreaterThan(0);
+        expect(existsSync(statePath)).toBe(false);
+      }
+    } finally {
+      killSpy.mockRestore();
+    }
   });
 
   it('detects a final-path replacement instead of claiming another record', async () => {
@@ -9110,6 +9130,14 @@ describe('lifecycle build + restart ergonomics', () => {
   it('rejects a relative explicit log path without mutating the working directory', async () => {
     ensureDir(TEST_CWD);
     chmodSync(TEST_CWD, 0o755);
+    const originalMode = statSync(TEST_CWD).mode;
+    const originalAcl =
+      process.platform === 'win32'
+        ? execFileSync('icacls', [TEST_CWD], {
+            encoding: 'utf8',
+            windowsHide: true,
+          })
+        : undefined;
     const spawn = vi.fn();
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
@@ -9123,7 +9151,15 @@ describe('lifecycle build + restart ergonomics', () => {
       }),
     ).rejects.toThrow('Explicit log path must be absolute');
 
-    expect(statSync(TEST_CWD).mode & 0o777).toBe(0o755);
+    expect(statSync(TEST_CWD).mode).toBe(originalMode);
+    if (originalAcl !== undefined) {
+      expect(
+        execFileSync('icacls', [TEST_CWD], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }),
+      ).toBe(originalAcl);
+    }
     expect(spawn).not.toHaveBeenCalled();
   });
 
