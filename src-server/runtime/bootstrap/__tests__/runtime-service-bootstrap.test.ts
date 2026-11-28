@@ -261,10 +261,15 @@ describe('createRuntimeServiceBundle', () => {
     );
     const response = await app.request('/');
     expect(response.status).toBe(200);
-    const body = await response.json();
-    const station = body.data.find(
-      (agent: { slug: string }) => agent.slug === 'station',
-    );
+    const body = (await response.json()) as {
+      data: Array<{
+        slug: string;
+        available?: boolean;
+        unavailableReason?: string;
+        execution?: { agentConnectionId?: string };
+      }>;
+    };
+    const station = body.data.find((agent) => agent.slug === 'station');
     expect(station?.available).toBe(expected.available);
     expect(station?.unavailableReason).toBe(expected.unavailableReason);
     expect(station?.execution?.agentConnectionId).toBe(
