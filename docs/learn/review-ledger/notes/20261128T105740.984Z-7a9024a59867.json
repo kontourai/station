@@ -1,0 +1,7 @@
+{
+  "revision": "bcff99a56c02272c8695ad9ae483c275fe7dbe09",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"Regenerated settings-registry.json to include experimental-inbox-row-actions device preview.","inputs":["src-server/generated/settings-registry.json"]}
+  ]
+}

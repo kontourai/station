@@ -1,0 +1,11 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Verified desktop context menu, Pinned shelf, and Details sheet additions preserve shared row anatomy and responsive touch-target claims.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Verified desktop context menu, Pinned shelf, and Details sheet additions preserve shared row anatomy and responsive touch-target claims.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified desktop context menu, Pinned shelf, and Details sheet additions preserve shared row anatomy and responsive touch-target claims.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

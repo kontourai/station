@@ -15,6 +15,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useInboxRowActionsPreview } from '../../hooks/useInboxRowActionsPreview';
 import { absoluteTime, relativeTime } from '../../utils/relativeTime';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { useObservedWorkStatus } from '../../views/home/useObservedWorkStatus';
@@ -24,6 +25,7 @@ import {
   InboxRowStatusGlyph,
   WorkStatusLineText,
 } from '../inbox-row/InboxRowStatus';
+import { inboxRowCopyTargets } from '../inbox-row/inbox-row-actions';
 import { hostLayerOf, OverlayLayerContext } from '../overlay-layer';
 import {
   ResponsiveDialogHeader,
@@ -362,6 +364,7 @@ function ChatInboxCardBody({
   projectIcon?: string;
   showTitle?: boolean;
 }) {
+  const rowActionsEnabled = useInboxRowActionsPreview();
   const scope = useHostRequestAuthorityScope();
   const hostDetails = facts?.hostDetails !== false;
   const status = useObservedWorkStatus(item, now, facts);
@@ -583,6 +586,17 @@ function ChatInboxCardBody({
         </p>
       )}
       <dl className="chat-dock-inbox-hover-card__meta">
+        {rowActionsEnabled &&
+          inboxRowCopyTargets(item).map(({ key, label, value }) => (
+            <div key={key}>
+              <dt>{label}</dt>
+              <dd>
+                <code className="chat-dock-inbox-hover-card__id" title={value}>
+                  {value}
+                </code>
+              </dd>
+            </div>
+          ))}
         <div>
           <dt>Project</dt>
           <dd>

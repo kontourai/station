@@ -1,0 +1,7 @@
+{
+  "revision": "d56886ea2bb003ea3a0b55c1b0674b14a6d4b299",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the callback-only delta through Fork dialog retries/source-close, Regenerate/Edit attachment resolution, navigation intent, and mobile action callers. Stable wrappers preserve existing request/admission/navigation implementations. Five product-browser cases passed and an injected wrong resend payload failed the real Regenerate assertion before byte-identical restoration passed. No new layout, physical-device, or motion qualification. Existing mixed-Agent wording is not blanket-certified: resend selects the preceding completed answer Agent, or the active Agent for an initial request.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

@@ -11,6 +11,7 @@ import { migratePeerChatState } from '../lib/peer-chat';
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
 import { newerConversationActivity } from '../utils/conversation-activity';
 import { migrateInboxDismissal } from '../utils/inbox-dismissal-store';
+import { migrateInboxPin } from '../utils/inbox-pin-store';
 import { log } from '../utils/logger';
 import { derivePlanArtifactFromStreamingState } from '../utils/planArtifacts';
 import {
@@ -834,6 +835,7 @@ export class ActiveChatsStore {
       const oldKey = conversationStateKey(chat.stationBinding, sessionId);
       const newKey = conversationStateKey(chat.stationBinding, conversationId);
       migrateSnoozeKey(oldKey, newKey, this.now());
+      migrateInboxPin(oldKey, newKey);
       migrateInboxDismissal(oldKey, newKey);
     } catch {
       /* ignore — snooze migration is a convenience, never load-bearing for

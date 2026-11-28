@@ -127,6 +127,40 @@ export function validateJourneyProfile(
         )
     )
       errors.push('missing/invalid responsiveness observation');
+    const input = profile.inputTiming;
+    if (
+      !input ||
+      typeof input.supported !== 'boolean' ||
+      input.scope !== 'final-document' ||
+      input.durationThresholdMs !== 16 ||
+      !Array.isArray(input.events) ||
+      (!input.supported && input.events.length > 0) ||
+      input.events.some(
+        (entry) =>
+          typeof entry.name !== 'string' ||
+          !entry.name ||
+          !Number.isInteger(entry.interactionId) ||
+          entry.interactionId <= 0 ||
+          !Number.isFinite(entry.startTime) ||
+          entry.startTime < responsiveness?.phaseStartMs ||
+          !Number.isFinite(entry.duration) ||
+          entry.duration < input.durationThresholdMs ||
+          entry.startTime + entry.duration > responsiveness?.phaseEndMs ||
+          !Number.isFinite(entry.processingStart) ||
+          entry.processingStart < entry.startTime ||
+          !Number.isFinite(entry.processingEnd) ||
+          entry.processingEnd < entry.processingStart ||
+          entry.processingEnd > responsiveness?.phaseEndMs,
+      ) ||
+      input.observedEventCount !== input.events.length ||
+      input.observedInteractionCount !==
+        new Set(input.events.map((entry) => entry.interactionId)).size ||
+      input.worstObservedInteractionMs !==
+        (input.events.length > 0
+          ? Math.max(...input.events.map((entry) => entry.duration))
+          : null)
+    )
+      errors.push('missing/invalid input timing observation');
   }
   return errors;
 }

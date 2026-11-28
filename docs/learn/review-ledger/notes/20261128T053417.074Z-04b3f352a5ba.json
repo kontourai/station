@@ -1,0 +1,7 @@
+{
+  "revision": "e7cbd886f4225c3fcd85705a1da731c9fabee4e0",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed in-app /UPDATE disk-space refusal against pinned Tauri CLI 2.12.1 expanded ESTIMATEDSIZE, the preinstall hook, and the native NSIS space verifier. Native original hook continued and removed the previous runtime; repaired low-space and sufficient-space branches passed. The builder runs the proof after acquiring NSIS. Documentation explicitly excludes transactional rollback, signed release-artifact qualification, actual update/relaunch, and operator partial-install recovery; log paths remain unchanged.","inputs":["docs/guides/native-shell-verification.md","scripts/build-windows-nightly.ps1"]}
+  ]
+}

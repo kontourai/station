@@ -98,7 +98,8 @@ and compact switch sit beneath them.
 ## Experimental project tools
 
 Advanced → Developer tools reveals independent Flow delivery, Veritas readiness,
-Trust, Sheet gestures and Station routes preview switches. All five default off on each device; enabling
+Trust, Sheet gestures, Station routes, and Inbox row actions preview switches.
+All six default off on each device; enabling
 Developer tools alone enables none of them. Disabling it withdraws previews
 without clearing their saved opt-ins. The Coding layout, files, diff, terminal,
 and chat remain available. Pane discovery omits disabled previews, and restored

@@ -114,6 +114,7 @@ describe('settings catalog search', () => {
       'experimental-trust',
       'experimental-station-routes',
       'experimental-sheet-gestures',
+      'experimental-inbox-row-actions',
       'surface-trust',
       'station-routes',
     ]) {
@@ -124,7 +125,7 @@ describe('settings catalog search', () => {
         id,
       );
     }
-    expect(desktop).toHaveLength(SETTINGS_CATALOG.length - 7);
+    expect(desktop).toHaveLength(SETTINGS_CATALOG.length - 8);
     expect(desktop.find((command) => command.id === 'settings:theme')).toEqual(
       expect.objectContaining({ view: 'appearance', highlight: 'theme' }),
     );

@@ -822,6 +822,29 @@ PIDs along with visible-window events. Exercise a fresh profile and a second
 launch with a profile lock. Capture process identities without command-line
 arguments, which can contain credentials.
 
+## Windows update disk-space refusal
+
+For in-app `/UPDATE` installs, the NSIS preinstall hook checks free space on the actual installation volume
+before clearing the previous runtime. It requires the bundler's expanded
+payload estimate plus 512 MiB of working space, without crediting files it
+will remove. A failed space query or insufficient space exits with code 3
+and leaves runtime files untouched. This is a preflight, not transactional
+rollback: a later disk, permission, or extraction failure can still interrupt
+installation. Preserve the installer dialog and compare the executable and
+Windows registration versions before treating an interrupted update as usable.
+
+The Windows Nightly builder runs `scripts/verify-windows-installer-space.ps1`
+after NSIS is available. Its isolated native installers compile the actual
+hook, refuse a payload larger than the volume's available space while keeping
+the previous runtime sentinel byte-identical, and accept a small payload that
+replaces that runtime. The proof directory retains scripts, installers, and a
+receipt bound to the hook hash. This proves the hook's refusal and success
+branches, not the signed release artifact or in-app update/relaunch journey.
+Those still require an installed old-to-new update with retained connection
+and credential state, a usable window, and matching release identity.
+
+## Desktop log locations
+
 The desktop host writes its own log through `tauri-plugin-log`. The configured
 application identifier selects the shell log directory, so each release channel
 has a distinct path:
