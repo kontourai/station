@@ -264,6 +264,7 @@ describe('Windows owned-process registry (#3873)', () => {
   test.each([
     'unreadable',
     'execution',
+    'missing-utility',
     'invalid-output',
     'utility-resolution',
   ])(
@@ -293,6 +294,11 @@ describe('Windows owned-process registry (#3873)', () => {
       const log = vi.fn();
       if (failure === 'utility-resolution') {
         vi.stubEnv('SystemRoot', 'relative');
+      } else if (failure === 'missing-utility') {
+        vi.stubEnv(
+          'SystemRoot',
+          `C:\\station-probe-missing-${process.pid}-${Date.now()}`,
+        );
       } else if (failure !== 'unreadable') {
         vi.mocked(execFile).mockImplementationOnce((...args) => {
           const callback = args.at(-1);
@@ -331,7 +337,7 @@ describe('Windows owned-process registry (#3873)', () => {
         expect(log).toHaveBeenCalledWith(
           'owned-process sweep: Windows process table probe failed',
           expect.objectContaining({
-            stage: failure,
+            stage: failure === 'missing-utility' ? 'execution' : failure,
             timeoutMs: 30_000,
             elapsedMs: expect.any(Number),
             error:
@@ -342,7 +348,9 @@ describe('Windows owned-process registry (#3873)', () => {
                     signal: 'SIGKILL',
                     killed: true,
                   }
-                : expect.any(Object),
+                : failure === 'missing-utility'
+                  ? expect.objectContaining({ code: 'ENOENT' })
+                  : expect.any(Object),
           }),
         );
         expect(JSON.stringify(log.mock.calls)).not.toContain('private');
