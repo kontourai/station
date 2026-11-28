@@ -438,28 +438,27 @@ describe('lifecycle event journal', () => {
     },
   );
 
-  it.runIf(process.platform === 'win32')(
-    'renames retained files across UTF-16 payload boundaries without suffix bytes',
-    () => {
+  it.runIf(process.platform === 'win32').each(
+    Array.from({ length: 16 }, (_, index) => index + 1),
+  )(
+    'renames a retained UTF-16 filename with %i suffix code units without extra bytes',
+    (suffixLength) => {
       const root = createJournalRoot('station-journal-rename-');
       try {
-        for (let suffixLength = 1; suffixLength <= 16; suffixLength++) {
-          const file = join(root, `events-${'x'.repeat(suffixLength)}`);
-          const target = `${file}.previous`;
-          const journal = openWindowsPrivateFile(file, 'create');
-          try {
-            journal.write(Buffer.from('retained evidence'));
-            journal.rename(target);
-            expect(readFileSync(target, 'utf8')).toBe('retained evidence');
-            expect(existsSync(file)).toBe(false);
-          } finally {
-            journal.close();
-          }
+        const file = join(root, `events-${'x'.repeat(suffixLength)}`);
+        const target = `${file}.previous`;
+        const journal = openWindowsPrivateFile(file, 'create');
+        try {
+          journal.write(Buffer.from('retained evidence'));
+          journal.rename(target);
+          expect(readFileSync(target, 'utf8')).toBe('retained evidence');
+          expect(existsSync(file)).toBe(false);
+        } finally {
+          journal.close();
         }
-        expect(readdirSync(root)).toHaveLength(16);
-        expect(
-          readdirSync(root).every((name) => name.endsWith('.previous')),
-        ).toBe(true);
+        expect(readdirSync(root)).toEqual([
+          `events-${'x'.repeat(suffixLength)}.previous`,
+        ]);
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
