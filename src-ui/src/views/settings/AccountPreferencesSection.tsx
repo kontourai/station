@@ -133,9 +133,8 @@ export function AccountPreferencesSection() {
             preferences.
           </p>
           <p>
-            New chats use the first applicable choice in this order. Chat choice
-            → Agent → Project → your engine override → your all-engines default
-            → Station → engine.
+            Approval order: Chat choice → Agent → Project → engine override →
+            all-engines default → Station → engine.
           </p>
         </details>
       </div>
