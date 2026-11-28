@@ -173,8 +173,10 @@ describe('termination report (#4626)', () => {
       const { adapter, exit } = drivenPty();
       const proc = await adapter.spawn(SPAWN_INPUT);
       const helper = new ChildProcess();
-      helper.stdout = new PassThrough();
-      helper.stderr = new PassThrough();
+      const stdout = new PassThrough();
+      const stderr = new PassThrough();
+      helper.stdout = stdout;
+      helper.stderr = stderr;
       Object.defineProperty(helper, 'pid', { value: 5627 });
       let finish!: (error: Error) => void;
       vi.mocked(execFile).mockImplementationOnce(((
@@ -192,8 +194,8 @@ describe('termination report (#4626)', () => {
       );
       try {
         helper.emit('spawn');
-        helper.stdout.write(`${'x'.repeat(10_000)}stdout-tail`);
-        helper.stderr.write(`${'y'.repeat(10_000)}stderr-tail`);
+        stdout.write(`${'x'.repeat(10_000)}stdout-tail`);
+        stderr.write(`${'y'.repeat(10_000)}stderr-tail`);
         Object.defineProperties(helper, {
           exitCode: { value: null },
           signalCode: { value: 'SIGTERM' },
