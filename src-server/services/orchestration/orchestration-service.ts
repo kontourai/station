@@ -5538,6 +5538,8 @@ export class OrchestrationService {
   async shutdown(): Promise<void> {
     // Revoke reattachment now; existing consumers still observe the room-parking exits below.
     this.eventConsumptionStopped = true;
+    this.serverLogReadGrants.clear();
+    for (const read of this.serverLogReads.values()) read.settle('cancelled');
     this.adapterRegistryUnsubscribe?.();
     this.adapterRegistryUnsubscribe = undefined;
     this.stopCascadeDelivery();
@@ -13116,7 +13118,9 @@ export class OrchestrationService {
               context?.serverLogReadDecisionAuthorized?.() !== true ||
               command.expectedRequestEventId !== logRead.eventId ||
               this.activeTurnIdOfThread(command.threadId) !== logRead.turnId ||
-              (command.decision !== 'accept' && command.decision !== 'decline')
+              (command.decision !== 'accept' &&
+                command.decision !== 'acceptForSession' &&
+                command.decision !== 'decline')
             )
               throw new RequestEventGuardError(
                 'request_event_changed',
@@ -13124,13 +13128,15 @@ export class OrchestrationService {
               );
             if (
               !logRead.settle(
-                command.decision === 'accept' ? 'approved' : 'denied',
+                command.decision === 'decline' ? 'denied' : 'approved',
               )
             )
               throw new RequestEventGuardError(
                 'request_verification_unavailable',
                 'Station could not record the server log decision.',
               );
+            if (command.decision === 'acceptForSession')
+              this.serverLogReadGrants.add(command.threadId);
             this.persistReceipt(receipt);
             return { receipt, result: undefined };
           }
@@ -14821,6 +14827,7 @@ export class OrchestrationService {
     threadId: string,
     cascade = true,
   ): Promise<void> {
+    this.retireServerLogReads(threadId);
     // The engine this mark describes is being stopped; its warning stays in
     // the log for a later turn.
     this.engineContextStartedFreshThreads.delete(threadId);
@@ -16213,6 +16220,7 @@ export class OrchestrationService {
       this.nativeTurnGenerations.delete(threadId);
       this.nativeOutputGrants.retireTerminal(threadId, nativeTurnId);
     }
+    this.retireServerLogReads(threadId);
     this.stationControlPullRequests?.retireSession(threadId);
     this.sessionAdapters.delete(threadId);
     this.lastEngineActivityAt.delete(threadId);
@@ -17057,6 +17065,7 @@ export class OrchestrationService {
     };
   }
 
+  private readonly serverLogReadGrants = new Set<string>();
   private readonly serverLogReads = new Map<
     string,
     {
@@ -17069,6 +17078,11 @@ export class OrchestrationService {
     }
   >();
 
+  private retireServerLogReads(threadId: string): void {
+    this.serverLogReadGrants.delete(threadId);
+    this.serverLogReads.get(threadId)?.settle('cancelled');
+  }
+
   async requestServerLogRead(
     threadId: string,
     description: string,
@@ -17080,9 +17094,12 @@ export class OrchestrationService {
       !provider ||
       !turnId ||
       signal.aborted ||
+      this.eventConsumptionStopped ||
       this.serverLogReads.has(threadId)
     )
       return false;
+
+    if (this.serverLogReadGrants.has(threadId)) return true;
 
     const requestId = crypto.randomUUID();
     const eventId = crypto.randomUUID();
@@ -18114,8 +18131,10 @@ export class OrchestrationService {
     }
     // An engine that exits mid-turn ends with `session.exited` and no turn
     // terminal: nothing else would release the session's declaration grants.
-    if (projectedEvent.method === 'session.exited')
+    if (projectedEvent.method === 'session.exited') {
       this.stationControlPullRequests?.retireSession(projectedEvent.threadId);
+      this.retireServerLogReads(projectedEvent.threadId);
+    }
     // Already observed raw at the coalescing seam above; observing the merged
     // delta again would double-count progress for one stretch of text.
     this.monitoringBridge.onRuntimeEvent(projectedEvent);
@@ -18639,6 +18658,7 @@ export class OrchestrationService {
           this.parkingThreads.delete(threadId);
           this.parkedExitWaiters.delete(threadId);
         }
+        this.retireServerLogReads(threadId);
         this.sessionAdapters.delete(threadId);
         this.parkedThreads.add(threadId);
         // What the absorbed exit would have cleared: a respawned engine
@@ -19225,8 +19245,10 @@ export class OrchestrationService {
           : undefined,
       ),
     });
-    if (started.engineContextStartedFresh)
+    if (started.engineContextStartedFresh) {
+      this.retireServerLogReads(threadId);
       this.engineContextStartedFreshThreads.add(threadId);
+    }
     return adapter;
   }
 

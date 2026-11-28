@@ -231,7 +231,7 @@ export function createDiagnosticsRoutes(
 
       const q = c.req.query('q');
 
-      let approvedOnce = false;
+      let approvedInChat = false;
       if (agentSessionId && !hasAgentGrant(agentSessionId)) {
         const description = [
           `Severity: ${rawLevel ?? 'all levels'}`,
@@ -241,13 +241,13 @@ export function createDiagnosticsRoutes(
           ...(q ? ['A text filter applies.'] : []),
           'The result may contain private conversation content.',
         ].join('\n');
-        approvedOnce =
+        approvedInChat =
           (await access?.requestLogRead?.(
             agentSessionId,
             description,
             c.req.raw.signal,
           )) === true;
-        if (!approvedOnce || !stationControlRequestCurrent(c.req.raw))
+        if (!approvedInChat || !stationControlRequestCurrent(c.req.raw))
           return c.json(
             { error: 'Diagnostics log access is not granted' },
             403,
@@ -263,14 +263,14 @@ export function createDiagnosticsRoutes(
         // One derivation, bound by the auth boundary: the owner (mint-time
         // `locality: 'home-possession'` or owner-device standing). Absent (or a
         // second call that skipped the boundary) fails closed to redacted.
-        redact: approvedOnce || !isBoundRuntimeOwner(c.req.raw),
+        redact: approvedInChat || !isBoundRuntimeOwner(c.req.raw),
       };
 
       const result = await logReader.query(options);
       if (
         agentSessionId &&
         (!stationControlRequestCurrent(c.req.raw) ||
-          (!approvedOnce && !hasAgentGrant(agentSessionId)))
+          (!approvedInChat && !hasAgentGrant(agentSessionId)))
       )
         return c.json({ error: 'Diagnostics log access is not granted' }, 403);
       serverLogsRead.add(1, { surface: 'route' });
