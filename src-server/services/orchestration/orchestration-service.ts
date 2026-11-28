@@ -17312,7 +17312,7 @@ export class OrchestrationService {
   }
 
   /**
-   * A person's resolved account default for a new chat, sent by their
+   * A person's personal per-engine default for a NEW chat, sent by their
    * composer as a hint rather than a pick. It is recorded as the
    * conversation's decision (as a carried pick is, so later sessions keep it)
    * only when nothing above it decides: no decision recorded yet, no Agent

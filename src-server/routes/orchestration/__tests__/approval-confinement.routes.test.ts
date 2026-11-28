@@ -2847,7 +2847,7 @@ describe('the personal approval default hint', () => {
       expect(sent.status, sent.text).toBe(200);
       expect(lastStart(f, agent)).toMatchObject({
         approvalMode: 'auto',
-        confinement: 'workspace',
+        confinement: 'host',
       });
       expect(sent.body.data.approvalMode).toMatchObject({
         approvalMode: 'auto',

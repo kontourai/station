@@ -442,7 +442,7 @@ export class ApprovalPosture {
   }
 
   /**
-   * Whether a layer above a person's resolved account default decides a
+   * Whether a layer above a person's personal per-engine default decides a
    * new chat's posture: the Agent's own default, then the start's Project
    * layer. Only when neither does is the personal default recorded
    * (`OrchestrationService.recordPersonalApprovalDefault`), so the order is

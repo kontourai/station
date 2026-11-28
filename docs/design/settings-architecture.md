@@ -185,9 +185,12 @@ use **Reset** beside the control to remove the account value and use the registr
 including both fields of Answer delivery. Approval defaults offer **Use inherited
 default**, which resumes the Agent → Station → engine chain.
 
-Each supported engine has an optional personal approval default for new
-interactive chats. Resolution is explicit chat choice → Agent default → personal
-engine preference → Station default → engine configuration. The first human
+An optional personal all-engines approval default applies to every engine with a
+Station approval knob (including OpenCode and Station-handled ACP request
+engines), and supported engines can each carry an optional per-engine override.
+Resolution is explicit chat choice → Agent default → Project default → personal
+engine override → personal all-engines default → Station default → engine
+configuration. The first human
 send carries the selected personal preference through the existing recorded
 approval decision path, including durable outbox replay. Inherited queued defaults retain their account
 namespace and are retired when that account changes; explicit chat picks remain
