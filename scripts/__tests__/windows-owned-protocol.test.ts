@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   mkdtempSync,
   readdirSync,
@@ -8,6 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
@@ -144,6 +146,7 @@ describe('Windows owned guard build', () => {
       cleanupFailure = removalFailure;
       try {
         buildWindowsOwnedGuard({
+          source: join(root, 'missing-source.cs'),
           tempDirectory: root,
           spawnProcess: () => ({
             pid: 4242,
@@ -170,6 +173,19 @@ describe('Windows owned guard build', () => {
         ],
         message: expect.stringContaining('private output locked'),
       });
+      if (failure instanceof AggregateError) {
+        const evidenceLine = failure.errors[0].message
+          .split('\n')
+          .find((line: string) => line.startsWith('compiler evidence '));
+        expect(evidenceLine).toBeDefined();
+        const evidence = JSON.parse(
+          evidenceLine.slice('compiler evidence '.length),
+        );
+        expect(evidence).toMatchObject({
+          source: { unavailable: 'ENOENT' },
+          stagedOutput: { unavailable: 'ENOENT' },
+        });
+      }
     } finally {
       cleanupFailure = undefined;
       rmSync(root, { recursive: true, force: true });
@@ -224,9 +240,19 @@ describe('Windows owned guard build', () => {
 
   test('refuses timed-out compiler output and removes its private directory', () => {
     const root = makeTempDir('station-guard-build-test-');
+    const source = join(root, 'guard.cs');
+    const sourceBytes = 'compiler diagnostic fixture';
+    writeFileSync(source, sourceBytes);
+    let failure: unknown;
     try {
-      expect(() =>
+      const clock = vi
+        .spyOn(performance, 'now')
+        .mockReturnValueOnce(100)
+        .mockReturnValueOnce(175);
+      try {
         buildWindowsOwnedGuard({
+          source,
+          windir: root,
           tempDirectory: root,
           spawnProcess: (_compiler, args, options) => {
             expect(options.timeout).toBe(10_000);
@@ -244,11 +270,69 @@ describe('Windows owned guard build', () => {
               stdout: 'partial compiler output',
             };
           },
-        }),
-      ).toThrow(
+        });
+      } catch (error) {
+        failure = error;
+      } finally {
+        clock.mockRestore();
+      }
+      expect(failure).toBeInstanceOf(Error);
+      const message = failure instanceof Error ? failure.message : '';
+      expect(message).toMatch(
         /compiler timed out after 10000ms[\s\S]*partial compiler output/,
       );
-      expect(readdirSync(root)).toEqual([]);
+      const evidenceLine = message
+        .split('\n')
+        .find((line) => line.startsWith('compiler evidence '));
+      expect(
+        evidenceLine,
+        'failed compiler evidence survives private directory removal',
+      ).toBeDefined();
+      const evidence = JSON.parse(
+        evidenceLine!.slice('compiler evidence '.length),
+      );
+      expect(evidence).toMatchObject({
+        schemaVersion: 1,
+        timeoutMs: 10_000,
+        elapsedMs: 75,
+        coordinator: {
+          pid: process.pid,
+          platform: process.platform,
+          arch: process.arch,
+          node: process.version,
+        },
+        source: {
+          path: source,
+          size: Buffer.byteLength(sourceBytes),
+          sha256: createHash('sha256').update(sourceBytes).digest('hex'),
+          regularFile: true,
+          symbolicLink: false,
+        },
+        compiler: { unavailable: 'ENOENT' },
+        stagedOutput: {
+          size: Buffer.byteLength('partial executable'),
+          regularFile: true,
+          symbolicLink: false,
+        },
+      });
+      for (const sample of [evidence.before, evidence.after]) {
+        expect(sample).toMatchObject({
+          cpuCount: expect.any(Number),
+          cpuMs: {
+            idle: expect.any(Number),
+            user: expect.any(Number),
+            sys: expect.any(Number),
+          },
+          freeMemoryBytes: expect.any(Number),
+          totalMemoryBytes: expect.any(Number),
+          coordinatorCpuUs: {
+            user: expect.any(Number),
+            system: expect.any(Number),
+          },
+          coordinatorRssBytes: expect.any(Number),
+        });
+      }
+      expect(readdirSync(root)).toEqual(['guard.cs']);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
