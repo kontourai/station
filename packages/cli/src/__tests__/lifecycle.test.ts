@@ -595,6 +595,18 @@ function ensureTrustedInstallDirectory(path: string): void {
   ]);
 }
 
+function expectPrivateDirectoryAndFile(directory: string, file: string): void {
+  if (process.platform === 'win32') {
+    assertWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: directory },
+      { kind: 'file', path: file },
+    ]);
+  } else {
+    expect(statSync(directory).mode & 0o777).toBe(0o700);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+  }
+}
+
 function writeTrustedInstallFile(path: string, content: string): void {
   writeFileSync(path, content, { mode: 0o644 });
 }
@@ -3012,8 +3024,7 @@ describe('lifecycle instance state', () => {
       uiPid: 41002,
       uiPort: 5274,
     });
-    expect(statSync(TEST_INSTANCE_STATE_DIR).mode & 0o777).toBe(0o700);
-    expect(statSync(statePath).mode & 0o777).toBe(0o600);
+    expectPrivateDirectoryAndFile(TEST_INSTANCE_STATE_DIR, statePath);
     expect(
       JSON.parse(
         readFileSync(join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE), 'utf-8'),
@@ -9824,8 +9835,7 @@ describe('lifecycle build + restart ergonomics', () => {
       expect(spawn.mock.calls[0][2]?.env).toEqual(
         expect.objectContaining({ STATION_LOG_FILE: logFile }),
       );
-      expect(statSync(join(TEST_ALT_HOME, 'logs')).mode & 0o777).toBe(0o700);
-      expect(statSync(logFile).mode & 0o777).toBe(0o600);
+      expectPrivateDirectoryAndFile(join(TEST_ALT_HOME, 'logs'), logFile);
       expect(readFileSync(logFile, 'utf8')).toContain(
         'station lifecycle start instance=default-log',
       );
@@ -9865,8 +9875,7 @@ describe('lifecycle build + restart ergonomics', () => {
         uiPort: 5294,
       });
 
-      expect(statSync(logDirectory).mode & 0o777).toBe(0o700);
-      expect(statSync(logFile).mode & 0o777).toBe(0o600);
+      expectPrivateDirectoryAndFile(logDirectory, logFile);
     } finally {
       killSpy.mockRestore();
     }
@@ -10024,6 +10033,9 @@ describe('lifecycle build + restart ergonomics', () => {
     // landed first and the server refused the home this start created.
     const outsideLogs = join(TEST_ROOT, 'outside-logs');
     ensureDir(outsideLogs);
+    hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: outsideLogs },
+    ]);
     writeBuildManifest('fresh-home-outside-log');
     const markerAtSpawn: boolean[] = [];
     const spawn = vi.fn(() => {

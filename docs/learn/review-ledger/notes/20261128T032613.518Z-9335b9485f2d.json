@@ -1,0 +1,7 @@
+{
+  "revision": "9a4009a267c58c4c313d7ee87a61234c2414b849",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Reviewed native Windows journal/state/log boundary claims against lifecycle and native file-security owners: current-user-only DACLs, inherited-private migration, execution-safe explicit log parent, platform-specific directory fsync and separate installed Nightly evidence. No runtime acceptance claim.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/lifecycle.ts","packages/shared/src/windows-file-security.ts"]}
+  ]
+}
