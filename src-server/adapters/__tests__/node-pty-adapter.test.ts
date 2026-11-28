@@ -2,7 +2,9 @@ import { ChildProcess, execFile, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import { windowsSystemUtilityPath } from '@kontourai/station-shared/windows-system-utility';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   captureOwnedProcessOutput,
@@ -131,6 +133,7 @@ function drivenPty() {
   const adapter = new NodePtyAdapter(() => Promise.resolve(nodePty));
   return {
     adapter,
+    pty,
     output: (text: string) => {
       for (const cb of [...data]) cb(text);
     },
@@ -165,6 +168,105 @@ describe('termination report (#4626)', () => {
     );
   });
 
+  test.runIf(process.platform === 'win32').each([false, true])(
+    'retains native cleanup and failure evidence when taskkill resolution refuses (#5627), fallback throws: %s',
+    async (fallbackThrows) => {
+      const { adapter, pty, exit } = drivenPty();
+      const proc = await adapter.spawn(SPAWN_INPUT);
+      if (fallbackThrows) {
+        pty.kill.mockImplementation(() => {
+          throw new Error('native kill refused');
+        });
+      }
+      vi.stubEnv('SystemRoot', 'relative-windows');
+      try {
+        const ending = proc.terminate!();
+        await expect(ending).rejects.toThrow(
+          /Terminal process-tree cleanup failed: Windows SystemRoot must be a local absolute path.*helper pid=unassigned.*spawn=pending/,
+        );
+        if (fallbackThrows) {
+          await expect(ending).rejects.toThrow(
+            'native cleanup failed: native kill refused',
+          );
+        }
+        expect(pty.kill).toHaveBeenCalledExactlyOnceWith();
+        expect(execFile).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+        exit();
+      }
+    },
+  );
+
+  test.runIf(process.platform === 'win32')(
+    'retains bounded taskkill timeout evidence before and after helper settlement (#5627)',
+    async () => {
+      const { adapter, exit } = drivenPty();
+      const proc = await adapter.spawn(SPAWN_INPUT);
+      const helper = new ChildProcess();
+      const stdout = new PassThrough();
+      const stderr = new PassThrough();
+      helper.stdout = stdout;
+      helper.stderr = stderr;
+      Object.defineProperty(helper, 'pid', { value: 5627 });
+      let finish!: (error: Error) => void;
+      vi.mocked(execFile).mockImplementationOnce(((
+        _file: string,
+        _args: string[],
+        _options: object,
+        callback: (error: Error) => void,
+      ) => {
+        finish = callback;
+        return helper;
+      }) as never);
+      const ending = proc.terminate!();
+      const rejected = expect(ending).rejects.toThrow(
+        /Terminal process-tree cleanup failed:.*signal=SIGTERM.*killed=true.*stdout=.*stdout-tail.*stderr=.*stderr-tail/s,
+      );
+      try {
+        helper.emit('spawn');
+        stdout.write(`${'x'.repeat(10_000)}stdout-tail`);
+        stderr.write(`${'y'.repeat(10_000)}stderr-tail`);
+        Object.defineProperties(helper, {
+          exitCode: { value: null },
+          signalCode: { value: 'SIGTERM' },
+          killed: { value: true },
+        });
+        helper.emit('exit', null, 'SIGTERM');
+        const pending = proc.describeTermination!();
+        expect(pending).toContain(
+          JSON.stringify(
+            join(
+              process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+              'System32',
+              'taskkill.exe',
+            ),
+          ),
+        );
+        expect(pending).toContain('helper pid=5627');
+        expect(pending).toContain('spawn=observed');
+        expect(pending).toContain('exit=observed');
+        expect(pending).toContain('close=pending');
+        expect(pending).toContain('killed=true');
+        expect(pending).toContain('stdout-tail');
+        expect(pending).toContain('stderr-tail');
+        expect(pending.length).toBeLessThan(5_000);
+      } finally {
+        helper.emit('close', null, 'SIGTERM');
+        finish(
+          Object.assign(new Error('Command failed: taskkill'), {
+            code: null,
+            signal: 'SIGTERM',
+            killed: true,
+          }),
+        );
+        exit();
+        await rejected;
+      }
+      expect(proc.describeTermination!()).toContain('close=observed');
+    },
+  );
+
   test.runIf(process.platform === 'win32')(
     'a Windows ending reports the tree kill and an exit that has not followed it',
     async () => {
@@ -183,7 +285,7 @@ describe('termination report (#4626)', () => {
       const ending = proc.terminate!();
       await vi.waitFor(() =>
         expect(proc.describeTermination?.()).toMatch(
-          /^taskkill exited 0 after \d+ ms; no exit event yet; last output never$/,
+          /^taskkill exited 0 after \d+ ms; no exit event yet; last output never; utility=/,
         ),
       );
       exit();
@@ -292,7 +394,7 @@ describe('pending native PTY startup admission', () => {
       expect(output).toHaveBeenCalledExactlyOnceWith('after admission');
       await proc.terminate!();
       expect(taskkill).toHaveBeenCalledExactlyOnceWith(
-        'taskkill',
+        windowsSystemUtilityPath('taskkill'),
         ['/T', '/F', '/PID', '9321'],
         { timeout: 5_000, windowsHide: true },
         expect.any(Function),

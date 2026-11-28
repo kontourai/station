@@ -1,0 +1,7 @@
+{
+  "revision": "d057ac28a562136ce34c265446f8d28cd3099818",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Reviewed the changed Windows termination paragraph against NodePtyProcess.terminateTree/describeTermination and TerminalSessions.terminate: System32 taskkill identity, helper spawn/exit/close observations, signal/kill state and 2048-character stream tails are diagnostics only. The existing five-second helper and six-second session bounds and ownership/fallback/exit rules remain unchanged. Existing adapter owner passes 25 with 14 platform skips; the new missing-receipt baseline and deliberate stdout-loss mutation fail, byte-exact restoration and named real restart plus receipt pass. This does not diagnose or close the original intermittent #5627 failure. The new shared resolver declaration adds the already-supported taskkill name without changing resolver runtime behavior.","inputs":["docs/design/terminal.md","src-server/adapters/__tests__/node-pty-adapter.test.ts","src-server/adapters/node-pty-adapter.ts"]}
+  ]
+}
