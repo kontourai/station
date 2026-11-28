@@ -9,6 +9,13 @@
       "route": "/settings?view=account-preferences&highlight=account-preference-sync"
     },
     {
+      "id": "personal-all-engines-approval",
+      "label": "New chats (all engines)",
+      "scope": "account",
+      "section": "account-preferences",
+      "route": "/settings?view=account-preferences&highlight=personal-all-engines-approval"
+    },
+    {
       "id": "personal-codex-approval",
       "label": "New Codex chats",
       "scope": "account",
@@ -28,6 +35,27 @@
       "scope": "account",
       "section": "account-preferences",
       "route": "/settings?view=account-preferences&highlight=personal-muse-approval"
+    },
+    {
+      "id": "personal-opencode-approval",
+      "label": "New OpenCode chats",
+      "scope": "account",
+      "section": "account-preferences",
+      "route": "/settings?view=account-preferences&highlight=personal-opencode-approval"
+    },
+    {
+      "id": "personal-acp-approval",
+      "label": "New custom engine chats",
+      "scope": "account",
+      "section": "account-preferences",
+      "route": "/settings?view=account-preferences&highlight=personal-acp-approval"
+    },
+    {
+      "id": "personal-antigravity-approval",
+      "label": "New Antigravity chats",
+      "scope": "account",
+      "section": "account-preferences",
+      "route": "/settings?view=account-preferences&highlight=personal-antigravity-approval"
     },
     {
       "id": "desktop-app-updates",

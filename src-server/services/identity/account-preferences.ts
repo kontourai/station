@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import type {
-  AccountPreferencesPatch,
-  AccountPreferencesView,
+import {
+  type AccountPreferencesPatch,
+  type AccountPreferencesView,
+  ADDITIONAL_INTERACTIVE_APPROVAL_ENGINES,
+  LEGACY_INTERACTIVE_APPROVAL_ENGINES,
 } from '@kontourai/station-contracts/account-preferences';
 import {
   COLOR_THEME_ID_PATTERN,
@@ -100,7 +102,7 @@ const appearanceFields = {
  * The patch schema stays strict: a key this server cannot validate is
  * refused, not silently dropped.
  */
-const storedDocument = (shape: z.ZodRawShape) =>
+const storedDocument = <Shape extends z.ZodRawShape>(shape: Shape) =>
   z
     .object({
       schemaVersion: z.literal(1),
@@ -109,6 +111,17 @@ const storedDocument = (shape: z.ZodRawShape) =>
     .strict();
 const mainDocument = storedDocument(mainFields);
 const appearanceDocument = storedDocument(appearanceFields);
+// Older servers validate the engine keys in the main file strictly.
+const approvalDocument = storedDocument({
+  interactiveApprovalDefault: mode,
+  interactiveApprovalModes: z
+    .object({
+      opencode: mode.optional(),
+      acp: mode.optional(),
+      antigravity: mode.optional(),
+    })
+    .passthrough(),
+});
 type StoredValues = Record<string, unknown>;
 function known(
   values: StoredValues,
@@ -142,11 +155,15 @@ const patchSchema = z
     modelPickerPreferences: fields.modelPickerPreferences.nullable().optional(),
     smoothReveal: fields.smoothReveal.nullable().optional(),
     bufferedDelivery: fields.bufferedDelivery.nullable().optional(),
+    interactiveApprovalDefault: mode.nullable().optional(),
     interactiveApprovalModes: z
       .object({
         codex: mode.nullable().optional(),
         claude: mode.nullable().optional(),
         muse: mode.nullable().optional(),
+        opencode: mode.nullable().optional(),
+        acp: mode.nullable().optional(),
+        antigravity: mode.nullable().optional(),
       })
       .strict()
       .nullable()
@@ -156,15 +173,10 @@ const patchSchema = z
 const limits = { maxBytes: 128 * 1024, label: 'account preferences' };
 export class InvalidAccountPreferencesError extends Error {}
 export class AccountPreferencesConflictError extends Error {}
-function withRevision(
-  document: AccountPreferencesView,
-): AccountPreferencesView {
-  return {
-    ...document,
-    revision: createHash('sha256')
-      .update(JSON.stringify(document.values.modelPickerPreferences ?? null))
-      .digest('hex'),
-  };
+function preferenceRevision(modelPickerPreferences: unknown): string {
+  return createHash('sha256')
+    .update(JSON.stringify(modelPickerPreferences ?? null))
+    .digest('hex');
 }
 
 function applyPatch(
@@ -181,8 +193,7 @@ function applyPatch(
       const modes = {
         ...(values.interactiveApprovalModes as Record<string, unknown>),
       };
-      for (const engine of ['codex', 'claude', 'muse'] as const) {
-        const pick = (value as Record<string, unknown>)[engine];
+      for (const [engine, pick] of Object.entries(value)) {
         if (pick === null) delete modes[engine];
         else if (pick !== undefined) modes[engine] = pick;
       }
@@ -220,14 +231,32 @@ export class AccountPreferencesStore {
     return this.path(owner, '.appearance');
   }
 
-  private view(main: StoredValues, appearance: StoredValues) {
-    return withRevision({
+  private view(
+    main: z.infer<typeof mainDocument>['values'],
+    appearance: StoredValues,
+    approval: z.infer<typeof approvalDocument>['values'],
+  ) {
+    const modes = approval.interactiveApprovalModes;
+    const additionalModes = modes
+      ? known(modes, ADDITIONAL_INTERACTIVE_APPROVAL_ENGINES)
+      : undefined;
+    return {
       schemaVersion: 1,
+      revision: preferenceRevision(main.modelPickerPreferences),
       values: {
         ...known(main, MAIN_KEYS),
         ...known(appearance, APPEARANCE_KEYS),
+        ...known(approval, ['interactiveApprovalDefault']),
+        ...(additionalModes && Object.keys(additionalModes).length > 0
+          ? {
+              interactiveApprovalModes: {
+                ...main.interactiveApprovalModes,
+                ...additionalModes,
+              },
+            }
+          : {}),
       } as AccountPreferencesView['values'],
-    });
+    } satisfies AccountPreferencesView;
   }
 
   read(owner: Owner): AccountPreferencesView {
@@ -237,7 +266,10 @@ export class AccountPreferencesStore {
     const appearance = appearanceDocument.parse(
       readJsonFile(this.appearancePath(owner), EMPTY, limits),
     );
-    return this.view(main.values, appearance.values);
+    const approval = approvalDocument.parse(
+      readJsonFile(this.path(owner, '.approval'), EMPTY, limits),
+    );
+    return this.view(main.values, appearance.values, approval.values);
   }
 
   async patch(
@@ -251,8 +283,26 @@ export class AccountPreferencesStore {
     const patch: AccountPreferencesPatch = parsed.data;
     const mainPatch: Record<string, unknown> = {};
     const appearancePatch: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(patch))
-      (isAppearanceKey(key) ? appearancePatch : mainPatch)[key] = value;
+    const approvalPatch: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(patch)) {
+      if (key === 'interactiveApprovalDefault') approvalPatch[key] = value;
+      else if (key !== 'interactiveApprovalModes')
+        (isAppearanceKey(key) ? appearancePatch : mainPatch)[key] = value;
+    }
+    const modes = patch.interactiveApprovalModes;
+    if (modes === null) {
+      mainPatch.interactiveApprovalModes = null;
+      approvalPatch.interactiveApprovalModes = Object.fromEntries(
+        ADDITIONAL_INTERACTIVE_APPROVAL_ENGINES.map((engine) => [engine, null]),
+      );
+    } else if (modes) {
+      const legacy = known(modes, LEGACY_INTERACTIVE_APPROVAL_ENGINES);
+      const additional = known(modes, ADDITIONAL_INTERACTIVE_APPROVAL_ENGINES);
+      if (Object.keys(legacy).length > 0 || Object.keys(modes).length === 0)
+        mainPatch.interactiveApprovalModes = legacy;
+      if (Object.keys(additional).length > 0)
+        approvalPatch.interactiveApprovalModes = additional;
+    }
     // Each document is mutated under its own lock, and only when the patch
     // names one of its keys; a read-only side is read, never rewritten.
     const main =
@@ -266,7 +316,8 @@ export class AccountPreferencesStore {
               if (
                 !onlyMissing &&
                 Object.hasOwn(mainPatch, 'modelPickerPreferences') &&
-                expectedRevision !== this.view(current.values, {}).revision
+                expectedRevision !==
+                  preferenceRevision(current.values.modelPickerPreferences)
               )
                 throw new AccountPreferencesConflictError();
               return mainDocument.parse({
@@ -297,6 +348,24 @@ export class AccountPreferencesStore {
             },
             limits,
           );
-    return this.view(main.values, appearance.values);
+    const approvalPath = this.path(owner, '.approval');
+    const approval =
+      Object.keys(approvalPatch).length === 0
+        ? approvalDocument.parse(readJsonFile(approvalPath, EMPTY, limits))
+        : await mutateJsonFile(
+            approvalPath,
+            EMPTY as { schemaVersion: 1; values: StoredValues },
+            (raw) =>
+              approvalDocument.parse({
+                schemaVersion: 1,
+                values: applyPatch(
+                  approvalDocument.parse(raw).values,
+                  approvalPatch,
+                  onlyMissing,
+                ),
+              }),
+            limits,
+          );
+    return this.view(main.values, appearance.values, approval.values);
   }
 }

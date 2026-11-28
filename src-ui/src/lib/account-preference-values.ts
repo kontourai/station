@@ -1,7 +1,26 @@
-import type {
-  AccountPreferences,
-  AccountPreferencesPatch,
+import {
+  type AccountPreferences,
+  type AccountPreferencesPatch,
+  INTERACTIVE_APPROVAL_ENGINES,
+  type InteractiveApprovalEngine,
 } from '@kontourai/station-contracts/account-preferences';
+
+export function interactiveApprovalEngine(
+  engine?: string | null,
+): InteractiveApprovalEngine | undefined {
+  return INTERACTIVE_APPROVAL_ENGINES.find((candidate) => candidate === engine);
+}
+
+export function personalApprovalMode(
+  values?: AccountPreferences,
+  engine?: string | null,
+) {
+  const override = interactiveApprovalEngine(engine);
+  return (
+    (override ? values?.interactiveApprovalModes?.[override] : undefined) ??
+    values?.interactiveApprovalDefault
+  );
+}
 
 export function applyAccountPreferencePatch(
   current: AccountPreferences,
@@ -17,7 +36,7 @@ export function applyAccountPreferencePatch(
       patch.interactiveApprovalModes
     ) {
       const modes = { ...values.interactiveApprovalModes };
-      for (const engine of ['codex', 'claude', 'muse'] as const) {
+      for (const engine of INTERACTIVE_APPROVAL_ENGINES) {
         const pick = patch.interactiveApprovalModes[engine];
         if (pick === null) delete modes[engine];
         else if (pick !== undefined) modes[engine] = pick;

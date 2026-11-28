@@ -1272,8 +1272,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   Other ACP engines, including Antigravity, use Station's approval modes for
   the requests they send while keeping their own tool rules. If the host
   has no request-mode support, the chip shows **Approval: Set by engine**.
-  Signed-in users can save personal approval defaults for Codex, Claude, and
-  Muse where the selected Station permits personal defaults.
+  Signed-in users can set an account-wide approval default for new chats on
+  engines with a Station approval knob, including OpenCode and ACP engines
+  whose requests Station answers. The precedence is chat choice, Agent default,
+  Project default, account engine override, account-wide default, Station default,
+  then engine settings. Managed ceilings and device grants still apply.
   Codex's Default likewise names the engine's own settings
   ("Default — Codex's own settings"), and its description states what
   an unconfigured Codex does there, as a bound on which commands run unasked:

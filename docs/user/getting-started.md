@@ -235,13 +235,15 @@ remote tasks, and layouts are optional.
 
 ## Preferences across devices
 
-Open **Settings → General → Your account** to set the approval default for your
-new Codex, Claude or Muse chats. You can also use the chat's approval picker and
-choose **Save as my … default**. Full access requires an explicit
-confirmation. An Agent's own default takes precedence over your personal
-preference; an explicit chat choice takes precedence over both. Existing chats
-and unattended jobs keep their settings. Device grants and Station policy still
-control what may execute.
+Open **Settings → General → Your account** and use **New chats (all engines)**
+to set your default for engines that support Station approval modes. Set an
+engine override on the same page or use **Save as my … default** in the chat’s
+approval picker. Full access requires confirmation.
+
+New chats use the first applicable choice in this order. Chat choice → Agent
+default → Project default → your engine override → your all-engines default →
+Station default → engine settings. Existing chats and unattended jobs keep their
+settings. Device grants and Station policy still control what may execute.
 
 Appearance, chat display, answer delivery, diff preferences and model-picker
 choices follow the same signed-in person across devices connected to this

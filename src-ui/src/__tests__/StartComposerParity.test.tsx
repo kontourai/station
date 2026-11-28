@@ -69,7 +69,10 @@ vi.mock('../contexts/AccountPreferencesContext', () => ({
     saving: false,
     data: {
       schemaVersion: 1,
-      values: { interactiveApprovalModes: { claude: 'never', codex: 'never' } },
+      values: {
+        interactiveApprovalModes: { claude: 'never', codex: 'never' },
+        interactiveApprovalDefault: state.approvalDefault,
+      },
     },
   }),
 }));
@@ -88,6 +91,8 @@ const state = vi.hoisted(() => ({
   projectsLoading: false,
   projectsError: false,
   agentConnections: [] as unknown[],
+  acpConnections: [] as unknown[],
+  approvalDefault: undefined as 'ask' | 'never' | undefined,
   /** `GET /api/projects/run-locations`; undefined until it answers. */
   runLocations: undefined as Record<string, unknown> | undefined,
   /** `GET /api/environments/peers`, as this caller may read it. */
@@ -173,7 +178,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: async () => ({}),
   }),
   useACPConnectionsQuery: () => ({
-    data: [],
+    data: state.acpConnections,
     isFetching: false,
     error: null,
     refetch: async () => ({}),
@@ -308,6 +313,8 @@ beforeEach(() => {
   state.projectsLoading = false;
   state.projectsError = false;
   state.agentConnections = [];
+  state.acpConnections = [];
+  state.approvalDefault = undefined;
   state.runLocations = undefined;
   state.peers = [];
   state.chatDefaults = {};
@@ -785,6 +792,44 @@ describe('Home and the dock start the same way', () => {
     expect(
       await within(setupOf(ui.dock())).findByText('Full access'),
     ).toBeTruthy();
+  });
+
+  test('Home and the dock show the account-wide default for a Station-handled ACP engine', async () => {
+    state.approvalDefault = 'ask';
+    state.agents = [
+      {
+        ...CLAUDE,
+        engineConnectionType: 'acp',
+        execution: { agentConnectionId: 'custom-acp' },
+      },
+    ];
+    state.agentConnections = [
+      {
+        id: 'custom-acp',
+        name: 'Custom ACP',
+        type: 'acp',
+        kind: 'agent',
+        config: {},
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+      },
+    ];
+    state.acpConnections = [
+      {
+        id: 'custom-acp',
+        command: 'kiro-cli',
+        stationApprovalRequests: true,
+      },
+    ];
+    const ui = renderBoth();
+    for (const root of [screen.getByTestId('home'), ui.dock()]) {
+      const permissions = await within(setupOf(root)).findByRole('button', {
+        name: /^Permissions: Ask.*account default/,
+      });
+      expect(permissions).toBeTruthy();
+    }
+    ui.cleanupListener();
   });
 
   test('the Permissions chip picks this start’s mode, and the start carries it', async () => {

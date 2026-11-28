@@ -191,6 +191,12 @@ const SETTINGS_CATALOG_SOURCE = [
     keywords: ['account', 'sync', 'device', 'migration', 'preferences'],
   },
   {
+    id: 'personal-all-engines-approval',
+    title: 'New chats (all engines)',
+    section: 'account-preferences',
+    keywords: ['all engines', 'approval', 'full access', 'personal', 'default'],
+  },
+  {
     id: 'personal-codex-approval',
     title: 'New Codex chats',
     section: 'account-preferences',
@@ -207,6 +213,24 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'New Muse chats',
     section: 'account-preferences',
     keywords: ['muse', 'approval', 'full access', 'personal', 'default'],
+  },
+  {
+    id: 'personal-opencode-approval',
+    title: 'New OpenCode chats',
+    section: 'account-preferences',
+    keywords: ['opencode', 'approval', 'full access', 'personal', 'default'],
+  },
+  {
+    id: 'personal-acp-approval',
+    title: 'New custom engine chats',
+    section: 'account-preferences',
+    keywords: ['acp', 'approval', 'full access', 'personal', 'default'],
+  },
+  {
+    id: 'personal-antigravity-approval',
+    title: 'New Antigravity chats',
+    section: 'account-preferences',
+    keywords: ['antigravity', 'approval', 'full access', 'personal', 'default'],
   },
 
   {

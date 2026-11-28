@@ -119,7 +119,10 @@ vi.mock('@kontourai/station-sdk', async () => {
     // #4402: "New Muse chats" renders only with a Muse engine; the catalog
     // lists it, so this Station has one and every row renders.
     useEngineConnectionsQuery: () => ({
-      data: [{ id: 'muse', config: { engineId: 'muse' } }],
+      data: ['muse', 'opencode', 'acp', 'antigravity'].map((id) => ({
+        id,
+        config: { engineId: id },
+      })),
     }),
     useModelConnectionsQuery: () => ({ data: modelConnections }),
     useModelsQuery: () => ({ data: [] }),

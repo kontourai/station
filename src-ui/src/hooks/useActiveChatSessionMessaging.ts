@@ -1,3 +1,4 @@
+import { ADDITIONAL_INTERACTIVE_APPROVAL_ENGINES } from '@kontourai/station-contracts/account-preferences';
 import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/execution-target';
 import {
   CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE,
@@ -53,6 +54,7 @@ import {
 } from '../contexts/active-chats-store';
 import { conversationOpenPhase } from '../contexts/conversation-open-policy';
 import { useManagedApprovalCeiling } from '../contexts/ManagedPolicyContext';
+import { personalApprovalMode } from '../lib/account-preference-values';
 import {
   type ObservedAgentCatalog,
   observedEngine,
@@ -66,11 +68,14 @@ import type { SkillExperienceDraft } from '../lib/skill-experience-draft';
 import { TASK_SHAPING_INSTRUCTION } from '../lib/task-shaping';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
+  acpApprovalFor,
   approvalModeChipLabel,
+  approvalModeKnobSupported,
   approvalPickReceived,
   FULL_ACCESS_REFUSAL_SUMMARY,
   fullAccessRefusalNotice,
   isFullAccessRefusal,
+  nonAcpApprovalEngine,
   sessionApprovalOverride,
   supersededPickNote,
 } from '../utils/approvalMode';
@@ -85,6 +90,7 @@ import { sessionAdapterSupportsSteering } from '../utils/execution';
 import { withDeliveryCheck } from '../utils/messageDeliveryState';
 import { describeStationFailure } from '../utils/stationFailure';
 import { isReplayThread } from './orchestration/replay/replay-registry';
+import type { ACPConnectionInfo } from './useACPConnections';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
 import { useStreamingMessage } from './useStreamingMessage';
 
@@ -923,6 +929,8 @@ export function useSendMessage(
         firstInteractiveSend &&
         !options?.skipPersonalApprovalDefault &&
         !remote &&
+        (!connection ||
+          connection.capabilities.personalDefaults.state === 'allowed') &&
         currentState.queuedApprovalMode === undefined &&
         (options?.executionSnapshot
           ? options.executionSnapshot.executionOnCurrentStation
@@ -942,15 +950,21 @@ export function useSendMessage(
         const agentDefault = catalog?.agents?.find(
           (agent) => agent.slug === selectedAgent,
         )?.execution?.approvalMode;
+        const acp = acpApprovalFor(
+          queryClient
+            .getQueryData<ACPConnectionInfo[]>(['acp-connections'])
+            ?.find((entry) => entry.id === engineId),
+        );
+        const approvalEngine = acp
+          ? acp.engineId
+          : nonAcpApprovalEngine(engineId);
         const personalDefault =
           (!agentDefault || agentDefault === 'connection-default') &&
-          (engineId === 'codex' || engineId === 'claude' || engineId === 'muse')
-            ? engineId === 'codex'
-              ? accountPreferences.data?.values.interactiveApprovalModes?.codex
-              : engineId === 'claude'
-                ? accountPreferences.data?.values.interactiveApprovalModes
-                    ?.claude
-                : accountPreferences.data?.values.interactiveApprovalModes?.muse
+          approvalModeKnobSupported(approvalEngine, acp?.control)
+            ? personalApprovalMode(
+                accountPreferences.data?.values,
+                approvalEngine,
+              )
             : undefined;
         if (personalDefault) {
           currentState = {
@@ -1178,39 +1192,32 @@ export function useSendMessage(
         // recorded on receipt, before the turn. A replayed turn carries the
         // chat's CURRENT queued pick, never one captured when it was queued.
         const carriedApprovalPick = currentState?.queuedApprovalMode;
-        // An inherited personal default (queued with its account namespace,
-        // not picked) in a Project chat goes as a hint, not a pick: the
-        // server applies it only below the Agent's default and the Project's
-        // layer (`recordPersonalApprovalDefault`), so nothing here waits for
-        // the Project's answer. Outside a Project, or to a Station whose
-        // chat-defaults read answered 404 (it may predate the hint), there is
-        // no Project layer and it goes as the pick it always was.
-        // #4518: except under a managed approval ceiling. As a pick, a saved
-        // default above the ceiling would be refused, and one within it
-        // recorded as a choice the next, tighter policy refuses. A Station
-        // that reports a ceiling postdates the hint, so the hint goes
-        // everywhere and the server lowers it as the default it is.
-        const asHintUnderCeiling =
-          managedCeiling !== undefined &&
+        // Use a hint on hosts that support the personal layer. Keep the
+        // carried-pick fallback for the original engine overrides on older hosts.
+        const values = accountPreferences.data?.values;
+        const hasExpandedApprovalDefaults =
+          values?.interactiveApprovalDefault !== undefined ||
+          ADDITIONAL_INTERACTIVE_APPROVAL_ENGINES.some(
+            (engine) =>
+              values?.interactiveApprovalModes?.[engine] !== undefined,
+          );
+        const carriedAsHint =
           carriedApprovalPick !== undefined &&
           carriedApprovalPick !== 'connection-default' &&
-          currentState?.queuedApprovalDefaultNamespace !== undefined;
-        const carriedAsHint =
-          asHintUnderCeiling ||
-          (carriedApprovalPick !== undefined &&
-            carriedApprovalPick !== 'connection-default' &&
-            currentState?.queuedApprovalDefaultNamespace !== undefined &&
-            !!currentState.projectSlug &&
-            !(
-              requestScope &&
-              queryClient.getQueryData(
-                projectChatDefaultsQueryKey(
-                  requestScope,
-                  experienceNamespace ?? undefined,
-                  currentState.projectSlug,
-                ),
-              ) === null
-            ));
+          currentState?.queuedApprovalDefaultNamespace !== undefined &&
+          (managedCeiling !== undefined ||
+            hasExpandedApprovalDefaults ||
+            (!!currentState.projectSlug &&
+              !(
+                requestScope &&
+                queryClient.getQueryData(
+                  projectChatDefaultsQueryKey(
+                    requestScope,
+                    experienceNamespace ?? undefined,
+                    currentState.projectSlug,
+                  ),
+                ) === null
+              )));
         const dispatchInput = {
           apiBase,
           sessionId,

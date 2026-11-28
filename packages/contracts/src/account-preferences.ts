@@ -23,7 +23,22 @@ export const ACCOUNT_PREFERENCE_KEYS = [
 ] as const satisfies readonly (keyof DeviceSettings)[];
 
 export type PortableSettingKey = (typeof ACCOUNT_PREFERENCE_KEYS)[number];
-export type InteractiveApprovalEngine = 'codex' | 'claude' | 'muse';
+export const LEGACY_INTERACTIVE_APPROVAL_ENGINES = [
+  'codex',
+  'claude',
+  'muse',
+] as const;
+export const ADDITIONAL_INTERACTIVE_APPROVAL_ENGINES = [
+  'opencode',
+  'acp',
+  'antigravity',
+] as const;
+export const INTERACTIVE_APPROVAL_ENGINES = [
+  ...LEGACY_INTERACTIVE_APPROVAL_ENGINES,
+  ...ADDITIONAL_INTERACTIVE_APPROVAL_ENGINES,
+] as const;
+export type InteractiveApprovalEngine =
+  (typeof INTERACTIVE_APPROVAL_ENGINES)[number];
 export type InteractiveApprovalDefaults = Partial<
   Record<InteractiveApprovalEngine, Exclude<ApprovalMode, 'connection-default'>>
 >;
@@ -45,6 +60,7 @@ export type AccountPreferences = Partial<
   colorTheme?: string;
   smoothReveal?: boolean;
   bufferedDelivery?: boolean;
+  interactiveApprovalDefault?: Exclude<ApprovalMode, 'connection-default'>;
   interactiveApprovalModes?: InteractiveApprovalDefaults;
 };
 

@@ -154,6 +154,8 @@ describe('account preference HTTP persistence', () => {
     { featureSettings: { pushNotificationsEnabled: true } },
     { approvalGrant: 'full-access' },
     { interactiveApprovalModes: { unknown: 'never' } },
+    { interactiveApprovalDefault: 'connection-default' },
+    { interactiveApprovalModes: { opencode: 'connection-default' } },
     { chatFontSize: 200 },
     { modelPickerPreferences: { favorites: ['x'] } },
   ])(
@@ -287,6 +289,8 @@ describe('account preference HTTP persistence', () => {
       (
         await f.call({
           theme: 'light',
+          interactiveApprovalDefault: 'auto',
+          interactiveApprovalModes: { codex: 'ask', opencode: 'never' },
           colorTheme: 'catppuccin',
           colorThemeFlavor: 'frappe',
           colorThemeAccent: 'pink',
@@ -297,26 +301,58 @@ describe('account preference HTTP persistence', () => {
     ).toBe(200);
     const dir = join(f.home, 'config', 'account-preferences');
     const files = (await readdir(dir)).filter((name) => name.endsWith('.json'));
-    const mainFile = files.find((name) => !name.includes('.appearance.'))!;
-    expect(files).toHaveLength(2);
+    const mainFile = files.find((name) => /^[a-f0-9]+\.json$/.test(name))!;
+    expect(files).toHaveLength(3);
     // The old reader opens only <key>.json, and it parses.
     const old = oldDocument.parse(
       JSON.parse(await readFile(join(dir, mainFile), 'utf8')),
     );
-    expect(old.values).toEqual({ theme: 'light' });
-    // This server reads both and returns one view.
-    expect(await (await f.call()).json()).toMatchObject({
-      data: {
-        values: {
-          theme: 'light',
-          colorTheme: 'catppuccin',
-          colorThemeFlavor: 'frappe',
-          colorThemeAccent: 'pink',
-          density: 'compact',
-          motion: 'reduce',
+    expect(old.values).toEqual({
+      theme: 'light',
+      interactiveApprovalModes: { codex: 'ask' },
+    });
+    old.values.interactiveApprovalModes = { codex: 'auto', claude: 'ask' };
+    await writeFile(join(dir, mainFile), JSON.stringify(old));
+    const restarted = new Hono().route('/api/me', f.build());
+    // The upgraded server combines the older write with the saved sidecars.
+    expect(await (await f.call(undefined, {}, restarted)).json()).toMatchObject(
+      {
+        data: {
+          values: {
+            theme: 'light',
+            interactiveApprovalDefault: 'auto',
+            interactiveApprovalModes: {
+              codex: 'auto',
+              claude: 'ask',
+              opencode: 'never',
+            },
+            colorTheme: 'catppuccin',
+            colorThemeFlavor: 'frappe',
+            colorThemeAccent: 'pink',
+            density: 'compact',
+            motion: 'reduce',
+          },
         },
       },
+    );
+    for (const header of [
+      { 'x-test-person': 'other' },
+      { 'x-test-tenant': 'other' },
+    ]) {
+      const other = await (await f.call(undefined, header)).json();
+      expect(other.data.values).toEqual({});
+    }
+    const reset = await f.call({
+      interactiveApprovalDefault: null,
+      interactiveApprovalModes: { opencode: null },
     });
+    expect(reset.status).toBe(200);
+    const resetValues = (await reset.json()).data.values;
+    expect(resetValues.interactiveApprovalModes).toEqual({
+      codex: 'auto',
+      claude: 'ask',
+    });
+    expect(resetValues).not.toHaveProperty('interactiveApprovalDefault');
   });
 
   test('density and motion persist across devices and restart, validate choices, and reset (#4692)', async () => {
