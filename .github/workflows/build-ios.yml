@@ -209,7 +209,7 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
           xcodebuild -version
           xcrun simctl list runtimes | grep -F 'iOS 26.5'
-      - run: brew install xcodegen
+      - run: brew install xcodegen libimobiledevice cocoapods
       - run: npm run dependencies:ci && npm run build:native-client
       # First boot of a fresh hosted simulator took ~3.5 of the smoke's ~9
       # minutes (run 35781390232: receipt start 20:47:48, first XCUITest

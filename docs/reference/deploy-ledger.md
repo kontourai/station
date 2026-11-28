@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-28T10:08:15Z | nightly-desktop | 0.2.0-nightly.20261128 | `2ce2a5a` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/46129760254) |
+| 2026-11-28T10:08:15Z | nightly-android | 0.2.0-nightly.20261128 | `2ce2a5a` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/46129760254) |
+| 2026-11-28T09:24:32Z | nightly-npm | 0.12.0-nightly.20261128.46129760254 | `2ce2a5a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/46129760254) |
 | 2026-11-28T00:07:22Z | nightly-desktop | 0.2.0-nightly.20261127.2 | `1447064` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/46079688159) |
 | 2026-11-28T00:07:22Z | nightly-android | 0.2.0-nightly.20261127.2 | `1447064` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/46079688159) |
 | 2026-11-27T23:10:51Z | nightly-npm | 0.12.0-nightly.20261127.46079688159 | `1447064` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/46079688159) |
@@ -577,6 +580,168 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-28T10:08:15Z · nightly-desktop · 0.2.0-nightly.20261128
+
+- Ship SHA: `2ce2a5adb41e92c41ef1d40c994ffa288f6e12ee`
+- Artifact built at: `2026-11-28T09:23:12.345Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 46129760254)
+
+### Changelog
+
+Commits since `1447064` ([full sha](https://github.com/kontourai/station/commit/14470641affbaf208d22df143b9d4fa94bf35716)):
+
+**Features**
+
+- [#5684](https://github.com/kontourai/station/pull/5684) feat(approvals): support Allow everything for this session in Claude and Codex
+- [#5613](https://github.com/kontourai/station/pull/5613) feat(orchestration): wake Sessions on child and pull request events
+- [#4655](https://github.com/kontourai/station/pull/4655) feat(tasks): resume ended GitHub Tasks for the in-person operator
+- [#5659](https://github.com/kontourai/station/pull/5659) feat(desktop): add preview-gated Windows Nearby discovery
+- [#5539](https://github.com/kontourai/station/pull/5539) feat: Customize as a page, Apps in place of Plugins and Registry, and the quiet sidebar preview
+
+**Fixes**
+
+- [#5681](https://github.com/kontourai/station/pull/5681) fix(desktop): preserve Windows runtime when update drive is full
+- [#5682](https://github.com/kontourai/station/pull/5682) fix(ui): stop hidden composer sizing feedback loop
+- [#5678](https://github.com/kontourai/station/pull/5678) fix(orchestration): open conversations during handoff reservation
+- [#5675](https://github.com/kontourai/station/pull/5675) fix(agents): honor Station's bound engine readiness
+- [#5680](https://github.com/kontourai/station/pull/5680) fix(server): honor session-wide chat approval for log reads
+- [#5671](https://github.com/kontourai/station/pull/5671) fix(cli): enforce native Windows state and log privacy
+- [#5668](https://github.com/kontourai/station/pull/5668) fix(terminal): retain bounded Windows taskkill failure evidence
+- [#5669](https://github.com/kontourai/station/pull/5669) fix(shared): enforce native Windows lifecycle journal privacy
+- [#5667](https://github.com/kontourai/station/pull/5667) fix(infra): retain Windows orphan census failure diagnostics
+- [#5666](https://github.com/kontourai/station/pull/5666) fix(ui): honor Reduced startup motion and admission
+- [#5654](https://github.com/kontourai/station/pull/5654) fix(cli): verify Windows UI readiness with handle-bound ACL checks (#5644)
+- [#5663](https://github.com/kontourai/station/pull/5663) fix(ci): retain bounded Windows guard compiler evidence
+- [#5652](https://github.com/kontourai/station/pull/5652) fix(deps): retain installer descendants through guard settlement
+- [#5657](https://github.com/kontourai/station/pull/5657) fix(chat): keep steering bound to the running turn during streaming
+- [#5656](https://github.com/kontourai/station/pull/5656) fix(cli): model native Windows packaged upgrade fixtures
+
+**Docs**
+
+- [#5665](https://github.com/kontourai/station/pull/5665) docs: clarify Windows readiness shell prerequisites
+
+**Other**
+
+- [#5685](https://github.com/kontourai/station/pull/5685) test(perf): baseline explicit Inbox refresh at both widths
+- [#5677](https://github.com/kontourai/station/pull/5677) test(cli): make dev-home service Node fixture host-independent
+- [#5679](https://github.com/kontourai/station/pull/5679) test(shared): use native Windows flush and ACL refusal fixtures
+- [#5674](https://github.com/kontourai/station/pull/5674) test(perf): measure Home refresh and cached failure recovery
+- [#5639](https://github.com/kontourai/station/pull/5639) test(infra): preserve Windows orphan-sweep failure context
+- [#5670](https://github.com/kontourai/station/pull/5670) test(perf): require readable chat destinations and isolated paging
+- [#5651](https://github.com/kontourai/station/pull/5651) test(cli): verify portable archive stop guidance as shell arguments
+- [#5662](https://github.com/kontourai/station/pull/5662) test(perf): isolate composer typing profiles
+- [#5661](https://github.com/kontourai/station/pull/5661) test(cli): honor native state durability and log refusal contracts
+- [#5658](https://github.com/kontourai/station/pull/5658) perf(ui): defer closed Inbox action construction
+
+## 2026-11-28T10:08:15Z · nightly-android · 0.2.0-nightly.20261128
+
+- Ship SHA: `2ce2a5adb41e92c41ef1d40c994ffa288f6e12ee`
+- Artifact built at: `2026-11-28T09:22:51.156Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 46129760254)
+
+### Changelog
+
+Commits since `1447064` ([full sha](https://github.com/kontourai/station/commit/14470641affbaf208d22df143b9d4fa94bf35716)):
+
+**Features**
+
+- [#5684](https://github.com/kontourai/station/pull/5684) feat(approvals): support Allow everything for this session in Claude and Codex
+- [#5613](https://github.com/kontourai/station/pull/5613) feat(orchestration): wake Sessions on child and pull request events
+- [#4655](https://github.com/kontourai/station/pull/4655) feat(tasks): resume ended GitHub Tasks for the in-person operator
+- [#5659](https://github.com/kontourai/station/pull/5659) feat(desktop): add preview-gated Windows Nearby discovery
+- [#5539](https://github.com/kontourai/station/pull/5539) feat: Customize as a page, Apps in place of Plugins and Registry, and the quiet sidebar preview
+
+**Fixes**
+
+- [#5681](https://github.com/kontourai/station/pull/5681) fix(desktop): preserve Windows runtime when update drive is full
+- [#5682](https://github.com/kontourai/station/pull/5682) fix(ui): stop hidden composer sizing feedback loop
+- [#5678](https://github.com/kontourai/station/pull/5678) fix(orchestration): open conversations during handoff reservation
+- [#5675](https://github.com/kontourai/station/pull/5675) fix(agents): honor Station's bound engine readiness
+- [#5680](https://github.com/kontourai/station/pull/5680) fix(server): honor session-wide chat approval for log reads
+- [#5671](https://github.com/kontourai/station/pull/5671) fix(cli): enforce native Windows state and log privacy
+- [#5668](https://github.com/kontourai/station/pull/5668) fix(terminal): retain bounded Windows taskkill failure evidence
+- [#5669](https://github.com/kontourai/station/pull/5669) fix(shared): enforce native Windows lifecycle journal privacy
+- [#5667](https://github.com/kontourai/station/pull/5667) fix(infra): retain Windows orphan census failure diagnostics
+- [#5666](https://github.com/kontourai/station/pull/5666) fix(ui): honor Reduced startup motion and admission
+- [#5654](https://github.com/kontourai/station/pull/5654) fix(cli): verify Windows UI readiness with handle-bound ACL checks (#5644)
+- [#5663](https://github.com/kontourai/station/pull/5663) fix(ci): retain bounded Windows guard compiler evidence
+- [#5652](https://github.com/kontourai/station/pull/5652) fix(deps): retain installer descendants through guard settlement
+- [#5657](https://github.com/kontourai/station/pull/5657) fix(chat): keep steering bound to the running turn during streaming
+- [#5656](https://github.com/kontourai/station/pull/5656) fix(cli): model native Windows packaged upgrade fixtures
+
+**Docs**
+
+- [#5665](https://github.com/kontourai/station/pull/5665) docs: clarify Windows readiness shell prerequisites
+
+**Other**
+
+- [#5685](https://github.com/kontourai/station/pull/5685) test(perf): baseline explicit Inbox refresh at both widths
+- [#5677](https://github.com/kontourai/station/pull/5677) test(cli): make dev-home service Node fixture host-independent
+- [#5679](https://github.com/kontourai/station/pull/5679) test(shared): use native Windows flush and ACL refusal fixtures
+- [#5674](https://github.com/kontourai/station/pull/5674) test(perf): measure Home refresh and cached failure recovery
+- [#5639](https://github.com/kontourai/station/pull/5639) test(infra): preserve Windows orphan-sweep failure context
+- [#5670](https://github.com/kontourai/station/pull/5670) test(perf): require readable chat destinations and isolated paging
+- [#5651](https://github.com/kontourai/station/pull/5651) test(cli): verify portable archive stop guidance as shell arguments
+- [#5662](https://github.com/kontourai/station/pull/5662) test(perf): isolate composer typing profiles
+- [#5661](https://github.com/kontourai/station/pull/5661) test(cli): honor native state durability and log refusal contracts
+- [#5658](https://github.com/kontourai/station/pull/5658) perf(ui): defer closed Inbox action construction
+
+## 2026-11-28T09:24:32Z · nightly-npm · 0.12.0-nightly.20261128.46129760254
+
+- Ship SHA: `2ce2a5adb41e92c41ef1d40c994ffa288f6e12ee`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261128.46129760254 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `1447064` ([full sha](https://github.com/kontourai/station/commit/14470641affbaf208d22df143b9d4fa94bf35716)):
+
+**Features**
+
+- [#5684](https://github.com/kontourai/station/pull/5684) feat(approvals): support Allow everything for this session in Claude and Codex
+- [#5613](https://github.com/kontourai/station/pull/5613) feat(orchestration): wake Sessions on child and pull request events
+- [#4655](https://github.com/kontourai/station/pull/4655) feat(tasks): resume ended GitHub Tasks for the in-person operator
+- [#5659](https://github.com/kontourai/station/pull/5659) feat(desktop): add preview-gated Windows Nearby discovery
+- [#5539](https://github.com/kontourai/station/pull/5539) feat: Customize as a page, Apps in place of Plugins and Registry, and the quiet sidebar preview
+
+**Fixes**
+
+- [#5681](https://github.com/kontourai/station/pull/5681) fix(desktop): preserve Windows runtime when update drive is full
+- [#5682](https://github.com/kontourai/station/pull/5682) fix(ui): stop hidden composer sizing feedback loop
+- [#5678](https://github.com/kontourai/station/pull/5678) fix(orchestration): open conversations during handoff reservation
+- [#5675](https://github.com/kontourai/station/pull/5675) fix(agents): honor Station's bound engine readiness
+- [#5680](https://github.com/kontourai/station/pull/5680) fix(server): honor session-wide chat approval for log reads
+- [#5671](https://github.com/kontourai/station/pull/5671) fix(cli): enforce native Windows state and log privacy
+- [#5668](https://github.com/kontourai/station/pull/5668) fix(terminal): retain bounded Windows taskkill failure evidence
+- [#5669](https://github.com/kontourai/station/pull/5669) fix(shared): enforce native Windows lifecycle journal privacy
+- [#5667](https://github.com/kontourai/station/pull/5667) fix(infra): retain Windows orphan census failure diagnostics
+- [#5666](https://github.com/kontourai/station/pull/5666) fix(ui): honor Reduced startup motion and admission
+- [#5654](https://github.com/kontourai/station/pull/5654) fix(cli): verify Windows UI readiness with handle-bound ACL checks (#5644)
+- [#5663](https://github.com/kontourai/station/pull/5663) fix(ci): retain bounded Windows guard compiler evidence
+- [#5652](https://github.com/kontourai/station/pull/5652) fix(deps): retain installer descendants through guard settlement
+- [#5657](https://github.com/kontourai/station/pull/5657) fix(chat): keep steering bound to the running turn during streaming
+- [#5656](https://github.com/kontourai/station/pull/5656) fix(cli): model native Windows packaged upgrade fixtures
+
+**Docs**
+
+- [#5665](https://github.com/kontourai/station/pull/5665) docs: clarify Windows readiness shell prerequisites
+
+**Other**
+
+- [#5685](https://github.com/kontourai/station/pull/5685) test(perf): baseline explicit Inbox refresh at both widths
+- [#5677](https://github.com/kontourai/station/pull/5677) test(cli): make dev-home service Node fixture host-independent
+- [#5679](https://github.com/kontourai/station/pull/5679) test(shared): use native Windows flush and ACL refusal fixtures
+- [#5674](https://github.com/kontourai/station/pull/5674) test(perf): measure Home refresh and cached failure recovery
+- [#5639](https://github.com/kontourai/station/pull/5639) test(infra): preserve Windows orphan-sweep failure context
+- [#5670](https://github.com/kontourai/station/pull/5670) test(perf): require readable chat destinations and isolated paging
+- [#5651](https://github.com/kontourai/station/pull/5651) test(cli): verify portable archive stop guidance as shell arguments
+- [#5662](https://github.com/kontourai/station/pull/5662) test(perf): isolate composer typing profiles
+- [#5661](https://github.com/kontourai/station/pull/5661) test(cli): honor native state durability and log refusal contracts
+- [#5658](https://github.com/kontourai/station/pull/5658) perf(ui): defer closed Inbox action construction
 
 ## 2026-11-28T00:07:22Z · nightly-desktop · 0.2.0-nightly.20261127.2
 
