@@ -440,6 +440,7 @@ export async function stopTauriShellFixtureResources(input: {
   appLog: ReturnType<typeof createWriteStream>;
   stationRoot: string;
   onReceipt?: (receipt: TauriShellFixtureCleanupReceipt) => void;
+  onProcessGroupSettled?: (stationRoot: string) => Promise<void>;
 }) {
   const errors: unknown[] = [];
   let driverCloseError: string | undefined;
@@ -492,6 +493,15 @@ export async function stopTauriShellFixtureResources(input: {
   }
 
   const allowedPrefix = join(tmpdir(), 'station-tauri-shell-e2e-');
+  let settledCleanupSucceeded = true;
+  if (processGroupSettled && input.stationRoot.startsWith(allowedPrefix)) {
+    try {
+      await input.onProcessGroupSettled?.(input.stationRoot);
+    } catch (error) {
+      settledCleanupSucceeded = false;
+      errors.push(error);
+    }
+  }
   let appConfigRemoved = false;
   let fixtureRootExistsImmediatelyAfterRemoval: boolean | undefined;
   let fixtureRootExistsAfterQuietPeriod: boolean | undefined;
@@ -500,7 +510,7 @@ export async function stopTauriShellFixtureResources(input: {
     errors.push(
       new Error(`Refusing to remove unexpected fixture: ${input.stationRoot}`),
     );
-  } else if (processGroupSettled) {
+  } else if (processGroupSettled && settledCleanupSucceeded) {
     const appConfig = join(
       input.stationRoot,
       'instances',
@@ -547,10 +557,16 @@ export async function stopTauriShellFixtureResources(input: {
           `Could not remove the shell fixture at ${input.stationRoot}: ${String(lastError)}`,
         ),
       );
+  } else if (!processGroupSettled) {
+    errors.push(
+      new Error(
+        `Could not confirm the owned shell process group exited; fixture root was retained at ${input.stationRoot}.`,
+      ),
+    );
   } else {
     errors.push(
       new Error(
-        'Could not confirm the owned shell process group exited; fixture root was retained.',
+        `Settled-process cleanup failed; fixture root was retained at ${input.stationRoot}.`,
       ),
     );
   }
@@ -581,6 +597,7 @@ export function createMemoizedTauriShellFixtureStop(input: {
   appLog: ReturnType<typeof createWriteStream>;
   stationRoot: string;
   onReceipt?: (receipt: TauriShellFixtureCleanupReceipt) => void;
+  onProcessGroupSettled?: (stationRoot: string) => Promise<void>;
 }) {
   let stopTask: Promise<void> | undefined;
   return () => {
@@ -590,6 +607,8 @@ export function createMemoizedTauriShellFixtureStop(input: {
 }
 
 export interface TauriShellFixtureOptions {
+  onProcessStarted?: () => void;
+  onProcessGroupSettled?: (stationRoot: string) => Promise<void>;
   /**
    * Extra environment for the app process. The sidecar `Command` never calls
    * `env_clear`, so anything set here reaches the bundled Station server too
@@ -779,6 +798,7 @@ export async function startTauriShellFixture(
   child.stderr?.pipe(appLog, { end: false });
   const driver = new DirectWebDriver(driverPort);
   try {
+    if (child.pid) options.onProcessStarted?.();
     await driver.connect();
   } catch (error) {
     await stopTauriShellFixtureResources({
@@ -786,6 +806,7 @@ export async function startTauriShellFixture(
       execution,
       appLog,
       stationRoot,
+      onProcessGroupSettled: options.onProcessGroupSettled,
     }).catch((cleanupError) => {
       throw new AggregateError(
         [error, cleanupError],
@@ -811,6 +832,7 @@ export async function startTauriShellFixture(
       execution,
       appLog,
       stationRoot,
+      onProcessGroupSettled: options.onProcessGroupSettled,
       onReceipt: (receipt) => {
         cleanupReceipt = receipt;
       },

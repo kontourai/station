@@ -1479,6 +1479,13 @@ export interface StationCapabilityFlags {
    */
   troubleshootPrepare?: boolean;
   /**
+   * #4554: `GET` and `POST /api/tasks/:taskId/resume` exist, so the Station
+   * operator in person can resume an ended Task. A static fact about this
+   * build: whether the route answers is the `task-resume` Feature Preview's,
+   * which refuses with `task_resume_unavailable`. Withdrawn in hosted mode.
+   */
+  taskResume?: boolean;
+  /**
    * #4710: `GET /api/analytics/usage-rollup` honours local `connectionId`
    * and `modelConnectionId` filters and groupings, and accepts every provider
    * kind with declared usage semantics as `provider`. An older host silently

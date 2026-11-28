@@ -1,0 +1,7 @@
+{
+  "revision": "4a4336ef525885753f55d21be3f63da327f1945d",
+
+  "notes": [
+    {"path":"docs/design/project-membership.md","note":"Checked the shared Task-room fixture against Project manifest admission and account-device route policy. The fixture initializes a real Git directory and supplies it as the Project working directory so the persisted membership setup can complete. It still exercises separate account credentials, shared Task reads and revocation. The new case requires a successful shared Task-room read before asserting that both Resume methods are refused and the Task is unchanged. Source review.","inputs":["docs/design/project-membership.md","src-server/runtime/routes/__tests__/runtime-routes-task-room-members.test.ts"]}
+  ]
+}

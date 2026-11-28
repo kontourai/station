@@ -1,4 +1,5 @@
 import {
+  execFileSync as realExecFileSync,
   execSync as realExecSync,
   spawnSync as realSpawnSync,
   spawn,
@@ -55,9 +56,22 @@ import {
   STATION_HOME_SCHEMA_FILE,
   STATION_HOME_SCHEMA_VERSION,
 } from '@kontourai/station-shared/station-home-schema';
+import {
+  hardenWindowsPathsTrusted,
+  runWindowsTrustCommand,
+  type WindowsTrustCommandRunner,
+} from '@kontourai/station-shared/windows-path-trust';
 import { buildSync } from 'esbuild';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../../src-server/runtime/bootstrap/runtime-http.js';
 import type { EventBus } from '../../../../src-server/services/orchestration/event-bus.js';
@@ -83,6 +97,7 @@ import {
   formatTaskSettings,
   schtasksDefaultSettings,
 } from './helpers/windows-task-settings-fixture.js';
+import { windowsTrustOperation } from './helpers/windows-trust-fixture.js';
 
 type LifecycleModule = typeof import('../commands/lifecycle.js');
 type PlatformModule = typeof import('../commands/platform.js');
@@ -557,12 +572,57 @@ function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true });
 }
 
+const runFixtureWindowsTrust: WindowsTrustCommandRunner = (
+  command,
+  args,
+  options,
+) =>
+  realSpawnSync(command, args, {
+    ...options,
+    encoding: 'utf8',
+    shell: false,
+    windowsHide: true,
+  });
+
 function ensureTrustedInstallDirectory(path: string): void {
   mkdirSync(path, { recursive: true, mode: 0o755 });
+  hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+    { kind: 'directory', path: resolve(path, '../..') },
+  ]);
 }
 
 function writeTrustedInstallFile(path: string, content: string): void {
   writeFileSync(path, content, { mode: 0o644 });
+}
+
+function writePackagedInstallers(directory: string): void {
+  writeFileSync(join(directory, 'install.sh'), '#!/bin/sh\nexit 0\n', {
+    mode: 0o700,
+  });
+  writeFileSync(join(directory, 'install.ps1'), 'exit 0\n', { mode: 0o700 });
+}
+
+function expectedPackagedInstaller(directory: string): [string, string[]] {
+  return process.platform === 'win32'
+    ? [
+        win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'WindowsPowerShell',
+          'v1.0',
+          'powershell.exe',
+        ),
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          join(directory, 'install.ps1'),
+          'install',
+        ],
+      ]
+    : ['sh', ['./install.sh', 'install']];
 }
 
 /**
@@ -696,9 +756,10 @@ function expectServiceGuidance(
   message: string | null,
   action: 'install' | 'status' | 'uninstall',
   expectedArguments: string[],
+  launcher = 'station',
 ): void {
   const command = message?.match(
-    new RegExp(`"(station service ${action} [^\\r\\n]+)"`, 'u'),
+    new RegExp(`"(${launcher} service ${action} [^\\r\\n]+)"`, 'u'),
   )?.[1];
   expect(command).toBeDefined();
   const shell =
@@ -714,7 +775,10 @@ function expectServiceGuidance(
       : 'sh';
   const result = realSpawnSync(
     shell,
-    ['-c', `station() { printf '%s\\0' "$@"; }; ${command}`],
+    [
+      '-c',
+      `station() { printf '%s\\0' "$@"; }; station${command?.slice(launcher.length)}`,
+    ],
     { encoding: 'utf8', windowsHide: true },
   );
   expect(result.error).toBeUndefined();
@@ -727,25 +791,38 @@ function expectServiceGuidance(
 }
 
 function staleSchedulingSpawnSync(unitPath: string): Mock {
-  return vi.fn((command: string, args: string[]) => {
-    const probe = stoppedServiceProbe(command, args);
-    if (probe) return probe;
-    if (process.platform === 'darwin') {
-      return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
-    }
-    if (process.platform === 'win32') {
+  return vi.fn(
+    (
+      command: string,
+      args: string[],
+      options?: Parameters<WindowsTrustCommandRunner>[2],
+    ) => {
+      if (
+        process.platform === 'win32' &&
+        /\\powershell\.exe$/i.test(command) &&
+        windowsTrustOperation(args) !== null
+      ) {
+        return runFixtureWindowsTrust(command, args, options);
+      }
+      const probe = stoppedServiceProbe(command, args);
+      if (probe) return probe;
+      if (process.platform === 'darwin') {
+        return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
+      }
+      if (process.platform === 'win32') {
+        return {
+          status: 0,
+          stderr: '',
+          stdout: `${formatTaskSettings(schtasksDefaultSettings())}\n`,
+        };
+      }
       return {
         status: 0,
         stderr: '',
-        stdout: `${formatTaskSettings(schtasksDefaultSettings())}\n`,
+        stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
       };
-    }
-    return {
-      status: 0,
-      stderr: '',
-      stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
-    };
-  });
+    },
+  );
 }
 
 function runningServiceSpawnSync(unitPath: string): Mock {
@@ -1009,6 +1086,7 @@ afterEach(async () => {
   vi.doUnmock('node:child_process');
   vi.doUnmock('node:http');
   vi.doUnmock('node:net');
+  vi.doUnmock('@kontourai/station-shared/process-identity');
   rmSync(TEST_ROOT, { force: true, recursive: true });
 });
 
@@ -1955,7 +2033,7 @@ describe('lifecycle instance state', () => {
     expect(readFileSync(target, 'utf8')).toBe('{}');
   });
 
-  it('fails publication when the instance directory cannot be fsynced', async () => {
+  it('honors platform directory-fsync behavior when publishing instance state', async () => {
     ensureDir(TEST_CWD);
     ensureBuildOutputs('dir-sync');
     ensureDir(TEST_ALT_HOME);
@@ -1964,12 +2042,29 @@ describe('lifecycle instance state', () => {
       .fn()
       .mockReturnValueOnce({ pid: 43101, unref: vi.fn() })
       .mockReturnValueOnce({ pid: 43102, unref: vi.fn() });
+    const killSpy = vi
+      .spyOn(process, 'kill')
+      .mockImplementation((() => true) as typeof process.kill);
+    let directorySyncAttempts = 0;
+    const instanceDirectoryDescriptors = new Set<number>();
     vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
       fsOverrides: {
+        openSync: (path, flags, mode) => {
+          const descriptor = actualFs.openSync(path, flags, mode);
+          if (path === TEST_INSTANCE_STATE_DIR) {
+            instanceDirectoryDescriptors.add(descriptor);
+          }
+          return descriptor;
+        },
+        closeSync: (descriptor) => {
+          instanceDirectoryDescriptors.delete(descriptor);
+          actualFs.closeSync(descriptor);
+        },
         fsyncSync: (fd) => {
-          if (actualFs.fstatSync(fd).isDirectory()) {
+          if (instanceDirectoryDescriptors.has(fd)) {
+            directorySyncAttempts += 1;
             throw new Error('directory fsync failed');
           }
           actualFs.fsyncSync(fd);
@@ -1977,15 +2072,30 @@ describe('lifecycle instance state', () => {
       },
       platformOverrides: { sleepSync: vi.fn() },
     });
-    await expect(
-      lifecycle.start({
+    try {
+      const started = lifecycle.start({
         baseDir: TEST_ALT_HOME,
         instanceName: 'dir-sync',
         serverPort: 3250,
         uiPort: 5280,
-      }),
-    ).rejects.toThrow('directory fsync failed');
-    expect(existsSync(getInstanceStatePath('dir-sync'))).toBe(false);
+      });
+      const statePath = getInstanceStatePath('dir-sync');
+      if (process.platform === 'win32') {
+        await expect(started).resolves.toBeUndefined();
+        expect(directorySyncAttempts).toBe(0);
+        expect(JSON.parse(readFileSync(statePath, 'utf8'))).toMatchObject({
+          instanceId: 'dir-sync',
+          serverPid: 43101,
+          uiPid: 43102,
+        });
+      } else {
+        await expect(started).rejects.toThrow('directory fsync failed');
+        expect(directorySyncAttempts).toBeGreaterThan(0);
+        expect(existsSync(statePath)).toBe(false);
+      }
+    } finally {
+      killSpy.mockRestore();
+    }
   });
 
   it('detects a final-path replacement instead of claiming another record', async () => {
@@ -5817,7 +5927,7 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-missing-provenance');
     const releasesRoot = join(installRoot, 'releases');
     const release = join(releasesRoot, 'unsigned');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     for (const path of [installRoot, releasesRoot, release]) {
       chmodSync(path, 0o700);
     }
@@ -5871,9 +5981,7 @@ describe('upgrade', () => {
           prerelease: releaseChannel !== 'stable',
         })}\n`,
       );
-      writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-        mode: 0o700,
-      });
+      writePackagedInstallers(release);
       writeTrustedInstallFile(
         join(installRoot, '.station-portable-install-root'),
         'station-portable-install-root-v1\n',
@@ -5937,8 +6045,7 @@ describe('upgrade', () => {
         await lifecycle.upgrade();
 
         expect(execFileSync).toHaveBeenCalledWith(
-          'sh',
-          ['./install.sh', 'install'],
+          ...expectedPackagedInstaller(release),
           expect.objectContaining({
             cwd: release,
             env: expect.objectContaining({
@@ -5965,8 +6072,17 @@ describe('upgrade', () => {
         // The reinstall names the ring's launcher, which owns this install
         // (#4189). A Windows remedy reads the manifest, which this fixture
         // writes without the archive fields.
-        expect(log.mock.calls.flat().join('\n')).toContain(
-          `Run "${process.platform === 'win32' ? 'station' : launcher} service install --instance=packaged-guidance --base=${stationHome} --port=3141 --ui-port=3000 --host=127.0.0.1"`,
+        expectServiceGuidance(
+          log.mock.calls.flat().join('\n'),
+          'install',
+          [
+            '--instance=packaged-guidance',
+            `--base=${stationHome}`,
+            '--port=3141',
+            '--ui-port=3000',
+            '--host=127.0.0.1',
+          ],
+          process.platform === 'win32' ? 'station' : launcher,
         );
         expect(execSync).not.toHaveBeenCalled();
       } finally {
@@ -5993,9 +6109,7 @@ describe('upgrade', () => {
         prerelease: false,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -6190,9 +6304,7 @@ describe('upgrade', () => {
         prerelease: true,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -6240,9 +6352,7 @@ describe('upgrade', () => {
         prerelease: false,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -6258,7 +6368,21 @@ describe('upgrade', () => {
       { mode: 0o600 },
     );
     symlinkSync(release, join(installRoot, 'current'));
-    chmodSync(installRoot, 0o777);
+    if (process.platform === 'win32') {
+      const result = realSpawnSync(
+        win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'icacls.exe',
+        ),
+        [installRoot, '/grant', '*S-1-1-0:(W)'],
+        { encoding: 'utf8', windowsHide: true },
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
+    } else {
+      chmodSync(installRoot, 0o777);
+    }
 
     const execFileSync = vi.fn();
     const { lifecycle } = await loadLifecycleModule({
@@ -6267,7 +6391,9 @@ describe('upgrade', () => {
     });
 
     await expect(lifecycle.upgrade()).rejects.toThrow(
-      'packaged install root must be a same-user directory that is not group/world writable',
+      process.platform === 'win32'
+        ? 'Windows current-user ACL verification failed'
+        : 'packaged install root must be a same-user directory that is not group/world writable',
     );
     expect(execFileSync).not.toHaveBeenCalled();
   });
@@ -6482,6 +6608,11 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     const crypto = await import('node:crypto');
     const path = await import('node:path');
     const lifecycle = await import('../commands/lifecycle.js');
+    if (opts?.readinessFile && existsSync(opts.readinessFile)) {
+      hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+        { kind: 'file', path: opts.readinessFile },
+      ]);
+    }
     const handler = lifecycle.uiRequestHandler({
       http,
       crypto,
@@ -6509,6 +6640,8 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
       hostedTenantAuthorities: opts?.hostedTenantAuthorities,
     });
     const server = http.createServer(handler);
+    server.once('close', handler.close);
+    await handler.ready;
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     const addr = server.address();
     const port = typeof addr === 'object' && addr ? addr.port : 0;
@@ -8051,10 +8184,396 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
 // generated script) rather than relying on Vitest to produce it — the
 // `globalThis.__name` shim in `buildUiServerScript` is what's asserted, not
 // this test's own transform.
+describe('Windows readiness verifier lifecycle', () => {
+  let resolveGuard: (() => Promise<string | null>) | undefined;
+  async function launchWorker(program: string) {
+    const native =
+      await vi.importActual<typeof import('node:child_process')>(
+        'node:child_process',
+      );
+    if (process.platform === 'win32') {
+      const guards = await import(
+        '@kontourai/station-shared/windows-command-guard'
+      );
+      resolveGuard ??= guards.createWindowsCommandGuardResolver({
+        sourceDirectory: import.meta.dirname,
+        stagedGuard: null,
+      });
+      return guards.createWindowsOwnedWorkerLauncher({
+        spawn: native.spawn,
+        resolveGuard,
+        timeoutMs: 5_000,
+      })(process.execPath, ['-e', program]);
+    }
+    const child = native.spawn(process.execPath, ['-e', program], {
+      stdio: ['pipe', 'pipe', 'ignore'],
+      windowsHide: true,
+    });
+    const settled = new Promise<boolean>((resolve) =>
+      child.once('close', () => resolve(true)),
+    );
+    return {
+      pid: child.pid!,
+      stdin: child.stdin!,
+      stdout: child.stdout!,
+      settled,
+      stop: () => {
+        child.kill();
+        return settled;
+      },
+    };
+  }
+
+  it.each(['timeout', 'close'])(
+    'cancels a %s during unresolved startup without later acquiring a process',
+    async (reason) => {
+      const { createWindowsReadinessReader } = await import(
+        '../commands/windows-readiness-reader.js'
+      );
+      const guards = await import(
+        '@kontourai/station-shared/windows-command-guard'
+      );
+      const childProcess = process.getBuiltinModule('child_process');
+      const execute = vi.spyOn(childProcess, 'execFile');
+      const spawnWorker = vi.fn(childProcess.spawn);
+      let release!: () => void;
+      let entered!: () => void;
+      let aborted!: () => void;
+      const resolving = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const cancellation = new Promise<void>((resolve) => {
+        aborted = resolve;
+      });
+      const launch = guards.createWindowsOwnedWorkerLauncher({
+        resolveGuard: (signal) =>
+          new Promise<string>((resolve) => {
+            release = () => resolve('must-not-run.exe');
+            signal!.addEventListener('abort', aborted, { once: true });
+            entered();
+          }),
+        spawn: spawnWorker,
+        timeoutMs: 1_000,
+      });
+      const reader = createWindowsReadinessReader({
+        launch: (signal) =>
+          launch(process.execPath, ['-e', 'process.exit(99)'], signal),
+        timeoutMs: 100,
+      });
+      const pending = reader.read();
+      await resolving;
+      const closing = reason === 'close' ? reader.close() : undefined;
+      try {
+        await cancellation;
+        await expect(reader.read()).resolves.toBeNull();
+        expect(execute).not.toHaveBeenCalled();
+        release();
+        await expect(pending).resolves.toBeNull();
+        await closing;
+        expect(execute).not.toHaveBeenCalled();
+        expect(spawnWorker).not.toHaveBeenCalled();
+        await expect(reader.read()).resolves.toBeNull();
+      } finally {
+        release();
+        await reader.close();
+      }
+    },
+  );
+
+  it('coalesces waiting readers into a fresh next observation and closes the worker', async () => {
+    const { createWindowsReadinessReader } = await import(
+      '../commands/windows-readiness-reader.js'
+    );
+    const program = `
+      require('node:readline').createInterface({input:process.stdin}).on('line', sequence => {
+        setTimeout(()=>process.stdout.write(JSON.stringify({sequence,trusted:true,content:JSON.stringify({pid:process.pid,sequence})})+'\\n'),50);
+      });
+    `;
+    const reader = createWindowsReadinessReader({
+      launch: () => launchWorker(program),
+      timeoutMs: 5_000,
+    });
+    let workerPid: number | undefined;
+    try {
+      const first = reader.read();
+      const second = reader.read();
+      const third = reader.read();
+      expect(third).toBe(second);
+      const observations = (await Promise.all([first, second, third])).map(
+        (content) => JSON.parse(content!),
+      );
+      workerPid = observations[0].pid;
+      expect(observations.map((observation) => observation.sequence)).toEqual([
+        '1',
+        '2',
+        '2',
+      ]);
+      expect(observations.map((observation) => observation.pid)).toEqual([
+        workerPid,
+        workerPid,
+        workerPid,
+      ]);
+      expect(JSON.parse((await reader.read())!).sequence).toBe('3');
+    } finally {
+      await reader.close();
+    }
+    expect(workerPid).toBeTypeOf('number');
+    expect(() => process.kill(workerPid!, 0)).toThrow();
+    await expect(reader.read()).resolves.toBeNull();
+  });
+
+  it.each(['stalled', 'wrong-sequence', 'oversized'])(
+    'fails closed and reaps a %s worker',
+    async (failure) => {
+      const { createWindowsReadinessReader } = await import(
+        '../commands/windows-readiness-reader.js'
+      );
+      let worker: Awaited<ReturnType<typeof launchWorker>> | undefined;
+      const program = `
+        process.stdin.on('data',()=>{
+          if(${JSON.stringify(failure)}==='wrong-sequence') process.stdout.write(JSON.stringify({sequence:'9',trusted:true,content:'ready'})+'\\n');
+          if(${JSON.stringify(failure)}==='oversized') process.stdout.write('x'.repeat(1048577));
+        });
+      `;
+      const reader = createWindowsReadinessReader({
+        launch: async () => {
+          worker = await launchWorker(program);
+          return worker;
+        },
+        timeoutMs: 1_000,
+      });
+      try {
+        const first = reader.read();
+        const queued = reader.read();
+        await expect(first).resolves.toBeNull();
+        await expect(queued).resolves.toBeNull();
+        expect(worker).toBeDefined();
+        expect(() => process.kill(worker!.pid, 0)).toThrow();
+      } finally {
+        await reader.close();
+      }
+    },
+  );
+
+  it.each([true, false])(
+    'fences replacements until cleanup settles and preserves its %s custody verdict',
+    async (confirmed) => {
+      const { createWindowsReadinessReader } = await import(
+        '../commands/windows-readiness-reader.js'
+      );
+      let entered!: () => void;
+      const stopping = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let launches = 0;
+      let firstSettled = false;
+      const reader = createWindowsReadinessReader({
+        launch: async () => {
+          launches++;
+          const program =
+            launches === 1
+              ? `process.stdin.on('data',()=>process.stdout.write(JSON.stringify({sequence:'wrong',trusted:true,content:'wrong'})+'\\n'));`
+              : `require('node:readline').createInterface({input:process.stdin}).on('line', sequence => process.stdout.write(JSON.stringify({sequence,trusted:true,content:'next'})+'\\n'));`;
+          const worker = await launchWorker(program);
+          if (launches !== 1) return worker;
+          return {
+            ...worker,
+            stop: async () => {
+              entered();
+              await released;
+              await worker.stop();
+              return confirmed;
+            },
+          };
+        },
+        timeoutMs: 5_000,
+      });
+      try {
+        const first = reader.read();
+        void first.then(() => {
+          firstSettled = true;
+        });
+        await stopping;
+        expect(firstSettled).toBe(false);
+        await expect(reader.read()).resolves.toBeNull();
+        expect(launches).toBe(1);
+        release();
+        await expect(first).resolves.toBeNull();
+        await expect(reader.read()).resolves.toBe(confirmed ? 'next' : null);
+        expect(launches).toBe(confirmed ? 2 : 1);
+      } finally {
+        release();
+        await reader.close();
+      }
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'fences verification after guard loss without ending an unrelated process',
+    async () => {
+      const native =
+        await vi.importActual<typeof import('node:child_process')>(
+          'node:child_process',
+        );
+      const guards = await import(
+        '@kontourai/station-shared/windows-command-guard'
+      );
+      const { createWindowsReadinessReader } = await import(
+        '../commands/windows-readiness-reader.js'
+      );
+      resolveGuard ??= guards.createWindowsCommandGuardResolver({
+        sourceDirectory: import.meta.dirname,
+        stagedGuard: null,
+      });
+      const processes: import('node:child_process').ChildProcess[] = [];
+      const launch = guards.createWindowsOwnedWorkerLauncher({
+        resolveGuard,
+        spawn: (command, args, options) => {
+          const child = native.spawn(command, args, options);
+          processes.push(child);
+          return child;
+        },
+        timeoutMs: 5_000,
+      });
+      const unrelated = native.spawn(
+        process.execPath,
+        ['-e', 'setTimeout(()=>{},20000)'],
+        { stdio: 'ignore', windowsHide: true },
+      );
+      let worker: Awaited<ReturnType<typeof launch>> | undefined;
+      const reader = createWindowsReadinessReader({
+        launch: async () => {
+          worker = await launch(process.execPath, [
+            '-e',
+            `require('node:readline').createInterface({input:process.stdin}).on('line',sequence=>process.stdout.write(JSON.stringify({sequence,trusted:true,content:'ready'})+'\\n'));`,
+          ]);
+          return worker;
+        },
+        timeoutMs: 5_000,
+      });
+      try {
+        await expect(reader.read()).resolves.toBe('ready');
+        expect(processes).toHaveLength(1);
+        processes[0]!.kill();
+        await expect(worker!.settled).resolves.toBe(false);
+        await expect(reader.read()).resolves.toBeNull();
+        expect(processes).toHaveLength(1);
+        await vi.waitFor(
+          () => expect(() => process.kill(worker!.pid, 0)).toThrow(),
+          { timeout: 10_000 },
+        );
+        expect(() => process.kill(unrelated.pid!, 0)).not.toThrow();
+      } finally {
+        await reader.close();
+        unrelated.kill();
+      }
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'ends the verifier and its descendants on parent loss without ending an unrelated process',
+    async () => {
+      const native =
+        await vi.importActual<typeof import('node:child_process')>(
+          'node:child_process',
+        );
+      const guards = await import(
+        '@kontourai/station-shared/windows-command-guard'
+      );
+      resolveGuard ??= guards.createWindowsCommandGuardResolver({
+        sourceDirectory: import.meta.dirname,
+        stagedGuard: null,
+      });
+      const guard = await resolveGuard();
+      expect(guard).toBeTypeOf('string');
+      const unrelated = native.spawn(
+        process.execPath,
+        ['-e', 'setTimeout(()=>{},20000)'],
+        { stdio: 'ignore', windowsHide: true },
+      );
+      const workerProgram = `
+      const child=require('node:child_process').spawn(process.execPath,['-e','setTimeout(()=>{},20000)'],{stdio:'ignore',windowsHide:true});
+      process.stdout.write(JSON.stringify({pid:process.pid,descendant:child.pid})+'\\n');
+      setTimeout(()=>{},20000);
+    `;
+      const parent = native.spawn(
+        process.execPath,
+        [
+          '-e',
+          `
+      const launch=(${guards.createWindowsOwnedWorkerLauncher.toString()})({spawn:require('node:child_process').spawn,resolveGuard:async()=>${JSON.stringify(guard)},timeoutMs:5000});
+      launch(process.execPath,['-e',${JSON.stringify(workerProgram)}]).then(worker=>{
+        worker.stdout.once('data',chunk=>process.send(JSON.parse(String(chunk))));
+      }).catch(error=>{process.stderr.write(error.stack);process.exitCode=1;});
+      setTimeout(()=>{},20000);
+    `,
+        ],
+        { stdio: ['ignore', 'ignore', 'pipe', 'ipc'], windowsHide: true },
+      );
+      let parentStderr = '';
+      parent.stderr?.on('data', (chunk) => {
+        parentStderr += String(chunk);
+      });
+      try {
+        const descendants = await new Promise<{
+          pid: number;
+          descendant: number;
+        }>((resolve, reject) => {
+          parent.once('message', (message) => {
+            if (
+              typeof message !== 'object' ||
+              message === null ||
+              !('pid' in message) ||
+              !('descendant' in message) ||
+              typeof message.pid !== 'number' ||
+              typeof message.descendant !== 'number'
+            ) {
+              reject(new Error('Parent sent an invalid worker observation'));
+              return;
+            }
+            resolve({ pid: message.pid, descendant: message.descendant });
+          });
+          parent.once('error', reject);
+          parent.once('exit', () =>
+            reject(
+              new Error(
+                `Parent exited before worker observation: ${parentStderr}`,
+              ),
+            ),
+          );
+        });
+        expect(() => process.kill(descendants.pid, 0)).not.toThrow();
+        expect(() => process.kill(descendants.descendant, 0)).not.toThrow();
+        parent.kill();
+        await vi.waitFor(
+          () => {
+            expect(() => process.kill(descendants.pid, 0)).toThrow();
+            expect(() => process.kill(descendants.descendant, 0)).toThrow();
+          },
+          { timeout: 10_000 },
+        );
+        expect(() => process.kill(unrelated.pid!, 0)).not.toThrow();
+      } finally {
+        parent.kill();
+        unrelated.kill();
+      }
+    },
+  );
+});
+
 describe('buildUiServerScript output runs as a real standalone node process (code-review M2)', () => {
   const makeUiDir = trackTempDirs();
+  let generatedScriptLifecycle: LifecycleModule;
 
-  function spawnUiScript(script: string) {
+  beforeAll(async () => {
+    generatedScriptLifecycle = await import('../commands/lifecycle.js');
+  });
+
+  function spawnUiScript(script: string, environment: NodeJS.ProcessEnv = {}) {
     // Observe the child's real listener; a peer's HTTP response is not readiness.
     const observeListening = `
       (() => {
@@ -8072,6 +8591,7 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
       windowsHide: true,
       env: {
         ...process.env,
+        ...environment,
         STATION_INTERNAL_API_TOKEN: 'test-only-internal-api-token',
       },
     });
@@ -8113,11 +8633,13 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
     return { child, listening, stderr: () => stderr };
   }
 
-  it('spawns the generated script as a child process and makes one proxied request + one static request against it', async () => {
+  it('spawns the generated script with syntax-bearing configuration and makes one proxied request + one static request against it', async () => {
     const http = await import('node:http');
-    const lifecycle = await import('../commands/lifecycle.js');
+    const lifecycle = generatedScriptLifecycle;
 
-    const uiDir = makeUiDir('station-ui-spawn-');
+    const uiDir = join(makeUiDir('station-ui-spawn-'), "app ' ` \u2028");
+    mkdirSync(uiDir);
+    const tenant = "alpha';throw new Error('configuration executed');//";
     writeFileSync(
       join(uiDir, 'index.html'),
       '<head></head><body>real-spawn-app</body>',
@@ -8156,7 +8678,7 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
       typeof upstreamAddr === 'object' && upstreamAddr ? upstreamAddr.port : 0;
 
     const script = lifecycle.buildUiServerScript({
-      hostedTenantAuthorities: { 'alpha.example.test': 'alpha' },
+      hostedTenantAuthorities: { 'alpha.example.test': tenant },
       uiDir,
       upstreamPort,
       uiPort: 0,
@@ -8199,7 +8721,7 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
       expect(proxiedRes.status).toBe(200);
       const proxiedBody = JSON.parse(proxiedRes.body);
       expect(proxiedBody).toEqual({ ready: true });
-      expect(upstreamTenant).toBe('alpha');
+      expect(upstreamTenant).toBe(tenant);
       expect(server.stderr()).toBe('');
 
       // The envelope, out of the real spawned process: an upstream that dropped
@@ -8227,6 +8749,206 @@ describe('buildUiServerScript output runs as a real standalone node process (cod
       await new Promise<void>((resolve) => upstream.close(() => resolve()));
     }
   }, 15_000);
+
+  it.each(process.platform === 'win32' ? ['source', 'staged'] : ['source'])(
+    'admits a private readiness snapshot but refuses a later permissive ACL and a foreign boot in the generated %s listener',
+    async (delivery) => {
+      const trust = await import(
+        '@kontourai/station-shared/windows-path-trust'
+      );
+      const uiDir = makeUiDir('station-ui-private-readiness-');
+      const workerTemp = join(uiDir, 'worker-temp');
+      mkdirSync(workerTemp);
+      if (delivery === 'staged') {
+        const guards = await import(
+          '@kontourai/station-shared/windows-command-guard'
+        );
+        const compiled = await guards.createWindowsCommandGuardResolver({
+          sourceDirectory: import.meta.dirname,
+          stagedGuard: null,
+        })();
+        expect(compiled).toBeTypeOf('string');
+        const runtime = join(uiDir, 'runtime');
+        mkdirSync(runtime);
+        writeFileSync(join(uiDir, '.station-prebuilt-archive'), '');
+        const helper = join(runtime, 'station-windows-owned-guard.exe');
+        const bytes = readFileSync(compiled!);
+        writeFileSync(helper, bytes);
+        writeFileSync(
+          `${helper}.sha256`,
+          createHash('sha256').update(bytes).digest('hex'),
+        );
+        vi.doMock('@kontourai/station-shared/process-identity', async () => {
+          const actual = await vi.importActual<
+            typeof import('@kontourai/station-shared/process-identity')
+          >('@kontourai/station-shared/process-identity');
+          return {
+            ...actual,
+            resolveWindowsBirthHelper: () =>
+              actual.resolveWindowsBirthHelper({
+                execPath: join(runtime, 'node.exe'),
+              }),
+          };
+        });
+      }
+      const lifecycle = await import('../commands/lifecycle.js');
+      writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
+      const readinessFile = join(uiDir, 'state.json');
+      const identity = {
+        instanceId: 'private-ready',
+        bootId: '11111111-1111-4111-8111-111111111111',
+        sha: 'a'.repeat(40),
+      };
+      writeFileSync(
+        readinessFile,
+        JSON.stringify({ health: { status: 'ready', sha: identity.sha } }),
+        { mode: 0o600 },
+      );
+      trust.hardenWindowsPathsTrusted(trust.runWindowsTrustCommand, [
+        { kind: 'file', path: readinessFile },
+      ]);
+      const original = readFileSync(readinessFile);
+      let backendIdentity = identity;
+      const observedCredentials: string[] = [];
+      const upstream = createHttpServer((request, response) => {
+        observedCredentials.push(
+          String(request.headers['x-station-internal-token']),
+        );
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify(backendIdentity));
+      });
+      await new Promise<void>((resolve) =>
+        upstream.listen(0, '127.0.0.1', resolve),
+      );
+      const address = upstream.address();
+      if (!address || typeof address === 'string')
+        throw new Error('backend did not listen');
+      const server = spawnUiScript(
+        lifecycle.buildUiServerScript({
+          uiDir,
+          upstreamPort: address.port,
+          uiPort: 0,
+          host: '127.0.0.1',
+          readinessFile,
+          identity,
+        }),
+        { TEMP: workerTemp, TMP: workerTemp, TMPDIR: workerTemp },
+      );
+      try {
+        const uiPort = await server.listening;
+        const compiledHelpers = () =>
+          readdirSync(workerTemp).filter((name) =>
+            name.startsWith('station-command-guard-'),
+          );
+        if (process.platform === 'win32')
+          expect(compiledHelpers()).toHaveLength(delivery === 'source' ? 1 : 0);
+        const readiness = () =>
+          fetch(`http://127.0.0.1:${uiPort}/api/system/readiness`);
+        const ready = await readiness();
+        expect(ready.status).toBe(200);
+        await expect(ready.json()).resolves.toEqual({
+          ready: true,
+          status: 'ready',
+        });
+        expect(observedCredentials).toEqual(['test-only-internal-api-token']);
+        backendIdentity = {
+          ...identity,
+          bootId: '22222222-2222-4222-8222-222222222222',
+        };
+        expect((await readiness()).status).toBe(503);
+        backendIdentity = identity;
+        const replacement = join(uiDir, 'next-state.json');
+        writeFileSync(replacement, original, { mode: 0o600 });
+        trust.hardenWindowsPathsTrusted(trust.runWindowsTrustCommand, [
+          { kind: 'file', path: replacement },
+        ]);
+        const previousGeneration = statSync(readinessFile).ino;
+        renameSync(replacement, readinessFile);
+        expect(statSync(readinessFile).ino).not.toBe(previousGeneration);
+        expect((await readiness()).status).toBe(200);
+        writeFileSync(
+          readinessFile,
+          JSON.stringify({ health: { status: 'ready', sha: 'b'.repeat(40) } }),
+        );
+        expect((await readiness()).status).toBe(503);
+        expect(observedCredentials).toHaveLength(3);
+        writeFileSync(readinessFile, original);
+        const before = statSync(readinessFile);
+        if (process.platform === 'win32') {
+          const encodedPath = Buffer.from(readinessFile).toString('base64');
+          const program = `$ErrorActionPreference='Stop'; $file=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedPath}')); $acl=[IO.File]::GetAccessControl($file); $everyone=New-Object Security.Principal.SecurityIdentifier('S-1-1-0'); $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($everyone,'Modify','Allow'))); [IO.File]::SetAccessControl($file,$acl)`;
+          const result = realSpawnSync(
+            trust.windowsSystemUtilityPath('powershell'),
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-EncodedCommand',
+              Buffer.from(program, 'utf16le').toString('base64'),
+            ],
+            {
+              encoding: 'utf8',
+              windowsHide: true,
+              timeout: trust.WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+            },
+          );
+          expect(result.error).toBeUndefined();
+          expect(result.status, result.stderr).toBe(0);
+        } else {
+          chmodSync(readinessFile, 0o666);
+        }
+        const after = statSync(readinessFile);
+        expect(after.ino).toBe(before.ino);
+        expect(after.mtimeMs).toBe(before.mtimeMs);
+        const permissive = await readiness();
+        expect(permissive.status).toBe(503);
+        await expect(permissive.json()).resolves.toEqual({
+          ready: false,
+          status: 'unavailable',
+        });
+        expect(observedCredentials).toHaveLength(3);
+        expect(readFileSync(readinessFile)).toEqual(original);
+        if (process.platform === 'win32')
+          expect(compiledHelpers()).toHaveLength(delivery === 'source' ? 1 : 0);
+        if (process.platform === 'win32') {
+          trust.hardenWindowsPathsTrusted(trust.runWindowsTrustCommand, [
+            { kind: 'file', path: readinessFile },
+          ]);
+          expect((await readiness()).status).toBe(200);
+          const junction = join(uiDir, 'redirected');
+          symlinkSync(uiDir, junction, 'junction');
+          const redirected = spawnUiScript(
+            lifecycle.buildUiServerScript({
+              uiDir,
+              upstreamPort: address.port,
+              uiPort: 0,
+              host: '127.0.0.1',
+              readinessFile: join(junction, 'state.json'),
+              identity,
+            }),
+          );
+          try {
+            const port = await redirected.listening;
+            const response = await fetch(
+              `http://127.0.0.1:${port}/api/system/readiness`,
+            );
+            expect(response.status).toBe(503);
+            await expect(response.json()).resolves.toEqual({
+              ready: false,
+              status: 'unavailable',
+            });
+            expect(observedCredentials).toHaveLength(4);
+          } finally {
+            await reapLongRunningFixtureChild(redirected.child);
+          }
+        }
+      } finally {
+        await reapLongRunningFixtureChild(server.child);
+        upstream.closeAllConnections();
+        await new Promise<void>((resolve) => upstream.close(() => resolve()));
+      }
+    },
+    15_000,
+  );
 
   it('the globalThis.__name shim neutralizes an esbuild/keepNames-style __name(...)-wrapped binding spliced into the real generated script (code-review M2 residual-gap tripwire)', async () => {
     const lifecycle = await import('../commands/lifecycle.js');
@@ -8878,8 +9600,25 @@ describe('lifecycle build + restart ergonomics', () => {
           STATION_LOG_FILE: canonicalLogFile,
         }),
       );
-      expect(String(uiStdinEnd.mock.calls[0]?.[0])).toContain(
-        'listen(5274,"127.0.0.1")',
+      const { runInNewContext } = await import('node:vm');
+      const uiServer = Object.assign(new EventEmitter(), { listen: vi.fn() });
+      await runInNewContext(String(uiStdinEnd.mock.calls[0]?.[0]), {
+        require: (id: string) =>
+          id === 'http'
+            ? { createServer: () => uiServer }
+            : process.getBuiltinModule(id),
+        process: {
+          platform: 'linux',
+          env: {},
+          connected: true,
+          once: vi.fn(),
+          on: vi.fn(),
+          exit: vi.fn(),
+        },
+      });
+      expect(uiServer.listen).toHaveBeenCalledExactlyOnceWith(
+        5274,
+        '127.0.0.1',
       );
       expect(fetchMock).toHaveBeenCalledWith(
         'http://127.0.0.1:3242/api/system/identity',
@@ -9027,6 +9766,14 @@ describe('lifecycle build + restart ergonomics', () => {
   it('rejects a relative explicit log path without mutating the working directory', async () => {
     ensureDir(TEST_CWD);
     chmodSync(TEST_CWD, 0o755);
+    const originalMode = statSync(TEST_CWD).mode;
+    const originalAcl =
+      process.platform === 'win32'
+        ? realExecFileSync('icacls', [TEST_CWD], {
+            encoding: 'utf8',
+            windowsHide: true,
+          })
+        : undefined;
     const spawn = vi.fn();
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
@@ -9040,7 +9787,15 @@ describe('lifecycle build + restart ergonomics', () => {
       }),
     ).rejects.toThrow('Explicit log path must be absolute');
 
-    expect(statSync(TEST_CWD).mode & 0o777).toBe(0o755);
+    expect(statSync(TEST_CWD).mode).toBe(originalMode);
+    if (originalAcl !== undefined) {
+      expect(
+        realExecFileSync('icacls', [TEST_CWD], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }),
+      ).toBe(originalAcl);
+    }
     expect(spawn).not.toHaveBeenCalled();
   });
 
@@ -10408,9 +11163,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
         prerelease: true,
       })}\n`,
     );
-    writeFileSync(join(version, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(version);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
@@ -10470,8 +11223,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     await lifecycle.upgrade();
 
     expect(execFileSync).toHaveBeenCalledWith(
-      'sh',
-      ['./install.sh', 'install'],
+      ...expectedPackagedInstaller(version),
       expect.objectContaining({
         cwd: version,
         env: expect.objectContaining({
@@ -10662,9 +11414,7 @@ describe('station upgrade under the managed update limit (#4522)', () => {
         prerelease: releaseChannel !== 'stable',
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
+    writePackagedInstallers(release);
     writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',

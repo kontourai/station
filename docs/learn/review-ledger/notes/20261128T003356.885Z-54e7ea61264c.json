@@ -1,0 +1,9 @@
+{
+  "revision": "581d88767ab2558168ea27463cf49eabcc58095f",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed the lifecycle test delta through 581d88767 against both outside-agent documents. The changed cases concern instance-directory durability and relative-log refusal; the real HTTP proxy OAuth/MCP exclusion fixture, encoded paths and mutation-fallback assertions are unchanged. The complete Linux owner passed 247 cases including that transport case before the native-only import correction; Windows ran the two changed cases and reached both assertions. No released OAuth/MCP exposure or real-client qualification is inferred from this fixture-only change; historical R3 evidence remains historical.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the lifecycle test delta through 581d88767 against both outside-agent documents. The changed cases concern instance-directory durability and relative-log refusal; the real HTTP proxy OAuth/MCP exclusion fixture, encoded paths and mutation-fallback assertions are unchanged. The complete Linux owner passed 247 cases including that transport case before the native-only import correction; Windows ran the two changed cases and reached both assertions. No released OAuth/MCP exposure or real-client qualification is inferred from this fixture-only change; historical R3 evidence remains historical.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}

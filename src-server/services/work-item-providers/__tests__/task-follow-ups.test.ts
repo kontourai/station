@@ -14,6 +14,7 @@ import {
   existsSync,
   mkdirSync,
   openSync,
+  readFileSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -327,6 +328,44 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
     expect(calls(ghDir).map((call) => call.number)).toEqual(['14883']);
     // Recorded and visible, and the ended Task keeps its status.
     expect(graph.readTask(recent.id)?.status).toBe('done');
+  });
+
+  // #4554: the window runs from the Task's own end time, which edits never
+  // move; only a Task that ended before end times existed falls back to
+  // `updatedAt`.
+  test('an edit after the end no longer extends following; a Task without an end time still follows by updatedAt', async () => {
+    const edited = await trackerTask('2026-10-01T09:00:00.000Z', {
+      keepPullRequest: false,
+    });
+    await endTask(edited.id, new Date(NOW - 15 * DAY).toISOString());
+    vi.setSystemTime(new Date(NOW - 1 * DAY));
+    await graph.updateTaskTitle(
+      edited.id,
+      'Renamed after it ended',
+      edited.createdAt,
+    );
+    expect(graph.readTask(edited.id)?.endedAt).toBe(
+      new Date(NOW - 15 * DAY).toISOString(),
+    );
+
+    const legacy = await trackerTask('2026-10-01T09:00:00.000Z', {
+      keepPullRequest: false,
+      ref: 'github:acme/widgets#14883',
+    });
+    await endTask(legacy.id, new Date(NOW - 15 * DAY).toISOString());
+    vi.setSystemTime(new Date(NOW - 1 * DAY));
+    await graph.updateTaskTitle(legacy.id, 'Renamed', legacy.createdAt);
+    // A record written before `endedAt` existed: no end time on file.
+    const path = `${home}/task-graph.json`;
+    const document = JSON.parse(readFileSync(path, 'utf8'));
+    for (const task of document.tasks)
+      if (task.id === legacy.id) delete task.endedAt;
+    writeFileSync(path, JSON.stringify(document));
+
+    await enable();
+    answer(ghDir, { number: 14883 }, issuePage2);
+    const summary = await poll();
+    expect(summary.tasks.map((t) => t.taskId)).toEqual([legacy.id]);
   });
 
   test('an item at a pagination boundary is not lost, and the next poll resumes after the last item kept', async () => {

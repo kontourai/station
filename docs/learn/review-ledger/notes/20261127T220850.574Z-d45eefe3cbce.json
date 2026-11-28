@@ -1,0 +1,9 @@
+{
+  "revision": "fac7cb4f54996d0b6c90ec0c8814373c72793333",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the mounted inbox regression after typing the listing response. The test still requires the selected head to be present before it submits the steer.","inputs":["src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the mounted inbox regression after typing the listing response. The test still requires the selected head to be present before it submits the steer.","inputs":["src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"]}
+  ]
+}

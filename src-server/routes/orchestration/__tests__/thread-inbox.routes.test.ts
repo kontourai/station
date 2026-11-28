@@ -306,12 +306,22 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     },
   );
 
-  test.each(['steer', 'follow-up'] as const)(
-    '%s is recorded with its head before any delivery',
-    async (kind) => {
+  test.each([
+    ['steer', 'currentHead'],
+    ['steer', 'steerHead'],
+    ['follow-up', 'currentHead'],
+  ] as const)(
+    '%s is recorded with its %s before any delivery',
+    async (kind, headField) => {
       const world = station();
       await world.busy();
-      const expectedHead = world.inbox.currentHead(CONVERSATION);
+      const listing = await world.listInbox();
+      expect(listing.status).toBe(200);
+      const snapshot = (await listing.json()) as {
+        data: Partial<Record<typeof headField, string>>;
+      };
+      const expectedHead = snapshot.data[headField];
+      expect(expectedHead).toEqual(expect.any(String));
       const send = () =>
         world.app.request(
           `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`,

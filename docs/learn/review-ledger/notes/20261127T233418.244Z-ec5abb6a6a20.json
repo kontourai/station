@@ -1,0 +1,9 @@
+{
+  "revision": "2b71a689c3dc17125b8c53340dc19ead8c3b2b46",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Bounded review of 2b71a689 generated-listener proof changes only: real child uses syntax-bearing path/tenant; explicit-host caller executes emitted code and observes listen arguments instead of matching source text. The VM observer models Linux code-path configuration even on Windows; existing real source/staged Windows listener controls remain separate. Linux lifecycle plus asset owners 272pass/2platformskip; host/tenant mutation caused two intended assertions, restored exactly. No OAuth, archive, readiness deadline, security admission or public CLI behavior change; prior source reviews retained, not a new full-page audit or full-Windows-green claim.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Bounded review of 2b71a689 generated-listener proof changes only: real child uses syntax-bearing path/tenant; explicit-host caller executes emitted code and observes listen arguments instead of matching source text. The VM observer models Linux code-path configuration even on Windows; existing real source/staged Windows listener controls remain separate. Linux lifecycle plus asset owners 272pass/2platformskip; host/tenant mutation caused two intended assertions, restored exactly. No OAuth, archive, readiness deadline, security admission or public CLI behavior change; prior source reviews retained, not a new full-page audit or full-Windows-green claim.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}

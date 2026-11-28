@@ -1,0 +1,7 @@
+{
+  "revision": "249fc963de5a4e982e2f4c21e3e3bd1331c715f2",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the #5618 fixture-only follow-up at 249fc963de: approval requires the same request ID in the fixture observation and fresh sole pending list. SIGINT/SIGTERM drain through existing owned listener and Station teardown; initial snapshot and identity reads are bounded within cleanup scope. Corrected the procedure and stale test comment without changing production discovery, deadlines, origin/credential guards or installed qualification. Cooperative cancellation is bounded shutdown with shared late-result suppression, not a zero-packet guarantee.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}

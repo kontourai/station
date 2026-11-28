@@ -2649,6 +2649,30 @@ so browser timer overflow cannot close a valid link early.
 
 ## Make this host discoverable on the LAN
 
+On Windows, browsing is separately gated by **Desktop Nearby discovery**
+(`desktop-nearby`) in **Settings → Advanced → Feature previews** on the
+currently selected, already-authorized Station. It defaults to off. The native
+host checks that Station's authenticated admission route before preparation and
+again before opening multicast sockets; an older host, missing authorization,
+unreadable preview state or disabled preview leaves QR and address entry
+available. Disabling prevents the next scan; an already admitted scan remains
+bounded to a five-second browse window. Shutdown confirmation can take another
+1.5 seconds; unconfirmed shutdown keeps further scans unavailable until restart.
+This is not the `dynamic-route-publications` preview:
+that switch controls publishing an HTTPS hint, not Windows browsing.
+
+The Windows browser uses `mdns-sd` 0.22.0 on private/link-local IPv4 interfaces,
+returns at most 32 untrusted hints, and requires confirmed browser shutdown before
+another foreground request. macOS and Linux desktop browsing are not enabled by this
+Windows slice. Neither multicast browsing nor advertisement implies discovery
+across a Tailscale network.
+
+The Windows [native browser](../../src-desktop/plugins/station-discovery/src/windows.rs)
+uses the existing [native adapter](../../src-ui/src/platform/native/connectionDiscovery.ts)
+and shared candidate registry. [Selected-controller admission](../../src-desktop/src/desktop_discovery.rs)
+checks the existing [Feature Preview registry](../../src-server/routes/system/feature-previews.ts);
+it does not reuse an advertisement as credential authority.
+
 On Android 17 and later, Station asks for local-network access before it starts
 browsing. Answer the system permission prompt, return to Station, and choose
 **Check again**. Permission admission and browsing have separate lifetimes: a

@@ -1,0 +1,75 @@
+{
+  "revision": "cb78fc388e1280ecfc6a3a780e9782b685a2d4dc",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Checked direct steer request and listing semantics against the route, the atomic inbox writer, and the SDK compatibility path.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the atomic submission head against the original opening event identity. Streaming preserves a turn head, and a successor Session refuses it. Queue and replay ordering are preserved.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the atomic submission head against the original opening event identity. Streaming preserves a turn head, and a successor Session refuses it. Queue and replay ordering are preserved.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the atomic submission head against the original opening event identity. Streaming preserves a turn head, and a successor Session refuses it. Queue and replay ordering are preserved.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed the authorized inbox list. The response adds the direct-steer head while keeping the existing event head and queue controls. POST retains the existing shape and receipt path.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Reviewed direct steering SDK reads, queue operations and backwards compatibility. The client uses the turn head when present, refuses a null head, and falls back on older hosts.","inputs":["packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed direct steering SDK reads, queue operations and backwards compatibility. The client uses the turn head when present, refuses a null head, and falls back on older hosts.","inputs":["packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed direct steering SDK reads, queue operations and backwards compatibility. The client uses the turn head when present, refuses a null head, and falls back on older hosts.","inputs":["packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed direct steering SDK reads, queue operations and backwards compatibility. The client uses the turn head when present, refuses a null head, and falls back on older hosts.","inputs":["packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the authority-scoped inbox cache. A verified turn head replaces the older event head, and an explicit null clears the cached steer context when the turn settles.","inputs":["src-ui/src/hooks/useConversationInbox.ts"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed the authority-scoped inbox cache. A verified turn head replaces the older event head, and an explicit null clears the cached steer context when the turn settles.","inputs":["src-ui/src/hooks/useConversationInbox.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the authority-scoped inbox cache. A verified turn head replaces the older event head, and an explicit null clears the cached steer context when the turn settles.","inputs":["src-ui/src/hooks/useConversationInbox.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "7cb414c6211e005fb5bb2d5b48e90286a6d135d0",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the one exact dynamicallyLoaded addition against code-health prevention: dependency-pnpm-command.mjs is a real Windows argv0 adapter launched by pnpmCommand inside existing Job custody, not an unused-file suppression pattern. Final base 378ddef to head 7cb414 code-health gate passed with zero dead-code/export/type blockers, zero clone groups and one introduced advisory complexity row for relocated complete. Only the unchanged publication/cleanup body has normalized byte-equivalence evidence; new Promise/failure control flow still received source review and full owner tests. No threshold, baseline or policy waiver added.","inputs":[".fallowrc.json#/dynamicallyLoaded"]}
+  ]
+}

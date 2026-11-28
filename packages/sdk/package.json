@@ -29,6 +29,7 @@
     "./workspace-pane": "./src/workspace-pane.ts",
     "./terminal-view": "./src/terminal-view/index.ts",
     "./task-outputs": "./src/task-outputs.ts",
+    "./task-resume": "./src/task-resume.ts",
     "./project-library": "./src/project-library.ts",
     "./session-outputs": "./src/session-outputs.ts",
     "./session-inventory": "./src/session-inventory.ts",

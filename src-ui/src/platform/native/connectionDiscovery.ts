@@ -60,7 +60,6 @@ function httpsAppOrigin(value: unknown): string | undefined {
   }
 }
 
-/** Called only after the trusted profile establishes a native mobile target. */
 export function registerNativeConnectionDiscovery(): () => void {
   const active = new Map<string, AbortController>();
   const unregister = registerConnectionCandidateProvider({
