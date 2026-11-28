@@ -33,6 +33,30 @@
   ${EndIf}
   Pop $0
 
+  Push $0
+  Push $1
+  Push $2
+  System::Call 'kernel32::GetDiskFreeSpaceExW(w "$INSTDIR", *l .r0, p 0, p 0) i .r1'
+  ${If} $1 = 0
+    MessageBox MB_ICONSTOP|MB_OK "Station could not check free disk space in the installation folder. No runtime files were changed. Check that the drive is available and try again." /SD IDOK
+    SetErrorLevel 3
+    Quit
+  ${EndIf}
+  System::Int64Op $0 / 1024
+  Pop $0
+  System::Int64Op ${ESTIMATEDSIZE} + 524288
+  Pop $2
+  System::Int64Op $0 < $2
+  Pop $1
+  ${If} $1 = 1
+    MessageBox MB_ICONSTOP|MB_OK "Station needs $2 KiB free on the installation drive (including 512 MiB of working space); only $0 KiB is available. Free disk space and retry the update. No runtime files were changed." /SD IDOK
+    SetErrorLevel 3
+    Quit
+  ${EndIf}
+  Pop $2
+  Pop $1
+  Pop $0
+
   ; Ask before destroying anything. The template's own running-app check runs
   ; AFTER this hook, so without this the resource directories would already be
   ; gone by the time the user is asked whether Station may be closed — and

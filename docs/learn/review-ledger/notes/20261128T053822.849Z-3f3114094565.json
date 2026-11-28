@@ -1,0 +1,7 @@
+{
+  "revision": "e7cbd886f4225c3fcd85705a1da731c9fabee4e0",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Reviewed the affected reference to native-shell-verification or the Windows builder against #5676. Existing relay/project-pilot anchors, platform-evidence limits, historical ADR results, runtime resource path budget and NSIS publication/signature descriptions remain unchanged. The additive native guide section covers /UPDATE free-space refusal and limits; builder now executes its isolated native hook proof after acquiring NSIS. Neither proves successful artifact installation/relaunch or rollback. No related claim required prose changes.","inputs":["docs/guides/nightly.md","scripts/build-windows-nightly.ps1"]}
+  ]
+}
