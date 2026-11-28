@@ -1,4 +1,4 @@
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import * as http from 'node:http';
 import { createRequire } from 'node:module';
@@ -19,6 +19,16 @@ import { buildUiServerScript } from '../commands/lifecycle';
 // Execute the serialized production listener, including its standalone imports.
 describe('built UI asset delivery', () => {
   const makeTempDir = trackTempDirs();
+  const processEvents: EventEmitter[] = [];
+  function fixtureProcess() {
+    const events = new EventEmitter();
+    processEvents.push(events);
+    return {
+      ...process,
+      env: { ...process.env, STATION_INTERNAL_API_TOKEN: 'fixture-only' },
+      once: events.once.bind(events),
+    };
+  }
   let dir: string;
   let server: http.Server;
   let port: number;
@@ -44,10 +54,7 @@ describe('built UI asset delivery', () => {
         apiBaseOverride: 'http://127.0.0.1:52783',
       }),
       {
-        process: {
-          ...process,
-          env: { ...process.env, STATION_INTERNAL_API_TOKEN: 'fixture-only' },
-        },
+        process: fixtureProcess(),
         setTimeout,
         clearTimeout,
         require(name: string) {
@@ -74,6 +81,11 @@ describe('built UI asset delivery', () => {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
       );
+    }
+    for (const events of processEvents.splice(0)) {
+      expect(events.listenerCount('exit')).toBe(1);
+      events.emit('exit');
+      expect(events.listenerCount('exit')).toBe(0);
     }
   });
   const request = (
@@ -185,10 +197,7 @@ describe('built UI asset delivery', () => {
         host: '127.0.0.1',
       }),
       {
-        process: {
-          ...process,
-          env: { ...process.env, STATION_INTERNAL_API_TOKEN: 'fixture-only' },
-        },
+        process: fixtureProcess(),
         setTimeout: (
           fn: (...args: unknown[]) => void,
           ms: number,

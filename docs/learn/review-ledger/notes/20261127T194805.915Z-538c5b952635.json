@@ -1,0 +1,11 @@
+{
+  "revision": "59c92bdd4aa9b6f0a46d0d2b0b4b6c16ead33368",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Scoped #5644 review of native/nightly source claims: existing private-path ACL policy remains intact; new bounded readiness read checks before/after DACL on one deny-write/delete-sharing handle, rejects reparse ancestry and compares final file identity, with no stat-time ACL cache. Real Windows source/staged-listener negative ACL, foreign boot and path controls pass; no signing, full installed archive, native-shell or release qualification claimed.","inputs":["packages/shared/src/windows-path-trust.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Scoped #5644 review of native/nightly source claims: existing private-path ACL policy remains intact; new bounded readiness read checks before/after DACL on one deny-write/delete-sharing handle, rejects reparse ancestry and compares final file identity, with no stat-time ACL cache. Real Windows source/staged-listener negative ACL, foreign boot and path controls pass; no signing, full installed archive, native-shell or release qualification claimed.","inputs":["packages/shared/src/windows-path-trust.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"Scoped #5644 review of native/nightly source claims: existing private-path ACL policy remains intact; new bounded readiness read checks before/after DACL on one deny-write/delete-sharing handle, rejects reparse ancestry and compares final file identity, with no stat-time ACL cache. Real Windows source/staged-listener negative ACL, foreign boot and path controls pass; no signing, full installed archive, native-shell or release qualification claimed.","inputs":["packages/shared/src/windows-path-trust.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "6b0e51d7d912bf6186e1a4b902246bce8dbeb89d",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed regenerated embedded installer core at 6b0e51d7d against getting-started Nightly Windows command, signed manifest/archive verification, per-channel install roots and launch claims. Decoded change only factors existing shared Windows private-security functions; install entrypoint and verification contract unchanged. Generator check and 109 Linux installer/serialized-listener owner tests pass; installed Nightly execution is not established. VM fixture repair is test-only with no user-doc contract change.","inputs":["install.ps1"]}
+  ]
+}
