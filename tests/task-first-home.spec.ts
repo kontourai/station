@@ -3,6 +3,7 @@ import type { ConversationOpenResolution } from '@kontourai/station-contracts/or
 import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from '@kontourai/station-contracts/project-identity';
 import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
+import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import type {
   BrowserPaneAccessView,
   BrowserSessionView,
@@ -75,12 +76,19 @@ function json(data: unknown) {
   };
 }
 
+interface HomeHistoryRefresh {
+  rowTitle: string;
+  failTasks: boolean;
+  task?: TaskRecord;
+  taskResponse?: Promise<void>;
+}
+
 async function mockTaskFirstHome(
   page: Page,
   options: {
     sessionEvents?: Array<Record<string, unknown>>;
     historyCount?: number;
-    historyRefresh?: { firstTitle: string; failTasks: boolean };
+    historyRefresh?: HomeHistoryRefresh;
     commands?: Array<Record<string, unknown>>;
     workflowTasks?: Array<Record<string, unknown>>;
     /**
@@ -367,19 +375,31 @@ async function mockTaskFirstHome(
       const historyRefresh = options.historyRefresh;
       const sessions = historyRefresh
         ? historySessions.map((session, index) =>
-            index === 0
-              ? { ...session, displayTitle: historyRefresh.firstTitle }
+            index === 1
+              ? { ...session, displayTitle: historyRefresh.rowTitle }
               : session,
           )
         : historySessions;
       await route.fulfill(json(sessions));
       return;
     }
-    if (path === '/api/tasks' && options.historyRefresh?.failTasks) {
-      await route.fulfill({
-        status: 503,
-        json: { success: false, error: 'Tasks unavailable' },
-      });
+    if (
+      path === '/api/tasks' &&
+      route.request().method() === 'GET' &&
+      new URL(route.request().url()).searchParams.size === 0 &&
+      options.historyRefresh
+    ) {
+      await options.historyRefresh.taskResponse;
+      await route.fulfill(
+        options.historyRefresh.failTasks
+          ? {
+              status: 503,
+              json: { success: false, error: 'Tasks unavailable' },
+            }
+          : json(
+              options.historyRefresh.task ? [options.historyRefresh.task] : [],
+            ),
+      );
       return;
     }
     if (
@@ -3060,12 +3080,12 @@ for (const viewport of [
   }, testInfo) => {
     await page.setViewportSize(viewport);
     await installJourneyProfile(page);
-    const historyRefresh = {
-      firstTitle: 'History session 0',
+    const historyRefresh: HomeHistoryRefresh = {
+      rowTitle: 'History session 1',
       failTasks: false,
     };
     await mockTaskFirstHome(page, { historyCount: 1000, historyRefresh });
-    const waitForRefreshReads = () =>
+    const waitForRefreshReads = (clickTime?: () => Promise<number>) =>
       Promise.all(
         [
           '/api/orchestration/sessions/read-model',
@@ -3073,16 +3093,16 @@ for (const viewport of [
           '/api/conversations?limit=100',
           '/api/environments/ssh/sessions',
         ].map(async (endpoint) => {
-          const response = await page.waitForResponse((response) => {
+          const response = await page.waitForResponse(async (response) => {
             const url = new URL(response.url());
             const target = new URL(endpoint, url.origin);
             return (
               response.request().method() === 'GET' &&
               url.pathname === target.pathname &&
-              [...target.searchParams].every(
-                ([name, value]) => url.searchParams.get(name) === value,
-              ) &&
-              response.ok()
+              url.search === target.search &&
+              response.ok() &&
+              (!clickTime ||
+                response.request().timing().startTime >= (await clickTime()))
             );
           });
           expect(await response.json()).toMatchObject({ success: true });
@@ -3162,22 +3182,51 @@ for (const viewport of [
       0,
     );
     await refresh.scrollIntoViewIfNeeded();
-    historyRefresh.firstTitle = freshTitle;
+    const observeRefreshClick = () =>
+      refresh.evaluateHandle((element) => {
+        const observation = { clickedAt: Number.POSITIVE_INFINITY };
+        element.addEventListener(
+          'click',
+          () => {
+            observation.clickedAt = performance.timeOrigin + performance.now();
+          },
+          { capture: true, once: true },
+        );
+        return observation;
+      });
+    const measuredClick = await observeRefreshClick();
+    historyRefresh.rowTitle = freshTitle;
+    historyRefresh.task = {
+      id: 'home-refresh-task',
+      projectId: 'station',
+      title: 'Cached refresh task',
+      description: 'Task retained while its inventory is unavailable',
+      priority: 'normal',
+      status: 'ready',
+      createdBy: 'fixture',
+      createdAt: '2026-07-12T00:00:00Z',
+      updatedAt: '2026-07-13T00:00:00Z',
+    };
     await profileJourney(
       page,
       testInfo,
       viewport.width === 1280 ? 'home-refresh' : 'home-refresh-mobile',
-      { sessions: 1000, authoritativeReads: 4 },
+      { sessions: 1000, tasks: 1, authoritativeReads: 4 },
       async () => {
-        const refreshedReads = waitForRefreshReads();
+        const refreshedReads = waitForRefreshReads(() =>
+          measuredClick.evaluate((observation) => observation.clickedAt),
+        );
         await refresh.click();
         await refreshedReads;
         await expect(
           recentWork.getByText(freshTitle, { exact: true }),
         ).toBeVisible();
         await expect(
-          recentWork.getByText('History session 0', { exact: true }),
+          recentWork.getByText('History session 1', { exact: true }),
         ).toHaveCount(0);
+        await expect(
+          recentWork.getByText('Cached refresh task', { exact: true }),
+        ).toBeVisible();
         await expect(
           recentWork.getByText('Updated', { exact: true }),
         ).toBeVisible();
@@ -3185,13 +3234,41 @@ for (const viewport of [
         await expect(refresh).toBeFocused();
       },
     );
+    await measuredClick.dispose();
     historyRefresh.failTasks = true;
+    let releaseTaskResponse = () => {};
+    historyRefresh.taskResponse = new Promise<void>((resolve) => {
+      releaseTaskResponse = resolve;
+    });
+    const pendingTaskRead = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return (
+        request.method() === 'GET' &&
+        url.pathname === '/api/tasks' &&
+        url.search === ''
+      );
+    });
     const failedRead = page.waitForResponse(
       (response) =>
         new URL(response.url()).pathname === '/api/tasks' &&
         response.status() === 503,
     );
     await refresh.click();
+    await pendingTaskRead;
+    try {
+      await expect(
+        recentWork.getByText('Refreshing recent work…', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        recentWork.getByText(freshTitle, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        recentWork.getByText('Cached refresh task', { exact: true }),
+      ).toBeVisible();
+      await expect(composer).toHaveValue(draft);
+    } finally {
+      releaseTaskResponse();
+    }
     await failedRead;
     await expect(
       recentWork.getByText('Couldn’t refresh', { exact: true }),
@@ -3200,11 +3277,19 @@ for (const viewport of [
       recentWork.getByText(freshTitle, { exact: true }),
     ).toBeVisible();
     await expect(composer).toHaveValue(draft);
+    await expect(
+      recentWork.getByText('Cached refresh task', { exact: true }),
+    ).toBeVisible();
     historyRefresh.failTasks = false;
-    historyRefresh.firstTitle = 'Recovered history session';
-    const recoveredReads = waitForRefreshReads();
+    historyRefresh.taskResponse = undefined;
+    historyRefresh.rowTitle = 'Recovered history session';
+    const recoveredClick = await observeRefreshClick();
+    const recoveredReads = waitForRefreshReads(() =>
+      recoveredClick.evaluate((observation) => observation.clickedAt),
+    );
     await refresh.click();
     await recoveredReads;
+    await recoveredClick.dispose();
     await expect(
       recentWork.getByText('Recovered history session', { exact: true }),
     ).toBeVisible();
