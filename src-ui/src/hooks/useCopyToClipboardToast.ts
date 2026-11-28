@@ -13,12 +13,18 @@ import { copyToClipboard } from '../lib/clipboard';
 export const COPY_TOAST_SUCCESS = 'Copied to clipboard';
 export const COPY_TOAST_FAILURE = "Couldn't copy to the clipboard";
 
-export function useCopyToClipboardToast(): (text: string) => Promise<boolean> {
-  const { showToast } = useToast();
+export function useCopyToClipboardToast(
+  optional = false,
+): (text: string) => Promise<boolean> {
+  const showToast = useToast(true)?.showToast;
+  if (!optional && !showToast)
+    throw new Error(
+      'useCopyToClipboardToast must be used within ToastProvider',
+    );
   return useCallback(
     async (text: string) => {
       const copied = await copyToClipboard(text);
-      showToast(copied ? COPY_TOAST_SUCCESS : COPY_TOAST_FAILURE);
+      showToast?.(copied ? COPY_TOAST_SUCCESS : COPY_TOAST_FAILURE);
       return copied;
     },
     [showToast],

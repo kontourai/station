@@ -12,6 +12,7 @@ import {
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
+import { useInboxPins } from '../inbox-row/useInboxRowIdentityActions';
 import { useInboxScope } from './InboxScopeFilter';
 import { useInboxDismissals } from './inbox-dismissals';
 import {
@@ -24,7 +25,7 @@ import { useConversationWorkState } from './useConversationWorkState';
  * THE inbox's groups, from its live sources: the items with brief lifecycle
  * churn held (`useHeldLifecycles`) and the snooze map re-read on every
  * snooze write in this tab. The desktop inbox panel renders these, and the
- * inbox toggle's "Show chats, 3 need you" counts the same Needs-you group,
+ * inbox toggle's "Show chats, 3 need you" counts attention in the Needs attention and Pinned groups,
  * so snoozing a row and then hiding the inbox cannot leave the toggle
  * counting a row the panel no longer shows.
  */
@@ -35,6 +36,7 @@ export function useInboxGroups(
   query = '',
 ): MobileActivityGroup[] {
   const { namespace } = useAuthorityPersistence();
+  const { pins } = useInboxPins();
   const term = query.trim().toLocaleLowerCase();
   const matchingItems = useMemo(
     () =>
@@ -73,9 +75,14 @@ export function useInboxGroups(
   const settledAt = state.settled;
   return useMemo(
     () => [
-      ...groupMobileActivity(visible, now, snoozed, workFacts, resolution).map(
-        (group) => (windowed ? windowShelf(group, now, settledAt) : group),
-      ),
+      ...groupMobileActivity(
+        visible,
+        now,
+        snoozed,
+        workFacts,
+        resolution,
+        pins,
+      ).map((group) => (windowed ? windowShelf(group, now, settledAt) : group)),
       ...(includeDismissed && dismissed.length
         ? [
             {
@@ -91,6 +98,7 @@ export function useInboxGroups(
       visible,
       now,
       snoozed,
+      pins,
       workFacts,
       dismissed,
       resolution,
@@ -136,7 +144,7 @@ function windowShelf(
   return older.length ? { ...group, items, older } : group;
 }
 
-/** How many rows the inbox's Needs-you group holds, from `useInboxGroups`. */
+/** Counts visible Inbox work that needs attention, including pinned work. */
 export function useInboxNeedsYouCount(
   items: HomeWorkItem[],
   now: number,
@@ -145,8 +153,14 @@ export function useInboxNeedsYouCount(
   // The same facts the inbox reads: without them this count's dismissal read
   // would see an engine-opened turn as waking a row, and restore it.
   const groups = useInboxGroups(items, now, workFacts);
-  const group = groups.find((group) => group.id === 'needsYou');
-  return group ? workAttentionCount(group.items, now, group.childrenById) : 0;
+  return groups.reduce(
+    (count, group) =>
+      group.id === 'needsYou' || group.id === 'pinned'
+        ? count +
+          workAttentionCount(group.items, now, group.childrenById, workFacts)
+        : count,
+    0,
+  );
 }
 
 /**

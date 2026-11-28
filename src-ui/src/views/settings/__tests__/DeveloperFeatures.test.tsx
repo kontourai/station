@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { useDeveloperFeatures } from '../../../hooks/useDeveloperFeatures';
+import { useInboxRowActionsPreview } from '../../../hooks/useInboxRowActionsPreview';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { DeveloperFeatures } from '../DeveloperFeatures';
 
@@ -16,6 +17,7 @@ const previewKeys = [
   'experimentalReadinessEnabled',
   'experimentalTrustEnabled',
   'experimentalSheetGesturesEnabled',
+  'experimentalInboxRowActionsEnabled',
 ] as const;
 beforeEach(() =>
   deviceSettingsStore.resetMany(['developerToolsEnabled', ...previewKeys]),
@@ -27,9 +29,10 @@ afterEach(() => {
 
 function PreviewStatus() {
   const features = useDeveloperFeatures();
+  const inboxRowActions = useInboxRowActionsPreview();
   return (
     <output>
-      {Object.entries(features)
+      {Object.entries({ ...features, inboxRowActions })
         .filter(([, enabled]) => enabled)
         .map(([name]) => name)
         .join(',') || 'none'}
@@ -37,7 +40,7 @@ function PreviewStatus() {
   );
 }
 
-test('Developer tools reveals four off-by-default independent opt-ins; disabling it withdraws previews without erasing choices', () => {
+test('Developer tools reveals off-by-default independent opt-ins; disabling it withdraws previews without erasing choices', () => {
   render(
     <>
       <DeveloperFeatures />
@@ -56,7 +59,10 @@ test('Developer tools reveals four off-by-default independent opt-ins; disabling
   const sheetGestures = screen.getByRole('switch', {
     name: 'Sheet gestures preview',
   });
-  for (const toggle of [flow, readiness, trust, sheetGestures])
+  const inboxRowActions = screen.getByRole('switch', {
+    name: 'Inbox row actions preview',
+  });
+  for (const toggle of [flow, readiness, trust, sheetGestures, inboxRowActions])
     expect(toggle.getAttribute('aria-checked')).toBe('false');
   fireEvent.click(flow);
   expect(screen.getByRole('status').textContent).toBe('flow');
@@ -70,6 +76,10 @@ test('Developer tools reveals four off-by-default independent opt-ins; disabling
   fireEvent.click(sheetGestures);
   expect(screen.getByRole('status').textContent).toBe(
     'flow,readiness,trust,sheetGestures',
+  );
+  fireEvent.click(inboxRowActions);
+  expect(screen.getByRole('status').textContent).toBe(
+    'flow,readiness,trust,sheetGestures,inboxRowActions',
   );
   act(() => deviceSettingsStore.set('developerToolsEnabled', false));
   expect(screen.queryByRole('switch')).toBeNull();

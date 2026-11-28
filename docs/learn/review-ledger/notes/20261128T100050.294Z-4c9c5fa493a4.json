@@ -1,0 +1,15 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Verified additive pinned inbox section ID and experimentalInboxRowActionsEnabled device setting keep all cited contracts accurate.","inputs":["packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Verified additive pinned inbox section ID and experimentalInboxRowActionsEnabled device setting keep all cited contracts accurate.","inputs":["packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Verified additive pinned inbox section ID and experimentalInboxRowActionsEnabled device setting keep all cited contracts accurate.","inputs":["packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Verified additive pinned inbox section ID and experimentalInboxRowActionsEnabled device setting keep all cited contracts accurate.","inputs":["packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Verified additive pinned inbox section ID and experimentalInboxRowActionsEnabled device setting keep all cited contracts accurate.","inputs":["packages/contracts/src/device-settings.ts"]}
+  ]
+}

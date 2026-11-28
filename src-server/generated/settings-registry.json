@@ -168,6 +168,15 @@
       "configKey": "experimentalSheetGesturesEnabled"
     },
     {
+      "id": "experimental-inbox-row-actions",
+      "label": "Inbox row actions preview",
+      "help": "Try pinning rows, copying IDs and opening details from the Inbox.",
+      "scope": "device",
+      "section": "developer-tools",
+      "route": "/settings?view=developer-tools&highlight=experimental-inbox-row-actions",
+      "configKey": "experimentalInboxRowActionsEnabled"
+    },
+    {
       "id": "shared-answers",
       "label": "Shared answers",
       "scope": "station",

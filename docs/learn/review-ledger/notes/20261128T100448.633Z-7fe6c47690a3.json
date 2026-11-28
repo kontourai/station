@@ -1,0 +1,7 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Verified additive durable ID rows in ChatInboxCardBody behind preview preserve hover-card and Details sheet claims.","inputs":["src-ui/src/components/chat-dock/ChatInboxHoverCard.tsx"]}
+  ]
+}

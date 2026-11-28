@@ -1,0 +1,7 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Updated Developer tools section to list Inbox row actions preview as the sixth independent device preview.","inputs":["docs/user/settings.md","packages/contracts/src/device-settings.ts","src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}
