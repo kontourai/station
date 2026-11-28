@@ -312,10 +312,16 @@ class NodePtyProcess implements IPtyProcess {
         : 'exited 0';
       // 128: the shell had already ended, which leaves nothing to report.
       if (failure && failure.code !== 128) {
-        if (!this.exited) this.pty.kill();
-        throw new Error(
-          `Terminal process-tree cleanup failed: ${failure.message.slice(-2048)}; code=${failure.code ?? 'none'}; signal=${failure.signal ?? 'none'}; killed=${failure.killed ?? false}; ${this.describeTermination()}`,
-        );
+        const diagnostic = `Terminal process-tree cleanup failed: ${failure.message.slice(-2048)}; code=${failure.code ?? 'none'}; signal=${failure.signal ?? 'none'}; killed=${failure.killed ?? false}; ${this.describeTermination()}`;
+        try {
+          if (!this.exited) this.pty.kill();
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          throw new Error(
+            `${diagnostic}; native cleanup failed: ${detail.slice(-2048)}`,
+          );
+        }
+        throw new Error(diagnostic);
       }
       await exited;
     })();

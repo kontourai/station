@@ -168,16 +168,27 @@ describe('termination report (#4626)', () => {
     );
   });
 
-  test.runIf(process.platform === 'win32')(
-    'retains native cleanup and failure evidence when taskkill resolution refuses (#5627)',
-    async () => {
+  test.runIf(process.platform === 'win32').each([false, true])(
+    'retains native cleanup and failure evidence when taskkill resolution refuses (#5627), fallback throws: %s',
+    async (fallbackThrows) => {
       const { adapter, pty, exit } = drivenPty();
       const proc = await adapter.spawn(SPAWN_INPUT);
+      if (fallbackThrows) {
+        pty.kill.mockImplementation(() => {
+          throw new Error('native kill refused');
+        });
+      }
       vi.stubEnv('SystemRoot', 'relative-windows');
       try {
-        await expect(proc.terminate!()).rejects.toThrow(
+        const ending = proc.terminate!();
+        await expect(ending).rejects.toThrow(
           /Terminal process-tree cleanup failed: Windows SystemRoot must be a local absolute path.*helper pid=unassigned.*spawn=pending/,
         );
+        if (fallbackThrows) {
+          await expect(ending).rejects.toThrow(
+            'native cleanup failed: native kill refused',
+          );
+        }
         expect(pty.kill).toHaveBeenCalledExactlyOnceWith();
         expect(execFile).not.toHaveBeenCalled();
       } finally {
