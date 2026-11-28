@@ -35,6 +35,7 @@ import { createInboxHarness } from '../../routes/orchestration/__tests__/helpers
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
+import { createTaskResumeRoutes } from '../../routes/orchestration/task-resume.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
 import { createPullRequestFeedbackRoutes } from '../../routes/pull-requests/pull-request-feedback.js';
 import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
@@ -68,6 +69,7 @@ import {
   servesCoordinatorSession,
   servesFollowUpAttachments,
   servesRemoteSessionReads,
+  servesTaskResume,
 } from '../station-capability-flags.js';
 import { TABLED_CAPABILITY_FLAGS } from './consumed-capability-flag-names.js';
 
@@ -731,6 +733,42 @@ const CONSUMED_FLAGS: Record<
       eventStore.close();
     }
   },
+  // #4554: GET /api/tasks/:taskId/resume answers only where the runtime
+  // mounts it, from the same predicate as the flag (personal mode), with the
+  // `task-resume` preview on and a permitted person.
+  taskResume: async (deployment) => {
+    const task = {
+      id: 'task-1',
+      projectId: 'project-1',
+      title: 'Done',
+      description: '',
+      priority: 'normal',
+      status: 'done',
+      createdBy: 'user',
+      createdAt: '2026-11-01T00:00:00.000Z',
+      updatedAt: '2026-11-02T00:00:00.000Z',
+      endedAt: '2026-11-02T00:00:00.000Z',
+      workItemRef: 'github:o/r#1',
+      workItemProvenance: 'project-board',
+    } as const;
+    const app = new Hono();
+    if (servesTaskResume(deployment))
+      app.route(
+        '/api/tasks',
+        createTaskResumeRoutes({
+          service: { readTaskView: () => task } as never,
+          enabled: () => true,
+          inPersonPrincipal: () => 'owner',
+          authorizeTask: () => true,
+          isTaskSessionTurnActive: () => false,
+          leadOwnerOf: () => undefined,
+          followUps: () => [],
+          clientOrigin: () => undefined,
+        }),
+      );
+    const response = await app.request('/api/tasks/task-1/resume');
+    return response.status === 200;
+  },
   // POST /api/orchestration/chat holds a busy follow-up with a file (202)
   // only where the runtime builds the conversation inbox, from the same
   // predicate as the flag; without it the send is refused, never held.
@@ -1165,6 +1203,7 @@ describe('consumed capability flags match what their routes serve', () => {
     pullRequestFeedback: { personal: true, hosted: false },
     projectLibrary: { personal: true, hosted: false },
     troubleshootPrepare: { personal: true, hosted: true },
+    taskResume: { personal: true, hosted: false },
     newChatDefault: { personal: true, hosted: true },
   };
 

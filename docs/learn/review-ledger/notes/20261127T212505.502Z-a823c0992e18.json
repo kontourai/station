@@ -1,0 +1,9 @@
+{
+  "revision": "36d22eb438c498b87862f07c745fc3e206027817",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the bounded SDK reference addition of optional captured requestScope to dispatchTask and useDispatchTaskMutation. The integration guide still routes clients to actual SDK/auth contracts and requires exact authenticated/refused evidence; the SDK scope instructions still require public exports, canonical reference updates and affected consumers. No deployment, tenancy or distribution claim changes. Source-only delta review; UI-to-SDK test evidence is separate.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the bounded SDK reference addition of optional captured requestScope to dispatchTask and useDispatchTaskMutation. The integration guide still routes clients to actual SDK/auth contracts and requires exact authenticated/refused evidence; the SDK scope instructions still require public exports, canonical reference updates and affected consumers. No deployment, tenancy or distribution claim changes. Source-only delta review; UI-to-SDK test evidence is separate.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

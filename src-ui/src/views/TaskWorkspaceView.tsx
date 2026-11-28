@@ -89,6 +89,7 @@ import {
 } from './task-workspace/TaskOutputsSection';
 import { TaskPullRequestWatchPanel } from './task-workspace/TaskPullRequestWatchPanel';
 import { TaskRelationships } from './task-workspace/TaskRelationships';
+import { TaskResumeSection } from './task-workspace/TaskResumeSection';
 import {
   TaskRoomHeader,
   TaskRoomRail,
@@ -863,6 +864,7 @@ function TaskWorkspaceContent({
             />
           </Suspense>
         )}
+        <TaskResumeSection task={graph.task} />
         <AutomationRunHistory links={graph.links} />
         <TaskRelationships task={graph.task} kind="children" />
         <div id="task-deliverables">
