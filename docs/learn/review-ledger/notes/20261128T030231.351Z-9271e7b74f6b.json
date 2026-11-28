@@ -1,0 +1,7 @@
+{
+  "revision": "ecbdd943c94e5dcd94d2fd3b387b17e4b7645ec7",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the e2e coverage map and whole-app UX campaign claims against final history activation repair ecbdd943c9. Reused the existing prevent-scroll focus and Enter reader helper after streaming, preserving strict request count, cursor, selection and separately exercised wheel autoload. Failed comparison trace showed locator scrolling plus activation issued cursors 210 and 230; no production change or relaxed request expectation. Typecheck:e2e and fixture policy pass; fresh complete controlled captures still pending. No physical mobile, per-key paint or full request-quiescence claim.","inputs":["tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

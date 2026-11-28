@@ -1266,8 +1266,7 @@ test('virtualizes a long real transcript while preserving reader controls on mob
       expect(terminalOrder).toEqual([...terminalOrder].sort((a, b) => a - b));
     },
   );
-  await loadEarlier.click();
-  await expect.poll(() => requestedWindows.length).toBe(13);
+  await pressEarlier(13);
   expect(new URL(requestedWindows[12]).searchParams.get('cursor')).toBe(
     'older-turns-210',
   );
@@ -5175,6 +5174,20 @@ test('profiles switching between authoritative conversations', async ({
   const menu = page.getByRole('region', { name: 'Chats', exact: true });
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
   await expect(switcher).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const chats: { conversationId?: string; currentSessionId?: string }[] =
+          JSON.parse(sessionStorage.getItem('activeChats') ?? '[]');
+        return chats.find((chat) => chat.conversationId === 'conv-running')
+          ?.currentSessionId;
+      }),
+    )
+    .toBe('conv-running');
+  await expect(textarea).toBeEnabled();
+  await expect(
+    page.getByRole('log', { name: 'Conversation transcript' }),
+  ).toContainText('Working through the current task.');
   await profileJourney(
     page,
     testInfo,
@@ -5188,6 +5201,16 @@ test('profiles switching between authoritative conversations', async ({
           .filter({ hasText: state })
           .click();
         await expect(menu).toBeHidden();
+        await expect
+          .poll(() => new URL(page.url()).searchParams.get('chat'))
+          .toBe(state === 'Running' ? 'conv-running' : 'conv-review');
+        await expect(
+          page.getByRole('log', { name: 'Conversation transcript' }),
+        ).toContainText(
+          state === 'Running'
+            ? 'Working through the current task.'
+            : 'Review needed before continuing.',
+        );
         if (state === 'Waiting on you') {
           await expect(textarea).toBeEnabled();
           await closeRunSetup(page);

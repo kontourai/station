@@ -731,7 +731,9 @@ export interface WindowsProcessEntry {
 }
 
 /** Lists every live Windows process, or null when the table is unreadable. */
-export type WindowsProcessLister = () => Promise<WindowsProcessEntry[] | null>;
+export type WindowsProcessLister = (
+  log?: (message: string, data?: unknown) => void,
+) => Promise<WindowsProcessEntry[] | null>;
 
 /** Ends the given Windows pids, each on its own (never `/t`). */
 export type WindowsProcessKiller = (pids: number[]) => Promise<void>;
@@ -760,12 +762,37 @@ function parseWindowsProcessTable(
   return entries;
 }
 
-export const listWindowsProcesses: WindowsProcessLister = () =>
-  new Promise((resolve) => {
+function windowsProcessProbeError(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) return {};
+  const diagnostic: Record<string, unknown> = {};
+  for (const key of ['name', 'code', 'errno', 'signal', 'killed']) {
+    const value: unknown = Reflect.get(error, key);
+    if (typeof value === 'string') diagnostic[key] = value.slice(0, 80);
+    else if (typeof value === 'number' || typeof value === 'boolean') {
+      diagnostic[key] = value;
+    }
+  }
+  return diagnostic;
+}
+
+export const listWindowsProcesses: WindowsProcessLister = (
+  log = (message, data) => logger.warn(message, data),
+) => {
+  const started = performance.now();
+  const failed = (stage: string, error?: unknown) => {
+    log('owned-process sweep: Windows process table probe failed', {
+      stage,
+      elapsedMs: performance.now() - started,
+      timeoutMs: WINDOWS_PROCESS_TABLE_TIMEOUT_MS,
+      error: windowsProcessProbeError(error),
+    });
+  };
+  return new Promise((resolve) => {
     let command: string;
     try {
       command = windowsSystemUtilityPath('powershell');
-    } catch {
+    } catch (error) {
+      failed('utility-resolution', error);
       resolve(null);
       return;
     }
@@ -785,10 +812,18 @@ export const listWindowsProcesses: WindowsProcessLister = () =>
         maxBuffer: 16 * 1024 * 1024,
       },
       (error, stdout) => {
-        resolve(error ? null : parseWindowsProcessTable(stdout));
+        if (error) {
+          failed('execution', error);
+          resolve(null);
+          return;
+        }
+        const table = parseWindowsProcessTable(stdout);
+        if (table === null) failed('invalid-output');
+        resolve(table);
       },
     );
   });
+};
 
 export const killWindowsProcesses: WindowsProcessKiller = (pids) =>
   runTaskkill(
@@ -1085,7 +1120,7 @@ export async function sweepOrphanedOwnedProcesses(
     if (process.platform === 'win32') {
       // Windows has no process group to signal; reap the engine and only the
       // descendants verified as its own (see verifiedWindowsProcessTree).
-      const table = await listWindowsTable();
+      const table = await listWindowsTable(log);
       const tree = table
         ? verifiedWindowsProcessTree(
             record.enginePid,
