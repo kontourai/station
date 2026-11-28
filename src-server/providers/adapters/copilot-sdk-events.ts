@@ -51,7 +51,6 @@ function toolKindOf(
   data: Extract<SessionEvent, { type: 'tool.execution_start' }>['data'],
 ): EngineToolKind {
   if (data.shellToolInfo) return 'execute';
-  if (data.readOnly) return 'read';
   return 'other';
 }
 

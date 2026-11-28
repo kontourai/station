@@ -342,7 +342,7 @@ export function copilotPermissionView(
       return {
         title: `Use ${request.serverName}: ${request.toolTitle}`,
         toolName: `${request.serverName}/${request.toolName}`,
-        toolKind: request.readOnly ? 'read' : 'other',
+        toolKind: 'other',
         toolInput: {
           server: request.serverName,
           tool: request.toolName,

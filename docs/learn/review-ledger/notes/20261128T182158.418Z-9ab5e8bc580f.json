@@ -1,0 +1,7 @@
+{
+  "revision": "99ce356f995240cfb0dfff799eae89d7304e0e83",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the child transcript fixture change. Tool results remain tool rows and notices remain visible, with settled activity opened through its summary on desktop.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/child-transcript-navigation.test.tsx"]}
+  ]
+}

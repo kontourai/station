@@ -950,7 +950,7 @@ work; with none, it settles `unresolved` everywhere at once. A settled call with
 the live record is not seeded from history. Reduced motion disables the highlight and
 makes pill size changes immediate.
 
-On a phone, a settled answer folds its tool activity into a summary. Every call from
+On desktop and mobile, a settled answer folds its tool activity into a summary. Every call from
 the first to the last, and the narration between them, folds into a single
 summary where the first call was. The intent before it and the outcome after it
 stay visible. Opening the row lists the calls with that narration in its

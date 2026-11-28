@@ -1,0 +1,19 @@
+{
+  "revision": "4aac58998c0571e1191effc43824a04bfbd896e5",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed chat rollup conformance. The same mounted transcript cases continue to expose pending approval and denial while desktop now folds settled runs as mobile does.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/__tests__/ChatMessageList.mobileTurnFold.test.tsx"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed settled activity grouping. UI blocks are still kept outside the folded activity and rendered in the transcript.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed desktop and mobile settled tool grouping, child card boundaries, live rows, and label recognition for the Antigravity Path and CommandLine inputs.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx","src-ui/src/components/chat/tool-call-labels.ts","src-ui/src/components/chat/tool-call-runs.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed child placement after work folds across screen sizes. Tool-anchored children and text-position placement still use the existing projection.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the linked SDK approval content query. The optional refresh version applies to stale approval content, and callers continue to bind reads to the captured Station scope.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the approval query cache invalidation contract and mounted observer regression. A new refresh version causes a fresh binding read while keeping station and request identity in the key.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/runtimeEventContent.ts","src-ui/src/components/chat/useApprovalContent.tsx"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the SDK reference delta and the mounted query regression for refresh following a cached response. The package boundary guidance remains accurate.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

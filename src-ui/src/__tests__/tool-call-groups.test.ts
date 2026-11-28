@@ -379,11 +379,13 @@ describe('classifyToolCallRun', () => {
     ['filesystem:edit_file', { path: 'a.txt' }, 'write'],
     ['notion.search', { q: 'x' }, 'search'],
     ['shell.exec', { cmdline: 'ls' }, 'exec'],
+    ['read_file', { Path: '/workspace/notes.txt' }, 'read'],
+    ['run_command', { CommandLine: 'pwd' }, 'exec'],
   ])(
     'a scoped tool name %s still classifies by its words',
     (toolName, args, kind) => {
       const group = classifyFirstRun([
-        toolCall({ toolCallId: 'a', toolName, args }),
+        toolCall({ toolCallId: 'a', toolName, toolKind: 'other', args }),
       ]);
       expect(group.calls[0]!.kind).toBe(kind);
     },

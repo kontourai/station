@@ -1,0 +1,7 @@
+{
+  "revision": "8ba8331ac861e51b8323bfccbb12b89e50302180",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed settled folding for mobile and desktop, session-message rows, and the existing pending-grant sheet. The tool label review includes the Antigravity Path and CommandLine forms.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/tool-call-runs.ts"]}
+  ]
+}

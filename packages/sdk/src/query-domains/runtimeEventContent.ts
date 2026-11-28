@@ -38,6 +38,7 @@ export function approvalContentQueryKey(
     requestId?: string;
     requestEventId?: string;
     shownRefs?: readonly string[];
+    refreshVersion?: number;
   } & ContentTarget,
 ): string[] {
   return [
@@ -48,6 +49,7 @@ export function approvalContentQueryKey(
     input.requestId ?? '',
     input.requestEventId ?? '',
     [...(input.shownRefs ?? [])].sort().join(','),
+    ...(input.refreshVersion ? [String(input.refreshVersion)] : []),
   ];
 }
 
@@ -64,6 +66,7 @@ export function useApprovalContentQuery(
     requestId?: string;
     requestEventId?: string;
     shownRefs?: readonly string[];
+    refreshVersion?: number;
   } & ContentTarget,
 ) {
   const { threadId, requestId } = input;

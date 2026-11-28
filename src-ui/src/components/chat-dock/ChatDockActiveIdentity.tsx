@@ -39,7 +39,12 @@ interface ChatDockActiveIdentityProps {
    */
   executionAgent?: AgentData | null;
   /** ACP connections, which alone name a Session on the generic ACP provider. */
-  acpConnections?: readonly { id: string; name: string }[];
+  acpConnections?: readonly {
+    id: string;
+    name: string;
+    registryId?: string;
+    icon?: string;
+  }[];
   originLabel?: string;
   originProvider?: string;
   onDetails?: () => void;
@@ -154,21 +159,24 @@ export function ChatDockActiveIdentity({
   // (station#1424) — a deterministic rendering of the id we hold, not a claim
   // that this agent has artwork.
   //
-  // The engine mark (#3355) comes from an imported session's recorded
-  // provider, else from the catalog's engine for this agent. A local chat has
-  // no `originProvider`, so without the catalog fallback a Codex agent drew
-  // "CO" initials here even with the catalog healthy. This is not guaranteed
-  // to match every transcript avatar: a message row that carries its own
-  // `agentDisplayName` draws from that attribution, which has no engine id.
+  const sessionProvider = parseEngineId(session.orchestrationProvider);
+  const acpConnection =
+    sessionProvider === 'acp' && engineIdentity.relation !== 'unknown'
+      ? acpConnections?.find(({ id }) => id === session.agentConnectionId)
+      : undefined;
+  const connectionIcon = acpConnection?.icon;
+  const agentIcon = agent?.icon;
   const iconSubject = {
     name: agentName,
     slug: session.agentSlug,
-    icon: agent?.icon,
+    icon:
+      agentIcon?.startsWith('brand:') && connectionIcon
+        ? connectionIcon
+        : (agentIcon ?? connectionIcon),
     engineId:
       parseEngineId(originProvider) ??
-      (configurationNamesEngine
-        ? bindingAgent?.engineId
-        : parseEngineId(session.orchestrationProvider)),
+      parseEngineId(acpConnection?.registryId ?? acpConnection?.id) ??
+      (configurationNamesEngine ? bindingAgent?.engineId : sessionProvider),
   };
   // The bar shows the agent and the engine on the title's line; the model and
   // the route are the composer's (its model picker names them), so here they

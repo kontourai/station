@@ -559,78 +559,101 @@ describe('Copilot SDK adapter: session create and resume', () => {
 });
 
 describe('Copilot SDK adapter: turns', () => {
-  test('streams text, a tool call and usage, and completes on its own session.idle', async () => {
-    const h = harness();
-    const { session, turnId } = await startedTurn(h, 'list the files');
-    expect(session.sends).toEqual([
-      { prompt: 'list the files', mode: 'enqueue', clientTurnId: turnId },
-    ]);
-    session.emit({
-      type: 'assistant.message_delta',
-      id: session.nextEventId(),
-      parentId: null,
-      timestamp: at(2),
-      ephemeral: true,
-      data: { messageId: 'm1', deltaContent: 'Looking' },
-    });
-    session.emit({
-      type: 'tool.execution_start',
-      id: session.nextEventId(),
-      parentId: null,
-      timestamp: at(3),
-      data: {
-        toolCallId: 'call-1',
-        toolName: 'bash',
-        arguments: { command: 'ls' },
-        shellToolInfo: { hasWriteFileRedirection: false, possiblePaths: [] },
-      },
-    });
-    session.emit({
-      type: 'tool.execution_complete',
-      id: session.nextEventId(),
-      parentId: null,
-      timestamp: at(4),
-      data: {
-        toolCallId: 'call-1',
-        success: true,
-        result: { content: 'a.txt\nb.txt' },
-      },
-    });
-    session.emit({
-      type: 'assistant.message',
-      id: session.nextEventId(),
-      parentId: null,
-      timestamp: at(5),
-      data: { messageId: 'm1', content: 'Looking' },
-    });
-    session.emit({
-      type: 'assistant.usage',
-      id: session.nextEventId(),
-      parentId: null,
-      timestamp: at(6),
-      ephemeral: true,
-      data: { model: 'gpt-5', inputTokens: 100, outputTokens: 20 },
-    });
-    session.emit(idle(session));
-    await h.settle();
-    const turnEvents = h.events.filter((e) => e.turnId === turnId);
-    expect(methods(turnEvents)).toEqual([
-      'turn.started',
-      'content.text-delta',
-      'tool.started',
-      'tool.completed',
-      'token-usage.updated',
-      'turn.completed',
-    ]);
-    expect(turnEvents[2]).toMatchObject({
+  const toolCases: Array<
+    Omit<
+      Extract<SessionEvent, { type: 'tool.execution_start' }>['data'],
+      'toolCallId'
+    > & {
+      expectedKind: 'execute' | 'other';
+    }
+  > = [
+    {
       toolName: 'bash',
-      toolKind: 'execute',
-    });
-    expect(turnEvents[3]).toMatchObject({
-      status: 'success',
-      output: 'a.txt\nb.txt',
-    });
-  });
+      arguments: { command: 'ls' },
+      shellToolInfo: { hasWriteFileRedirection: false, possiblePaths: [] },
+      expectedKind: 'execute',
+    },
+    {
+      toolName: 'search_code',
+      arguments: { query: 'main' },
+      readOnly: true,
+      expectedKind: 'other',
+    },
+  ];
+  test.each(toolCases)(
+    'streams $toolName, text and usage, and completes on session.idle',
+    async ({ expectedKind, ...tool }) => {
+      const h = harness();
+      const { session, turnId } = await startedTurn(h, 'list the files');
+      expect(session.sends).toEqual([
+        { prompt: 'list the files', mode: 'enqueue', clientTurnId: turnId },
+      ]);
+      session.emit({
+        type: 'assistant.message_delta',
+        id: session.nextEventId(),
+        parentId: null,
+        timestamp: at(2),
+        ephemeral: true,
+        data: { messageId: 'm1', deltaContent: 'Looking' },
+      });
+      session.emit({
+        type: 'tool.execution_start',
+        id: session.nextEventId(),
+        parentId: null,
+        timestamp: at(3),
+        data: {
+          toolCallId: 'call-1',
+          ...tool,
+        },
+      });
+      session.emit({
+        type: 'tool.execution_complete',
+        id: session.nextEventId(),
+        parentId: null,
+        timestamp: at(4),
+        data: {
+          toolCallId: 'call-1',
+          success: true,
+          result: { content: 'a.txt\nb.txt' },
+        },
+      });
+      session.emit({
+        type: 'assistant.message',
+        id: session.nextEventId(),
+        parentId: null,
+        timestamp: at(5),
+        data: { messageId: 'm1', content: 'Looking' },
+      });
+      session.emit({
+        type: 'assistant.usage',
+        id: session.nextEventId(),
+        parentId: null,
+        timestamp: at(6),
+        ephemeral: true,
+        data: { model: 'gpt-5', inputTokens: 100, outputTokens: 20 },
+      });
+      session.emit(idle(session));
+      await h.settle();
+      const turnEvents = h.events.filter((e) => e.turnId === turnId);
+      expect(methods(turnEvents)).toEqual([
+        'turn.started',
+        'content.text-delta',
+        'tool.started',
+        'tool.completed',
+        'token-usage.updated',
+        'turn.completed',
+      ]);
+      expect(turnEvents[2]).toMatchObject({
+        toolName: tool.toolName,
+        toolKind: expectedKind,
+      });
+      expect(turnEvents[3]).toMatchObject({
+        toolKind: expectedKind,
+        status: 'success',
+        output: 'a.txt\nb.txt',
+      });
+    },
+  );
 
   test('folds each model call, a subagent call included, into the turn total', async () => {
     const h = harness();

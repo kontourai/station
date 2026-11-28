@@ -2829,7 +2829,9 @@ request authority remain distinct. `interruptOrchestrationTurn` and
 `resolveOrchestrationRequest` accept `requestScope`;
 `dispatchOrchestrationCommand` accepts it in its fourth options argument.
 The runtime-event-content hooks accept `apiBase` and `requestScope` in their
-input. `useChildWorkTranscriptTailQuery` reads a child transcript the way a
+input. Increment `useApprovalContentQuery`’s optional `refreshVersion` when
+Station asks the client to reload the binding after an approval attempt.
+`useChildWorkTranscriptTailQuery` reads a child transcript the way a
 chat reads: the latest messages first (`tail`), older ones through
 `fetchPreviousPage`, and, while `running`, only the messages past its last
 `endOffset` every two seconds; `refreshLatest` reads past that cursor now and
