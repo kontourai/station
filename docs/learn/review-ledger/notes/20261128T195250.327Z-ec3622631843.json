@@ -1,0 +1,125 @@
+{
+  "revision": "a0b847f29391c1888f43e9b33d97140ab517a15e",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"Reviewed the Java setup pin update against the Android test and release guides. The workflow still selects the same JDK distribution and version and runs the same test tasks. The action's optional problem matcher does not change those contracts.","inputs":[".github/workflows/android-test.yml"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the Java setup pin update against the Android test and release guides. The workflow still selects the same JDK distribution and version and runs the same test tasks. The action's optional problem matcher does not change those contracts.","inputs":[".github/workflows/android-test.yml"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed the Java setup pin update against the Android test and release guides. The workflow still selects the same JDK distribution and version and runs the same test tasks. The action's optional problem matcher does not change those contracts.","inputs":[".github/workflows/android-test.yml"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed the Java setup pin update against the Android test and release guides. The workflow still selects the same JDK distribution and version and runs the same test tasks. The action's optional problem matcher does not change those contracts.","inputs":[".github/workflows/android-test.yml"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed the Java pin update against the documented Android build path. The JDK inputs, Android build commands, and artifact handoff are unchanged in the workflow.","inputs":[".github/workflows/build-android.yml"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the Java pin update against the documented Android build path. The JDK inputs, Android build commands, and artifact handoff are unchanged in the workflow.","inputs":[".github/workflows/build-android.yml"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed the Java pin update against the documented Android build path. The JDK inputs, Android build commands, and artifact handoff are unchanged in the workflow.","inputs":[".github/workflows/build-android.yml"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed the Java pin update against the documented Android build path. The JDK inputs, Android build commands, and artifact handoff are unchanged in the workflow.","inputs":[".github/workflows/build-android.yml"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed the Java action update in the Android Nightly cohort jobs. The Java inputs, job conditions, native cohort selection, and delivery steps remain as documented.","inputs":[".github/workflows/nightly-native-cohort.yml"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the Java action update in the Android Nightly cohort jobs. The Java inputs, job conditions, native cohort selection, and delivery steps remain as documented.","inputs":[".github/workflows/nightly-native-cohort.yml"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed the Java action update in the Android Nightly cohort jobs. The Java inputs, job conditions, native cohort selection, and delivery steps remain as documented.","inputs":[".github/workflows/nightly-native-cohort.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed the Java action update in the Android Nightly cohort jobs. The Java inputs, job conditions, native cohort selection, and delivery steps remain as documented.","inputs":[".github/workflows/nightly-native-cohort.yml"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed the Java action update in the Android Nightly cohort jobs. The Java inputs, job conditions, native cohort selection, and delivery steps remain as documented.","inputs":[".github/workflows/nightly-native-cohort.yml"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed the Java action update in the Android Nightly cohort jobs. The Java inputs, job conditions, native cohort selection, and delivery steps remain as documented.","inputs":[".github/workflows/nightly-native-cohort.yml"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed the Java action update in the Android staging job. The documented platform inputs, package staging, and delivery evidence steps retain the same workflow configuration.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the Java action update in the Android staging job. The documented platform inputs, package staging, and delivery evidence steps retain the same workflow configuration.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed the Java action update in the Android staging job. The documented platform inputs, package staging, and delivery evidence steps retain the same workflow configuration.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed the Java action update in the Android staging job. The documented platform inputs, package staging, and delivery evidence steps retain the same workflow configuration.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the Java action update in the Android staging job. The documented platform inputs, package staging, and delivery evidence steps retain the same workflow configuration.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed the Java action update in the Android staging job. The documented platform inputs, package staging, and delivery evidence steps retain the same workflow configuration.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed the Java action update in the Android staging job. The documented platform inputs, package staging, and delivery evidence steps retain the same workflow configuration.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed the Java action update in the Android staging job. The documented platform inputs, package staging, and delivery evidence steps retain the same workflow configuration.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed the Java action update in the Android staging job. The documented platform inputs, package staging, and delivery evidence steps retain the same workflow configuration.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed the Java action update in the Android staging job. The documented platform inputs, package staging, and delivery evidence steps retain the same workflow configuration.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Reviewed the Java action update in the Android staging job. The documented platform inputs, package staging, and delivery evidence steps retain the same workflow configuration.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Reviewed the Java action pin in release builds. The selected JDK, Android build inputs, release admission, and packaging and publication sequence are unchanged in the workflow.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":".github/codex/qualification-repair.md","note":"Reviewed the Codex action update and its upstream process/output changes against the repair prompt and release guide. The documented single repair attempt, prompt source, credential inputs, and timeout retain their workflow configuration.","inputs":[".github/workflows/qualification-repair.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed the Codex action update and its upstream process/output changes against the repair prompt and release guide. The documented single repair attempt, prompt source, credential inputs, and timeout retain their workflow configuration.","inputs":[".github/workflows/qualification-repair.yml"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the CodeQL and dependency-review action updates with their upstream changes. Workflow triggers, permissions, scan inputs, dependency review conditions, and required result publication retain their existing configuration.","inputs":[".github/workflows/security-analysis.yml"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the CodeQL and dependency-review action updates with their upstream changes. Workflow triggers, permissions, scan inputs, dependency review conditions, and required result publication retain their existing configuration.","inputs":[".github/workflows/security-analysis.yml"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the CodeQL and dependency-review action updates with their upstream changes. Workflow triggers, permissions, scan inputs, dependency review conditions, and required result publication retain their existing configuration.","inputs":[".github/workflows/security-analysis.yml"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed the CodeQL and dependency-review action updates with their upstream changes. Workflow triggers, permissions, scan inputs, dependency review conditions, and required result publication retain their existing configuration.","inputs":[".github/workflows/security-analysis.yml"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed the CodeQL and dependency-review action updates with their upstream changes. Workflow triggers, permissions, scan inputs, dependency review conditions, and required result publication retain their existing configuration.","inputs":[".github/workflows/security-analysis.yml"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed the CodeQL and dependency-review action updates with their upstream changes. Workflow triggers, permissions, scan inputs, dependency review conditions, and required result publication retain their existing configuration.","inputs":[".github/workflows/security-analysis.yml"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the CodeQL and dependency-review action updates with their upstream changes. Workflow triggers, permissions, scan inputs, dependency review conditions, and required result publication retain their existing configuration.","inputs":[".github/workflows/security-analysis.yml"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the CodeQL and dependency-review action updates with their upstream changes. Workflow triggers, permissions, scan inputs, dependency review conditions, and required result publication retain their existing configuration.","inputs":[".github/workflows/security-analysis.yml"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the three exact pin substitutions for CodeQL init and analyze and dependency-review. The gate continues to check exact action identities, and landing automation's credential fingerprint and pnpm executable-cache policy retain their previous values.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the three exact pin substitutions for CodeQL init and analyze and dependency-review. The gate continues to check exact action identities, and landing automation's credential fingerprint and pnpm executable-cache policy retain their previous values.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the three exact pin substitutions for CodeQL init and analyze and dependency-review. The gate continues to check exact action identities, and landing automation's credential fingerprint and pnpm executable-cache policy retain their previous values.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed the three exact pin substitutions for CodeQL init and analyze and dependency-review. The gate continues to check exact action identities, and landing automation's credential fingerprint and pnpm executable-cache policy retain their previous values.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed the three exact pin substitutions for CodeQL init and analyze and dependency-review. The gate continues to check exact action identities, and landing automation's credential fingerprint and pnpm executable-cache policy retain their previous values.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed the three exact pin substitutions for CodeQL init and analyze and dependency-review. The gate continues to check exact action identities, and landing automation's credential fingerprint and pnpm executable-cache policy retain their previous values.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed the three exact pin substitutions for CodeQL init and analyze and dependency-review. The gate continues to check exact action identities, and landing automation's credential fingerprint and pnpm executable-cache policy retain their previous values.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed the three exact pin substitutions for CodeQL init and analyze and dependency-review. The gate continues to check exact action identities, and landing automation's credential fingerprint and pnpm executable-cache policy retain their previous values.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the three exact pin substitutions for CodeQL init and analyze and dependency-review. The gate continues to check exact action identities, and landing automation's credential fingerprint and pnpm executable-cache policy retain their previous values.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the three exact pin substitutions for CodeQL init and analyze and dependency-review. The gate continues to check exact action identities, and landing automation's credential fingerprint and pnpm executable-cache policy retain their previous values.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the three exact pin substitutions for CodeQL init and analyze and dependency-review. The gate continues to check exact action identities, and landing automation's credential fingerprint and pnpm executable-cache policy retain their previous values.","inputs":["scripts/actionlint-gate.mjs"]}
+  ]
+}
