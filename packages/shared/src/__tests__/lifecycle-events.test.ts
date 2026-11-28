@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   acquireFileMutationLock,
   appendLifecycleEvent,
@@ -48,9 +49,10 @@ const identity: LifecycleIdentity = {
 const PROCESS_INTEGRATION_TEST_TIMEOUT_MS = 15_000;
 const CHILD_READY_TIMEOUT_MS = 5_000;
 const CHILD_CLEANUP_TIMEOUT_MS = 1_000;
+const makeTempDir = trackTempDirs();
 
 function createJournalRoot(prefix: string): string {
-  const root = mkdtempSync(join(tmpdir(), prefix));
+  const root = makeTempDir(prefix);
   hardenWindowsPathsTrusted(runWindowsTrustCommand, [
     { path: root, kind: 'directory' },
   ]);

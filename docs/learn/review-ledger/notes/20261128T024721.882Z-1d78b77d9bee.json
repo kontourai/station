@@ -1,0 +1,7 @@
+{
+  "revision": "e9cf7e4a8ea09b201a2a1e7b8972cdc186a3d141",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Reviewed journal privacy paragraph against retained-handle inherited-private migration, broader ACL refusal, bounded chunks, 2GiB-minus-one whole-file ceiling independent of rotation threshold, atomic retained generation and execution-safe parent fallback. Windows owners53pass/1skip, Linux42pass/23skip; no generic Node fd or state/log qualification. Prior aggregate native table timeout retained; no deadline padding.","inputs":["docs/guides/deployment.md"]}
+  ]
+}

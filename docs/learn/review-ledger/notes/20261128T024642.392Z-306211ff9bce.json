@@ -1,0 +1,7 @@
+{
+  "revision": "e9cf7e4a8ea09b201a2a1e7b8972cdc186a3d141",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Reviewed retained-handle safe inherited owner-only ACL migration: owner and sole FullControl ACE verified before SetSecurityInfo, protected DACL reverified before bytes; broader file ACLs still refused unchanged. Native migration positive and subsequent Everyone ACL read/append refusal pass; clean protection mutation fails intended caller then restored Windows owners 53 pass/1 skip. Native rename table now isolates all 16 filename-length boundaries without changing product deadlines/sharing. Prior aggregate timeout retained, diagnostic native rename 0-1ms and write/flush dominant under variable host load, not a proven product stall. No state/log fd integration or installed Nightly claim.","inputs":["packages/shared/src/windows-file-security.ts"]}
+  ]
+}
