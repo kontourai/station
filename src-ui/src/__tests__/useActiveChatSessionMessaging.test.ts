@@ -52,7 +52,14 @@ const accountPreferenceFixture = vi.hoisted(() => ({
     | undefined,
   data: {
     schemaVersion: 1,
-    values: { interactiveApprovalModes: {} as Record<string, string> },
+    values: {
+      interactiveApprovalModes: {} as Record<string, string>,
+      interactiveApprovalDefault: undefined as
+        | 'ask'
+        | 'auto'
+        | 'never'
+        | undefined,
+    },
   },
 }));
 // #4518: the managed approval ceiling the connected Station reports.
@@ -1332,6 +1339,57 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         accountPreferenceFixture.data.values.interactiveApprovalModes = {};
       }
     });
+
+    it.each([
+      {
+        command: '/opt/bin/opencode',
+        stationApprovalRequests: undefined,
+        override: { opencode: 'ask' },
+        expected: 'ask',
+      },
+      {
+        command: 'kiro-cli',
+        stationApprovalRequests: true,
+        override: undefined,
+        expected: 'auto',
+      },
+      {
+        command: 'kiro-cli',
+        stationApprovalRequests: undefined,
+        override: undefined,
+        expected: undefined,
+      },
+    ] as const)(
+      'carries the effective account default for $command ($expected)',
+      async ({ command, override, stationApprovalRequests, expected }) => {
+        accountPreferenceFixture.data.values.interactiveApprovalDefault =
+          'auto';
+        accountPreferenceFixture.data.values.interactiveApprovalModes =
+          override ?? {};
+        cachedAgentCatalog = {
+          agents: [
+            { slug: 'codex', execution: { agentConnectionId: 'custom-acp' } },
+          ],
+        };
+        sessionCache.setQueryData(
+          ['acp-connections'],
+          [{ id: 'custom-acp', command, stationApprovalRequests }],
+        );
+        activeChatsStore.updateChat(sessionId, { projectSlug: undefined });
+        try {
+          const body = await bodyAfterSend();
+          if (expected)
+            expect(body).toMatchObject({ personalApprovalDefault: expected });
+          else expect(body).not.toHaveProperty('personalApprovalDefault');
+          expect(body).not.toHaveProperty('setApprovalMode');
+        } finally {
+          accountPreferenceFixture.data.values.interactiveApprovalDefault =
+            undefined;
+          accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+          sessionCache.removeQueries({ queryKey: ['acp-connections'] });
+        }
+      },
+    );
 
     it('a Station that answered "no Project layer here" (404) gets the default as the pick it always was', async () => {
       const requestScope = {

@@ -4,6 +4,7 @@ import { useAccountPreferences } from '../../contexts/AccountPreferencesContext'
 import { type AgentData, useAgents } from '../../contexts/AgentsContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
+import { personalApprovalMode } from '../../lib/account-preference-values';
 import {
   type ApprovalMode,
   acpApprovalFor,
@@ -68,14 +69,6 @@ export function StartApprovalSummary({
     acpConnections?.find((connection) => connection.id === connectionId),
   );
   const engine = acp ? acp.engineId : nonAcpApprovalEngine(connectionId);
-  const personalDefault =
-    engine === 'codex'
-      ? account.data?.values.interactiveApprovalModes?.codex
-      : engine === 'claude'
-        ? account.data?.values.interactiveApprovalModes?.claude
-        : engine === 'muse'
-          ? account.data?.values.interactiveApprovalModes?.muse
-          : undefined;
   const resolved = resolveEffectiveApprovalMode({
     engineConnectionId: engine ?? undefined,
     acpControl: acp?.control,
@@ -83,7 +76,7 @@ export function StartApprovalSummary({
     agentDefault: actual?.execution?.approvalMode,
     projectDefault,
     projectDefaultUnavailable,
-    personalDefault,
+    personalDefault: personalApprovalMode(account.data?.values, engine),
     stationDefault: config?.defaultApprovalMode,
   });
   if (!approvalModeKnobSupported(engine, acp?.control)) return null;

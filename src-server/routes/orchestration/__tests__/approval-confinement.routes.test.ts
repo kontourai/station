@@ -95,10 +95,11 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-/** Two Agents on this Station, one per engine with an approval knob. */
 const AGENTS = {
   'codex-agent': 'codex',
   'claude-agent': 'claude',
+  'opencode-agent': 'opencode',
+  'request-agent': 'acp',
 } as const;
 
 function installStationDiscovery(): void {
@@ -107,6 +108,7 @@ function installStationDiscovery(): void {
     if (url === `${CURRENT_API}/.well-known/station/v1`)
       return json({ environmentId: 'environment-current' });
     for (const [slug, provider] of Object.entries(AGENTS)) {
+      const connectionId = `${provider === 'acp' ? slug : provider}-connection`;
       if (url === `${CURRENT_API}/api/agents/${slug}`)
         return json({
           success: true,
@@ -114,14 +116,14 @@ function installStationDiscovery(): void {
             slug,
             name: slug,
             available: true,
-            execution: { agentConnectionId: `${provider}-connection` },
+            execution: { agentConnectionId: connectionId },
           },
         });
-      if (url === `${CURRENT_API}/api/connections/${provider}-connection`)
+      if (url === `${CURRENT_API}/api/connections/${connectionId}`)
         return json({
           success: true,
           data: {
-            id: `${provider}-connection`,
+            id: connectionId,
             kind: 'agent',
             type: provider,
             enabled: true,
@@ -142,7 +144,7 @@ class RecordingEngine implements ProviderAdapterShape {
   readonly turns: ProviderSendTurnInput[] = [];
   private readonly sessions = new Map<string, ProviderSession>();
 
-  constructor(readonly provider: 'claude' | 'codex') {
+  constructor(readonly provider: 'claude' | 'codex' | 'acp' | 'opencode') {
     this.metadata = {
       displayName: provider,
       description: `${provider} confinement test engine`,
@@ -371,16 +373,21 @@ async function fixture(
   const eventBus = new EventBus();
   const codex = new RecordingEngine('codex');
   const claude = new RecordingEngine('claude');
+  const acp = new RecordingEngine('acp');
+  const opencode = new RecordingEngine('opencode');
+  const engines = [codex, claude, acp, opencode];
   const registry: IProviderAdapterRegistry = {
     register() {},
-    get: (provider) => [codex, claude].find((a) => a.provider === provider),
-    list: () => [codex, claude],
+    get: (provider) => engines.find((a) => a.provider === provider),
+    list: () => engines,
   };
   const service = new OrchestrationService({
     adapterRegistry: registry,
     eventBus,
     eventStore: store,
     resolveStationDefaultApprovalMode: async () => defaults.station,
+    acpApprovalControl: (id: string) =>
+      id === 'request-agent-connection' ? 'requests' : undefined,
     ...(chatDefaults ? { projectChatDefaults: chatDefaults } : {}),
     // #2494: Seatbelt available on any host, so Claude resolves the same.
     confinementProviders: confinementProvidersForTests(),
@@ -564,6 +571,8 @@ async function fixture(
     store,
     codex,
     claude,
+    acp,
+    opencode,
     request,
     bearer,
     internal,
@@ -577,7 +586,7 @@ async function fixture(
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 
 function engineFor(f: Fixture, agent: keyof typeof AGENTS): RecordingEngine {
-  return AGENTS[agent] === 'codex' ? f.codex : f.claude;
+  return f[AGENTS[agent]];
 }
 
 /** The start the engine received and the stamp its start event persisted. */
@@ -2822,6 +2831,30 @@ describe('the personal approval default hint', () => {
       approvalMode: 'auto',
     });
   });
+
+  test.each(['opencode-agent', 'request-agent'] as const)(
+    'records and applies the personal default for %s',
+    async (agent) => {
+      const f = await fixture({ station: 'ask' });
+      const sent = await firstSend(
+        f,
+        f.bearer(f.operator.credential),
+        {
+          personalApprovalDefault: 'auto',
+        },
+        agent,
+      );
+      expect(sent.status, sent.text).toBe(200);
+      expect(lastStart(f, agent)).toMatchObject({
+        approvalMode: 'auto',
+        confinement: 'host',
+      });
+      expect(sent.body.data.approvalMode).toMatchObject({
+        approvalMode: 'auto',
+        recorded: true,
+      });
+    },
+  );
 
   test('an Agent default beats it', async () => {
     const f = await fixture({

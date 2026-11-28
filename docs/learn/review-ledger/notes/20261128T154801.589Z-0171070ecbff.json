@@ -1,0 +1,7 @@
+{
+  "revision": "a20864f16718223491b4b1e7614129326a0623c3",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Updated account-preferences approval precedence to include personal all-engines default and ACP/OpenCode support via sibling storage.","inputs":["docs/design/settings-architecture.md","packages/contracts/src/account-preferences.ts","src-server/services/identity/account-preferences.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/account-preference-values.ts","src-ui/src/views/settings/AccountPreferencesSection.tsx","src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}

@@ -154,6 +154,8 @@ describe('account preference HTTP persistence', () => {
     { featureSettings: { pushNotificationsEnabled: true } },
     { approvalGrant: 'full-access' },
     { interactiveApprovalModes: { unknown: 'never' } },
+    { interactiveApprovalDefault: 'connection-default' },
+    { interactiveApprovalModes: { opencode: 'connection-default' } },
     { chatFontSize: 200 },
     { modelPickerPreferences: { favorites: ['x'] } },
   ])(
@@ -287,6 +289,8 @@ describe('account preference HTTP persistence', () => {
       (
         await f.call({
           theme: 'light',
+          interactiveApprovalDefault: 'auto',
+          interactiveApprovalModes: { codex: 'ask', opencode: 'never' },
           colorTheme: 'catppuccin',
           colorThemeFlavor: 'frappe',
           colorThemeAccent: 'pink',
@@ -299,34 +303,64 @@ describe('account preference HTTP persistence', () => {
     const dir = join(f.home, 'config', 'account-preferences');
     const files = (await readdir(dir)).filter((name) => name.endsWith('.json'));
     const mainFile = files.find((name) => /^[a-f0-9]{64}\.json$/.test(name))!;
-    expect(files).toHaveLength(3);
+    // Main, appearance, approval and chat send-mode files.
+    expect(files).toHaveLength(4);
     // The old reader opens only <key>.json, and it parses.
     const old = oldDocument.parse(
       JSON.parse(await readFile(join(dir, mainFile), 'utf8')),
     );
-    expect(old.values).toEqual({ theme: 'light' });
-    await writeFile(
-      join(dir, mainFile),
-      JSON.stringify(
-        oldDocument.parse({
-          ...old,
-          values: { ...old.values, theme: 'dark' },
-        }),
-      ),
-    );
-    expect(await (await f.call()).json()).toMatchObject({
-      data: {
-        values: {
-          theme: 'dark',
-          chatDefaultSendMode: 'steer',
-          colorTheme: 'catppuccin',
-          colorThemeFlavor: 'frappe',
-          colorThemeAccent: 'pink',
-          density: 'compact',
-          motion: 'reduce',
+    expect(old.values).toEqual({
+      theme: 'light',
+      interactiveApprovalModes: { codex: 'ask' },
+    });
+    old.values.interactiveApprovalModes = { codex: 'auto', claude: 'ask' };
+    await writeFile(join(dir, mainFile), JSON.stringify(old));
+    const restarted = new Hono().route('/api/me', f.build());
+    // The upgraded server combines the older write with the saved sidecars.
+    expect(await (await f.call(undefined, {}, restarted)).json()).toMatchObject(
+      {
+        data: {
+          values: {
+            theme: 'light',
+            interactiveApprovalDefault: 'auto',
+            chatDefaultSendMode: 'steer',
+            interactiveApprovalModes: {
+              codex: 'auto',
+              claude: 'ask',
+              opencode: 'never',
+            },
+            colorTheme: 'catppuccin',
+            colorThemeFlavor: 'frappe',
+            colorThemeAccent: 'pink',
+            density: 'compact',
+            motion: 'reduce',
+          },
         },
       },
+    );
+    for (const header of [
+      { 'x-test-person': 'other' },
+      { 'x-test-tenant': 'other' },
+    ]) {
+      const other = (await (await f.call(undefined, header)).json()) as {
+        data: { values: Record<string, unknown> };
+      };
+      expect(other.data.values).toEqual({});
+    }
+    const reset = await f.call({
+      interactiveApprovalDefault: null,
+      interactiveApprovalModes: { opencode: null },
     });
+    expect(reset.status).toBe(200);
+    const resetBody = (await reset.json()) as {
+      data: { values: Record<string, unknown> };
+    };
+    const resetValues = resetBody.data.values;
+    expect(resetValues.interactiveApprovalModes).toEqual({
+      codex: 'auto',
+      claude: 'ask',
+    });
+    expect(resetValues).not.toHaveProperty('interactiveApprovalDefault');
   });
 
   test.each([null, 'queue'])(

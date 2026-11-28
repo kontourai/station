@@ -6,6 +6,7 @@ import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision
 
 const engineConnections = vi.fn();
 const accountValues = vi.fn();
+const allEnginesDefault = vi.fn();
 const sendMode = vi.fn();
 const save = vi.fn();
 
@@ -20,6 +21,7 @@ vi.mock('../../../contexts/AccountPreferencesContext', () => ({
     data: {
       values: {
         interactiveApprovalModes: accountValues(),
+        interactiveApprovalDefault: allEnginesDefault(),
         chatDefaultSendMode: sendMode(),
       },
     },
@@ -35,6 +37,7 @@ const { AccountPreferencesSection } = await import(
 beforeEach(() => {
   engineConnections.mockReturnValue([]);
   accountValues.mockReturnValue({});
+  allEnginesDefault.mockReturnValue(undefined);
   sendMode.mockReturnValue(undefined);
   save.mockClear();
 });
@@ -94,11 +97,49 @@ test('#4518: under a managed ceiling of Auto, Full access is not offered unless 
     Array.from(
       (screen.getByLabelText(label) as HTMLSelectElement).options,
     ).find((option) => option.value === 'never')!;
+  expect(fullAccess('New chats (all engines) approval mode').disabled).toBe(
+    true,
+  );
   expect(fullAccess('New Codex chats approval mode').disabled).toBe(true);
+  expect(fullAccess('New chats (all engines) approval mode').disabled).toBe(
+    true,
+  );
   expect(fullAccess('New Codex chats approval mode').textContent).toMatch(
     / \(Managed\)$/,
   );
   // Saved before the policy: still shown, so it can be seen and changed.
   expect(fullAccess('New Claude chats approval mode').disabled).toBe(false);
   expect(screen.getByText(/Acme's policy manages approval modes/)).toBeTruthy();
+});
+
+test('engine overrides show the account default and can reset to it', () => {
+  allEnginesDefault.mockReturnValue('auto');
+  accountValues.mockReturnValue({ codex: 'ask' });
+  render(<AccountPreferencesSection />);
+  expect(
+    screen.getByRole('option', { name: 'Station or engine default' }),
+  ).toBeTruthy();
+  const codex = screen.getByLabelText('New Codex chats approval mode');
+  fireEvent.change(codex, { target: { value: 'connection-default' } });
+  expect(save).toHaveBeenCalledWith({
+    interactiveApprovalModes: { codex: null },
+  });
+  const claude = screen.getByLabelText('New Claude chats approval mode');
+  expect(claude).toHaveProperty('value', 'connection-default');
+  expect(claude.querySelector('option:checked')?.textContent).toBe(
+    'All engines (Auto)',
+  );
+});
+
+test('Full access on all engines requires confirmation before saving', () => {
+  render(<AccountPreferencesSection />);
+  const selector = screen.getByLabelText(
+    'New chats (all engines) approval mode',
+  );
+  fireEvent.change(selector, { target: { value: 'never' } });
+  expect(save).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Save full access default' }),
+  );
+  expect(save).toHaveBeenCalledWith({ interactiveApprovalDefault: 'never' });
 });

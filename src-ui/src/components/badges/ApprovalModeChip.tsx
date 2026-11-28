@@ -16,6 +16,7 @@ import {
 import { useContext, useRef, useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { useManagedPolicySummary } from '../../contexts/ManagedPolicyContext';
+import { personalApprovalMode } from '../../lib/account-preference-values';
 import {
   type ApprovalMode,
   approvalChoiceIndicators,
@@ -181,10 +182,9 @@ function ApprovalModeChipContent({
     personalDefault:
       !notApplied &&
       isNewSession &&
-      (engineConnectionId === 'codex' ||
-        engineConnectionId === 'claude' ||
-        engineConnectionId === 'muse')
-        ? account.data?.values.interactiveApprovalModes?.[engineConnectionId]
+      (!target?.station ||
+        target.station.capabilities.personalDefaults.state === 'allowed')
+        ? personalApprovalMode(account.data?.values, engineConnectionId)
         : undefined,
   });
   const appliedMode = isApprovalMode(lastAppliedApprovalMode)

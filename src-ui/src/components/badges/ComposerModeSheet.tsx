@@ -4,6 +4,7 @@ import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
+import { interactiveApprovalEngine } from '../../lib/account-preference-values';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import {
   APPROVAL_MODE_OPTIONS,
@@ -110,20 +111,16 @@ function ComposerModeSheetContent({
     target.station.capabilities.personalDefaults.state === 'allowed';
   const { aboveCeiling } = useManagedApprovalCeiling();
   const [saveAsDefault, setSaveAsDefault] = useState(false);
-  const defaultEngine =
-    engineConnectionId === 'codex' ||
-    engineConnectionId === 'claude' ||
-    engineConnectionId === 'muse'
-      ? engineConnectionId
-      : undefined;
+  const defaultEngine = interactiveApprovalEngine(engineConnectionId);
   const canSaveDefault = personalDefaults && account.status === 'account';
   const apply = (mode: ApprovalMode) => {
-    if (canSaveDefault && saveAsDefault && defaultEngine) {
-      account.save({
-        interactiveApprovalModes: {
-          [defaultEngine]: mode === 'connection-default' ? null : mode,
-        },
-      });
+    if (canSaveDefault && saveAsDefault) {
+      const value = mode === 'connection-default' ? null : mode;
+      account.save(
+        defaultEngine
+          ? { interactiveApprovalModes: { [defaultEngine]: value } }
+          : { interactiveApprovalDefault: value },
+      );
     }
     onSelect(mode);
     onClose();
@@ -188,14 +185,16 @@ function ComposerModeSheetContent({
                 ? 'Set for this chat · changes apply next turn'
                 : 'Changes apply next turn'}
         </p>
-        {canSaveDefault && defaultEngine && (
+        {canSaveDefault && (
           <div className="composer-mode-sheet__save-default">
             <Checkbox checked={saveAsDefault} onChange={setSaveAsDefault}>
-              Save as my {engineProduct ?? 'engine'} default
+              {defaultEngine
+                ? `Save as my ${engineProduct ?? (defaultEngine === 'antigravity' ? 'Antigravity' : 'engine')} default`
+                : 'Save as my default for all engines'}
             </Checkbox>
           </div>
         )}
-        {saveAsDefault && canSaveDefault && defaultEngine && (
+        {saveAsDefault && canSaveDefault && (
           <Button onClick={() => choose(effectiveMode)}>
             Save current mode as my default
           </Button>

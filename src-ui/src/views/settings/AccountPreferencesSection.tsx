@@ -1,6 +1,7 @@
 import {
   ACCOUNT_PREFERENCE_KEYS,
   type AccountPreferencesPatch,
+  INTERACTIVE_APPROVAL_ENGINES,
   type InteractiveApprovalEngine,
 } from '@kontourai/station-contracts/account-preferences';
 import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
@@ -18,11 +19,14 @@ import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
   APPROVAL_MODE_OPTIONS,
   approvalModeDescription,
+  approvalModeLabel,
 } from '../../utils/approvalMode';
 import { connectionEngineId } from '../../utils/execution';
 import { SettingsPageRow as PageRow } from './SettingsPageRow';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
+
+type ApprovalRow = 'all' | InteractiveApprovalEngine;
 
 export function AccountPreferencesSection() {
   useDecisionSurface('account-approval-defaults');
@@ -53,36 +57,45 @@ export function AccountPreferencesSection() {
     });
     return () => cancelAnimationFrame(frame);
   }, [account.retrying]);
-  const [confirmEngine, setConfirmEngine] =
-    useState<InteractiveApprovalEngine | null>(null);
-  const engineRows = {
+  const [confirmEngine, setConfirmEngine] = useState<ApprovalRow | null>(null);
+  const approvalRows = {
+    all: settingsRow('personal-all-engines-approval'),
     codex: settingsRow('personal-codex-approval'),
     claude: settingsRow('personal-claude-approval'),
     muse: settingsRow('personal-muse-approval'),
+    opencode: settingsRow('personal-opencode-approval'),
+    acp: settingsRow('personal-acp-approval'),
+    antigravity: settingsRow('personal-antigravity-approval'),
   };
   const defaults = account.data?.values.interactiveApprovalModes ?? {};
-  // #4402: Muse appears nowhere else in Station unless this Station has a
-  // Muse engine, so its row is offered only then (or while a saved Muse
-  // default still needs a way to be cleared).
+  const allEnginesDefault = account.data?.values.interactiveApprovalDefault;
   const { data: engineConnections = [] } = useEngineConnectionsQuery();
-  const hasMuse = engineConnections.some(
-    (connection) => connectionEngineId(connection) === 'muse',
-  );
-  const engines = (['codex', 'claude', 'muse'] as const).filter(
-    (engine) => engine !== 'muse' || hasMuse || defaults.muse,
-  );
-  const saveMode = (engine: InteractiveApprovalEngine, mode: string) => {
+  const connectedEngines = new Set(engineConnections.map(connectionEngineId));
+  const rows: ApprovalRow[] = [
+    'all',
+    ...INTERACTIVE_APPROVAL_ENGINES.filter(
+      (engine) =>
+        engine === 'codex' ||
+        engine === 'claude' ||
+        connectedEngines.has(engine) ||
+        defaults[engine] !== undefined,
+    ),
+  ];
+  const saveMode = (row: ApprovalRow, mode: string) => {
     if (
-      mode === 'connection-default' ||
-      mode === 'ask' ||
-      mode === 'auto' ||
-      mode === 'never'
+      mode !== 'connection-default' &&
+      mode !== 'ask' &&
+      mode !== 'auto' &&
+      mode !== 'never'
     )
-      account.save({
-        interactiveApprovalModes: {
-          [engine]: mode === 'connection-default' ? null : mode,
-        },
-      });
+      return;
+    if (aboveCeiling(mode)) return;
+    const value = mode === 'connection-default' ? null : mode;
+    account.save(
+      row === 'all'
+        ? { interactiveApprovalDefault: value }
+        : { interactiveApprovalModes: { [row]: value } },
+    );
   };
   const importPrevious = () => {
     const local = deviceSettingsStore.getEnvelope().values;
@@ -121,8 +134,8 @@ export function AccountPreferencesSection() {
             preferences.
           </p>
           <p>
-            Approval defaults: Chat choice → Agent → your default → Station →
-            engine. Existing chats and unattended jobs keep their settings.
+            Approval order: Chat choice → Agent → Project → engine override →
+            all-engines default → Station → engine.
           </p>
         </details>
       </div>
@@ -163,55 +176,66 @@ export function AccountPreferencesSection() {
           </select>
         }
       />
-      {engines.map((engine) => (
-        <PageRow
-          key={engine}
-          {...engineRows[engine]}
-          description={
-            defaults[engine]
-              ? approvalModeDescription(defaults[engine]!, engine)
-              : undefined
-          }
-          control={
-            <select
-              className="editor-select"
-              // #4403: the row's own visible title ("New Codex chats"), not
-              // the lowercase engine id.
-              aria-label={`${engineRows[engine].title} approval mode`}
-              disabled={account.saving || account.status !== 'account'}
-              value={defaults[engine] ?? 'connection-default'}
-              onChange={(event) =>
-                event.target.value === 'never' && defaults[engine] !== 'never'
-                  ? setConfirmEngine(engine)
-                  : saveMode(engine, event.target.value)
-              }
-            >
-              {APPROVAL_MODE_OPTIONS.map((option) => {
-                // #4518: a personal default above this Station's managed
-                // ceiling is not offered; one already saved stays shown, and
-                // the server lowers it where it applies.
-                const managed =
-                  aboveCeiling(option.value) &&
-                  option.value !== defaults[engine];
-                return (
-                  <option
-                    key={option.value}
-                    value={option.value}
-                    disabled={managed}
-                  >
-                    {managed ? `${option.label} (Managed)` : option.label}
-                  </option>
-                );
-              })}
-            </select>
-          }
-        />
-      ))}
+      {rows.map((row) => {
+        const selected = row === 'all' ? allEnginesDefault : defaults[row];
+        const fallback =
+          row !== 'all' && allEnginesDefault
+            ? `All engines (${approvalModeLabel(allEnginesDefault)})`
+            : 'Station or engine default';
+        return (
+          <PageRow
+            key={row}
+            {...approvalRows[row]}
+            description={
+              selected
+                ? approvalModeDescription(
+                    selected,
+                    row === 'all' ? undefined : row,
+                  )
+                : undefined
+            }
+            control={
+              <select
+                className="editor-select"
+                aria-label={`${approvalRows[row].title} approval mode`}
+                disabled={account.saving || account.status !== 'account'}
+                value={selected ?? 'connection-default'}
+                onChange={(event) =>
+                  event.target.value === 'never' && selected !== 'never'
+                    ? setConfirmEngine(row)
+                    : saveMode(row, event.target.value)
+                }
+              >
+                {APPROVAL_MODE_OPTIONS.map((option) => {
+                  // #4518: a personal default above this Station's managed
+                  // ceiling is not offered; one already saved stays shown, and
+                  // the server lowers it where it applies.
+                  const managed =
+                    aboveCeiling(option.value) && option.value !== selected;
+                  return (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                      disabled={managed}
+                    >
+                      {option.value === 'connection-default'
+                        ? fallback
+                        : managed
+                          ? `${option.label} (Managed)`
+                          : option.label}
+                    </option>
+                  );
+                })}
+              </select>
+            }
+          />
+        );
+      })}
       <ManagedApprovalCeilingNote className="editor-hint" />
       <ConfirmModal
         isOpen={confirmEngine !== null}
         title="Save full access default?"
-        message={`${confirmEngine ? engineRows[confirmEngine].title : 'New chats'} will request Full access. The agent can act without approval prompts, subject to this device’s access and Station policy.`}
+        message={`${confirmEngine ? approvalRows[confirmEngine].title : 'New chats'} will request Full access. The agent can act without approval prompts, subject to this device’s access and Station policy.`}
         confirmLabel="Save full access default"
         cancelLabel="Cancel"
         variant="danger"

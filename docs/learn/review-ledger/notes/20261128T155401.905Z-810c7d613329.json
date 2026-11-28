@@ -1,0 +1,7 @@
+{
+  "revision": "a20864f16718223491b4b1e7614129326a0623c3",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"Verified settings-deep-links.md remains accurate after regenerating settings-registry.json with new approval default rows.","inputs":["src-server/generated/settings-registry.json"]}
+  ]
+}

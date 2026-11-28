@@ -67,12 +67,18 @@ test('uses the product name and saves a supported approval default', () => {
   });
 });
 
-test.each(['opencode', '', null])(
-  'does not offer an approval default for %j',
-  (id) => {
-    renderSheet(id);
-    expect(screen.queryByRole('checkbox')).toBeNull();
-    fireEvent.click(screen.getByRole('radio', { name: /^Auto/ }));
-    expect(account.save).not.toHaveBeenCalled();
-  },
-);
+test.each([
+  ['opencode', 'OpenCode'],
+  ['acp', 'Custom engine'],
+])('asks before saving Full access as the %s override', (id, name) => {
+  renderSheet(id);
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: `Save as my ${name} default` }),
+  );
+  fireEvent.click(screen.getByRole('radio', { name: /^Full access/ }));
+  expect(account.save).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Enable full access' }));
+  expect(account.save).toHaveBeenCalledWith({
+    interactiveApprovalModes: { [id]: 'never' },
+  });
+});
