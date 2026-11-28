@@ -465,6 +465,59 @@ describe('cold-launch presentation in the browser', () => {
     }
   });
 
+  test('cached Station Reduced paints after native admission while readiness is pending', async () => {
+    const page = await open({ query: '?native=covered', stationReduced: true });
+    try {
+      await page.waitForFunction(() => {
+        const logo = document.querySelector<HTMLImageElement>(
+          '.station-startup__logo',
+        );
+        return logo?.complete && logo.naturalWidth > 0;
+      });
+      await page.clock.runFor(200);
+      expect(await page.locator('html').getAttribute('data-motion')).toBe(
+        'reduce',
+      );
+      expect(
+        await page.evaluate(
+          () => matchMedia('(prefers-reduced-motion: reduce)').matches,
+        ),
+      ).toBe(false);
+      expect(
+        await intro(page).locator('canvas').getAttribute('data-ready'),
+      ).toBeNull();
+      expect(await page.evaluate(() => window.startupFixture.glyphs)).toEqual(
+        [],
+      );
+      expect(
+        await page.evaluate(() => window.startupFixture.nativeReads),
+      ).toBeGreaterThan(1);
+      await page.evaluate(() => window.startupFixture.admit());
+      await page.clock.runFor(150);
+      expect(
+        await intro(page).locator('canvas').getAttribute('data-ready'),
+      ).toBe('true');
+      const glyphs = await page.evaluate(() => window.startupFixture.glyphs);
+      expect(glyphs.slice(-6)).toEqual([1, 1, 1, 1, 1, 1]);
+      expect(await intro(page).getAttribute('aria-label')).toBe(
+        'Preparing this device',
+      );
+      await page.clock.runFor(100);
+      expect(
+        await page.evaluate(() => window.startupFixture.glyphs.length),
+      ).toBe(glyphs.length);
+      await page.evaluate(() => window.startupFixture.ready());
+      expect(await intro(page).count()).toBe(0);
+      expect(
+        await page
+          .locator('#root')
+          .evaluate((root) => root instanceof HTMLElement && root.inert),
+      ).toBe(false);
+    } finally {
+      await page.close();
+    }
+  });
+
   test('a ready native window skips the unseen intro and stops checking admission', async () => {
     const page = await open({ query: '?native=covered&fast' });
     try {

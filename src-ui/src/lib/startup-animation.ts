@@ -84,6 +84,7 @@ export function startStartupAnimation(
   let mask: HTMLCanvasElement;
   let image = new Image();
   let ready = false;
+  let painted = false;
   let stopped = false;
   let frameId = 0;
   let lastPaint = 0;
@@ -329,6 +330,7 @@ export function startStartupAnimation(
       previous = now;
       draw(reduced ? 3 : elapsed / 1000);
       canvas.dataset.ready = 'true';
+      painted = true;
       lastPaint = now;
       onFrame(elapsed);
     }
@@ -340,7 +342,7 @@ export function startStartupAnimation(
       canvas.clientHeight === 0
     )
       previous = undefined;
-    if (!document.hidden && (!ready || !reduced)) schedule();
+    if (!document.hidden && (!ready || !reduced || !painted)) schedule();
   }
 
   function schedule() {
