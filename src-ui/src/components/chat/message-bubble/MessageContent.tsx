@@ -125,8 +125,7 @@ function MessageContentComponent({
       ),
     [anchoredChildren],
   );
-  const shouldFold =
-    foldWork && !browserScope && (isMobile || cardCallIds.size > 0);
+  const shouldFold = foldWork && !browserScope;
   const baseBlocks = useMemo(() => {
     const parts: MessageContentPart[] = contentParts?.length
       ? contentParts

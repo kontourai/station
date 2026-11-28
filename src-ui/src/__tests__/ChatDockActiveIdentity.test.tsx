@@ -473,6 +473,12 @@ describe('ChatDockActiveIdentity session engine', () => {
         executionAgent={executionAgent}
         acpConnections={[
           { id: 'opencode', name: 'OpenCode' },
+          {
+            id: 'agy',
+            name: 'Antigravity',
+            registryId: 'antigravity',
+            icon: 'brand:antigravity',
+          },
           // Resolvable, so a header that trusts a stale connection would
           // name it rather than coincidentally finding nothing.
           { id: 'codex', name: 'Stale ACP' },
@@ -490,6 +496,19 @@ describe('ChatDockActiveIdentity session engine', () => {
   test('an ACP Session is named by its own connection', () => {
     renderHeader(observed('acp', 'opencode'), agentOn('codex', 'Codex'));
     expect(engineText()).toBe('OpenCode');
+  });
+
+  test('a continued ACP Session uses the Antigravity connection mark', () => {
+    renderHeader(observed('acp', 'agy'), {
+      ...agentOn('codex', 'Codex'),
+      icon: 'brand:codex',
+    });
+    expect(engineText()).toBe('Antigravity');
+    expect(
+      document
+        .querySelector('.chat-dock__active-identity-avatar')
+        ?.getAttribute('data-brand-key'),
+    ).toBe('antigravity');
   });
 
   test('an Agent still bound to the Session keeps its own connection name', () => {

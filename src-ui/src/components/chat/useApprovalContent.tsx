@@ -126,6 +126,7 @@ export function useApprovalContent(
       <ApprovalContentLoader
         key={key}
         toolCall={toolCall}
+        refreshVersion={marked}
         onChange={(next) => setGate({ key, gate: next })}
       />
     ),
@@ -134,9 +135,11 @@ export function useApprovalContent(
 
 function ApprovalContentLoader({
   toolCall,
+  refreshVersion,
   onChange,
 }: {
   toolCall: ToolCallData;
+  refreshVersion: number;
   onChange: (gate: ApprovalContentGate) => void;
 }) {
   const threadId = toolCall.approvalThreadId;
@@ -153,6 +156,7 @@ function ApprovalContentLoader({
     requestId: toolCall.approvalId,
     requestEventId,
     shownRefs,
+    refreshVersion,
   });
   const { data, isError, refetch } = query;
   // biome-ignore lint/correctness/useExhaustiveDependencies: onChange is a fresh closure per render; the query state and request identity are what matter.
@@ -182,9 +186,9 @@ function ApprovalContentLoader({
       status: 'ready',
       allowable: true,
       args:
+        commandOnlyArgs(payload) ??
         data.args ??
         toolRequestFromPayload(payload).toolInput ??
-        commandOnlyArgs(payload) ??
         toolCall.args,
       sessionGrant: toolRequestSessionGrantFromPayload(payload),
       serverGrant: toolRequestServerGrantFromPayload(payload),
