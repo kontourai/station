@@ -76,9 +76,9 @@ const REASON_LABELS: Record<WorkspacePaneAvailabilityReasonCode, string> = {
   'coming-soon': 'This pane has not rolled out yet.',
   'rollout-unknown': 'This pane’s rollout status has not been confirmed.',
   'installation-pending':
-    'Plugin activation is pending. Review recovery in Plugins.',
+    'Plugin activation is pending. Review recovery in Apps › Library.',
   'installation-unavailable':
-    'The plugin installation is unavailable. Check its status in Plugins.',
+    'The plugin installation is unavailable. Check its status in Apps › Library.',
   'distribution-disabled': 'This pane is disabled by its distribution policy.',
   'distribution-policy-unknown':
     'This pane’s distribution policy has not been confirmed.',

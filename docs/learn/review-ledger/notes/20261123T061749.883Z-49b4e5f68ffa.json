@@ -1,0 +1,9 @@
+{
+  "revision": "ddb1d1a864db4b9c2f5f3d1a42f482f869591e62",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked: one child-process CLI test classified beside managed-settings-offline; no lane or rule changed.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked: one child-process CLI test classified beside managed-settings-offline; no lane or rule changed.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

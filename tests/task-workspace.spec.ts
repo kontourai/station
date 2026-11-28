@@ -266,8 +266,8 @@ test.describe
         page.getByRole('heading', { name: 'Task inspection' }),
       ).toBeVisible();
       await expect(
-        page.getByRole('link', { name: 'Add plugins' }),
-      ).toHaveAttribute('href', '/plugins');
+        page.getByRole('link', { name: 'Find apps' }),
+      ).toHaveAttribute('href', '/apps/discover');
       await expect(
         page.getByText('Files and references recorded for this Task.'),
       ).toBeVisible();

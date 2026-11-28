@@ -142,6 +142,7 @@ interface ChatMessageListProps {
   preserveReading?: boolean;
   activeSession: ChatSession;
   scrollControlsTarget?: HTMLElement | null;
+  pendingSteerRef?: (element: HTMLDivElement | null) => void;
   /** The canonical window plus sequenced live events already renders this turn. */
   suppressStreamingRow?: boolean;
   fontSize: number;
@@ -388,6 +389,7 @@ function ChatMessageListComponent({
   agents,
   activeSession,
   scrollControlsTarget,
+  pendingSteerRef,
   suppressStreamingRow,
   fontSize,
   layoutHeight,
@@ -2546,8 +2548,13 @@ function ChatMessageListComponent({
     ],
   );
 
+  const readingAwayFromLatest = readerAway && !scrollingToBottom;
+  const canShowDownControls =
+    !touchTurnControls ||
+    !turnNavigation ||
+    turnViewport.latestPromptBelowViewport;
   const scrollToBottomControl =
-    (isUserScrolledUp || readerHeld) && !scrollingToBottom ? (
+    readingAwayFromLatest && canShowDownControls ? (
       <ScrollToBottomButton onClick={handleScrollToBottom} />
     ) : null;
   const scrollControls = scrollToBottomControl;
@@ -2825,6 +2832,7 @@ function ChatMessageListComponent({
                     }
                   />
                 )}
+                {pendingSteerRef && <div ref={pendingSteerRef} />}
                 {/* Room at the end for the composer's floating status row
                 (chat.css shows it). A row of its own, not a pseudo-element,
                 so the tail-follow sees it come and go. */}
@@ -2863,7 +2871,8 @@ function ChatMessageListComponent({
                   nextTurn={nextTurn}
                   onStep={stepToTurn}
                   touchControls={touchTurnControls}
-                  touchStepsShown={isUserScrolledUp}
+                  touchStepsShown={readingAwayFromLatest}
+                  touchNextStepShown={canShowDownControls}
                   conversationId={activeSession.conversationId!}
                   activeStartVisible={turnViewport.activeStartVisible}
                   onAnnounceStep={announceIndexedTurnStep}

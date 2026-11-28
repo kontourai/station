@@ -1,0 +1,7 @@
+{
+  "revision": "860ebdf5064136947d99cd64c5b5ea60f7e8ac7a",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-read the Import from Codex paragraph against SkillsView and its new launch tests (entry shown only when the host reports a Codex prompts folder; opening it starts a preview). Still accurate.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/SkillsView.launch.test.tsx"]}
+  ]
+}

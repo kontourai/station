@@ -487,11 +487,32 @@ export interface InboxResolveUnconfirmedCommand {
  * Withdraw a queued entry, or dismiss an unconfirmed or refused one. A
  * `placing` entry cannot be withdrawn: its effect may be under way.
  */
+export interface InboxMoveCommand {
+  readonly type: 'inbox.move';
+  readonly inboxId: string;
+  readonly key: string;
+  readonly neighbor: string;
+  readonly direction: 'up' | 'down';
+}
+export type InboxMoveResult = { kind: 'applied' } | { kind: 'conflict' };
+
+export interface InboxEditCommand {
+  readonly type: 'inbox.edit';
+  readonly inboxId: string;
+  readonly key: string;
+  readonly previousPayload: string;
+  readonly payload: string;
+  readonly now: number;
+}
+export type InboxEditResult = { kind: 'applied' } | { kind: 'conflict' };
+
 export interface InboxCancelCommand {
   readonly type: 'inbox.cancel';
   readonly inboxId: string;
   readonly key: string;
   readonly now: number;
+  /** The caller replaced this queued input with another recorded input. */
+  readonly retireKey?: true;
 }
 export type InboxCancelResult =
   | { readonly kind: 'cancelled'; readonly entry: InboxEntryRecord }
@@ -599,6 +620,8 @@ export interface KernelResults {
   'inbox.claimNext': InboxClaimNextResult;
   'inbox.settle': InboxWriteResult;
   'inbox.release': InboxWriteResult;
+  'inbox.move': InboxMoveResult;
+  'inbox.edit': InboxEditResult;
   'inbox.cancel': InboxCancelResult;
   'inbox.read': InboxReadResult;
   'inbox.list': InboxListResult;
@@ -641,6 +664,8 @@ export type KernelCommand =
   | InboxClaimNextCommand
   | InboxSettleCommand
   | InboxReleaseCommand
+  | InboxEditCommand
+  | InboxMoveCommand
   | InboxCancelCommand
   | InboxReadCommand
   | InboxListCommand

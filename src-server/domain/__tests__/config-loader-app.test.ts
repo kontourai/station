@@ -141,6 +141,29 @@ describe('config-loader-app', () => {
     );
   });
 
+  it('keeps a stored default for new chats across a write that does not name it', async () => {
+    const configDir = join(tempDir, 'config');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, 'app.json'),
+      JSON.stringify({
+        defaultModel: 'foo',
+        newChatDefault: { agent: 'codex', reason: 'first-signed-in' },
+      }),
+      'utf8',
+    );
+    const loader = new ConfigLoader({ projectHomeDir: tempDir });
+
+    await loader.updateAppConfig({ region: 'eu-west-1' });
+
+    await expect(loadAppConfigFile(tempDir)).resolves.toEqual(
+      expect.objectContaining({
+        region: 'eu-west-1',
+        newChatDefault: { agent: 'codex', reason: 'first-signed-in' },
+      }),
+    );
+  });
+
   it('does not let migration overwrite a concurrent functional update', async () => {
     const configDir = join(tempDir, 'config');
     const appPath = join(configDir, 'app.json');

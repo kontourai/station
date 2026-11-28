@@ -1,0 +1,7 @@
+{
+  "revision": "c0265ee6c2c9b4949b3cf4fc2853c41df7ac844d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"SetupImportEffectJournal source-check paragraph re-read: the importer now uses the shared hasControlOrBidiCharacters rule from skill-metadata.ts for file names; unsafe-name exclusion, TOO_MANY_FILES and the symlink checks are unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/setup/existing-agent-setup-import.ts"]}
+  ]
+}

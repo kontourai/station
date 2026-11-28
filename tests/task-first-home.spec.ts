@@ -1664,7 +1664,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       .not.toBe('open');
 
     // station#settings-revamp slice 5: the dead `/providers` alias is
-    // removed — use the canonical connections/models deep link instead.
+    // removed. An old Connections address still lands on its Customize item.
     //
     // #2059: Connections left the panel for Settings' Manage group, so the
     // panel no longer highlights it — the panel lists places, and the row
@@ -1672,16 +1672,16 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // still proves is the round trip: the canonical deep link resolves, and
     // the advertised control reaches the same route from a cold start.
     await page.goto('/connections/providers');
-    await expect(page).toHaveURL(/\/connections\/models/);
+    await expect(page).toHaveURL(/\/customize\/providers/);
     await expect(
       page
         .getByRole('navigation', { name: 'Primary navigation' })
         .getByRole('button', { name: 'Connections', exact: true }),
     ).toHaveCount(0);
-    // The advertised path from here is the footer's Customize chooser, whose
-    // Connections row opens the hub at its Engines tab. The journey that
-    // presses it is project-architecture.spec.ts ("connections view
-    // renders"), whose fixtures model the destination, not this one:
+    // The advertised path from here is the footer's Customize button, whose
+    // page lists Providers. The journey that presses through it is
+    // project-architecture.spec.ts ("the Engines item renders from the
+    // Customize list"), whose fixtures model the destination, not this one:
     // `mockTaskFirstHome` models Home, and routing this test through Settings
     // made it issue five API reads the fixture has no shape for, which is the
     // audit failure this comment replaces rather than papers over. Here only
@@ -3072,10 +3072,20 @@ for (const viewport of [
       .getByRole('form', { name: 'Start work' })
       .getByRole('textbox', { name: 'What would you like done?' });
     const draft = 'Keep this draft while I browse recent work';
-    await composer.click();
-    await composer.pressSequentially(draft);
-    await expect(composer).toHaveValue(draft);
-    await expect(composer).toBeFocused();
+    await profileJourney(
+      page,
+      testInfo,
+      viewport.width === 1280
+        ? 'home-composer-typing'
+        : 'home-composer-typing-mobile',
+      { sessions: 1000, draftCharacters: draft.length },
+      async () => {
+        await composer.click();
+        await composer.pressSequentially(draft);
+        await expect(composer).toHaveValue(draft);
+        await expect(composer).toBeFocused();
+      },
+    );
     const bounds = await composer.boundingBox();
     expect(bounds?.height).toBeGreaterThanOrEqual(44);
     await page

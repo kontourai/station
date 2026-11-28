@@ -1,0 +1,7 @@
+{
+  "revision": "83b606a4e5538813bd426963ed5619ee2ee662ba",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Setup import section now says a target naming an existing Skill in any letter case or composition is refused on every host; SkillService.hasSkillNamedLike and the import's preview, apply and in-run checks implement that. The rest of the section is unchanged and accurate.","inputs":["docs/architecture/module-map.md","src-server/services/setup/existing-agent-setup-import.ts"]}
+  ]
+}

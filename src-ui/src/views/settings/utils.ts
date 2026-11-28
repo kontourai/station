@@ -86,9 +86,11 @@ function sanitizeStationConfig(raw: unknown): Partial<AppConfig> {
   const record = raw as Record<string, unknown>;
   const station: Partial<AppConfig> = {};
   for (const definition of APP_SETTINGS_REGISTRY) {
-    // Progress belongs to this home's first-run transition, which the settings
-    // write route refuses. Older exports may still contain it on import.
-    if (definition.key === 'firstRun') continue;
+    // Progress belongs to this home's first-run transition, and the default
+    // for new chats names this Station's own Agents; the settings write route
+    // refuses both. Older exports may still contain firstRun on import.
+    if (definition.key === 'firstRun' || definition.key === 'newChatDefault')
+      continue;
     const key = definition.key as string;
     if (Object.hasOwn(record, key)) {
       (station as Record<string, unknown>)[key] = record[key];

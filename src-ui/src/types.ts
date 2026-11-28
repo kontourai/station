@@ -196,6 +196,7 @@ export interface ChatMessage {
    * step it stopped otherwise reads as cancelled for no reason.
    */
   steerInterruptedRun?: boolean;
+  steer?: true;
   /**
    * A check-back Station sent into the chat (the agent scheduled it): sent
    * as the person, written by nobody. The bubble shows it as Station's.
@@ -631,7 +632,8 @@ export type NavigationView =
       selectedId?: string;
       redirectFromAlias?: boolean;
     }
-  | { type: 'connections' }
+  /** The Customize page's landing. Its items keep their own view types. */
+  | { type: 'customize' }
   | { type: 'connections-models' }
   | { type: 'connections-model-edit'; id: string }
   | { type: 'connections-engines' }
@@ -646,7 +648,7 @@ export type NavigationView =
   | { type: 'connections-tool-edit'; id: string }
   | { type: 'connections-knowledge' }
   | { type: 'connections-computers' }
-  | { type: 'plugins' }
+  | { type: 'apps'; tab: 'discover' | 'library' }
   | { type: 'registry'; tab?: RegistryCatalogTab }
   | { type: 'developer'; tab?: DeveloperTab }
   | { type: 'schedule' }

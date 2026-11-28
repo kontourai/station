@@ -1,0 +1,7 @@
+{
+  "revision": "0d4fdf3620c09afe097b37edf2ad570c7e69961c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"The chat dock banner suite now waits for the composer to render before reading its disabled state in three tests; the behaviour the page describes (a transcript read never disables the composer; an unchecked chat does) is unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx"]}
+  ]
+}

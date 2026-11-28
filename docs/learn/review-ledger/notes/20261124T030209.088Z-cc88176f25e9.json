@@ -1,0 +1,7 @@
+{
+  "revision": "de6c0c88f980b07f48a0e0a075c6cb4b3f8612f1",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Re-read against this change: connections.md gained the Customize landing's Apps link and the /customize/ alias; Computers and machine claims are unaffected.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

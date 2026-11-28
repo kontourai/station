@@ -611,8 +611,10 @@ test.each([true, false])(
     expect(w.intake(green.event).closedEpisodeIds).toEqual([first.episodeId]);
     w.rebootController();
     await w.runtime.tick();
-    expect(w.graph.readTaskView(taskId)?.status).toBe(
-      completeOnRecovery ? 'done' : 'review',
+    const recoveredTask = w.graph.readTaskView(taskId);
+    expect(recoveredTask?.status).toBe(completeOnRecovery ? 'done' : 'review');
+    expect(recoveredTask?.endedAt).toBe(
+      completeOnRecovery ? recoveredTask?.updatedAt : undefined,
     );
     const second = laterFailure(w);
     w.intake(second);

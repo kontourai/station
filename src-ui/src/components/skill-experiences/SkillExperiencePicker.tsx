@@ -57,7 +57,7 @@ export function SkillExperiencePicker({
         <Empty
           variant="compact"
           label="Nothing here yet"
-          description="Install a visual skill through Registry to prepare it here."
+          description="Install a visual skill from Apps › Discover to prepare it here."
         />
       ) : (
         query.data.experiences.map((entry) => (
@@ -103,7 +103,8 @@ export function SkillExperiencePicker({
           <Button onClick={onRemove}>Use ordinary chat</Button>
         </>
       )}
-      <Button onClick={onBrowse}>Browse marketplaces</Button>
+      {/* Visual skills come from plugins, so this opens Apps › Discover. */}
+      <Button onClick={onBrowse}>Browse apps</Button>
     </section>
   );
 }

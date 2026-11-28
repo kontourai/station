@@ -1,0 +1,7 @@
+{
+  "revision": "de6c0c88f980b07f48a0e0a075c6cb4b3f8612f1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Updated the DestinationRegistry contract for destination aliases; re-read routing (/customize/ normalisation) and CommandPalette (plugin commands accept a destination's aliases) callers against it.","inputs":["docs/architecture/module-map.md","src-ui/src/app-shell/destination-registry.ts","src-ui/src/app-shell/routing.ts","src-ui/src/components/CommandPalette.tsx"]}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/decisions/telemetry-tiers.md","note":"Checked: adds the optional newChatDefault object (agent, reason). No existing property, requirement or telemetry/registry field changed.","inputs":["schemas/app.schema.json"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Checked: adds the optional newChatDefault object (agent, reason). No existing property, requirement or telemetry/registry field changed.","inputs":["schemas/app.schema.json"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Checked: adds the optional newChatDefault object (agent, reason). No existing property, requirement or telemetry/registry field changed.","inputs":["schemas/app.schema.json"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked: adds the optional newChatDefault object (agent, reason). No existing property, requirement or telemetry/registry field changed.","inputs":["schemas/app.schema.json"]},
+
+    {"path":"docs/reference/config.md","note":"Checked: adds the optional newChatDefault object (agent, reason). No existing property, requirement or telemetry/registry field changed.","inputs":["schemas/app.schema.json"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked: adds the optional newChatDefault object (agent, reason). No existing property, requirement or telemetry/registry field changed.","inputs":["schemas/app.schema.json"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "af8b0bdf595d2e4735a7eaf836f2d3db33c09c1e",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Re-read the native mobile startup section against PlatformProfile.test.tsx: the change only updates the launch-authorization recovery assertion to the Station menu sentence; the bounded bootstrap, stall explanation, Reload Station and saved-profile claims are unchanged and the suite passes.","inputs":["docs/design/native-capabilities.md","src-ui/src/__tests__/PlatformProfile.test.tsx"]}
+  ]
+}

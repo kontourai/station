@@ -1,0 +1,21 @@
+{
+  "revision": "466da845d026b70086ccbe5c2febf9467aef9650",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the queue and gesture styles. The native row group resets browser spacing and borders. The reveal transition is unchanged, with the text action retaining a 44px minimum on all layouts.","inputs":["src-ui/src/components/chat/QueuedMessages.css"]},
+
+    {"path":"docs/design/motion.md","note":"Checked the queue and gesture styles. The native row group resets browser spacing and borders. The reveal transition is unchanged, with the text action retaining a 44px minimum on all layouts.","inputs":["src-ui/src/components/chat/QueuedMessages.css"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the existing compact composer layout condition. The run label is hidden while the split Queue or Steer control is present, including short coarse-pointer viewports. Placement and connection ownership are unchanged.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the existing compact composer layout condition. The run label is hidden while the split Queue or Steer control is present, including short coarse-pointer viewports. Placement and connection ownership are unchanged.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the existing compact composer layout condition. The run label is hidden while the split Queue or Steer control is present, including short coarse-pointer viewports. Placement and connection ownership are unchanged.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked the existing compact composer layout condition. The run label is hidden while the split Queue or Steer control is present, including short coarse-pointer viewports. Placement and connection ownership are unchanged.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the existing compact composer layout condition. The run label is hidden while the split Queue or Steer control is present, including short coarse-pointer viewports. Placement and connection ownership are unchanged.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the existing compact composer layout condition. The run label is hidden while the split Queue or Steer control is present, including short coarse-pointer viewports. Placement and connection ownership are unchanged.","inputs":["src-ui/src/components/chat/chat.css"]}
+  ]
+}

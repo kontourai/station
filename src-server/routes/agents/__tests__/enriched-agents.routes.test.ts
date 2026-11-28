@@ -1030,8 +1030,9 @@ describe('registry-backed enriched Agent routes', () => {
     // The UI path is named first; the CLI command stays for SDK callers who
     // are not reading this in a UI at all.
     expect(writer.unavailableReason).toContain(
-      'Reconnect the engine from its setup page',
+      "Reconnect the engine from its page in Station's Customize → Engines",
     );
+    expect(writer.unavailableReason).not.toContain("Station's Connections");
     expect(writer.unavailableReason).toContain(
       'station acp connections reconnect opencode',
     );

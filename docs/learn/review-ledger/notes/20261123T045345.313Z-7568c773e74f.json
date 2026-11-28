@@ -1,0 +1,9 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked: the composer reads the Station's default for new chats after the remembered, recent, Project and view defaults, falls back to the fixed engine order, and tags the default's row. Docs describing the composer were updated where they named the chain.","inputs":["src-ui/src/hooks/useNewChatSelectionModel.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked: the composer reads the Station's default for new chats after the remembered, recent, Project and view defaults, falls back to the fixed engine order, and tags the default's row. Docs describing the composer were updated where they named the chain.","inputs":["src-ui/src/hooks/useNewChatSelectionModel.ts"]}
+  ]
+}

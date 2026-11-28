@@ -55,7 +55,8 @@ export function StartPluginModal({
         >
           <p className="plugins__install-hint">
             The starter files go into {project.name}'s folder. Installing the
-            plugin later is a separate step, through Plugins → Install plugin.
+            plugin later is a separate step, through Apps › Library → Install
+            plugin.
           </p>
           <fieldset
             className="plugins__new-plugin-fields"

@@ -7,8 +7,13 @@ import type { AgentSummary, NavigationView } from '../types';
 import { resolvePageFrame } from './page-frame-registry';
 import { RoutePendingSkeleton } from './RoutePendingSkeleton';
 import { routeIdentity, routeSurfaceIdentity } from './route-identity';
+import { isCataloguePageTab } from './routing';
 import './route-transition.css';
-import { APP_DESTINATION_REGISTRY } from './destination-registry';
+import { CustomizeShell } from './CustomizeShell';
+import {
+  APP_DESTINATION_REGISTRY,
+  customizeItemForView,
+} from './destination-registry';
 import { RouteViewBoundary } from './RouteViewBoundary';
 
 const ProjectAdminRoute = lazy(() =>
@@ -27,19 +32,19 @@ const AgentsView = lazy(() =>
     default: module.AgentsView,
   })),
 );
-const ConnectionsHub = lazy(() =>
-  import('../views/ConnectionsHub').then((module) => ({
-    default: module.ConnectionsHub,
+const CustomizeLanding = lazy(() =>
+  import('../views/customize/CustomizeLanding').then((module) => ({
+    default: module.CustomizeLanding,
   })),
 );
-const ConnectionsSectionFrame = lazy(() =>
-  import('../views/ConnectionsSectionFrame').then((module) => ({
-    default: module.ConnectionsSectionFrame,
+const CustomizeSectionFrame = lazy(() =>
+  import('../views/CustomizeSectionFrame').then((module) => ({
+    default: module.CustomizeSectionFrame,
   })),
 );
-const ComputersSection = lazy(() =>
-  import('../views/connections-hub/ComputersSection').then((module) => ({
-    default: module.ComputersSection,
+const ComputersPage = lazy(() =>
+  import('../views/connections-hub/ComputersPage').then((module) => ({
+    default: module.ComputersPage,
   })),
 );
 const HomeView = lazy(() =>
@@ -77,9 +82,9 @@ const GuidanceView = lazy(() =>
     default: module.GuidanceView,
   })),
 );
-const PluginManagementView = lazy(() =>
-  import('../views/PluginManagementView').then((module) => ({
-    default: module.PluginManagementView,
+const AppsView = lazy(() =>
+  import('../views/apps/AppsView').then((module) => ({
+    default: module.AppsView,
   })),
 );
 const ProfilePage = lazy(() =>
@@ -190,7 +195,8 @@ export function AppViewContent(props: AppViewContentProps) {
   // in flight. Two calls would be two chances to disagree about what the
   // arriving page looks like — which is the whole of archive#3660.
   const frameSpec = resolvePageFrame(props.currentView);
-  return (
+  const customizeItem = customizeItemForView(props.currentView);
+  const page = (
     // The frame is the outermost thing a route renders, above the boundary
     // and above Suspense: the page keeps its header while its chunk loads and
     // while its error state is on screen, so a failed route still tells you
@@ -232,6 +238,16 @@ export function AppViewContent(props: AppViewContentProps) {
         </div>
       </RouteViewBoundary>
     </PageFrame>
+  );
+  // A Customize item's page sits beside the Customize list, which stays
+  // mounted across items and so lives outside the frame. The shell wraps
+  // every route, not only Customize items: if the tree's shape changed at
+  // that boundary, React would unmount the departing page instead of holding
+  // it under Suspense while the arriving page's chunk loads.
+  return (
+    <CustomizeShell activeId={customizeItem} fill={frameSpec?.body === 'fill'}>
+      {page}
+    </CustomizeShell>
   );
 }
 
@@ -276,34 +292,40 @@ function AppViewContentBody({
     return <GuidanceView route={currentView} />;
   }
   if (currentView.type === 'registry') {
-    return <RegistryView initialTab={currentView.tab} />;
+    // Only a catalogue page renders a catalogue; any other registry view
+    // shows Apps › Discover, where its address redirects.
+    return isCataloguePageTab(currentView.tab) ? (
+      <RegistryView initialTab={currentView.tab} />
+    ) : (
+      <AppsView tab="discover" />
+    );
   }
-  if (currentView.type === 'plugins') {
-    return <PluginManagementView onNavigate={onNavigate} />;
+  if (currentView.type === 'apps') {
+    return <AppsView tab={currentView.tab} />;
   }
-  if (currentView.type === 'connections') {
-    return <ConnectionsHub />;
+  if (currentView.type === 'customize') {
+    return <CustomizeLanding />;
   }
   if (currentView.type === 'connections-models') {
     return (
-      <ConnectionsSectionFrame sectionId="models">
+      <CustomizeSectionFrame sectionId="providers">
         <ProviderSettingsView onNavigate={onNavigate} />
-      </ConnectionsSectionFrame>
+      </CustomizeSectionFrame>
     );
   }
   if (currentView.type === 'connections-model-edit') {
     return (
-      <ConnectionsSectionFrame sectionId="models">
+      <CustomizeSectionFrame sectionId="providers">
         <ProviderSettingsView
           selectedProviderId={currentView.id}
           onNavigate={onNavigate}
         />
-      </ConnectionsSectionFrame>
+      </CustomizeSectionFrame>
     );
   }
   if (currentView.type === 'connections-engine-edit') {
     return (
-      <ConnectionsSectionFrame
+      <CustomizeSectionFrame
         sectionId="engines"
         creating={currentView.id === 'new'}
       >
@@ -312,29 +334,29 @@ function AppViewContentBody({
           agents={agents}
           onNavigate={onNavigate}
         />
-      </ConnectionsSectionFrame>
+      </CustomizeSectionFrame>
     );
   }
   if (currentView.type === 'connections-engines') {
     return (
-      <ConnectionsSectionFrame sectionId="engines">
+      <CustomizeSectionFrame sectionId="engines">
         <AgentConnectionView agents={agents} onNavigate={onNavigate} />
-      </ConnectionsSectionFrame>
+      </CustomizeSectionFrame>
     );
   }
-  // A deep link to one catalogue entry (`/connections/engines/new/<id>`,
+  // A deep link to one catalogue entry (`/customize/engines/new/<id>`,
   // and the legacy `/connections/acp/new/<id>` that redirects here) opens
   // the same Add engine flow on that entry's confirm step.
   if (currentView.type === 'connections-engine-new') {
     return (
-      <ConnectionsSectionFrame sectionId="engines" creating>
+      <CustomizeSectionFrame sectionId="engines" creating>
         <AgentConnectionView
           selectedRuntimeId="new"
           addChoiceId={currentView.providerId}
           agents={agents}
           onNavigate={onNavigate}
         />
-      </ConnectionsSectionFrame>
+      </CustomizeSectionFrame>
     );
   }
   if (
@@ -342,24 +364,20 @@ function AppViewContentBody({
     currentView.type === 'connections-tool-edit'
   ) {
     return (
-      <ConnectionsSectionFrame sectionId="tools">
+      <CustomizeSectionFrame sectionId="tools">
         <IntegrationsView />
-      </ConnectionsSectionFrame>
+      </CustomizeSectionFrame>
     );
   }
   if (currentView.type === 'connections-knowledge') {
     return (
-      <ConnectionsSectionFrame sectionId="knowledge">
+      <CustomizeSectionFrame sectionId="knowledge">
         <KnowledgeConnectionView />
-      </ConnectionsSectionFrame>
+      </CustomizeSectionFrame>
     );
   }
   if (currentView.type === 'connections-computers') {
-    return (
-      <ConnectionsSectionFrame sectionId="computers">
-        <ComputersSection />
-      </ConnectionsSectionFrame>
-    );
+    return <ComputersPage />;
   }
   if (currentView.type === 'project-new') {
     // On a cold load the root path resolves to 'project-new' (the no-lastProject

@@ -1,0 +1,7 @@
+{
+  "revision": "92ed09256361ad3abf3af74fdf3e4d44d1c94dd4",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"Regenerated after the registryUrl description wording change; settings-deep-links lists keys and anchors, which are unchanged.","inputs":["src-server/generated/settings-registry.json"]}
+  ]
+}

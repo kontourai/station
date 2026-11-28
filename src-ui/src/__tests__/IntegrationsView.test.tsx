@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 let integrations: unknown[] = [];
 let integrationsError: Error | null = null;
 const refetchIntegrations = vi.fn();
-let pathname = '/connections/tools';
+let pathname = '/customize/tools';
 let detail: any;
 let trustPreview = false;
 
@@ -39,13 +39,14 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   useApplyIntegrationToolsMutation: () => ({ mutate: vi.fn() }),
 }));
 
+const navigateMock = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/NavigationContext', () => {
   // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
   // the store, optionally through a selector) and `useNavigationActions` (the
   // memoized actions, no subscription). This mock answers both from one value.
   const navigation = () => ({
     pathname,
-    navigate: vi.fn(),
+    navigate: navigateMock,
   });
   return {
     useNavigation: (
@@ -89,6 +90,44 @@ function renderView() {
 }
 
 /**
+ * The tool server catalogue left the Registry: until Add tool server offers
+ * it in place, the Tools page is its door. Inside the agent editor's tool
+ * picker, which has its own catalogue, the page link is left out.
+ */
+describe('IntegrationsView tool server catalogue link', () => {
+  beforeEach(() => {
+    integrations = [];
+    integrationsError = null;
+    pathname = '/customize/tools';
+    navigateMock.mockClear();
+  });
+
+  test('the Tools page opens the tool server catalogue', () => {
+    renderView();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Browse tool servers' }),
+    );
+    expect(navigateMock).toHaveBeenCalledWith('/registry/integrations');
+  });
+
+  test('the agent editor tool picker has no page link', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <IntegrationsView
+          selection={{ selectedId: null, select: vi.fn(), deselect: vi.fn() }}
+        />
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Browse tool servers' }),
+    ).toBeNull();
+  });
+});
+
+/**
  * archive#771 regression. `IntegrationsView`'s `SplitPaneLayout` only wired
  * `loading={isLoading}`, not `error`/`onRetry` — a settled read failure
  * rendered the same "No tool servers yet" empty state as a host with none
@@ -98,7 +137,7 @@ describe('IntegrationsView (#771)', () => {
   beforeEach(() => {
     integrations = [];
     integrationsError = null;
-    pathname = '/connections/tools';
+    pathname = '/customize/tools';
     detail = undefined;
     trustPreview = false;
     refetchIntegrations.mockReset();
@@ -132,7 +171,7 @@ describe('IntegrationsView (#771)', () => {
       ),
     );
     vi.stubGlobal('fetch', fetchMock);
-    pathname = '/connections/tools/new';
+    pathname = '/customize/tools/new';
 
     renderView();
     fireEvent.change(screen.getByPlaceholderText('my-tool-server'), {
@@ -201,7 +240,7 @@ describe('IntegrationsView (#771)', () => {
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    pathname = '/connections/tools/mail';
+    pathname = '/customize/tools/mail';
     trustPreview = true;
     detail = {
       id: 'mail',
@@ -247,7 +286,7 @@ describe('IntegrationsView (#771)', () => {
         }),
       );
       vi.stubGlobal('fetch', fetchMock);
-      pathname = '/connections/tools/mail';
+      pathname = '/customize/tools/mail';
       detail = {
         id: 'mail',
         kind: 'mcp',

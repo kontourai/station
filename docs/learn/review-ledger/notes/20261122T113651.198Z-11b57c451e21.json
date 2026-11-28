@@ -1,0 +1,7 @@
+{
+  "revision": "f59331fd1f2dceb0e4fbac6fc6021d045e34168e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Rechecked the plugin registry listing paragraph and the stored snapshot sentence after the fix round: none now accepts added fields, bounds still refuse rather than truncate, invalid stored facts are still dropped.","inputs":["docs/reference/api.md","packages/contracts/src/catalog.ts","src-server/providers/registries/json-manifest-registry.ts"]}
+  ]
+}

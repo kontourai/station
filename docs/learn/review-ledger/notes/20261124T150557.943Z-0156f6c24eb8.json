@@ -1,0 +1,7 @@
+{
+  "revision": "83b606a4e5538813bd426963ed5619ee2ee662ba",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated from the module map's one added sentence about the Codex prompt import's case-insensitive name check; the station-docs reference describes the shipped corpus and its tools, which did not change.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

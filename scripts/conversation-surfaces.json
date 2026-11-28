@@ -975,10 +975,6 @@
       "reason": "Safe visible request failures and durable error publishers consume the shared translator."
     },
     {
-      "file": "src-ui/src/views/RegistryView.tsx",
-      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
-    },
-    {
       "file": "src-ui/src/views/SkillsView.tsx",
       "reason": "Safe visible request failures and durable error publishers consume the shared translator."
     },
@@ -1025,6 +1021,10 @@
     {
       "file": "src-ui/src/views/plugin-management/WorkspaceHomeRoleSection.tsx",
       "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/plugin-management/usePluginCatalogInstall.tsx",
+      "reason": "The catalogue install flow the Registry page and Apps › Discover share reports a failed activation refresh through the shared translator."
     },
     {
       "file": "src-ui/src/views/plugin-management/useStartPluginFlow.ts",

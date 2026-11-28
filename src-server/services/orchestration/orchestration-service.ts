@@ -7506,6 +7506,7 @@ export class OrchestrationService {
         new Error("This message key belongs to someone else's queued message."),
         { code: 'inbox_key_held' },
       );
+    if (pending?.retired) throw new ClientTurnInputConflictError();
     return pending;
   }
 

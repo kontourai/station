@@ -338,14 +338,19 @@ export async function dispatchTask(input: {
   taskId: string;
   dispatch?: TaskDispatchInput;
   apiBase?: string;
+  requestScope?: ApiRequestScope;
 }): Promise<TaskDispatchResult> {
-  const resolvedApiBase = await resolveApiBase(input.apiBase);
+  const resolvedApiBase =
+    input.requestScope?.apiBase ?? (await resolveApiBase(input.apiBase));
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/tasks/${encodeURIComponent(input.taskId)}/dispatch`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input.dispatch ?? {}),
+      ...(input.requestScope === undefined
+        ? {}
+        : { requestScope: input.requestScope }),
     },
   );
   return readApiResult<TaskDispatchResult>(response);

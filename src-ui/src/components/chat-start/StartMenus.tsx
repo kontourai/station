@@ -92,9 +92,12 @@ export function StartAgentMenu({
   onSearch,
   notice,
   onClose,
+  newChatDefaultSlug,
 }: {
   anchor: HTMLElement | null;
   layer: MenuLayer;
+  /** The Agent the Station's default for new chats names, if one is recorded. */
+  newChatDefaultSlug?: string;
   /** The catalog's compatibility warning for this context, when it has one. */
   notice?: string;
   groups: AgentGroups;
@@ -204,7 +207,7 @@ export function StartAgentMenu({
               label="Nothing to chat with yet"
               description={NO_AGENT_SETUP_HINT}
               action={
-                <Button onClick={onSetUpConnections}>Set up Connections</Button>
+                <Button onClick={onSetUpConnections}>Open Customize</Button>
               }
             />
           ))}
@@ -222,6 +225,7 @@ export function StartAgentMenu({
           interactionDisabled={interactionDisabled}
           fixDisabledFor={fixDisabledFor}
           onFix={onFix}
+          newChatDefaultSlug={newChatDefaultSlug}
         />
       </div>
     </ResponsiveDialogSurface>

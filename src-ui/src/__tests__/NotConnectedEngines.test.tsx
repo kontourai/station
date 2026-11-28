@@ -162,7 +162,7 @@ describe('a saved engine that never connected', () => {
         phase: 'spawn',
         code: 'managed-runtime-not-installed',
         message:
-          "Kiro (KAS, no CLI) isn't installed yet. Install it from the engine's sign-in panel in Connections.",
+          "Kiro (KAS, no CLI) isn't installed yet. Install it from the engine's sign-in panel in Customize › Engines.",
       },
     } as never;
     try {

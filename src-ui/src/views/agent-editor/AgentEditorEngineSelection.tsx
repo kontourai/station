@@ -237,9 +237,7 @@ export function AgentEditorEngineSelection({
                 <button
                   type="button"
                   className="agent-editor__capability-banner-action"
-                  onClick={() =>
-                    navigationStore.navigate('/connections?section=engines')
-                  }
+                  onClick={() => navigationStore.navigate('/customize/engines')}
                 >
                   Set one up
                 </button>
@@ -276,7 +274,7 @@ export function AgentEditorEngineSelection({
                       className="agent-editor__capability-banner-action"
                       onClick={() =>
                         navigationStore.navigate(
-                          `/connections/engines/${encodeURIComponent(connection.id)}`,
+                          `/customize/engines/${encodeURIComponent(connection.id)}`,
                         )
                       }
                     >

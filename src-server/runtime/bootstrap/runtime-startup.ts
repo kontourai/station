@@ -163,7 +163,7 @@ export async function seedRuntimeDefaultProviderConnection(
     const hasOllama = await (context.checkOllamaAvailability?.() ?? false);
     if (hasOllama) {
       context.logger.info(
-        'Ollama is reachable; not auto-seeding a model connection (add via Connections or onboarding)',
+        'Ollama is reachable; not auto-seeding a model connection (add one in Customize › Providers or onboarding)',
         { baseUrl: DEFAULT_OLLAMA_BASE_URL },
       );
       startupDefaultSelection.add(1, {

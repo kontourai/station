@@ -1,0 +1,9 @@
+{
+  "revision": "7cb414c6211e005fb5bb2d5b48e90286a6d135d0",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed final async receipt ownership and publication against installation/security claims. Promise rejection retains failed state; compound command/custody failure cannot reach verify, generated inputs, or a verified receipt. The reused-guard test relocates its open receipt first so Windows reaches the intended ownership refusal; original unchanged EPERM parity and repaired baseline/candidate parity were retained separately under #5647. No identity check, deadline or cleanup authority was weakened.","inputs":["scripts/lib/dependency-install-retirement.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed final async receipt ownership and publication against installation/security claims. Promise rejection retains failed state; compound command/custody failure cannot reach verify, generated inputs, or a verified receipt. The reused-guard test relocates its open receipt first so Windows reaches the intended ownership refusal; original unchanged EPERM parity and repaired baseline/candidate parity were retained separately under #5647. No identity check, deadline or cleanup authority was weakened.","inputs":["scripts/lib/dependency-install-retirement.mjs"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "f59331fd1f2dceb0e4fbac6fc6021d045e34168e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rechecked after the fix round: facts are still read within bounds from local packages and cached until the files read, or a link target behind them, change; remote packages are still not read. Source resolution is now done once per entry, which the page does not describe.","inputs":["docs/architecture/module-map.md","packages/contracts/src/catalog.ts","src-server/providers/registries/json-manifest-registry.ts"]}
+  ]
+}

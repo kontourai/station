@@ -54,12 +54,13 @@ defaults whenever no explicit lifecycle override exists. Built-in entries missin
 `itemPolicies` default to visible and installable, so a curating profile must
 list every builtin it wants hidden — including builtins added in later Station
 versions. Users can later enable,
-disable, install, or remove eligible entries in Registry → Layouts; those
+disable, install, or remove eligible entries in **Browse layouts** (a project's
+Add Layout opens it); those
 explicit choices are persisted separately and do not rewrite profile policy.
 
 ## Lifecycle and trust boundary
 
-Registry badges describe the current lifecycle honestly: `installable`,
+Catalogue badges describe the current lifecycle honestly: `installable`,
 `disabled`, or `installed`. Only installed and enabled layouts appear in a
 project's Add Layout picker, and applying one always calls the server's catalog
 operation. A visible entry never auto-installs, executes plugin code, or grants
@@ -100,7 +101,7 @@ see the [Deployment Guide](./deployment.md).
 
 ## Marketplace sources
 
-The Registry's connected marketplaces are a separate discovery input over the
+Connected sources (Apps › Discover and the skill and agent catalogues) are a separate discovery input over the
 same installed plugin lifecycle. [Source management](../reference/api.md#manage-marketplaces)
 adds catalogs; it does not grant, install or enable every entry. Distribution
 profiles still decide which installed layouts a Project can use. Removing or

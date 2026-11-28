@@ -1,0 +1,7 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Added the newChatDefault row and checked it against AppConfig, the schema and the route.","inputs":["docs/reference/config.md"]}
+  ]
+}

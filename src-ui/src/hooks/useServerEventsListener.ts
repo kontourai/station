@@ -155,7 +155,7 @@ const DATA_HANDLERS: Record<
           {
             label: 'View Updates',
             variant: 'primary',
-            onClick: () => navigationStore.navigate('/plugins'),
+            onClick: () => navigationStore.navigate('/apps/library'),
           },
         ],
         { detail },

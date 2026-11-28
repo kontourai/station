@@ -1,0 +1,7 @@
+{
+  "revision": "148b9f893d9cea00b120b4c22f99f7d0d4517f81",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Holds both slices: the DestinationRegistry section describes the Customize page's three groups (constant name corrected to CUSTOMIZE_NAV_GROUP_ORDER, which the code exports) and customizeItemForView; the Apps library and Apps › Library rows match the Apps slice. No row lists Apps or Plugins as a Customize item.","inputs":["docs/architecture/module-map.md","scripts/conversation-surfaces.json","packages/contracts/src/catalog.ts","src-ui/src/app-shell/AppViewContent.tsx","src-ui/src/app-shell/destination-registry.ts","src-ui/src/app-shell/routing.ts","src-ui/src/views/TaskWorkspaceView.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-server/runtime/consent/consent-listener.ts"]}
+  ]
+}

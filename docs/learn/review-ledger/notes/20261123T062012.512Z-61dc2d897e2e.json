@@ -1,0 +1,9 @@
+{
+  "revision": "ddb1d1a864db4b9c2f5f3d1a42f482f869591e62",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked: the newChatDefault row now names the CLI refusal; citing pages unaffected.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked: the newChatDefault row now names the CLI refusal; citing pages unaffected.","inputs":["docs/reference/config.md"]}
+  ]
+}

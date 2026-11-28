@@ -50,6 +50,20 @@ cards keep their explicit dismiss. When the phone Inbox is open, it reserves
 space for the displayed notification stack so the scope and search controls
 stay reachable. Taller stacks and the Inbox list scroll independently.
 
+The bell groups **Needs attention** and **Activity** in equal-width tabs.
+Tap a notification to open its destination. **Mark done** clears a session
+failure from Needs attention. On phones with the **Sheet gestures** preview,
+drag the shared handle to resize the panel and swipe a row to reveal the
+available management actions. The row menu offers the same snooze choices and
+dismiss action. Snoozing or dismissing a row leaves the panel open. Activity
+dismissals offer **Undo** before Station saves them.
+
+The bell and the Notifications page share the same context line. It names
+the agent, Project and chat when Station has them, using the Agent and Project
+icons when available. A title that already names the chat appears once.
+Approvals keep the projected, redacted tool summary beside the request, with
+full request information available through **Details** when Station has it.
+
 Server-backed silent notifications remain in History and do not play a
 browser sound or show a transient toast. An otherwise audible turn completion
 keeps its category sound. The existing foreground check suppresses the toast

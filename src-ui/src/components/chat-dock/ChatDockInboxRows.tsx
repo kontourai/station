@@ -360,7 +360,7 @@ function SnoozeActions({
             onClose={() => setMenuOpen(false)}
           />
           <div role="menu" aria-label={action.accessibleLabel}>
-            {action.choices.map((option) => (
+            {action.choices().map((option) => (
               <button
                 key={option.label}
                 type="button"
@@ -398,7 +398,7 @@ function inboxRowMenuItems(actions: readonly InboxRowAction[]): RowMenuItem[] {
               onSelect: (trigger) => action.choose(null, trigger),
             },
           ]
-        : action.choices.map((choice) => ({
+        : action.choices().map((choice) => ({
             id: `snooze-${choice.label}`,
             group: 'Snooze until',
             label: choice.label,
@@ -932,64 +932,70 @@ export function InboxRow({
       }}
     />
   );
-  const sheetMenu = actions.some((action) => action.id !== 'open') ? (
-    <div
-      className="menu-surface chat-dock-inbox-details__menu"
-      data-testid="inbox-row-details-actions"
-    >
-      {actions.map((action) =>
-        action.kind === 'snooze' && !action.isSnoozed ? (
-          <fieldset key={action.id} className="menu-group">
-            <legend className="menu-group__label">Snooze until</legend>
-            {action.choices.map((choice) => (
-              <Button
-                key={choice.label}
-                variant="ghost"
-                className="menu-row"
-                onClick={() =>
-                  fromSheet((trigger) => action.choose(choice.wakeAt, trigger))
-                }
-              >
-                <span className="menu-row__glyph" aria-hidden="true">
-                  <TimeGlyph />
-                </span>
-                <span>{choice.label}</span>
-                <span className="row-menu__hint">
-                  <span className="sr-only">, </span>
-                  {choice.hint}
-                </span>
-              </Button>
-            ))}
-          </fieldset>
-        ) : (
-          <div key={action.id} className="menu-group">
-            {action.kind === 'snooze' ? (
-              <Button
-                variant="ghost"
-                className="menu-row"
-                onClick={() =>
-                  fromSheet((trigger) => action.choose(null, trigger))
-                }
-              >
-                <span className="menu-row__glyph" aria-hidden="true">
-                  <ReturnGlyph />
-                </span>
-                {action.label}
-              </Button>
-            ) : action.kind === 'discard' ? (
-              renderDiscard(action, true)
-            ) : (
-              <InboxCommandButton
-                action={action}
-                placement="sheet"
-                onSelect={() => fromSheet(action.select)}
-              />
-            )}
-          </div>
-        ),
-      )}
-    </div>
-  ) : undefined;
+  const sheetMenu =
+    details &&
+    detailsOpen &&
+    mounted &&
+    actions.some((action) => action.id !== 'open') ? (
+      <div
+        className="menu-surface chat-dock-inbox-details__menu"
+        data-testid="inbox-row-details-actions"
+      >
+        {actions.map((action) =>
+          action.kind === 'snooze' && !action.isSnoozed ? (
+            <fieldset key={action.id} className="menu-group">
+              <legend className="menu-group__label">Snooze until</legend>
+              {action.choices().map((choice) => (
+                <Button
+                  key={choice.label}
+                  variant="ghost"
+                  className="menu-row"
+                  onClick={() =>
+                    fromSheet((trigger) =>
+                      action.choose(choice.wakeAt, trigger),
+                    )
+                  }
+                >
+                  <span className="menu-row__glyph" aria-hidden="true">
+                    <TimeGlyph />
+                  </span>
+                  <span>{choice.label}</span>
+                  <span className="row-menu__hint">
+                    <span className="sr-only">, </span>
+                    {choice.hint}
+                  </span>
+                </Button>
+              ))}
+            </fieldset>
+          ) : (
+            <div key={action.id} className="menu-group">
+              {action.kind === 'snooze' ? (
+                <Button
+                  variant="ghost"
+                  className="menu-row"
+                  onClick={() =>
+                    fromSheet((trigger) => action.choose(null, trigger))
+                  }
+                >
+                  <span className="menu-row__glyph" aria-hidden="true">
+                    <ReturnGlyph />
+                  </span>
+                  {action.label}
+                </Button>
+              ) : action.kind === 'discard' ? (
+                renderDiscard(action, true)
+              ) : (
+                <InboxCommandButton
+                  action={action}
+                  placement="sheet"
+                  onSelect={() => fromSheet(action.select)}
+                />
+              )}
+            </div>
+          ),
+        )}
+      </div>
+    ) : undefined;
   const gesture = useContextMenuGesture({
     enabled: details || !!onHoldRow,
     onOpen: onHoldRow
@@ -1323,7 +1329,7 @@ export function InboxRow({
             </button>
           ) : (
             <RowMenu
-              items={inboxRowMenuItems(actions)}
+              items={() => inboxRowMenuItems(actions)}
               label={`Actions for ${item.title}`}
               onOpenChange={onMenuOpenChange}
               triggerClassName="chat-dock-inbox__row-action inbox-row__action"
@@ -1495,7 +1501,7 @@ export function InboxTaskRow({
         menu && (
           <div className="inbox-row__actions">
             <RowMenu
-              items={inboxRowMenuItems(actions)}
+              items={() => inboxRowMenuItems(actions)}
               label={`Actions for task ${item.title}`}
               triggerClassName="chat-dock-inbox__row-action inbox-row__action"
             />

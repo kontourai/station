@@ -6,6 +6,7 @@ import {
 } from '../components/resource-hub/resource-detail-route';
 import type { DeveloperTab, NavigationView } from '../types';
 import {
+  COMPUTERS_PATH,
   CONNECTION_SECTIONS,
   canonicalConnectionPath,
   ENGINE_DETAIL_TABS,
@@ -62,21 +63,25 @@ export function getLegacyPathRedirect(path: string): string | null {
     return preserveSearch(canonicalConnection);
   }
 
-  // Connections are path-addressed (`/connections/engines`), but the Agent
-  // editor previously linked to the older query spelling. Keep that link
-  // routable while canonicalizing it before the root Connections resolver can
-  // choose a different section. This also preserves any shell-scoped query
-  // state the caller supplied alongside the legacy section selector.
-  if (pathname === '/connections') {
+  // Connections is no longer a destination: its parts are Customize items.
+  // The bare address lands on Customize, and the older `?section=` spelling
+  // the Agent editor once linked lands on the matching item. Any other query
+  // state the caller supplied is kept.
+  if (pathname === '/connections' || pathname === '/connections/') {
     const params = new URLSearchParams(search);
+    const sectionId = params.get('section');
     const section = CONNECTION_SECTIONS.find(
-      (candidate) => candidate.id === params.get('section'),
+      (candidate) =>
+        candidate.id === sectionId ||
+        (sectionId === 'models' && candidate.id === 'providers'),
     );
-    if (section) {
-      params.delete('section');
-      const canonicalSearch = params.toString();
-      return `${section.path}${canonicalSearch ? `?${canonicalSearch}` : ''}`;
-    }
+    params.delete('section');
+    const canonicalSearch = params.toString();
+    const target =
+      sectionId === 'computers'
+        ? COMPUTERS_PATH
+        : (section?.path ?? '/customize');
+    return `${target}${canonicalSearch ? `?${canonicalSearch}` : ''}`;
   }
 
   const redirectPrefix = (
@@ -87,7 +92,10 @@ export function getLegacyPathRedirect(path: string): string | null {
     if (pathname !== legacyPrefix && !pathname.startsWith(`${legacyPrefix}/`)) {
       return null;
     }
-    const suffix = pathname.slice(legacyPrefix.length);
+    // A bare trailing slash is dropped here, so the canonical address needs
+    // no second redirect.
+    const rawSuffix = pathname.slice(legacyPrefix.length);
+    const suffix = rawSuffix === '/' ? '' : rawSuffix;
     const params = new URLSearchParams(canonicalSearch);
     for (const [key, value] of new URLSearchParams(search)) {
       params.append(key, value);
@@ -96,6 +104,25 @@ export function getLegacyPathRedirect(path: string): string | null {
     return `${canonicalPrefix}${suffix}${mergedSearch ? `?${mergedSearch}` : ''}`;
   };
 
+  // Registry is not a place. Each catalogue page that remains (skills, tool
+  // servers, layouts, kits) keeps its address; the agent catalogue is gone,
+  // so its address lands on Agents; the root, the Plugins tab and anything
+  // else under /registry are Apps › Discover. Each lands in one step.
+  if (pathname === '/registry' || pathname.startsWith('/registry/')) {
+    const segment = pathname.split('/')[2] ?? '';
+    if (!isCataloguePageTab(segment))
+      return preserveSearch(
+        segment === 'agents' ? '/agents' : '/apps/discover',
+      );
+  }
+  if (
+    pathname === '/apps/' ||
+    pathname === '/apps/discover/' ||
+    pathname === '/apps/library/' ||
+    pathname === '/customize/'
+  ) {
+    return preserveSearch(pathname.slice(0, -1));
+  }
   if (pathname === '/developer/config') {
     // #2182 dissolved the `station-config` section this used to name, and a
     // redirect cannot choose one of the six sections its rows went to. It
@@ -118,14 +145,14 @@ export function getLegacyPathRedirect(path: string): string | null {
     return `/settings?${canonicalParams.toString()}`;
   }
   if (pathname === '/developer/storage') {
-    return preserveSearch('/connections/knowledge');
+    return preserveSearch('/customize/knowledge');
   }
   if (pathname === '/developer/mcp') {
-    return preserveSearch('/connections/tools');
+    return preserveSearch('/customize/tools');
   }
   if (pathname.startsWith('/developer/mcp/')) {
     return preserveSearch(
-      `/connections/tools/${pathname.slice('/developer/mcp/'.length)}`,
+      `/customize/tools/${pathname.slice('/developer/mcp/'.length)}`,
     );
   }
   const legacyAgentPath = pathname.match(
@@ -141,12 +168,15 @@ export function getLegacyPathRedirect(path: string): string | null {
     ['/prompts', '/guidance', 'tab=skills'],
     ['/playbooks', '/guidance', 'tab=skills'],
     ['/skills', '/guidance', 'tab=skills'],
-    ['/integrations', '/connections/tools'],
+    ['/integrations', '/customize/tools'],
     ['/manage/agents', '/agents'],
     ['/manage/prompts', '/guidance', 'tab=skills'],
-    ['/manage/plugins', '/plugins'],
-    ['/manage/integrations', '/connections/tools'],
-    ['/manage/providers', '/connections/models'],
+    ['/manage/plugins', '/apps/library'],
+    // Plugins and the Registry's Plugins catalogue are Apps' Library and
+    // Discover; an installed plugin's link keeps its name.
+    ['/plugins', '/apps/library'],
+    ['/manage/integrations', '/customize/tools'],
+    ['/manage/providers', '/customize/providers'],
   ] as const;
   for (const [
     legacyPrefix,
@@ -226,7 +256,7 @@ export function getLegacyPathRedirect(path: string): string | null {
     // carry `/schedule?job=`) lands on the same page with its selection.
     '/schedule': '/automations',
     '/manage': '/agents',
-    '/tools': '/connections/tools',
+    '/tools': '/customize/tools',
     // #765 D2: there is no task-collection view — a Task is only ever opened
     // by id (`/tasks/:id`), and task lists live inside their project surfaces
     // and on Home. Redirecting the bare path (both spellings, like the
@@ -261,34 +291,22 @@ export function decodeUrlSelection(
   }
 }
 
-const REGISTRY_TABS = [
-  'agents',
+/**
+ * The catalogues that are still pages of their own. Agents and Plugins are
+ * not: their addresses redirect, and a registry view naming neither these
+ * nor any tab renders no catalogue.
+ */
+const CATALOGUE_PAGE_TABS = [
   'skills',
   'integrations',
-  'plugins',
   'layouts',
   'kits',
 ] as const satisfies readonly RegistryCatalogTab[];
 
-// Compile-time exhaustiveness check: if `RegistryCatalogTab` (from the SDK)
-// ever gains a member not listed in `REGISTRY_TABS` above, this resolves to
-// a descriptive tuple type instead of `true`, and the `satisfies` assignment
-// below fails to typecheck — turning a silently-missing `/registry/:tab`
-// deep-link into a build break instead. `satisfies readonly
-// RegistryCatalogTab[]` above only checks the reverse direction (every
-// listed value is a valid tab); this checks the other direction (every
-// valid tab is listed).
-type RegistryTabsExhaustive =
-  RegistryCatalogTab extends (typeof REGISTRY_TABS)[number]
-    ? true
-    : [
-        'REGISTRY_TABS is missing a RegistryCatalogTab member:',
-        Exclude<RegistryCatalogTab, (typeof REGISTRY_TABS)[number]>,
-      ];
-true satisfies RegistryTabsExhaustive;
-
-function isRegistryCatalogTab(value: string): value is RegistryCatalogTab {
-  return (REGISTRY_TABS as readonly string[]).includes(value);
+export function isCataloguePageTab(
+  value: string | undefined,
+): value is (typeof CATALOGUE_PAGE_TABS)[number] {
+  return (CATALOGUE_PAGE_TABS as readonly string[]).includes(value ?? '');
 }
 
 export function resolveViewFromPath(
@@ -336,42 +354,47 @@ export function resolveViewFromPath(
       ...(selectedId ? { selectedId } : {}),
     };
   }
-  if (path.startsWith('/registry/')) {
-    const tabSegment = path.startsWith('/registry/')
-      ? path.split('/')[2]
-      : undefined;
-    if (tabSegment && isRegistryCatalogTab(tabSegment)) {
+  if (path === '/registry' || path.startsWith('/registry/')) {
+    // Only a catalogue page resolves to one; any other address resolves to
+    // where its redirect lands, so no registry view without a page exists.
+    const tabSegment = path.split('/')[2];
+    if (isCataloguePageTab(tabSegment))
       return { type: 'registry', tab: tabSegment };
-    }
-    return { type: 'registry' };
+    return tabSegment === 'agents'
+      ? { type: 'agents' }
+      : { type: 'apps', tab: 'discover' };
   }
-  if (path.startsWith('/plugins/')) {
-    return { type: 'plugins' };
+  if (path === '/apps/discover') return { type: 'apps', tab: 'discover' };
+  if (path === '/apps/library' || path.startsWith('/apps/library/')) {
+    return { type: 'apps', tab: 'library' };
   }
-  if (path === '/connections/models') {
+  if (path === '/customize') {
+    return { type: 'customize' };
+  }
+  if (path === '/customize/providers') {
     return { type: 'connections-models' };
   }
-  if (path.startsWith('/connections/models/')) {
+  if (path.startsWith('/customize/providers/')) {
     const id = path.split('/')[3];
     if (id) {
       return { type: 'connections-model-edit', id };
     }
   }
   // `new/<providerId>` is the command-backed provider setup, not an engine
-  // id: it must be matched before the generic `/connections/engines/:id`
+  // id: it must be matched before the generic `/customize/engines/:id`
   // rule below, which would otherwise read the literal `new` as the id and
   // drop the provider. Legacy `/connections/acp/new/<id>` canonicalises here
   // (CONNECTION_SECTIONS drives that redirect), so this is where it lands.
-  if (path.startsWith('/connections/engines/new/')) {
+  if (path.startsWith('/customize/engines/new/')) {
     const providerId = decodeURIComponent(
-      path.slice('/connections/engines/new/'.length),
+      path.slice('/customize/engines/new/'.length),
     );
     if (providerId) return { type: 'connections-engine-new', providerId };
   }
-  if (path.startsWith('/connections/engines/')) {
+  if (path.startsWith('/customize/engines/')) {
     const detail = parseResourceDetailPath(
       path,
-      '/connections/engines',
+      '/customize/engines',
       ENGINE_DETAIL_TABS,
     );
     if (detail && 'notFound' in detail) return { type: 'not-found', path };
@@ -383,29 +406,22 @@ export function resolveViewFromPath(
       };
     }
   }
-  if (path === '/connections/engines') {
+  if (path === '/customize/engines') {
     return { type: 'connections-engines' };
   }
-  // #592 slice 2: `connections-acp` (the plain, id-less route) retired — it
-  // was never reachable through normal navigation. `/connections/acp` and
-  // `/connections/acp/new/<id>` both canonicalise to their `/connections/
-  // engines/...` spelling via `CONNECTION_SECTIONS`' legacy paths
-  // (`getLegacyPathRedirect`, called before this function on every real
-  // navigation), and the `/connections/engines/new/` branch above is where
-  // the `new/<id>` form already "lands" once redirected — see its comment.
-  if (path === '/connections/tools') {
+  if (path === '/customize/tools') {
     return { type: 'connections-tools' };
   }
-  if (path.startsWith('/connections/tools/')) {
+  if (path.startsWith('/customize/tools/')) {
     const id = path.split('/')[3];
     if (id) {
       return { type: 'connections-tool-edit', id };
     }
   }
-  if (path === '/connections/knowledge') {
+  if (path === '/customize/knowledge') {
     return { type: 'connections-knowledge' };
   }
-  if (path === '/connections/computers') {
+  if (path === COMPUTERS_PATH) {
     return { type: 'connections-computers' };
   }
   if (path.startsWith('/developer/')) {
@@ -583,30 +599,30 @@ export function getPathForView(view: NavigationView): string | null {
       return '/agents';
     case 'guidance':
       return `/guidance${view.selectedId ? `/${encodeURIComponent(view.selectedId)}` : ''}${view.tab ? `?tab=${view.tab}${view.filter ? `&filter=${view.filter}` : ''}` : ''}`;
-    case 'plugins':
-      return '/plugins';
+    case 'apps':
+      return `/apps/${view.tab}`;
     case 'registry':
       return view.tab ? `/registry/${view.tab}` : '/registry';
-    case 'connections':
-      return '/connections';
+    case 'customize':
+      return '/customize';
     case 'connections-models':
-      return '/connections/models';
+      return '/customize/providers';
     case 'connections-model-edit':
-      return `/connections/models/${view.id}`;
+      return `/customize/providers/${view.id}`;
     case 'connections-engines':
-      return '/connections/engines';
+      return '/customize/engines';
     case 'connections-engine-edit':
-      return resourceDetailPath('/connections/engines', view.id, view.tab);
+      return resourceDetailPath('/customize/engines', view.id, view.tab);
     case 'connections-engine-new':
-      return `/connections/engines/new/${encodeURIComponent(view.providerId)}`;
+      return `/customize/engines/new/${encodeURIComponent(view.providerId)}`;
     case 'connections-tools':
-      return '/connections/tools';
+      return '/customize/tools';
     case 'connections-tool-edit':
-      return `/connections/tools/${view.id}`;
+      return `/customize/tools/${view.id}`;
     case 'connections-knowledge':
-      return '/connections/knowledge';
+      return '/customize/knowledge';
     case 'connections-computers':
-      return '/connections/computers';
+      return COMPUTERS_PATH;
     case 'profile':
       return '/profile';
     case 'notifications':
@@ -675,9 +691,9 @@ export function getParentView(view: NavigationView): NavigationView | null {
       return null;
     // Top-level destinations: nothing above them to go up to.
     case 'agents':
-    case 'connections':
+    case 'customize':
     case 'guidance':
-    case 'plugins':
+    case 'apps':
     case 'developer':
     case 'schedule':
     case 'notifications':
@@ -692,15 +708,16 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'connections-engine-edit':
     case 'connections-engine-new':
       return { type: 'connections-engines' };
+    // Computers has no parent until the Station page exists.
     case 'connections-computers':
-      return { type: 'connections' };
+      return null;
     case 'connections-tool-edit':
       return { type: 'connections-tools' };
     case 'connections-models':
     case 'connections-engines':
     case 'connections-tools':
     case 'connections-knowledge':
-      return { type: 'connections' };
+      return { type: 'customize' };
     case 'project-edit':
     case 'project-session-board':
     case 'project-flow-console':
@@ -729,8 +746,15 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'board':
     case 'not-found':
       return { type: 'home' };
+    // Each catalogue page goes up to the place it is opened from: Skills,
+    // Customize › Tools, or Apps › Discover for layouts and kits, which have
+    // no opener of their own on a direct load.
     case 'registry':
-      return view.tab ? { type: 'registry' } : null;
+      return view.tab === 'skills'
+        ? { type: 'guidance', tab: 'skills' }
+        : view.tab === 'integrations'
+          ? { type: 'connections-tools' }
+          : { type: 'apps', tab: 'discover' };
     default:
       return null;
   }

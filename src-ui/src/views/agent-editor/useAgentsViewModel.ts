@@ -86,7 +86,7 @@ export function resolveAuthoritativeLoadedAgent(
  */
 function navigateFix(agent: AgentData, route: AgentFixRoute) {
   if (route === 'models') {
-    navigationStore.navigate('/connections?section=models');
+    navigationStore.navigate('/customize/providers');
     return;
   }
   if (route === 'engines') {
@@ -94,12 +94,12 @@ function navigateFix(agent: AgentData, route: AgentFixRoute) {
       agent.unavailableFix?.target || agent.execution?.agentConnectionId;
     navigationStore.navigate(
       connectionId
-        ? `/connections/engines/${encodeURIComponent(connectionId)}`
-        : '/connections?section=engines',
+        ? `/customize/engines/${encodeURIComponent(connectionId)}`
+        : '/customize/engines',
     );
     return;
   }
-  navigationStore.navigate('/connections');
+  navigationStore.navigate('/customize');
 }
 
 export function useAgentsViewModel({
@@ -781,7 +781,7 @@ export function useAgentsViewModel({
   // What remains: a PLUGIN-owned agent (unlockable, and it says so) and an
   // ACP-connection-owned one (genuinely read-only — its configuration lives
   // in the connection, and the pane renders the ownership sentence plus a
-  // "Configure in Connections" action rather than a dead primary).
+  // "Configure in Customize" action rather than a dead primary).
   const locked = !!(isPlugin && isLocked) || !!isAcp;
   // A failed initial read has no trustworthy entity to edit. A later refresh
   // failure may retain a previously loaded entity, so keep that form visible
@@ -910,7 +910,7 @@ export function useAgentsViewModel({
     const connectionId = selectedAgent?.execution?.agentConnectionId;
     if (!connectionId) return;
     navigationStore.navigate(
-      `/connections/engines/${encodeURIComponent(connectionId)}`,
+      `/customize/engines/${encodeURIComponent(connectionId)}`,
     );
   }
 

@@ -653,10 +653,11 @@ describe('state-primitives-ratchet', () => {
     it('ALREADY_CANONICAL_EXCLUSIONS names exactly the already-composing-Empty files that retain bespoke empty classes', () => {
       // NotificationsPage left this list when its only `__empty` class — a
       // "Loading notifications…" div that replaced the entire page — became a
-      // SkeletonList under the header (SHELL-13).
+      // SkeletonList under the header (SHELL-13). RegistryCatalog left it
+      // when its only `__empty` class, the plugin guidance link no catalogue
+      // page showed, was removed.
       expect(ALREADY_CANONICAL_EXCLUSIONS).toEqual([
         'src-ui/src/components/SplitPaneLayout.tsx',
-        'src-ui/src/components/registry/RegistryCatalog.tsx',
       ]);
     });
 

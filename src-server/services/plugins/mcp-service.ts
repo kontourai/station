@@ -701,7 +701,7 @@ export class MCPService {
           ok: false,
           authorization: {
             state: 'token-expired-refresh-failed',
-            reason: 'Sign in to this integration in Connections → Tools.',
+            reason: 'Sign in to this integration in Customize → Tools.',
           },
         },
       };
@@ -1118,7 +1118,7 @@ export class MCPService {
       id,
       resource,
       'token-expired-refresh-failed',
-      'Sign in to this integration in Connections → Tools.',
+      'Sign in to this integration in Customize → Tools.',
     );
   }
 

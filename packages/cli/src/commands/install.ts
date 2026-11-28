@@ -114,14 +114,14 @@ function unappliedLines(
   if (unapplied.recovery === 'unknown')
     return [
       `⚠️ ${verb} ${name}, but Station did not say whether it is active.`,
-      '  Open Plugins on the Station host; if it reads Needs recovery, recover it there.',
+      '  Open Apps › Library on the Station host; if it reads Needs recovery, recover it there.',
     ];
   const stopped = unapplied.deadlineMs
     ? `its activation did not finish within ${describeActivationDeadline(unapplied.deadlineMs)}`
     : 'its activation did not finish';
   return [
     `⚠️ ${verb} ${name}, but ${stopped}, so it is not active.`,
-    '  Run `station plugin recover <name>`, or choose Recover plugin in Plugins on the Station host, to activate it.',
+    '  Run `station plugin recover <name>`, or choose Recover plugin in Apps › Library on the Station host, to activate it.',
     `  Do not ${verb === 'Installed' ? 'install' : 'update'} it again; trusted permissions are approved after recovery.`,
   ];
 }
@@ -349,7 +349,7 @@ export async function install(
   const previewed = await previewPlugin(source, parsed, target);
   if (!previewed.contentDigest || !previewed.permissions) {
     throw new Error(
-      `Station at ${target.apiBase} did not report what installing this plugin requires, so there is nothing to approve. Upgrade Station, or install the plugin from its Plugins page.`,
+      `Station at ${target.apiBase} did not report what installing this plugin requires, so there is nothing to approve. Upgrade Station, or install the plugin from Apps › Library.`,
     );
   }
   // Installed but not active (Needs recovery): recover it rather than add
@@ -399,7 +399,7 @@ export async function install(
   if (parsed.flags.yes !== true) {
     if (!confirm) {
       throw new Error(
-        'Not installed: nothing approved it, and there is no terminal to ask. Re-run with --yes to approve what is listed above, or install it from the Plugins page. Nothing was added or changed.',
+        'Not installed: nothing approved it, and there is no terminal to ask. Re-run with --yes to approve what is listed above, or install it from Apps › Library. Nothing was added or changed.',
       );
     }
     if (!(await confirm('Install it?'))) {
@@ -503,7 +503,7 @@ export async function install(
       );
     }
     console.log(
-      '  Finish these reviews on the Station host in the Plugins page.',
+      '  Finish these reviews on the Station host in Apps › Library.',
     );
   } else if (
     result.permissions?.dependencies === undefined &&
@@ -514,7 +514,7 @@ export async function install(
     )
   ) {
     console.log(
-      `Installed ${installed.name}@${installed.version}, but Station did not report current dependency approval status. Check the Plugins page on the Station host.`,
+      `Installed ${installed.name}@${installed.version}, but Station did not report current dependency approval status. Check Apps › Library on the Station host.`,
     );
   } else {
     console.log(
@@ -605,7 +605,7 @@ export async function recover(
     review.permissions.pendingConsent.some((entry) => entry.tier === 'trusted')
   )
     lines.push(
-      '  Trusted permissions still need the separate host approval in Plugins afterwards.',
+      '  Trusted permissions still need the separate host approval in Apps › Library afterwards.',
     );
   for (const line of lines) console.log(line);
   if (parsed.flags.yes !== true) {
@@ -672,7 +672,7 @@ export async function recover(
     for (const entry of owed)
       console.log(`  ${label} requires host approval for ${entry.permission}.`);
     console.log(
-      '  Finish these reviews on the Station host in the Plugins page.',
+      '  Finish these reviews on the Station host in Apps › Library.',
     );
     return;
   }

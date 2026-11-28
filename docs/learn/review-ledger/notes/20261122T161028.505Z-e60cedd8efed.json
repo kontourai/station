@@ -1,0 +1,7 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"No shared shape changed in the fix round.","inputs":["docs/reference/shared.md"]}
+  ]
+}

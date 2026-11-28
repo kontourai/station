@@ -1,0 +1,7 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/guides/build-your-first-plugin.md","note":"The New plugin action is now in Apps › Library, matching PluginManagementView's header.","inputs":["docs/guides/build-your-first-plugin.md"]}
+  ]
+}

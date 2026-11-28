@@ -403,6 +403,7 @@ export function useSendMessage(
          * default send-while-busy path.
          */
         queueOnBusy?: boolean;
+        requireSteer?: boolean;
         /**
          * With `queueOnBusy`: the host holds a follow-up's files with it
          * (`followUpAttachments`), so a busy send with files is queued.
@@ -685,6 +686,16 @@ export function useSendMessage(
         } else {
           steerOpenTurn = true;
         }
+      }
+
+      if (options?.requireSteer && !steerOpenTurn) {
+        addEphemeralMessage(sessionId, {
+          role: 'system',
+          sendFailure: true,
+          content:
+            'The running turn can no longer be steered. Your draft is still in the composer.',
+        });
+        return false;
       }
 
       let mcpPromptOrigin:

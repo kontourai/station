@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"The guardrail proof no longer requires the Library to link to the Registry's Plugins tab, and the conversation manifest moved one failure entry to the shared install hook; the testing guide's descriptions of both gates are unchanged by that.","inputs":["docs/guides/testing.md","scripts/conversation-surfaces.json","scripts/proof-repo-guardrails.mjs"]}
+  ]
+}

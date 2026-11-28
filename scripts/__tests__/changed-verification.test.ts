@@ -1680,9 +1680,11 @@ describe('changed verification selection', () => {
         [
           '--eval',
           `const { spawn } = require('node:child_process');
-const { writeFileSync } = require('node:fs');
+const { renameSync, writeFileSync } = require('node:fs');
 const descendant = spawn(process.execPath, ['--eval', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
-writeFileSync(process.argv[1], JSON.stringify({ parent: process.pid, descendant: descendant.pid }));
+// Written beside the path and renamed into place, so the test never reads a file that exists but is still empty.
+writeFileSync(process.argv[1] + '.partial', JSON.stringify({ parent: process.pid, descendant: descendant.pid }));
+renameSync(process.argv[1] + '.partial', process.argv[1]);
 setInterval(() => {}, 1000);`,
           readyPath,
         ],

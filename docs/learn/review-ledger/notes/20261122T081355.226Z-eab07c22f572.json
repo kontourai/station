@@ -1,0 +1,7 @@
+{
+  "revision": "fe3aafb9d61f45ec7e5403f36f84041486ac96cc",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"The abbreviated provider-facing RegistryItem sketch lists a subset of fields and makes no completeness claim; the optional app field does not contradict it.","inputs":["docs/reference/shared.md","packages/contracts/src/catalog.ts"]}
+  ]
+}

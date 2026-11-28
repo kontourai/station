@@ -89,6 +89,7 @@ import {
 } from './task-workspace/TaskOutputsSection';
 import { TaskPullRequestWatchPanel } from './task-workspace/TaskPullRequestWatchPanel';
 import { TaskRelationships } from './task-workspace/TaskRelationships';
+import { TaskResumeSection } from './task-workspace/TaskResumeSection';
 import {
   TaskRoomHeader,
   TaskRoomRail,
@@ -863,6 +864,7 @@ function TaskWorkspaceContent({
             />
           </Suspense>
         )}
+        <TaskResumeSection task={graph.task} />
         <AutomationRunHistory links={graph.links} />
         <TaskRelationships task={graph.task} kind="children" />
         <div id="task-deliverables">
@@ -1198,10 +1200,10 @@ function TaskExperienceNavigation({
         <div className="task-workspace__experience-heading">
           <div>
             <h3 id="task-inspection-heading">Task inspection</h3>
-            <p>Plugins can add more ways to open this Task.</p>
+            <p>Apps can add more ways to open this Task.</p>
           </div>
-          <a className="editor-btn" href="/plugins">
-            Add plugins
+          <a className="editor-btn" href="/apps/discover">
+            Find apps
           </a>
         </div>
       </section>
