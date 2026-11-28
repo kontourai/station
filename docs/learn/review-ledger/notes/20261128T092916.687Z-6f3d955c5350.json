@@ -1,0 +1,7 @@
+{
+  "revision": "10a62a02cacf13bdf8e8785d723be20c4291b91d",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Scoped review of tests/task-first-home.spec.ts at 10a62a02c: only declares the exact GET whole-session inventory unavailable-owner 503 envelope already emitted by orchestration.ts. Reviewed the Home/continuity row and fixture qualification caveat against retained task-context, real file-preview navigation/read/content/count, geometry and composer-visibility assertions. No prose change; not successful inventory or send coverage. Full registered UI-only production profile completed all twelve journey IDs with three samples; not backend, physical-mobile, native or full E2E qualification.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]}
+  ]
+}

@@ -557,6 +557,22 @@ async function mockTaskFirstHome(
       })(route);
       return;
     }
+    if (
+      path === '/api/orchestration/sessions/task-first-home/inventory' &&
+      route.request().method() === 'GET' &&
+      new URL(route.request().url()).searchParams.get('scope') ===
+        'whole-session'
+    ) {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'Session inventory unavailable',
+        }),
+      });
+      return;
+    }
     if (path === '/api/orchestration/sessions/task-first-home') {
       await route.fulfill(
         json({ session: taskSession, events: options.sessionEvents ?? [] }),

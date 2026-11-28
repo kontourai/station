@@ -1,0 +1,7 @@
+{
+  "revision": "10a62a02cacf13bdf8e8785d723be20c4291b91d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Scoped review of tests/task-first-home.spec.ts at 10a62a02c against fixture-fidelity and journey-profile guidance: unavailable inventory is an explicit route-compatible 503, not empty success; audit and user-action assertions unchanged. Clean full UI-only production wrapper completed all twelve registered IDs with three samples and retained raw profiles/build provenance; original main teardown failure retained. No benchmark phase/threshold or product change; no prose change. Diagnostic Linux Chromium timings include harness/CPU-throttle overhead and are not per-key, real-server, native or physical-phone evidence.","inputs":["docs/guides/testing.md","tests/task-first-home.spec.ts"]}
+  ]
+}
