@@ -1,0 +1,7 @@
+{
+  "revision": "d56886ea2bb003ea3a0b55c1b0674b14a6d4b299",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Reviewed the direct-chat/Session distinction and delivery-recovery explanation. Row fork/resend actions remain separate from queued-delivery Check/Retry; regenerate enters the existing normal-send owner after opening its destination, while edit restores the composer. The candidate introduces no new delivery or execution semantics. Restart, observation freshness, steering, and same-key recovery guarantees were not independently requalified.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
