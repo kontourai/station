@@ -2035,12 +2035,24 @@ describe('lifecycle instance state', () => {
       .spyOn(process, 'kill')
       .mockImplementation((() => true) as typeof process.kill);
     let directorySyncAttempts = 0;
+    const instanceDirectoryDescriptors = new Set<number>();
     vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
       fsOverrides: {
+        openSync: (path, flags, mode) => {
+          const descriptor = actualFs.openSync(path, flags, mode);
+          if (path === TEST_INSTANCE_STATE_DIR) {
+            instanceDirectoryDescriptors.add(descriptor);
+          }
+          return descriptor;
+        },
+        closeSync: (descriptor) => {
+          instanceDirectoryDescriptors.delete(descriptor);
+          actualFs.closeSync(descriptor);
+        },
         fsyncSync: (fd) => {
-          if (actualFs.fstatSync(fd).isDirectory()) {
+          if (instanceDirectoryDescriptors.has(fd)) {
             directorySyncAttempts += 1;
             throw new Error('directory fsync failed');
           }
