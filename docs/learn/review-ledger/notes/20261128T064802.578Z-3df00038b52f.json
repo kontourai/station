@@ -1,0 +1,7 @@
+{
+  "revision": "1363f5f635422b34c2d9d9c50d17d77c1dd54e51",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the added initially-hidden table case: actual ChatInputArea mounts hidden, a native observer detects repeated measurement nodes after settling, and the existing button reveals the retained multiline draft before any typing. Pre-fix committed source failed with 12 measurements in 12 settled frames; the repaired owner passes settlement, reveal, pinned transcript, cap and shrink assertions. Existing check-back layout and themes/width cases remain. This does not establish mixed mutation delivery, concurrent composer teardown or physical-phone behavior. No composer-policy prose change is warranted.","inputs":["src-ui/src/__tests__/composer-sizing.browser.test.tsx"]}
+  ]
+}

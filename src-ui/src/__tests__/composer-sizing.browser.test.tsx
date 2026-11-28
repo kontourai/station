@@ -66,68 +66,130 @@ const composerFixture = `
     import {ScrollToBottomButton} from './src-ui/src/components/chat/ScrollToBottomButton';
     function App(){
       const [input,setInput] = useState('one\\ntwo\\nthree\\nfour\\nfive');
+      const [composerShown,setComposerShown] = useState(!window.startComposerHidden);
       const textareaRef=useRef(null);
       const noop=()=>{};
-      return <div className="chat-dock__body" style={{height:600,display:'flex',flexDirection:'column'}}>
+      return <>
+        <style>{'.chat-dock__body[data-composer-hidden] > .chat-input { display: none; }'}</style>
+        {!composerShown && <button onClick={()=>setComposerShown(true)}>Show composer</button>}
+        <div className="chat-dock__body" data-composer-hidden={composerShown ? undefined : ''} style={{height:600,display:'flex',flexDirection:'column'}}>
         <div id="transcript" className="chat-messages" style={{flex:'1 1 0',minHeight:0,overflow:'auto',overflowAnchor:'none'}}><div style={{height:3000}}>Transcript</div></div>
         <ChatInputArea activity={<><AgentScheduleNotes conversationId="fixture" refreshKey="settled"/><ScrollToBottomButton onClick={noop}/></>} agentSlug="station" sessionId="fixture" input={input} textareaRef={textareaRef} attachments={[]} disabled={false} turnInFlight={false} modelSupportsAttachments={false} fontSize={14} dockHeight={600} apiBase="http://station.test" canModelSelect={false} availableModels={[]} modelQuery={null} commandQuery={null} slashCommands={[]} onInputChange={setInput} onSend={noop} onCancel={noop} onClearInput={noop} selectAttachmentFiles={noop} onRemoveAttachment={noop} onClearAttachments={noop} onModelSelect={noop} onModelReset={noop} onModelClose={noop} onModelOpen={noop} onModelRuntimeOptionChange={noop} onApprovalModeChange={noop} onCommandSelect={noop} onCommandClose={noop} onHistoryUp={noop} onHistoryDown={noop} onShowStats={noop} updateFromInput={noop} closeAll={noop}/>
-      </div>;
+        </div>
+      </>;
     }
     createRoot(document.getElementById('root')).render(<App/>);
   `;
 
-test('sizes draft content without transiently clamping the pinned transcript', async () => {
-  const { browser, page, errors } = await scrollBrowserFixture(
-    composerFixture,
-    [controls],
-  );
-  try {
-    await page.addStyleTag({ content: cascade });
-    await page.waitForSelector('textarea');
-    expect(errors).toEqual([]);
-    await page.locator('textarea').focus();
-    await page.locator('textarea').press('ControlOrMeta+End');
-    await page.locator('#transcript').evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-    });
-    const gap = () =>
-      page
-        .locator('#transcript')
-        .evaluate(
-          (element) =>
-            element.scrollHeight - element.clientHeight - element.scrollTop,
-        );
-    expect(await gap()).toBe(0);
-    await page.locator('textarea').press('x');
-    expect(await gap()).toBeLessThanOrEqual(1);
-    await page.locator('textarea').press('Backspace');
-    expect(await gap()).toBeLessThanOrEqual(1);
-    await page
-      .locator('textarea')
-      .fill(Array.from({ length: 30 }, () => 'line').join('\n'));
-    const capped = await page.locator('textarea').evaluate((element) => ({
-      height: element.getBoundingClientRect().height,
-      overflow: element.style.overflowY,
-      content: element.scrollHeight,
-      viewport: element.clientHeight,
-    }));
-    expect(capped.height).toBeCloseTo(160, 0);
-    expect(capped.overflow).toBe('auto');
-    expect(capped.content).toBeGreaterThan(capped.viewport);
-    await page.locator('textarea').fill('short');
-    const short = await page.locator('textarea').evaluate((element) => ({
-      height: element.clientHeight,
-      content: element.scrollHeight,
-      overflow: element.style.overflowY,
-    }));
-    expect(short.height).toBeLessThan(80);
-    expect(short.content).toBeLessThanOrEqual(short.height + 1);
-    expect(short.overflow).toBe('hidden');
-    expect(errors).toEqual([]);
-  } finally {
-    await browser.close();
-  }
-});
+test.each([
+  { initiallyHidden: false, state: 'visible' },
+  { initiallyHidden: true, state: 'initially hidden' },
+])(
+  'sizes $state draft content without transiently clamping the pinned transcript',
+  async ({ initiallyHidden }) => {
+    const { browser, page, errors } = await scrollBrowserFixture(
+      composerFixture,
+      [controls],
+      {},
+      async (page) => {
+        if (initiallyHidden)
+          await page.addInitScript('window.startComposerHidden = true;');
+      },
+    );
+    try {
+      await page.addStyleTag({ content: cascade });
+      if (initiallyHidden) {
+        expect(await page.locator('textarea').isVisible()).toBe(false);
+        const hiddenMeasurements = await page
+          .locator('.chat-input')
+          .evaluate(async (element) => {
+            let measurements = 0;
+            const observer = new MutationObserver((records) => {
+              for (const record of records)
+                for (const node of record.addedNodes)
+                  if (
+                    node instanceof HTMLTextAreaElement &&
+                    node.getAttribute('aria-hidden') === 'true'
+                  )
+                    measurements += 1;
+            });
+            observer.observe(element, { childList: true, subtree: true });
+            const frames = async (count: number) => {
+              for (let frame = 0; frame < count; frame += 1)
+                await new Promise<void>((resolve) =>
+                  requestAnimationFrame(() => resolve()),
+                );
+            };
+            await frames(8);
+            measurements = 0;
+            await frames(12);
+            observer.disconnect();
+            return measurements;
+          });
+        expect(
+          hiddenMeasurements,
+          'settled hidden draft does not keep measuring itself',
+        ).toBe(0);
+        await page.getByRole('button', { name: 'Show composer' }).click();
+      }
+      await page.waitForSelector('textarea');
+      await expect
+        .poll(() =>
+          page
+            .locator('textarea')
+            .evaluate(
+              (element) => Number.parseFloat(element.style.height) || 0,
+            ),
+        )
+        .toBeGreaterThan(0);
+      expect(await page.locator('textarea').inputValue()).toBe(
+        'one\ntwo\nthree\nfour\nfive',
+      );
+      expect(errors).toEqual([]);
+      await page.locator('textarea').focus();
+      await page.locator('textarea').press('ControlOrMeta+End');
+      await page.locator('#transcript').evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      const gap = () =>
+        page
+          .locator('#transcript')
+          .evaluate(
+            (element) =>
+              element.scrollHeight - element.clientHeight - element.scrollTop,
+          );
+      expect(await gap()).toBe(0);
+      await page.locator('textarea').press('x');
+      expect(await gap()).toBeLessThanOrEqual(1);
+      await page.locator('textarea').press('Backspace');
+      expect(await gap()).toBeLessThanOrEqual(1);
+      await page
+        .locator('textarea')
+        .fill(Array.from({ length: 30 }, () => 'line').join('\n'));
+      const capped = await page.locator('textarea').evaluate((element) => ({
+        height: element.getBoundingClientRect().height,
+        overflow: element.style.overflowY,
+        content: element.scrollHeight,
+        viewport: element.clientHeight,
+      }));
+      expect(capped.height).toBeCloseTo(160, 0);
+      expect(capped.overflow).toBe('auto');
+      expect(capped.content).toBeGreaterThan(capped.viewport);
+      await page.locator('textarea').fill('short');
+      const short = await page.locator('textarea').evaluate((element) => ({
+        height: element.clientHeight,
+        content: element.scrollHeight,
+        overflow: element.style.overflowY,
+      }));
+      expect(short.height).toBeLessThan(80);
+      expect(short.content).toBeLessThanOrEqual(short.height + 1);
+      expect(short.overflow).toBe('hidden');
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  },
+);
 
 test.each([
   {
