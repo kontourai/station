@@ -29,7 +29,6 @@ import { claudeArtifactLinkOf } from './claude-artifact-link';
 /** A call shown as its own row rather than one line of a collapsed run. */
 function hasOwnCallRow(part: ToolCallLike): boolean {
   return (
-    part.needsApproval === true ||
     hasStationControlCallRow(part) ||
     isAppearanceProposalCall(part) ||
     claudeArtifactLinkOf(part) !== undefined

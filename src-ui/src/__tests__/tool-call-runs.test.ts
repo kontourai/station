@@ -211,13 +211,11 @@ describe('foldTurnWork', () => {
     });
   });
 
-  test.each([
-    toolCall({ toolCallId: 'action', needsApproval: true }),
-    toolCall({
+  test('keeps a session message in its own row', () => {
+    const action = toolCall({
       toolCallId: 'action',
       toolName: 'mcp__station-control__send_to_session',
-    }),
-  ])('keeps a pending approval or session message in its own row', (action) => {
+    });
     const blocks = foldTurnWork([
       toolCall({ toolCallId: 'before' }),
       text('progress'),
