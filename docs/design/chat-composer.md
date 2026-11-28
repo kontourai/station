@@ -1343,6 +1343,10 @@ in the composer overrides the saved default for the current Session until
 switching Sessions. Unsupported steering and drafts with files on a host that
 queues attachments use Queue for that send without changing the saved default.
 
+After tapping Send, the composer shows **Queueing…** or **Sending steer…**
+while the request is pending. If the conversation advances before Station
+accepts a steer, the composer explains the change so the person can retry.
+
 In the reply composer, tapping Send, clearing the draft, or removing an
 attachment keeps an already focused draft ready for typing. Tapping compact
 settings keeps draft focus while the options are open. Opening the same settings

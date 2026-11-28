@@ -875,7 +875,14 @@ export function ChatInputArea({
     (chatReturnBehavior === 'auto' && !coarsePointer);
   const submitPending = useRef(false);
   const sendPointerDraft = useRef<HTMLTextAreaElement | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [submission, setSubmission] = useState<{
+    sessionId: typeof sessionId;
+    mode: 'send' | 'queue' | 'steer';
+  } | null>(null);
+  const pendingFollowUp =
+    submission && submission.sessionId === sessionId
+      ? submission.mode
+      : undefined;
   // Send while a file is still uploading: the send waits for the upload and
   // goes by itself once every file is staged, never without its files. An
   // upload that fails (or is stopped or removed) drops the wait; its chip
@@ -889,19 +896,24 @@ export function ChatInputArea({
       setSendAfterUploads(true);
       return;
     }
+    const steer = turnInFlight && steeringSelected;
+    const queue = turnInFlight && onQueueFollowUp;
     submitPending.current = true;
-    setSubmitting(true);
+    setSubmission({
+      sessionId,
+      mode: steer ? 'steer' : queue ? 'queue' : 'send',
+    });
     try {
-      if (turnInFlight && steeringSelected) {
+      if (steer) {
         await onSend('steer');
-      } else if (turnInFlight && onQueueFollowUp) {
-        await onQueueFollowUp();
+      } else if (queue) {
+        await queue();
       } else {
         await onSend();
       }
     } finally {
       submitPending.current = false;
-      setSubmitting(false);
+      setSubmission(null);
     }
   };
   // biome-ignore lint/correctness/useExhaustiveDependencies: `submit` is this render's closure over the settled draft; the wait's own state is the trigger.
@@ -1623,6 +1635,11 @@ export function ChatInputArea({
                 {attachmentNotice}
               </div>
             )}
+          {(pendingFollowUp === 'queue' || pendingFollowUp === 'steer') && (
+            <div className="chat-input__attachment-notice" role="status">
+              {pendingFollowUp === 'steer' ? 'Sending steer…' : 'Queueing…'}
+            </div>
+          )}
           {sendFailureNotice && (
             <div className="chat-input__send-failure" role="status">
               {sendFailureNotice}
@@ -2540,7 +2557,7 @@ export function ChatInputArea({
                 disabled={
                   editingQueue ||
                   disabled ||
-                  submitting ||
+                  !!submission ||
                   waitingForUploads ||
                   isOverLimit ||
                   !!sendBlockedReason ||
