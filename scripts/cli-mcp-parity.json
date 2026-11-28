@@ -1332,10 +1332,6 @@
       "exempt": "agent-self",
       "reason": "Controls the device in the calling agent's bound turn; people use the Device pane."
     },
-    "request_device_agent_access": {
-      "exempt": "agent-self",
-      "reason": "Creates a request in the calling agent’s chat for the Station operator to decide. People can enable access directly in Settings."
-    },
     "device_list": {
       "exempt": "agent-self",
       "reason": "Computer use inside the calling agent's own turn; the route refuses every non-internal request, and a person drives devices in the UI pane."
@@ -1734,6 +1730,10 @@
     "renew_claim": {
       "missing": 3427,
       "want": "Claims renew"
+    },
+    "request_device_agent_access": {
+      "exempt": "agent-proposal",
+      "reason": "Creates a request in the calling agent’s chat for the Station operator to decide. People can enable access directly in Settings."
     },
     "respond_to_task_request": {
       "cli": ["delegate respond"]
