@@ -3072,10 +3072,20 @@ for (const viewport of [
       .getByRole('form', { name: 'Start work' })
       .getByRole('textbox', { name: 'What would you like done?' });
     const draft = 'Keep this draft while I browse recent work';
-    await composer.click();
-    await composer.pressSequentially(draft);
-    await expect(composer).toHaveValue(draft);
-    await expect(composer).toBeFocused();
+    await profileJourney(
+      page,
+      testInfo,
+      viewport.width === 1280
+        ? 'home-composer-typing'
+        : 'home-composer-typing-mobile',
+      { sessions: 1000, draftCharacters: draft.length },
+      async () => {
+        await composer.click();
+        await composer.pressSequentially(draft);
+        await expect(composer).toHaveValue(draft);
+        await expect(composer).toBeFocused();
+      },
+    );
     const bounds = await composer.boundingBox();
     expect(bounds?.height).toBeGreaterThanOrEqual(44);
     await page
