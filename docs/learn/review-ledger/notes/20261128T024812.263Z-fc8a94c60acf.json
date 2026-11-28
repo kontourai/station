@@ -1,0 +1,15 @@
+{
+  "revision": "e9cf7e4a8ea09b201a2a1e7b8972cdc186a3d141",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the inherited-private journal migration paragraph and its downstream deployment references in README, telemetry README, abstraction-review, automations, and integrating-station. Changes are restricted to Windows journal DACL/retained-handle behavior; Docker ingress, telemetry custody, realtime listener limits, proposal classifications and integration delivery-target caveats remain unchanged. No installed build or state/log/fd migration proof claimed; no prose change required in these referring documents.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Reviewed the inherited-private journal migration paragraph and its downstream deployment references in README, telemetry README, abstraction-review, automations, and integrating-station. Changes are restricted to Windows journal DACL/retained-handle behavior; Docker ingress, telemetry custody, realtime listener limits, proposal classifications and integration delivery-target caveats remain unchanged. No installed build or state/log/fd migration proof claimed; no prose change required in these referring documents.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the inherited-private journal migration paragraph and its downstream deployment references in README, telemetry README, abstraction-review, automations, and integrating-station. Changes are restricted to Windows journal DACL/retained-handle behavior; Docker ingress, telemetry custody, realtime listener limits, proposal classifications and integration delivery-target caveats remain unchanged. No installed build or state/log/fd migration proof claimed; no prose change required in these referring documents.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed the inherited-private journal migration paragraph and its downstream deployment references in README, telemetry README, abstraction-review, automations, and integrating-station. Changes are restricted to Windows journal DACL/retained-handle behavior; Docker ingress, telemetry custody, realtime listener limits, proposal classifications and integration delivery-target caveats remain unchanged. No installed build or state/log/fd migration proof claimed; no prose change required in these referring documents.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the inherited-private journal migration paragraph and its downstream deployment references in README, telemetry README, abstraction-review, automations, and integrating-station. Changes are restricted to Windows journal DACL/retained-handle behavior; Docker ingress, telemetry custody, realtime listener limits, proposal classifications and integration delivery-target caveats remain unchanged. No installed build or state/log/fd migration proof claimed; no prose change required in these referring documents.","inputs":["docs/guides/deployment.md"]}
+  ]
+}

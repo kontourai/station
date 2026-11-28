@@ -1,0 +1,7 @@
+{
+  "revision": "e57b948c965bbd2ffb995e2fc63e6330095eb0df",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Linked #5655 native journal implementation to its owning deployment explanation. Inspected HANDLE-bound DACL/file-ID verification, ancestor retention, chunked direct transport, atomic retained-generation publication/cleanup and private-parent native check with execution-safe PowerShell fallback. Windows owner evidence and two intended ACL/parent mutation catches are retained separately; expanded threshold/oversized record test and final candidate validation remain explicit. Does not provide Node fd bridge, repair existing broad file ACLs, or qualify state/log/installed Nightly.","inputs":["docs/guides/deployment.md","packages/shared/src/windows-file-security.ts"]}
+  ]
+}
