@@ -1,7 +1,9 @@
+import type { ConversationAgentSchedule } from '@kontourai/station-contracts/agent-schedule';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import { expect, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { mockChatShell } from './helpers/chat-shell-fixture';
-import { test } from './helpers/fixture-audit';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   installJourneyProfile,
   profileJourney,
@@ -124,6 +126,65 @@ async function openThrottledConversation(
     turns: () => turns,
     onWindow: (url) => requestedWindows.push(url),
   });
+  await page.route('**/api/projects/default/chat-defaults', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          json: {
+            success: true,
+            data: {
+              version: 'station.project-chat-defaults/v1',
+              projectSlug: 'default',
+              model: { selection: 'fixed', lastUsed: [] },
+              approvalMode: {
+                selection: 'fixed',
+                resolved: { source: 'none' },
+              },
+            } satisfies ProjectChatDefaultsView,
+          },
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route(
+    (url) =>
+      url.pathname === '/api/terminal/runs' &&
+      url.searchParams.get('conversationId') === THREAD_ID,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({ json: { success: true, data: { runs: [] } } })
+        : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route(
+    `**/api/orchestration/agent-schedule/${THREAD_ID}`,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            json: {
+              success: true,
+              data: {
+                wakeUps: [],
+                jobProposals: [],
+                jobs: [],
+              } satisfies ConversationAgentSchedule,
+            },
+          })
+        : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route(
+    (url) =>
+      url.pathname ===
+      `/api/orchestration/session-reads/${THREAD_ID}/turn-directory`,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            status: 404,
+            json: {
+              success: false,
+              code: 'session_not_found',
+              error: 'Session not found',
+            },
+          })
+        : rejectUnexpectedFixtureRequest(route),
+  );
   // Registered after the fixture, so these run first and fall back to it.
   await page.route(
     `**/api/conversations/${THREAD_ID}/open`,
