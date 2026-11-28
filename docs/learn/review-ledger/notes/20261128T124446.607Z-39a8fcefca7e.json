@@ -1,0 +1,11 @@
+{
+  "revision": "6df12f12334ab5c51608df8e84dc23db21bfa337",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Independent semantic delta review of Browser test evidence against journey-profile.ts and run-journey-profiles.mjs: opt-in thresholded Event Timing preserves required instrumentation, revision/dirty-state binding and fixture/environment evidence limits. Unsupported observation is explicitly unavailable rather than zero-latency proof. No profiling endpoint, provider/device qualification or general performance guarantee is added. No prose change required; this is not whole-document recertification.","inputs":["docs/architecture/module-map.md","scripts/run-journey-profiles.mjs","tests/helpers/journey-profile.ts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Independent semantic delta review of relevant test/evidence guidance and testing-guide references: the additive diagnostic inputTiming measurement does not change verification selection, pre-push requirements, hosted qualification, promotion completion or freshness policy. Existing distinctions between structural checks and behavioral evidence remain accurate. No prose change required; no broad check or whole-document recertification is claimed.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Independent semantic delta review of verification definitions and generated-artifact semantics against the testing-guide addition: thresholded browser input receipts remain revision-bound, scoped diagnostic artifacts, not complete input coverage, broader gate membership or promotion-completion evidence. No operations runtime behavior changes and no prose update required; this is not whole-document recertification.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
+  ]
+}

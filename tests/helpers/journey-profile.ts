@@ -62,6 +62,16 @@ export async function installJourneyProfile(page: Page): Promise<void> {
       readsByKey: {} as Record<string, number>,
       documentId: String(performance.timeOrigin),
       longTasks: [] as { startTime: number; duration: number }[],
+      inputTimingSupported:
+        PerformanceObserver.supportedEntryTypes.includes('event'),
+      inputEvents: [] as {
+        name: string;
+        startTime: number;
+        duration: number;
+        processingStart: number;
+        processingEnd: number;
+        interactionId: number;
+      }[],
     };
     if (!PerformanceObserver.supportedEntryTypes.includes('longtask'))
       throw new Error('Journey profiling requires long-task observation');
@@ -78,6 +88,36 @@ export async function installJourneyProfile(page: Page): Promise<void> {
     observer.observe({ type: 'longtask', buffered: true });
     Object.defineProperty(state, 'flushLongTasks', {
       value: () => collectLongTasks(observer.takeRecords()),
+    });
+    const collectInputEvents = (entries: PerformanceEntry[]) => {
+      for (const entry of entries) {
+        const event = entry as PerformanceEventTiming;
+        if (!(event.interactionId > 0)) continue;
+        state.inputEvents.push({
+          name: event.name,
+          startTime: event.startTime,
+          duration: event.duration,
+          processingStart: event.processingStart,
+          processingEnd: event.processingEnd,
+          interactionId: event.interactionId,
+        });
+      }
+    };
+    const inputObserver = state.inputTimingSupported
+      ? new PerformanceObserver((entries) =>
+          collectInputEvents(entries.getEntries()),
+        )
+      : undefined;
+    const inputOptions: PerformanceObserverInit & {
+      durationThreshold: number;
+    } = {
+      type: 'event',
+      buffered: true,
+      durationThreshold: 16,
+    };
+    inputObserver?.observe(inputOptions);
+    Object.defineProperty(state, 'flushInputEvents', {
+      value: () => collectInputEvents(inputObserver?.takeRecords() ?? []),
     });
     (window as any).__stationJourneyProfile = state;
     const existing = (window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__;
@@ -148,6 +188,7 @@ export async function profileJourney(
     page.evaluate(() => {
       const state = (window as any).__stationJourneyProfile;
       state?.flushLongTasks();
+      state?.flushInputEvents();
       return {
         ...state,
         snapshotTimeMs: performance.now(),
@@ -195,6 +236,19 @@ export async function profileJourney(
           entry.startTime >= phaseStartMs &&
           entry.startTime + entry.duration <= endCounters.snapshotTimeMs,
       );
+      const inputEvents: {
+        name: string;
+        startTime: number;
+        duration: number;
+        processingStart: number;
+        processingEnd: number;
+        interactionId: number;
+      }[] = endCounters.inputEvents.filter(
+        (entry: { startTime: number; duration: number }) =>
+          entry.startTime >= phaseStartMs &&
+          entry.startTime + entry.duration <= endCounters.snapshotTimeMs,
+      );
+      const inputDurations = inputEvents.map((entry) => entry.duration);
       const metricBefore = Object.fromEntries(
         before.metrics.map((metric) => [metric.name, metric.value]),
       );
@@ -273,6 +327,18 @@ export async function profileJourney(
         })),
         workload,
         elapsedMs,
+        inputTiming: {
+          supported: endCounters.inputTimingSupported,
+          scope: 'final-document',
+          durationThresholdMs: 16,
+          observedEventCount: inputEvents.length,
+          observedInteractionCount: new Set(
+            inputEvents.map((entry) => entry.interactionId),
+          ).size,
+          worstObservedInteractionMs:
+            inputDurations.length > 0 ? Math.max(...inputDurations) : null,
+          events: inputEvents,
+        },
         responsiveness: {
           scope: 'final-document',
           phaseStartMs,
