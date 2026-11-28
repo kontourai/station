@@ -1,0 +1,11 @@
+{
+  "revision": "c431166389d55fd62b9516fccb1f98a06cf5cab9",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Verified context menu uses canonical Mark done / Reopen / Wake now / Discard draft nouns matching existing inbox docs.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Verified context menu uses canonical Mark done / Reopen / Wake now / Discard draft nouns matching existing inbox docs.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified context menu uses canonical Mark done / Reopen / Wake now / Discard draft nouns matching existing inbox docs.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

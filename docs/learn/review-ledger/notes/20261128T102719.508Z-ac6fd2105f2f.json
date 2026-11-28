@@ -1,0 +1,7 @@
+{
+  "revision": "c431166389d55fd62b9516fccb1f98a06cf5cab9",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Verified shared --touch-target-min token removes page-local responsive media query while preserving 44px touch targets.","inputs":["src-ui/src/components/chat-dock/ChatInboxHoverCard.css"]}
+  ]
+}
