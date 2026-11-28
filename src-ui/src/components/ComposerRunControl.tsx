@@ -3,6 +3,7 @@ import {
   cloneElement,
   isValidElement,
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useId,
@@ -13,6 +14,7 @@ import { ComposerChoice } from './ComposerChoice';
 import {
   ComposerChoiceSummary,
   ComposerRunSetupClose,
+  ComposerTextarea,
 } from './ComposerChoiceSummary';
 import { AgentIcon, agentIconEngineId } from './icons/AgentIcon';
 import {
@@ -39,6 +41,7 @@ export function ComposerRunControl({
   notice,
   description,
   closeHandle,
+  textareaRef,
 }: {
   label: string;
   /** The requested reasoning effort, shown after the model; absent when the engine default applies. */
@@ -55,6 +58,7 @@ export function ComposerRunControl({
    * Receives the panel's close, for a picker rendered outside the panel whose
    * choice opens a dialog that should replace it (an engine switch on a phone).
    */
+  textareaRef?: RefObject<HTMLTextAreaElement | null>;
   closeHandle?: { current: (() => void) | null };
 }) {
   const agent =
@@ -227,6 +231,8 @@ export function ComposerRunControl({
       )}
       <ResponsiveDialogSurface
         open={open}
+        preserveComposerFocus
+        composerTextareaRef={textareaRef}
         layer="popover"
         // A picker opened from a choice here replaces this panel rather than
         // stacking on it.
@@ -246,7 +252,9 @@ export function ComposerRunControl({
         <ComposerChoiceSummary.Provider value={publish}>
           <ComposerRunSetupClose.Provider value={close}>
             <div id={contentId} className="composer-run-panel__choices">
-              {children}
+              <ComposerTextarea.Provider value={textareaRef}>
+                {children}
+              </ComposerTextarea.Provider>
             </div>
           </ComposerRunSetupClose.Provider>
         </ComposerChoiceSummary.Provider>

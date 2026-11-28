@@ -31,9 +31,7 @@ const controls: Plugin = {
       'VoiceOrb',
       'ComposerIconAction',
       'ComposerStopButton',
-      'SessionModelPicker',
       'PortableDraftsMenu',
-      'AcpSessionModeChip',
       'FileMentionAutocomplete',
       'SessionReferencePicker',
       'ComposerAttachmentStrip',
@@ -68,13 +66,26 @@ const composerFixture = `
       const [input,setInput] = useState('one\\ntwo\\nthree\\nfour\\nfive');
       const [composerShown,setComposerShown] = useState(!window.startComposerHidden);
       const textareaRef=useRef(null);
+      const [pickerOpen,setPickerOpen]=useState(false);
+      const [model,setModel]=useState('gpt-5.5');
+      const [sessionMode,setSessionMode]=useState('build');
+      const [sent,setSent]=useState('');
+      const [selection,setSelection]=useState('');
+      const busy=window.composerFixtureBusy;
+      const modes=window.composerFixtureModels ? [{id:'build',name:'Build'},{id:'plan',name:'Plan'}] : [];
+      const models=window.composerFixtureModels ? [
+        {id:'gpt-5.5',name:'GPT-5.5'},
+        {id:'gpt-5.6',name:'GPT-5.6'},
+      ] : [];
       const noop=()=>{};
       return <>
         <style>{'.chat-dock__body[data-composer-hidden] > .chat-input { display: none; }'}</style>
         {!composerShown && <button onClick={()=>setComposerShown(true)}>Show composer</button>}
         <div className="chat-dock__body" data-composer-hidden={composerShown ? undefined : ''} style={{height:600,display:'flex',flexDirection:'column'}}>
         <div id="transcript" className="chat-messages" style={{flex:'1 1 0',minHeight:0,overflow:'auto',overflowAnchor:'none'}}><div style={{height:3000}}>Transcript</div></div>
-        <ChatInputArea activity={<><AgentScheduleNotes conversationId="fixture" refreshKey="settled"/><ScrollToBottomButton onClick={noop}/></>} agentSlug="station" sessionId="fixture" input={input} textareaRef={textareaRef} attachments={[]} disabled={false} turnInFlight={false} modelSupportsAttachments={false} fontSize={14} dockHeight={600} apiBase="http://station.test" canModelSelect={false} availableModels={[]} modelQuery={null} commandQuery={null} slashCommands={[]} onInputChange={setInput} onSend={noop} onCancel={noop} onClearInput={noop} selectAttachmentFiles={noop} onRemoveAttachment={noop} onClearAttachments={noop} onModelSelect={noop} onModelReset={noop} onModelClose={noop} onModelOpen={noop} onModelRuntimeOptionChange={noop} onApprovalModeChange={noop} onCommandSelect={noop} onCommandClose={noop} onHistoryUp={noop} onHistoryDown={noop} onShowStats={noop} updateFromInput={noop} closeAll={noop}/>
+        <output aria-label="Sent message" hidden={!sent}>{sent}</output>
+        <output aria-label="Model selection focus" hidden={!selection}>{selection}</output>
+        <ChatInputArea activity={<><AgentScheduleNotes conversationId="fixture" refreshKey="settled"/><ScrollToBottomButton onClick={noop}/></>} agentSlug="station" sessionId="fixture" input={input} textareaRef={textareaRef} attachments={[]} disabled={false} turnInFlight={!!busy} busyFollowUp={busy} busySteeringKind="native" busySteeringUnavailableReason={busy==='queue' ? 'The engine is finishing this turn.' : undefined} onQueueFollowUp={busy ? async()=>{setSent('queue');setInput('')} : undefined} modelSupportsAttachments={false} fontSize={14} dockHeight={600} apiBase="http://station.test" canModelSelect={models.length>0} availableModels={models} currentModel={models.length ? model : undefined} acpSessionModes={modes} acpCurrentModeId={sessionMode} onAcpSessionModeChange={setSessionMode} modelQuery={pickerOpen ? '' : null} commandQuery={null} slashCommands={[]} onInputChange={setInput} onSend={async(intent)=>{setSent(intent??input);setInput('')}} onCancel={noop} onClearInput={noop} selectAttachmentFiles={noop} onRemoveAttachment={noop} onClearAttachments={noop} onModelSelect={(choice)=>{setSelection(document.activeElement===textareaRef.current ? 'draft focused' : 'draft blurred');setModel(choice.id);setPickerOpen(false)}} onModelReset={noop} onModelClose={()=>setPickerOpen(false)} onModelOpen={()=>setPickerOpen(true)} onModelRuntimeOptionChange={noop} onApprovalModeChange={noop} onCommandSelect={noop} onCommandClose={noop} onHistoryUp={noop} onHistoryDown={noop} onShowStats={noop} updateFromInput={noop} closeAll={()=>setPickerOpen(false)}/>
         </div>
       </>;
     }
@@ -283,4 +294,203 @@ test.each([
         await browser.close();
       }
     }
+});
+
+test('viewport ticks resize a long draft without replacing the dock reservation observers', async () => {
+  const { browser, page } = await scrollBrowserFixture(
+    composerFixture,
+    [controls],
+    {},
+    async (page) => {
+      await page.addInitScript(`
+      window.dockObserverDisconnects = 0;
+      const watched = new WeakSet();
+      for (const Observer of [ResizeObserver, MutationObserver]) {
+        const observe = Observer.prototype.observe;
+        const disconnect = Observer.prototype.disconnect;
+        Observer.prototype.observe = function (target, ...options) {
+          if (target.matches?.('.chat-dock__body, .chat-input')) watched.add(this);
+          return observe.call(this, target, ...options);
+        };
+        Observer.prototype.disconnect = function () {
+          if (watched.has(this)) window.dockObserverDisconnects++;
+          disconnect.call(this);
+        };
+      }
+    `);
+    },
+  );
+  try {
+    await page.addStyleTag({ content: cascade });
+    const draft = page.locator('textarea');
+    const composer = page.locator('.chat-input');
+    await draft.fill(Array(30).fill('line').join('\n'));
+    const draftHeight = () =>
+      draft.evaluate((node) => Number.parseFloat(node.style.height));
+    const reservation = () =>
+      composer.evaluate((node) => Number.parseFloat(node.style.minHeight));
+    await expect.poll(draftHeight).toBe(160);
+    await expect.poll(reservation).toBeGreaterThan(0);
+    const disconnects = () =>
+      page.evaluate(() => Reflect.get(window, 'dockObserverDisconnects'));
+    const initial = await disconnects();
+    for (const height of [480, 420, 360]) {
+      // Simulate only the visible viewport changing, as during an IME slide.
+      await page.evaluate((height) => {
+        Object.defineProperty(window.visualViewport, 'height', {
+          configurable: true,
+          value: height,
+        });
+        window.visualViewport?.dispatchEvent(new Event('resize'));
+      }, height);
+      await expect.poll(draftHeight).toBe(height * 0.3);
+      expect(await reservation()).toBeGreaterThan(0);
+    }
+    expect(await disconnects()).toBe(initial);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('touch Send keeps focus through mobile submit concealment and keyboard Send still submits', async () => {
+  const { browser, page } = await scrollBrowserFixture(
+    composerFixture,
+    [controls],
+    { hasTouch: true, isMobile: true },
+  );
+  try {
+    await page.addStyleTag({ content: cascade });
+    const draft = page.locator('textarea');
+    const send = page.getByRole('button', { name: 'Send', exact: true });
+    const sent = page.getByLabel('Sent message');
+    await draft.fill('Touch draft');
+    await send.tap();
+    await expect.poll(() => draft.inputValue()).toBe('');
+    expect(await send.count()).toBe(0);
+    expect(
+      await draft.evaluate((node) => node === document.activeElement),
+    ).toBe(true);
+    expect(await sent.textContent()).toBe('Touch draft');
+
+    for (const key of ['Enter', 'Space']) {
+      await draft.fill(key);
+      await send.focus();
+      await page.keyboard.press(key);
+      await expect.poll(() => sent.textContent()).toBe(key);
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test.each(['steer', 'queue'])(
+  'touching send mode with %s capability keeps the draft focused',
+  async (busy) => {
+    const { browser, page } = await scrollBrowserFixture(
+      composerFixture,
+      [controls],
+      { hasTouch: true, isMobile: true },
+      (page) =>
+        page.addInitScript(
+          (busy) => Reflect.set(window, 'composerFixtureBusy', busy),
+          busy,
+        ),
+    );
+    try {
+      await page.addStyleTag({ content: cascade });
+      const draft = page.locator('textarea');
+      const mode = page.getByRole('button', { name: /^Send mode:/ });
+      const dialog = page.getByRole('dialog', { name: 'Send mode' });
+      await draft.tap();
+      await mode.tap();
+      expect(
+        await draft.evaluate((node) => node === document.activeElement),
+      ).toBe(true);
+      if (busy === 'steer') {
+        expect(await mode.getAttribute('aria-pressed')).toBe('true');
+        expect(await dialog.count()).toBe(0);
+        await mode.tap();
+        expect(await mode.getAttribute('aria-pressed')).toBe('false');
+        expect(
+          await draft.evaluate((node) => node === document.activeElement),
+        ).toBe(true);
+      } else {
+        await dialog.getByText('The engine is finishing this turn.').waitFor();
+        await page.keyboard.press('Escape');
+        await dialog.waitFor({ state: 'hidden' });
+        expect(
+          await draft.evaluate((node) => node === document.activeElement),
+        ).toBe(true);
+      }
+    } finally {
+      await browser.close();
+    }
+  },
+);
+
+test('Run setup keeps touch focus, restores focus during model selection, and traps keyboard focus', async () => {
+  const { browser, page } = await scrollBrowserFixture(
+    composerFixture,
+    [controls],
+    { hasTouch: true, isMobile: true },
+    (page) =>
+      page.addInitScript(() =>
+        Reflect.set(window, 'composerFixtureModels', true),
+      ),
+  );
+  try {
+    await page.addStyleTag({ content: cascade });
+    const draft = page.locator('textarea');
+    const trigger = page.getByTestId('run-setup-trigger');
+    const setup = page.getByRole('dialog', { name: 'Agent & model' });
+    await draft.tap();
+    await trigger.tap();
+    await setup.waitFor();
+    expect(await setup.getAttribute('aria-modal')).toBeNull();
+    expect(
+      await draft.evaluate((node) => node === document.activeElement),
+    ).toBe(true);
+    await setup.getByRole('button', { name: /Session mode: Build/ }).tap();
+    const modePicker = page.getByRole('dialog', { name: 'Session mode' });
+    await modePicker.getByRole('radio', { name: 'Plan', exact: true }).tap();
+    await modePicker.waitFor({ state: 'hidden' });
+    await setup.getByRole('button', { name: /Session mode: Plan/ }).waitFor();
+    expect(
+      await draft.evaluate((node) => node === document.activeElement),
+    ).toBe(true);
+
+    await setup.getByRole('button', { name: /^Engine & model:/ }).tap();
+    const picker = page.getByRole('dialog', { name: 'Model', exact: true });
+    await picker.getByRole('button', { name: 'GPT-5.6', exact: true }).tap();
+    await picker.waitFor({ state: 'hidden' });
+    expect(await page.getByLabel('Model selection focus').textContent()).toBe(
+      'draft focused',
+    );
+
+    await page.keyboard.press('Escape');
+    await setup.waitFor({ state: 'hidden' });
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    await setup.waitFor();
+    expect(await setup.getAttribute('aria-modal')).toBe('true');
+    expect(
+      await setup.evaluate((node) => node === document.activeElement),
+    ).toBe(true);
+    await page.keyboard.press('Tab');
+    const close = setup.getByRole('button', { name: 'Close settings' });
+    expect(
+      await close.evaluate((node) => node === document.activeElement),
+    ).toBe(true);
+    await page.keyboard.press('Shift+Tab');
+    expect(
+      await setup.evaluate((node) => node.contains(document.activeElement)),
+    ).toBe(true);
+    await page.keyboard.press('Escape');
+    await setup.waitFor({ state: 'hidden' });
+    await expect
+      .poll(() => trigger.evaluate((node) => node === document.activeElement))
+      .toBe(true);
+  } finally {
+    await browser.close();
+  }
 });

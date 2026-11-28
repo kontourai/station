@@ -31,6 +31,7 @@ export function AcpSessionModeSheet({
   return (
     <ResponsiveDialogSurface
       layer="popover"
+      preserveComposerFocus
       ariaLabel="Session mode"
       onClose={onClose}
       historyMode="entry"

@@ -777,13 +777,24 @@ export function ChatInputArea({
   // On a phone an engine switch opens the handoff picker, which replaces Run
   // setup rather than stacking over it (as choosing another Agent does).
   const runSetupClose = useRef<(() => void) | null>(null);
+  const modelReturnDraft = useRef<HTMLTextAreaElement | null>(null);
+  const restoreModelDraft = () => {
+    modelReturnDraft.current?.focus({ preventScroll: true });
+    modelReturnDraft.current = null;
+  };
+  const closeModel = () => {
+    restoreModelDraft();
+    onModelClose();
+  };
   const selectModel = (model: SelectableModel) => {
     if (isMobile && model.executionAgentId !== currentExecutionAgentId)
       runSetupClose.current?.();
+    restoreModelDraft();
     onModelSelect?.(model);
   };
   const resetModel = () => {
     if (isMobile && currentExecutionAgentId) runSetupClose.current?.();
+    restoreModelDraft();
     onModelReset?.();
   };
   const hasSendableDraft = Boolean(
@@ -846,6 +857,7 @@ export function ChatInputArea({
     chatReturnBehavior === 'send' ||
     (chatReturnBehavior === 'auto' && !coarsePointer);
   const submitPending = useRef(false);
+  const sendPointerDraft = useRef<HTMLTextAreaElement | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Send while a file is still uploading: the send waits for the upload and
   // goes by itself once every file is staged, never without its files. An
@@ -1119,6 +1131,10 @@ export function ChatInputArea({
   // The draft's two-line floor, written by the per-keystroke sizing below and
   // read by the reservation.
   const draftFloorRef = useRef(0);
+  const visualViewportHeightRef = useRef(visualViewport.height);
+  useLayoutEffect(() => {
+    visualViewportHeightRef.current = visualViewport.height;
+  }, [visualViewport.height]);
   const scheduleReserveRef = useRef<(() => void) | null>(null);
   // The draft could not be measured yet (the composer was hidden).
   const draftUnsizedRef = useRef(false);
@@ -1131,7 +1147,10 @@ export function ChatInputArea({
     const root = composerRootRef.current;
     if (!textarea || !root) return;
     const sizeIfShown = () => {
-      const floor = sizeDraft(textarea, visualViewport.height || dockHeight);
+      const floor = sizeDraft(
+        textarea,
+        visualViewportHeightRef.current || dockHeight,
+      );
       draftUnsizedRef.current = floor === null;
       if (floor !== null) draftFloorRef.current = floor;
     };
@@ -1319,7 +1338,6 @@ export function ChatInputArea({
     observeRows();
     const mutations = new MutationObserver((records) => {
       if (
-        draftUnsizedRef.current &&
         records.length > 0 &&
         records.every((record) => {
           if (record.type !== 'childList') return false;
@@ -1342,7 +1360,7 @@ export function ChatInputArea({
       mutations.disconnect();
       cleanup();
     };
-  }, [dockHeight, textareaRef, visualViewport.height]);
+  }, [dockHeight, textareaRef]);
 
   // Per keystroke (and per row that changes what the composer needs): the
   // textarea's own auto-height, then one coalesced reservation.
@@ -1382,21 +1400,39 @@ export function ChatInputArea({
   // shortcut stays dead.
   useEffect(() => () => setShortcutContext('composerFocused', false), []);
 
+  const keepDraftFocus = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (
+      event.button === 0 &&
+      document.activeElement === textareaRef.current &&
+      target instanceof Element &&
+      event.currentTarget.contains(target) &&
+      target.closest(
+        '.chat-input__send-btn, .chat-input__send-mode, .chat-input__clear, .chat-input__blocked-action, .composer-attachments button, .composer-run-control',
+      )
+    )
+      event.preventDefault();
+  };
+
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: delegates pointer focus protection for composer buttons.
     <div
       className="chat-input"
       data-surface="composer"
       // Composer popovers stay inside this column (ResponsiveDialogSurface).
       data-popover-boundary=""
       ref={composerRootRef}
+      onMouseDown={keepDraftFocus}
+      onPointerDown={keepDraftFocus}
     >
       {!childReply && modelPickerOpen && (
         <ResponsiveDialogSurface
           layer="popover"
           ariaLabel="Model"
           ariaLabelledBy={modelPickerTitleId}
-          onClose={onModelClose}
+          onClose={closeModel}
           historyMode="entry"
+          returnFocusTarget={modelReturnDraft.current ?? undefined}
           anchorRef={modelButtonRef}
           overlayClassName="composer-popover-overlay composer-popover-overlay--start"
           panelClassName="composer-popover-panel chat-input__model-popover-panel"
@@ -1457,7 +1493,7 @@ export function ChatInputArea({
                 onReset={resetModel}
                 resetDisabledReason={modelResetDisabledReason}
                 onRuntimeOptionChange={onModelRuntimeOptionChange}
-                onClose={onModelClose}
+                onClose={closeModel}
               />
             </React.Suspense>
           )}
@@ -1724,7 +1760,7 @@ export function ChatInputArea({
             }}
             onBlur={() => {
               setShortcutContext('composerFocused', false);
-              closeAll?.();
+              if (!modelPickerOpen) closeAll?.();
               // The file picker is portaled out of the composer, so it no
               // longer hides with it; close it like the other pickers.
               setMentionQuery(null);
@@ -2090,6 +2126,7 @@ export function ChatInputArea({
           <div className="composer-choices chat-input__settings">
             <ComposerRunControl
               closeHandle={runSetupClose}
+              textareaRef={textareaRef}
               label={[
                 agentLabel ?? 'Current Agent',
                 modelLabel !== 'Model' ? modelLabel : undefined,
@@ -2232,7 +2269,19 @@ export function ChatInputArea({
                 changedForConversation={Boolean(
                   currentExecutionAgentId || isOverride,
                 )}
-                onClick={canModelSelect ? onModelOpen : undefined}
+                onClick={
+                  canModelSelect
+                    ? (event) => {
+                        const textarea = textareaRef.current;
+                        modelReturnDraft.current =
+                          event.detail > 0 &&
+                          textarea === document.activeElement
+                            ? textarea
+                            : null;
+                        onModelOpen();
+                      }
+                    : undefined
+                }
                 aria-disabled={!canModelSelect}
                 className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
                 aria-haspopup="dialog"
@@ -2388,7 +2437,24 @@ export function ChatInputArea({
             >
               <button
                 type="button"
-                onClick={async () => {
+                onPointerDown={(event) => {
+                  const textarea = textareaRef.current;
+                  sendPointerDraft.current =
+                    event.button === 0 && textarea === document.activeElement
+                      ? textarea
+                      : null;
+                }}
+                onClick={async (event) => {
+                  const draft = sendPointerDraft.current;
+                  sendPointerDraft.current = null;
+                  if (
+                    event.detail > 0 &&
+                    draft &&
+                    draft === textareaRef.current &&
+                    draft !== document.activeElement
+                  ) {
+                    draft.focus({ preventScroll: true });
+                  }
                   if (workspaceRefused && !isOverLimit) {
                     await onStartNewChat?.(input, attachments);
                   } else if (
@@ -2487,22 +2553,26 @@ export function ChatInputArea({
                         : `Send mode: ${steeringSelected ? 'Steer' : 'Queue'}`
                     }
                     title={
-                      compactSendMode && busyFollowUp === 'steer'
+                      busyFollowUp === 'steer'
                         ? steeringSelected
                           ? 'Switch to Queue'
-                          : 'Switch to Steer'
-                        : (busySteeringUnavailableReason ??
-                          `Send mode: ${steeringSelected ? 'Steer' : 'Queue'}`)
+                          : busySteeringKind === 'safe-stop'
+                            ? 'Steer when safe'
+                            : 'Switch to Steer'
+                        : busySteeringUnavailableReason
                     }
-                    disabled={!!compactSendMode && busyFollowUp !== 'steer'}
                     aria-pressed={
-                      compactSendMode ? steeringSelected : undefined
+                      busyFollowUp === 'steer' ? steeringSelected : undefined
                     }
                     tabIndex={hideMobileSubmit ? -1 : 0}
-                    aria-haspopup={compactSendMode ? undefined : 'dialog'}
-                    aria-expanded={compactSendMode ? undefined : sendModeOpen}
+                    aria-haspopup={
+                      busyFollowUp === 'steer' ? undefined : 'dialog'
+                    }
+                    aria-expanded={
+                      busyFollowUp === 'steer' ? undefined : sendModeOpen
+                    }
                     onClick={() => {
-                      if (compactSendMode)
+                      if (busyFollowUp === 'steer')
                         setSendMode(steeringSelected ? 'queue' : 'steer');
                       else setSendModeOpen(true);
                     }}
@@ -2525,46 +2595,31 @@ export function ChatInputArea({
               />
             )}
           </div>
-          {sendModeOpen && !compactSendMode && hasSendableDraft && (
-            <ResponsiveDialogSurface
-              layer="popover"
-              ariaLabel="Send mode"
-              onClose={() => setSendModeOpen(false)}
-              overlayClassName="composer-popover-overlay composer-popover-overlay--end"
-              panelClassName="composer-popover-panel"
-            >
-              <Button
-                variant="ghost"
-                className="chat-input__mode-option"
-                type="button"
-                onClick={() => {
-                  setSendMode('queue');
-                  setSendModeOpen(false);
-                }}
+          {sendModeOpen &&
+            busyFollowUp !== 'steer' &&
+            (hasSendableDraft || compactSendMode) && (
+              <ResponsiveDialogSurface
+                layer="popover"
+                preserveComposerFocus
+                composerTextareaRef={textareaRef}
+                ariaLabel="Send mode"
+                onClose={() => setSendModeOpen(false)}
+                overlayClassName="composer-popover-overlay composer-popover-overlay--end"
+                panelClassName="composer-popover-panel"
               >
-                Queue for next turn
-              </Button>
-              <Button
-                variant="ghost"
-                className="chat-input__mode-option"
-                type="button"
-                disabled={busyFollowUp !== 'steer'}
-                onClick={() => {
-                  setSendMode('steer');
-                  setSendModeOpen(false);
-                }}
-              >
-                {busySteeringKind === 'native'
-                  ? 'Steer this turn'
-                  : 'Steer when safe'}
-              </Button>
-              {busySteeringUnavailableReason && (
+                <Button
+                  variant="ghost"
+                  className="chat-input__mode-option"
+                  disabled
+                >
+                  Steer this turn
+                </Button>
                 <p role="status" className="chat-input__mode-note">
-                  {busySteeringUnavailableReason}
+                  {busySteeringUnavailableReason ??
+                    'Steering unavailable for this draft'}
                 </p>
-              )}
-            </ResponsiveDialogSurface>
-          )}
+              </ResponsiveDialogSurface>
+            )}
         </div>
         {turnInFlight &&
           followUpPresentation?.effect &&

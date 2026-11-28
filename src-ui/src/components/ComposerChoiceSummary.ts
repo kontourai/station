@@ -1,4 +1,4 @@
-import { createContext } from 'react';
+import { createContext, type RefObject } from 'react';
 
 /** Choices publish their existing accessible labels; setup never re-resolves policy. */
 export const ComposerChoiceSummary = createContext<
@@ -16,3 +16,7 @@ export const ComposerChoiceSummary = createContext<
  * own dialog where two stacked overlays would not fit (a phone).
  */
 export const ComposerRunSetupClose = createContext<(() => void) | null>(null);
+
+export const ComposerTextarea = createContext<
+  RefObject<HTMLTextAreaElement | null> | undefined
+>(undefined);
