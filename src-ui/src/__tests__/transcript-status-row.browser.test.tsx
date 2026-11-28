@@ -326,10 +326,13 @@ for (const [width, viewport] of VIEWPORTS) {
             .top;
         });
       const before = await top();
+      const scrollTop = await transcript(page).evaluate((log) => log.scrollTop);
       const box = (await transcript(page).boundingBox())!;
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.wheel(0, -200);
-      await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
+      await expect
+        .poll(() => transcript(page).evaluate((log) => log.scrollTop))
+        .toBeLessThan(scrollTop);
       await frames(page);
       await page.mouse.wheel(0, 200);
       await frames(page);
@@ -365,7 +368,9 @@ for (const [width, viewport] of VIEWPORTS) {
       const box = (await transcript(page).boundingBox())!;
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.wheel(0, -8);
-      await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
+      await expect
+        .poll(() => transcript(page).evaluate((log) => log.scrollTop))
+        .toBeLessThan(before.scrollTop);
       await frames(page);
       // The end keeps the room: taking it away here would move the rows.
       expect(await statusRoom(page)).toBeGreaterThan(0);
