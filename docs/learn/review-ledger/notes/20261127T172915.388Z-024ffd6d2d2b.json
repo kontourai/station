@@ -1,0 +1,7 @@
+{
+  "revision": "5c9bb256b87317bb949f9d1af45c226d2a08154c",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Updated the preview description to match its Session inventory display after removing the combined Inbox status and Agents pane subscription section.","inputs":["docs/user/settings.md"]}
+  ]
+}

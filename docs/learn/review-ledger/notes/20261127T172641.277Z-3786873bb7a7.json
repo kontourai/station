@@ -1,0 +1,11 @@
+{
+  "revision": "5c9bb256b87317bb949f9d1af45c226d2a08154c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed persisted PR wakes during loss of read access and after restart. The watch retains queued delivery, rechecks authority, and emits one wake when access returns. Reviewed the child identity lookup and stable framed text on retry.","inputs":["src-server/services/orchestration/delegation-result-delivery.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed persisted PR wakes during loss of read access and after restart. The watch retains queued delivery, rechecks authority, and emits one wake when access returns. Reviewed the child identity lookup and stable framed text on retry.","inputs":["src-server/services/orchestration/delegation-result-delivery.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed persisted PR wakes during loss of read access and after restart. The watch retains queued delivery, rechecks authority, and emits one wake when access returns. Reviewed the child identity lookup and stable framed text on retry.","inputs":["src-server/services/orchestration/delegation-result-delivery.ts"]}
+  ]
+}

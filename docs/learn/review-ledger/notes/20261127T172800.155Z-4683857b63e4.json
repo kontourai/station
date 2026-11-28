@@ -1,0 +1,9 @@
+{
+  "revision": "5c9bb256b87317bb949f9d1af45c226d2a08154c",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the Coordinating Sessions preview against its consumer. It controls the Session inventory display. Durable wakes continue when the preview is off.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the Coordinating Sessions preview against its consumer. It controls the Session inventory display. Durable wakes continue when the preview is off.","inputs":["docs/user/settings.md"]}
+  ]
+}

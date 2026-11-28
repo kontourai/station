@@ -1793,7 +1793,7 @@ token. The route therefore also records the owner attribution the dispatch
 carried: `verified-bound` only for a bound caller acting for an authenticated
 owner, otherwise `unattributed-agent`. Delivery replays exactly that attribution
 and principal, which is no more than `send_to_session` allows the same caller.
-A child transition (today `settled`) is read from the persisted lifecycle fold
+Child settlement is read from the persisted lifecycle fold
 after the event bus publishes it, and again at startup. Each transition is one
 durable row in `EventStore`, holding the text composed from the child's stored
 output. A dispatched child turn that a Station restart interrupted settles nothing, so
@@ -1819,8 +1819,13 @@ only its own records: a row a read consumed or another interrupt also cancelled
 stays closed. An engine without mid-turn steer leaves the row pending
 until the parent's turn ends. A start is re-driven only into the Session it
 named, and a row that keeps failing or stays unconfirmed is settled
-`undeliverable` after five attempts. Remote and SSH children, hosted Stations,
-and `needs_input`/`blocked` transitions are not delivered. The
+`undeliverable` after five attempts. The same store records child requests that need the person. Session-message
+subscriptions persist an intent before sending, then bind it to the exact
+started or steered turn using the recorded delivery receipt. Pull request
+status subscriptions consume the feedback poller's observations without
+owning a feedback claim. They record each selected transition and its delivery
+row in the same write transaction. Remote and SSH children and hosted Stations
+do not use this local delivery. The
 [route-level integration test](../../src-server/routes/orchestration/__tests__/delegation-result-delivery.integration.test.ts)
 and the [runtime composition test](../../src-server/runtime/routes/__tests__/runtime-routes-delegation-result-delivery.test.ts)
 use recorded start and steer effects, not a real engine; the integration test
