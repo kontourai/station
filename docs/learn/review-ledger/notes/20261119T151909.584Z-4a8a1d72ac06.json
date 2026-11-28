@@ -1,0 +1,7 @@
+{
+  "revision": "71ca29256cc9861ef5657f690e724e02b898c57c",
+
+  "notes": [
+    {"path":"docs/conformance/station-runtime-conformance.md","note":"Regenerated both matrix outputs from the installed Strands 1.25.0 host. The checked diff changes only that host version. Probe status, lifecycle fidelity, limitations and VoltAgent evidence are unchanged.","inputs":["docs/conformance/station-runtime-conformance.md","docs/conformance/station-runtime-conformance.json"]}
+  ]
+}
