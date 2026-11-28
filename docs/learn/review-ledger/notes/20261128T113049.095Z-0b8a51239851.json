@@ -1,0 +1,7 @@
+{
+  "revision": "d56886ea2bb003ea3a0b55c1b0674b14a6d4b299",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed row Fork/Resend dispatch against Chat-owned readers, retained content and guarded destination selection. Existing fork intent, cancellation and open/navigation paths remain unchanged; no placement prose revision indicated. Historical measurements and unrelated placement claims excluded.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
