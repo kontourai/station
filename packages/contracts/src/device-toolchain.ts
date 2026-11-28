@@ -131,3 +131,13 @@ export interface DeviceToolchainStatus {
   agentAccess: boolean;
   platforms: DevicePlatformReadiness[];
 }
+
+export const DEVICE_SETUP_SETTINGS_PATH =
+  '/settings?view=advanced&highlight=device-setup';
+
+export interface DeviceAccessProposal {
+  id: string;
+  state: 'pending' | 'approved' | 'declined' | 'expired';
+  version: string;
+  expiresAt: number;
+}

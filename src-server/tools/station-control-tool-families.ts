@@ -80,6 +80,7 @@ export const STATION_TOOL_FAMILY_MEMBERS = {
     'device_screenshot',
     'device_snapshot',
     'device_terminate_app',
+    'request_device_agent_access',
   ],
   Evidence: [
     'get_answer_assessment_target',

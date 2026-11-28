@@ -56,6 +56,19 @@ const DEVICE_TOOL_IDS: readonly DeviceToolId[] = [
 ];
 
 const SENTINEL = '.install-complete';
+/**
+ * The last failed install of a tool, kept beside its versions so a restart
+ * still shows why the consented install is missing instead of a silent
+ * `not-installed`. Removed when an install starts and when one succeeds.
+ */
+const FAILURE_RECORD = '.last-failure.json';
+const FAILURE_REASONS: ReadonlySet<DeviceToolFailure> = new Set([
+  'package-manager-unavailable',
+  'install-failed',
+  'integrity-mismatch',
+  'entry-missing',
+  'publish-failed',
+]);
 const VERSION_DIR = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$/;
 const PHASES: readonly DeviceToolInstallPhase[] = [
   'preparing',
@@ -381,7 +394,7 @@ export class DeviceToolchain {
     }
     if (this.#isComplete(tool, requiredVersion))
       return { tool, state: 'installed', version: requiredVersion };
-    const failure = this.#failures.get(tool);
+    const failure = this.#failures.get(tool) ?? this.#readFailure(tool);
     if (failure) return failure;
     const older = this.installedVersions(tool).at(-1);
     if (older)
@@ -425,7 +438,7 @@ export class DeviceToolchain {
     if (existing) return { completion: existing.done };
     if (this.#isComplete(tool, this.#pins[tool].version))
       return { completion: Promise.resolve() };
-    this.#failures.delete(tool);
+    this.#clearFailure(tool);
     const progress: InstallProgress = {
       phase: 'preparing',
       startedAt: this.#now().toISOString(),
@@ -436,8 +449,9 @@ export class DeviceToolchain {
     const run = this.#maintenance.then(() => this.#install(tool, progress));
     this.#maintenance = run.catch(() => {});
     progress.done = run
+      .then(() => this.#clearFailure(tool))
       .catch((error: unknown) => {
-        this.#failures.set(tool, {
+        const failure: Extract<DeviceToolState, { state: 'failed' }> = {
           tool,
           state: 'failed',
           requiredVersion: this.#pins[tool].version,
@@ -452,13 +466,78 @@ export class DeviceToolchain {
                 detail: errorMessage(error),
                 retryable: true,
               }),
-        });
+        };
+        this.#failures.set(tool, failure);
+        this.#writeFailure(tool, failure);
       })
       .finally(() => {
         if (this.#installing.get(tool) === progress)
           this.#installing.delete(tool);
       });
     return { completion: progress.done };
+  }
+
+  #failurePath(tool: DeviceToolId): string {
+    return join(toolRoot(this.#stationHome, tool), FAILURE_RECORD);
+  }
+
+  /** A failure recorded for the REQUIRED version; anything else is ignored. */
+  #readFailure(
+    tool: DeviceToolId,
+  ): Extract<DeviceToolState, { state: 'failed' }> | undefined {
+    let value: unknown;
+    try {
+      value = JSON.parse(readFileSync(this.#failurePath(tool), 'utf8'));
+    } catch {
+      return undefined;
+    }
+    if (!value || typeof value !== 'object') return undefined;
+    const record = value as Record<string, unknown>;
+    if (
+      record.requiredVersion !== this.#pins[tool].version ||
+      typeof record.reason !== 'string' ||
+      !FAILURE_REASONS.has(record.reason as DeviceToolFailure) ||
+      typeof record.detail !== 'string' ||
+      typeof record.retryable !== 'boolean'
+    )
+      return undefined;
+    return {
+      tool,
+      state: 'failed',
+      requiredVersion: this.#pins[tool].version,
+      reason: record.reason as DeviceToolFailure,
+      detail: record.detail.slice(0, DETAIL_BYTES),
+      retryable: record.retryable,
+    };
+  }
+
+  #writeFailure(
+    tool: DeviceToolId,
+    failure: Extract<DeviceToolState, { state: 'failed' }>,
+  ): void {
+    try {
+      mkdirSync(toolRoot(this.#stationHome, tool), { recursive: true });
+      writeFileSync(
+        this.#failurePath(tool),
+        `${JSON.stringify({
+          requiredVersion: failure.requiredVersion,
+          reason: failure.reason,
+          detail: failure.detail.slice(0, DETAIL_BYTES),
+          retryable: failure.retryable,
+        })}\n`,
+      );
+    } catch {
+      // The in-memory failure still reports it until the next restart.
+    }
+  }
+
+  #clearFailure(tool: DeviceToolId): void {
+    this.#failures.delete(tool);
+    try {
+      rmSync(this.#failurePath(tool), { force: true });
+    } catch {
+      // An installed tool reads as installed whatever a stale record says.
+    }
   }
 
   async #install(tool: DeviceToolId, progress: InstallProgress): Promise<void> {

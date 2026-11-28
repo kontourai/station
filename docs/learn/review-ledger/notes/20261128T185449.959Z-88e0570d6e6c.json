@@ -1,0 +1,25 @@
+{
+  "revision": "e6b0b2a2accc6c3c678948631e0041daa2f155ec",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reviewed the preview toggle and device setup route against runtime composition and the Settings highlight behavior. The chat card displays the Station's pinned package version and requires an explicit operator decision. Focused Settings and chat tests cover the link and action. Android Nightly has not been exercised.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed managed-tool consent, missing-install recovery and restart handling against DeviceSetupWizard and DeviceToolchain. The wizard offers Install with saved consent. Process restarts retain a failure for the required version. Focused tests exercise both tools and the failed installer through fixtures.","inputs":["docs/guides/mobile-device-workspace.md","src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx","src-server/routes/device-toolchain.ts","src-server/runtime/routes/runtime-routes.ts","src-server/routes/device-agent.ts","src-server/services/devices/device-agent-authority.ts","src-server/tools/station-control-device-tools.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the not-installed case through both consented tool steps. Install reuses the existing consent action, and the retry and running states keep their previous controls.","inputs":["src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the not-installed case through both consented tool steps. Install reuses the existing consent action, and the retry and running states keep their previous controls.","inputs":["src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed the not-installed case through both consented tool steps. Install reuses the existing consent action, and the retry and running states keep their previous controls.","inputs":["src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"The Settings guide now documents the Device access requests in chat preview and Device setup deep link. Reviewed the Feature Preview guide’s toggle and registry description, and the Agent Efficiency guide’s pointer to Settings.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"The Settings guide now documents the Device access requests in chat preview and Device setup deep link. Reviewed the Feature Preview guide’s toggle and registry description, and the Agent Efficiency guide’s pointer to Settings.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/design/verified-action-replay.md","note":"The workspace guide now describes retrying a missing consented tool. Verified action replay retains its separate requirements for device control and evidence.","inputs":["docs/guides/mobile-device-workspace.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the device agent dispatcher and the preview refusal for chat proposals. Hosts without the route report unavailable. A host with the preview turned off returns the preview name and Settings path before creating a request.","inputs":["src-server/routes/device-agent.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed the device agent dispatcher and the preview refusal for chat proposals. Hosts without the route report unavailable. A host with the preview turned off returns the preview name and Settings path before creating a request.","inputs":["src-server/routes/device-agent.ts"]}
+  ]
+}

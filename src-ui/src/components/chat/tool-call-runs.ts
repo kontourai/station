@@ -25,12 +25,14 @@ import { transcriptMcpToolRef } from './mcp-app-tool-ref';
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
 import { isAppearanceProposalCall } from './appearance-proposal-result';
 import { claudeArtifactLinkOf } from './claude-artifact-link';
+import { isDeviceAccessProposalCall } from './device-access-proposal-result';
 
 /** A call shown as its own row rather than one line of a collapsed run. */
 function hasOwnCallRow(part: ToolCallLike): boolean {
   return (
     hasStationControlCallRow(part) ||
     isAppearanceProposalCall(part) ||
+    isDeviceAccessProposalCall(part) ||
     claudeArtifactLinkOf(part) !== undefined
   );
 }

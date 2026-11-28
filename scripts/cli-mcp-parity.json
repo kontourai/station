@@ -1731,6 +1731,10 @@
       "missing": 3427,
       "want": "Claims renew"
     },
+    "request_device_agent_access": {
+      "exempt": "agent-proposal",
+      "reason": "Creates a request in the calling agent’s chat for the Station operator to decide. People can enable access directly in Settings."
+    },
     "respond_to_task_request": {
       "cli": ["delegate respond"]
     },

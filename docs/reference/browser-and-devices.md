@@ -732,6 +732,18 @@ access in **Settings → Advanced → Browser & devices**. Disabling that opt-in
 and cannot be supplied in tool arguments. See the
 [device Agent control decision](../decisions/device-agent-control.md).
 
+When device tools return `agent-access-disabled`, they point to
+`request_device_agent_access` and the Settings link for Device setup. On
+personal hosts with the **Device access requests in chat** preview enabled,
+a bound Session can use that tool to create an operator decision in its
+chat. Approval enables access and starts installing the displayed
+`agent-device` version from npm. Use the proposal ID to check for
+`approved`, `declined`, or `expired`. Requests expire after ten minutes
+and are cleared on Station restart. An already-enabled Station returns
+`already-enabled` without creating a request. A Session with a restricted
+network can submit or check the proposal. Device control still requires an
+unrestricted Session.
+
 `device_list` lists accessible local and configured SSH-host devices and sessions opened by this
 conversation. `device_open` starts a stopped device asynchronously (a `starting`
 answer is not completed boot) or opens/joins its live session. Android boots can

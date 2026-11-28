@@ -1,0 +1,27 @@
+{
+  "revision": "9c6ead5c04f71b05121b8d975c1910bc783c6efb",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the restricted-session allowlist and literal proposal route. A restricted session may submit or read the device access proposal. The wildcard device control route still excludes restricted sessions. The policy test exercises both route decisions and tool selection. Other documented authority and delivery policies are unaffected by this delta.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the restricted-session allowlist and literal proposal route. A restricted session may submit or read the device access proposal. The wildcard device control route still excludes restricted sessions. The policy test exercises both route decisions and tool selection. Other documented authority and delivery policies are unaffected by this delta.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the restricted-session allowlist and literal proposal route. A restricted session may submit or read the device access proposal. The wildcard device control route still excludes restricted sessions. The policy test exercises both route decisions and tool selection. Other documented authority and delivery policies are unaffected by this delta.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the restricted-session allowlist and literal proposal route. A restricted session may submit or read the device access proposal. The wildcard device control route still excludes restricted sessions. The policy test exercises both route decisions and tool selection. Other documented authority and delivery policies are unaffected by this delta.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the restricted-session allowlist and literal proposal route. A restricted session may submit or read the device access proposal. The wildcard device control route still excludes restricted sessions. The policy test exercises both route decisions and tool selection. Other documented authority and delivery policies are unaffected by this delta.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the restricted-session allowlist and literal proposal route. A restricted session may submit or read the device access proposal. The wildcard device control route still excludes restricted sessions. The policy test exercises both route decisions and tool selection. Other documented authority and delivery policies are unaffected by this delta.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the restricted-session allowlist and literal proposal route. A restricted session may submit or read the device access proposal. The wildcard device control route still excludes restricted sessions. The policy test exercises both route decisions and tool selection. Other documented authority and delivery policies are unaffected by this delta.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Reviewed the restricted-session allowlist and literal proposal route. A restricted session may submit or read the device access proposal. The wildcard device control route still excludes restricted sessions. The policy test exercises both route decisions and tool selection. Other documented authority and delivery policies are unaffected by this delta.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the restricted-session allowlist and literal proposal route. A restricted session may submit or read the device access proposal. The wildcard device control route still excludes restricted sessions. The policy test exercises both route decisions and tool selection. Other documented authority and delivery policies are unaffected by this delta.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the shortened request description against proposal creation and lookup. The runtime supplies the preview refusal and settings path when needed. The request schema and device operation behavior remain as documented.","inputs":["src-server/tools/station-control-device-tools.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed the shortened request description against proposal creation and lookup. The runtime supplies the preview refusal and settings path when needed. The request schema and device operation behavior remain as documented.","inputs":["src-server/tools/station-control-device-tools.ts"]}
+  ]
+}

@@ -1,4 +1,5 @@
 import type {
+  DeviceAccessProposal,
   DeviceToolchainStatus,
   DeviceToolchainVersions,
   DeviceToolId,
@@ -274,4 +275,39 @@ export function useRunningAvds(
     enabled: sorted.length > 0,
     retry: false,
   });
+}
+
+export function useDeviceAccessProposal(scope: ApiRequestScope, id: string) {
+  const client = useQueryClient();
+  const key = ['device-access-proposal', scope.apiBase, scope.authorityKey, id];
+  const url = `${scope.apiBase}/api/mobile-devices/toolchain/agent-access-proposals/${encodeURIComponent(id)}`;
+  const proposal = useQuery<DeviceAccessProposal, DeviceToolchainRequestError>({
+    queryKey: key,
+    queryFn: async ({ signal }) =>
+      data<DeviceAccessProposal>(
+        await getJson(url, { requestScope: scope, signal }),
+      ),
+    refetchInterval: (query) =>
+      query.state.data?.state === 'pending' ? 3000 : false,
+    retry: false,
+  });
+  const decision = useMutation({
+    mutationFn: async (action: 'approve' | 'decline') =>
+      data<DeviceAccessProposal>(
+        await mutateJson(
+          url,
+          'POST',
+          { requestScope: scope },
+          { decision: action },
+        ),
+      ),
+    onSuccess: (settled) => {
+      client.setQueryData(key, settled);
+      void client.invalidateQueries({ queryKey: key });
+      void client.invalidateQueries({
+        queryKey: deviceToolchainStatusKey(scope),
+      });
+    },
+  });
+  return { proposal, decision };
 }

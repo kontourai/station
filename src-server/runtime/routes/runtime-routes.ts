@@ -156,6 +156,7 @@ import {
   deviceAccessFromShares,
   failClosedDeviceAccess,
 } from '../../services/devices/device-access.js';
+import { DeviceAccessProposals } from '../../services/devices/device-access-proposals.js';
 import { DeviceArtifactStaging } from '../../services/devices/device-app-artifacts.js';
 import { DeviceAutomation } from '../../services/devices/device-automation.js';
 import {
@@ -2003,6 +2004,8 @@ export function configureRuntimeRoutes(
     | ReturnType<typeof createDeviceArtifactRoutes>
     | undefined;
   let deviceLoopEnabled = () => false;
+  let accessProposals: DeviceAccessProposals | undefined;
+  let accessProposalsEnabled = () => false;
   let deviceHostRegistry: DeviceHostRegistry | undefined;
   let remoteDeviceHosts: RemoteDeviceHostServices | undefined;
   let browserProjectAuthorizer: BrowserProjectAuthorizer | undefined;
@@ -5223,6 +5226,14 @@ export function configureRuntimeRoutes(
       configuredHubUrl: configuredDeviceHubUrl,
     });
     deviceToolchainService = devices;
+    const accessPreview = context.featurePreviews.bind({
+      id: 'device-access-chat-approval',
+      label: 'Device access requests in chat',
+      description:
+        'Let agents ask the Station operator to allow device control.',
+    });
+    accessProposalsEnabled = () =>
+      accessPreview.select({ enabled: () => true, disabled: () => false });
     // D12: devices belong to the operator; admins/owners of a Project use
     // only the devices the operator shared with it. The membership authority
     // is declared further down; these closures read it per request.
@@ -5397,6 +5408,7 @@ export function configureRuntimeRoutes(
     const agentDeviceSurfaces = liveSurfaceRegistry;
     let agentDeviceAutomation: DeviceAutomation | undefined;
     if (agentDeviceSessions && agentDeviceSurfaces && deviceShareAccess) {
+      accessProposals = new DeviceAccessProposals(devices);
       agentDeviceAutomation = new DeviceAutomation({
         artifacts,
         projectRoot: (projectId) => {
@@ -5430,6 +5442,8 @@ export function configureRuntimeRoutes(
         createDeviceAgentRoutes({
           deviceLoopEnabled,
           agentAccessEnabled: () => devices.agentAccessEnabled(),
+          accessProposals,
+          accessProposalsEnabled,
           isInternalRequest: isStationInternalRequest,
           resolveCaller: (request) =>
             resolveStationControlCallerForRequest(
@@ -9692,6 +9706,7 @@ export function configureRuntimeRoutes(
       '/api/mobile-devices',
       createDeviceToolchainRoutes({
         service: deviceToolchainService!,
+        ...(accessProposals ? { accessProposals, accessProposalsEnabled } : {}),
         access: deviceShareAccess!,
         shares: deviceShareStore!,
         ...(deviceHostRegistry

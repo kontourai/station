@@ -366,6 +366,10 @@ const DEVICE_AGENT = {
 } as const satisfies StationControlToolPolicy;
 
 export const STATION_CONTROL_TOOL_POLICY = {
+  request_device_agent_access: {
+    ...DEVICE_AGENT,
+    routes: [post('/api/device-agent/request-access')],
+  },
   device_list: DEVICE_AGENT,
   device_open: DEVICE_AGENT,
   device_screenshot: DEVICE_AGENT,
@@ -2162,10 +2166,10 @@ export function stationControlToolPolicy(
  * (boards, claims, wake-ups, Task records, knowledge records), or an action a
  * person completes or approves (`terminal_run`, `propose_job`,
  * `propose_automation_source`, `propose_automation_rule`,
- * `propose_plugin_install`), or a notice to the person (`notify_user`).
+ * `propose_plugin_install`, `request_device_agent_access`), or a notice to the person (`notify_user`).
  *
  * Withheld, because Station would act outside the session's sandbox for it:
- * the device tools (a simulator, emulator or phone with its own network);
+ * device control (a simulator, emulator or phone with its own network);
  * `html_render` and `html_preview` (Station's Chromium); starting, steering
  * or reading other sessions (`send_message`, `delegate_task`,
  * `fork_conversation`, `run_independent_review` and the Task tools), whose
@@ -2260,6 +2264,7 @@ export const RESTRICTED_NETWORK_STATION_CONTROL_TOOLS: ReadonlySet<string> =
     'list_providers',
     'list_plugins',
     'propose_plugin_install',
+    'request_device_agent_access',
     'validate_plugin',
     'check_plugin_updates',
     'get_answer_assessment_target',
