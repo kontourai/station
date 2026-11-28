@@ -1,0 +1,9 @@
+{
+  "revision": "e408a4cb55719ad1e80199d476d2333da3b78c7a",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed the added Windows Nearby paragraph in the remote-access threat model against the automation ingress constraint. It authorizes no internet ingress, Funnel, webhook dispatch, automation execution, or merge action; hints remain untrusted and explicit pairing stays required. The cited Funnel refusal and pull-monitor alternative are unchanged. Source-impact review only; historical and current automation execution qualification is not refreshed.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the Windows provider registration and scan-admission clarification in the connect reference against Station/Device/Broker, saved Station terminology and kernel authority definitions. The new provider supplies only untrusted endpoint hints and introduces no new actor, saved-record kind, automatic pairing, controller activation or credential authority. Vocabulary definitions remain accurate. This is a narrow source-impact review, not new native or release qualification.","inputs":["docs/glossary.md","docs/reference/connect.md"]}
+  ]
+}

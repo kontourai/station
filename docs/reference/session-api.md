@@ -815,8 +815,12 @@ with `whenBusy: 'queue'`; a definitive unqueued refusal of a composer send
 restores the draft. A replay neither clears nor restores the composer.
 Legacy sessionStorage records lack a Station/authority identity and remain
 review-only, without automatic drain or reassignment to the current account.
-Offline steering can retain an already observed, authority-scoped head; without
-one the text stays in the composer.
+New hosts expose `steerHead` in the inbox snapshot. Pass it as the steer’s
+`expectedHead`. It identifies the running turn and stays valid while that turn
+streams; a different turn refuses it. A null value means there is no running
+turn to steer. Older hosts expose only `currentHead`. Offline steering can
+retain an already observed, authority-scoped head; without one the text stays
+in the composer.
 
 ### State the engine you expect
 

@@ -494,7 +494,11 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
   }, [profile]);
 
   useEffect(() => {
-    if (!profile?.isMobile || !profile.isTauri) return;
+    if (
+      !profile?.isTauri ||
+      (!profile.isMobile && profile.target !== 'windows')
+    )
+      return;
     let disposed = false;
     let unregister: (() => void) | undefined;
     void import('./native/connectionDiscovery').then((module) => {

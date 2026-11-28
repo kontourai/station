@@ -35,6 +35,14 @@ Selection enters host approval and identity verification before access or a
 saved connection, with exact-origin unencrypted consent for HTTP. Browsers do
 not scan subnets. Native iOS and Android 14+ use the
 system service browser, with bounded foreground scans and cancellation.
+Windows uses the native DNS-SD provider only after the selected, already-authorized
+Station admits preparation and browsing under the separate, default-off
+`desktop-nearby` Feature Preview. Admission checks that controller's exact origin;
+an advertisement never supplies credential authority. Disabling or unavailable
+admission starts no scan, while QR and address entry remain available. The
+foreground browse and shutdown are bounded; unconfirmed shutdown blocks another
+scan until restart. This does not discover multicast peers across a tailnet or
+change the existing explicit pairing and selected-controller boundaries.
 
 For temporary [native alternate-route admission](../design/station-routes.md#native-host-authorized-alternate-origins),
 the authenticated canonical anchor's owned HTTPS app-origin advertisement is

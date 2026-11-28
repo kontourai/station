@@ -510,6 +510,7 @@ export async function listConversationInbox(
   conversationId: string,
   opts?: ClientRequestOptions & {
     onHead?: (head: string) => void;
+    onSteerHead?: (head: string | null) => void;
     onQueueControls?: (supported: boolean, steerTarget?: string) => void;
   },
 ): Promise<ConversationInboxEntry[]> {
@@ -522,6 +523,7 @@ export async function listConversationInbox(
     data?: {
       entries?: ConversationInboxEntry[];
       currentHead?: unknown;
+      steerHead?: unknown;
       queueControls?: unknown;
       queueSteerTarget?: unknown;
     };
@@ -541,6 +543,14 @@ export async function listConversationInbox(
     result.data.currentHead.length <= 4096
   )
     opts?.onHead?.(result.data.currentHead);
+  const steerHead = result.data.steerHead;
+  if (steerHead === null) opts?.onSteerHead?.(null);
+  else if (
+    typeof steerHead === 'string' &&
+    steerHead.length > 0 &&
+    steerHead.length <= 4096
+  )
+    opts?.onSteerHead?.(steerHead);
   const target = result.data.queueSteerTarget;
   opts?.onQueueControls?.(
     result.data.queueControls === true,
@@ -561,11 +571,12 @@ export async function readConversationInboxHead(
   const read = await getJson(url, opts);
   const snapshot = (await readExecutionBody(read)) as {
     success?: boolean;
-    data?: { currentHead?: unknown };
+    data?: { currentHead?: unknown; steerHead?: unknown };
     error?: string;
     code?: string;
   };
-  const head = snapshot.data?.currentHead;
+  const steerHead = snapshot.data?.steerHead;
+  const head = steerHead === undefined ? snapshot.data?.currentHead : steerHead;
   if (
     !read.ok ||
     !snapshot.success ||

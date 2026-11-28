@@ -475,6 +475,7 @@
     "@cyclonedx/cyclonedx-npm": "6.0.1",
     "@kontourai/console": "^2.9.0",
     "@kontourai/station-supervisor": "^0.1.0",
+    "@napi-rs/keyring": "2.1.2",
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@playwright/test": "^1.65.0",
