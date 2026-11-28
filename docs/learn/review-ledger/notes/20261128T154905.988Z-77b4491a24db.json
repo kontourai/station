@@ -1,0 +1,7 @@
+{
+  "revision": "a20864f16718223491b4b1e7614129326a0623c3",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Updated account approval default guidance for all-engines default and per-engine overrides across supported engines.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/orchestration-service.ts","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

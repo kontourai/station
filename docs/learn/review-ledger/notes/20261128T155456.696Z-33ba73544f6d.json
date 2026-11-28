@@ -1,0 +1,7 @@
+{
+  "revision": "a20864f16718223491b4b1e7614129326a0623c3",
+
+  "notes": [
+    {"path":"docs/guides/commands.md","note":"Verified guides/commands.md remains accurate after adding regression tests for all-engines personal approval defaults.","inputs":["src-ui/src/__tests__/useActiveChatSessionMessaging.test.ts"]}
+  ]
+}

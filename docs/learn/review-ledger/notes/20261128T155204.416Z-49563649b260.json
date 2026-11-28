@@ -1,0 +1,7 @@
+{
+  "revision": "a20864f16718223491b4b1e7614129326a0623c3",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Verified tool-policy-delivery.md remains accurate after ComposerModeSheet supports saving personal defaults for all approval-knob engines.","inputs":["src-ui/src/components/badges/ComposerModeSheet.tsx"]}
+  ]
+}

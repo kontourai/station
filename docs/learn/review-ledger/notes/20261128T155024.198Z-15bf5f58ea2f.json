@@ -1,0 +1,31 @@
+{
+  "revision": "a20864f16718223491b4b1e7614129326a0623c3",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Verified citing docs remain accurate after expanding personal approval default lookup in useActiveChatSessionMessaging.ts to all approval-knob-supported engines.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

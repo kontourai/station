@@ -1,0 +1,7 @@
+{
+  "revision": "a20864f16718223491b4b1e7614129326a0623c3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Updated composer approval default resolution and Save-as-default behavior for account-wide and ACP-supported engine defaults.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

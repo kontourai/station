@@ -1,0 +1,13 @@
+{
+  "revision": "a20864f16718223491b4b1e7614129326a0623c3",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Verified citing docs remain accurate after adding all-engines and ACP approval default rows to settings-catalog.ts.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Verified citing docs remain accurate after adding all-engines and ACP approval default rows to settings-catalog.ts.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Verified citing docs remain accurate after adding all-engines and ACP approval default rows to settings-catalog.ts.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Verified citing docs remain accurate after adding all-engines and ACP approval default rows to settings-catalog.ts.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}
