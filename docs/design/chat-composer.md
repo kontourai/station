@@ -601,7 +601,13 @@ A hold opens Details on touch Home rows. In the mobile Inbox it selects a conver
 swipe tray, including availability, labels and pending state.
 With Sheet gestures preview enabled, mobile rows follow the finger on a left
 swipe and snap to reveal labelled actions. Only one row's tray stays open.
-Swiping only reveals; Snooze still opens its duration picker. Mark done is one
+Swiping only reveals; Snooze still opens its duration picker. With Inbox row
+actions preview enabled, desktop right-click (`ContextMenu` / `Shift+F10`)
+opens a point-anchored row menu (Pin to top / Unpin, View details, Copy
+chat/session/task ID, and triage actions), mobile selection adds Pin/Unpin and
+single-row ID copy, and pinned items stay in a Pinned shelf at the top of the
+inbox (waking a snoozed row on pin and preserving folded families and attention
+counts). Mark done is one
 verb over three records: with Open and Settled inbox enabled it settles an
 eligible conversation (the person's resolution, across devices) and hides a
 third-party Session per person on the host; otherwise, and for work still

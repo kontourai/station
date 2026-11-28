@@ -1,3 +1,4 @@
+import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { SNOOZE_ACTION_LABEL, snoozeChoices } from './snooze-presets';
 
 type SelectAction = (trigger: HTMLButtonElement) => void;
@@ -124,4 +125,19 @@ export function inboxRowActions({
     });
   }
   return actions;
+}
+
+export function inboxRowCopyTargets(item: HomeWorkItem) {
+  const primaryLabel = item.kind === 'task' ? 'Task ID' : 'Chat ID';
+  const primary = item.kind === 'task' ? item.id : item.conversationId;
+  const session =
+    item.kind === 'task' ? item.taskSessionId : item.orchestrationThreadId;
+  return [
+    ...(primary
+      ? [{ key: 'primary-id', label: primaryLabel, value: primary }]
+      : []),
+    ...(session && session !== primary
+      ? [{ key: 'session-id', label: 'Session ID', value: session }]
+      : []),
+  ];
 }

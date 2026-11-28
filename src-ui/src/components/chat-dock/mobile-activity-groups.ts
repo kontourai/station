@@ -4,6 +4,7 @@ import {
   type SnoozeMap,
   writeSnooze,
 } from '../../utils/activity-snooze-store';
+import type { readInboxPins } from '../../utils/inbox-pin-store';
 import {
   type LiveLaneId,
   partitionHomeWorkItems,
@@ -17,6 +18,7 @@ import type { WorkFactsById } from '../../views/home/work-facts';
 export { clearSnooze, readSnoozes, type SnoozeMap, writeSnooze };
 
 export type MobileActivityGroupId =
+  | 'pinned'
   | 'open'
   | 'external'
   | LiveLaneId
@@ -74,7 +76,14 @@ export function groupMobileActivity(
   snoozed: SnoozeMap = {},
   workFacts?: WorkFactsById,
   resolution?: ReadonlySet<string>,
+  pins: ReturnType<typeof readInboxPins> = {},
 ): MobileActivityGroup[] {
+  const pinnedAt = (item: HomeWorkItem) => {
+    const key = item.environmentId
+      ? JSON.stringify([item.environmentId, item.id])
+      : item.id;
+    return Object.hasOwn(pins, key) ? pins[key].pinnedAt : undefined;
+  };
   // `snoozeKeyFor` (below) and the partition's own snooze lookup are both
   // `item.id` — the partition reads the same key this module's writers use.
   const partition = partitionHomeWorkItems({
@@ -82,6 +91,8 @@ export function groupMobileActivity(
     now,
     workFacts,
     resolution,
+    shouldFoldMember: (member, root) =>
+      pinnedAt(member) === undefined || pinnedAt(root) !== undefined,
     snoozedUntil: new Map(Object.entries(snoozed)),
   });
 
@@ -114,6 +125,22 @@ export function groupMobileActivity(
       items: partition.settled,
     },
   ];
+  const pinned: HomeWorkItem[] = [];
+  for (const group of groups) {
+    if (group.id === 'snoozed') continue;
+    group.items = group.items.filter((item) => {
+      if (pinnedAt(item) === undefined) return true;
+      pinned.push(item);
+      return false;
+    });
+  }
+  if (pinned.length) {
+    pinned.sort(
+      (a, b) =>
+        (pinnedAt(b) ?? 0) - (pinnedAt(a) ?? 0) || b.updatedAt - a.updatedAt,
+    );
+    groups.unshift({ id: 'pinned', label: 'Pinned', items: pinned });
+  }
   return groups
     .filter(
       (group) =>

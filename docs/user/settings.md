@@ -405,12 +405,18 @@ for requirements, limits and error recovery.
 the command palette, and its **Monitoring** page in the command palette. It is
 off by default; a direct `/developer` link still opens when it is off.
 
-Enabling it also reveals five independent previews: **Flow delivery preview**,
+Enabling it also reveals six independent previews: **Flow delivery preview**,
 **Veritas readiness preview**, **Trust preview**, **Sheet gestures preview**,
-and **Station routes preview**. Each starts off and is saved on this device. The tools require both Developer tools and their own
-preview switch to be on. Turning Developer tools off makes them unavailable
+**Station routes preview**, and **Inbox row actions preview**. Each starts off
+and is saved on this device. The tools require both Developer tools and their
+own preview switch to be on. Turning Developer tools off makes them unavailable
 without clearing those saved choices. These device previews are separate from
 the Station-wide Feature previews above.
+
+**Inbox row actions preview** adds desktop right-click (`ContextMenu` /
+`Shift+F10`) row menus, durable chat/session/task ID copy, a desktop Details
+metadata sheet, mobile selection Pin/Unpin and single-row ID copy, and a Pinned
+shelf at the top of Chats (saved per authority on this browser).
 
 **Sheet gestures preview** adds a drag handle to the top edge of sheets that
 open from the bottom of a phone-width screen. Drag it up to expand the sheet to

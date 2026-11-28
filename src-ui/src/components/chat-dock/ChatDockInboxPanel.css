@@ -374,3 +374,21 @@
   inset-block-start: var(--k-space-1);
   pointer-events: none;
 }
+
+.inbox-row__title[data-title]:has(> .inbox-row__pin) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--k-space-1);
+}
+
+.inbox-row__pin {
+  grid-area: 1 / 2;
+  display: inline-flex;
+  align-self: start;
+  margin-block-start: var(--k-space-1);
+  color: var(--k-text-muted);
+}
+
+.inbox-row__pin svg {
+  inline-size: var(--k-space-3);
+  block-size: var(--k-space-3);
+}

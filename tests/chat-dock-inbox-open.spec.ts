@@ -610,3 +610,144 @@ test('This chat opens on the roomier side of the actual dock header', async ({
     if (side === 'above') await chooseChatRegionRow(page, 'Maximize');
   }
 });
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const width of [390, 1440] as const) {
+    test(`Inbox row actions at ${width}px in ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      const mobile = width === 390;
+      await page.setViewportSize({ width, height: mobile ? 844 : 900 });
+      await page.emulateMedia({ colorScheme: theme });
+      await mockChatShell(page);
+      await installMockOrchestrationSse(page);
+      await storeConversation(page);
+      await mockStoredTurnDirectory(page);
+      await page.route(/\/api\/me\/preferences(?:\?.*)?$/, (route) =>
+        route.request().method() === 'GET'
+          ? route.fulfill(
+              json({
+                success: true,
+                data: {
+                  schemaVersion: 1,
+                  values: { developerToolsEnabled: true },
+                },
+              }),
+            )
+          : rejectUnexpectedFixtureRequest(route),
+      );
+      await page.addInitScript(() => {
+        localStorage.setItem(
+          'station-device-settings-v1',
+          JSON.stringify({
+            version: 3,
+            values: {
+              developerToolsEnabled: true,
+              experimentalInboxRowActionsEnabled: true,
+            },
+          }),
+        );
+      });
+      await page.goto('/?dock=open&maximize=true');
+      await dismissSetupLauncher(page);
+      await page
+        .locator('.station-startup')
+        .first()
+        .waitFor({ state: 'hidden' });
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+
+      const inbox = mobile
+        ? page.getByRole('region', { name: 'Chats', exact: true })
+        : page.getByRole('complementary', { name: 'Chats', exact: true });
+      const row = inbox.getByRole('button', { name: /^Station session/i });
+      await expect(row).toBeVisible();
+      const screenshot = (stage: string) =>
+        capturePlacement(
+          page,
+          testInfo,
+          `inbox-actions-${width}-${theme}-${stage}`,
+        );
+      const pinned = inbox.getByRole('region', { name: /^Pinned(?: · 1)?$/ });
+      const details = page.getByRole('dialog', {
+        name: /^Details for Station session/i,
+      });
+      if (mobile) {
+        const touch = await page.context().newCDPSession(page);
+        const hold = async () => {
+          await row.scrollIntoViewIfNeeded();
+          const bounds = await row.boundingBox();
+          if (!bounds) throw new Error('The Inbox row must have bounds');
+          await touch.send('Input.dispatchTouchEvent', {
+            type: 'touchStart',
+            touchPoints: [
+              {
+                x: bounds.x + bounds.width / 2,
+                y: bounds.y + bounds.height / 2,
+              },
+            ],
+          });
+          try {
+            await expect(
+              page.getByRole('region', { name: 'Selected conversations' }),
+            ).toBeVisible();
+          } finally {
+            await touch.send('Input.dispatchTouchEvent', {
+              type: 'touchEnd',
+              touchPoints: [],
+            });
+          }
+        };
+        try {
+          await hold();
+          const selection = page.getByRole('region', {
+            name: 'Selected conversations',
+          });
+          for (const button of await selection.getByRole('button').all()) {
+            const bounds = await button.boundingBox();
+            expect(bounds?.height).toBeGreaterThanOrEqual(44);
+            expect(bounds?.width).toBeGreaterThanOrEqual(44);
+          }
+          await screenshot('selection');
+          await selection
+            .getByRole('button', { name: 'Pin', exact: true })
+            .click();
+          await expect(pinned.locator('.inbox-row__open')).toHaveCount(1);
+          await screenshot('pinned');
+          await hold();
+          await selection
+            .getByRole('button', { name: 'Details', exact: true })
+            .click();
+        } finally {
+          await touch.detach();
+        }
+      } else {
+        await row.click({ button: 'right' });
+        const menu = page.getByRole('menu', {
+          name: /^Actions for Station session/i,
+        });
+        await expect(
+          menu.getByRole('menuitem', { name: 'Pin to top' }),
+        ).toBeFocused();
+        await expect(
+          menu.getByRole('menuitem', { name: 'Copy chat ID' }),
+        ).toBeVisible();
+        await screenshot('menu');
+        await menu.getByRole('menuitem', { name: 'Pin to top' }).click();
+        await expect(pinned.locator('.inbox-row__open')).toHaveCount(1);
+        await screenshot('pinned');
+        await row.press('Shift+F10');
+        await menu.getByRole('menuitem', { name: 'View details' }).click();
+      }
+      await expect(details.getByText(THREAD_ID, { exact: true })).toBeVisible();
+      await expect(
+        details.getByRole('button', { name: 'Copy chat ID' }),
+      ).toBeVisible();
+      await expect(
+        details.getByRole('button', { name: 'Unpin', exact: true }),
+      ).toBeVisible();
+      await screenshot('details');
+      await details.getByRole('button', { name: 'Close details' }).click();
+      await expect(row).toBeFocused();
+    });
+  }
+}

@@ -300,3 +300,17 @@
 .chat-dock-inbox-details__menu .menu-row > .row-menu__hint {
   margin-inline-start: auto;
 }
+
+@media (pointer: coarse), (max-width: 600px) {
+  .chat-dock-inbox-details__menu .menu-row {
+    min-block-size: var(--touch-target-min, 44px);
+  }
+}
+
+.chat-dock-inbox-hover-card__id {
+  display: block;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -14,6 +14,7 @@ import { navigationStore } from '../../contexts/navigation-store';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { migrateSnoozeKey } from '../../utils/activity-snooze-store';
 import { migrateInboxDismissal } from '../../utils/inbox-dismissal-store';
+import { migrateInboxPin } from '../../utils/inbox-pin-store';
 import {
   chatTaskSessionId,
   type HomeWorkItem,
@@ -63,6 +64,7 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
         item.chatSessionId,
       );
       migrateSnoozeKey(oldId, item.id, now, namespace);
+      migrateInboxPin(oldId, item.id, namespace);
       migrateInboxDismissal(oldId, item.id, namespace);
     }
   }, [items, workFacts, now, namespace]);
@@ -87,11 +89,15 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
     );
     const compare = (a: HomeWorkItem, b: HomeWorkItem) =>
       (ranks.get(a.id) ?? states.length) - (ranks.get(b.id) ?? states.length);
-    return inboxGroups.map((group) => ({
-      ...group,
-      items: [...group.items].sort(compare),
-      ...(group.older ? { older: [...group.older].sort(compare) } : {}),
-    }));
+    return inboxGroups.map((group) =>
+      group.id === 'pinned'
+        ? group
+        : {
+            ...group,
+            items: [...group.items].sort(compare),
+            ...(group.older ? { older: [...group.older].sort(compare) } : {}),
+          },
+    );
   }, [inboxGroups, scope.items, scope.pullRequestFilter, workFacts]);
   const openChatIds = useMemo(
     () =>
@@ -278,6 +284,20 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
       // A settled row stays listed (under Settled) and keeps its focus.
       onSettle: (conversationId: string, settled: boolean) =>
         dismissals.settle(conversationId, settled),
+      canCloseChat: (item: HomeWorkItem) =>
+        Boolean(
+          onCloseChat &&
+            item.chatSessionId &&
+            openChatIds.has(item.chatSessionId),
+        ),
+      onCloseChat: onCloseChat
+        ? (item: HomeWorkItem, action: HTMLButtonElement) => {
+            if (!item.chatSessionId || !openChatIds.has(item.chatSessionId))
+              return;
+            beforeRemoval(action);
+            onCloseChat(item.chatSessionId);
+          }
+        : undefined,
       onDraftDiscarded: (item: HomeWorkItem, action: HTMLButtonElement) => {
         if (action.closest('.inbox-row')?.contains(document.activeElement))
           beforeRemoval(action);

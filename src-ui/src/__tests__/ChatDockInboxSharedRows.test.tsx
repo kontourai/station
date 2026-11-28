@@ -1,4 +1,11 @@
-import { useInboxWorkingCount } from '../components/chat-dock/useInboxGroups';
+import { groupMobileActivity } from '../components/chat-dock/mobile-activity-groups';
+import {
+  useInboxNeedsYouCount,
+  useInboxWorkingCount,
+} from '../components/chat-dock/useInboxGroups';
+import { ToastProvider, toastStore } from '../contexts/ToastContext';
+import { writeSnooze } from '../utils/activity-snooze-store';
+import { pinInboxItem, readInboxPins } from '../utils/inbox-pin-store';
 
 // @vitest-environment jsdom
 
@@ -37,6 +44,7 @@ import { FOLD_FIXTURES } from '../../../tests/helpers/session-summary-fold-fixtu
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import {
   InboxRow,
+  InboxTaskRow,
   inboxRowIconAgent,
 } from '../components/chat-dock/ChatDockInboxRows';
 import { MobileInboxPanel } from '../components/chat-dock/MobileInboxPanel';
@@ -48,6 +56,13 @@ import { buildWorkFacts } from '../views/home/work-facts';
 import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
 const NOW = Date.parse('2026-08-18T12:00:00Z');
+
+function enableInboxRowActions() {
+  deviceSettingsStore.merge({
+    developerToolsEnabled: true,
+    experimentalInboxRowActionsEnabled: true,
+  });
+}
 
 function workItem(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
   return {
@@ -63,6 +78,20 @@ function workItem(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
     chatSessionId: 'shared',
     ...overrides,
   };
+}
+
+function AttentionCount({
+  items,
+  facts,
+}: {
+  items: HomeWorkItem[];
+  facts: ReturnType<typeof buildWorkFacts>;
+}) {
+  return (
+    <output aria-label="Attention">
+      {useInboxNeedsYouCount(items, NOW, facts)}
+    </output>
+  );
 }
 
 function WorkingChatCount({
@@ -102,20 +131,27 @@ function renderPanelHost(
   item: HomeWorkItem,
   onCloseChat = vi.fn(),
   agents?: typeof AGENTS,
+  otherItems: HomeWorkItem[] = [],
 ) {
-  return render(
-    <ChatDockInboxPanel
-      items={[item]}
-      activeChatSessionId={null}
-      openChatSessionIds={[item.chatSessionId ?? item.id]}
-      onFocusChat={vi.fn()}
-      onOpenConversation={vi.fn()}
-      onOpenSession={vi.fn()}
-      onCloseChat={onCloseChat}
-      onOpenHistory={vi.fn()}
-      now={NOW}
-      agents={agents}
-    />,
+  return renderWithIsolatedConnections(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <ChatDockInboxPanel
+        items={[item, ...otherItems]}
+        activeChatSessionId={null}
+        openChatSessionIds={[item.chatSessionId ?? item.id]}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={onCloseChat}
+        onOpenHistory={vi.fn()}
+        now={NOW}
+        agents={agents}
+      />
+    </QueryClientProvider>,
   );
 }
 
@@ -935,6 +971,266 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expect(container.querySelector('.inbox-row__time')).toBeNull();
   });
 
+  it('keeps the existing row actions when the Inbox preview is off', () => {
+    renderPanelHost(workItem({ conversationId: 'chat-id' }));
+    const row = screen.getByRole('button', { name: /^Shared row title/ });
+    fireEvent.contextMenu(row);
+    fireEvent.keyDown(row, { key: 'ContextMenu' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Shared row title' }),
+    );
+    expect(screen.getByRole('menuitem', { name: 'Mark done' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Pin to top' })).toBeNull();
+  });
+
+  it('opens a desktop row menu with right-click and keyboard, then shows details and suppresses the hover card', async () => {
+    enableInboxRowActions();
+    const item = workItem({
+      conversationId: 'chat-id',
+      orchestrationThreadId: 'session-id',
+    });
+    renderPanelHost(item);
+    const row = () => screen.getByRole('button', { name: /^Shared row title/ });
+    act(() => row().focus());
+    expect(await screen.findByRole('tooltip')).toBeTruthy();
+    fireEvent.contextMenu(row(), { clientX: 20, clientY: 30 });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    const menu = () =>
+      screen.getByRole('menu', { name: 'Actions for Shared row title' });
+    fireEvent.click(
+      within(menu()).getByRole('menuitem', { name: 'Pin to top' }),
+    );
+    const pinned = screen.getByRole('region', { name: /^Pinned(?: · 1)?$/ });
+    expect(
+      within(pinned).getByRole('button', { name: /Shared row title.*Pinned/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByRole('button', { name: /^Shared row title/ }),
+    ).toHaveLength(1);
+    fireEvent.keyDown(row(), { key: 'ContextMenu' });
+    fireEvent.click(
+      within(menu()).getByRole('menuitem', { name: 'View details' }),
+    );
+    const details = await screen.findByRole('dialog', {
+      name: 'Details for Shared row title',
+    });
+    expect(within(details).getByText('chat-id')).toBeTruthy();
+    expect(within(details).getByText('session-id')).toBeTruthy();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.click(
+      within(details).getByRole('button', { name: 'Close details' }),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(row()));
+    fireEvent.keyDown(row(), { key: 'F10', shiftKey: true });
+    fireEvent.click(within(menu()).getByRole('menuitem', { name: 'Unpin' }));
+    expect(
+      screen.queryByRole('region', { name: /^Pinned(?: · 1)?$/ }),
+    ).toBeNull();
+  });
+
+  it('copies both conversation IDs and omits copy actions for a local draft key', async () => {
+    enableInboxRowActions();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const show = (item: HomeWorkItem) => (
+      <ToastProvider>
+        <InboxRow
+          item={item}
+          now={NOW}
+          onActivate={vi.fn()}
+          isSnoozed={false}
+          isCurrent={false}
+          hoverCard={false}
+        />
+      </ToastProvider>
+    );
+    try {
+      const { rerender } = render(
+        show(
+          workItem({
+            conversationId: 'chat-id',
+            orchestrationThreadId: 'session-id',
+          }),
+        ),
+      );
+      const open = () =>
+        fireEvent.contextMenu(
+          screen.getByRole('button', { name: /^Shared row title/ }),
+        );
+      open();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copy chat ID' }));
+      await waitFor(() =>
+        expect(writeText).toHaveBeenLastCalledWith('chat-id'),
+      );
+      open();
+      fireEvent.click(
+        screen.getByRole('menuitem', { name: 'Copy session ID' }),
+      );
+      await waitFor(() =>
+        expect(writeText).toHaveBeenLastCalledWith('session-id'),
+      );
+      rerender(
+        show(
+          workItem({
+            lifecycleLabel: 'Draft',
+            chatSessionId: 'local-tab-only',
+          }),
+        ),
+      );
+      open();
+      expect(screen.getByRole('menuitem', { name: 'Pin to top' })).toBeTruthy();
+      expect(screen.queryByRole('menuitem', { name: /^Copy/ })).toBeNull();
+    } finally {
+      if (original) Object.defineProperty(navigator, 'clipboard', original);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+      toastStore.clear();
+    }
+  });
+
+  it('copies task and session IDs from the desktop task menu and reports success', async () => {
+    enableInboxRowActions();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    toastStore.clear();
+    const item = workItem({
+      kind: 'task',
+      id: 'task-id',
+      taskSessionId: 'task-session',
+    });
+    try {
+      render(
+        <ToastProvider>
+          <InboxTaskRow
+            isSnoozed={false}
+            item={item}
+            now={NOW}
+            onActivate={vi.fn()}
+          />
+        </ToastProvider>,
+      );
+      const row = () =>
+        screen.getByRole('button', { name: /^Open task Shared row title/ });
+      const select = (name: string) =>
+        fireEvent.click(screen.getByRole('menuitem', { name }));
+      fireEvent.contextMenu(row());
+      select('Copy task ID');
+      await waitFor(() =>
+        expect(toastStore.getSnapshot().at(-1)?.message).toBe(
+          'Copied to clipboard',
+        ),
+      );
+      fireEvent.keyDown(row(), { key: 'F10', shiftKey: true });
+      select('Copy session ID');
+      await waitFor(() =>
+        expect(writeText.mock.calls).toEqual([['task-id'], ['task-session']]),
+      );
+      fireEvent.keyDown(row(), { key: 'ContextMenu' });
+      select('Pin to top');
+      expect(row().getAttribute('aria-label')).toContain('Pinned');
+      fireEvent.contextMenu(row());
+      select('Unpin');
+      expect(row().getAttribute('aria-label')).not.toContain('Pinned');
+    } finally {
+      if (original) Object.defineProperty(navigator, 'clipboard', original);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+      toastStore.clear();
+    }
+  });
+
+  it('offers Pin and identity actions in mobile selection and Details', async () => {
+    enableInboxRowActions();
+    renderSheetHost(
+      workItem({
+        conversationId: 'mobile-chat',
+        orchestrationThreadId: 'mobile-session',
+      }),
+    );
+    const selectRow = () => {
+      const row = screen.getByRole('button', { name: /^Shared row title/ });
+      vi.useFakeTimers();
+      try {
+        fireEvent.pointerDown(row, { pointerType: 'touch', button: 0 });
+        act(() => vi.advanceTimersByTime(500));
+        fireEvent.pointerUp(row, { pointerType: 'touch' });
+        fireEvent.click(row);
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+    selectRow();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy ID' }));
+    expect(screen.getByRole('menuitem', { name: 'Copy chat ID' })).toBeTruthy();
+    expect(
+      screen.getByRole('menuitem', { name: 'Copy session ID' }),
+    ).toBeTruthy();
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: 'Escape',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Pin' }));
+    expect(
+      await screen.findByRole('region', { name: /^Pinned(?: · 1)?$/ }),
+    ).toBeTruthy();
+    selectRow();
+    expect(screen.getByRole('button', { name: 'Unpin' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    const sheet = await screen.findByRole('dialog', {
+      name: 'Details for Shared row title',
+    });
+    expect(within(sheet).getByText('mobile-chat')).toBeTruthy();
+    expect(within(sheet).getByText('mobile-session')).toBeTruthy();
+    expect(
+      within(sheet).getByRole('button', { name: 'Copy chat ID' }),
+    ).toBeTruthy();
+    expect(
+      within(sheet).getByRole('button', { name: 'Copy session ID' }),
+    ).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Unpin' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('region', { name: /^Pinned(?: · 1)?$/ }),
+      ).toBeNull(),
+    );
+  });
+
+  it('places Pinned above a saved section order and wakes a row when pinning it', () => {
+    enableInboxRowActions();
+    deviceSettingsStore.set('inboxSections', {
+      snoozed: true,
+      earlier: false,
+      order: ['running', 'snoozed'],
+    });
+    writeSnooze('chat:shared', Date.now() + 60_000, NOW);
+    renderPanelHost(workItem(), undefined, undefined, [
+      workItem({
+        id: 'other-running',
+        chatSessionId: 'other',
+        title: 'Other running chat',
+      }),
+    ]);
+    const snoozed = screen.getByRole('region', { name: /^Snoozed/ });
+    fireEvent.contextMenu(
+      within(snoozed).getByRole('button', { name: /^Shared row title/ }),
+    );
+    expect(screen.getByRole('menuitem', { name: 'Unsnooze' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin to top' }));
+    expect(
+      screen
+        .getAllByRole('region')
+        .find((region) => region.classList.contains('chat-dock-inbox__group')),
+    ).toBe(screen.getByRole('region', { name: /^Pinned(?: · 1)?$/ }));
+    expect(screen.getByRole('region', { name: 'Working' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: /^Snoozed/ })).toBeNull();
+  });
+
   it('a selected phone row snoozes from its Details sheet', async () => {
     renderSheetHost(workItem());
     expect(
@@ -1435,3 +1731,65 @@ it.each([0, 1, 2])(
       ).toBeTruthy();
   },
 );
+
+it('orders visible pins by timestamp and recency without duplicating folded members', () => {
+  const root = workItem({ id: 'root' });
+  const child = workItem({ id: 'child', updatedAt: NOW });
+  const newest = workItem({ id: 'newest', updatedAt: NOW - 1 });
+  const snoozed = workItem({ id: 'snoozed' });
+  const items = [root, child, newest, snoozed];
+  const facts = new Map([['child', { runRootId: 'root' }]]);
+  const grouped = (pins: ReturnType<typeof readInboxPins>) =>
+    groupMobileActivity(
+      items,
+      NOW,
+      { snoozed: NOW + 1 },
+      facts,
+      undefined,
+      pins,
+    );
+  const withChild = grouped({
+    child: { pinnedAt: 20 },
+    newest: { pinnedAt: 20 },
+    snoozed: { pinnedAt: 30 },
+  });
+  expect(withChild[0].id).toBe('pinned');
+  expect(withChild[0].items).toEqual([child, newest]);
+  expect(withChild.find((group) => group.id === 'running')?.items).toEqual([
+    root,
+  ]);
+  expect(withChild[0].childrenById?.has('root')).toBe(false);
+  expect(withChild.find((group) => group.id === 'snoozed')?.items).toEqual([
+    snoozed,
+  ]);
+
+  const withRoot = grouped({
+    root: { pinnedAt: 30 },
+    child: { pinnedAt: 20 },
+    newest: { pinnedAt: 25 },
+  });
+  expect(withRoot[0].items).toEqual([root, newest]);
+  expect(withRoot[0].childrenById?.get('root')).toEqual([child]);
+  expect(withRoot.flatMap((group) => group.items)).not.toContain(child);
+});
+
+it('continues counting a folded approval when its root is pinned', () => {
+  localStorage.clear();
+  enableInboxRowActions();
+  const root = workItem({ id: 'attention-root' });
+  const child = workItem({
+    id: 'attention-child',
+    lifecycleLabel: 'Needs attention',
+  });
+  const facts = new Map([[child.id, { runRootId: root.id }]]);
+  render(<AttentionCount items={[root, child]} facts={facts} />);
+  expect(screen.getByRole('status', { name: 'Attention' }).textContent).toBe(
+    '1',
+  );
+  act(() => pinInboxItem(root));
+  expect(screen.getByRole('status', { name: 'Attention' }).textContent).toBe(
+    '1',
+  );
+  localStorage.clear();
+  deviceSettingsStore.reloadFromStorage();
+});

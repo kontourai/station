@@ -17,7 +17,10 @@ import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { useConversationOnScreen } from '../../contexts/conversation-on-screen-store';
 import { useSessionWorkClaims } from '../../contexts/WorkClaimsContext';
 import { useTranscriptWindowPrefetch } from '../../hooks/orchestration/useTranscriptWindowPrefetch';
-import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
+import {
+  type ContextMenuPoint,
+  useContextMenuGesture,
+} from '../../hooks/useContextMenuGesture';
 import { useDocumentFocused } from '../../hooks/useDocumentFocused';
 import { useSwipeActions } from '../../hooks/useSwipeActions';
 import { agentMark, workIdentityMarks } from '../../utils/identity-marks';
@@ -39,14 +42,21 @@ import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
 import { type WorkStatus, workStatusText } from '../../views/home/work-status';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
+import {
+  ContextMenu,
+  type ContextMenuAction,
+  contextMenuAnchor,
+} from '../ContextMenu';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import {
   CheckGlyph,
+  CopyGlyph,
   DiscardGlyph,
   EditGlyph,
   MessageGlyph,
   MoreGlyph,
+  PinGlyph,
   RefreshGlyph,
   ReturnGlyph,
   TimeGlyph,
@@ -69,6 +79,7 @@ import {
 import { inboxRowChips } from '../inbox-row/inbox-row-chips';
 import { rowProjectMarks } from '../inbox-row/row-project-marks';
 import { UnconfirmedDeliveryFlag } from '../inbox-row/UnconfirmedDeliveryFlag';
+import { useInboxRowIdentityActions } from '../inbox-row/useInboxRowIdentityActions';
 import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
 import { WorkItemFamily } from '../inbox-row/WorkItemFamily';
 import { LazyBoundary } from '../LazyBoundary';
@@ -417,6 +428,68 @@ function inboxRowMenuItems(actions: readonly InboxRowAction[]): RowMenuItem[] {
   });
 }
 
+function inboxContextActions(
+  actions: readonly InboxRowAction[],
+  trigger: HTMLButtonElement,
+  doneLabel?: string,
+): ContextMenuAction[] {
+  return inboxRowMenuItems(actions).flatMap((action) => {
+    if (action.id === 'open' || action.disabled) return [];
+    const label =
+      action.id === 'done'
+        ? (doneLabel ?? action.label)
+        : action.id === 'snooze'
+          ? 'Unsnooze'
+          : action.id === 'discard-unsent'
+            ? 'Discard unsent draft'
+            : action.label;
+    return [
+      {
+        key: action.id,
+        label,
+        tone: action.danger ? 'danger' : undefined,
+        onSelect: () => action.onSelect(trigger),
+      },
+    ];
+  });
+}
+
+function isContextMenuKey(event: React.KeyboardEvent) {
+  return event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10');
+}
+
+function InboxIdentityCommands({
+  actions,
+}: {
+  actions: readonly ContextMenuAction[];
+}) {
+  return (
+    <div className="menu-group">
+      {actions.map((action) => (
+        <Button
+          key={action.key}
+          variant="ghost"
+          className="menu-row"
+          onClick={action.onSelect}
+        >
+          <span className="menu-row__glyph" aria-hidden="true">
+            {action.key === 'pin' ? <PinGlyph /> : <CopyGlyph />}
+          </span>
+          {action.label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function InboxPinIndicator() {
+  return (
+    <span className="inbox-row__pin" aria-hidden="true">
+      <PinGlyph />
+    </span>
+  );
+}
+
 function InboxCommandButton({
   action,
   placement,
@@ -473,6 +546,7 @@ interface InboxRowProps {
   isSnoozed: boolean;
   now: number;
   onActivate: (item: HomeWorkItem) => void;
+  onCloseChat?: (item: HomeWorkItem, trigger: HTMLButtonElement) => void;
   /** Title and project on the left, with status and one time on the right. */
   compact?: boolean;
   actionsOnHold?: boolean;
@@ -495,6 +569,7 @@ interface InboxRowProps {
    * Absent offers neither.
    */
   done?: {
+    contextLabel?: string;
     done: boolean;
     pending?: boolean;
     onSelect: (action: HTMLButtonElement) => void;
@@ -610,7 +685,7 @@ function useHasUnsentComposerDraft(item: HomeWorkItem): boolean {
  * size of its bold rendering (an invisible bold copy, `data-title`, laid in
  * the same grid cell by CSS), whichever weight is showing.
  */
-function InboxRowTitle({ title }: { title: string }) {
+function InboxRowTitle({ title, pinned }: { title: string; pinned: boolean }) {
   return (
     <strong
       className="chat-dock-inbox__title inbox-row__title"
@@ -618,6 +693,7 @@ function InboxRowTitle({ title }: { title: string }) {
       data-title={title}
     >
       <span className="inbox-row__title-text">{title}</span>
+      {pinned && <InboxPinIndicator />}
     </strong>
   );
 }
@@ -680,17 +756,19 @@ function InboxRowSummary({
   now,
   status,
   statusId,
+  pinned,
   children,
 }: {
   item: HomeWorkItem;
   now: number;
+  pinned: boolean;
   status: WorkStatus;
   statusId: string;
   children: ReactNode;
 }) {
   return (
     <>
-      <InboxRowTitle title={item.title} /> {children}{' '}
+      <InboxRowTitle title={item.title} pinned={pinned} /> {children}{' '}
       <span className="inbox-row__status-column">
         <span
           className="inbox-row__status"
@@ -735,6 +813,7 @@ function InboxRowSummary({
 }
 
 export function InboxRow({
+  onCloseChat,
   item,
   inlineApproval,
   isCurrent,
@@ -785,9 +864,17 @@ export function InboxRow({
   const detailsOpen = controlledDetailsOpen ?? ownDetailsOpen;
   const setDetailsOpen = onDetailsOpenChange ?? setOwnDetailsOpen;
   const detailsTriggerRef = useRef<HTMLButtonElement>(null);
-  // The sheet anchors to, and returns focus to, the Details button. A row
-  // that mounts with its sheet already open (it just changed lane) has no
-  // button in the DOM until its first commit, so the sheet waits for it.
+  const rowButtonRef = useRef<HTMLButtonElement>(null);
+  const discardButtonRef = useRef<HTMLButtonElement>(null);
+  const [context, setContext] = useState<ContextMenuPoint | null>(null);
+  const closeContext = useCallback(() => setContext(null), []);
+  const {
+    enabled: rowActionsEnabled,
+    pinned,
+    pinAction,
+    copyActions,
+  } = useInboxRowIdentityActions(item);
+  // A sheet that stays open across shelf changes needs the new row’s anchor.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const hasUnsentDraft = useHasUnsentComposerDraft(item);
@@ -818,6 +905,7 @@ export function InboxRow({
       ? (projectName ?? item.projectLabel)
       : item.projectLabel;
   const hasTime = item.updatedAt > 0;
+  const { close: closeHover } = hover;
   const tooltip = hoverCard && chrome === 'hover';
   // The metadata card stays shut while the row's menu is open and after an
   // action from it, until the pointer leaves the row: it would otherwise
@@ -832,13 +920,30 @@ export function InboxRow({
     }
   };
   const details = hoverCard && chrome === 'touch';
+  const sheetTriggerRef =
+    details && !actionsOnHold ? detailsTriggerRef : rowButtonRef;
+  useEffect(() => {
+    if (detailsOpen) closeHover();
+  }, [detailsOpen, closeHover]);
+  const openContext = (
+    element: HTMLElement,
+    point: ContextMenuPoint | null,
+  ) => {
+    if (!rowActionsEnabled || detailsOpen || !rowButtonRef.current)
+      return false;
+    rowButtonRef.current.focus();
+    hoverQuiet.current = true;
+    hover.close();
+    setContext(contextMenuAnchor(element, point));
+    return true;
+  };
   const detailsOpenRef = useRef(detailsOpen);
   detailsOpenRef.current = detailsOpen;
   const fromSheet = (action: (trigger: HTMLButtonElement) => void) => {
     setDetailsOpen(false);
-    if (detailsTriggerRef.current) {
-      detailsTriggerRef.current.focus();
-      action(detailsTriggerRef.current);
+    if (sheetTriggerRef.current) {
+      sheetTriggerRef.current.focus();
+      action(sheetTriggerRef.current);
     }
   };
   const composerDraftSessionId =
@@ -916,6 +1021,7 @@ export function InboxRow({
     inSheet: boolean,
   ) => (
     <DiscardDraftButton
+      buttonRef={inSheet ? undefined : discardButtonRef}
       threadId={action.threadId}
       title={item.title}
       label={inSheet ? action.label : undefined}
@@ -933,14 +1039,17 @@ export function InboxRow({
     />
   );
   const sheetMenu =
-    details &&
+    hoverCard &&
     detailsOpen &&
     mounted &&
-    actions.some((action) => action.id !== 'open') ? (
+    (rowActionsEnabled || actions.some((action) => action.id !== 'open')) ? (
       <div
         className="menu-surface chat-dock-inbox-details__menu"
         data-testid="inbox-row-details-actions"
       >
+        {rowActionsEnabled && (
+          <InboxIdentityCommands actions={[pinAction, ...copyActions]} />
+        )}
         {actions.map((action) =>
           action.kind === 'snooze' && !action.isSnoozed ? (
             <fieldset key={action.id} className="menu-group">
@@ -997,13 +1106,16 @@ export function InboxRow({
       </div>
     ) : undefined;
   const gesture = useContextMenuGesture({
-    enabled: details || !!onHoldRow,
-    onOpen: onHoldRow
-      ? () => {
-          onHoldRow(item);
-          return true;
-        }
-      : openDetails,
+    enabled: chrome === 'hover' ? rowActionsEnabled : details || !!onHoldRow,
+    touchHold: chrome !== 'hover',
+    onOpen: (element, point) => {
+      if (chrome === 'hover') return openContext(element, point);
+      if (onHoldRow) {
+        onHoldRow(item);
+        return true;
+      }
+      return openDetails();
+    },
   });
   const reasonId = `${statusId}-reason`;
   const durationId = `${statusId}-duration`;
@@ -1046,6 +1158,7 @@ export function InboxRow({
     </InboxRowProjectLine>
   );
   const spokenContext = [
+    pinned && 'Pinned',
     size === 'slim' && contextLabel,
     size === 'slim' && agentText,
     item.controlMode === 'read-only-attached' && 'third-party session',
@@ -1102,13 +1215,14 @@ export function InboxRow({
       }}
       onKeyDown={(event) => {
         if (
-          actionsOnHold &&
-          event.target === detailsTriggerRef.current &&
-          (event.key === 'ContextMenu' ||
-            (event.shiftKey && event.key === 'F10'))
+          ((chrome === 'hover' && rowActionsEnabled) || actionsOnHold) &&
+          event.target === rowButtonRef.current &&
+          isContextMenuKey(event)
         ) {
           event.preventDefault();
-          if (onHoldRow) onHoldRow(item);
+          event.stopPropagation();
+          if (chrome === 'hover') openContext(rowButtonRef.current, null);
+          else if (onHoldRow) onHoldRow(item);
           else openDetails();
           return;
         }
@@ -1133,7 +1247,8 @@ export function InboxRow({
       }}
       onPointerEnter={(event) => {
         prefetch.onPointerEnter(event);
-        if (tooltip && !hoverQuiet.current) hover.onPointerEnter(event);
+        if (tooltip && !context && !detailsOpen && !hoverQuiet.current)
+          hover.onPointerEnter(event);
       }}
       onPointerLeave={() => {
         prefetch.onPointerLeave();
@@ -1142,7 +1257,8 @@ export function InboxRow({
       }}
       onFocus={(event) => {
         prefetch.onFocus();
-        if (tooltip && !hoverQuiet.current) hover.onFocus(event);
+        if (tooltip && !context && !detailsOpen && !hoverQuiet.current)
+          hover.onFocus(event);
       }}
       onBlur={(event) => {
         prefetch.onBlur();
@@ -1174,7 +1290,7 @@ export function InboxRow({
         className="chat-dock-inbox__item inbox-row__open"
         // The visible row supplies its name in reading order. Only the
         // off-screen reason and coarse duration belong in its description.
-        ref={actionsOnHold ? detailsTriggerRef : undefined}
+        ref={rowButtonRef}
         aria-describedby={describedBy}
         aria-pressed={selectedIds ? selectedIds.has(item.id) : undefined}
         aria-current={isCurrent ? 'true' : undefined}
@@ -1206,6 +1322,7 @@ export function InboxRow({
               now={now}
               status={status}
               statusId={statusId}
+              pinned={pinned}
             >
               {projectLine}
             </InboxRowSummary>
@@ -1224,7 +1341,7 @@ export function InboxRow({
               fallback={remoteProject ? 'initials' : 'dot'}
               name={contextLabel}
             />
-            <InboxRowTitle title={item.title} />{' '}
+            <InboxRowTitle title={item.title} pinned={pinned} />{' '}
             {hasUnsentDraft && <DraftMarker />}
             {/* Provenance survives the one-line size: a remote row must
                 never read as local work. */}
@@ -1263,7 +1380,7 @@ export function InboxRow({
                 the title leads, with the time beside it in the slot the
                 hover actions take over. */}
             <span className="inbox-row__headline">
-              <InboxRowTitle title={item.title} />{' '}
+              <InboxRowTitle title={item.title} pinned={pinned} />{' '}
               {/* Never a fabricated duration: an item with no real
                   timestamp shows no time. */}
               {hasTime && (
@@ -1366,7 +1483,55 @@ export function InboxRow({
             componentProps={{ threadId: item.orchestrationThreadId }}
           />
         )}
-      {tooltip && hover.anchor && (
+      {rowActionsEnabled && context && rowButtonRef.current && (
+        <ContextMenu
+          at={context}
+          origin={rowButtonRef.current}
+          label={`Actions for ${item.title}`}
+          actions={[
+            pinAction,
+            ...(hoverCard
+              ? [
+                  {
+                    key: 'details',
+                    label: 'View details',
+                    onSelect: openDetails,
+                  },
+                ]
+              : []),
+            ...copyActions,
+            ...inboxContextActions(
+              actions,
+              rowButtonRef.current,
+              done?.contextLabel,
+            ),
+            ...(onCloseChat
+              ? [
+                  {
+                    key: 'close-chat',
+                    label: 'Close chat',
+                    onSelect: () => {
+                      if (rowButtonRef.current)
+                        onCloseChat(item, rowButtonRef.current);
+                    },
+                  },
+                ]
+              : []),
+            ...(serverDiscard
+              ? [
+                  {
+                    key: 'discard-draft',
+                    label: serverDiscard.label,
+                    tone: 'danger' as const,
+                    onSelect: () => discardButtonRef.current?.click(),
+                  },
+                ]
+              : []),
+          ]}
+          onClose={closeContext}
+        />
+      )}
+      {tooltip && !context && !detailsOpen && hover.anchor && (
         <LazyBoundary
           load={loadChatInboxHoverCard}
           pending={null}
@@ -1385,23 +1550,26 @@ export function InboxRow({
           }}
         />
       )}
-      {details && detailsOpen && mounted && (
-        <LazyBoundary
-          load={loadChatInboxDetailsSheet}
-          pending={null}
-          componentProps={{
-            item,
-            now,
-            facts,
-            gitLocation,
-            projectAccent,
-            projectIcon,
-            triggerRef: detailsTriggerRef,
-            onClose: () => setDetailsOpen(false),
-            actions: sheetMenu,
-          }}
-        />
-      )}
+      {hoverCard &&
+        (details || rowActionsEnabled) &&
+        detailsOpen &&
+        mounted && (
+          <LazyBoundary
+            load={loadChatInboxDetailsSheet}
+            pending={null}
+            componentProps={{
+              item,
+              now,
+              facts,
+              gitLocation,
+              projectAccent,
+              projectIcon,
+              triggerRef: sheetTriggerRef,
+              onClose: () => setDetailsOpen(false),
+              actions: sheetMenu,
+            }}
+          />
+        )}
     </div>
   );
 }
@@ -1420,8 +1588,18 @@ export function InboxTaskRow({
   done,
   isSnoozed,
   attention,
+  onHoldRow,
+  selectedIds,
+  onSelectRow,
+  detailsOpen,
+  onDetailsOpenChange,
 }: Pick<
   InboxRowProps,
+  | 'onHoldRow'
+  | 'selectedIds'
+  | 'onSelectRow'
+  | 'detailsOpen'
+  | 'onDetailsOpenChange'
   | 'projectName'
   | 'projectAccent'
   | 'projectIcon'
@@ -1438,6 +1616,34 @@ export function InboxTaskRow({
   attention?: { reason: string; actions: ReactNode };
 }) {
   const id = useId();
+  const rowButtonRef = useRef<HTMLButtonElement>(null);
+  const [context, setContext] = useState<ContextMenuPoint | null>(null);
+  const closeContext = useCallback(() => setContext(null), []);
+  const {
+    enabled: rowActionsEnabled,
+    pinned,
+    pinAction,
+    copyActions,
+  } = useInboxRowIdentityActions(item);
+  const openContext = (
+    element: HTMLElement,
+    point: ContextMenuPoint | null,
+  ) => {
+    rowButtonRef.current?.focus();
+    setContext(contextMenuAnchor(element, point));
+    return true;
+  };
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const gesture = useContextMenuGesture({
+    enabled: rowActionsEnabled && (chrome === 'hover' || Boolean(onHoldRow)),
+    touchHold: chrome !== 'hover',
+    onOpen: (element, point) => {
+      if (chrome === 'hover') return openContext(element, point);
+      onHoldRow?.(item);
+      return true;
+    },
+  });
   const status = useObservedWorkStatus(item, now, facts);
   const actions = inboxRowActions({
     title: item.title,
@@ -1460,15 +1666,43 @@ export function InboxTaskRow({
     <div
       className={`chat-dock-inbox__row inbox-row inbox-row--card inbox-row--${chrome}${menu && !attention ? ' inbox-row--has-actions' : ''}${attention ? ' inbox-row--task-attention' : ''}`}
       data-row-key={item.id}
+      {...gesture}
     >
       <button
         type="button"
         className="chat-dock-inbox__item inbox-row__open"
-        aria-label={`Open task ${item.title}`}
+        ref={rowButtonRef}
+        aria-label={`Open task ${item.title}${pinned ? ', Pinned' : ''}`}
+        aria-pressed={selectedIds ? selectedIds.has(item.id) : undefined}
+        onKeyDown={(event) => {
+          if (
+            !rowActionsEnabled ||
+            !isContextMenuKey(event) ||
+            (chrome !== 'hover' && !onHoldRow)
+          )
+            return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (chrome === 'hover') openContext(event.currentTarget, null);
+          else onHoldRow?.(item);
+        }}
         aria-describedby={`${id}-project ${id}`}
-        onClick={() => onActivate(item)}
+        onClick={() =>
+          selectedIds && onSelectRow ? onSelectRow(item) : onActivate(item)
+        }
       >
-        <InboxRowSummary item={item} now={now} status={status} statusId={id}>
+        {selectedIds && (
+          <span aria-hidden="true" className="inbox-row__selection-mark">
+            {selectedIds.has(item.id) ? <CheckGlyph /> : null}
+          </span>
+        )}
+        <InboxRowSummary
+          item={item}
+          now={now}
+          status={status}
+          statusId={id}
+          pinned={pinned}
+        >
           <InboxRowProjectLine
             showTaskPrefix={!attention}
             item={item}
@@ -1481,6 +1715,43 @@ export function InboxTaskRow({
           {attention && <span className="inbox-row__task-kind">Task</span>}
         </InboxRowSummary>
       </button>
+      {rowActionsEnabled && context && rowButtonRef.current && (
+        <ContextMenu
+          at={context}
+          origin={rowButtonRef.current}
+          label={`Actions for task ${item.title}`}
+          actions={[
+            pinAction,
+            ...copyActions,
+            ...inboxContextActions(
+              actions,
+              rowButtonRef.current,
+              done?.contextLabel,
+            ),
+          ]}
+          onClose={closeContext}
+        />
+      )}
+      {rowActionsEnabled && detailsOpen && mounted && onDetailsOpenChange && (
+        <LazyBoundary
+          load={loadChatInboxDetailsSheet}
+          pending={null}
+          componentProps={{
+            item,
+            now,
+            facts,
+            projectAccent,
+            projectIcon,
+            triggerRef: rowButtonRef,
+            onClose: () => onDetailsOpenChange(false),
+            actions: (
+              <div className="menu-surface chat-dock-inbox-details__menu">
+                <InboxIdentityCommands actions={[pinAction, ...copyActions]} />
+              </div>
+            ),
+          }}
+        />
+      )}
       {onOpenTaskQuestions && questionCount > 0 && (
         <div className="inbox-row__question-link">
           <Button variant="secondary" onClick={() => onOpenTaskQuestions(item)}>
@@ -1538,18 +1809,30 @@ function inboxRowDone(
 ): InboxRowProps['done'] {
   if (groupId === 'dismissed')
     return onRestore
-      ? { done: true, onSelect: (action) => onRestore(item, action) }
+      ? {
+          done: true,
+          contextLabel: 'Restore to inbox',
+          onSelect: (action) => onRestore(item, action),
+        }
       : undefined;
   if (conversationId) {
     const isSettled = Object.hasOwn(settled, conversationId);
     return {
       done: isSettled,
+      contextLabel: isSettled ? 'Reopen conversation' : 'Settle conversation',
       pending,
       onSelect: (action) => onSettle(conversationId, !isSettled, action),
     };
   }
   return onDismiss
-    ? { done: false, onSelect: (action) => onDismiss(item, action) }
+    ? {
+        done: false,
+        contextLabel:
+          item.controlMode === 'read-only-attached'
+            ? 'Hide from inbox'
+            : 'Dismiss from inbox',
+        onSelect: (action) => onDismiss(item, action),
+      }
     : undefined;
 }
 
@@ -1575,6 +1858,8 @@ export interface InboxGroupListProps {
   };
   /** Sheet chrome: each group label says how many ("Needs you · 2"). */
   showGroupCounts?: boolean;
+  onCloseChat?: InboxRowProps['onCloseChat'];
+  canCloseChat?: (item: HomeWorkItem) => boolean;
   onActivate: (item: HomeWorkItem) => void;
   onOpenTaskQuestions?: (item: HomeWorkItem) => void;
   actionsOnHold?: boolean;
@@ -1652,6 +1937,8 @@ export function InboxGroupList({
   onDismiss,
   onRestore,
   onSettle,
+  onCloseChat,
+  canCloseChat,
   swipeActions,
   onDraftDiscarded,
   agents,
@@ -1775,12 +2062,17 @@ export function InboxGroupList({
       <InboxTaskRow
         {...project}
         chrome={chrome}
+        onHoldRow={onHoldRow}
+        onSelectRow={onSelectRow}
+        selectedIds={selectedIds}
+        detailsOpen={detailsFor === item.id}
+        onDetailsOpenChange={(open) => setDetailsFor(open ? item.id : null)}
         item={item}
         now={now}
         facts={facts}
         onActivate={onActivate}
         onOpenTaskQuestions={
-          group.id === 'needsYou' &&
+          (group.id === 'needsYou' || group.id === 'pinned') &&
           !item.environmentId &&
           facts?.hostDetails !== false
             ? onOpenTaskQuestions
@@ -1795,11 +2087,12 @@ export function InboxGroupList({
         key={item.id}
         {...project}
         compact
+        onCloseChat={canCloseChat?.(item) ? onCloseChat : undefined}
         actionsOnHold={actionsOnHold}
         onSelectRow={onSelectRow}
         onHoldRow={onHoldRow}
         selectedIds={selectedIds}
-        inlineApproval={group.id === 'needsYou'}
+        inlineApproval={group.id === 'needsYou' || group.id === 'pinned'}
         item={item}
         isCurrent={isCurrent(item)}
         isSnoozed={group.id === 'snoozed'}
@@ -1861,9 +2154,13 @@ export function InboxGroupList({
     group.id === 'dismissed' ||
     !collapsible ||
     collapsible.sections[group.id] !== false;
+  const savedOrder = collapsible?.order ?? [];
+  const orderWithPin: readonly InboxSectionId[] = savedOrder.includes('pinned')
+    ? savedOrder
+    : ['pinned', ...savedOrder];
   const sectionOrder = [
     ...new Set([
-      ...(collapsible?.order ?? []),
+      ...orderWithPin,
       ...groups.flatMap((group) =>
         group.id === 'dismissed' ? [] : [group.id],
       ),
@@ -1871,13 +2168,15 @@ export function InboxGroupList({
     ]),
   ];
   const shelfRank = (group: MobileActivityGroup) =>
-    !collapsible?.order?.length &&
-    (group.id === 'earlier' ||
-      (group.id === 'settled' && resolutionState.supported))
-      ? 2
-      : isGroupExpanded(group)
-        ? 0
-        : 1;
+    group.id === 'pinned'
+      ? -1
+      : !collapsible?.order?.length &&
+          (group.id === 'earlier' ||
+            (group.id === 'settled' && resolutionState.supported))
+        ? 2
+        : isGroupExpanded(group)
+          ? 0
+          : 1;
   const visibleGroups = groups
     .filter((group) => group.items.length > 0 || Boolean(group.older?.length))
     .sort(
@@ -1894,6 +2193,7 @@ export function InboxGroupList({
     visibleGroups.filter(
       (peer) =>
         peer.id !== 'dismissed' &&
+        peer.id !== 'pinned' &&
         isGroupExpanded(peer) === isGroupExpanded(group),
     );
   const moveSection = (group: MobileActivityGroup, offset: -1 | 1) => {
@@ -1943,7 +2243,12 @@ export function InboxGroupList({
           (collapsible && group.id === 'snoozed') ||
           showGroupCounts
             ? group.id === 'needsYou'
-              ? workAttentionCount(group.items, now, group.childrenById)
+              ? workAttentionCount(
+                  group.items,
+                  now,
+                  group.childrenById,
+                  workFacts,
+                )
               : group.items.length + (group.older?.length ?? 0)
             : undefined;
         const label = <WorkGroupLabel label={group.label} count={count} />;
@@ -1965,25 +2270,27 @@ export function InboxGroupList({
                 >
                   {label}
                 </DisclosureToggle>
-                {collapsible?.onReorder && peersOf(group).length > 1 && (
-                  <ActionOverflowMenu
-                    label={`Arrange ${group.label} section`}
-                    actions={[
-                      {
-                        key: 'up',
-                        label: 'Move up',
-                        disabled: peersOf(group).indexOf(group) === 0,
-                        onSelect: () => moveSection(group, -1),
-                      },
-                      {
-                        key: 'down',
-                        label: 'Move down',
-                        disabled: peersOf(group).at(-1) === group,
-                        onSelect: () => moveSection(group, 1),
-                      },
-                    ]}
-                  />
-                )}
+                {group.id !== 'pinned' &&
+                  collapsible?.onReorder &&
+                  peersOf(group).length > 1 && (
+                    <ActionOverflowMenu
+                      label={`Arrange ${group.label} section`}
+                      actions={[
+                        {
+                          key: 'up',
+                          label: 'Move up',
+                          disabled: peersOf(group).indexOf(group) === 0,
+                          onSelect: () => moveSection(group, -1),
+                        },
+                        {
+                          key: 'down',
+                          label: 'Move down',
+                          disabled: peersOf(group).at(-1) === group,
+                          onSelect: () => moveSection(group, 1),
+                        },
+                      ]}
+                    />
+                  )}
               </div>
             ) : (
               <h3 id={labelId} className="chat-dock-inbox__group-label">

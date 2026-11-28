@@ -771,7 +771,8 @@ describe('device-settings-store', () => {
           inboxSections: {
             snoozed: true,
             running: false,
-            order: ['running', 'needsYou'],
+            pinned: false,
+            order: ['pinned', 'running', 'needsYou'],
           },
         },
       });
@@ -780,7 +781,8 @@ describe('device-settings-store', () => {
         snoozed: true,
         earlier: false,
         running: false,
-        order: ['running', 'needsYou'],
+        pinned: false,
+        order: ['pinned', 'running', 'needsYou'],
       });
     });
 

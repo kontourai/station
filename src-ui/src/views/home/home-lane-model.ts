@@ -174,6 +174,7 @@ interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
   workFacts?: WorkFactsById;
   /** Explicit personal resolution, when the Open/Settled preview is enabled. */
   resolution?: ReadonlySet<string>;
+  shouldFoldMember?: (member: T, root: T) => boolean;
 }
 
 interface LanePartition<T extends HomeWorkItem = HomeLaneItem> {
@@ -202,6 +203,7 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
   snoozedUntil,
   workFacts,
   resolution,
+  shouldFoldMember,
 }: LaneInputs<T>): LanePartition<T> {
   const live: Record<LiveLaneId, T[]> = {
     needsYou: [],
@@ -297,8 +299,9 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
       visited.add(rootId);
       rootId = workFacts.get(rootId)!.runRootId!;
     }
-    if (visited.has(rootId) || rootId === item.id || !byId.has(rootId))
-      continue;
+    const root = byId.get(rootId);
+    if (!root || visited.has(rootId) || root === item) continue;
+    if (shouldFoldMember && !shouldFoldMember(item, root)) continue;
     // A snoozed member keeps its own shelf and wake control. In particular,
     // snoozing a parent must never conceal an unsnoozed child's approval.
     if (locations.get(item.id) === 5 || locations.get(rootId) === 5) continue;
@@ -420,12 +423,15 @@ export function workAttentionCount(
   items: readonly HomeWorkItem[],
   now: number,
   childrenById?: ReadonlyMap<string, readonly HomeWorkItem[]>,
+  workFacts?: WorkFactsById,
 ): number {
   return items.reduce(
     (count, item) =>
       count +
       [item, ...(childrenById?.get(item.id) ?? [])].filter(
-        (member) => workStatus(member, now).lane === 'needsYou',
+        (member) =>
+          workStatus(member, now, workFacts?.get(member.id)).lane ===
+          'needsYou',
       ).length,
     0,
   );
