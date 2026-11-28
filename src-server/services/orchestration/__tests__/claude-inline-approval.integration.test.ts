@@ -192,18 +192,18 @@ describe('#2316 inline approval card → Claude adapter', () => {
 
   test('an all-scoped Claude edit answer preserves the recorded Ask mode', async () => {
     const threadId = 'claude-inline';
-    service.recordApprovalModeDecision({
-      threadId,
-      provider: 'claude',
-      approvalMode: 'ask',
-      basedOnSequence: null,
-    });
     const { permission, opened } = await openBashRequest(
       'Edit',
       { file_path: 'src/readme.md' },
       [],
       [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
     );
+    service.recordApprovalModeDecision({
+      threadId,
+      provider: 'claude',
+      approvalMode: 'ask',
+      basedOnSequence: null,
+    });
     expect(toolRequestSessionGrantFromPayload(opened.payload)).toBe(
       'edit-mode',
     );
@@ -217,7 +217,7 @@ describe('#2316 inline approval card → Claude adapter', () => {
         decision: 'acceptForSession',
         sessionGrantScope: 'all',
       },
-      { userId: 'owner-user', approvalModeAuthority: true },
+      { approvalModeAuthority: true },
     );
     await expect(permission).resolves.toMatchObject({
       behavior: 'allow',
