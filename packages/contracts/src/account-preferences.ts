@@ -23,6 +23,7 @@ export const ACCOUNT_PREFERENCE_KEYS = [
 ] as const satisfies readonly (keyof DeviceSettings)[];
 
 export type PortableSettingKey = (typeof ACCOUNT_PREFERENCE_KEYS)[number];
+export type ChatSendMode = 'queue' | 'steer';
 export const LEGACY_INTERACTIVE_APPROVAL_ENGINES = [
   'codex',
   'claude',
@@ -58,6 +59,7 @@ export type AccountPreferences = Partial<
    * resolves any unknown id to `station`.
    */
   colorTheme?: string;
+  chatDefaultSendMode?: ChatSendMode;
   smoothReveal?: boolean;
   bufferedDelivery?: boolean;
   interactiveApprovalDefault?: Exclude<ApprovalMode, 'connection-default'>;

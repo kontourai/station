@@ -9,6 +9,14 @@
       "route": "/settings?view=account-preferences&highlight=account-preference-sync"
     },
     {
+      "id": "chat-default-send-mode",
+      "label": "Default send mode",
+      "help": "Choose how messages are sent during a running turn.",
+      "scope": "account",
+      "section": "account-preferences",
+      "route": "/settings?view=account-preferences&highlight=chat-default-send-mode"
+    },
+    {
       "id": "personal-all-engines-approval",
       "label": "New chats (all engines)",
       "scope": "account",

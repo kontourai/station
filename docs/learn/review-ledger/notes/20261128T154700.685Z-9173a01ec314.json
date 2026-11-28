@@ -1,0 +1,7 @@
+{
+  "revision": "7d0ce1e1fce5718942ceef5616fb6c4ee690c72d",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Updated composer split-button order (mode before Send), 18px crossing-arrows icon, account default send mode, and attachment queuing fallback; verified against ChatInputArea.tsx, chat.css, Glyph.tsx, and focused unit + browser tests.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

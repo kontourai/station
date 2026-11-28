@@ -35,6 +35,9 @@ export const AgentGlyph = /* @__PURE__ */ glyph(
 export const ArchiveGlyph = /* @__PURE__ */ glyph(
   'M2.5 5.5h11v8h-11v-8ZM2 2.5h12v3H2v-3Zm4 6h4',
 );
+export const SendModeGlyph = /* @__PURE__ */ glyph(
+  'M2.5 4.5h2c2.5 0 4.5 7 7 7h2m-2-2 2 2-2 2M2.5 11.5h2c2.5 0 4.5-7 7-7h2m-2-2 2 2-2 2',
+);
 export const ArrowDownGlyph = /* @__PURE__ */ glyph('M3 5.5l5 5 5-5');
 /** Corners pointing out — grow a surface to full screen (#4391). */
 export const ExpandGlyph = /* @__PURE__ */ glyph(

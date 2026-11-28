@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
+import { ConnectionStore } from '@kontourai/station-connect';
+import type { StationProfileStore } from '@kontourai/station-contracts';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { NativeStationProfileStorage } from '../stationProfileStorage';
 
 let bootstrapBundledLocalProfile: typeof import('../bundledLocalProfileBootstrap')['bootstrapBundledLocalProfile'];
 
@@ -375,46 +378,139 @@ describe('bundled local profile bootstrap', () => {
     );
   });
 
-  test('fails closed for a confirmed unowned channel home without authorizing the shared default', async () => {
-    const repository = {
-      refresh: vi.fn(),
-      selectProfileForProcess: vi.fn(),
-      pendingLocalSelfProvisionProfileName: vi.fn(),
-      authorizeActiveConnection: vi.fn(),
-      authorizeDefaultProfile: vi.fn(async () => true),
+  test.each([
+    {
+      remembered: true,
+      missingManifest: true,
+      label:
+        'restores the selected remote Station when the local manifest is missing',
+    },
+    {
+      remembered: false,
+      missingManifest: true,
+      label:
+        'leaves the shared default unauthorized when the local manifest is missing',
+    },
+    {
+      remembered: false,
+      missingManifest: false,
+      label:
+        'leaves the shared default unauthorized when there is no local owner',
+    },
+  ])('$label', async ({ remembered, missingManifest }) => {
+    const local = 'http://127.0.0.1:38241';
+    const remote = 'https://remote.example.test';
+    const remoteId = 'station-profile:remote';
+    const bindingId = '11111111-1111-4111-8111-111111111111';
+    const profiles: StationProfileStore = {
+      schemaVersion: 1,
+      revision: 1,
+      defaultProfile: 'local',
+      projectProfiles: {},
+      profiles: [
+        {
+          schemaVersion: 1,
+          name: 'local',
+          endpoint: local,
+          setupSource: 'local',
+          configurationState: 'configured',
+          credentialRef: { kind: 'station-bearer', id: 'local-ref' },
+          localService: {
+            instanceId: 'default',
+            baseDir: 'C:/Station/instances/nightly',
+            serverPort: 38241,
+            uiPort: 38240,
+          },
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          schemaVersion: 1,
+          name: 'remote',
+          endpoint: remote,
+          setupSource: 'paired',
+          configurationState: 'configured',
+          credentialRef: { kind: 'station-bearer', id: 'remote-ref' },
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
     };
-    await expect(
-      bootstrapBundledLocalProfile({
-        adapter: {
-          getBundledServerStatus: vi.fn(async () => ({
-            status: 'ok',
-            value: { phase: 'stopped', ownership: 'none' },
-          })),
-        } as never,
-        repository: repository as never,
-        invoke: vi.fn(async () => null),
-      }),
-    ).resolves.toEqual({});
-    expect(repository.selectProfileForProcess).not.toHaveBeenCalled();
-    expect(repository.authorizeDefaultProfile).not.toHaveBeenCalled();
-    expect(repository.authorizeActiveConnection).not.toHaveBeenCalled();
-  });
+    const selections = new Map<string, string>();
+    const clientStorage = {
+      get: (key: string) => selections.get(key) ?? null,
+      set: (key: string, value: string) => {
+        selections.set(key, value);
+      },
+      remove: (key: string) => {
+        selections.delete(key);
+      },
+    };
+    const invoke = vi.fn(
+      async (command: string, args?: Record<string, unknown>) => {
+        switch (command) {
+          case 'station_profile_store_read':
+            return JSON.stringify(profiles);
+          case 'station_ensure_bundled_local_profile':
+            if (missingManifest)
+              throw new Error('read service manifest: file not found');
+            return null;
+          case 'station_profile_authorize_active':
+            return {
+              bindingId,
+              exactOrigin: args?.profileName === 'remote' ? remote : local,
+            };
+          default:
+            throw new Error(`Unexpected native command: ${command}`);
+        }
+      },
+    );
+    const newRepository = () =>
+      new NativeStationProfileStorage(
+        {
+          invoke: <T>(command: string, args?: Record<string, unknown>) =>
+            invoke(command, args) as Promise<T>,
+        },
+        clientStorage,
+        true,
+      );
+    if (remembered) {
+      const previousLaunch = newRepository();
+      await previousLaunch.hydrate();
+      await previousLaunch.authorizeActiveConnection(remoteId, true);
+    }
 
-  test('does not fall back to the shared default when owner resolution fails', async () => {
-    await expect(
-      bootstrapBundledLocalProfile({
-        adapter: {
-          getBundledServerStatus: vi.fn(async () => ({
-            status: 'ok',
-            value: { phase: 'stopped', ownership: 'service' },
-          })),
-        } as never,
-        repository: {} as never,
-        invoke: vi.fn(async () => {
-          throw new Error('ambiguous owner');
+    const repository = newRepository();
+    await repository.hydrate();
+    await bootstrapBundledLocalProfile({
+      adapter: {
+        getBundledServerStatus: async () => ({
+          status: 'ok',
+          value: {
+            phase: 'stopped',
+            ownership: missingManifest ? 'service' : 'none',
+          },
         }),
-      }),
-    ).resolves.toEqual({});
+      } as never,
+      repository,
+      invoke,
+    });
+
+    const active = new ConnectionStore({
+      storage: repository,
+      locks: null,
+    }).getActive();
+    expect(active?.url).toBe(remembered ? remote : local);
+    expect(
+      repository.captureNativeRequestBinding(
+        remembered ? remoteId : 'station-profile:local',
+        remembered ? remote : local,
+      ),
+    ).toEqual(remembered ? { bindingId, exactOrigin: remote } : null);
+    expect(invoke).not.toHaveBeenCalledWith(
+      'station_profile_authorize_active',
+      { profileName: 'local' },
+    );
   });
 
   test('surfaces a replacement keyring write failure instead of collapsing it into connect failure', async () => {

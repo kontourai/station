@@ -1,0 +1,7 @@
+{
+  "revision": "1fe1e40401748180b91855d369672b569d08e486",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Merged #5691 draft-focus preservation and 1-tap Send mode toggle with mode-before-Send layout, 18px crossing-arrows icon, and account default send mode.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

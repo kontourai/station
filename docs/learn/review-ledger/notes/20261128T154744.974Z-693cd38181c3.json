@@ -1,0 +1,7 @@
+{
+  "revision": "7d0ce1e1fce5718942ceef5616fb6c4ee690c72d",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Updated running-turn send instructions from chevron to crossing-arrows mode button before Send and documented saving Queue/Steer as account default.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

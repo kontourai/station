@@ -286,8 +286,10 @@ export interface NativeStationProfileRepository {
   authorizeDefaultProfile(
     forgetRememberedSelection?: boolean,
   ): Promise<boolean>;
-  /** Re-authorizes this client's saved choice, falling back to the shared default. */
-  authorizeRememberedProfile(): Promise<boolean>;
+  /** Re-authorizes this client's saved choice, optionally using the shared default. */
+  authorizeRememberedProfile(options?: {
+    fallbackToDefault?: boolean;
+  }): Promise<boolean>;
   /**
    * Whether the hydrated store holds any saved Station. Lets boot paths
    * that only make sense with a Station to watch (notification priming)
@@ -1250,10 +1252,14 @@ export class NativeStationProfileStorage
       : false;
   }
 
-  async authorizeRememberedProfile(): Promise<boolean> {
-    return this.explicitProcessSelection
-      ? this.authorizeActiveConnection(this.explicitProcessSelection)
-      : this.authorizeDefaultProfile();
+  async authorizeRememberedProfile({
+    fallbackToDefault = true,
+  }: {
+    fallbackToDefault?: boolean;
+  } = {}): Promise<boolean> {
+    if (this.explicitProcessSelection)
+      return this.authorizeActiveConnection(this.explicitProcessSelection);
+    return fallbackToDefault ? this.authorizeDefaultProfile() : false;
   }
 
   hasSavedProfiles(): boolean {

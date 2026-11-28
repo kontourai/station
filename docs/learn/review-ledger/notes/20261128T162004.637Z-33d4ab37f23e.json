@@ -1,0 +1,7 @@
+{
+  "revision": "9840f6d0ba3dbf1b7e17163b5f75686f4080a828",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Browser test evidence profiling section against run-journey-profiles and profileJourney. New host sampler remains opt-in test instrumentation with no production endpoint; validator still binds named journey/revision/dirty state and refuses missing UI-only instrumentation. Runner-host observations do not change the fixture-only, non-provider/native/device guarantee boundary. Lifecycle mutation and Chromium failure diagnostics checked separately; no source-profiling speedup claimed.","inputs":["docs/architecture/module-map.md","scripts/run-journey-profiles.mjs","tests/helpers/journey-profile.ts"]}
+  ]
+}

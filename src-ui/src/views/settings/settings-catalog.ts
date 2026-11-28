@@ -191,6 +191,13 @@ const SETTINGS_CATALOG_SOURCE = [
     keywords: ['account', 'sync', 'device', 'migration', 'preferences'],
   },
   {
+    id: 'chat-default-send-mode',
+    title: 'Default send mode',
+    help: 'Choose how messages are sent during a running turn.',
+    section: 'account-preferences',
+    keywords: ['chat', 'send', 'queue', 'steer', 'follow-up'],
+  },
+  {
     id: 'personal-all-engines-approval',
     title: 'New chats (all engines)',
     section: 'account-preferences',

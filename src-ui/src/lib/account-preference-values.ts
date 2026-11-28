@@ -1,9 +1,12 @@
 import {
   type AccountPreferences,
   type AccountPreferencesPatch,
+  type ChatSendMode,
   INTERACTIVE_APPROVAL_ENGINES,
   type InteractiveApprovalEngine,
 } from '@kontourai/station-contracts/account-preferences';
+
+export const DEFAULT_CHAT_SEND_MODE: ChatSendMode = 'queue';
 
 export function interactiveApprovalEngine(
   engine?: string | null,
@@ -30,7 +33,11 @@ export function applyAccountPreferencePatch(
   const values = { ...current };
   for (const key of Object.keys(patch) as (keyof AccountPreferencesPatch)[]) {
     if (onlyMissing && Object.hasOwn(current, key)) continue;
-    if (patch[key] === null) delete values[key];
+    if (
+      patch[key] === null ||
+      (key === 'chatDefaultSendMode' && patch[key] === DEFAULT_CHAT_SEND_MODE)
+    )
+      delete values[key];
     else if (
       key === 'interactiveApprovalModes' &&
       patch.interactiveApprovalModes
