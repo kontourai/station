@@ -1,0 +1,9 @@
+{
+  "revision": "1d58183ca176d31f14e6d7c51732391353671f36",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Bounded review of 1d58183ca fixture initialization: lifecycle module import moves to the existing 30-second suite setup hook before the unchanged 15-second real-child deadline. Diagnostic failure spent 25.742 seconds importing before spawning any child; corrected diagnostic reached static path, tenant proxy, identity, readiness and settled cleanup in 443 milliseconds. This diagnostic is not native qualification under concurrent checkout IO pressure. Linux complete lifecycle and asset owners pass 272 tests with two platform skips. No OAuth or product behavior, guard, child deadline or compiler timeout change. Native uninstrumented qualification and hosted CodeQL remain pending; prior page reviews retained, not a new full-page audit.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Bounded review of 1d58183ca fixture initialization: lifecycle module import moves to the existing 30-second suite setup hook before the unchanged 15-second real-child deadline. Diagnostic failure spent 25.742 seconds importing before spawning any child; corrected diagnostic reached static path, tenant proxy, identity, readiness and settled cleanup in 443 milliseconds. This diagnostic is not native qualification under concurrent checkout IO pressure. Linux complete lifecycle and asset owners pass 272 tests with two platform skips. No OAuth or product behavior, guard, child deadline or compiler timeout change. Native uninstrumented qualification and hosted CodeQL remain pending; prior page reviews retained, not a new full-page audit.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}
