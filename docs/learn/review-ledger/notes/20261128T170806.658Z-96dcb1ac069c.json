@@ -1,0 +1,7 @@
+{
+  "revision": "05d1497fd4f598cee7be1858c44bee3f3aef305e",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Wrapped .chat document write in chatDocument.parse for strict schemaVersion literal typing; docs remain accurate.","inputs":["src-server/services/identity/account-preferences.ts"]}
+  ]
+}

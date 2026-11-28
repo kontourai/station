@@ -271,10 +271,12 @@ for (const cli of proxyEngines) {
     const transcript = page.getByRole('log', {
       name: 'Conversation transcript',
     });
-    const queue = page.getByRole('button', {
-      name: 'Queue for next turn',
-      exact: true,
-    });
+    const queue = page
+      .locator('.chat-input__submit-controls')
+      .getByRole('button', {
+        name: 'Queue for next turn',
+        exact: true,
+      });
     const steer = page.getByRole('button', {
       name: 'Steer current turn',
       exact: true,
@@ -286,7 +288,7 @@ for (const cli of proxyEngines) {
       );
     await initial.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(
-      page.getByRole('button', { name: 'Steering mode', pressed: false }),
+      page.getByRole('button', { name: 'Send mode: Queue' }),
     ).toBeEnabled({ timeout: 90_000 });
 
     const firstQueued =
@@ -300,15 +302,17 @@ for (const cli of proxyEngines) {
     await expect(
       page.getByRole('button', { name: 'Queue · 1 pending' }),
     ).toBeVisible();
-    await page
-      .getByRole('button', { name: 'Steering mode', pressed: false })
-      .click();
+    await page.getByRole('button', { name: 'Send mode: Queue' }).click();
+    await expect(
+      page.getByRole('button', { name: 'Send mode: Steer' }),
+    ).toBeVisible();
     await composer.fill(steerText);
     await steer.click();
     await expect(composer).toHaveValue('');
-    await page
-      .getByRole('button', { name: 'Steering mode', pressed: true })
-      .click();
+    await page.getByRole('button', { name: 'Send mode: Steer' }).click();
+    await expect(
+      page.getByRole('button', { name: 'Send mode: Queue' }),
+    ).toBeVisible();
     await composer.fill(secondQueued);
     await queue.click();
     await expect(

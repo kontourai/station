@@ -1,0 +1,7 @@
+{
+  "revision": "1fe1e40401748180b91855d369672b569d08e486",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Aligned running-turn send guidance with 1-tap crossing-arrows mode toggle before Send and account default under Settings -> Your account.","inputs":["docs/user/getting-started.md"]}
+  ]
+}
