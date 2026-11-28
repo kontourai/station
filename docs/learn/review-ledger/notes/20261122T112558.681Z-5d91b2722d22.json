@@ -1,0 +1,7 @@
+{
+  "revision": "c0eeea5ee41188c63199ea4c8fd702db3aa30408",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"LocalSkillMutationAuthority section: the setup-import receipt now reaches the person through the Skills page's Codex import dialog (Settings no longer mounts the old stepper, which is deleted); its focused evidence names the new route test and dialog test. The rest of the section is unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/components/setup/ExistingSetupImportStepper.tsx","src-ui/src/views/SettingsView.tsx","src-ui/src/components/setup/CodexPromptImportDialog.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "04bd4f768351f1ce7c2500c561698108b9c67e06",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Route alias table now lists Apps routes and the /registry and /plugins redirects; registry tabs no longer list plugins.","inputs":["docs/guides/connections.md"]}
+  ]
+}

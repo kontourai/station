@@ -180,6 +180,7 @@ export function handleTurnStartedEvent(
         timestamp: Date.parse(event.createdAt) || undefined,
         turnId: event.turnId,
         sessionId: event.threadId,
+        steer: true,
         ...(event.steerInterruptedRun ? { steerInterruptedRun: true } : {}),
       });
     }

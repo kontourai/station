@@ -569,7 +569,10 @@ refuses corrupt/unsupported or nonregular files and bounds the file to 8 MiB
 and retained snapshots to 32. [Installed-state projection](../../src-server/providers/registries/registry-catalog-installed-state.ts)
 uses the current local inventory and source ownership aliases for live and
 offline plugin rows. Manifest providers supply one fresh coherent observation
-for rows, source locations and untrusted publisher claims. A snapshot is discovery evidence; source removal/disable and
+for rows, source locations and untrusted publisher claims. Each local plugin
+row also carries [what the app is](../../src-server/providers/registries/registry-app-facts.ts),
+read from its package's manifest and layouts within fixed bounds and cached
+until those files change; a remote package is not fetched to list it. A snapshot is discovery evidence; source removal/disable and
 plugin generation replacement/revocation are checked again before publication
 and use. A revoked provider cannot publish its in-flight result or fall back to
 its previously cached rows. Plugin-owned Skill catalogs also use the route's
@@ -698,9 +701,16 @@ live attention facts exist. The built-in application composition is
 
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate
 exact-route owners, duplicate management-view owners, and duplicate sidebar or palette
-order slots. Customize rows have unique order within each group and cannot also be
-sidebar entries or hidden from navigation. Composition and filtering do not invoke
-labels or badges; Customize projection resolves its optional label/route overrides. A
+order slots. A destination's `aliases` are retired ids published plugins may still name
+(`registry` for Apps, `connections` for Customize): `get` answers to them, no projection
+lists them, and an alias that is empty or already an id or another alias is rejected. Customize rows have unique order within each group and cannot also be
+sidebar entries or hidden from navigation. The Customize page's groups are
+`CUSTOMIZE_NAV_GROUP_ORDER` (Your agents, What they run on, What they can reach), and its
+projection orders by group, then by order within the group. `customizeItemForView`
+names the item a view belongs to, from the same management ownership, so the page's
+list and the sidebar's Customize button cannot disagree about it. Composition and
+filtering do not invoke labels or badges; Customize projection resolves its optional
+label/route overrides. A
 flag-gated surface stays registered and routable while `getAdvertised` hides it.
 Developer advertisement uses the device-scoped `device:developer-tools` flag; other
 flags can come from server previews. `hiddenFromNav` removes the sidebar affordance;
@@ -711,8 +721,9 @@ palette after static destination projection.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in
 descriptors. `routing.ts` consumes exact routes and semantic management ownership;
-`ProjectSidebarNav`, `CustomizeDialog`, `CommandPalette`, and notification header badge consume their
-ordered projections. Icons are a presentation Adapter keyed by the registry's finite
+`ProjectSidebarNav`, the Customize page (`app-shell/CustomizeShell.tsx` and
+`views/customize/`), the sidebar footer's Customize button, `CommandPalette`, and the
+notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite
 icon vocabulary. Future trusted plugin surface contributions must enter at registry
 composition and pass the same validation; there is no mutable global `register()`
 operation or renderer callback in persisted plugin data. Contract coverage is
@@ -1174,13 +1185,13 @@ currently returns a rejected row without that warning; collection visibility and
 are separate. Provider resolution and Registry installed-state consume only valid scan
 entries, while `GET /api/plugins` projects both valid and rejected entries. A rejected
 directory has no trustworthy plugin version, permissions, bundle, settings, update, or
-removal claim. The Plugins surface therefore gives it a distinct selection identity,
+removal claim. Apps › Library therefore gives it a distinct selection identity,
 renders the exact rejection and repair instruction, and offers only the existing Reload
 plugins recovery action.
 
 **Seam, Implementation, callers, and tests.** The canonical collection route, provider
 resolver, and JSON manifest registry share this scanner; the SDK validates the
-rejected-row union and the existing Plugins view renders it. Unit tests cover
+rejected-row union and Apps › Library renders it. Unit tests cover
 classification, secret/path suppression, fresh repair recovery, logger routing, SDK
 validation, view-model reload ordering, and visible detail controls.
 `tests/plugin-rejection-visibility.spec.ts` is the managed-browser repair/reload
@@ -1861,11 +1872,16 @@ otherwise the send takes the live path. Inbox ids are canonical conversation
 ids (`conversationOf`). The entry is a
 [`@kontourai/monument`](../../packages/monument/CONTEXT.md) inbox entry on
 `EventStore`'s connection: idempotent by `clientTurnId` with a digest of the
-sender and input, FIFO, one `placing` at a time. Placement runs after a turn
+sender and input, one `placing` at a time. An in-flight or unconfirmed
+entry takes precedence, then steers, then follow-ups. Submission order is the
+default. The sender can swap adjacent waiting follow-ups, or edit the text
+in place while the observed text still matches. Placement runs after a turn
 or Session-state event on the conversation, after each submit, at startup,
 and on bounded re-checks (the schedule, then two-minute checks up to 30 while
 entries wait, reset when a new message is accepted, and after a drive that
-failed mid-placement). A follow-up is a start, never a steer. Before each start it re-checks
+failed mid-placement). An explicit promotion atomically withdraws a waiting
+follow-up and admits a steer to the observed open turn. Otherwise, placement
+starts the next turn. Before each start it re-checks
 the sender with the live continuation's rule (`mayContinue`) and the sending
 device's or personal access token's route scope (`deviceMaySendChat`, one
 by-id lookup in the pairing service, `credentialHoldsScope`, which for an
@@ -3465,6 +3481,13 @@ every reviewed import item before it may publish a Skill, then exposes that jour
 the sole itemized receipt projection: relative source ID, reviewed target,
 state/outcome, stable reason/repair codes, known canonical target revision, and
 retryable rollback state—never source bytes or filesystem identities.
+Its source check applies the preview's own location checks, so a symlinked
+Codex home or prompts folder is reported unavailable rather than offered. A
+prompts folder past the 128-entry enumeration limit is refused as
+`TOO_MANY_FILES`, and a file name holding a control or direction-changing
+character is excluded as `unsafe-name`. A target that names an existing Skill in
+any letter case or Unicode composition is refused on every host, since a Mac's
+file system treats it as the same folder.
 
 **Contract.** Capabilities are keyed by the discovered local Skill directory and
 acquired in deterministic order for a rename, so ordinary, conditional, and registry
@@ -3496,13 +3519,14 @@ same-protocol coordination guarantee, not an upgrade-wide filesystem lock.
 **Seam, Implementation, callers, and tests.** `skill-local-mutation.ts` is the one local
 writer/revision capability; `SkillService`, registry installation, and the setup-import
 module compose it with their owned helpers and the guarded receipt-store Adapter.
-Routes, React-free SDK transport, React query Adapter, CLI JSON, and the shared stepper
-pass that canonical receipt through without client reconstruction. Focused evidence is
+Routes, React-free SDK transport, React query Adapter, CLI JSON, and the Skills page's
+Codex import dialog pass that canonical receipt through without client reconstruction. Focused evidence is
 `src-server/services/agents/__tests__/skill-revision.test.ts`,
 `src-server/services/agents/__tests__/skill-service-install.test.ts`,
 `src-server/services/agents/__tests__/skill-service.test.ts`,
-`src-server/services/setup/__tests__/existing-agent-setup-import.test.ts`, and
-`src-ui/src/components/setup/__tests__/ExistingSetupImportStepper.test.tsx`. **Do not
+`src-server/services/setup/__tests__/existing-agent-setup-import.test.ts`,
+`src-server/routes/__tests__/setup-imports.routes.test.ts`, and
+`src-ui/src/components/setup/__tests__/CodexPromptImportDialog.test.tsx`. **Do not
 reintroduce:** a setup-only lock, a conditional check outside the local capability,
 direct import target writes, pre-effect consumption without a durable item record, a
 terminal aggregate that hides an unresolved item, browser-invented receipt rows, or a
@@ -5067,8 +5091,8 @@ leaving it only on a transient event.
 **Seam, Implementation, callers, and tests.** Runtime route composition supplies the
 existing plugin-module quiescence, operational-event subscription quiescence/reconcile,
 provider registry, Adapter retirement, and engine-connection Adapters. Both direct
-revocation and the distinct-origin trusted regrant path invoke the same service. The
-Plugins surface renders terminal, winding, and incomplete truth with an actionable
+revocation and the distinct-origin trusted regrant path invoke the same service.
+Apps › Library renders terminal, winding, and incomplete truth with an actionable
 idempotent check/retry path. Adversarial evidence covers drain ordering, disjoint
 supersession, stale revoke/regrant generations, content-locked activation,
 content-generation replacement, timeout ownership, partial failure, retained consent
@@ -6013,6 +6037,8 @@ conversation nor grants execution.
 **Close-out on merge (#3161).** A person can opt a Task in to closing when its pull requests merge (`TaskRecord.closeOnMerge`, `PUT /api/tasks/:taskId/close-on-merge`; no Station Control tool reaches that route). [`task-close-out.ts`](../../src-server/services/projects/task-close-out.ts) is a reconciliation, not a loop: when the conversation pull request refresh observes a merged pull request for a viewer holding the operate tier (the scope `PATCH /api/tasks/:taskId/status` needs; never a Station Control tool call), it reads each pull request kept on the Tasks that kept it, at its exact identity and four at a time, and `TaskGraphService.completeTaskOnMerge` moves a Task to `done` only if every kept pull request is `MERGED`, the Task is the same incarnation (`createdAt`) the reads were for, no pull request was kept since (matched by declaration and target, since one turn's declarations share an event), and `canTransitionTaskStatus` allows `done` (never from todo, ready, triage or blocked). A pull request closed without merging never completes a Task. Nothing re-runs it: a merge is noticed when an operate-tier viewer next refreshes that conversation, and nothing reconciles without one. A pull request declared through Station Control waits in memory for its turn's terminal event (a turn-lifetime lease, not the native 60 seconds) and is lost if Station restarts first. The tests in `task-close-out.test.ts` and `runtime-routes-declare-pull-request-engine.test.ts` cover it.
 
 **Project Overview groups (#5064, preview `project-overview`).** [`task-overview`](../../packages/contracts/src/task-overview.ts) files each Task's `deriveTaskLane` derivation under Waiting on you, Ready for review, Working, Landing, Idle or Resolved. It is a projection: the only stored input is a person's reopen (`TaskRecord.overviewReopenedAt`, `POST /api/tasks/:taskId/overview-reopen`, refused with the typed preview 404 while the preview is off), which restarts the Project's quiet period (`ProjectConfig.overviewAutoResolveDays`, default 7). Landing reads `TaskPullRequestFact.status.landing`. The GitHub status read observes it from `autoMergeRequest`, plus one GraphQL `isInMergeQueue` read for an open, unarmed pull request while the preview is on. `GET /api/tasks` carries each Task's summary line as `latestReport` from `TaskMemoryStore.currentSummaries`. The UI ([`ProjectOverviewSection`](../../src-ui/src/views/project-page/ProjectOverviewSection.tsx), [`useProjectsWaitingOnYou`](../../src-ui/src/views/project-page/useProjectsWaitingOnYou.ts)) reuses the Tasks board's read model. Evidence: `task-overview.test.ts`, `task-overview.routes.test.ts`, `github-pull-request-provider-read-cache.test.ts` and `ProjectOverviewSection.test.tsx`.
+
+**Ended Task resume (#4554).** Every move into `done` or `canceled` writes `TaskRecord.endedAt` in the same store write (status changes, merge completion, and automation run completion); the follow-up poller follows by it. Behind the `task-resume` preview, [`task-resume.ts`](../../src-server/routes/orchestration/task-resume.ts) mounts `GET`/`POST /api/tasks/:taskId/resume` on personal Stations, and `TaskGraphService.resumeTask` moves a `done` board-checked GitHub Task to `ready` inside the Task worktree custody queue and one synchronous store mutation: the caller's authority (in person and not an agent, Task read, Project execution, the dispatch route's scope) is read under the lock first, then an authorized same-principal replay, then the incarnation/status/`endedAt` compare and set and the other refusals. The write clears `endedAt`, `closeOnMerge` and the lead attachment and appends an immutable `TaskRecord.resumes` record; clearing `sessionId` is what keeps Task question and tracker follow-up wakes (`taskLeadPlacementCurrent`, `TaskFollowUpWake.placementRefusal`) off the earlier lead. Resume starts nothing. See [Resuming ended Tasks](../design/ended-task-resume.md#implementation).
 
 **Start Task from a tracker item (#4003, in delivery).** `POST /api/tasks/from-work-item` takes a `github:owner/repo#N` ref that the Project's board lists (the runtime re-reads the board through `WorkItemProviderService`; a ref the board does not list is refused before the open-Task lookup and before the tracker is read). `parseGitHubWorkItemRef` lowercases owner and repository, and refs compare by `workItemRefKey`. `TaskGraphService.createTaskForWorkItem` returns the item's open Task, in any Project, with `existing: true` (another Project's as `{id, projectId}` only), checked under the store's mutation lock; otherwise it records the Task with `sourceProvider: 'github'`, the ref, `workItemObservedAt` and `workItemProvenance: 'project-board'`. Every create that names a work item keeps one open Task per item under that lock (`TaskWorkItemTakenError`, `409` from `POST /api/tasks`): across Projects only for board-checked GitHub refs, within the Project (compared through `localProjectIdFor`) for every other ref, and `POST /api/tasks` takes a `github:` ref only when the board lists it, recording the same provenance. Dispatch, `get_task_brief` and the Task header read the tracker only for a ref with that provenance. The room runtime seeds the Task document from [`work-item-task-brief.ts`](../../src-server/services/work-item-providers/work-item-task-brief.ts): the issue body and its last three comments, quoted so tracker headings never become document headings, plus a link back, cut to 3,000 characters with a visible marker (the room refused a single-batch document of about 3,650 characters). `GET /api/tasks/:taskId/work-item` re-reads the item for the Task header, with comments created after `workItemObservedAt`; the header reads it when the Task opens and nothing polls. Both routes are personal-only, and no Station Control tool names them. Reads go through the runtime's one [`GitHubWorkItemObserver`](../../src-server/services/work-item-providers/github-work-item-observer.ts) (the `workItemObserver` route context): the host's `gh` login, started in an empty directory with prompts off, a deadline, a caller's abort signal, an output bound and `--hostname github.com`, with an observed answer kept 30 s per ref and comments-since mark. GitHub Enterprise hosts and pull requests are `unsupported`. **Task tracker follow-ups (#4508, preview `task-tracker-follow-ups`).** [`TaskFollowUpPoller`](../../src-server/services/work-item-providers/task-follow-up-poller.ts) is started, not awaited, on each built-in scheduler `automationPoller` tick (composed in `runtime-route-support.ts`, not in hosted mode), on its own single flight with a 60-second deadline and a 15-minute backoff when `gh` is missing, signed out or rate limited. It reads each eligible Task's primary item and the kept pull requests in that item's repository through [`GhGitHubFollowUpReader`](../../src-server/services/work-item-providers/github-follow-up-reader.ts) (`gh api graphql`, keyset cursors), and records into [`TaskFollowUpStore`](../../src-server/services/work-item-providers/task-follow-up-store.ts), the runtime's one `taskFollowUps` holder that `composeTaskBriefSource` also reads for the brief's "Tracker follow-ups" section. [`TaskFollowUpWake`](../../src-server/services/work-item-providers/task-follow-up-wake.ts), composed beside the poller, sends a Task's lead one conversation-inbox entry (`tf-` key) for the items the poller marked to wake (members' comments and reviews, failing checks), through the same durable inbox path as the Task question lead wake; `configureRuntimeRoutes` chains its placement re-check into `ThreadInboxDelivery`. Evidence: `task-follow-ups.test.ts`. Evidence: `github-work-item-observer.test.ts` (a fake `gh` at the process seam), `task-from-work-item.routes.test.ts`, `work-item-ref.test.ts`, and the `ProjectTasksSection` and `TaskWorkspaceView` UI tests. See [Tracker-backed Tasks](../design/tracker-backed-tasks.md). **Pull request agent feedback (preview `pull-request-agent-feedback`).** [`composePullRequestFeedbackRuntime`](../../src-server/runtime/routes/runtime-pull-request-feedback.ts) (not in hosted mode, and only with an event store and conversation inbox) composes [`PullRequestFeedbackStore`](../../src-server/services/pull-requests/pull-request-feedback-store.ts) (`<home>/pull-request-feedback/pull-request-feedback.sqlite`), [`PullRequestFeedbackOwnership`](../../src-server/services/pull-requests/pull-request-feedback-ownership.ts) (one owning conversation per pull request, claimable only for an explicit link or a Task-kept pull request), [`PullRequestFeedbackPoller`](../../src-server/services/pull-requests/pull-request-feedback-poller.ts) (started, not awaited, on the same `automationPoller` tick, one core [`gh api graphql`](../../src-server/services/pull-requests/github-feedback-observation.ts) per due pull request and an optional open pull request merge queue read) and [`PullRequestFeedbackDelivery`](../../src-server/services/pull-requests/pull-request-feedback-delivery.ts), which sends the owning conversation one `prf-` inbox entry through `submitStationFramedTurn` while its agent is idle; `configureRuntimeRoutes` chains its placement re-check into `ThreadInboxDelivery` and mounts `/api/pull-request-feedback`. `TaskFollowUpWake` skips checks and reviews on a pull request it owns. The same routes answer one pull request's feedback whichever chat is open (`by-pull-request`, for the pull request panel), and the runtime's `factFor` gives `GET /api/tasks/pull-request-facts` a kept pull request's feedback ([`pull-request-feedback-task-fact.ts`](../../src-server/services/pull-requests/pull-request-feedback-task-fact.ts)), both naming the owning chat only to a reader of it. [`PullRequestFeedbackTaskBranches`](../../src-server/services/pull-requests/pull-request-feedback-task-branches.ts) holds Project defaults and, first on each poller tick (at most 3 [`gh pr list --head`](../../src-server/services/pull-requests/github-pull-requests-by-head.ts) reads), finds a live Task's own-branch pull request, records it as the lead chat's `branch-derived` link and claims it from the defaults; the chat's linked pull requests include those links. Evidence: `pull-request-feedback-task-branches.test.ts`, `runtime-pull-request-feedback-task-branches.test.ts`, `pull-request-feedback.test.ts` (real inbox harness), `pull-request-feedback-ownership.test.ts`, `pull-request-feedback-poller.test.ts`, `github-pull-request-provider-feedback.test.ts`, `pull-request-feedback.routes.test.ts`, `pull-request-feedback-by-pull-request.routes.test.ts`, `runtime-pull-request-feedback-facts.test.ts` (real inbox harness). See [the decision](../decisions/pull-request-agent-feedback.md). **Linked pull request facts (same preview).** The conversation link projection reuses observations younger than two minutes and falls back to the provider's narrow status read. The conversation inventory serves link observations from [a bounded snapshot cache](../../src-server/services/pull-requests/linked-pull-request-snapshots.ts) warmed on scheduler ticks. It batches stored links by the readable page's conversation lineages. [Workspace observations](../../src-server/services/projects/session-diff-stat-snapshots.ts) use the confined Project repository reader on the scheduler tick and expire after 15 minutes without a read. The inventory resolves each Project root once per page. The inventory carries a branch and, for a worktree with a recorded base commit, timed diff counts. Inbox rows use these observations for the PR chip and status filter, with independent controls for opening the selected PR. Task rollups combine readable chat links and kept pull request facts. Merge queue removal IDs identify feedback deliveries across repeated observations when Fix failing checks is enabled. **Task-owned pull requests (#5066, same preview).** The same runtime composes [`PullRequestWatch`](../../src-server/services/pull-requests/pull-request-watch.ts): on each tick it claims, for a Task that watches (its own `pullRequestWatch`, else its Project's), the kept pull requests no chat owns, marked with the Task (`ClaimWatch`), and releases them on Stop watching or when the Task ends. Delivery counts failing-check messages as fix attempts and, when they are spent, pauses the claim (`fix-budget`, one feedback notice) and has the watch move the Task to `blocked` with `pullRequestWatchHold`. Its `guard`, matched by [`pull-request-watch-guard.ts`](../../src-server/services/pull-requests/pull-request-watch-guard.ts), is the `pullRequestWatchPolicy` stage of [`createStagedPreToolPolicyEvaluator`](../../src-server/runtime/agents/pre-tool-policy.ts), bound by `configureRuntimeRoutes` into a slot `StationRuntime` passes to every agent's hooks and external engine evaluator. `GET`/`PUT /api/tasks/:taskId/pull-request-watch` and `PUT /api/projects/:slug/pull-request-watch` read and set it. Evidence: `pull-request-watch.test.ts` (real inbox harness and policy evaluator), `pull-request-watch-guard.test.ts`, `task-pull-request-watch.test.ts`. See [the decision](../decisions/task-owned-pull-requests.md). **Review each new head (preview `pull-request-head-review`).** [`PullRequestHeadReviewer`](../../src-server/services/pull-requests/pull-request-head-review.ts), composed in the same runtime and bound to the review module by `bindHeadReview` once `ReviewEvidenceModule` exists, is considered after each delivery decision: it runs one independent review per stable head of a claim with `reviewEachHead` against the Project's own checkout (never fetching), records it in the feedback store's `head_reviews` table, and delivery sends its required findings as a `review-findings` block. It holds no forge provider. Evidence: `pull-request-head-review.test.ts` (real git repository, real inbox harness), `PullRequestReviewPanel.headReview.test.tsx`. See [the decision](../decisions/pull-request-agent-feedback.md).
 

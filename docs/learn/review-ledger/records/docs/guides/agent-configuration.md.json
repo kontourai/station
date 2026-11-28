@@ -158,8 +158,6 @@
 
     "src-ui/src/platform/native/stationProfileStorage.ts",
 
-    "src-ui/src/views/ConnectionsHub.tsx",
-
     "src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx",
 
     "src-ui/src/views/agent-editor/AgentEditorCredentialProfile.tsx",
@@ -264,7 +262,9 @@
 
     "src-server/services/orchestration/turn-authorship.ts",
 
-    "src-server/security/person-authorship.ts"
+    "src-server/security/person-authorship.ts",
+
+    "src-ui/src/views/customize/CustomizeLanding.tsx"
   ],
 
   "checks": [

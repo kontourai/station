@@ -1,0 +1,25 @@
+{
+  "revision": "62694dedd2ad88de44a5fa70962aeab935bfd143",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/developer-surface.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/modality-ladder.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/pane-or-shell.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["src-ui/src/app-shell/routing.ts"]}
+  ]
+}

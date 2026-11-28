@@ -36,7 +36,6 @@ import { ThemeToggle } from '../components/header/ThemeToggle';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { PageCallout } from '../components/PageCallout';
 import type { SectionNavItem } from '../components/SectionNav';
-import { ExistingSetupImportStepper } from '../components/setup/ExistingSetupImportStepper';
 import {
   describeReadFailure,
   Empty,
@@ -1229,7 +1228,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       hasUnsavedChanges={hasChanges}
                       provenance={stationProvenance}
                     />
-                    <ExistingSetupImportStepper />
                     {/* #4305: whether this Station shares Projects with local
                   accounts at all; the account list below manages them. */}
                     <AccountSharingSection />

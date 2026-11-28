@@ -1,0 +1,7 @@
+{
+  "revision": "d47eed0e51c9d4df54067afa27d43635fbe523f3",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Checked against slice 1.4b-2: the glossary's Plugin and catalogue rows now say Registry is never a place and name the catalogue pages; nothing this map points to changed meaning.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]}
+  ]
+}

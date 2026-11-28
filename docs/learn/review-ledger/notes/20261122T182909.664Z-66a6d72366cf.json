@@ -1,0 +1,13 @@
+{
+  "revision": "dc418699cc4048c45468401e33b814aca4b056c4",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Added RemovePluginModal as a covered ResponsiveDialogSurface; citing pages describe the inventory and owner rules, which still hold, and give no counts.","inputs":["docs/ui/responsive-surfaces.json"]},
+
+    {"path":"docs/guides/theming.md","note":"Added RemovePluginModal as a covered ResponsiveDialogSurface; citing pages describe the inventory and owner rules, which still hold, and give no counts.","inputs":["docs/ui/responsive-surfaces.json"]},
+
+    {"path":"docs/patterns/backend.md","note":"Added RemovePluginModal as a covered ResponsiveDialogSurface; citing pages describe the inventory and owner rules, which still hold, and give no counts.","inputs":["docs/ui/responsive-surfaces.json"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Added RemovePluginModal as a covered ResponsiveDialogSurface; citing pages describe the inventory and owner rules, which still hold, and give no counts.","inputs":["docs/ui/responsive-surfaces.json"]}
+  ]
+}

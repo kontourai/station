@@ -1,0 +1,7 @@
+{
+  "revision": "08289a60185b50ec8b4b17a06cd7dfe4198cf85d",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the isolated MCP access panel against CustomizeSectionFrame and OutsideClientsSection after merging main: Customize → Tools now hosts the existing scope-bound approval, denial, grant-change, and revocation controls. The compiled release guard and paired-browser passkey limits are unchanged; no live OAuth or device qualification claimed.","inputs":["docs/reference/outside-agent-oauth.md"]}
+  ]
+}

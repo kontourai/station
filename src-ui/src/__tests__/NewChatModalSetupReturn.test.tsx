@@ -249,7 +249,7 @@ async function openSetup() {
   fireEvent.click(screen.getByRole('button', { name: 'Connect Assistant' }));
   await screen.findByRole('button', { name: 'Return to New Chat' });
   await waitFor(() =>
-    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/connections/),
+    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/customize/),
   );
   expect(screen.queryByRole('region', { name: 'New Chat' })).toBeNull();
 }
@@ -327,12 +327,10 @@ describe('New Chat repair and return', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'Choose Chosen model' }),
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Browse marketplaces' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Browse apps' }));
     await screen.findByRole('button', { name: 'Return to New Chat' });
     await waitFor(() =>
-      expect(navigationStore.getSnapshot().pathname).toBe('/registry'),
+      expect(navigationStore.getSnapshot().pathname).toBe('/apps/discover'),
     );
     experienceRead.inventory = {
       executionContract: '1.0',
@@ -376,7 +374,7 @@ describe('New Chat repair and return', () => {
       await screen.findByRole('button', { name: 'Choose Chosen model' }),
     );
     await openSetup();
-    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/connections/);
+    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/customize/);
     expect(view.onClose).not.toHaveBeenCalled();
     view.update({ agents: [READY] });
     await returnToChat();
@@ -500,7 +498,7 @@ describe('New Chat repair and return', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
     expect(view.onClose).toHaveBeenCalledTimes(1);
     expect(view.onSelect).not.toHaveBeenCalled();
-    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/connections/);
+    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/customize/);
   });
   test('a changed Station authority cancels the pending return', async () => {
     const view = harness();
@@ -628,7 +626,7 @@ test('return waits for the owning setup form navigation guard', async () => {
   try {
     fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
     expect(screen.queryByRole('region', { name: 'New Chat' })).toBeNull();
-    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/connections/);
+    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/customize/);
     await waitFor(() => expect(continueNavigation).toBeTypeOf('function'));
     act(() => continueNavigation?.());
     await screen.findByRole('region', { name: 'New Chat' });
@@ -699,8 +697,8 @@ test('restores an exact non-default Pane path, tab and query selection', async (
   expect(new URLSearchParams(window.location.search).get('tab')).toBe('diff');
 });
 
-test('opening repair from the same Connections route stays in setup', async () => {
-  act(() => navigationStore.navigate('/connections/models'));
+test('opening repair from the same Customize route stays in setup', async () => {
+  act(() => navigationStore.navigate('/customize/providers'));
   harness();
   await openSetup();
   await act(async () => {});
@@ -709,11 +707,11 @@ test('opening repair from the same Connections route stays in setup', async () =
     screen.getByRole('button', { name: 'Return to New Chat' }),
   ).toBeTruthy();
   await returnToChat();
-  expect(navigationStore.getSnapshot().pathname).toBe('/connections/models');
+  expect(navigationStore.getSnapshot().pathname).toBe('/customize/providers');
 });
 
 test('same-path query restoration honors a rejecting dirty-form guard', async () => {
-  act(() => navigationStore.navigate('/connections/models?selected=original'));
+  act(() => navigationStore.navigate('/customize/providers?selected=original'));
   harness();
   await openSetup();
   act(() => navigationStore.updateParams({ selected: 'editing' }));
@@ -778,7 +776,7 @@ test('a written goal returns from setup automatically when its selected agent is
   const view = harness({ startWithDefault: true, initialPrompt: goal });
   fireEvent.click(screen.getByRole('button', { name: 'Connect this agent' }));
   await waitFor(() =>
-    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/connections/),
+    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/customize/),
   );
   view.update({ agents: [READY] });
   await waitFor(() => expect(view.onSelect).toHaveBeenCalledOnce());
@@ -841,7 +839,7 @@ test('composer setup returns directly to the retained message and repaired Agent
     await screen.findByRole('button', { name: 'Connect Assistant' }),
   );
   await waitFor(() =>
-    expect(navigationStore.getSnapshot().pathname).toBe('/connections/models'),
+    expect(navigationStore.getSnapshot().pathname).toBe('/customize/providers'),
   );
   view.update({ agents: [READY] });
   fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
@@ -872,7 +870,7 @@ test("a hand-off from Home's composer runs setup here and returns with the promp
   });
   // The hand-off starts the setup journey by itself: no second click.
   await waitFor(() =>
-    expect(navigationStore.getSnapshot().pathname).toBe('/connections/models'),
+    expect(navigationStore.getSnapshot().pathname).toBe('/customize/providers'),
   );
   view.update({ agents: [READY] });
   fireEvent.click(

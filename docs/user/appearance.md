@@ -1,9 +1,9 @@
 # Custom appearance
 
-Station's **Appearance** page (`/appearance`, in Customize and the command
-palette) sets the mode, a color theme, the accent, density and motion. Its
-**Custom** section adds your own look on top: a palette and CSS that belong to
-you on this Station. Other people on the same Station never get yours.
+Station's **Appearance** page (`/appearance`, opened from the command palette
+and from **Open Appearance** in Settings) sets the mode, a color theme, the
+accent, density and motion. Its **Custom** section adds your own look on top: a
+palette and CSS that belong to you on this Station. Other people on the same Station never get yours.
 
 ## Ask an agent
 

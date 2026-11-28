@@ -1,0 +1,7 @@
+{
+  "revision": "ddb1d1a864db4b9c2f5f3d1a42f482f869591e62",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Says Station records the first engine whose sign-in it checked, and that upgraded homes move from Station's assistant to that engine.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

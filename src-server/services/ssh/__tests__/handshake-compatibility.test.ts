@@ -117,6 +117,7 @@ describe('public handshake capability flags (station#1095)', () => {
       conversationStationHandoff: true,
       pullRequestFeedback: true,
       projectLibrary: true,
+      taskResume: true,
       privateMemoryReview: true,
       webPushNotifications: true,
       eventStreamResume: true,
@@ -135,6 +136,7 @@ describe('public handshake capability flags (station#1095)', () => {
       troubleshootPrepare: true,
       usageConnectionFilters: true,
       followUpAttachments: true,
+      newChatDefault: true,
       cliSessionGroups: true,
     });
   });
@@ -189,6 +191,7 @@ describe('public handshake capability flags (station#1095)', () => {
       conversationStationHandoff: true,
       pullRequestFeedback: true,
       projectLibrary: true,
+      taskResume: true,
       privateMemoryReview: true,
       webPushNotifications: true,
       eventStreamResume: true,
@@ -207,6 +210,7 @@ describe('public handshake capability flags (station#1095)', () => {
       troubleshootPrepare: true,
       usageConnectionFilters: true,
       followUpAttachments: true,
+      newChatDefault: true,
       cliSessionGroups: true,
     });
     for (const buildIdentityField of [

@@ -45,13 +45,22 @@ describe('responsive dialog source contract', () => {
       ),
       'utf8',
     );
-    // The installing card, and the person-confirmed remove and update
-    // (#2323 S5: an update, like a remove, needs a person).
-    expect(source.match(/<ResponsiveDialogSurface/g)).toHaveLength(3);
+    // The installing card and the person-confirmed update (#2323 S5: an
+    // update, like a remove, needs a person); the remove is the shared
+    // RemovePluginModal, which Apps › Discover renders too.
+    expect(source.match(/<ResponsiveDialogSurface/g)).toHaveLength(2);
+    expect(source).toContain('<RemovePluginModal');
     expect(source).toContain('ariaLabel="Installing plugin"');
-    expect(source).toContain('ariaLabelledBy="remove-plugin-title"');
     expect(source).toContain('ariaLabelledBy="update-plugin-title"');
     expect(source).toContain('layer="system"');
     expect(source).toContain('dismissible={false}');
+    const remove = readFileSync(
+      join(
+        process.cwd(),
+        'src-ui/src/views/plugin-management/RemovePluginModal.tsx',
+      ),
+      'utf8',
+    );
+    expect(remove).toContain('ariaLabelledBy="remove-plugin-title"');
   });
 });

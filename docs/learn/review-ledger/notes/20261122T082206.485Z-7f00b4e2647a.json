@@ -1,0 +1,7 @@
+{
+  "revision": "fe3aafb9d61f45ec7e5403f36f84041486ac96cc",
+
+  "notes": [
+    {"path":"README.md","note":"Its link to the plugins guide is still accurate; the guide only gained a paragraph on catalog app facts.","inputs":["README.md","docs/guides/plugins.md"]}
+  ]
+}

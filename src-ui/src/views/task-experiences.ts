@@ -34,8 +34,8 @@ const TASK_EXPERIENCE_DEFINITIONS: readonly TaskExperienceDefinition[] = [
     description: 'Continue delivery in Builder Kit.',
     unavailableDescription:
       "Builder Kit isn't connected yet. Direct work is still available.",
-    alternativeHref: '/plugins',
-    alternativeLabel: 'Manage plugins',
+    alternativeHref: '/apps/library',
+    alternativeLabel: 'Open Library',
   },
   {
     id: 'learn',

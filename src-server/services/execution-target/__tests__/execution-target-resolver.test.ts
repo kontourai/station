@@ -552,7 +552,7 @@ describe('resolveExecutionTarget', () => {
       name: 'a degraded status',
       patch: { status: 'degraded' },
       message:
-        "Engine connection 'codex' is not ready for execution (status: degraded). Check this connection in Connections or run `station connections test codex`",
+        "Engine connection 'codex' is not ready for execution (status: degraded). Check this connection in Customize → Engines or run `station connections test codex`",
     },
     {
       name: 'an error status, without echoing its readiness evidence',
@@ -574,7 +574,7 @@ describe('resolveExecutionTarget', () => {
         },
       },
       message:
-        "Engine connection 'codex' is not ready for execution (status: error). Check this connection in Connections or run `station connections test codex`",
+        "Engine connection 'codex' is not ready for execution (status: error). Check this connection in Customize → Engines or run `station connections test codex`",
     },
     {
       name: 'a missing prerequisite',

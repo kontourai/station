@@ -1,3 +1,5 @@
+import { layoutUsesRepositoryWorkspace } from './layout.js';
+
 export interface SkillSourceContext {
   kind: 'agent' | 'plugin' | 'user' | 'asset';
   agentSlug?: string;
@@ -205,6 +207,383 @@ export interface RegistryItem {
   iconUrl?: string;
   /** Present on entries read from an MCP subregistry (#3483). */
   mcpServer?: RegistryMcpServerListing;
+  /**
+   * What a plugin catalog entry is, derived from its package's manifest when
+   * the catalog is listed. Absent when Station did not read the manifest: a
+   * remote package, or a manifest that is missing, malformed or over a bound.
+   */
+  app?: RegistryAppFacts;
+}
+
+/**
+ * Where an app's screen can open: as a screen of its own, as a view inside a
+ * project, or as a pane beside other work.
+ */
+export type RegistryAppPlacement = 'screen' | 'project-view' | 'pane';
+
+/**
+ * What an app works with. Each is read from a manifest declaration: agents,
+ * chat capabilities and prompt actions; knowledge namespaces; panes that need
+ * a task; and panes or layouts that need a project's files.
+ */
+export type RegistryAppWorksWith =
+  | 'chats-and-agents'
+  | 'knowledge'
+  | 'tasks'
+  | 'files-and-code';
+
+/**
+ * The facts of a plugin that has a screen (a layout or a Workspace Pane), or
+ * `{ kind: 'none' }` for one that only adds providers, skills or agents.
+ */
+export type RegistryAppFacts =
+  | {
+      readonly kind: 'app';
+      /** Tab labels of its layouts, in declaration order. */
+      readonly screens: readonly string[];
+      /** Names of its Workspace Panes. */
+      readonly panes: readonly string[];
+      readonly opensAs: readonly RegistryAppPlacement[];
+      readonly worksWith: readonly RegistryAppWorksWith[];
+      /** Agents the package brings. */
+      readonly agents: number;
+      /**
+       * One label per distinct prompt its screens, panes and package actions
+       * send. Two actions that send the same plugin prompt are one prompt.
+       */
+      readonly promptActions: readonly string[];
+      /** Labels of the knowledge collections it brings. */
+      readonly knowledge: readonly string[];
+      /** Tool servers it needs (`integrations.required`). */
+      readonly toolServers: readonly string[];
+      /** Whether one of its views is an MCP tool UI in a sandboxed frame. */
+      readonly sandboxedToolView: boolean;
+      /**
+       * Whether it ships screen code that runs inside Station's window (a
+       * manifest `entrypoint`), with no isolation from Station.
+       */
+      readonly inProcessScreen: boolean;
+    }
+  | { readonly kind: 'none' };
+
+/** The most entries any list in {@link RegistryAppFacts} may hold. */
+export const REGISTRY_APP_LIST_BOUND = 32;
+const REGISTRY_APP_LABEL_BOUND = 120;
+const REGISTRY_APP_PLACEMENTS: readonly RegistryAppPlacement[] = [
+  'screen',
+  'project-view',
+  'pane',
+];
+const REGISTRY_APP_WORKS_WITH: readonly RegistryAppWorksWith[] = [
+  'chats-and-agents',
+  'knowledge',
+  'tasks',
+  'files-and-code',
+];
+const REGISTRY_APP_LABEL_LISTS = [
+  'screens',
+  'panes',
+  'promptActions',
+  'knowledge',
+  'toolServers',
+] as const;
+
+function isAppRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isAppLabel(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim().length > 0 &&
+    value.length <= REGISTRY_APP_LABEL_BOUND
+  );
+}
+
+/**
+ * The distinct labels, or null when one is not a bounded label or there are
+ * more than the bound. Never truncates.
+ */
+function appLabels(values: readonly unknown[]): string[] | null {
+  const labels = [...new Set(values)];
+  if (labels.length > REGISTRY_APP_LIST_BOUND) return null;
+  return labels.every(isAppLabel) ? labels : null;
+}
+
+function isDistinctListOf<T>(
+  value: unknown,
+  members: readonly T[],
+): value is T[] {
+  return (
+    Array.isArray(value) &&
+    new Set(value).size === value.length &&
+    value.every((entry) => members.includes(entry as T))
+  );
+}
+
+/**
+ * Reads {@link RegistryAppFacts} from an untrusted value, such as a stored
+ * catalog snapshot. Returns null for anything outside the shape or its
+ * bounds; nothing is truncated.
+ */
+export function parseRegistryAppFacts(value: unknown): RegistryAppFacts | null {
+  if (!isAppRecord(value)) return null;
+  // Fields a newer writer adds beside `kind` do not change what it is.
+  if (value.kind === 'none') return { kind: 'none' };
+  if (value.kind !== 'app') return null;
+  const lists: Partial<
+    Record<(typeof REGISTRY_APP_LABEL_LISTS)[number], string[]>
+  > = {};
+  for (const key of REGISTRY_APP_LABEL_LISTS) {
+    const list = value[key];
+    if (!Array.isArray(list) || appLabels(list)?.length !== list.length)
+      return null;
+    lists[key] = list as string[];
+  }
+  const { screens, panes, promptActions, knowledge, toolServers } = lists;
+  if (
+    !screens ||
+    !panes ||
+    !promptActions ||
+    !knowledge ||
+    !toolServers ||
+    !isDistinctListOf(value.opensAs, REGISTRY_APP_PLACEMENTS) ||
+    !isDistinctListOf(value.worksWith, REGISTRY_APP_WORKS_WITH) ||
+    typeof value.agents !== 'number' ||
+    !Number.isSafeInteger(value.agents) ||
+    value.agents < 0 ||
+    value.agents > REGISTRY_APP_LIST_BOUND ||
+    typeof value.sandboxedToolView !== 'boolean' ||
+    typeof value.inProcessScreen !== 'boolean'
+  )
+    return null;
+  return {
+    kind: 'app',
+    screens,
+    panes,
+    opensAs: value.opensAs,
+    worksWith: value.worksWith,
+    agents: value.agents,
+    promptActions,
+    knowledge,
+    toolServers,
+    sandboxedToolView: value.sandboxedToolView,
+    inProcessScreen: value.inProcessScreen,
+  };
+}
+
+/** The manifest fields {@link deriveRegistryAppFacts} reads. */
+interface RegistryAppManifest {
+  name?: string;
+  entrypoint?: string;
+  capabilities?: readonly string[];
+  permissions?: readonly string[];
+  agents?: readonly unknown[];
+  workspacePanes?: readonly unknown[];
+  workspacePaneHost?: { readonly actions?: readonly unknown[] };
+  integrations?: { readonly required?: readonly string[] };
+  knowledge?: { readonly namespaces?: readonly unknown[] };
+}
+
+const PROMPT_ACTION_TYPES = new Set(['prompt', 'inline-prompt']);
+const HOST_PROMPT_INTENT_KINDS = new Set(['prompt', 'plugin-prompt']);
+
+/** A prompt an action sends, and the label it is offered under. */
+interface PromptAction {
+  key: string;
+  label: unknown;
+}
+
+/**
+ * The prompt actions of a tab or pane. A layout action whose `data` is
+ * `<plugin>:<prompt id>` sends that plugin prompt, the same identity a
+ * package action's `plugin-prompt` intent names; any other `data` is the
+ * prompt text itself.
+ */
+function layoutPromptActions(
+  actions: unknown,
+  pluginName: string | undefined,
+): PromptAction[] | null {
+  if (actions === undefined) return [];
+  if (!Array.isArray(actions)) return null;
+  return actions
+    .filter(
+      (action) =>
+        isAppRecord(action) && PROMPT_ACTION_TYPES.has(String(action.type)),
+    )
+    .map((action) => {
+      const { data, label } = action as Record<string, unknown>;
+      const prefix = pluginName ? `${pluginName}:` : undefined;
+      const key =
+        typeof data !== 'string'
+          ? `label:${String(label)}`
+          : prefix && data.startsWith(prefix)
+            ? `plugin:${data.slice(prefix.length)}`
+            : `text:${data}`;
+      return { key, label };
+    });
+}
+
+/**
+ * Derives what a plugin is from its parsed manifest and the layout documents
+ * its `layout` and `layouts` entries name, in that order. Returns null when a
+ * declaration is malformed or a list exceeds its bound, so the caller lists
+ * the entry without facts. Never truncates.
+ */
+export function deriveRegistryAppFacts(input: {
+  manifest: RegistryAppManifest;
+  layouts: readonly unknown[];
+}): RegistryAppFacts | null {
+  const { manifest, layouts } = input;
+  const panes = manifest.workspacePanes ?? [];
+  if (layouts.length === 0 && panes.length === 0) return { kind: 'none' };
+  if (
+    layouts.length > REGISTRY_APP_LIST_BOUND ||
+    panes.length > REGISTRY_APP_LIST_BOUND
+  )
+    return null;
+
+  const opensAs = new Set<RegistryAppPlacement>();
+  const worksWith = new Set<RegistryAppWorksWith>();
+  const screenLabels: unknown[] = [];
+  const layoutActions: PromptAction[] = [];
+  let sandboxedToolView = false;
+
+  for (const layout of layouts) {
+    if (!isAppRecord(layout) || !Array.isArray(layout.tabs)) return null;
+    if (layout.tabs.length > REGISTRY_APP_LIST_BOUND) return null;
+    // A repository-bound layout derives its workspace from a project.
+    if (
+      layoutUsesRepositoryWorkspace({
+        type: typeof layout.type === 'string' ? layout.type : undefined,
+        workspaceBinding:
+          layout.workspaceBinding === 'repository' ? 'repository' : undefined,
+      })
+    )
+      worksWith.add('files-and-code');
+    else opensAs.add('screen');
+    opensAs.add('project-view');
+    for (const tab of layout.tabs) {
+      if (!isAppRecord(tab)) return null;
+      screenLabels.push(tab.label);
+      if (isAppRecord(tab.component) && tab.component.kind === 'mcp-tool-ui')
+        sandboxedToolView = true;
+      const actions = layoutPromptActions(tab.actions, manifest.name);
+      if (!actions) return null;
+      layoutActions.push(...actions);
+    }
+  }
+
+  const paneNames: unknown[] = [];
+  for (const pane of panes) {
+    if (!isAppRecord(pane) || !isAppRecord(pane.placement)) return null;
+    paneNames.push(pane.name);
+    if (isAppRecord(pane.renderer) && pane.renderer.kind === 'mcp-tool-ui')
+      sandboxedToolView = true;
+    const requirements = (Array.isArray(pane.modes) ? pane.modes : []).map(
+      (mode) =>
+        isAppRecord(mode) && isAppRecord(mode.contextRequirement)
+          ? mode.contextRequirement
+          : {},
+    );
+    for (const requirement of requirements) {
+      if (requirement.task === true) worksWith.add('tasks');
+      if (requirement.workspace === true || requirement.source === true)
+        worksWith.add('files-and-code');
+      if (requirement.session === true || requirement.run === true)
+        worksWith.add('chats-and-agents');
+    }
+    const needsProject =
+      requirements.length > 0 &&
+      requirements.every((requirement) => requirement.project === true);
+    const regions = Array.isArray(pane.placement.supportedRegions)
+      ? pane.placement.supportedRegions
+      : [];
+    if (regions.includes('primary') || regions.includes('standalone'))
+      opensAs.add(needsProject ? 'project-view' : 'screen');
+    if (regions.includes('secondary') || regions.includes('docked'))
+      opensAs.add('pane');
+    const actions = layoutPromptActions(pane.actions, manifest.name);
+    if (!actions) return null;
+    layoutActions.push(...actions);
+  }
+
+  const hostActions = manifest.workspacePaneHost?.actions ?? [];
+  if (!Array.isArray(hostActions)) return null;
+  const packageActions: PromptAction[] = [];
+  for (const action of hostActions) {
+    if (!isAppRecord(action)) return null;
+    // Both intent kinds the host contribution defines send a prompt.
+    const intent = action.intent;
+    if (
+      !isAppRecord(intent) ||
+      !HOST_PROMPT_INTENT_KINDS.has(String(intent.kind))
+    )
+      continue;
+    packageActions.push({
+      key:
+        intent.kind === 'plugin-prompt'
+          ? `plugin:${String(intent.promptId)}`
+          : `text:${String(intent.prompt)}`,
+      label: action.label,
+    });
+  }
+  // One label per distinct prompt; a package action's label is preferred.
+  const promptsByKey = new Map<string, unknown>();
+  for (const action of [...packageActions, ...layoutActions])
+    if (!promptsByKey.has(action.key))
+      promptsByKey.set(action.key, action.label);
+  const actionLabels = [...promptsByKey.values()];
+
+  const namespaces = manifest.knowledge?.namespaces ?? [];
+  if (!Array.isArray(namespaces)) return null;
+  const knowledgeLabels = namespaces.map((namespace) =>
+    isAppRecord(namespace) ? (namespace.label ?? namespace.id) : undefined,
+  );
+  const agents = manifest.agents?.length ?? 0;
+  const capabilities = manifest.capabilities ?? [];
+  if (knowledgeLabels.length > 0 || capabilities.includes('knowledge'))
+    worksWith.add('knowledge');
+  if (
+    agents > 0 ||
+    actionLabels.length > 0 ||
+    capabilities.includes('chat') ||
+    capabilities.includes('agents') ||
+    (manifest.permissions ?? []).includes('agents.invoke')
+  )
+    worksWith.add('chats-and-agents');
+
+  const screens = appLabels(screenLabels);
+  const paneLabels = appLabels(paneNames);
+  const promptActions = appLabels(actionLabels);
+  const knowledge = appLabels(knowledgeLabels);
+  const toolServers = appLabels(manifest.integrations?.required ?? []);
+  if (
+    !screens ||
+    !paneLabels ||
+    !promptActions ||
+    !knowledge ||
+    !toolServers ||
+    agents > REGISTRY_APP_LIST_BOUND
+  )
+    return null;
+  return {
+    kind: 'app',
+    screens,
+    panes: paneLabels,
+    opensAs: REGISTRY_APP_PLACEMENTS.filter((placement) =>
+      opensAs.has(placement),
+    ),
+    worksWith: REGISTRY_APP_WORKS_WITH.filter((kind) => worksWith.has(kind)),
+    agents,
+    promptActions,
+    knowledge,
+    toolServers,
+    sandboxedToolView,
+    inProcessScreen:
+      typeof manifest.entrypoint === 'string' &&
+      manifest.entrypoint.trim().length > 0,
+  };
 }
 
 /**

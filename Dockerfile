@@ -29,8 +29,9 @@ COPY patches ./patches
 # The node-pty prebuild channel (#1245): the lifecycle's consistency check and
 # staging read this whether or not the manifest pins artifacts.
 COPY packaging/node-pty-prebuilds packaging/node-pty-prebuilds
+COPY packages/shared/src/process-identity.mjs packages/shared/src/windows-system-utility.mjs packages/shared/src/
 COPY scripts/node-runtime-contract.mjs scripts/dependency-lifecycle.mjs scripts/
-COPY scripts/lib/dependency-install-retirement.mjs scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/live-service-verification.mjs scripts/lib/module-entry.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/lib/pnpm-lockfile.mjs scripts/lib/npm-cli.mjs scripts/lib/posix-path.mjs scripts/lib/
+COPY scripts/lib/dependency-install-retirement.mjs scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/live-service-verification.mjs scripts/lib/module-entry.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/lib/pnpm-lockfile.mjs scripts/lib/npm-cli.mjs scripts/lib/posix-path.mjs scripts/lib/owned-process.mjs scripts/lib/windows-owned-guard-build.mjs scripts/lib/bounded-capture.mjs scripts/lib/
 RUN npm run dependencies:ci
 
 FROM dependencies AS build

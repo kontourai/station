@@ -1,0 +1,9 @@
+{
+  "revision": "959f275e5512e720329180fb5fdeb14660ad80bc",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the exact one-path exclusion for the dated ended-task-resume visual capture README. Its revision-bound screenshots and explicit evidence limits match neighboring historical review captures; current resume guides, SDK/API references and published documents are not excluded. The documentation maintenance guide still requires explicit current-versus-historical classification and source-backed review; the Pages README still accurately distinguishes the narrow public document list, unpublished internal evidence and pinned Corpus gate. Pinned Corpus check passed all blocking checks against base 14470641affb; no hosted deployment claim.","inputs":["corpus.json"]},
+
+    {"path":"docs/pages/README.md","note":"Reviewed the exact one-path exclusion for the dated ended-task-resume visual capture README. Its revision-bound screenshots and explicit evidence limits match neighboring historical review captures; current resume guides, SDK/API references and published documents are not excluded. The documentation maintenance guide still requires explicit current-versus-historical classification and source-backed review; the Pages README still accurately distinguishes the narrow public document list, unpublished internal evidence and pinned Corpus gate. Pinned Corpus check passed all blocking checks against base 14470641affb; no hosted deployment claim.","inputs":["corpus.json"]}
+  ]
+}

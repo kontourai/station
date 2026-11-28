@@ -398,9 +398,10 @@ export function CommandPalette() {
         // availability this surface cannot prove.
         hasSession: false,
         hasTask: false,
+        // A destination's retired ids still name it (`registry` is Apps).
         destinationIds: new Set(
-          APP_DESTINATION_REGISTRY.getPalette(surfaceVisibilityFlags).map(
-            (destination) => destination.id,
+          APP_DESTINATION_REGISTRY.getPalette(surfaceVisibilityFlags).flatMap(
+            (destination) => [destination.id, ...(destination.aliases ?? [])],
           ),
         ),
         occupiedCommandIds: new Set(),

@@ -66,23 +66,26 @@ export function useInboxSnooze() {
   return {
     enabled,
     attention: (item: AttentionItem, until: Date) =>
-      snoozeAttention.mutate(
-        { itemId: item.id, until: until.toISOString() },
-        {
-          onError: failed,
-          onSuccess: (result) =>
-            toastStore.show(
-              `Snoozed until ${formatSnoozeUntil(result?.snoozedUntil ?? until.toISOString())}`,
-              undefined,
-              6000,
-              [
-                {
-                  label: 'Undo',
-                  onClick: () => unsnoozeAttention.mutateAsync(item.id),
-                },
-              ],
-            ),
-        },
+      new Promise<void>((settled) =>
+        snoozeAttention.mutate(
+          { itemId: item.id, until: until.toISOString() },
+          {
+            onError: failed,
+            onSettled: () => settled(),
+            onSuccess: (result) =>
+              toastStore.show(
+                `Snoozed until ${formatSnoozeUntil(result?.snoozedUntil ?? until.toISOString())}`,
+                undefined,
+                6000,
+                [
+                  {
+                    label: 'Undo',
+                    onClick: () => unsnoozeAttention.mutateAsync(item.id),
+                  },
+                ],
+              ),
+          },
+        ),
       ),
     unsnooze: (item: AttentionItem) =>
       unsnoozeAttention.mutate(item.id, {
@@ -101,15 +104,18 @@ export function useInboxSnooze() {
       ? unsnoozeAttention.variables
       : undefined,
     notification: (notification: Notification, until: Date) =>
-      snoozeStored.mutate(
-        { id: notification.id, until: until.toISOString() },
-        {
-          onError: failed,
-          onSuccess: () =>
-            toastStore.show(
-              `Snoozed until ${formatSnoozeUntil(until.toISOString())}`,
-            ),
-        },
+      new Promise<void>((settled) =>
+        snoozeStored.mutate(
+          { id: notification.id, until: until.toISOString() },
+          {
+            onError: failed,
+            onSettled: () => settled(),
+            onSuccess: () =>
+              toastStore.show(
+                `Snoozed until ${formatSnoozeUntil(until.toISOString())}`,
+              ),
+          },
+        ),
       ),
     pending:
       snoozeAttention.isPending ||

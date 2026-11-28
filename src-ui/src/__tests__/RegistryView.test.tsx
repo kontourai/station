@@ -5,7 +5,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -314,14 +313,7 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 
 const navigateMock = vi.fn();
-const showSurfaceMock = vi.fn();
 const platformProfile = vi.hoisted(() => ({ isTauri: false }));
-
-// #928 C2a: "Open a Project to Add Layout" means Home by name and reveals
-// the Home surface through the shared command hook.
-vi.mock('../contexts/useShowSurface', () => ({
-  useShowSurface: () => showSurfaceMock,
-}));
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
@@ -441,7 +433,28 @@ function expectInstalledToast(message: string, pluginName: string) {
   expect(tone).toBe('success');
   expect(actions?.map((action) => action.label)).toEqual(['Open plugin']);
   actions?.[0].onClick();
-  expect(navigateMock).toHaveBeenCalledWith(`/plugins/${pluginName}`);
+  expect(navigateMock).toHaveBeenCalledWith(`/apps/library/${pluginName}`);
+}
+
+/**
+ * The one place this view installs a plugin: the tool picker opened on a
+ * named plugin (a tool request, the agent editor's tool library). No
+ * catalogue page lists plugins; Apps › Discover installs them on its own.
+ */
+function renderPluginInstall() {
+  return render(
+    <RegistryView
+      initialTab="plugins"
+      toolPicker
+      installTarget="demo-layout"
+    />,
+  );
+}
+
+function reviewPluginInstall() {
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Review Demo Layout permissions' }),
+  );
 }
 
 test('keeps an inspected catalog selection after a catalog refresh changes the available revision', async () => {
@@ -472,7 +485,7 @@ test('keeps an inspected catalog selection after a catalog refresh changes the a
 });
 
 describe('RegistryView', () => {
-  test.each(['agents', 'plugins'] as const)(
+  test.each(['skills', 'integrations'] as const)(
     'recovers the %s catalog after a failed read and a failed retry',
     async (tab) => {
       catalogRecovery.useItems.mockImplementation(useRegistryItemsQuery);
@@ -579,105 +592,98 @@ describe('RegistryView', () => {
     ]);
   });
 
-  test('choosing a source opens its catalog tab unless it supplies the current one', () => {
-    registrySources.push(
-      {
-        id: 'skills-only',
-        kind: 'skills',
-        displayName: 'Skill library',
-        origin: 'user',
-        adapter: 'github',
-        enabled: true,
-        status: 'ready',
-        detection: {
-          state: 'detected',
-          checkedAt: '2026-11-12T00:00:00.000Z',
-          kinds: [
-            { kind: 'skills', count: 3, via: 'skill-md', installable: true },
-            {
-              kind: 'plugins',
-              count: 1,
-              via: 'claude-marketplace',
-              installable: false,
-            },
-          ],
-        },
-      },
-      {
-        id: 'mixed',
-        kind: 'skills',
-        displayName: 'Team catalog',
-        origin: 'user',
-        adapter: 'directory',
-        enabled: true,
-        status: 'ready',
-        detection: {
-          state: 'detected',
-          checkedAt: '2026-11-12T00:00:00.000Z',
-          kinds: [
-            { kind: 'skills', count: 2, via: 'skill-md', installable: true },
-            {
-              kind: 'agents',
-              count: 1,
-              via: 'station-manifest',
-              installable: true,
-            },
-          ],
-        },
-      },
-    );
-    try {
-      render(<RegistryView />);
-      const browse = screen.getByLabelText('Browse marketplace');
-      fireEvent.change(browse, { target: { value: 'mixed' } });
-      expect(navigateMock).not.toHaveBeenCalled();
-      fireEvent.change(browse, { target: { value: 'skills-only' } });
-      expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
-      // The route remounts the view for the new tab; the choice survives it.
-      cleanup();
-      render(<RegistryView initialTab="skills" />);
-      expect(
-        (screen.getByLabelText('Browse marketplace') as HTMLSelectElement)
-          .value,
-      ).toBe('skills-only');
-    } finally {
-      registrySources.length = 0;
-    }
-  });
-
-  test('a chosen source is kept when the person switches tabs', () => {
-    registrySources.push({
-      id: 'mixed',
+  // Each catalogue is its own page: its picker lists sources of the page's
+  // own kind, and choosing one narrows that page without leaving it.
+  const SOURCES = [
+    {
+      id: 'skills-only',
       kind: 'skills',
-      displayName: 'Team catalog',
+      displayName: 'Skill library',
+      origin: 'user',
+      adapter: 'github',
+      enabled: true,
+      status: 'ready',
+      detection: {
+        state: 'detected',
+        checkedAt: '2026-11-12T00:00:00.000Z',
+        kinds: [
+          { kind: 'skills', count: 3, via: 'skill-md', installable: true },
+        ],
+      },
+    },
+    {
+      id: 'agents-only',
+      kind: 'agents',
+      displayName: 'Agent catalog',
       origin: 'user',
       adapter: 'directory',
       enabled: true,
       status: 'ready',
-    });
+      detection: {
+        state: 'detected',
+        checkedAt: '2026-11-12T00:00:00.000Z',
+        kinds: [
+          {
+            kind: 'agents',
+            count: 1,
+            via: 'station-manifest',
+            installable: true,
+          },
+        ],
+      },
+    },
+    {
+      id: 'apps-only',
+      kind: 'plugins',
+      displayName: 'App catalog',
+      origin: 'user',
+      adapter: 'directory',
+      enabled: true,
+      status: 'ready',
+    },
+  ];
+
+  test('Browse skills lists only skill sources, and choosing one keeps the page', () => {
+    registrySources.push(...SOURCES);
     try {
       render(<RegistryView initialTab="skills" />);
-      fireEvent.change(screen.getByLabelText('Browse marketplace'), {
-        target: { value: 'mixed' },
-      });
-      fireEvent.click(screen.getByRole('tab', { name: 'Plugins' }));
-      expect(navigateMock).toHaveBeenCalledWith('/registry/plugins');
-      // The route remounts the view for the new tab.
-      cleanup();
-      render(<RegistryView initialTab="plugins" />);
+      const picker = screen.getByLabelText('Source') as HTMLSelectElement;
+      expect([...picker.options].map((option) => option.value)).toEqual([
+        'all',
+        'skills-only',
+      ]);
+      fireEvent.change(picker, { target: { value: 'skills-only' } });
+      expect(picker.value).toBe('skills-only');
+      expect(navigateMock).not.toHaveBeenCalled();
       expect(
-        (screen.getByLabelText('Browse marketplace') as HTMLSelectElement)
-          .value,
-      ).toBe('mixed');
+        screen.getByRole('textbox', { name: 'Search skills' }),
+      ).toBeTruthy();
     } finally {
       registrySources.length = 0;
     }
   });
 
+  test.each(['integrations', 'layouts'] as const)(
+    'the %s page has no source picker, because no source supplies it',
+    (tab) => {
+      registrySources.push(...SOURCES);
+      try {
+        render(<RegistryView initialTab={tab} />);
+        expect(screen.queryByLabelText('Source')).toBeNull();
+        expect(
+          screen.queryByRole('button', { name: /^Manage sources/ }),
+        ).toBeNull();
+        expect(navigateMock).not.toHaveBeenCalled();
+      } finally {
+        registrySources.length = 0;
+      }
+    },
+  );
+
   test('Discover comes first: management opens from the toolbar instead of sitting above the catalog', () => {
-    render(<RegistryView />);
-    const browse = screen.getByLabelText('Browse marketplace');
-    const tabs = screen.getByRole('tab', { name: 'Skills' });
+    render(<RegistryView initialTab="skills" />);
+    const browse = screen.getByLabelText('Source');
+    const tabs = screen.getByRole('textbox', { name: 'Search skills' });
     const follows = (a: Node, b: Node) =>
       Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     expect(follows(browse, tabs)).toBe(true);
@@ -694,123 +700,35 @@ describe('RegistryView', () => {
   test('a catalog card shows a short Details label and names the item for assistive tech', () => {
     render(<RegistryView />);
     const button = screen.getByRole('button', {
-      name: `View ${registryItems.agents[0]!.displayName} details`,
+      name: `View ${registryItems.skills[0]!.displayName} details`,
     });
     expect(button.textContent).toBe('Details');
   });
 
-  test('updates the URL when switching Registry tabs', () => {
-    render(<RegistryView />);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Skills' }));
-
-    expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
+  test('each catalogue is its own page: no tab strip leads to the others', () => {
+    for (const tab of [
+      'agents',
+      'skills',
+      'integrations',
+      'layouts',
+    ] as const) {
+      const view = render(<RegistryView initialTab={tab} />);
+      expect(screen.queryByRole('tablist')).toBeNull();
+      expect(screen.queryByRole('tab')).toBeNull();
+      view.unmount();
+    }
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
-  test('keeps remote plugin isolation visible in the Registry', () => {
-    render(<RegistryView />);
-
-    act(() => {
-      pluginRegistryStatus = {
-        state: 'degraded',
-        failedPluginNames: [],
-        failure: 'remote-isolation',
-      };
-      for (const listener of pluginRegistryListeners) listener();
-    });
-
-    expect(
-      screen.getByText(
-        /Extensions from http:\/\/127.0.0.1:3141 are off on this device/,
-      ),
-    ).toBeTruthy();
-  });
-
-  test('states the app-wide authority of remote extensions without claiming profile-only containment', () => {
-    render(<RegistryView />);
-
-    act(() => {
-      pluginRegistryStatus = {
-        state: 'degraded',
-        failedPluginNames: [],
-        failure: 'remote-isolation',
-      };
-      for (const listener of pluginRegistryListeners) listener();
-    });
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Review and enable',
-      }),
-    );
-
-    expect(
-      screen.getByText(/other Stations' data, credentials in this window/i),
-    ).toBeTruthy();
-    expect(screen.queryByText(/applies only to this Station/i)).toBeNull();
-    expect(screen.queryByText(/native bridge/i)).toBeNull();
-  });
-
-  test('names framed native loading and its unverified protection without promising app isolation', () => {
-    platformProfile.isTauri = true;
-    render(<RegistryView />);
-
-    act(() => {
-      pluginRegistryStatus = {
-        state: 'degraded',
-        failedPluginNames: [],
-        failure: 'remote-isolation',
-      };
-      for (const listener of pluginRegistryListeners) listener();
-    });
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Review and enable',
-      }),
-    );
-
-    expect(
-      screen.getByText(/runs in frames whose isolation isn't verified/),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(/native features and saved Station credentials/),
-    ).toBeTruthy();
-    expect(screen.queryByText(/runs inside this app/)).toBeNull();
-  });
-
-  test('puts the remote-isolation consent section before the catalog', () => {
-    render(<RegistryView />);
-
-    act(() => {
-      pluginRegistryStatus = {
-        state: 'degraded',
-        failedPluginNames: [],
-        failure: 'remote-isolation',
-      };
-      for (const listener of pluginRegistryListeners) listener();
-    });
-
-    const consent = screen.getByRole('button', {
-      name: 'Review and enable',
-    });
-    const catalog = screen.getByTestId('registry-detail');
-    expect(
-      consent.compareDocumentPosition(catalog) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  test('granted consent with a stale refusal keeps the override row below the catalog', () => {
-    platformProfile.isTauri = true;
-    // Right after consent is granted, the 'remote-isolation' status lingers
-    // until the reload completes; the enabled row must not jump above the
-    // catalog during that window (archive#2539).
+  // The remote extension code controls moved to Apps › Library, where
+  // AppsLibraryExtensions.test drives them; a catalogue page has none.
+  test('a catalogue page carries no remote extension controls', () => {
     remotePluginBundleConsent.setRemotePluginBundlesAllowed(
       'local-station',
       'http://127.0.0.1:3141',
       true,
     );
-    render(<RegistryView />);
-
+    render(<RegistryView initialTab="skills" />);
     act(() => {
       pluginRegistryStatus = {
         state: 'degraded',
@@ -819,228 +737,25 @@ describe('RegistryView', () => {
       };
       for (const listener of pluginRegistryListeners) listener();
     });
-
-    const disable = screen.getByRole('button', {
-      name: 'Turn off extensions',
-    });
-    const catalog = screen.getByTestId('registry-detail');
     expect(
-      catalog.compareDocumentPosition(disable) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  test('keeps remote extensions enabled and shows an error when revocation cannot be verified', () => {
-    platformProfile.isTauri = true;
-    const apiBase = 'http://127.0.0.1:3141';
-    remotePluginBundleConsent.setRemotePluginBundlesAllowed(
-      'local-station',
-      apiBase,
-      true,
-    );
-    const reload = vi
-      .spyOn(remotePluginBundleConsent, 'reloadAfterRemotePluginBundleRevoke')
-      .mockImplementation(() => {});
-    const removeItem = vi
-      .spyOn(Storage.prototype, 'removeItem')
-      .mockImplementation(() => {
-        throw new Error('storage unavailable');
-      });
-    try {
-      render(<RegistryView />);
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Turn off extensions' }),
-      );
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Turn off and reload' }),
-      );
-
-      expect(reload).not.toHaveBeenCalled();
-      expect(
-        screen.getByText(
-          "Couldn't turn extensions off. They are still allowed.",
-        ),
-      ).toBeTruthy();
-      expect(
-        screen.getByRole('dialog', {
-          name: 'Turn off extensions from http://127.0.0.1:3141?',
-        }),
-      ).toBeTruthy();
-    } finally {
-      removeItem.mockRestore();
-      reload.mockRestore();
-    }
-  });
-
-  test('reloads only after remote extension revocation is verified', () => {
-    platformProfile.isTauri = true;
-    const apiBase = 'http://127.0.0.1:3141';
-    remotePluginBundleConsent.setRemotePluginBundlesAllowed(
-      'local-station',
-      apiBase,
-      true,
-    );
-    const reload = vi
-      .spyOn(remotePluginBundleConsent, 'reloadAfterRemotePluginBundleRevoke')
-      .mockImplementation(() => {});
-    try {
-      render(<RegistryView />);
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Turn off extensions' }),
-      );
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Turn off and reload' }),
-      );
-
-      expect(reload).toHaveBeenCalledOnce();
-    } finally {
-      reload.mockRestore();
-    }
-  });
-
-  test('uses selected-card preview actions for agents without mutating on card click', () => {
-    const { rerender } = render(<RegistryView />);
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'View Agent Two details' }),
-    );
-
-    expect(mutationCalls).toEqual([]);
-    const detail = screen.getByTestId('registry-detail');
-    expect(within(detail).getByText('Selected agent')).toBeTruthy();
+      screen.queryByRole('button', { name: 'Review and enable' }),
+    ).toBeNull();
     expect(
-      within(detail).getByRole('button', { name: 'Install' }),
-    ).toBeTruthy();
-
-    fireEvent.click(within(detail).getByRole('button', { name: 'Install' }));
-
-    expect(mutationCalls).toEqual([
-      { id: 'agent-two', action: 'install', tab: 'agents' },
-    ]);
-    expect(screen.getByText('Installed Agent Two')).toBeTruthy();
-
-    rerender(<RegistryView />);
-    const installedDetail = screen.getByTestId('registry-detail');
-    expect(
-      within(installedDetail).getByRole('button', { name: 'Remove' }),
-    ).toBeTruthy();
-
-    fireEvent.click(
-      within(installedDetail).getByRole('button', { name: 'Remove' }),
-    );
-
-    expect(mutationCalls).toEqual([
-      { id: 'agent-two', action: 'install', tab: 'agents' },
-      { id: 'agent-two', action: 'uninstall', tab: 'agents' },
-    ]);
-    expect(screen.getByText('Removed Agent Two')).toBeTruthy();
+      screen.queryByRole('button', { name: 'Turn off extensions' }),
+    ).toBeNull();
   });
 
-  test.each([
-    ['Skills', 'skills', 'skill-one', 'Skill One', 'GitHub'],
-    [
-      'Integrations',
-      'integrations',
-      'integration-one',
-      'Integration One',
-      undefined,
-    ],
-    ['Plugins', 'plugins', 'demo-layout', 'Demo Layout', 'Configured registry'],
-  ] as const)(
-    'renders preview install/remove actions for %s',
-    (tabLabel, tabKey, itemId, itemLabel, sourceLabel) => {
-      if (tabKey === 'plugins') {
-        previewResults.set(itemId, validDemoPreview());
-      }
-      const { rerender } = render(<RegistryView />);
-
-      fireEvent.click(screen.getByRole('tab', { name: tabLabel }));
-      const detail = screen.getByTestId('registry-detail');
-      expect(
-        within(detail).getByText(`Selected ${tabKey.slice(0, -1)}`),
-      ).toBeTruthy();
-      if (sourceLabel) {
-        expect(within(detail).getAllByText(sourceLabel).length).toBeGreaterThan(
-          0,
-        );
-      }
-
-      fireEvent.click(
-        screen.getByRole('button', { name: `View ${itemLabel} details` }),
-      );
-      const selectedDetail = screen.getByTestId('registry-detail');
-      fireEvent.click(
-        within(selectedDetail).getByRole('button', { name: /Install/ }),
-      );
-
-      if (tabKey === 'plugins') {
-        // A registry plugin installs from its preview (#765 D1): the modal
-        // shows what the previewed source contributes before anything runs.
-        fireEvent.click(
-          screen.getByRole('button', { name: 'Confirm Install' }),
-        );
-      }
-
-      expect(mutationCalls).toContainEqual(
-        expect.objectContaining({
-          id: itemId,
-          action: 'install',
-          tab: tabKey,
-        }),
-      );
-      if (tabKey === 'plugins') {
-        expectInstalledToast(`Installed ${itemLabel}`, itemId);
-      } else {
-        expect(screen.getByText(`Installed ${itemLabel}`)).toBeTruthy();
-        expect(showToastMock).not.toHaveBeenCalled();
-      }
-
-      rerender(<RegistryView />);
-      const installedDetail = screen.getByTestId('registry-detail');
-      if (tabKey === 'plugins') {
-        fireEvent.click(
-          within(installedDetail).getByRole('button', {
-            name: 'Open a Project to Add Layout',
-          }),
-        );
-        // #928 C2a: Home is revealed as a surface, not navigated to.
-        expect(showSurfaceMock).toHaveBeenCalledWith('home');
-        expect(navigateMock).not.toHaveBeenCalledWith('/');
-        expect(
-          within(installedDetail).getByRole('button', {
-            name: 'Manage Plugin',
-          }),
-        ).toBeTruthy();
-        expect(
-          within(installedDetail).getByRole('button', {
-            name: 'Remove plugin',
-          }),
-        ).toBeTruthy();
-      } else {
-        expect(
-          within(installedDetail).getByRole('button', { name: /Remove/ }),
-        ).toBeTruthy();
-      }
-    },
-  );
-
-  // #765 F1's exact case: the audit found a layout's detail block labeled
-  // "Selected agent". The eyebrow derives from the active tab, so the
-  // Layouts tab — which the install-flow cases above cannot cover, its
-  // detail actions differ — is pinned on its own.
   test('derives the detail eyebrow from the Layouts tab', () => {
-    render(<RegistryView />);
+    render(<RegistryView initialTab="layouts" />);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Layouts' }));
     const detail = screen.getByTestId('registry-detail');
     expect(within(detail).getByText('Selected layout')).toBeTruthy();
     expect(within(detail).queryByText('Selected agent')).toBeNull();
   });
 
   test('offers a route to installed skill management from the skills tab', () => {
-    render(<RegistryView />);
+    render(<RegistryView initialTab="skills" />);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Skills' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Manage Installed Skills' }),
     );
@@ -1049,15 +764,16 @@ describe('RegistryView', () => {
   });
 
   test('re-syncs the rendered tab when the route prop changes after mount (Back/Forward)', () => {
-    const view = render(<RegistryView initialTab="plugins" />);
+    const view = render(<RegistryView initialTab="integrations" />);
     expect(
-      screen.getByRole('tab', { name: 'Plugins', selected: true }),
+      screen.getByRole('textbox', { name: 'Search tool servers' }),
     ).toBeTruthy();
 
     view.rerender(<RegistryView initialTab="skills" />);
+    expect(screen.getByRole('textbox', { name: 'Search skills' })).toBeTruthy();
     expect(
-      screen.getByRole('tab', { name: 'Skills', selected: true }),
-    ).toBeTruthy();
+      screen.queryByRole('textbox', { name: 'Search tool servers' }),
+    ).toBeNull();
   });
 
   test('shows layout lifecycle truth and enables a disabled starter', () => {
@@ -1081,81 +797,55 @@ describe('RegistryView', () => {
   });
 
   test('shows in-app empty-state guidance, not a terminal command', () => {
-    emptyTabs.add('agents');
+    emptyTabs.add('skills');
     render(<RegistryView />);
 
-    expect(
-      screen.getByText('No agents in your marketplaces yet.'),
-    ).toBeTruthy();
+    expect(screen.getByText('No skills in your sources yet.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Manage plugins' })).toBeNull();
     expect(
-      screen.getByText(
-        'Add a marketplace, or ask the Station operator to add one.',
-      ),
+      screen.getByText('Add a source, or ask the Station operator to add one.'),
     ).toBeTruthy();
     expect(screen.queryByText(/station plugin install/i)).toBeNull();
-    // Plugin guidance belongs to the Plugins tab only.
-    expect(
-      screen.queryByRole('link', { name: 'Open plugin guidance' }),
-    ).toBeNull();
-  });
-
-  test('offers plugin guidance on an empty Plugins tab', () => {
-    emptyTabs.add('plugins');
-    render(<RegistryView initialTab="plugins" />);
-    expect(
-      screen.getByText('No plugins in your marketplaces yet.'),
-    ).toBeTruthy();
-
-    const docsLink = screen.getByRole('link', { name: 'Open plugin guidance' });
-    expect(docsLink.getAttribute('href')).toBe(
-      'https://github.com/kontourai/station/blob/main/docs/guides/plugins.md',
-    );
-    expect(docsLink.getAttribute('target')).toBe('_blank');
-    expect(docsLink.getAttribute('rel')).toBe('noopener noreferrer');
-
-    fireEvent.click(docsLink);
-    expect(navigateMock).not.toHaveBeenCalledWith('/plugins');
   });
 
   test('filters registry items and explains and clears a no-match state', () => {
     render(<RegistryView />);
 
-    fireEvent.change(screen.getByLabelText('Search agents'), {
-      target: { value: 'backup' },
+    fireEvent.change(screen.getByLabelText('Search skills'), {
+      target: { value: 'prototype' },
     });
 
     expect(
-      screen.getByRole('button', { name: 'View Agent Two details' }),
+      screen.getByRole('button', { name: 'View Prototype details' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'View Agent One details' }),
+      screen.queryByRole('button', { name: 'View Skill One details' }),
     ).toBeNull();
 
-    fireEvent.change(screen.getByLabelText('Search agents'), {
+    fireEvent.change(screen.getByLabelText('Search skills'), {
       target: { value: 'missing entry' },
     });
 
     expect(
-      screen.getByText('Nothing in agents matches “missing entry”'),
+      screen.getByText('Nothing in skills matches “missing entry”'),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
     expect(
-      (screen.getByLabelText('Search agents') as HTMLInputElement).value,
+      (screen.getByLabelText('Search skills') as HTMLInputElement).value,
     ).toBe('');
     expect(
-      screen.getByRole('button', { name: 'View Agent One details' }),
+      screen.getByRole('button', { name: 'View Skill One details' }),
     ).toBeTruthy();
   });
 
   test('keeps the available catalog usable while installed status is refreshing', () => {
-    stalledInstalledTabs.add('plugins');
+    stalledInstalledTabs.add('integrations');
 
-    render(<RegistryView initialTab="plugins" />);
+    render(<RegistryView initialTab="integrations" />);
 
     expect(screen.queryByText('Loading...')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'View Demo Layout details' }),
+      screen.getByRole('button', { name: 'View Integration One details' }),
     ).toBeTruthy();
     expect(
       (
@@ -1177,12 +867,8 @@ describe('RegistryView', () => {
       ...validDemoPreview(),
       hasBundle: false,
     });
-    render(<RegistryView initialTab="plugins" />);
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    renderPluginInstall();
+    reviewPluginInstall();
     const preview = screen.getByRole('dialog', { name: 'Install Preview' });
     expect(
       within(preview).queryByRole('button', { name: 'Review and enable' }),
@@ -1204,12 +890,8 @@ describe('RegistryView', () => {
       ...validDemoPreview(),
       hasBundle: true,
     });
-    render(<RegistryView initialTab="plugins" />);
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    renderPluginInstall();
+    reviewPluginInstall();
     expect(
       screen.getByText(
         /You can install this plugin now. Its custom extension code stays off/,
@@ -1237,65 +919,39 @@ describe('RegistryView', () => {
     expect(mutationCalls).toHaveLength(1);
   });
 
-  test('shows an installed plugin immediately while its refetch catches up', () => {
-    staleAfterMutationTabs.add('plugins');
-    previewResults.set('demo-layout', validDemoPreview());
+  // The optimistic state is the catalogue page's own, the same for every
+  // tab it shows; Tools' Browse tool servers is one of those pages.
+  test('shows an installed item immediately while its refetch catches up', () => {
+    staleAfterMutationTabs.add('integrations');
 
-    render(<RegistryView initialTab="plugins" />);
+    render(<RegistryView initialTab="integrations" />);
     fireEvent.click(
       within(screen.getByTestId('registry-detail')).getByRole('button', {
         name: 'Install',
       }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     const installedDetail = screen.getByTestId('registry-detail');
-    expectInstalledToast('Installed Demo Layout', 'demo-layout');
+    expect(screen.getByText('Installed Integration One')).toBeTruthy();
     expect(
-      within(installedDetail).getByRole('button', {
-        name: 'Open a Project to Add Layout',
-      }),
+      within(installedDetail).getByRole('button', { name: 'Remove' }),
     ).toBeTruthy();
-    expect(screen.getAllByText('Installed').length).toBeGreaterThan(0);
-  });
-
-  test('"Open a Project to Add Layout" reveals the Home surface instead of navigating to / (#928 C2a)', () => {
-    staleAfterMutationTabs.add('plugins');
-    previewResults.set('demo-layout', validDemoPreview());
-    navigateMock.mockClear();
-    showSurfaceMock.mockClear();
-
-    render(<RegistryView initialTab="plugins" />);
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Open a Project to Add Layout',
-      }),
-    );
-
-    expect(showSurfaceMock).toHaveBeenCalledWith('home');
-    expect(navigateMock).not.toHaveBeenCalledWith('/');
+    expect(within(installedDetail).getByText('Installed')).toBeTruthy();
+    expect(refetchInstalled).toHaveBeenCalledWith('integrations');
   });
 
   test('reconciles an optimistic install against contradictory fresh server state', async () => {
-    staleAfterMutationTabs.add('plugins');
-    reconciledRefetchTabs.add('plugins');
-    previewResults.set('demo-layout', validDemoPreview());
-    render(<RegistryView initialTab="plugins" />);
+    staleAfterMutationTabs.add('integrations');
+    reconciledRefetchTabs.add('integrations');
+    render(<RegistryView initialTab="integrations" />);
 
     fireEvent.click(
       within(screen.getByTestId('registry-detail')).getByRole('button', {
         name: 'Install',
       }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
-    expectInstalledToast('Installed Demo Layout', 'demo-layout');
+    expect(screen.getByText('Installed Integration One')).toBeTruthy();
     await waitFor(() =>
       expect(
         within(screen.getByTestId('registry-detail')).getByRole('button', {
@@ -1303,12 +959,12 @@ describe('RegistryView', () => {
         }),
       ).toBeTruthy(),
     );
-    expect(refetchInstalled).toHaveBeenCalled();
+    expect(refetchInstalled).toHaveBeenCalledWith('integrations');
   });
 
   test('fails closed when installed status errors and offers a retry', () => {
-    installedErrorTabs.add('plugins');
-    render(<RegistryView initialTab="plugins" />);
+    installedErrorTabs.add('integrations');
+    render(<RegistryView initialTab="integrations" />);
 
     expect(
       (
@@ -1346,12 +1002,8 @@ describe('RegistryView', () => {
         reason: 'saved',
       },
     };
-    render(<RegistryView initialTab="plugins" />);
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    renderPluginInstall();
+    reviewPluginInstall();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     await waitFor(() => expect(showToastMock).toHaveBeenCalled());
@@ -1367,7 +1019,7 @@ describe('RegistryView', () => {
     );
     expect(tone).toBe('warning');
     actions?.[0]?.onClick();
-    expect(navigateMock).toHaveBeenCalledWith('/plugins/demo-layout');
+    expect(navigateMock).toHaveBeenCalledWith('/apps/library/demo-layout');
     expect(mutationCalls).toHaveLength(1);
     expect(requestConsent).not.toHaveBeenCalled();
     expect(reloadPlugins).not.toHaveBeenCalled();
@@ -1382,12 +1034,8 @@ describe('RegistryView', () => {
         installationReadiness: { state: 'pending', recovery: 'review' },
       },
     ];
-    render(<RegistryView initialTab="plugins" />);
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    renderPluginInstall();
+    reviewPluginInstall();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     await waitFor(() => expect(showToastMock).toHaveBeenCalled());
@@ -1408,7 +1056,7 @@ describe('RegistryView', () => {
       'Install again anyway',
     ]);
     actions[0]!.onClick();
-    expect(navigateMock).toHaveBeenCalledWith('/plugins/demo-layout');
+    expect(navigateMock).toHaveBeenCalledWith('/apps/library/demo-layout');
     actions[1]!.onClick();
     await waitFor(() => expect(mutationCalls).toHaveLength(1));
   });
@@ -1418,13 +1066,9 @@ describe('RegistryView', () => {
       ...validDemoPreview(),
       components: [{ type: 'provider', id: 'llm' }],
     });
-    render(<RegistryView initialTab="plugins" />);
+    renderPluginInstall();
 
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    reviewPluginInstall();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     // The action is derived from what the preview actually reviewed, so an
@@ -1437,41 +1081,6 @@ describe('RegistryView', () => {
     ];
     expect(text).toBe('Installed Demo Layout');
     expect(actions).toBeUndefined();
-  });
-
-  test('keeps installed plugin removal reachable through the full lifecycle', () => {
-    previewResults.set('demo-layout', validDemoPreview());
-    render(<RegistryView initialTab="plugins" />);
-
-    const detail = screen.getByTestId('registry-detail');
-    fireEvent.click(within(detail).getByRole('button', { name: 'Install' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
-    expectInstalledToast('Installed Demo Layout', 'demo-layout');
-
-    fireEvent.click(
-      within(detail).getByRole('button', { name: 'Remove plugin' }),
-    );
-    expect(screen.getByText('Removed Demo Layout')).toBeTruthy();
-    expect(
-      within(detail).getByRole('button', { name: 'Install' }),
-    ).toBeTruthy();
-
-    fireEvent.click(within(detail).getByRole('button', { name: 'Install' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
-    expectInstalledToast('Installed Demo Layout', 'demo-layout');
-    expect(mutationCalls).toEqual([
-      expect.objectContaining({
-        id: 'demo-layout',
-        action: 'install',
-        tab: 'plugins',
-      }),
-      { id: 'demo-layout', action: 'uninstall', tab: 'plugins' },
-      expect.objectContaining({
-        id: 'demo-layout',
-        action: 'install',
-        tab: 'plugins',
-      }),
-    ]);
   });
 
   /**
@@ -1490,13 +1099,9 @@ describe('RegistryView', () => {
    */
   test('installs a registry plugin from its preview with the operator decision attached', () => {
     previewResults.set('demo-layout', validDemoPreview());
-    render(<RegistryView initialTab="plugins" />);
+    renderPluginInstall();
 
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    reviewPluginInstall();
 
     // Nothing mutated yet: the preview modal is the decision point.
     expect(mutationCalls).toEqual([]);
@@ -1556,12 +1161,8 @@ describe('RegistryView', () => {
               ],
             };
       requestConsent.mockClear();
-      render(<RegistryView initialTab="plugins" />);
-      fireEvent.click(
-        within(screen.getByTestId('registry-detail')).getByRole('button', {
-          name: 'Install',
-        }),
-      );
+      renderPluginInstall();
+      reviewPluginInstall();
       fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
       await waitFor(() => expect(mutationCalls).toHaveLength(1));
       if (state === 'pending') {
@@ -1596,13 +1197,9 @@ describe('RegistryView', () => {
       },
     });
     requestInstallConsent.mockResolvedValueOnce(false);
-    render(<RegistryView initialTab="plugins" />);
+    renderPluginInstall();
 
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    reviewPluginInstall();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     await waitFor(() =>
@@ -1617,32 +1214,21 @@ describe('RegistryView', () => {
     expect(pluginRegistryReload).not.toHaveBeenCalled();
   });
 
-  test('an agents-tab entry the plugin registry does not resolve keeps the plain agent install path', () => {
+  // The agent catalogue is gone: the page opens on skills by default, and
+  // nothing installs an agent entry from here.
+  test('opens on Browse skills when no page is named', () => {
     render(<RegistryView />);
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'View Agent Two details' }),
-    );
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
-
-    expect(previewMutationCalls).toEqual(['agent-two']);
-    expect(mutationCalls).toEqual([
-      { id: 'agent-two', action: 'install', tab: 'agents' },
-    ]);
+    expect(screen.getByRole('textbox', { name: 'Search skills' })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Search agents' })).toBeNull();
   });
 
   test('renders a selected-card preview failure and keeps a repeat install click live', () => {
     previewResults.set('demo-layout', new Error('Preview staging failed'));
-    render(<RegistryView initialTab="plugins" />);
+    renderPluginInstall();
 
-    const install = within(screen.getByTestId('registry-detail')).getByRole(
-      'button',
-      { name: 'Install' },
-    );
+    const install = screen.getByRole('button', {
+      name: 'Review Demo Layout permissions',
+    });
     fireEvent.click(install);
 
     expect(screen.getByText('Preview staging failed')).toBeTruthy();
@@ -1656,32 +1242,3 @@ describe('RegistryView', () => {
     expect(screen.getByText('Install Preview')).toBeTruthy();
   });
 });
-
-test.each(['registry-unavailable', 'bundle-load-failure'] as const)(
-  'the Extensions screen owns %s and its Retry action',
-  (failure) => {
-    pluginRegistryStatus = {
-      state: 'degraded',
-      failedPluginNames:
-        failure === 'bundle-load-failure' ? ['broken-extension'] : [],
-      failure,
-    };
-    render(<RegistryView />);
-    expect(screen.getByRole('alert').textContent).toContain(
-      "Couldn't load extensions",
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Retry extensions' }));
-    expect(pluginRegistryReload).toHaveBeenCalledTimes(1);
-    act(() => {
-      pluginRegistryStatus = {
-        state: 'ready',
-        failedPluginNames: [],
-        failure: undefined,
-      };
-      for (const listener of pluginRegistryListeners) listener();
-    });
-    expect(
-      screen.queryByRole('button', { name: 'Retry extensions' }),
-    ).toBeNull();
-  },
-);

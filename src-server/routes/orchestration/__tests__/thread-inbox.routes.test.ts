@@ -401,6 +401,75 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     });
   });
 
+  test('the sender can edit, reorder and cancel held messages without changing the running turn', async () => {
+    const world = station();
+    await world.busy();
+    const revised = 'First check the timeout.\nThen add coverage.';
+    expect(
+      (await world.send('first-held', 'old text', { whenBusy: 'queue' }))
+        .status,
+    ).toBe(202);
+    expect(
+      (await world.send('second-held', 'other text', { whenBusy: 'queue' }))
+        .status,
+    ).toBe(202);
+    const update = (body: Record<string, string>) =>
+      world.app.request(
+        `/api/orchestration/conversations/${CONVERSATION}/inbox`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+    const edit = {
+      kind: 'edit',
+      key: 'first-held',
+      previous: 'old text',
+      message: revised,
+    };
+    expect((await world.as(READER, () => update(edit))).status).toBe(409);
+    expect((await update(edit)).status).toBe(200);
+    expect((await update(edit)).status).toBe(409);
+    expect(
+      (
+        await update({
+          kind: 'move',
+          key: 'second-held',
+          neighbor: 'first-held',
+          direction: 'up',
+        })
+      ).status,
+    ).toBe(200);
+    expect(await (await world.listInbox()).json()).toMatchObject({
+      data: {
+        queueControls: true,
+        entries: [
+          { clientTurnId: 'second-held', position: 1, message: 'other text' },
+          { clientTurnId: 'first-held', position: 2, message: revised },
+        ],
+      },
+    });
+    expect(
+      (
+        await update({
+          kind: 'promote',
+          key: 'b66c162c-88d9-43f1-827b-b728c2c79772',
+          source: 'first-held',
+          expectedTurn: world.inbox.currentSteerTarget(CONVERSATION)!,
+          message: revised,
+        })
+      ).status,
+    ).toBe(409);
+    expect(world.inbox.entry(CONVERSATION, 'first-held')?.state).toBe('queued');
+    expect((await world.cancel('second-held')).status).toBe(200);
+    world.adapter.holdTurns = false;
+    world.adapter.complete();
+    await eventually(() =>
+      expect(world.prompts()).toEqual(['read the file', revised]),
+    );
+  });
+
   test.each(['steer', 'follow-up'] as const)(
     '%s admission rejects a stale head and leaves the inbox empty',
     async (kind) => {
@@ -431,12 +500,22 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     },
   );
 
-  test.each(['steer', 'follow-up'] as const)(
-    '%s is recorded with its head before any delivery',
-    async (kind) => {
+  test.each([
+    ['steer', 'currentHead'],
+    ['steer', 'steerHead'],
+    ['follow-up', 'currentHead'],
+  ] as const)(
+    '%s is recorded with its %s before any delivery',
+    async (kind, headField) => {
       const world = station();
       await world.busy();
-      const expectedHead = world.inbox.currentHead(CONVERSATION);
+      const listing = await world.listInbox();
+      expect(listing.status).toBe(200);
+      const snapshot = (await listing.json()) as {
+        data: Partial<Record<typeof headField, string>>;
+      };
+      const expectedHead = snapshot.data[headField];
+      expect(expectedHead).toEqual(expect.any(String));
       const send = () =>
         world.app.request(
           `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`,

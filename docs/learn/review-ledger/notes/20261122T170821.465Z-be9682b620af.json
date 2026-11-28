@@ -1,0 +1,55 @@
+{
+  "revision": "d77df74d395cc41ab8694034d19f0a753345db8b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r2b-evidence.md","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp.md","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-cancelled.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-approve-desktop.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-approve-loopback.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-approve.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-change.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-cors-add.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-cors-remove.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-deny.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-redirect-add.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-redirect-remove.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-revoke.png","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Only the approved-but-incomplete plugin cleanup line changed, to name Apps > Library for the retry; no citing page or capture quotes that line or shows that state (captures are operator sign-in, step-up and outside-agent approve, deny, revoke, change, redirect and CORS pages).","inputs":["src-server/runtime/consent/consent-listener.ts"]}
+  ]
+}

@@ -6,8 +6,14 @@
 
 /* ── Sections ───────────────────────────────────────────────────── */
 
+/* The intro is one line of pointers, then the section nav. */
+.knowledge-view__cross-link {
+  margin: 0 0 var(--k-space-3);
+}
+
+/* The same gap the shared section stack uses between sections. */
 .knowledge-view__section {
-  margin-bottom: 2rem;
+  margin-bottom: var(--k-space-4);
 }
 
 /* ── Card ───────────────────────────────────────────────────────── */

@@ -1,0 +1,10 @@
+export function PlaceLiteralView({
+  on,
+  notify,
+}: {
+  on: boolean;
+  notify: (text: string) => void;
+}) {
+  notify('Check its status in Plugins.');
+  return <p>{on ? 'Browse the Registry' : 'Done'}</p>;
+}

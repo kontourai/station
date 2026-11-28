@@ -257,6 +257,12 @@
       "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
     },
     {
+      "path": "src-ui/src/views/plugin-management/RemovePluginModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/views/apps/__tests__/DiscoverView.test.tsx (Remove asks, Cancel removes nothing, Remove removes once); shared by PluginModalStack (Apps › Library) and Apps › Discover"
+    },
+    {
       "path": "src-ui/src/views/plugin-management/StartPluginModal.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",

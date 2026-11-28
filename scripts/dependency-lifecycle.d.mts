@@ -35,8 +35,8 @@ export function pnpmCommand(
   args: string[],
   cwd?: string,
   invocation?: { command: string; args: string[]; argv0?: string },
-): void;
-export function refreshLock(options?: { cwd?: string }): void;
+): Promise<void>;
+export function refreshLock(options?: { cwd?: string }): Promise<void>;
 export function preflightInstalledLifecycle(
   allowlist: unknown,
   options?: { cwd?: string; scope?: string },
@@ -73,7 +73,7 @@ export function install(
     verify: typeof verify;
     generateBuildInputs: () => unknown;
   },
-): unknown;
+): Promise<unknown>;
 export function propose(options?: { cwd?: string }): unknown;
 export function describeFailure(
   error: unknown,

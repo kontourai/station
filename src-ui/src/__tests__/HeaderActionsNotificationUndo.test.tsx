@@ -48,6 +48,13 @@ const snoozePreviews: { id: string; enabled: boolean }[] = [];
 const snoozeAttention = vi.fn();
 const unsnoozeAttention = vi.fn();
 const snoozeNotification = vi.fn();
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => [],
+}));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({ data: notifications, isLoading: false }),
@@ -165,7 +172,7 @@ describe('HeaderActions + NotificationHistory — undo survives closing', () => 
     try {
       const { onClose, rerenderWith } = await openPanel();
 
-      chooseRowAction('Mark done', {
+      chooseRowAction('Dismiss', {
         within:
           document.querySelector<HTMLElement>('.notification-history') ??
           undefined,
@@ -199,7 +206,7 @@ describe('HeaderActions + NotificationHistory — undo survives closing', () => 
     try {
       const { rerenderWith } = await openPanel();
 
-      chooseRowAction('Mark done', {
+      chooseRowAction('Dismiss', {
         within:
           document.querySelector<HTMLElement>('.notification-history') ??
           undefined,

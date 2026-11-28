@@ -39,7 +39,7 @@ cd examples/fieldwork-review
 npm run build
 ```
 
-Install the resulting plugin from the Station Plugins page, approve the
+Install the resulting plugin from Apps › Library in Station, approve the
 trusted `plugin.server` permission through the host-owned review, then add **Fieldwork Review** to a
 project. Enter paths relative to the selected project workspace, such as
 `task.json` and `source.txt`.

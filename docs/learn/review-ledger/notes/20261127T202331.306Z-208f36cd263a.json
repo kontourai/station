@@ -1,0 +1,9 @@
+{
+  "revision": "c90585838ca52b059e1cce325b917b8b9c1e3ad1",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the installer custody import-closure correction: owned-process.mjs and its static windows-owned-guard-build.mjs dependency are generic tooling reached by the existing iOS dependency installation script, so they now join IOS_POST_MERGE_FILES and build after landing. Native-name before-landing selection, protected-base CodeQL admission, dependency authority and exact-source verification receipt semantics are unchanged; no prose change warranted for these affected security and receipt claims. Hosted source scans and shard 1 at clean committed 2f730cd5ecb8063b50a717bb33cc52f5d7e1dc24 both caught this omission in the existing complete executed-import graph test. The unchanged classifier owner now passes all 189 tests; no assertion, deadline, policy threshold or runtime custody path changed.","inputs":["scripts/classify-ci-change.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed the installer custody import-closure correction: owned-process.mjs and its static windows-owned-guard-build.mjs dependency are generic tooling reached by the existing iOS dependency installation script, so they now join IOS_POST_MERGE_FILES and build after landing. Native-name before-landing selection, protected-base CodeQL admission, dependency authority and exact-source verification receipt semantics are unchanged; no prose change warranted for these affected security and receipt claims. Hosted source scans and shard 1 at clean committed 2f730cd5ecb8063b50a717bb33cc52f5d7e1dc24 both caught this omission in the existing complete executed-import graph test. The unchanged classifier owner now passes all 189 tests; no assertion, deadline, policy threshold or runtime custody path changed.","inputs":["scripts/classify-ci-change.mjs"]}
+  ]
+}

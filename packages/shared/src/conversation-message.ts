@@ -221,6 +221,7 @@ export interface ConversationMessage {
     sender?: ClientOriginSender;
     /** That steer was delivered by cancelling the running step (see `TurnStartedEvent`). */
     steerInterruptedRun?: true;
+    steer?: true;
     /**
      * A check-back Station sent (`isStationCheckBackTurn`): sent as the
      * person, written by nobody. Shown as Station's, not the person's.

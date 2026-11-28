@@ -47,7 +47,7 @@ remains separate from these availability states.
 | Clipboard images (`clipboard-image`) | unsupported (the room composer uses `navigator.clipboard.read()` on a touch browser) | enabled on mobile; unsupported on desktop | `station-media-intake` reads the system clipboard for the room composer’s **Paste image** action. Reply and start composers use Attach or textarea paste events. |
 | Pairing deep link | unsupported | enabled | Release schemes are `station-stable` and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
-| Nearby Station discovery | unsupported | iOS and Android 14+ source integration | Fixed `_station._tcp.local.` DNS-SD browsing returns untrusted private host/port hints. Earlier Android versions retain QR/manual entry. Bounded foreground scans require the existing access review; compilation and physical behavior require separate verification. |
+| Nearby Station discovery | unsupported | iOS and Android 14+; Windows behind `desktop-nearby` Feature Preview | Fixed `_station._tcp.local.` DNS-SD browsing returns untrusted private host/port hints. Earlier Android versions and macOS/Linux desktop retain QR/manual entry. Bounded foreground scans require the existing access review; compilation and physical behavior require separate verification. |
 | Fold geometry | CSS Viewport Segments where the engine has them | iOS 27.1+ (`station-fold`); Android and desktop use the web path | Read-only hinge geometry and posture for foldable displays. Safari has no segments API, so on an iPhone only the native shell reports a crease. See [Fold geometry](#fold-geometry). |
 | Compile-target report | unsupported | enabled | Rust reports target and Station-enabled state. |
 | Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (#178). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
@@ -155,9 +155,14 @@ image intake; the web adapter reports `image-share-intake` unsupported, so
 ### Nearby Station discovery
 
 The [native adapter](../../src-ui/src/platform/native/connectionDiscovery.ts)
-registers only after the trusted platform profile establishes a mobile Tauri
-host. The [station-discovery plugin](../../src-desktop/plugins/station-discovery/src/lib.rs)
-uses iOS NWBrowser/NetService and Android NsdManager, accepts TXT `v=1` and an
+registers only after the trusted platform profile establishes a mobile or Windows
+Tauri host. Windows independently checks the selected authorized controller's
+default-off `desktop-nearby` preview before preparing or browsing. Its
+[native browser](../../src-desktop/plugins/station-discovery/src/windows.rs)
+uses `mdns-sd` with a five-second browse window, up to 1.5 seconds for shutdown
+confirmation, and at most 32 private/link-local IPv4 hints. Unconfirmed shutdown
+blocks another scan until restart. The [station-discovery plugin](../../src-desktop/plugins/station-discovery/src/lib.rs)
+uses iOS NWBrowser/NetService and Android NsdManager on mobile, accepts TXT `v=1` and an
 HTTP(S) transport, and returns validated private host/port hints. Cancellation,
 backgrounding and provider disposal cancel the exact scan; the registry ignores
 late or replaced-provider results. The outer deadline is 18 seconds. iOS declares

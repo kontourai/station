@@ -501,6 +501,42 @@ describe('noun-consistency:gate rejects its known-bad tree', {
     expect(result.output).toContain('Guidance');
   });
 
+  it('rejects a retired place phrase in a ternary branch and in a function argument', () => {
+    const dir = scratchRepo({
+      script: SCRIPT,
+      libs: LIBS,
+      files: {
+        ...cleanFiles(),
+        'src-ui/src/views/PlaceLiteralView.tsx': fixture(
+          GATE,
+          'place-literal-view.tsx.fixture',
+        ),
+      },
+    });
+    const result = runGuardrail(dir, SCRIPT);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain('Browse the Registry');
+    expect(result.output).toContain('Check its status in Plugins.');
+  });
+
+  it('rejects a retired place phrase in a .ts copy module', () => {
+    const module = NOUN_LITERAL_COPY_FILES.find((file) =>
+      file.endsWith('registryCatalogModel.ts'),
+    )!;
+    const dir = scratchRepo({
+      script: SCRIPT,
+      libs: LIBS,
+      files: {
+        ...cleanFiles(),
+        [module]: fixture(GATE, 'place-copy-module-retired.ts.fixture'),
+      },
+    });
+    const result = runGuardrail(dir, SCRIPT);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain(module);
+    expect(result.output).toContain('Install one from the Registry');
+  });
+
   it('fails closed on copy it cannot read rather than passing over it', () => {
     // `fail-open-validation` in its purest form: a scanner that skips the
     // shapes it does not understand reports a clean verdict over content it

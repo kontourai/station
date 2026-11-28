@@ -224,10 +224,7 @@ export function KnowledgeSection({ slug }: { slug: string }) {
           Open Settings → My knowledge store
         </Button>
         . Managing the vector database or embedding model?{' '}
-        <Button
-          variant="link"
-          onClick={() => navigate('/connections/knowledge')}
-        >
+        <Button variant="link" onClick={() => navigate('/customize/knowledge')}>
           Open Knowledge infrastructure
         </Button>
       </p>

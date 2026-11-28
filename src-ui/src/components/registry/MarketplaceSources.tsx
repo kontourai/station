@@ -18,6 +18,7 @@ import {
   kindTone,
   locationHint,
   overlappingSources,
+  redactHome,
   statusTone,
   suppliedKinds,
   suppliesAny,
@@ -119,6 +120,10 @@ export function MarketplaceSources({
   onSelect,
   kinds,
   manage = 'inline',
+  label = 'Source',
+  hideLabel = false,
+  manageAll = false,
+  pathsInOptions = true,
 }: {
   selected: string;
   /**
@@ -128,6 +133,22 @@ export function MarketplaceSources({
   onSelect: OnSelect;
   kinds?: readonly CatalogKind[];
   manage?: 'inline' | 'dialog';
+  /** The source picker's name; a host with its own heading can hide it. */
+  label?: string;
+  hideLabel?: boolean;
+  /**
+   * Manage sources lists every configured source, whatever it supplies, while
+   * the picker still offers only `kinds`. Each card says what its source
+   * provides, so a source this page does not browse can still be seen and
+   * removed.
+   */
+  manageAll?: boolean;
+  /**
+   * Whether an option shows a local source's folder or file beside its name.
+   * When false, a local source is named alone and its location moves to the
+   * option's tooltip; a repository keeps its address.
+   */
+  pathsInOptions?: boolean;
 }) {
   const sources = useRegistrySourcesQuery();
   const mutation = useRegistrySourceActionMutation();
@@ -158,7 +179,7 @@ export function MarketplaceSources({
     <section className="marketplaces" aria-label="Discover sources">
       <div className="marketplaces__toolbar">
         <label>
-          Browse marketplace
+          <span className={hideLabel ? 'sr-only' : undefined}>{label}</span>
           <select
             className="choice-trigger"
             value={selected}
@@ -174,13 +195,28 @@ export function MarketplaceSources({
             }}
           >
             <option value="all">All sources</option>
-            {visible.map((source) => (
-              <option key={source.id} value={source.id}>
-                {labels.get(source.id) ?? source.displayName}
-                {locationHint(source) ? ` — ${locationHint(source)}` : ''}
-                {!source.enabled ? ' (disabled)' : ''}
-              </option>
-            ))}
+            {visible.map((source) => {
+              const hint = locationHint(source);
+              const pathHidden =
+                !pathsInOptions &&
+                source.adapter !== 'github' &&
+                hint !== undefined;
+              return (
+                <option
+                  key={source.id}
+                  value={source.id}
+                  title={
+                    pathHidden && source.location
+                      ? redactHome(source.location)
+                      : undefined
+                  }
+                >
+                  {labels.get(source.id) ?? source.displayName}
+                  {hint && !pathHidden ? ` — ${hint}` : ''}
+                  {!source.enabled ? ' (disabled)' : ''}
+                </option>
+              );
+            })}
           </select>
         </label>
         <Button
@@ -195,7 +231,7 @@ export function MarketplaceSources({
         </Button>
         {manage === 'dialog' && (
           <Button variant="secondary" onClick={() => setManaging(true)}>
-            Manage sources ({visible.length})
+            Manage sources ({manageAll ? all.length : visible.length})
           </Button>
         )}
       </div>
@@ -229,7 +265,7 @@ export function MarketplaceSources({
           <MarketplaceSourceManager
             selected={selected}
             onSelect={onSelect}
-            kinds={kinds}
+            kinds={manageAll ? undefined : kinds}
             presentation="list"
           />
         </Dialog>

@@ -64,8 +64,8 @@ connection children, project creation/editing/layouts/panes, Task and Board URLs
 Include legacy redirects and browser Back/Forward; palette aliases are entry
 paths, not additional features.
 
-Registry's implemented categories are Agents, Skills, Integrations, Plugins,
-Layouts and Kits; marketplace sources and installed-state queries are separate
+The catalogue's categories are Agents, Skills, Integrations, Plugins (Apps ›
+Discover), Layouts and Kits, each a page of its own; marketplace sources and installed-state queries are separate
 failure/retry owners. A catalog response is not proof of installation or use.
 
 The [built-in renderer registry](../../src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx)

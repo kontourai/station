@@ -1,0 +1,19 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Checked: adds POST /config/new-chat-default and a PUT /config/app refusal for newChatDefault, like firstRun. Telemetry, contribution, terminal and log-level rules are unchanged.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked: adds POST /config/new-chat-default and a PUT /config/app refusal for newChatDefault, like firstRun. Telemetry, contribution, terminal and log-level rules are unchanged.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked: adds POST /config/new-chat-default and a PUT /config/app refusal for newChatDefault, like firstRun. Telemetry, contribution, terminal and log-level rules are unchanged.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked: adds POST /config/new-chat-default and a PUT /config/app refusal for newChatDefault, like firstRun. Telemetry, contribution, terminal and log-level rules are unchanged.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked: adds POST /config/new-chat-default and a PUT /config/app refusal for newChatDefault, like firstRun. Telemetry, contribution, terminal and log-level rules are unchanged.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked: adds POST /config/new-chat-default and a PUT /config/app refusal for newChatDefault, like firstRun. Telemetry, contribution, terminal and log-level rules are unchanged.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked: adds POST /config/new-chat-default and a PUT /config/app refusal for newChatDefault, like firstRun. Telemetry, contribution, terminal and log-level rules are unchanged.","inputs":["src-server/routes/system/config.ts"]}
+  ]
+}

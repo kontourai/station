@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Cites the deep-link reference; the only change there is where Appearance opens from (palette and Settings rows, not Customize). This page's Settings section claims are unaffected.","inputs":["docs/design/settings-architecture.md","docs/reference/settings-deep-links.md"]}
+  ]
+}

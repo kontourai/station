@@ -1,0 +1,15 @@
+{
+  "revision": "62694dedd2ad88de44a5fa70962aeab935bfd143",
+
+  "notes": [
+    {"path":"README.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"This source now carries both the Customize slice (Customize routes, six items, Computers outside it) and the Apps slice (Apps at /apps with Discover and Library, /plugins and /registry redirects, no Customize item). Checked each citing page for Plugins-page, Registry Plugins-tab, Connections-route and Customize-list claims; none contradicts the combined tree.","inputs":["docs/reference/cli.md"]}
+  ]
+}

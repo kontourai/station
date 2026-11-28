@@ -1,0 +1,7 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Customize now lists Apps; e2e matrix updated.","inputs":["tests/settings.spec.ts"]}
+  ]
+}

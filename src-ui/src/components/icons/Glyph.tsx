@@ -46,6 +46,9 @@ export const RestoreGlyph = /* @__PURE__ */ glyph(
 );
 export const ArrowLeftGlyph = /* @__PURE__ */ glyph('M10.5 3 5.5 8l5 5');
 export const ArrowRightGlyph = /* @__PURE__ */ glyph('M5.5 3l5 5-5 5');
+export const SendGlyph = /* @__PURE__ */ glyph(
+  'M8 12.67V3.33M3.33 8 8 3.33 12.67 8',
+);
 export const ArrowUpGlyph = /* @__PURE__ */ glyph('M3 10l5-5 5 5');
 export const AttachmentGlyph = /* @__PURE__ */ glyph(
   'm6 8.5 3.8-3.8a2 2 0 1 1 2.8 2.8L7.4 12.7a3 3 0 0 1-4.2-4.2l5-5',
@@ -83,6 +86,9 @@ export const ChartGlyph = /* @__PURE__ */ glyph(
   'M3 13V8m5 5V3m5 10V6M2 13.5h12',
 );
 export const CheckGlyph = /* @__PURE__ */ glyph('m3 8 3.2 3.2L13 4.5');
+export const TrashGlyph = /* @__PURE__ */ glyph(
+  'M2 4h12M6 4V2h4v2M3.33 4l.67 10h8l.67-10M6.67 6.67v4.66M9.33 6.67v4.66',
+);
 export const CloseGlyph = /* @__PURE__ */ glyph('M3.5 3.5l9 9m0-9-9 9');
 /** Angle brackets and slash — the Coding pane tile. */
 export const CodeGlyph = /* @__PURE__ */ glyph(

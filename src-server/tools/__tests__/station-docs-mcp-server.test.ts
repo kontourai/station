@@ -120,7 +120,7 @@ describe('station-docs content', () => {
     for (const id of ['station-docs', 'builtin-assistant']) {
       const body = findStationDocsTopic(id)?.body ?? '';
       expect(body, id).toContain('station plugin install');
-      expect(body, id).toContain('Plugins page');
+      expect(body, id).toContain('Apps › Library');
     }
   });
 
@@ -355,7 +355,7 @@ describe('station-docs plugin-authoring topic', () => {
     const body = topic().body;
     expect(body).toContain('validate_plugin');
     expect(body).toMatch(/agents must not install plugins/i);
-    expect(body).toContain('Plugins → Install plugin');
+    expect(body).toContain('Apps › Library → Install plugin');
     expect(body).toContain('station plugin install');
     expect(body).toContain('--yes');
     // Validation is a subset of the preview; the prose must not say otherwise.
@@ -405,12 +405,12 @@ describe('station-docs plugin-authoring topic', () => {
     const PERMITTED = [
       [
         'station-docs',
-        "Installing a plugin through Station's agent tools is refused: a person approves its preview on the Plugins page or with `station plugin install <source>` (see the `plugin-authoring` topic).",
+        "Installing a plugin through Station's agent tools is refused: a person approves its preview in Apps › Library or with `station plugin install <source>` (see the `plugin-authoring` topic).",
       ],
       ['builtin-assistant', 'Its Station tools cannot install a plugin.'],
       [
         'builtin-assistant',
-        'An install is approved by a person who has read its preview \u2014 its permissions and the parts that run in Station\u2019s own page \u2014 on the Plugins page or with `station plugin install <source>`.',
+        'An install is approved by a person who has read its preview \u2014 its permissions and the parts that run in Station\u2019s own page \u2014 in Apps › Library or with `station plugin install <source>`.',
       ],
       [
         'plugins',
@@ -430,7 +430,7 @@ describe('station-docs plugin-authoring topic', () => {
       ],
       [
         'plugin-authoring',
-        'A person installs from Plugins \u2192 Install plugin, entering the folder path or git URL, or runs `station plugin install <path-or-url>` in a terminal.',
+        'A person installs from Apps › Library \u2192 Install plugin, entering the folder path or git URL, or runs `station plugin install <path-or-url>` in a terminal.',
       ],
     ];
     const found = STATION_DOCS_TOPICS.filter(

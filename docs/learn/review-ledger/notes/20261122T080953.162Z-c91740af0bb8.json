@@ -1,0 +1,7 @@
+{
+  "revision": "fe3aafb9d61f45ec7e5403f36f84041486ac96cc",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked the plugin registry listing section against json-manifest-registry.ts and registry-app-facts.ts: app facts on local entries, none for screenless plugins, remote not fetched, absent on missing/malformed/over-bound, refusal not truncation; and the stored snapshot note against registry-source-configuration.ts (invalid facts dropped, file still read).","inputs":["docs/reference/api.md","packages/contracts/src/catalog.ts","src-server/providers/registries/json-manifest-registry.ts","src-server/providers/registries/registry-source-configuration.ts"]}
+  ]
+}

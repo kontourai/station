@@ -1,0 +1,7 @@
+{
+  "revision": "0672bb70a7355525e1c217ebe9e4f713930638ff",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Tool descriptions and proposal results now name Apps > Library; station-docs text matches.","inputs":["src-server/tools/station-control-platform-tools.ts"]}
+  ]
+}

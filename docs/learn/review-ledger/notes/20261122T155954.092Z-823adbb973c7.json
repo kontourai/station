@@ -1,0 +1,23 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/guides/build-your-first-plugin.md","note":"CLI install messages now name Apps › Library; build-your-first-plugin, cli.md and the minimal-layout README were updated where they named the Plugins page; the other citing pages do not quote these messages.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"CLI install messages now name Apps › Library; build-your-first-plugin, cli.md and the minimal-layout README were updated where they named the Plugins page; the other citing pages do not quote these messages.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"CLI install messages now name Apps › Library; build-your-first-plugin, cli.md and the minimal-layout README were updated where they named the Plugins page; the other citing pages do not quote these messages.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/demo-layout/README.md","note":"CLI install messages now name Apps › Library; build-your-first-plugin, cli.md and the minimal-layout README were updated where they named the Plugins page; the other citing pages do not quote these messages.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/getting-started-starter/README.md","note":"CLI install messages now name Apps › Library; build-your-first-plugin, cli.md and the minimal-layout README were updated where they named the Plugins page; the other citing pages do not quote these messages.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/minimal-layout/README.md","note":"CLI install messages now name Apps › Library; build-your-first-plugin, cli.md and the minimal-layout README were updated where they named the Plugins page; the other citing pages do not quote these messages.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/portable-author-kit/README.md","note":"CLI install messages now name Apps › Library; build-your-first-plugin, cli.md and the minimal-layout README were updated where they named the Plugins page; the other citing pages do not quote these messages.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/registry/README.md","note":"CLI install messages now name Apps › Library; build-your-first-plugin, cli.md and the minimal-layout README were updated where they named the Plugins page; the other citing pages do not quote these messages.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"CLI install messages now name Apps › Library; build-your-first-plugin, cli.md and the minimal-layout README were updated where they named the Plugins page; the other citing pages do not quote these messages.","inputs":["packages/cli/src/commands/install.ts"]}
+  ]
+}

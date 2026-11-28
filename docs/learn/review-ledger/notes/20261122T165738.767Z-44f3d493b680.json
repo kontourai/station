@@ -1,0 +1,25 @@
+{
+  "revision": "0672bb70a7355525e1c217ebe9e4f713930638ff",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Routing change this round is a comment beside the /registry redirect; checked each citing page for /registry and Plugins-page claims; connections route table updated, the placement entry is a dated audit of a component that no longer navigates.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/developer-surface.md","note":"Routing change this round is a comment beside the /registry redirect; checked each citing page for /registry and Plugins-page claims; connections route table updated, the placement entry is a dated audit of a component that no longer navigates.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/modality-ladder.md","note":"Routing change this round is a comment beside the /registry redirect; checked each citing page for /registry and Plugins-page claims; connections route table updated, the placement entry is a dated audit of a component that no longer navigates.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/pane-or-shell.md","note":"Routing change this round is a comment beside the /registry redirect; checked each citing page for /registry and Plugins-page claims; connections route table updated, the placement entry is a dated audit of a component that no longer navigates.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Routing change this round is a comment beside the /registry redirect; checked each citing page for /registry and Plugins-page claims; connections route table updated, the placement entry is a dated audit of a component that no longer navigates.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Routing change this round is a comment beside the /registry redirect; checked each citing page for /registry and Plugins-page claims; connections route table updated, the placement entry is a dated audit of a component that no longer navigates.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Routing change this round is a comment beside the /registry redirect; checked each citing page for /registry and Plugins-page claims; connections route table updated, the placement entry is a dated audit of a component that no longer navigates.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Routing change this round is a comment beside the /registry redirect; checked each citing page for /registry and Plugins-page claims; connections route table updated, the placement entry is a dated audit of a component that no longer navigates.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Routing change this round is a comment beside the /registry redirect; checked each citing page for /registry and Plugins-page claims; connections route table updated, the placement entry is a dated audit of a component that no longer navigates.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Routing change this round is a comment beside the /registry redirect; checked each citing page for /registry and Plugins-page claims; connections route table updated, the placement entry is a dated audit of a component that no longer navigates.","inputs":["src-ui/src/app-shell/routing.ts"]}
+  ]
+}

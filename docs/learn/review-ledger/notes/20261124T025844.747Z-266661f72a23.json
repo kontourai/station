@@ -1,0 +1,7 @@
+{
+  "revision": "32c2bcd30e4c5809d189cb03cb43a9180295bef9",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Re-read against this change: plugins.md gained notes on retired navigation names; the integration claims here are unaffected.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md"]}
+  ]
+}

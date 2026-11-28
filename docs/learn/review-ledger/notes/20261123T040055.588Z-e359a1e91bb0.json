@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Appearance is no longer a Customize item: the page now says it opens from the command palette and Settings' Theme and Accent color rows (OpenAppearanceButton), which is what the combined tree does.","inputs":["docs/guides/theming.md"]}
+  ]
+}

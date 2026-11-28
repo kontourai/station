@@ -1,0 +1,11 @@
+{
+  "revision": "62694dedd2ad88de44a5fa70962aeab935bfd143",
+
+  "notes": [
+    {"path":"README.md","note":"Re-recorded after the Apps slice was squash-merged into the phase-1 branch, which dropped the revisions its notes named: this source is byte-identical to the slice head where these pages were reviewed. Checked each citing page for claims about where Plugins, Apps, the Registry or Customize live; none contradicts the combined tree.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-recorded after the Apps slice was squash-merged into the phase-1 branch, which dropped the revisions its notes named: this source is byte-identical to the slice head where these pages were reviewed. Checked each citing page for claims about where Plugins, Apps, the Registry or Customize live; none contradicts the combined tree.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Re-recorded after the Apps slice was squash-merged into the phase-1 branch, which dropped the revisions its notes named: this source is byte-identical to the slice head where these pages were reviewed. Checked each citing page for claims about where Plugins, Apps, the Registry or Customize live; none contradicts the combined tree.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

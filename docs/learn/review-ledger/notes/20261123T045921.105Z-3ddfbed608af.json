@@ -1,0 +1,7 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"The composer's default chain names the Default for new chats, how it is recorded once, and the menu tag; checked against the selection model and the running build.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

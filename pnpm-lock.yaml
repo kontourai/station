@@ -456,6 +456,9 @@ importers:
       '@kontourai/station-supervisor':
         specifier: ^0.1.0
         version: link:packages/supervisor
+      '@napi-rs/keyring':
+        specifier: 2.1.2
+        version: 2.1.2
       '@noble/curves':
         specifier: 2.4.0
         version: 2.4.0

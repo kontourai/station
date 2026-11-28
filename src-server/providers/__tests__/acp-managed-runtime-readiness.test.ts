@@ -127,10 +127,10 @@ test('an installed bundle reads its runtime, and a signed-out vault gates the ch
   // A no-CLI engine Station signs in: neither row calls it a CLI.
   expect(cli?.name).toBe('Kiro (KAS, no CLI) runtime');
   expect(auth?.description).toBe(
-    'Sign in to Kiro (KAS, no CLI) from its sign-in panel in Connections.',
+    'Sign in to Kiro (KAS, no CLI) from its sign-in panel in Customize › Engines.',
   );
   expect(auth?.installGuide?.steps).toEqual([
-    'Sign in to Kiro (KAS, no CLI) from its sign-in panel in Connections.',
+    'Sign in to Kiro (KAS, no CLI) from its sign-in panel in Customize › Engines.',
   ]);
   expect(JSON.stringify(prerequisites)).not.toContain('on PATH');
   expect(requiredMissingPrerequisites(prerequisites).map((p) => p.id)).toEqual([
@@ -147,7 +147,7 @@ test('a bundle not installed yet says to install it from Connections, not to put
   const cli = prerequisites.find((item) => item.id.endsWith('-cli'));
   expect(cli).toMatchObject({ status: 'missing' });
   expect(cli?.installGuide?.steps).toEqual([
-    'Install Kiro (KAS, no CLI) from its sign-in panel in Connections.',
+    'Install Kiro (KAS, no CLI) from its sign-in panel in Customize › Engines.',
   ]);
   expect(JSON.stringify(prerequisites)).not.toContain('on PATH');
 });
@@ -159,7 +159,7 @@ test('the engines list reads a signed-out bundle as needing sign-in, not Ready, 
   expect(row?.status).toBe('missing_prerequisites');
   expect(row?.config).toMatchObject({
     readinessReason:
-      'Sign in to Kiro (KAS, no CLI) from its sign-in panel in Connections.',
+      'Sign in to Kiro (KAS, no CLI) from its sign-in panel in Customize › Engines.',
   });
 });
 

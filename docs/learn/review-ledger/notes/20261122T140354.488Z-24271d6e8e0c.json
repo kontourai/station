@@ -1,0 +1,25 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Plugins and the Registry root and Plugins tab now redirect to Apps › Library and Discover; the other catalogue tabs keep /registry/<tab> with no level up. Checked each page citing this source: none states the old /plugins or /registry root behaviour as current beyond the pages amended in this change.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/developer-surface.md","note":"Plugins and the Registry root and Plugins tab now redirect to Apps › Library and Discover; the other catalogue tabs keep /registry/<tab> with no level up. Checked each page citing this source: none states the old /plugins or /registry root behaviour as current beyond the pages amended in this change.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/modality-ladder.md","note":"Plugins and the Registry root and Plugins tab now redirect to Apps › Library and Discover; the other catalogue tabs keep /registry/<tab> with no level up. Checked each page citing this source: none states the old /plugins or /registry root behaviour as current beyond the pages amended in this change.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/pane-or-shell.md","note":"Plugins and the Registry root and Plugins tab now redirect to Apps › Library and Discover; the other catalogue tabs keep /registry/<tab> with no level up. Checked each page citing this source: none states the old /plugins or /registry root behaviour as current beyond the pages amended in this change.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Plugins and the Registry root and Plugins tab now redirect to Apps › Library and Discover; the other catalogue tabs keep /registry/<tab> with no level up. Checked each page citing this source: none states the old /plugins or /registry root behaviour as current beyond the pages amended in this change.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Plugins and the Registry root and Plugins tab now redirect to Apps › Library and Discover; the other catalogue tabs keep /registry/<tab> with no level up. Checked each page citing this source: none states the old /plugins or /registry root behaviour as current beyond the pages amended in this change.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Plugins and the Registry root and Plugins tab now redirect to Apps › Library and Discover; the other catalogue tabs keep /registry/<tab> with no level up. Checked each page citing this source: none states the old /plugins or /registry root behaviour as current beyond the pages amended in this change.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Plugins and the Registry root and Plugins tab now redirect to Apps › Library and Discover; the other catalogue tabs keep /registry/<tab> with no level up. Checked each page citing this source: none states the old /plugins or /registry root behaviour as current beyond the pages amended in this change.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Plugins and the Registry root and Plugins tab now redirect to Apps › Library and Discover; the other catalogue tabs keep /registry/<tab> with no level up. Checked each page citing this source: none states the old /plugins or /registry root behaviour as current beyond the pages amended in this change.","inputs":["src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Plugins and the Registry root and Plugins tab now redirect to Apps › Library and Discover; the other catalogue tabs keep /registry/<tab> with no level up. Checked each page citing this source: none states the old /plugins or /registry root behaviour as current beyond the pages amended in this change.","inputs":["src-ui/src/app-shell/routing.ts"]}
+  ]
+}

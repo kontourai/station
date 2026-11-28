@@ -1454,7 +1454,7 @@ describe('App home route resolution', () => {
   });
 
   test('a routed view renders on another route while main keeps its occupant', async () => {
-    window.history.replaceState({}, '', '/plugins');
+    window.history.replaceState({}, '', '/apps/library');
     hooks.projects = {
       data: [{ slug: 'dev' }],
       isLoading: false,
@@ -1479,7 +1479,7 @@ describe('App home route resolution', () => {
     await act(async () => undefined);
 
     expect(screen.getByTestId('app-view-content').textContent).toBe(
-      '{"type":"plugins"}',
+      '{"type":"apps","tab":"library"}',
     );
     expect(screen.queryByTestId('activity-region-shell')).toBeNull();
     // Ignored, not cleared: App writes nothing to the model on a route change.
@@ -1862,11 +1862,11 @@ describe('App navigation is urgent, so a slow route reveals its placeholder', ()
   });
 
   test('back/forward: App’s popstate listener replaces the departing route', async () => {
-    window.history.replaceState({}, '', '/plugins');
+    window.history.replaceState({}, '', '/apps/library');
     render(<App />);
     await act(async () => undefined);
     expect(screen.getByTestId('app-view-content').textContent).toBe(
-      '{"type":"plugins"}',
+      '{"type":"apps","tab":"library"}',
     );
 
     // The real path: App listens for popstate and calls setCurrentView itself.
@@ -1880,11 +1880,11 @@ describe('App navigation is urgent, so a slow route reveals its placeholder', ()
   });
 
   test('a click through navigateToView does the same', async () => {
-    window.history.replaceState({}, '', '/plugins');
+    window.history.replaceState({}, '', '/apps/library');
     render(<App />);
     await act(async () => undefined);
     expect(screen.getByTestId('app-view-content').textContent).toBe(
-      '{"type":"plugins"}',
+      '{"type":"apps","tab":"library"}',
     );
 
     // The other real path: a view calls `onNavigate`, which is App's

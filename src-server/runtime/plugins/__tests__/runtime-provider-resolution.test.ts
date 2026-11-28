@@ -679,7 +679,7 @@ describe('runtime-provider-resolution', () => {
         gatedConnectionIds: new Map([['anthropic-1', 'failed' as const]]),
       }),
     ).toBe(
-      "Model connection 'Work Anthropic' was refused by its provider at its last check. Fix its settings and test it again in Connections.",
+      "Model connection 'Work Anthropic' was refused by its provider at its last check. Fix its settings and test it again in Customize › Providers.",
     );
   });
 
@@ -703,7 +703,7 @@ describe('runtime-provider-resolution', () => {
         gatedConnectionIds: new Map([['anthropic-1', 'unreachable' as const]]),
       }),
     ).toBe(
-      "Model connection 'Work Anthropic' could not be reached at its last check. Check that the provider is running and reachable, then test it again in Connections.",
+      "Model connection 'Work Anthropic' could not be reached at its last check. Check that the provider is running and reachable, then test it again in Customize › Providers.",
     );
   });
 
