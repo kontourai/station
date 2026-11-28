@@ -754,12 +754,17 @@ function expectServiceGuidance(
   const command = message?.match(
     new RegExp(`"(${launcher} service ${action} [^\\r\\n]+)"`, 'u'),
   )?.[1];
-  expectStationArguments(command, ['service', action, ...expectedArguments]);
+  expectStationArguments(
+    command,
+    ['service', action, ...expectedArguments],
+    launcher,
+  );
 }
 
 function expectStationArguments(
   command: string | undefined,
   expectedArguments: string[],
+  launcher = 'station',
 ): void {
   expect(command).toBeDefined();
   const shell =
