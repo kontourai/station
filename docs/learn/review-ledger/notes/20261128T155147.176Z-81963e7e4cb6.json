@@ -1,0 +1,7 @@
+{
+  "revision": "7d0ce1e1fce5718942ceef5616fb6c4ee690c72d",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"Verified settings-deep-links.md remains accurate after regenerating settings-registry.json with chat-default-send-mode.","inputs":["src-server/generated/settings-registry.json"]}
+  ]
+}

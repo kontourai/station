@@ -1,0 +1,7 @@
+{
+  "revision": "1fe1e40401748180b91855d369672b569d08e486",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Updated agents-new-cli-turn.spec.ts for 1-tap Send mode toggle; e2e-coverage-matrix.md remains accurate.","inputs":["tests/agents-new-cli-turn.spec.ts"]}
+  ]
+}

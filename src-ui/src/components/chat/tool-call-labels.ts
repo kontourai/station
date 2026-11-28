@@ -409,6 +409,7 @@ function stringField(args: Record<string, unknown>, keys: string[]) {
 const FILE_PATH_KEYS = [
   'file_path',
   'path',
+  'Path',
   'filePath',
   'filepath',
   'notebook_path',
@@ -557,7 +558,7 @@ function hasCallTarget(args: unknown): boolean {
 function hasCommandArgument(args: unknown): boolean {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return false;
   const a = args as Record<string, unknown>;
-  const command = a.command ?? a.cmd ?? a.cmdline;
+  const command = a.command ?? a.cmd ?? a.cmdline ?? a.CommandLine;
   return (
     (typeof command === 'string' && command.trim().length > 0) ||
     (Array.isArray(command) && command.length > 0)
@@ -605,7 +606,7 @@ function stationToolOfCall(call: { toolName?: unknown; server?: unknown }) {
  * 1. a command argument: whatever the call is called, if it carries a
  *    command it runs one, and the row must say so and show it — a `read`
  *    kind on `bash {command: 'rm -rf ~'}` must never read "Read bash";
- * 2. the engine's own `toolKind` (ACP engines report one per call);
+ * 2. the engine's own specific `toolKind` (ACP engines report one per call);
  * 3. a tool NAME — any single token, including dotted or colon-scoped MCP
  *    names (`fs.write_file`, `filesystem:edit_file`, `shell.exec`) — by its
  *    words; a write shown as a read on an approval card is the unsafe
@@ -621,9 +622,12 @@ export function classifyToolCall(call: ToolCallIdentity): ToolCallKind {
   // run …", never "Ran …".
   if (stationToolOfCall(call)) return 'station';
   if (hasCommandArgument(call.args)) return 'exec';
-  if (typeof call.toolKind === 'string' && call.toolKind in ENGINE_KIND) {
-    return ENGINE_KIND[call.toolKind]!;
-  }
+  const engineKind =
+    typeof call.toolKind === 'string' &&
+    Object.hasOwn(ENGINE_KIND, call.toolKind)
+      ? ENGINE_KIND[call.toolKind]
+      : undefined;
+  if (engineKind && call.toolKind !== 'other') return engineKind;
   const name = call.toolName?.trim();
   if (name && !/\s/.test(name)) {
     const byName = classifyToolName(name);
@@ -634,7 +638,7 @@ export function classifyToolCall(call: ToolCallIdentity): ToolCallKind {
     }
     if (byName !== 'other') return byName;
   }
-  return classifyToolArgs(call.args);
+  return engineKind ?? classifyToolArgs(call.args);
 }
 
 /** Every displayed target passes through here: sanitised (`displayText`)
@@ -873,7 +877,7 @@ function extractTarget(
   }
 
   if (kind === 'exec') {
-    const command = a.command ?? a.cmd ?? a.cmdline;
+    const command = a.command ?? a.cmd ?? a.cmdline ?? a.CommandLine;
     if (typeof command === 'string' && command.trim()) {
       return commandTarget(command, trimEnv);
     }

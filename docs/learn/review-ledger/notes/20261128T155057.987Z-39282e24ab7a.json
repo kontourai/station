@@ -1,0 +1,13 @@
+{
+  "revision": "7d0ce1e1fce5718942ceef5616fb6c4ee690c72d",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Verified citing docs remain accurate after adding chat-default-send-mode row to account preferences catalog.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Verified citing docs remain accurate after adding chat-default-send-mode row to account preferences catalog.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Verified citing docs remain accurate after adding chat-default-send-mode row to account preferences catalog.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Verified citing docs remain accurate after adding chat-default-send-mode row to account preferences catalog.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}

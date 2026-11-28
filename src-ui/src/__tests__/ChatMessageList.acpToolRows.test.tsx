@@ -357,6 +357,12 @@ describe('ACP (OpenCode) tool rows', () => {
     ];
     await renderTranscript();
 
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /Read 1 file, edited 1 file, ran 1 search/i,
+      }),
+    );
+    await screen.findByRole('dialog');
     await waitFor(() => expect(rowFor('Edited bgp.mjs')).toBeTruthy());
     expect(rowGlyph(rowFor('Edited bgp.mjs'))).toBe(glyphPath(EditGlyph));
     expect(rowGlyph(rowFor('Read app.tsx'))).toBe(glyphPath(DocumentGlyph));

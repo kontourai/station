@@ -1,0 +1,9 @@
+{
+  "revision": "7d0ce1e1fce5718942ceef5616fb6c4ee690c72d",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Verified citing guides remain accurate after adding Default send mode note in docs/user/settings.md.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Verified citing guides remain accurate after adding Default send mode note in docs/user/settings.md.","inputs":["docs/user/settings.md"]}
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "revision": "c3c65a086236ad08535ad4b4ebf4c3f55b7e1c3b",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"The orchestration send route and caller stay the same. The steer catch now explains the failure.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The inbox admission and outbound delivery owners stay the same. Pending feedback is local to the composer.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"The steer copy change leaves foreground admission and uncertain-delivery callbacks intact.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked pending Queue and Steer feedback against the composer and definitive stale-head handling against the send hook. Focused tests cover unsettled submissions and draft restoration.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Definitive refusal still releases the stored steer and restores the draft when possible. Unconfirmed responses still use the reconciliation path.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"The first-send approval-default path and its account scope stay the same.","inputs":["docs/design/settings-architecture.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Slash-command expansion and dispatch stay the same. Only the steer failure notice changed in the sender.","inputs":["docs/guides/commands.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Steer failure copy uses the existing stale-head and key-conflict codes. No contract fields or errors changed.","inputs":["docs/reference/contracts.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Steer transport arguments, receipt handling and retry identity stay the same.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The exact observed head still fences steer admission and HTTP 409 still refuses a stale head without placing the steer.","inputs":["docs/reference/session-api.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Skill precedence and admission paths stay the same. The edit changes follow-up feedback.","inputs":["docs/reference/skill-experiences.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The composer gives immediate pending feedback. Queue placement and confirmed steer rendering still use Station receipts.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"The composer continues to use Station replies for queue and refusal; pending feedback does not claim delivery.","inputs":["packages/sdk/README.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

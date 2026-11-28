@@ -218,7 +218,10 @@ describe('approval card with content stored out of line', () => {
     expect(query.inputs).toHaveLength(0);
     act(() => requestContentRefreshForTest('thread-1', 'open-fc'));
     expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
-    expect(query.inputs.at(-1)).toMatchObject({ requestId: 'req-fc' });
+    expect(query.inputs.at(-1)).toMatchObject({
+      requestId: 'req-fc',
+      refreshVersion: 1,
+    });
     view.unmount();
   });
 });

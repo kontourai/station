@@ -850,10 +850,7 @@ describe('ChatMessageList', () => {
     ).toEqual(['short question', 'short answer']);
   });
 
-  test('renders settled work inline, inside the message row, in reading order', () => {
-    // archive#2652 redesign: no "Show N work activities" gate — a settled
-    // turn's activities interleave with its prose exactly as `contentParts`
-    // orders them, as quiet rows inside the one message row.
+  test('keeps settled work in reading order when the summary opens', async () => {
     const messages = [
       {
         role: 'assistant' as const,
@@ -891,20 +888,26 @@ describe('ChatMessageList', () => {
       </QueryClientProvider>,
     );
 
-    expect(
-      screen.queryByRole('button', { name: /work activities/ }),
-    ).toBeNull();
-    const messageRow = container.querySelector('.message-row');
-    expect(messageRow).toBeTruthy();
-    const text = messageRow!.textContent ?? '';
-    const order = [
-      text.indexOf('Searched anchor contract'),
-      text.indexOf('Interleaved narration.'),
-      text.indexOf('Read app.tsx'),
-      text.indexOf('Completed'),
-    ];
-    expect(order.every((position) => position >= 0)).toBe(true);
-    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(screen.getByText('Completed')).toBeTruthy();
+    const summary = await screen.findByRole('button', {
+      name: /Read 1 file, ran 1 search/i,
+    });
+    expect(container.querySelector('.message-row')?.contains(summary)).toBe(
+      true,
+    );
+    fireEvent.click(summary);
+
+    const items = await Promise.all([
+      screen.findByText('Searched anchor contract'),
+      screen.findByText('Interleaved narration.'),
+      screen.findByText('Read app.tsx'),
+    ]);
+    for (const [index, item] of items.slice(0, -1).entries()) {
+      expect(
+        item.compareDocumentPosition(items[index + 1]!) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
   });
 
   test('renders the streaming message when a session is active with no persisted messages', () => {

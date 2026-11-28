@@ -293,17 +293,16 @@ describe('transcript: one work row per settled turn', () => {
     ).toBeTruthy();
   });
 
-  test('desktop keeps today’s per-run shape: narration between runs stays inline', async () => {
+  test('desktop folds separate tool runs and the narration between them', async () => {
     mobile.current = false;
     windowEvents.current = workedTurn({ settled: true });
     renderTranscript();
 
     await waitFor(() => expect(screen.getByText(/OUTCOME:/)).toBeTruthy());
     const row = answerRow();
-    expect(within(row).getByText(/BETWEEN:/)).toBeTruthy();
-    // Run 1 is the solo read (an inline row); run 2 is the 3-call batch.
+    expect(within(row).queryByText(/BETWEEN:/)).toBeNull();
     expect(row.querySelectorAll('.tool-call-batch__summary')).toHaveLength(1);
-    expect(within(row).getByText('Read useVisualViewport.ts')).toBeTruthy();
+    expect(within(row).getByText(/Read 1 file, edited 1 file/i)).toBeTruthy();
   });
 
   test('an OpenCode child card stays between folded activity and the answer', async () => {

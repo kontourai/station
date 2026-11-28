@@ -685,7 +685,14 @@ test('mid-run user records stay in the run as muted notices, and a result with n
     'An entry too large to show was left out.',
   ]);
   // The orphan result is a tool row; the reply's prose holds only the answer.
-  expect(within(transcript).getByText(/Tool result/)).toBeTruthy();
+  const summary = await waitFor(() => {
+    const button = transcript.querySelector('.tool-call-batch__summary');
+    if (!button) throw new Error('Expected the tool activity summary');
+    return button;
+  });
+  fireEvent.click(summary);
+  const activity = await screen.findByRole('dialog');
+  expect(await within(activity).findByText(/Tool result/)).toBeTruthy();
   const prose = [
     ...transcript.querySelectorAll(
       '[data-message-role="assistant"] .markdown-content, [data-message-role="assistant"] p:not(.message-notice)',

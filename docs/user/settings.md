@@ -40,6 +40,11 @@ Clearing recents keeps the other preferences. Model picker preferences sync
 when account preferences are available. If previous choices are saved on this
 device, review them through **Import previous preferences**.
 
+**Default send mode** in Your account preferences sets how follow-ups are
+sent during a running turn on this Station. Queue is the default. Steer
+applies when the current turn and draft support it. You can change the mode
+for the current Session from the composer or save it there as your default.
+
 ## Project settings
 
 Open a Project's settings to change its defaults, sources and access. Desktop

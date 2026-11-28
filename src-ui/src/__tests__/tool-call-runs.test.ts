@@ -211,6 +211,31 @@ describe('foldTurnWork', () => {
     });
   });
 
+  test('keeps a session message in its own row', () => {
+    const action = toolCall({
+      toolCallId: 'action',
+      toolName: 'mcp__station-control__send_to_session',
+    });
+    const blocks = foldTurnWork([
+      toolCall({ toolCallId: 'before' }),
+      text('progress'),
+      action,
+      toolCall({ toolCallId: 'after' }),
+      text('answer'),
+    ]);
+    expect(blocks).toMatchObject([
+      {
+        type: 'tool-call-run',
+        calls: [
+          { part: { toolCallId: 'before' } },
+          { part: { toolCallId: 'after' } },
+        ],
+      },
+      { type: 'tool-call-run', calls: [{ part: action }] },
+      { type: 'content-part', part: { content: 'answer' } },
+    ]);
+  });
+
   test('a turn that ends on a call keeps its last narration out of the fold', () => {
     const parts = [
       text('intent'),

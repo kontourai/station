@@ -1,0 +1,17 @@
+{
+  "revision": "7d0ce1e1fce5718942ceef5616fb6c4ee690c72d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Verified citing docs remain accurate after swapping split-button order and adjusting mode-button padding/icon sizing in chat.css.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Verified citing docs remain accurate after swapping split-button order and adjusting mode-button padding/icon sizing in chat.css.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Verified citing docs remain accurate after swapping split-button order and adjusting mode-button padding/icon sizing in chat.css.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Verified citing docs remain accurate after swapping split-button order and adjusting mode-button padding/icon sizing in chat.css.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Verified citing docs remain accurate after swapping split-button order and adjusting mode-button padding/icon sizing in chat.css.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified citing docs remain accurate after swapping split-button order and adjusting mode-button padding/icon sizing in chat.css.","inputs":["src-ui/src/components/chat/chat.css"]}
+  ]
+}

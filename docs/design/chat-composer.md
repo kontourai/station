@@ -950,7 +950,7 @@ work; with none, it settles `unresolved` everywhere at once. A settled call with
 the live record is not seeded from history. Reduced motion disables the highlight and
 makes pill size changes immediate.
 
-On a phone, a settled answer folds its tool activity into a summary. Every call from
+On desktop and mobile, a settled answer folds its tool activity into a summary. Every call from
 the first to the last, and the narration between them, folds into a single
 summary where the first call was. The intent before it and the outcome after it
 stay visible. Opening the row lists the calls with that narration in its
@@ -1329,11 +1329,23 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 ### Turn activity and follow-up delivery
 
-During a running turn with steering available, tap the trailing segment of Send
-to switch between **Queue** and **Steer** in one step. When steering is unavailable,
-the segment opens the reason and leaves Queue selected. Queue is the default
-and the selection lasts for that conversation while the composer is mounted.
-Stop remains with the Working status when that status is visible.
+During a running turn, the Send mode segment sits before Send with an 18 px
+crossing-arrows icon. When steering is available, tapping it switches between
+**Queue** and **Steer** in one step. When steering is unavailable (or the draft
+holds attachments on a host that queues files), the segment opens the reason
+and leaves Queue selected. In the compact composer the split button color
+reflects the current mode. Stop remains with the Working status when that
+status is visible.
+
+Queue is the initial default. Signed-in users can save Queue or Steer under
+**Settings → Your account preferences → Default send mode**. Toggling the mode
+in the composer overrides the saved default for the current Session until
+switching Sessions. Unsupported steering and drafts with files on a host that
+queues attachments use Queue for that send without changing the saved default.
+
+After tapping Send, the composer shows **Queueing…** or **Sending steer…**
+while the request is pending. If the conversation advances before Station
+accepts a steer, the composer explains the change so the person can retry.
 
 In the reply composer, tapping Send, clearing the draft, or removing an
 attachment keeps an already focused draft ready for typing. Tapping compact
