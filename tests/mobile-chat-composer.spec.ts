@@ -1266,8 +1266,7 @@ test('virtualizes a long real transcript while preserving reader controls on mob
       expect(terminalOrder).toEqual([...terminalOrder].sort((a, b) => a - b));
     },
   );
-  await loadEarlier.click();
-  await expect.poll(() => requestedWindows.length).toBe(13);
+  await pressEarlier(13);
   expect(new URL(requestedWindows[12]).searchParams.get('cursor')).toBe(
     'older-turns-210',
   );
