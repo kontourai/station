@@ -1,0 +1,7 @@
+{
+  "revision": "ab86083b120cdb876dbcdf19e3f5d9e90a1d2beb",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed captured Task dispatch authority through TaskResumeSection, dispatchTask and authenticatedFetch. The optional requestScope selects the captured host and is checked against current credentials during resolution and issuance; resume and dispatch remain separate authorized requests. Existing Task query/reference and general HTTP scope claims remain unchanged by this delta. Two UI-to-real-SDK race regressions failed before repair and passed after repair in the 22-test focused run; no live provider or browser qualification claimed.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/taskGraph.ts"]}
+  ]
+}

@@ -191,6 +191,7 @@ export interface TaskBriefInput {
     | 'sourceProvider'
     | 'workItemRef'
     | 'workItemProvenance'
+    | 'resumes'
   >;
   /** The Task room document: the person-authored brief it was seeded with. */
   document:
@@ -451,6 +452,36 @@ function notFollowedLines(
       entries.map((entry) => entry.itemRef).join(', '),
       NOT_FOLLOWED_LINE_MAX,
     ),
+  ];
+}
+
+/** Resumes shown in a brief, newest first; the rest are counted. */
+const RESUMES_SHOWN = 3;
+/** A reason is at most 500 characters; quoting adds a little. */
+const RESUME_REASON_QUOTED_MAX = 640;
+
+/**
+ * #4554: each resume as a Station line (when, by whom, the end it cleared,
+ * the earlier lead it detached), then the resumer's own reason quoted under
+ * their label. Bounded: at most {@link RESUMES_SHOWN} entries.
+ */
+function renderResumes(task: TaskBriefInput['task']): string[] {
+  const resumes = [...(task.resumes ?? [])].reverse();
+  if (!resumes.length) return [];
+  const shown = resumes.slice(0, RESUMES_SHOWN);
+  return [
+    '## Resumed after it ended (newest first)',
+    'A person moved this Task from done back to ready. Work after a resume runs under the authority of whoever dispatched it, not the earlier lead.',
+    ...shown.flatMap((resume) => [
+      `- Resumed at ${stamp(resume.resumedAt)} by person ${cut(oneLine(resume.resumedBy), 128)}; it had ended at ${stamp(resume.endedAt)}${resume.previousSessionId ? `. Earlier lead: session ${cut(oneLine(resume.previousSessionId), 128)}${resume.previousLeadOwner ? `, owned by ${cut(oneLine(resume.previousLeadOwner), 128)}` : ''}` : ''}.`,
+      'Quoted, the reason that person wrote:',
+      ...quotedWithin(resume.reason, RESUME_REASON_QUOTED_MAX, '(cut)'),
+    ]),
+    ...(resumes.length > shown.length
+      ? [
+          `(${count(resumes.length - shown.length, 'earlier resume', 'earlier resumes')} not shown)`,
+        ]
+      : []),
   ];
 }
 
@@ -782,6 +813,9 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
     sessions: input.sessions,
     workingContext: input.workingContext ?? null,
     learningContext: input.learningContext ?? null,
+    ...(task.resumes?.length
+      ? { resumes: task.resumes.map((resume) => resume.resumeId) }
+      : {}),
     // Only when something was recorded, and never the poll time: a Task
     // polled with nothing to show keeps the digest of a Task never polled,
     // and a poll that recorded nothing new leaves the digest as it was.
@@ -807,6 +841,7 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
       : []),
   ];
   const workItem = renderWorkItem(task, observation);
+  const resumes = renderResumes(task);
   const workingContext =
     input.workingContext && input.workingContext.state !== 'disabled'
       ? ['## Project working configuration', input.workingContext.text]
@@ -909,6 +944,7 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
     (
       block(head) +
       block(workItem) +
+      block(resumes) +
       block(workingContext) +
       block(learningContext) +
       block(document) +
@@ -990,6 +1026,7 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
   const text =
     block(head) +
     block(workItem) +
+    block(resumes) +
     block(followUps) +
     block(workingContext) +
     block(learningContext) +

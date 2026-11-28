@@ -18,7 +18,17 @@ export const JOURNEYS = [
   {
     spec: 'tests/task-first-home.spec.ts',
     grep: 'profiles Home with substantial session history',
-    ids: ['home-history', 'home-history-mobile'],
+    ids: [
+      'home-history',
+      'home-history-mobile',
+      'home-composer-typing',
+      'home-composer-typing-mobile',
+    ],
+  },
+  {
+    spec: 'tests/transcript-load-stability.spec.ts',
+    grep: 'the composer measuring itself never opens a gap under the newest message',
+    ids: ['reply-composer'],
   },
   {
     spec: 'tests/task-first-home.spec.ts',

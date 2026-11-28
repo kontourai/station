@@ -1,0 +1,9 @@
+{
+  "revision": "7cb414c6211e005fb5bb2d5b48e90286a6d135d0",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed final 7cb414c621 test delta against managed native staging/headers and fixture-fidelity claims. The cold one-second timeout fixture now prepares real custody before its unchanged deadline; detached Windows writer prevents implicit Node Job cleanup from masking missing Station custody. At clean 6a503 the old synchronous-launcher mutation failed all three actual Windows custody assertions, source restored byte-exact, then full Windows owners passed 162/16 skipped. Final 7cb Linux owners passed 256/one Windows skip and six Windows named cases passed. Existing native/prebuild policy assertions remain; no physical-device, real registry-install, image or hosted qualification claim.","inputs":["scripts/__tests__/dependency-lifecycle.test.ts"]},
+
+    {"path":"packaging/node-pty-prebuilds/README.md","note":"Reviewed final 7cb414c621 test delta against managed native staging/headers and fixture-fidelity claims. The cold one-second timeout fixture now prepares real custody before its unchanged deadline; detached Windows writer prevents implicit Node Job cleanup from masking missing Station custody. At clean 6a503 the old synchronous-launcher mutation failed all three actual Windows custody assertions, source restored byte-exact, then full Windows owners passed 162/16 skipped. Final 7cb Linux owners passed 256/one Windows skip and six Windows named cases passed. Existing native/prebuild policy assertions remain; no physical-device, real registry-install, image or hosted qualification claim.","inputs":["scripts/__tests__/dependency-lifecycle.test.ts"]}
+  ]
+}

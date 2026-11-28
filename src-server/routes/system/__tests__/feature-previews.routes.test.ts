@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -56,6 +56,33 @@ afterEach(() => {
 });
 
 describe('feature preview routes', () => {
+  test('admits desktop browsing only for the live enabled preview and refuses unreadable state', async () => {
+    const registry = registryWithConsumer();
+    const app = createFeaturePreviewRoutes(registry, logger);
+    const admission = () => app.request('/desktop-nearby/admission');
+    const disabled = await admission();
+    expect(disabled.status).toBe(404);
+    expect(await disabled.json()).toMatchObject({
+      code: 'feature_preview_disabled',
+      previewId: 'desktop-nearby',
+    });
+    await registry.setEnabled('desktop-nearby', true);
+    const enabled = await admission();
+    expect(enabled.status).toBe(200);
+    expect(await enabled.json()).toEqual({
+      success: true,
+      data: { enabled: true },
+    });
+    await registry.setEnabled('desktop-nearby', false);
+    expect((await admission()).status).toBe(404);
+    await registry.setEnabled('desktop-nearby', true);
+    writeFileSync(
+      join(directories.at(-1)!, 'config', 'feature-previews.json'),
+      '{broken',
+    );
+    expect((await admission()).status).toBe(404);
+  });
+
   test('serializes the bound catalog and persists a server-side toggle', async () => {
     const registry = registryWithConsumer();
     const app = createFeaturePreviewRoutes(registry, logger);

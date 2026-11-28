@@ -92,15 +92,14 @@ async function fixture(
   });
   const featurePreviews = new FeaturePreviewRegistry(home, logger);
   await featurePreviews.setEnabled('task-review', true);
-  let checkout: string | undefined;
+  const checkout = join(root, 'checkout');
+  mkdirSync(checkout);
+  const git = async (...args: string[]) =>
+    (await execGit(args, { cwd: checkout, timeout: 5000 })).stdout.trim();
+  await git('init', '-b', 'main');
   let base: string | undefined;
   let head: string | undefined;
   if (options.codeReviewCheckout) {
-    checkout = join(root, 'checkout');
-    mkdirSync(checkout);
-    const git = async (...args: string[]) =>
-      (await execGit(args, { cwd: checkout, timeout: 5000 })).stdout.trim();
-    await git('init', '-b', 'main');
     await git('config', 'user.name', 'Room fixture');
     await git('config', 'user.email', 'room@example.test');
     writeFileSync(join(checkout, 'work.txt'), 'Task source\n');
@@ -188,7 +187,7 @@ async function fixture(
   const project = await projects.createProject({
     name: 'Review Project',
     slug: 'review-project',
-    ...(checkout ? { workingDirectory: checkout } : {}),
+    workingDirectory: checkout,
   });
   const { scope } = await membership.service.enable(
     project.slug,
@@ -341,8 +340,56 @@ async function fixture(
     publication,
     people,
     request,
+    graph,
+    featurePreviews,
   };
 }
+
+test('an account contributor with current shared Task access cannot resume it (#4554)', async () => {
+  const f = await fixture();
+  await f.featurePreviews.setEnabled('task-resume', true);
+  const { task } = await f.graph.createTaskForWorkItem(
+    {
+      projectId: f.task.projectId,
+      title: 'Ended tracker Task',
+      workItemRef: 'github:example/widgets#42',
+    },
+    '2026-11-01T00:00:00.000Z',
+  );
+  await f.graph.updateTaskStatus(task.id, 'in_progress');
+  await f.graph.updateTaskStatus(task.id, 'done');
+  const done = f.graph.readTask(task.id)!;
+  f.membership.sharedTasks.share({
+    scope: f.scope,
+    taskId: done.id,
+    taskCreatedAt: done.createdAt,
+    sharedBy: operator.id,
+  });
+  const member = f.people[0]!;
+  const read = await f.request(member, `/api/tasks/${done.id}/room`);
+  expect(read.status, await read.clone().text()).toBe(200);
+  for (const method of ['GET', 'POST']) {
+    const response = await f.request(member, `/api/tasks/${done.id}/resume`, {
+      method,
+      ...(method === 'POST'
+        ? {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              resumeId: 'member-resume',
+              expectedCreatedAt: done.createdAt,
+              expectedEndedAt: done.endedAt,
+              reason: 'A contributor asks for more work',
+            }),
+          }
+        : {}),
+    });
+    expect(response.status, await response.clone().text()).toBe(403);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'account_bound_device_route_forbidden' },
+    });
+  }
+  expect(f.graph.readTask(done.id)).toEqual(done);
+});
 
 test('legacy Project conversations stay unavailable without reading unbound records', async () => {
   const legacyRead = vi.fn(async () => [

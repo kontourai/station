@@ -5,7 +5,7 @@
  * reviewed commands. Dependency hooks resolve reviewed local files; the
  * package manager's exact version is verified before it is used.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { delimiter, dirname, isAbsolute, resolve } from 'node:path';
@@ -37,6 +37,11 @@ import {
 import { assertVerificationHost } from './lib/live-service-verification.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { resolveNpmCli } from './lib/npm-cli.mjs';
+import {
+  executeOwnedCommand,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from './lib/owned-process.mjs';
 import {
   readPnpmLockfileImporters,
   readPnpmWorkspace,
@@ -319,34 +324,104 @@ export function pnpmInvocation({
   };
 }
 
-export function pnpmCommand(
+export async function pnpmCommand(
   args,
   cwd = root,
   invocation = pnpmInvocation({ cwd }),
 ) {
   const timeout = inertInstallTimeout();
-  try {
-    command(invocation.command, [...invocation.args, ...args], {
+  const deadline = Date.now() + timeout;
+  const aliased =
+    process.platform === 'win32' && invocation.argv0 !== undefined;
+  const execution = executeOwnedCommand(
+    aliased ? process.execPath : invocation.command,
+    aliased
+      ? [
+          resolve(root, 'scripts/dependency-pnpm-command.mjs'),
+          Buffer.from(
+            JSON.stringify({
+              ...invocation,
+              args: [...invocation.args, ...args],
+            }),
+          ).toString('base64url'),
+        ]
+      : [...invocation.args, ...args],
+    spawn,
+    'inert pnpm command',
+    {
       cwd,
-      timeout,
-      env: { npm_config_ignore_scripts: 'true' },
-      ...(invocation.argv0 !== undefined ? { argv0: invocation.argv0 } : {}),
-    });
+      argv0: invocation.argv0,
+      env: { ...process.env, npm_config_ignore_scripts: 'true' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+  execution.child.stdout?.pipe(process.stdout, { end: false });
+  execution.child.stderr?.pipe(process.stderr, { end: false });
+  const failures = [];
+  let timer;
+  let interrupt;
+  const interrupted = new Promise((_, reject) => {
+    interrupt = reject;
+  });
+  const onSignal = () => interrupt(new Error('Inert pnpm command interrupted'));
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
+  try {
+    const result = await Promise.race([
+      execution.completion,
+      interrupted,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `Inert pnpm command exceeded its ${timeout} ms deadline. Set ${INERT_INSTALL_TIMEOUT_ENV} to override the budget on a slow host.`,
+              ),
+            ),
+          Math.max(0, deadline - Date.now()),
+        );
+      }),
+    ]);
+    if (result.error) throw result.error;
+    if (result.status !== 0 || result.signal)
+      throw new Error(
+        `Inert pnpm command failed: ${result.signal ?? result.status}`,
+      );
   } catch (error) {
-    if (error?.code !== 'ETIMEDOUT') throw error;
-    throw new Error(
-      `Inert pnpm command exceeded its ${timeout} ms deadline. Set ${INERT_INSTALL_TIMEOUT_ENV} to override the budget on a slow host.`,
-      { cause: error },
-    );
+    failures.push(error);
+  } finally {
+    clearTimeout(timer);
+    process.removeListener('SIGINT', onSignal);
+    process.removeListener('SIGTERM', onSignal);
+    try {
+      const retired = await terminateSuiteExecution(execution, {
+        waitForSuiteSettlement,
+        terminationGraceMs: 5_000,
+        terminationForceMs: 5_000,
+        processLabel: 'inert pnpm command',
+      });
+      if (!retired.settled || retired.errors.length)
+        failures.push(
+          new Error('Inert pnpm process tree did not settle', {
+            cause: retired.errors,
+          }),
+        );
+    } catch (error) {
+      failures.push(error);
+    }
   }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length)
+    throw new AggregateError(failures, 'Inert pnpm command and cleanup failed');
 }
 
 /** Refresh resolution only; callers review dependency policy before installing. */
-export function refreshLock({ cwd = process.cwd() } = {}) {
+export async function refreshLock({ cwd = process.cwd() } = {}) {
   command(process.execPath, [
     resolve(root, 'scripts/node-runtime-contract.mjs'),
   ]);
-  pnpmCommand(
+  await pnpmCommand(
     ['install', '--lockfile-only', '--ignore-scripts', '--no-frozen-lockfile'],
     cwd,
   );
@@ -509,18 +584,28 @@ export function describeFailure(
 ) {
   const lines = [];
   const seen = new Set();
-  let current = error;
-  for (let depth = 0; current !== undefined && depth < maxDepth; depth += 1) {
+  const pending = [error];
+  for (let index = 0; index < pending.length && index < maxDepth; index += 1) {
+    const current = pending[index];
     if (typeof current === 'object' && current !== null) {
-      if (seen.has(current)) break;
+      if (seen.has(current)) continue;
       seen.add(current);
     }
     const message = String(
       current instanceof Error ? current.message : current,
     ).slice(0, maxLength);
     if (message !== '')
-      lines.push(depth === 0 ? message : `  caused by: ${message}`);
-    current = current instanceof Error ? current.cause : undefined;
+      lines.push(index === 0 ? message : `  caused by: ${message}`);
+    if (current instanceof AggregateError)
+      pending.push(
+        ...current.errors.slice(0, Math.max(0, maxDepth - pending.length)),
+      );
+    if (
+      current instanceof Error &&
+      current.cause !== undefined &&
+      pending.length < maxDepth
+    )
+      pending.push(current.cause);
   }
   return lines.length > 0 ? lines.join('\n') : String(error);
 }
@@ -707,7 +792,7 @@ export function stageLifecyclePrebuilds(allowlist, { cwd = root } = {}) {
 }
 
 /** Inject only execution, preserving the actual guarded production phase order. */
-export function install(
+export async function install(
   { developer = false } = {},
   execution = {
     root,
@@ -759,12 +844,12 @@ export function install(
     ...(invocation.argv0 !== undefined ? { argv0: invocation.argv0 } : {}),
   };
   const allowlist = execution.check({ cwd: execution.root, bootstrap: true });
-  const verified = withDependencyInstallGuard({
+  const verified = await withDependencyInstallGuard({
     root: execution.root,
     clean: false,
     retireLegacy: true,
-    run: () => {
-      execution.pnpmCommand(
+    run: async () => {
+      await execution.pnpmCommand(
         inertInstallArgs(developer),
         execution.root,
         boundInvocation,
@@ -812,10 +897,10 @@ if (invokedDirectly(import.meta.url)) {
   try {
     if (operation === 'check') check();
     else if (operation === 'propose') console.log(propose());
-    else if (operation === 'install') install({ developer: true });
-    else if (operation === 'ci') install({ developer: false });
+    else if (operation === 'install') await install({ developer: true });
+    else if (operation === 'ci') await install({ developer: false });
     else if (operation === 'verify') verify();
-    else if (operation === 'lock') refreshLock();
+    else if (operation === 'lock') await refreshLock();
     else {
       usage();
       process.exitCode = 2;
