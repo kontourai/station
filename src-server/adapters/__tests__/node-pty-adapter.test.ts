@@ -133,6 +133,7 @@ function drivenPty() {
   const adapter = new NodePtyAdapter(() => Promise.resolve(nodePty));
   return {
     adapter,
+    pty,
     output: (text: string) => {
       for (const cb of [...data]) cb(text);
     },
@@ -166,6 +167,25 @@ describe('termination report (#4626)', () => {
       /^exit event \d+ ms ago; last output \d+ ms ago$/,
     );
   });
+
+  test.runIf(process.platform === 'win32')(
+    'retains native cleanup and failure evidence when taskkill resolution refuses (#5627)',
+    async () => {
+      const { adapter, pty, exit } = drivenPty();
+      const proc = await adapter.spawn(SPAWN_INPUT);
+      vi.stubEnv('SystemRoot', 'relative-windows');
+      try {
+        await expect(proc.terminate!()).rejects.toThrow(
+          /Terminal process-tree cleanup failed: Windows SystemRoot must be a local absolute path.*helper pid=unassigned.*spawn=pending/,
+        );
+        expect(pty.kill).toHaveBeenCalledExactlyOnceWith();
+        expect(execFile).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+        exit();
+      }
+    },
+  );
 
   test.runIf(process.platform === 'win32')(
     'retains bounded taskkill timeout evidence before and after helper settlement (#5627)',

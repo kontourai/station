@@ -266,7 +266,7 @@ class NodePtyProcess implements IPtyProcess {
       });
       this.trace.taskkill = Date.now();
       const receipt: NonNullable<typeof this.taskkillReceipt> = {
-        command: windowsSystemUtilityPath('taskkill'),
+        command: 'unresolved taskkill',
         helper: undefined,
         spawned: false,
         exited: false,
@@ -276,6 +276,7 @@ class NodePtyProcess implements IPtyProcess {
       };
       this.taskkillReceipt = receipt;
       const failure = await new Promise<ExecFileException | null>((resolve) => {
+        receipt.command = windowsSystemUtilityPath('taskkill');
         const helper = execFile(
           receipt.command,
           ['/T', '/F', '/PID', String(this.pid)],
@@ -302,7 +303,9 @@ class NodePtyProcess implements IPtyProcess {
             -2048,
           );
         });
-      });
+      }).catch((error: unknown): ExecFileException =>
+        error instanceof Error ? error : new Error(String(error)),
+      );
       this.trace.taskkillDone = Date.now();
       this.trace.taskkillResult = failure
         ? `failed (${failure.code ?? failure.message.slice(-2048)})`
