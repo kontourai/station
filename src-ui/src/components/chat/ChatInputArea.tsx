@@ -2513,6 +2513,7 @@ export function ChatInputArea({
                 variant="ghost"
                 className="chat-input__mode-option"
                 type="button"
+                aria-pressed={!steeringSelected}
                 onClick={() => {
                   setSendModeOverride('queue');
                   setSendModeOpen(false);
@@ -2524,6 +2525,7 @@ export function ChatInputArea({
                 variant="ghost"
                 className="chat-input__mode-option"
                 type="button"
+                aria-pressed={steeringSelected}
                 disabled={!canSteer}
                 onClick={() => {
                   setSendModeOverride('steer');
