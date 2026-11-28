@@ -1332,11 +1332,18 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 ### Turn activity and follow-up delivery
 
-During a running turn, the trailing segment of Send toggles between amber
-**Queue** and green **Steer**. The Send button changes icon and color with the
-mode. Queue is the default and the selection lasts for that conversation
-while the composer is mounted. Stop remains with the Working status when that
-status is visible.
+During a running turn with steering available, tap the trailing segment of Send
+to switch between **Queue** and **Steer** in one step. When steering is unavailable,
+the segment opens the reason and leaves Queue selected. Queue is the default
+and the selection lasts for that conversation while the composer is mounted.
+Stop remains with the Working status when that status is visible.
+
+In the reply composer, tapping Send, clearing the draft, or removing an
+attachment keeps an already focused draft ready for typing. Tapping compact
+settings keeps draft focus while the options are open. Opening the same settings
+from a keyboard-focused trigger moves focus into the picker and Escape returns
+it to that trigger. Model and Agent pickers can take focus for search. Closing
+a picker opened by touch from an active draft returns focus to that draft.
 
 The Queue count opens the list from the composer toolbar. Move changes the
 order of waiting messages. Tap a message to edit its full text in the

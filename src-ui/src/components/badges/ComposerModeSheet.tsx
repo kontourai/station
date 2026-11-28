@@ -143,6 +143,7 @@ function ComposerModeSheetContent({
   return (
     <ResponsiveDialogSurface
       layer={layer}
+      preserveComposerFocus
       ariaLabel="Approval mode"
       onClose={onClose}
       historyMode="entry"
