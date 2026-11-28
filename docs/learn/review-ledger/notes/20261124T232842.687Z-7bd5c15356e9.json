@@ -1,0 +1,7 @@
+{
+  "revision": "36683b8654c8350f136b940061f39e8c761624b1",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked Google and GitHub device methods against installed CLI help and verified that the existing interactive device method remains available.","inputs":["docs/guides/connections.md"]}
+  ]
+}

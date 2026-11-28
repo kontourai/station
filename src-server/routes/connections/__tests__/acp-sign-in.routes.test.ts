@@ -101,7 +101,10 @@ function engineProgram(program: string, profile: string): string {
   return command;
 }
 
-async function fixture(extraConnections: ACPConnectionConfig[] = []) {
+async function fixture(
+  extraConnections: ACPConnectionConfig[] = [],
+  accountActionsEnabled = false,
+) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = makeTempDir('station-sign-in-routes-');
   const security = new EnvironmentSecurityService({
@@ -166,6 +169,7 @@ async function fixture(extraConnections: ACPConnectionConfig[] = []) {
   const acpJson = JSON.stringify({ connections });
   const opened: Parameters<SignInTerminalHost['open']>[0][] = [];
   const service = new EngineSignInService({
+    accountActionsEnabled: () => accountActionsEnabled,
     terminal: {
       open: async (input) => {
         opened.push(input);
@@ -240,6 +244,78 @@ async function fixture(extraConnections: ACPConnectionConfig[] = []) {
 }
 
 describe.runIf(posix)('engine sign-in route authority', () => {
+  test('shared account sign-out requires a compatible client and a device allowed to run engine commands', async () => {
+    const command = engineProgram('kiro-cli', 'factory-droid.json');
+    const original = readFileSync(command, 'utf8');
+    writeFileSync(
+      command,
+      `#!/bin/sh\nif [ "$1" = logout ] && [ "$2" = --help ]; then echo 'Log out of Kiro'; exit 0; fi\nif [ "$1" = whoami ]; then echo 'Logged in with Builder ID'; exit 0; fi\n${original.slice(original.indexOf('\n') + 1)}`,
+    );
+    const f = await fixture(
+      [{ id: 'kiro', name: 'Kiro', command, enabled: true }],
+      true,
+    );
+    const phone = f.pair('Phone');
+    f.grant(phone.device.id, [PAIRING_SCOPE_ENGINE_LOGIN]);
+    const methodId = 'station:cli-sign-out';
+    const view = await f.call(
+      phone.credential,
+      'POST',
+      'kiro/sign-in/check?accountActions=1',
+    );
+    expect(view.body.data.methods).toContainEqual(
+      expect.objectContaining({ id: methodId, operation: 'sign-out' }),
+    );
+    const blocked = await f.call(
+      phone.credential,
+      'POST',
+      'kiro/sign-in/start?accountActions=1',
+      { methodId },
+    );
+    expect(blocked.status).toBe(403);
+
+    f.grant(phone.device.id, [
+      PAIRING_SCOPE_ENGINE_LOGIN,
+      PAIRING_SCOPE_CODING_EXEC,
+    ]);
+    const legacy = await f.call(phone.credential, 'GET', 'kiro/sign-in');
+    expect(legacy.body.data.methods).not.toContainEqual(
+      expect.objectContaining({ id: methodId }),
+    );
+    const oldStart = await f.call(
+      phone.credential,
+      'POST',
+      'kiro/sign-in/start',
+      { methodId },
+    );
+    expect(oldStart.status).toBe(404);
+    expect(f.opened).toHaveLength(0);
+
+    const start = await f.call(
+      phone.credential,
+      'POST',
+      'kiro/sign-in/start?accountActions=1',
+      { methodId, args: ['arbitrary'] },
+    );
+    expect(start.status).toBe(200);
+    expect(start.body.data).toMatchObject({
+      operation: 'sign-out',
+      state: 'running',
+    });
+    expect(f.opened[0].launch.args).toEqual(['logout']);
+    const oldAttempt = await f.call(
+      phone.credential,
+      'GET',
+      'kiro/sign-in/attempt',
+    );
+    expect(oldAttempt.body.data).toBeNull();
+    await f.call(
+      phone.credential,
+      'DELETE',
+      'kiro/sign-in/attempt?accountActions=1',
+    );
+  });
+
   test('a standard paired device reads the view but cannot sign in or store a key', async () => {
     const f = await fixture();
     const phone = f.pair('Phone');

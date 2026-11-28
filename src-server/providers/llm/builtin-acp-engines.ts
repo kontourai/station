@@ -53,6 +53,32 @@ const KIRO_CLI_AUTH: BuiltinEngine['auth'] = {
   // Amazon Q CLI it grew from (crates/chat-cli/src/cli/user.rs). Other
   // output (a login kind that code does not print) stays unknown.
   statusCommand: ['kiro-cli', 'whoami'],
+  terminalAccount: {
+    scope: 'kiro-cli',
+    signOut: {
+      id: 'station:cli-sign-out',
+      name: 'Sign out',
+      args: ['logout'],
+      helpArgs: ['logout', '--help'],
+      requiredHelpText: 'Log out of Kiro',
+    },
+    signInMethods: [
+      {
+        id: 'station:google-sign-in',
+        name: 'Sign in with Google',
+        args: ['login', '--social', 'google', '--use-device-flow'],
+        helpArgs: ['login', '--help'],
+        requiredHelpText: '--social',
+      },
+      {
+        id: 'station:github-sign-in',
+        name: 'Sign in with GitHub',
+        args: ['login', '--social', 'github', '--use-device-flow'],
+        helpArgs: ['login', '--help'],
+        requiredHelpText: '--social',
+      },
+    ],
+  },
   terminalLogin: {
     id: 'station:device-login',
     name: 'Sign in from this device',
@@ -325,6 +351,17 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       // 1.0.77, live: "You are logged in with grok.com." / "You are not
       // authenticated."). Other output stays unknown.
       statusCommand: ['grok', 'models'],
+      terminalAccount: {
+        scope: 'grok-cli',
+        signOut: {
+          id: 'station:cli-sign-out',
+          name: 'Sign out',
+          args: ['logout'],
+          helpArgs: ['logout', '--help'],
+          requiredHelpText: 'Sign out and clear cached credentials',
+        },
+        signInMethods: [],
+      },
       terminalLogin: {
         id: 'station:device-login',
         name: 'Sign in with a device code',

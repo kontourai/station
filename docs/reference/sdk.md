@@ -6815,7 +6815,11 @@ sign-in for an engine run as a command (`/acp/connections/:id/sign-in*`):
 `useEngineSignInAttemptQuery` (polls every 2 seconds while a sign-in runs),
 `useEngineSignInMutation` (start by method id, or cancel) and
 `useEngineCredentialMutation` (set a key value or clear it; the value is never
-read back). For an engine Station signs in itself, the view carries
+read back). Engines with reviewed CLI account actions can return
+`operation: 'sign-out'` on a method and its attempt. Use the same mutation with
+the method id. The client opts in to account-action responses on the existing
+routes, so older clients keep the sign-in-only view. For an engine Station
+signs in itself, the view carries
 `hostAuth`, and `useEngineHostAuthLoginQuery` (polls every 2 seconds while the
 sign-in runs; it carries the device code), `useEngineHostAuthLoginMutation`
 (start with a `HostAuthLoginRequest`, or cancel),

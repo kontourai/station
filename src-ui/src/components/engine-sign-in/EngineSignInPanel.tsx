@@ -19,6 +19,7 @@ import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { TerminalPanel } from '../coding-layout/TerminalPanel';
 import { hostActionCopy } from '../host-action/host-action-copy';
+import { ConfirmModal } from '../modals/ConfirmModal';
 import { SkeletonBlock } from '../state';
 import { EngineHostAuthSection } from './EngineHostAuthSection';
 import './EngineSignInPanel.css';
@@ -85,15 +86,25 @@ function AttemptView({
   onCancel: () => void;
   cancelling: boolean;
 }) {
+  const signOut = attempt.operation === 'sign-out';
   if (attempt.state !== 'running') {
     const text =
       attempt.state === 'succeeded'
-        ? `${engineName} finished signing in.`
+        ? signOut
+          ? `Signed out of ${engineName}.`
+          : `${engineName} finished signing in.`
         : attempt.state === 'cancelled'
-          ? 'The sign-in was cancelled.'
+          ? signOut
+            ? 'Sign-out cancelled.'
+            : 'The sign-in was cancelled.'
           : attempt.state === 'timed-out'
-            ? 'The sign-in took too long and was stopped.'
-            : `The sign-in did not finish.${attempt.message ? ` ${attempt.message}` : ''}`;
+            ? signOut
+              ? 'Sign-out took too long and was stopped.'
+              : 'The sign-in took too long and was stopped.'
+            : (attempt.message ??
+              (signOut
+                ? 'Sign-out did not finish.'
+                : 'The sign-in did not finish.'));
     return (
       <p
         className="engine-sign-in__attempt"
@@ -107,7 +118,11 @@ function AttemptView({
     <div className="engine-sign-in__attempt" role="status" aria-live="polite">
       {attempt.kind === 'terminal' && attempt.terminal ? (
         <>
-          <span>Finish signing in in the terminal below.</span>
+          <span>
+            {signOut
+              ? `Signing out of ${engineName}…`
+              : 'Finish signing in in the terminal below.'}
+          </span>
           <div className="engine-sign-in__terminal">
             {attempt.terminal.projectId && attempt.terminal.bindingKey ? (
               // The server started this session; the view attaches by id.
@@ -139,7 +154,7 @@ function AttemptView({
         </span>
       ))}
       <Button size="sm" onClick={onCancel} pending={cancelling}>
-        Cancel sign-in
+        {signOut ? 'Cancel sign-out' : 'Cancel sign-in'}
       </Button>
     </div>
   );
@@ -264,6 +279,7 @@ function ScopedEngineSignInPanel({
   const check = useEngineSignInCheckMutation(connectionId, scope);
   const signIn = useEngineSignInMutation(connectionId, scope);
   const credential = useEngineCredentialMutation(connectionId, scope);
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
 
   // Read the engine's sign-in methods once if this Station has not yet.
   const autoChecked = useRef(false);
@@ -290,7 +306,7 @@ function ScopedEngineSignInPanel({
     finishedId.current = current.id;
     if (current.state === 'succeeded') {
       check.mutate();
-      onSignedIn?.();
+      if (current.operation !== 'sign-out') onSignedIn?.();
     }
   }, [current, check, onSignedIn]);
 
@@ -315,7 +331,13 @@ function ScopedEngineSignInPanel({
   const data = view.data;
   const running = current?.state === 'running';
   const error = check.error || signIn.error || credential.error;
-  const methods = data.methods ?? [];
+  const signOut = data.methods?.find(
+    (method) => method.operation === 'sign-out',
+  );
+  const mustSignOut = Boolean(signOut && data.status.state === 'authenticated');
+  const methods = (data.methods ?? []).filter(
+    (method) => method.operation !== 'sign-out',
+  );
   const paired = presentation?.deviceClass === 'paired';
 
   return (
@@ -334,6 +356,30 @@ function ScopedEngineSignInPanel({
         </Button>
       </div>
       <small>{statusDetail(data)}</small>
+      {mustSignOut && signOut && (
+        <>
+          <Button
+            size="sm"
+            disabled={!data.allowed.terminal || running || signIn.isPending}
+            onClick={() => setConfirmSignOut(true)}
+          >
+            Sign out
+          </Button>
+          <ConfirmModal
+            isOpen={confirmSignOut}
+            title={`Sign out of ${data.engineName}?`}
+            message="This signs out other connections that use the same login on this Station."
+            confirmLabel="Sign out"
+            cancelLabel="Cancel"
+            onCancel={() => setConfirmSignOut(false)}
+            onConfirm={() => {
+              setConfirmSignOut(false);
+              signIn.mutate({ kind: 'start', methodId: signOut.id });
+            }}
+          />
+        </>
+      )}
+
       {/* Where the engine keeps its sign-in; not said when Station keeps it. */}
       {presentation && data.status.source !== 'station-vault' && (
         <small>{hostActionCopy('engine-sign-in', presentation)}</small>
@@ -375,7 +421,7 @@ function ScopedEngineSignInPanel({
         />
       )}
 
-      {methods.length > 0 && (
+      {!mustSignOut && methods.length > 0 && (
         <ul className="engine-sign-in__methods">
           {methods.map((method) => {
             const terminalBlocked =

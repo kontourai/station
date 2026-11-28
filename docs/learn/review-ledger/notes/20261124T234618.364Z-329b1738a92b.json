@@ -1,0 +1,9 @@
+{
+  "revision": "cd0471f4d87ba28ad84440ca04215ff1a83a5907",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"The new account management row documents an off-by-default personal-host preview. The existing settings links and preview activation workflow still apply.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"The new account management row documents an off-by-default personal-host preview. The existing settings links and preview activation workflow still apply.","inputs":["docs/user/settings.md"]}
+  ]
+}

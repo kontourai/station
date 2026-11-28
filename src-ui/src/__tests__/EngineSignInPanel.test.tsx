@@ -119,6 +119,63 @@ const baseView = {
   allowed: { signIn: true, terminal: true },
 };
 
+test('sign-out requires confirmation and the result remains visible when Google sign-in becomes available', async () => {
+  const status = {
+    state: 'authenticated',
+    source: 'status-command',
+    checkable: true,
+  };
+  const calls = serve(
+    {
+      ...baseView,
+      engineName: 'Kiro',
+      status,
+      methods: [
+        {
+          id: 'station:cli-sign-out',
+          name: 'Sign out',
+          kind: 'terminal',
+          operation: 'sign-out',
+        },
+        {
+          id: 'station:google-sign-in',
+          name: 'Sign in with Google',
+          kind: 'terminal',
+        },
+      ],
+    },
+    (call, view) => {
+      if (call.path.endsWith('/sign-in/start')) {
+        return {
+          view: { ...view, status: { ...status, state: 'unauthenticated' } },
+          attempt: {
+            id: 'switch-1',
+            methodId: 'station:cli-sign-out',
+            kind: 'terminal',
+            operation: 'sign-out',
+            state: 'succeeded',
+            startedAt: '2026-10-21T10:00:01.000Z',
+          },
+        };
+      }
+    },
+  );
+  renderPanel();
+  fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+  expect(calls.some((call) => call.path.endsWith('/sign-in/start'))).toBe(
+    false,
+  );
+  expect(
+    await screen.findByText(/other connections that use the same login/),
+  ).toBeTruthy();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Sign out' }).at(-1)!);
+  expect(await screen.findByText('Signed out of Kiro.')).toBeTruthy();
+  expect(await screen.findByText('Sign in with Google')).toBeTruthy();
+  expect(calls.find((call) => call.path.endsWith('/sign-in/start'))?.body).toBe(
+    JSON.stringify({ methodId: 'station:cli-sign-out' }),
+  );
+});
+
 test('shows Not checked, the terms note, and starts a terminal sign-in by method id only', async () => {
   const calls = serve(baseView, (call) =>
     call.path.endsWith('/sign-in/start')

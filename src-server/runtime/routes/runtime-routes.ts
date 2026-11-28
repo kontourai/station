@@ -8719,8 +8719,21 @@ export function configureRuntimeRoutes(
       engineSetupPreview,
     }),
   );
+  const engineAccountsPreview = isPersonalHost
+    ? context.featurePreviews.bind({
+        id: 'engine-account-management',
+        label: 'Engine account management',
+        description:
+          'Switch accounts for engines that support sign-out on this Station.',
+      })
+    : null;
   // Sign-in terminals are server-owned TerminalSessions launches.
   const engineSignInService = new EngineSignInService({
+    accountActionsEnabled: () =>
+      engineAccountsPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) ?? false,
     terminal: isPersonalHost
       ? {
           open: (input) => {
@@ -8729,6 +8742,17 @@ export function configureRuntimeRoutes(
             return scopedTerminals.sessions.openInternal(
               ENGINE_SIGN_IN_TERMINAL_SCOPE,
               input,
+            );
+          },
+          readSignInOutput: async (terminalId) => {
+            const view = await scopedTerminals.sessions?.readInternal(
+              ENGINE_SIGN_IN_TERMINAL_SCOPE,
+              terminalId,
+              0,
+              8 * 1024,
+            );
+            return (
+              view?.journal.records.map((record) => record.data).join('') ?? ''
             );
           },
           close: async (terminalId) =>

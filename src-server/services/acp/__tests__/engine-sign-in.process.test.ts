@@ -8,6 +8,7 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -159,10 +160,13 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     const marker = join(grok.command, '..', 'signed-in');
     writeFileSync(
       grok.command,
-      `#!/bin/sh\nif [ "$1" = login ] && [ "$2" = --help ]; then printf '%s\\n' --device-auth; exit 0; fi\nif [ "$1" = models ]; then if [ -f "${marker}" ]; then printf 'You are logged in with grok.com.\\n'; else printf 'You are not authenticated.\\n'; fi; exit 0; fi\n${original.slice(original.indexOf('\n') + 1)}`,
+      `#!/bin/sh\nif [ "$1" = login ] && [ "$2" = --help ]; then printf '%s\\n' --device-auth; exit 0; fi\nif [ "$1" = logout ] && [ "$2" = --help ]; then echo 'Sign out and clear cached credentials'; exit 0; fi\nif [ "$1" = models ]; then if [ -f "${marker}" ]; then printf 'You are logged in with grok.com.\\n'; else printf 'You are not authenticated.\\n'; fi; exit 0; fi\n${original.slice(original.indexOf('\n') + 1)}`,
     );
     const terminal = recordingTerminal();
-    const service = new EngineSignInService({ terminal: terminal.host });
+    const service = new EngineSignInService({
+      terminal: terminal.host,
+      accountActionsEnabled: () => true,
+    });
     const config = {
       ...connection('grok-build', grok.command),
       args: ['agent', 'stdio'],
@@ -183,6 +187,110 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     await expect
       .poll(() => service.attempt(config.id)?.state)
       .toBe('succeeded');
+    await service.startTerminal(config, 'station:cli-sign-out', true);
+    expect(terminal.opened[2].launch.args).toEqual(['logout']);
+    rmSync(marker);
+    await terminal.exit(terminal.opened[2], 0);
+    expect(await settle(service, config.id)).toMatchObject({
+      operation: 'sign-out',
+      state: 'succeeded',
+    });
+    await service.dispose();
+  });
+
+  test('switches a shared CLI account only after confirmed sign-out', async () => {
+    const kiro = engineProgram('kiro-cli', 'factory-droid.json');
+    const original = readFileSync(kiro.command, 'utf8');
+    const stateFile = join(kiro.command, '..', 'account-state');
+    writeFileSync(stateFile, 'Builder ID');
+    writeFileSync(
+      kiro.command,
+      `#!/bin/sh\nif [ "$1" = login ] && [ "$2" = --help ]; then printf '%s\\n' --use-device-flow --social; exit 0; fi\nif [ "$1" = logout ] && [ "$2" = --help ]; then echo 'Log out of Kiro'; exit 0; fi\nif [ "$1" = whoami ]; then account=$(cat '${stateFile}'); if [ -n "$account" ]; then echo "Logged in with $account"; else echo 'Not logged in'; fi; exit 0; fi\n${original.slice(original.indexOf('\n') + 1)}`,
+    );
+    const terminal = recordingTerminal();
+    let allowed = false;
+    const service = new EngineSignInService({
+      terminal: {
+        ...terminal.host,
+        readSignInOutput: async () =>
+          '\x1b[32mhttps://example.test/verify\x1b[0m\nEnter your code.',
+      },
+      accountActionsEnabled: () => allowed,
+    });
+    const cli = connection('kiro-cli', kiro.command);
+    const kas = connection('kiro-kas', kiro.command);
+    await service.refreshMethods(cli);
+    expect(
+      service.methodsView(cli).methods?.map((method) => method.id),
+    ).not.toContain('station:cli-sign-out');
+    await expect(
+      service.startTerminal(cli, 'station:device-login'),
+    ).rejects.toThrow('already signed in');
+
+    allowed = true;
+    await service.refreshMethods(cli);
+    expect(service.methodsView(cli).methods).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'station:cli-sign-out',
+          operation: 'sign-out',
+        }),
+        expect.objectContaining({
+          id: 'station:google-sign-in',
+          name: 'Sign in with Google',
+        }),
+      ]),
+    );
+    await expect(
+      service.startTerminal(cli, 'station:google-sign-in', true),
+    ).rejects.toThrow('already signed in');
+    expect(terminal.opened).toHaveLength(0);
+
+    await service.startTerminal(cli, 'station:cli-sign-out', true);
+    expect(terminal.opened[0].launch.args).toEqual(['logout']);
+    await expect(
+      service.startTerminal(kas, 'station:device-login'),
+    ).rejects.toThrow('already running');
+    await terminal.exit(terminal.opened[0], 0);
+    expect(await settle(service, cli.id)).toMatchObject({
+      operation: 'sign-out',
+      state: 'failed',
+      message: 'The engine did not confirm sign-out.',
+    });
+
+    await service.startTerminal(cli, 'station:cli-sign-out', true);
+    writeFileSync(stateFile, '');
+    await terminal.exit(terminal.opened[1], 0);
+    expect(await settle(service, cli.id)).toMatchObject({
+      operation: 'sign-out',
+      state: 'succeeded',
+    });
+
+    await service.startTerminal(cli, 'station:google-sign-in', true);
+    expect(terminal.opened[2].launch.args).toEqual([
+      'login',
+      '--social',
+      'google',
+      '--use-device-flow',
+    ]);
+    expect(await service.attemptWithTerminalLinks(cli)).toMatchObject({
+      links: ['https://example.test/verify'],
+    });
+    await terminal.exit(terminal.opened[2], 1);
+    expect(await settle(service, cli.id)).toMatchObject({ state: 'failed' });
+    await service.startTerminal(cli, 'station:github-sign-in', true);
+    expect(terminal.opened[3].launch.args).toEqual([
+      'login',
+      '--social',
+      'github',
+      '--use-device-flow',
+    ]);
+    writeFileSync(stateFile, 'GitHub');
+    await terminal.exit(terminal.opened[3], 0);
+    expect(await settle(service, cli.id)).toMatchObject({ state: 'succeeded' });
+    expect(
+      (await service.attemptWithTerminalLinks(cli))?.links,
+    ).toBeUndefined();
     await service.dispose();
   });
 

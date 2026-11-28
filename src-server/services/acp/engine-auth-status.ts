@@ -128,6 +128,7 @@ interface Observation {
   at: number;
 }
 
+const accountScopes = new Map<string, string>();
 const commandResults = new Map<
   string,
   { key: string; observation: Observation | null }
@@ -155,6 +156,7 @@ export function setEngineStatusTestHooks(hooks: {
 }
 
 export function resetEngineAuthStatus(): void {
+  accountScopes.clear();
   commandResults.clear();
   inFlight.clear();
   engineEvidence.clear();
@@ -222,6 +224,15 @@ export function invalidateEngineStatus(connectionId: string): void {
 export function forgetEngineAuthStatus(connectionId: string): void {
   invalidateEngineStatus(connectionId);
   engineEvidence.delete(connectionId);
+  accountScopes.delete(connectionId);
+}
+
+export function forgetSharedEngineAccountStatus(connectionId: string): void {
+  const scope = accountScopes.get(connectionId);
+  forgetEngineAuthStatus(connectionId);
+  if (scope === undefined) return;
+  for (const [id, candidateScope] of accountScopes)
+    if (candidateScope === scope) forgetEngineAuthStatus(id);
 }
 
 async function statusCommandFor(
@@ -336,6 +347,8 @@ export async function engineSignInStatus(
       checkable: false,
     };
   }
+  const scope = registryAuthFor(connection)?.auth.terminalAccount?.scope;
+  if (scope) accountScopes.set(connection.id, scope);
   const checkable = engineStatusCheckable(connection);
   const fromCommand = checkable
     ? await commandObservation(connection, options.refresh === true)
