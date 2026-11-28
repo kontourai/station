@@ -72,6 +72,26 @@ test('UI-only captures require production assets and actual browser provenance',
     buildProvenanceSha256: 'build-digest',
     viewport: { width: 390, height: 844 },
     device: { userAgent: 'Chromium', devicePixelRatio: 1 },
+    hostObservation: {
+      scope: 'runner-host',
+      sampleIntervalMs: 1000,
+      logicalCpus: 4,
+      totalMemoryBytes: 1024,
+      samples: [
+        {
+          offsetMs: 0,
+          cpuBusyPercent: null,
+          freeMemoryBytes: 512,
+          loadAverage: null,
+        },
+        {
+          offsetMs: 200,
+          cpuBusyPercent: 75,
+          freeMemoryBytes: 500,
+          loadAverage: null,
+        },
+      ],
+    },
     inputTiming: {
       supported: true,
       scope: 'final-document',
@@ -106,6 +126,34 @@ test('UI-only captures require production assets and actual browser provenance',
     { buildProvenanceSha256: 'another-build' },
     { viewport: null },
     { device: null },
+    { hostObservation: null },
+    { hostObservation: { ...captured.hostObservation, logicalCpus: 0 } },
+    { hostObservation: { ...captured.hostObservation, samples: [] } },
+    { hostObservation: { ...captured.hostObservation, samples: [null, null] } },
+    {
+      hostObservation: {
+        ...captured.hostObservation,
+        samples: captured.hostObservation.samples.map((entry) => ({
+          ...entry,
+          offsetMs: 0,
+        })),
+      },
+    },
+    {
+      hostObservation: {
+        ...captured.hostObservation,
+        totalMemoryBytes: Infinity,
+      },
+    },
+    {
+      hostObservation: {
+        ...captured.hostObservation,
+        samples: captured.hostObservation.samples.map((entry) => ({
+          ...entry,
+          cpuBusyPercent: 101,
+        })),
+      },
+    },
     { inputTiming: null },
     {
       inputTiming: {

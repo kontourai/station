@@ -10,6 +10,7 @@ import {
 import { cpus, freemem, platform, release, totalmem } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { Page, TestInfo } from '@playwright/test';
+import { startJourneyHostObservation } from '../../scripts/lib/journey-host-observation.mjs';
 
 const enabled = Boolean(process.env.STATION_JOURNEY_PROFILE_DIR);
 
@@ -207,6 +208,7 @@ export async function profileJourney(
   const startCounters = await counters();
   const before = await client.send('Performance.getMetrics');
   const start = performance.now();
+  const hostObservation = startJourneyHostObservation();
   let passed = false;
   let observed = false;
   try {
@@ -221,6 +223,7 @@ export async function profileJourney(
   } finally {
     try {
       const elapsedMs = performance.now() - start;
+      const host = hostObservation.stop();
       const endCounters = await counters();
       const after = await client.send('Performance.getMetrics');
       const cpu = await client.send('Profiler.stop');
@@ -318,6 +321,7 @@ export async function profileJourney(
         cpu: cpus()[0]?.model,
         logicalCpus: cpus().length,
         memoryAtCapture: { freeBytes: freemem(), totalBytes: totalmem() },
+        hostObservation: host,
         browser: page.context().browser()?.version(),
         viewport: page.viewportSize(),
         device: await page.evaluate(() => ({
