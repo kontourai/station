@@ -1,0 +1,25 @@
+{
+  "revision": "3d23682b85770b86dda3a56eb5a7306b99fed2bc",
+
+  "notes": [
+    {"path":"docs/design/mobile-credential-authority.md","note":"Reviewed saved Station selection, pairing and the native authority boundary. Desktop can request explicit-selection-only authorization at launch; mobile default selection, keyring custody, alternate-route proof, shared CLI defaults and attachment ownership retain their existing contracts.","inputs":["src-ui/src/platform/native/stationProfileStorage.ts"]},
+
+    {"path":"docs/design/station-routes.md","note":"Reviewed saved Station selection, pairing and the native authority boundary. Desktop can request explicit-selection-only authorization at launch; mobile default selection, keyring custody, alternate-route proof, shared CLI defaults and attachment ownership retain their existing contracts.","inputs":["src-ui/src/platform/native/stationProfileStorage.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed saved Station selection, pairing and the native authority boundary. Desktop can request explicit-selection-only authorization at launch; mobile default selection, keyring custody, alternate-route proof, shared CLI defaults and attachment ownership retain their existing contracts.","inputs":["src-ui/src/platform/native/stationProfileStorage.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed saved Station selection, pairing and the native authority boundary. Desktop can request explicit-selection-only authorization at launch; mobile default selection, keyring custody, alternate-route proof, shared CLI defaults and attachment ownership retain their existing contracts.","inputs":["src-ui/src/platform/native/stationProfileStorage.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed saved Station selection, pairing and the native authority boundary. Desktop can request explicit-selection-only authorization at launch; mobile default selection, keyring custody, alternate-route proof, shared CLI defaults and attachment ownership retain their existing contracts.","inputs":["src-ui/src/platform/native/stationProfileStorage.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed saved Station selection, pairing and the native authority boundary. Desktop can request explicit-selection-only authorization at launch; mobile default selection, keyring custody, alternate-route proof, shared CLI defaults and attachment ownership retain their existing contracts.","inputs":["src-ui/src/platform/native/stationProfileStorage.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed saved Station selection, pairing and the native authority boundary. Desktop can request explicit-selection-only authorization at launch; mobile default selection, keyring custody, alternate-route proof, shared CLI defaults and attachment ownership retain their existing contracts.","inputs":["src-ui/src/platform/native/stationProfileStorage.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed saved Station selection, pairing and the native authority boundary. Desktop can request explicit-selection-only authorization at launch; mobile default selection, keyring custody, alternate-route proof, shared CLI defaults and attachment ownership retain their existing contracts.","inputs":["src-ui/src/platform/native/stationProfileStorage.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed saved Station selection, pairing and the native authority boundary. Desktop can request explicit-selection-only authorization at launch; mobile default selection, keyring custody, alternate-route proof, shared CLI defaults and attachment ownership retain their existing contracts.","inputs":["src-ui/src/platform/native/stationProfileStorage.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Reviewed saved Station selection, pairing and the native authority boundary. Desktop can request explicit-selection-only authorization at launch; mobile default selection, keyring custody, alternate-route proof, shared CLI defaults and attachment ownership retain their existing contracts.","inputs":["src-ui/src/platform/native/stationProfileStorage.ts"]}
+  ]
+}
