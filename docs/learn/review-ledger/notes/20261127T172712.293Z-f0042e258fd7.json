@@ -1,0 +1,9 @@
+{
+  "revision": "5c9bb256b87317bb949f9d1af45c226d2a08154c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the start and steer sender metadata assertions. The tests exercise server-recorded identity and the existing delivery framing.","inputs":["src-server/services/orchestration/__tests__/delegation-result-delivery.test.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the start and steer sender metadata assertions. The tests exercise server-recorded identity and the existing delivery framing.","inputs":["src-server/services/orchestration/__tests__/delegation-result-delivery.test.ts"]}
+  ]
+}

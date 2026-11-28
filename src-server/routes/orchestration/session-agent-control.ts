@@ -60,6 +60,7 @@ import type { StationControlDispatchScope } from '../../runtime/mcp/station-cont
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import type { DelegationResultDelivery } from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../services/orchestration/session-lifecycle-service.js';
@@ -106,7 +107,19 @@ const sendToSessionBodySchema = z
     sessionId: sessionIdSchema,
     text: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
     mode: z.enum(['auto', 'start', 'steer']),
+    notifyOnSettle: z.boolean().optional(),
+    notifyOnAttention: z.boolean().optional(),
     requestKey: requestKeySchema,
+  })
+  .strict();
+
+const watchPullRequestBodySchema = z
+  .object({
+    sessionId: sessionIdSchema,
+    ref: z
+      .string()
+      .regex(/^[1-9]\d*$/)
+      .max(32),
   })
   .strict();
 
@@ -184,6 +197,24 @@ export interface InterruptSessionResult {
 }
 
 export interface SessionAgentControlDeps {
+  delegationResults?: Pick<DelegationResultDelivery, 'watchSession'> &
+    Partial<
+      Pick<
+        DelegationResultDelivery,
+        'cancelWatch' | 'prepareWatch' | 'dropPendingWatch'
+      >
+    >;
+  watchPullRequest?: (
+    sourceConversationId: string,
+    projectId: string,
+    ref: string,
+    owner: Omit<
+      Parameters<DelegationResultDelivery['watchPullRequest']>[0],
+      'taskId' | 'childConversationId'
+    >,
+  ) =>
+    | { id: string; status: 'armed' | 'already-armed' | 'capacity' }
+    | undefined;
   orchestrationService: Pick<
     OrchestrationService,
     | 'canUserReadSession'
@@ -422,6 +453,7 @@ function sendResponse(
   c: Context,
   result: SendToSessionResult | RequestFailure,
   replayed: boolean,
+  subscription?: { id: string; status: 'armed' | 'already-armed' | 'capacity' },
 ) {
   const replay = replayed ? { replayed: true } : {};
   if (
@@ -446,7 +478,14 @@ function sendResponse(
   switch (result.outcome) {
     case 'started':
     case 'steered':
-      return c.json({ success: true, data: { ...result, ...replay } });
+      return c.json({
+        success: true,
+        data: {
+          ...result,
+          ...replay,
+          ...(subscription ? { subscription } : {}),
+        },
+      });
     case 'session_busy':
       return c.json(
         {
@@ -561,6 +600,22 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
         key: body.requestKey,
       };
       const actor = resolveDispatchActor(deps, c);
+      const parentConversationId = caller.conversationId ?? caller.sessionId;
+      const watching = body.notifyOnSettle || body.notifyOnAttention;
+      if (
+        watching &&
+        (!deps.delegationResults ||
+          !actor.ownerAttribution ||
+          parentConversationId === target.conversationId)
+      )
+        return c.json(
+          {
+            success: false,
+            code: 'subscription_unavailable',
+            error: 'Station cannot subscribe this caller to that Session.',
+          },
+          400,
+        );
       // #3419: who is sending, from the verified caller and Station's own
       // record of that Session (never the request body). It rides the turn's
       // `clientOrigin` beside the unchanged `actor`, so the turn stays a
@@ -593,13 +648,38 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
           sender,
         },
       };
+      const deliveryId = sessionControlDeliveryId(id);
+      const watchOwner =
+        watching && actor.ownerAttribution
+          ? {
+              childConversationId: `session-watch:${deliveryId}`,
+              taskId: target.conversationId,
+              parentConversationId,
+              actor: {
+                userId: actor.userId,
+                attribution: actor.ownerAttribution,
+                ...(actor.principal ? { principal: actor.principal } : {}),
+              },
+            }
+          : undefined;
+      const watchOptions = {
+        attention: Boolean(body.notifyOnAttention),
+        settle: Boolean(body.notifyOnSettle),
+      };
       let refusedPinned: Response | undefined;
       const outcome = await runWithSessionControlKey<
         SendToSessionResult | RequestFailure
       >(
         keys(),
         id,
-        sessionControlRequestDigest([body.sessionId, body.mode, body.text]),
+        sessionControlRequestDigest([
+          body.sessionId,
+          body.mode,
+          body.text,
+          ...(watching
+            ? [Boolean(body.notifyOnSettle), Boolean(body.notifyOnAttention)]
+            : []),
+        ]),
         async (resume): Promise<SendAttempt> => {
           // A re-driven attempt acts on the Session its first attempt chose.
           const pinned = parseSessionDeliveryDecision(resume.decision);
@@ -619,10 +699,21 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
           }
           const cursorBefore =
             deps.eventStore.readSessionInventoryHighWater(threadId);
+          const prepareWatch = (branch: 'start' | 'steer') => {
+            if (!watchOwner) return;
+            const status = deps.delegationResults?.prepareWatch?.(
+              watchOwner,
+              { sessionId: threadId, cursor: cursorBefore, ...watchOptions },
+              { branch, deliveryId, conversationId: target.conversationId },
+            );
+            if (status === 'capacity')
+              throw new Error('Session subscriptions are at capacity.');
+          };
           const ports: SessionMessageDeliveryPorts = {
             prepareText: (text) => frameAgentMessage(sender, text),
             isBusy,
             start: async ({ text, clientTurnId }) => {
+              prepareWatch('start');
               try {
                 const handle = await deps.continueForegroundMessage({
                   conversationId: target.conversationId,
@@ -653,6 +744,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
               }
             },
             steer: async ({ threadId: thread, text, clientInputId }) => {
+              prepareWatch('steer');
               const dispatched =
                 await deps.orchestrationService.dispatchWithReceipt(
                   {
@@ -683,20 +775,29 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
               threadId,
               text: body.text,
               mode: body.mode as SessionSendMode,
-              deliveryId: sessionControlDeliveryId(id),
+              deliveryId,
               ...(pinned ? { decided: pinned.branch } : {}),
               recordDecision: (branch) =>
                 resume.recordDecision(`${branch}:${threadId}`),
             });
-            return settleSend(
+            const settled = settleSend(
               delivery,
               threadId,
               cursorBefore,
               pinned !== undefined,
             );
+            if (settled.settle === 'release' && !pinned && watchOwner)
+              deps.delegationResults?.dropPendingWatch?.(
+                watchOwner.childConversationId,
+              );
+            return settled;
           } catch (error) {
             // A refused delivery that did not report itself indeterminate had
             // no effect: free the key so the caller's retry runs afresh.
+            if (!pinned && watchOwner)
+              deps.delegationResults?.dropPendingWatch?.(
+                watchOwner.childConversationId,
+              );
             return {
               settle: 'release',
               result: { outcome: 'failed', detail: errorMessage(error) },
@@ -707,7 +808,96 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
       if (refusedPinned) return refusedPinned;
       if (outcome.kind !== 'executed' && outcome.kind !== 'replayed')
         return keyRefusal(c, outcome);
-      return sendResponse(c, outcome.result, outcome.kind === 'replayed');
+      const result = outcome.result;
+      if (
+        watchOwner &&
+        deps.delegationResults &&
+        (result.outcome === 'started' || result.outcome === 'steered')
+      ) {
+        const watchId = watchOwner.childConversationId;
+        const status = deps.delegationResults.watchSession(
+          { ...watchOwner, taskId: result.sessionId },
+          {
+            sessionId: result.sessionId,
+            turnId: result.turnId,
+            cursor: result.eventCursor,
+            ...watchOptions,
+          },
+        );
+        return sendResponse(c, result, outcome.kind === 'replayed', {
+          id: watchId,
+          status,
+        });
+      }
+      return sendResponse(c, result, outcome.kind === 'replayed');
+    },
+  );
+
+  app.post(
+    '/cancel-subscription',
+    validate(
+      z.object({ subscriptionId: z.string().min(1).max(2048) }).strict(),
+      {
+        maxBodyBytes: SMALL_BODY_MAX_BYTES,
+      },
+    ),
+    (c) => {
+      const caller = callerOf(c);
+      if (caller instanceof Response) return caller;
+      const { subscriptionId } = getBody(c) as { subscriptionId: string };
+      const actor = resolveDispatchActor(deps, c);
+      if (!actor.ownerAttribution) return notFound(c);
+      const outcome = deps.delegationResults?.cancelWatch?.(
+        subscriptionId,
+        caller.conversationId ?? caller.sessionId,
+        actor.userId,
+      );
+      return outcome ? c.json({ success: true, data: outcome }) : notFound(c);
+    },
+  );
+
+  app.post(
+    '/watch-pull-request',
+    validate(watchPullRequestBodySchema, {
+      maxBodyBytes: SMALL_BODY_MAX_BYTES,
+    }),
+    (c) => {
+      const caller = callerOf(c);
+      if (caller instanceof Response) return caller;
+      const body = getBody(c) as z.infer<typeof watchPullRequestBodySchema>;
+      const target = actingSession(body.sessionId);
+      const refused = authorizeTarget(c, target);
+      if (refused) return refused;
+      const scope = deps.stationControlDispatchScope?.target(
+        {
+          kind: 'thread',
+          threadId: target.threadId,
+          remote: false,
+        },
+        'view',
+      )?.scope;
+      if (
+        caller.projectIdSource !== 'session-record' ||
+        scope?.kind !== 'project' ||
+        scope.id !== caller.localProjectId
+      )
+        return notFound(c);
+      const actor = resolveDispatchActor(deps, c);
+      if (!actor.ownerAttribution) return notFound(c);
+      const watch = deps.watchPullRequest?.(
+        target.conversationId,
+        scope.id,
+        body.ref,
+        {
+          parentConversationId: caller.conversationId ?? caller.sessionId,
+          actor: {
+            userId: actor.userId,
+            attribution: actor.ownerAttribution,
+            ...(actor.principal ? { principal: actor.principal } : {}),
+          },
+        },
+      );
+      return watch ? c.json({ success: true, data: watch }) : notFound(c);
     },
   );
 

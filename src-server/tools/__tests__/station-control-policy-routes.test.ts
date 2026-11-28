@@ -366,6 +366,8 @@ const ARGS: Record<string, Record<string, unknown>> = {
     text: 'hello',
     requestKey: 'key-0000001',
   },
+  watch_pull_request_status: { sessionId: 'session-1', ref: '72' },
+  cancel_coordination_subscription: { subscriptionId: 'watch-1' },
   interrupt_session: { sessionId: 'session-1', requestKey: 'key-0000002' },
   wait_session: { sessionId: 'session-1', until: 'idle' },
   list_project_activity: {},

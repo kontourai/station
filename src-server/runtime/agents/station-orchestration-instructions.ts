@@ -182,11 +182,22 @@ function sessionsSection(
   if (has('send_to_session')) {
     lines.push(
       "`send_to_session` uses the Project Session's Agent settings. Fresh `requestKey` per message; reuse only to retry. `session_busy`: unsent. `indeterminate`: may have arrived; never resend with a new key.",
+      'Set `notifyOnSettle` and `notifyOnAttention` when coordinating across turns. Continue when Station delivers a wake.',
+    );
+  }
+  if (has('watch_pull_request_status')) {
+    lines.push(
+      'Use `watch_pull_request_status` for merge, closure, merge-queue removal, or required-check updates on a linked pull request in this Project.',
+    );
+  }
+  if (has('cancel_coordination_subscription')) {
+    lines.push(
+      'Use `cancel_coordination_subscription` when a subscription is no longer needed.',
     );
   }
   if (has('wait_session')) {
     lines.push(
-      `${has('send_to_session') ? 'Then call' : 'Call'} \`wait_session\` with \`sessionId\`, \`afterEventCursor\` = \`eventCursor\`, \`until: "turn-settled"\`; on \`superseded\`, wait on \`currentSessionId\`.`,
+      `${has('send_to_session') ? 'For a bounded wait, call' : 'Call'} \`wait_session\` with \`sessionId\`, \`afterEventCursor\` = \`eventCursor\`, \`until: "turn-settled"\`; on \`superseded\`, wait on \`currentSessionId\`.`,
     );
   }
   if (has('interrupt_session')) {
@@ -220,7 +231,7 @@ function repliesSection(has: (...n: string[]) => boolean): Section | undefined {
   }
   if (has('schedule_wake_up')) {
     lines.push(
-      'To continue later, use `schedule_wake_up`, never a sleep loop.',
+      'Prefer event subscriptions when coordinating child work. Use `schedule_wake_up` for timed work or a long fallback heartbeat.',
     );
   }
   if (has('declare_pull_request')) {

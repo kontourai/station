@@ -33,6 +33,8 @@ import {
   queuedAttachmentsOf,
   readQueuedAttachmentFrom,
 } from '../../../../runtime/routes/conversation-start-ports.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../../security/runtime-request-security.js';
+import { bindStationControlRequestAuthority } from '../../../../security/station-control-request-authority.js';
 import { prepareManagedAcpWorkspace } from '../../../../services/acp/managed-acp-workspace.js';
 import {
   type ExecutionSessionBinding,
@@ -40,6 +42,11 @@ import {
   executeForegroundMessage,
 } from '../../../../services/execution-target/execution-target-execution.js';
 import { AttachmentStagingService } from '../../../../services/orchestration/attachment-staging-service.js';
+import {
+  DELEGATION_RESULT_CLIENT_ORIGIN,
+  DelegationResultDelivery,
+  openDelegationRequests,
+} from '../../../../services/orchestration/delegation-result-delivery.js';
 import { EventBus } from '../../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../../services/orchestration/event-store.js';
 import { memoryContinuationForInbox } from '../../../../services/orchestration/memory-exhaustion-continuation.js';
@@ -55,6 +62,8 @@ import {
   isForegroundDispatchHandle,
   isForegroundIndeterminateShape,
 } from '../../orchestration.js';
+
+import { createSessionAgentControlRoutes } from '../../session-agent-control.js';
 
 export const OWNER = 'inbox-owner';
 export const STRANGER = 'inbox-stranger';
@@ -809,8 +818,165 @@ export function createInboxHarness() {
           target: { environment: { kind: 'current' }, agent: AGENT },
         }),
       });
+    function coordinate() {
+      const continueAsActor = (
+        input: Parameters<typeof executeForegroundMessage>[0],
+      ) =>
+        executeForegroundMessage(
+          {
+            ...input,
+            target: { environment: { kind: 'current' }, agent: AGENT },
+          },
+          deps,
+        );
+      const currentSessionId = (id: string) =>
+        service.currentConversationSessionId(id);
+      const delivery = new DelegationResultDelivery({
+        store: store.delegationResultStore(),
+        foldEvents: (id) =>
+          store
+            .listEventsByMethods(id, ACTIVE_TURN_FOLD_METHODS)
+            .map(({ sequence, payload }) => ({ sequence, event: payload })),
+        mayReadPullRequestWatch: () => true,
+        requestEvents: (id) =>
+          openDelegationRequests(
+            store.listEventsByMethods(id, [
+              'request.opened',
+              'request.resolved',
+            ]),
+          ),
+        headSequence: (id) => store.readSessionInventoryHighWater(id),
+        turnEvents: (id, turn, methods, limit, invocation) =>
+          store
+            .listTurnEventsByMethods(id, turn, methods, limit, invocation)
+            .map(({ method, payload, turnId }) => ({
+              method,
+              payload,
+              ...(turnId ? { turnId } : {}),
+            })),
+        readInputlessTurnDisposition: (id) =>
+          store.readInputlessTurnDisposition(id),
+        readInvocationTerminal: (id, invocation, turn) =>
+          store.readInvocationTerminal(id, invocation, turn),
+        inspectWatchStart: (id, key) => {
+          const receipt = service.inspectTurnDelivery(
+            id,
+            key,
+            INTERNAL_SESSION_READ_SCOPE,
+          );
+          return receipt?.outcome === 'started' ? receipt : undefined;
+        },
+        coordinatorBusy: (id) => service.hasActiveTurn(id),
+        conversationOf: (id) =>
+          store.conversationForSession(id)?.conversationId ?? id,
+        currentSessionId,
+        sessionOwnerId: (id) => service.sessionRecordedOwnerId(id),
+        start: async ({
+          parentConversationId,
+          actor,
+          sender,
+          text,
+          clientTurnId,
+        }) => {
+          const handle = await continueAsActor({
+            conversationId: parentConversationId,
+            message: text,
+            clientTurnId,
+            userId: actor.userId,
+            ownerAttribution: actor.attribution,
+            principal: actor.principal,
+            fullAccessGrant: null,
+            clientOrigin: { ...DELEGATION_RESULT_CLIENT_ORIGIN, sender },
+            target: { environment: { kind: 'current' }, agent: AGENT },
+          });
+          return isForegroundDispatchHandle(handle)
+            ? {
+                outcome: 'started',
+                conversationId: parentConversationId,
+                sessionId: currentSessionId(parentConversationId),
+                turnId: handle.providerTurnId,
+              }
+            : { outcome: 'indeterminate' };
+        },
+        steer: async () => ({ outcome: 'unsupported-engine' }),
+        subscribe: (listener) =>
+          bus.subscribe((frame) => {
+            if (frame.event !== 'orchestration:event') return;
+            const event = (frame.data as { event?: CanonicalRuntimeEvent })
+              ?.event;
+            if (event)
+              listener({ threadId: event.threadId, method: event.method });
+          }),
+        logger: { warn: vi.fn() },
+      });
+      delivery.start();
+      cleanup.push(async () => {
+        delivery.stop();
+        await delivery.idle();
+      });
+      const control = new Hono();
+      control.use('*', async (c, next) => {
+        setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+          kind: 'internal',
+          credential: 'test',
+          authority: undefined,
+          source: 'bearer',
+        });
+        bindStationControlRequestAuthority(c.req.raw, {
+          kind: 'caller',
+          boundOperator: false,
+          caller: {
+            sessionId: currentSessionId(CONVERSATION),
+            conversationId: CONVERSATION,
+            assurance: 'bound',
+            principal: {
+              id: OWNER,
+              source: 'session-owner',
+              elevationEligible: true,
+            },
+          },
+        });
+        await next();
+      });
+      control.route(
+        '/',
+        createSessionAgentControlRoutes({
+          eventStore: store,
+          eventBus: bus,
+          orchestrationService: service,
+          delegationResults: delivery,
+          stationControlDispatchScope: {
+            target: () => ({
+              ownerId: OWNER,
+              scope: { kind: 'global' },
+              host: false,
+              remote: false,
+              ownerHoldsAction: true,
+            }),
+            conversationExists: () => true,
+            ownProjectSlug: () => undefined,
+          },
+          resolvePrincipal: () => ({
+            id: OWNER,
+            kind: 'human',
+            display: OWNER,
+          }),
+          resolveAgentDispatchActor: () => ({
+            kind: 'verified',
+            principalId: OWNER,
+          }),
+          continueForegroundMessage: (input) =>
+            continueAsActor({
+              ...input,
+              target: { environment: { kind: 'current' }, agent: AGENT },
+            }),
+        }),
+      );
+      return { delivery, control };
+    }
     return {
       app,
+      coordinate,
       staging,
       sendAbortable,
       continueRefusal,
