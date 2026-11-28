@@ -455,7 +455,13 @@ describe('reserved tail open follows the continuation policy', () => {
 
     await expect(
       service.resolveConversationOpen('conv-handoff', OWNER_AUTHORITY),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({
+      status: 'resolved',
+      conversation: { id: 'conv-handoff' },
+      currentSessionId: 'conv-handoff',
+      canContinue: false,
+      transcript: { available: true, owner: 'runtime', messageCount: 2 },
+    });
     // ...and the send path agrees it is not an ordinary continuation.
     await expect(send('conv-handoff')).rejects.toThrow(
       'awaiting its target session start',
