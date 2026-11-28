@@ -17,7 +17,7 @@ Copy-Item -LiteralPath $sourceHooks -Destination (Join-Path $hooksRoot 'nsis-hoo
 Set-Content -LiteralPath (Join-Path $resources 'installer-path-budget.nsh') -Value '!define STATION_WINDOWS_MAX_INSTALL_ROOT 247' -Encoding utf8
 $hooksHash = (Get-FileHash -LiteralPath $sourceHooks -Algorithm SHA256).Hash
 $drive = Get-Volume -FilePath $ProofRoot
-$refusedKiB = [long][Math]::Ceiling($drive.SizeRemaining / 1024) + 1048576
+$refusedKiB = [long][Math]::Ceiling($drive.Size / 1024) + 1048576
 $results = @()
 foreach ($case in @(@{ name='insufficient'; size=$refusedKiB; code=3 }, @{ name='sufficient'; size=1; code=0 })) {
   $install = Join-Path $ProofRoot $case.name
