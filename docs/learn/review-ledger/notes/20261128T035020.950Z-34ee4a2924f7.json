@@ -1,0 +1,15 @@
+{
+  "revision": "48f05ec6de45685d16e565c84f0cac9ce215bd5b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed all citing pages against added native state/log custody explanation: real Windows owner-only DACLs, inherited-private protection, unrelated access refusal, descriptor lifetime and append-only child output. Development routing, testing policy and source-versus-installed qualification remain accurate; supported-platform durability stays qualified.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed all citing pages against added native state/log custody explanation: real Windows owner-only DACLs, inherited-private protection, unrelated access refusal, descriptor lifetime and append-only child output. Development routing, testing policy and source-versus-installed qualification remain accurate; supported-platform durability stays qualified.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed all citing pages against added native state/log custody explanation: real Windows owner-only DACLs, inherited-private protection, unrelated access refusal, descriptor lifetime and append-only child output. Development routing, testing policy and source-versus-installed qualification remain accurate; supported-platform durability stays qualified.","inputs":["docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed all citing pages against added native state/log custody explanation: real Windows owner-only DACLs, inherited-private protection, unrelated access refusal, descriptor lifetime and append-only child output. Development routing, testing policy and source-versus-installed qualification remain accurate; supported-platform durability stays qualified.","inputs":["docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed all citing pages against added native state/log custody explanation: real Windows owner-only DACLs, inherited-private protection, unrelated access refusal, descriptor lifetime and append-only child output. Development routing, testing policy and source-versus-installed qualification remain accurate; supported-platform durability stays qualified.","inputs":["docs/guides/development.md"]}
+  ]
+}

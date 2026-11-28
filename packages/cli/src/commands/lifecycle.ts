@@ -121,7 +121,12 @@ import {
   createWindowsOwnedWorkerLauncher,
 } from '@kontourai/station-shared/windows-command-guard';
 import {
+  assertWindowsPrivateDirectory,
+  openWindowsPrivateFile,
+} from '@kontourai/station-shared/windows-file-security';
+import {
   buildWindowsPrivateFileReadCommand,
+  hardenWindowsPathsTrusted,
   WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
   windowsSystemUtilityPath,
 } from '@kontourai/station-shared/windows-path-trust';
@@ -1872,6 +1877,7 @@ function removeStateRecord(
 
   const release = acquireFileMutationLock(`${record.statePath}.mutation`);
   let fd: number | undefined;
+  let nativeFile: ReturnType<typeof openWindowsPrivateFile> | undefined;
   let quarantine: string | undefined;
   try {
     const currentRecord = readInstanceStateFile(record.statePath);
@@ -1889,10 +1895,15 @@ function removeStateRecord(
     }
     quarantine = `${record.statePath}.quarantine-${process.pid}-${randomUUID()}`;
     renameSync(record.statePath, quarantine);
-    fd = openSync(
-      quarantine,
-      fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
-    );
+    if (process.platform === 'win32') {
+      nativeFile = openWindowsPrivateFile(quarantine, 'read', true);
+      fd = nativeFile.fileDescriptor();
+    } else {
+      fd = openSync(
+        quarantine,
+        fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
+      );
+    }
     const moved = fstatSync(fd);
     if (
       moved.dev !== record.stateIdentity.dev ||
@@ -1914,7 +1925,8 @@ function removeStateRecord(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
   } finally {
-    if (fd !== undefined) closeSync(fd);
+    if (nativeFile) nativeFile.close();
+    else if (fd !== undefined) closeSync(fd);
     release();
   }
 }
@@ -1951,6 +1963,9 @@ function readPriorPidInstanceState(
 }
 
 function validateInstanceStateDirectory(directory: string): void {
+  if (process.platform === 'win32') {
+    assertWindowsPrivateDirectory(directory);
+  }
   const info = lstatSync(directory);
   // POSIX permission bits are meaningless on Windows: `mkdirSync({mode:0o700})`
   // does not set them and `lstat().mode` is synthetic, so this check would
@@ -1971,7 +1986,13 @@ function validateInstanceStateDirectory(directory: string): void {
 }
 
 function ensureInstanceStateDirectory(directory: string): void {
+  const existed = existsSync(directory);
   mkdirSync(directory, { mode: 0o700, recursive: true });
+  if (process.platform === 'win32' && !existed) {
+    hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+      { kind: 'directory', path: directory },
+    ]);
+  }
   validateInstanceStateDirectory(directory);
 }
 
@@ -1990,8 +2011,14 @@ function syncInstanceStateDirectory(directory: string): void {
 function readInstanceStateFile(path: string): InstanceStateRecord {
   validateInstanceStateDirectory(dirname(path));
   let fd: number | undefined;
+  let nativeFile: ReturnType<typeof openWindowsPrivateFile> | undefined;
   try {
-    fd = openSync(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    if (process.platform === 'win32') {
+      nativeFile = openWindowsPrivateFile(path, 'read', true);
+      fd = nativeFile.fileDescriptor();
+    } else {
+      fd = openSync(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    }
     const info = fstatSync(fd);
     if (
       !info.isFile() ||
@@ -2004,7 +2031,9 @@ function readInstanceStateFile(path: string): InstanceStateRecord {
         `Unsafe Station instance-state file (expected owned mode 0600): ${path}`,
       );
     }
-    const stateContent = readFileSync(fd, 'utf-8');
+    const stateContent = nativeFile
+      ? nativeFile.read(2 ** 31 - 1).toString('utf8')
+      : readFileSync(fd, 'utf-8');
     const parsed = JSON.parse(stateContent) as Partial<InstanceStateRecord>;
     const instanceId = parsed.instanceId;
     if (!instanceId || typeof instanceId !== 'string') {
@@ -2041,7 +2070,8 @@ function readInstanceStateFile(path: string): InstanceStateRecord {
       stateContent,
     };
   } finally {
-    if (fd !== undefined) closeSync(fd);
+    if (nativeFile) nativeFile.close();
+    else if (fd !== undefined) closeSync(fd);
   }
 }
 
@@ -2688,6 +2718,8 @@ function writeInstanceState(record: InstanceStateRecord): void {
   const backup = `${record.statePath}.prior-${process.pid}-${randomUUID()}`;
   let fd: number | undefined;
   let publishedFd: number | undefined;
+  let nativeTemporary: ReturnType<typeof openWindowsPrivateFile> | undefined;
+  let nativePublished: ReturnType<typeof openWindowsPrivateFile> | undefined;
   let temporaryIdentity: { dev: number; ino: number } | undefined;
   let publishedTemporary = false;
   try {
@@ -2695,15 +2727,20 @@ function writeInstanceState(record: InstanceStateRecord): void {
       readInstanceStateFile(record.statePath);
       linkSync(record.statePath, backup);
     }
-    fd = openSync(
-      temporary,
-      fsConstants.O_WRONLY |
-        fsConstants.O_CREAT |
-        fsConstants.O_EXCL |
-        (fsConstants.O_NOFOLLOW ?? 0),
-      0o600,
-    );
-    fchmodSync(fd, 0o600);
+    if (process.platform === 'win32') {
+      nativeTemporary = openWindowsPrivateFile(temporary, 'create', true);
+      fd = nativeTemporary.fileDescriptor();
+    } else {
+      fd = openSync(
+        temporary,
+        fsConstants.O_WRONLY |
+          fsConstants.O_CREAT |
+          fsConstants.O_EXCL |
+          (fsConstants.O_NOFOLLOW ?? 0),
+        0o600,
+      );
+    }
+    if (process.platform !== 'win32') fchmodSync(fd, 0o600);
     writeFileSync(fd, serialized, 'utf8');
     fsyncSync(fd);
     const temporaryInfo = fstatSync(fd);
@@ -2711,10 +2748,15 @@ function writeInstanceState(record: InstanceStateRecord): void {
     renameSync(temporary, record.statePath);
     publishedTemporary = true;
     syncInstanceStateDirectory(instanceStateDir);
-    publishedFd = openSync(
-      record.statePath,
-      fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
-    );
+    if (process.platform === 'win32') {
+      nativePublished = openWindowsPrivateFile(record.statePath, 'read', true);
+      publishedFd = nativePublished.fileDescriptor();
+    } else {
+      publishedFd = openSync(
+        record.statePath,
+        fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
+      );
+    }
     const publishedInfo = fstatSync(publishedFd);
     if (
       !publishedInfo.isFile() ||
@@ -2731,9 +2773,13 @@ function writeInstanceState(record: InstanceStateRecord): void {
         `Failed to publish secure instance state: ${record.statePath}`,
       );
     }
-    closeSync(publishedFd);
+    if (nativePublished) nativePublished.close();
+    else closeSync(publishedFd);
+    nativePublished = undefined;
     publishedFd = undefined;
-    closeSync(fd);
+    if (nativeTemporary) nativeTemporary.close();
+    else closeSync(fd);
+    nativeTemporary = undefined;
     fd = undefined;
     rmSync(backup, { force: true });
     syncInstanceStateDirectory(instanceStateDir);
@@ -2756,10 +2802,11 @@ function writeInstanceState(record: InstanceStateRecord): void {
     syncInstanceStateDirectory(instanceStateDir);
     throw error;
   } finally {
-    if (publishedFd !== undefined) closeSync(publishedFd);
-    if (fd !== undefined) closeSync(fd);
+    if (nativePublished) nativePublished.close();
+    else if (publishedFd !== undefined) closeSync(publishedFd);
+    if (nativeTemporary) nativeTemporary.close();
+    else if (fd !== undefined) closeSync(fd);
     rmSync(temporary, { force: true });
-    rmSync(backup, { force: true });
     release();
   }
   // The record supersedes a prior-format pid file (source checkouts only).
@@ -5134,6 +5181,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
 
   let serverStdio: any = 'ignore';
   let logDescriptor: number | null = null;
+  let nativeLog: ReturnType<typeof openWindowsPrivateFile> | undefined;
   const requestedLogDirectory = dirname(logFile);
   const homeRelation = relative(resolve(projectHome), requestedLogDirectory);
   const logDirectoryIsInsideHome =
@@ -5201,47 +5249,54 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     );
   }
   if (!hasExplicitLogFile || !logDirectoryExisted) {
-    chmodSync(logDirectory, 0o700);
-  }
-  {
-    if (existsSync(logFile)) {
-      const info = lstatSync(logFile);
-      if (!info.isFile() || info.isSymbolicLink()) {
-        throw new Error(`Log path must be a regular file: ${logFile}`);
-      }
-      if (
-        typeof process.getuid === 'function' &&
-        info.uid !== process.getuid()
-      ) {
-        throw new Error(
-          `Log path must be owned by the current user: ${logFile}`,
-        );
-      }
+    if (process.platform === 'win32') {
+      hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+        { kind: 'directory', path: logDirectory },
+      ]);
+    } else {
+      chmodSync(logDirectory, 0o700);
     }
-    logDescriptor = openSync(
-      logFile,
-      fsConstants.O_APPEND |
-        fsConstants.O_CREAT |
-        fsConstants.O_WRONLY |
-        (fsConstants.O_NOFOLLOW ?? 0),
-      0o600,
-    );
-    const openedInfo = fstatSync(logDescriptor);
-    if (!openedInfo.isFile()) {
-      closeSync(logDescriptor);
-      logDescriptor = null;
+  }
+  if (existsSync(logFile)) {
+    const info = lstatSync(logFile);
+    if (!info.isFile() || info.isSymbolicLink()) {
       throw new Error(`Log path must be a regular file: ${logFile}`);
     }
+    if (typeof process.getuid === 'function' && info.uid !== process.getuid()) {
+      throw new Error(`Log path must be owned by the current user: ${logFile}`);
+    }
+  }
+  try {
+    if (process.platform === 'win32') {
+      nativeLog = openWindowsPrivateFile(logFile, 'log', true);
+      logDescriptor = nativeLog.fileDescriptor();
+    } else {
+      logDescriptor = openSync(
+        logFile,
+        fsConstants.O_APPEND |
+          fsConstants.O_CREAT |
+          fsConstants.O_WRONLY |
+          (fsConstants.O_NOFOLLOW ?? 0),
+        0o600,
+      );
+    }
+    const openedInfo = fstatSync(logDescriptor);
+    if (!openedInfo.isFile())
+      throw new Error(`Log path must be a regular file: ${logFile}`);
     if (
       typeof process.getuid === 'function' &&
       openedInfo.uid !== process.getuid()
     ) {
-      closeSync(logDescriptor);
-      logDescriptor = null;
       throw new Error(`Log path must be owned by the current user: ${logFile}`);
     }
-    fchmodSync(logDescriptor, 0o600);
+    if (process.platform !== 'win32') fchmodSync(logDescriptor, 0o600);
     serverStdio = ['ignore', logDescriptor, logDescriptor];
+  } catch (error) {
+    if (nativeLog) nativeLog.close();
+    else if (logDescriptor !== null) closeSync(logDescriptor);
+    nativeLog = undefined;
+    logDescriptor = null;
+    throw error;
   }
 
   const serverEnv: Record<string, string> = {
@@ -5442,7 +5497,8 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       );
     }
   } finally {
-    if (logDescriptor !== null) closeSync(logDescriptor);
+    if (nativeLog) nativeLog.close();
+    else if (logDescriptor !== null) closeSync(logDescriptor);
   }
   let uiProc: ReturnType<typeof spawn> | undefined;
   let generation: InstanceStateRecord;

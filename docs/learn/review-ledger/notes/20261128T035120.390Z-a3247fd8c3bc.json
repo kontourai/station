@@ -1,0 +1,15 @@
+{
+  "revision": "48f05ec6de45685d16e565c84f0cac9ce215bd5b",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed all citing pages for scoped native lifecycle dependency and state privacy guidance. CLI source/published launcher boundaries, triage, integration and registry separation remain accurate. Windows ACL guidance is distinct from POSIX chmod; no setup, release or credential authority change.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed all citing pages for scoped native lifecycle dependency and state privacy guidance. CLI source/published launcher boundaries, triage, integration and registry separation remain accurate. Windows ACL guidance is distinct from POSIX chmod; no setup, release or credential authority change.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed all citing pages for scoped native lifecycle dependency and state privacy guidance. CLI source/published launcher boundaries, triage, integration and registry separation remain accurate. Windows ACL guidance is distinct from POSIX chmod; no setup, release or credential authority change.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed all citing pages for scoped native lifecycle dependency and state privacy guidance. CLI source/published launcher boundaries, triage, integration and registry separation remain accurate. Windows ACL guidance is distinct from POSIX chmod; no setup, release or credential authority change.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed all citing pages for scoped native lifecycle dependency and state privacy guidance. CLI source/published launcher boundaries, triage, integration and registry separation remain accurate. Windows ACL guidance is distinct from POSIX chmod; no setup, release or credential authority change.","inputs":["docs/reference/cli.md"]}
+  ]
+}

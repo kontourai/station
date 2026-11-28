@@ -2,6 +2,7 @@ import {
   execFileSync as realExecFileSync,
   execSync as realExecSync,
   spawnSync as realSpawnSync,
+  type SpawnOptions,
   spawn,
 } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -57,6 +58,7 @@ import {
   STATION_HOME_SCHEMA_VERSION,
 } from '@kontourai/station-shared/station-home-schema';
 import {
+  assertWindowsPathsTrusted,
   hardenWindowsPathsTrusted,
   runWindowsTrustCommand,
   type WindowsTrustCommandRunner,
@@ -593,6 +595,18 @@ function ensureTrustedInstallDirectory(path: string): void {
   ]);
 }
 
+function expectPrivateDirectoryAndFile(directory: string, file: string): void {
+  if (process.platform === 'win32') {
+    assertWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: directory },
+      { kind: 'file', path: file },
+    ]);
+  } else {
+    expect(statSync(directory).mode & 0o777).toBe(0o700);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+  }
+}
+
 function writeTrustedInstallFile(path: string, content: string): void {
   writeFileSync(path, content, { mode: 0o644 });
 }
@@ -1011,6 +1025,12 @@ function writeInstanceState(options: {
     { mode: 0o600 },
   );
   chmodSync(statePath, 0o600);
+  if (process.platform === 'win32') {
+    hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: stateDir },
+      { kind: 'file', path: statePath },
+    ]);
+  }
 
   return statePath;
 }
@@ -1124,29 +1144,15 @@ describe('a state record whose recorded home a guard now rejects (#1091)', () =>
     serverPid: number;
     uiPid: number;
   }): string {
-    ensureDir(TEST_INSTANCE_STATE_DIR);
-    chmodSync(TEST_INSTANCE_STATE_DIR, 0o700);
-    const statePath = join(TEST_INSTANCE_STATE_DIR, 'default.json');
-    writeFileSync(
-      statePath,
-      JSON.stringify({
-        instanceId: 'default',
-        serverPid: pids.serverPid,
-        uiPid: pids.uiPid,
-        // Ports nothing is listening on, so liveness rests on the pids.
-        serverPort: 64_700,
-        uiPort: 64_710,
-        // Written when the shared root was still a legal home.
-        baseDir: SHARED_ROOT,
-        homeSource: 'default',
-        host: '127.0.0.1',
-        startedAt: new Date(0).toISOString(),
-        cwd: TEST_CWD,
-      }),
-      { mode: 0o600 },
-    );
-    chmodSync(statePath, 0o600);
-    return statePath;
+    return writeInstanceState({
+      instanceId: 'default',
+      serverPid: pids.serverPid,
+      uiPid: pids.uiPid,
+      serverPort: 64_700,
+      uiPort: 64_710,
+      baseDir: SHARED_ROOT,
+      startedAt: new Date(0).toISOString(),
+    });
   }
 
   it('reclaims the dead record instead of wedging every lifecycle command', async () => {
@@ -2026,14 +2032,74 @@ describe('lifecycle instance state', () => {
 
   it('fails closed on permissive or symlinked modern instance state', async () => {
     ensureDir(TEST_CWD);
+    ensureDir(TEST_DEFAULT_HOME);
     const permissive = writeInstanceState({
       instanceName: 'permissive',
-      serverPid: 43001,
+      serverPid: process.pid,
       uiPid: null,
+      serverPort: 3257,
+      uiPort: 5287,
     });
-    chmodSync(permissive, 0o644);
-    const { lifecycle } = await loadLifecycleModule();
-    expect(() => lifecycle.isRunning()).toThrow('expected owned mode 0600');
+    const { lifecycle } = await loadLifecycleModule({
+      normalizeHomePathMock: (home) =>
+        admitStationRuntimeHome(home, {
+          STATION_ROOT: join(TEST_ROOT, 'admission-root'),
+        }),
+    });
+    hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+      { kind: 'directory', path: TEST_INSTANCE_STATE_DIR },
+      { kind: 'file', path: permissive },
+    ]);
+    if (process.platform === 'win32') {
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'directory', path: resolve(TEST_INSTANCE_STATE_DIR, '..') },
+      ]);
+      realExecFileSync('icacls', [TEST_INSTANCE_STATE_DIR, '/reset'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+    }
+    expect(lifecycle.isRunning()).toBe(true);
+    assertWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: TEST_INSTANCE_STATE_DIR },
+    ]);
+    const original = readFileSync(permissive);
+    const identity = statSync(permissive).ino;
+    if (process.platform === 'win32') {
+      realExecFileSync('icacls', [permissive, '/grant', '*S-1-1-0:R'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+    } else {
+      chmodSync(permissive, 0o644);
+    }
+    expect(() => lifecycle.isRunning()).toThrow(
+      process.platform === 'win32'
+        ? /Windows private file/
+        : 'expected owned mode 0600',
+    );
+    expect(readFileSync(permissive)).toEqual(original);
+    expect(statSync(permissive).ino).toBe(identity);
+
+    if (process.platform === 'win32') {
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'file', path: permissive },
+      ]);
+      realExecFileSync(
+        'icacls',
+        [TEST_INSTANCE_STATE_DIR, '/grant', '*S-1-1-0:R'],
+        {
+          encoding: 'utf8',
+          windowsHide: true,
+        },
+      );
+      expect(() => lifecycle.isRunning()).toThrow(/Windows private file/);
+      expect(readFileSync(permissive)).toEqual(original);
+      expect(statSync(permissive).ino).toBe(identity);
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'directory', path: TEST_INSTANCE_STATE_DIR },
+      ]);
+    }
 
     rmSync(permissive);
     const target = join(TEST_ROOT, 'outside-instance.json');
@@ -2210,6 +2276,9 @@ describe('lifecycle instance state', () => {
     ensureDir(TEST_ALT_HOME);
     ensureDir(TEST_INSTANCE_STATE_DIR);
     chmodSync(TEST_INSTANCE_STATE_DIR, 0o700);
+    hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: TEST_INSTANCE_STATE_DIR },
+    ]);
     const statePath = getInstanceStatePath('state-orphan');
     const lock = `${statePath}.mutation`;
     writeFileSync(
@@ -2955,8 +3024,7 @@ describe('lifecycle instance state', () => {
       uiPid: 41002,
       uiPort: 5274,
     });
-    expect(statSync(TEST_INSTANCE_STATE_DIR).mode & 0o777).toBe(0o700);
-    expect(statSync(statePath).mode & 0o777).toBe(0o600);
+    expectPrivateDirectoryAndFile(TEST_INSTANCE_STATE_DIR, statePath);
     expect(
       JSON.parse(
         readFileSync(join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE), 'utf-8'),
@@ -9565,7 +9633,18 @@ describe('lifecycle build + restart ergonomics', () => {
     const uiStdinEnd = vi.fn();
     const spawn = vi
       .fn()
-      .mockReturnValueOnce({ pid: 41001, unref: vi.fn() })
+      .mockImplementationOnce(
+        (_command: string, _args: string[], options: SpawnOptions) => {
+          const child = realSpawnSync(
+            process.execPath,
+            ['-e', 'process.stdout.write("server stdio descriptor bytes\\n")'],
+            { stdio: options.stdio, windowsHide: true },
+          );
+          expect(child.error).toBeUndefined();
+          expect(child.status).toBe(0);
+          return { pid: 41001, unref: vi.fn() };
+        },
+      )
       .mockReturnValueOnce({
         pid: 41002,
         unref: vi.fn(),
@@ -9589,6 +9668,24 @@ describe('lifecycle build + restart ergonomics', () => {
     writeFileSync(logFile, 'retained pre-restart SIGTERM marker\n', {
       mode: 0o644,
     });
+    let originalLogDirectoryAcl: string | undefined;
+    if (process.platform === 'win32') {
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'directory', path: logDirectory },
+      ]);
+      realExecFileSync('icacls', [logDirectory, '/grant', '*S-1-1-0:(RX)'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      originalLogDirectoryAcl = realExecFileSync('icacls', [logDirectory], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      realExecFileSync('icacls', [logFile, '/grant', '*S-1-1-0:R'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+    }
 
     try {
       await lifecycle.start({
@@ -9679,9 +9776,22 @@ describe('lifecycle build + restart ergonomics', () => {
         host: '127.0.0.1',
         logFile: canonicalLogFile,
       });
-      expect(statSync(logDirectory).mode & 0o777).toBe(0o755);
-      expect(statSync(logFile).mode & 0o777).toBe(0o600);
+      if (process.platform === 'win32') {
+        assertWindowsPathsTrusted(runWindowsTrustCommand, [
+          { kind: 'file', path: logFile },
+        ]);
+        expect(
+          realExecFileSync('icacls', [logDirectory], {
+            encoding: 'utf8',
+            windowsHide: true,
+          }),
+        ).toBe(originalLogDirectoryAcl);
+      } else {
+        expect(statSync(logDirectory).mode & 0o777).toBe(0o755);
+        expect(statSync(logFile).mode & 0o777).toBe(0o600);
+      }
       const retainedLog = readFileSync(logFile, 'utf8');
+      expect(retainedLog).toContain('server stdio descriptor bytes');
       expect(retainedLog).toContain('retained pre-restart SIGTERM marker');
       expect(retainedLog).toContain('station lifecycle start');
       expect(retainedLog).toContain('instance=loopback');
@@ -9725,8 +9835,7 @@ describe('lifecycle build + restart ergonomics', () => {
       expect(spawn.mock.calls[0][2]?.env).toEqual(
         expect.objectContaining({ STATION_LOG_FILE: logFile }),
       );
-      expect(statSync(join(TEST_ALT_HOME, 'logs')).mode & 0o777).toBe(0o700);
-      expect(statSync(logFile).mode & 0o777).toBe(0o600);
+      expectPrivateDirectoryAndFile(join(TEST_ALT_HOME, 'logs'), logFile);
       expect(readFileSync(logFile, 'utf8')).toContain(
         'station lifecycle start instance=default-log',
       );
@@ -9766,12 +9875,54 @@ describe('lifecycle build + restart ergonomics', () => {
         uiPort: 5294,
       });
 
-      expect(statSync(logDirectory).mode & 0o777).toBe(0o700);
-      expect(statSync(logFile).mode & 0o777).toBe(0o600);
+      expectPrivateDirectoryAndFile(logDirectory, logFile);
     } finally {
       killSpy.mockRestore();
     }
   });
+
+  it.skipIf(process.platform !== 'win32')(
+    'refuses an unsafe Windows explicit log directory before creating a log',
+    async () => {
+      ensureDir(TEST_CWD);
+      writeBuildManifest('unsafe-log-parent');
+      const directory = join(TEST_ROOT, 'unsafe-log-parent');
+      const logFile = join(directory, 'station.log');
+      ensureDir(directory);
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'directory', path: directory },
+      ]);
+      realExecFileSync('icacls', [directory, '/grant', '*S-1-1-0:(M)'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      const originalAcl = realExecFileSync('icacls', [directory], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      const spawn = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn },
+      });
+      await expect(
+        lifecycle.start({
+          instanceName: 'unsafe-log-parent',
+          baseDir: TEST_ALT_HOME,
+          logFile,
+          serverPort: 3266,
+          uiPort: 5298,
+        }),
+      ).rejects.toThrow(/Windows current-user ACL verification failed/);
+      expect(spawn).not.toHaveBeenCalled();
+      expect(existsSync(logFile)).toBe(false);
+      expect(
+        realExecFileSync('icacls', [directory], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }),
+      ).toBe(originalAcl);
+    },
+  );
 
   it('rejects a relative explicit log path without mutating the working directory', async () => {
     ensureDir(TEST_CWD);
@@ -9925,6 +10076,9 @@ describe('lifecycle build + restart ergonomics', () => {
     // landed first and the server refused the home this start created.
     const outsideLogs = join(TEST_ROOT, 'outside-logs');
     ensureDir(outsideLogs);
+    hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: outsideLogs },
+    ]);
     writeBuildManifest('fresh-home-outside-log');
     const markerAtSpawn: boolean[] = [];
     const spawn = vi.fn(() => {

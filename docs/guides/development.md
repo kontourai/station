@@ -230,6 +230,21 @@ timed-out file verification leaves the original file unchanged and reports unava
 a connected backend that misses its identity deadline remains degraded, not
 ready. A private file alone never substitutes for the authenticated matching boot.
 
+Windows lifecycle instance records use the shared native private-file owner,
+not synthetic POSIX mode bits. The state directory and each record must be
+current-user-only; an inherited owner-only ACL can be protected in place, but
+an ACL granting unrelated access is refused before record contents are read.
+Publication and removal retain file identity checks, including rollback when
+publication fails. Native handles are transferred to real runtime descriptors
+when Node filesystem calls or child stdio require one; the descriptor owns
+the handle's lifetime.
+
+An existing explicit log directory must be execution-safe. Station leaves its
+ACL unchanged, preserves existing log bytes, and repairs a current-user-owned
+log file to a protected current-user-only ACL before writing. The server gets
+an append-only descriptor, so child output does not overwrite earlier logs.
+An untrusted directory or a log owned by another user is refused, not repaired.
+
 ### Handing a running instance to the operator
 
 Starting the app is not the whole handoff. The UI signs in through a

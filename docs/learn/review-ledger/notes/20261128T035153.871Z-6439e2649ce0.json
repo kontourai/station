@@ -1,0 +1,7 @@
+{
+  "revision": "48f05ec6de45685d16e565c84f0cac9ce215bd5b",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Reviewed deployment native journal description against final48f05ec6d helper and independent production review: runtime descriptor lifetime, distinct log append access and repair policy, retained ancestor identity, protected private ACL migration and execution-safe parent validation before log creation. Journal exclusive-sharing/content/rotation contract unchanged; current-user/admin and PowerShell fallback limits remain explicit. No installed Nightly qualification.","inputs":["packages/shared/src/windows-file-security.ts"]}
+  ]
+}
