@@ -1294,34 +1294,24 @@ export function ChatInputArea({
       placeNow();
       scheduleReserve();
     });
-    const observedElements = new Set<Element>();
     const observeRows = () => {
-      const nextObserved = new Set<Element>(root.querySelectorAll(observed));
+      observer.disconnect();
       if (body) {
-        nextObserved.add(body);
+        observer.observe(body);
         // The reservation depends on every sibling's size (a loading
         // skeleton, the status line, the banner), not only on the dock's:
         // one that appears, leaves or resizes without changing the dock's own
         // height must still be re-measured.
         for (const sibling of body.children)
-          if (sibling !== root) nextObserved.add(sibling);
+          if (sibling !== root) observer.observe(sibling);
         // A shrunk pending list keeps its box when it opens or closes, so
         // its panel is watched instead: opening changes what it keeps.
         for (const panel of body.querySelectorAll(
           ':scope > .queued-messages-presence .queued-messages',
         ))
-          nextObserved.add(panel);
+          observer.observe(panel);
       }
-      for (const element of observedElements)
-        if (!nextObserved.has(element)) {
-          observer.unobserve(element);
-          observedElements.delete(element);
-        }
-      for (const element of nextObserved)
-        if (!observedElements.has(element)) {
-          observer.observe(element);
-          observedElements.add(element);
-        }
+      for (const row of root.querySelectorAll(observed)) observer.observe(row);
     };
     observeRows();
     const mutations = new MutationObserver(() => {
