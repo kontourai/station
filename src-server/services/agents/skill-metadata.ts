@@ -13,7 +13,8 @@ import type {
   SkillOrigin,
   SkillVariable,
 } from '@kontourai/station-contracts/catalog';
-import { parseFrontmatter } from 'agent-skills-ts-sdk';
+import { MAX_DESCRIPTION_LENGTH, parseFrontmatter } from 'agent-skills-ts-sdk';
+import { load as loadYaml } from 'js-yaml';
 import { isRecord } from '../../utils/is-record.js';
 
 const SKILL_ORIGINS: readonly SkillOrigin[] = [
@@ -82,6 +83,75 @@ export function readSkillOrigin(value: unknown): SkillOrigin | undefined {
  */
 export { serializeSkillMarkdown } from '@kontourai/station-contracts/skill-markdown';
 
+/** A leading `---` … `---` block and the text after it, or nothing. */
+function leadingFrontmatterBlock(
+  content: string,
+): { yaml: string; body: string } | undefined {
+  const match =
+    /^\uFEFF?---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/.exec(
+      content,
+    );
+  if (!match) return undefined;
+  return {
+    yaml: match[1] ?? '',
+    body: content.slice(match[0].length).trim(),
+  };
+}
+
+/**
+ * C0/C1 controls and the bidirectional formatting marks. Text holding one can
+ * read as something it is not, so the Codex importer refuses such file names
+ * and the lenient reader below refuses such descriptions.
+ */
+const CONTROL_OR_BIDI = /[\p{Cc}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
+
+export function hasControlOrBidiCharacters(text: string): boolean {
+  return CONTROL_OR_BIDI.test(text);
+}
+
+/**
+ * A `description:` line read as plain text, for a block that is not YAML at
+ * all (Codex documents `argument-hint: [FILE=<path>] [FOCUS=<area>]`, which
+ * no YAML parser accepts). Only a one-line value is read; a block scalar or
+ * a value continued on later lines stays unread.
+ */
+function lineDescription(block: string): string | undefined {
+  const match = /^description:[ \t]*(.*?)[ \t]*$/m.exec(block);
+  const raw = match?.[1] ?? '';
+  if (raw === '' || raw.startsWith('|') || raw.startsWith('>'))
+    return undefined;
+  const quoted = /^(["'])(.*)\1$/.exec(raw);
+  return quoted ? quoted[2] : raw;
+}
+
+/**
+ * `description` from a block the spec parser refused, when it is plain text
+ * the skills format allows: at most its description length, with no control
+ * or direction-changing character. Anything else is refused, not trimmed to
+ * fit, and the file name stands alone.
+ */
+function lenientDescription(block: string): string | undefined {
+  let description: unknown;
+  try {
+    const value = loadYaml(block, { maxAliases: 0 });
+    description =
+      value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>).description
+        : undefined;
+  } catch {
+    description = lineDescription(block);
+  }
+  if (typeof description !== 'string') return undefined;
+  const text = description.trim();
+  if (
+    text === '' ||
+    text.length > MAX_DESCRIPTION_LENGTH ||
+    hasControlOrBidiCharacters(text)
+  )
+    return undefined;
+  return text;
+}
+
 /** What an imported `.md` file contributes to a new local skill. */
 export interface ImportedSkillMarkdown {
   name: string;
@@ -123,9 +193,19 @@ export function parseImportedSkillMarkdown(
     frontmatter = parsed.metadata as unknown as Record<string, unknown>;
     body = parsed.body;
   } catch {
-    // No frontmatter, or frontmatter the spec parser refuses. Both mean "this
-    // file declares nothing" — never "this file is broken", since its text is
-    // still a perfectly good skill body.
+    // No frontmatter, or frontmatter the spec parser refuses. Neither means
+    // "this file is broken": its text is still a good skill body. A refused
+    // block is still a block, though. Codex prompts open with `description:`
+    // and `argument-hint:` and no `name`, which the spec parser refuses; the
+    // block is not part of the instructions, so it is removed from the body
+    // and only a plain-text `description` is read from it. Nothing else in a
+    // refused block (name, command, variables) is trusted.
+    const refused = leadingFrontmatterBlock(content);
+    if (refused) {
+      body = refused.body;
+      const description = lenientDescription(refused.yaml);
+      if (description !== undefined) frontmatter = { description };
+    }
   }
 
   const declaredName =

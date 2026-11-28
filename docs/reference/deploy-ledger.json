@@ -1,5 +1,142 @@
 [
   {
+    "timestampUtc": "2026-11-28T00:07:22Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261127.2",
+    "sha": "14470641affbaf208d22df143b9d4fa94bf35716",
+    "artifactBuiltAt": "2026-11-27T23:11:55.969Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/46079688159",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 46079688159)"
+    ],
+    "changelog": {
+      "previousSha": "5b580071865b98550e88fcdcd613043131ca109c",
+      "groups": {
+        "feat": [
+          "[#5649](https://github.com/kontourai/station/pull/5649) feat(ui): improve notification sheet actions and context",
+          "[#5648](https://github.com/kontourai/station/pull/5648) feat(chat): make the redesigned Queue and Steer controls the default",
+          "[#5645](https://github.com/kontourai/station/pull/5645) feat(ui): make image previews a swipeable gallery"
+        ],
+        "fix": [
+          "[#5653](https://github.com/kontourai/station/pull/5653) fix(chat): improve mobile turn navigation",
+          "[#5560](https://github.com/kontourai/station/pull/5560) fix(release): expose the Mac Store signing keychain to codesign",
+          "[#5640](https://github.com/kontourai/station/pull/5640) fix(ci): recover original-run Nightly CLI provenance receipts",
+          "[#5630](https://github.com/kontourai/station/pull/5630) fix(supervisor): observe initial Windows handoff quiet windows"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5650](https://github.com/kontourai/station/pull/5650) test(supervisor): wait for rollback passes after the quiet window",
+          "[#5642](https://github.com/kontourai/station/pull/5642) test(cli): model encoded Windows service trust requests (#5626)",
+          "[#5646](https://github.com/kontourai/station/pull/5646) perf(ui): reduce Home session row construction overhead",
+          "[#5641](https://github.com/kontourai/station/pull/5641) test(cli): repair portable service upgrade guidance fixtures",
+          "[#5638](https://github.com/kontourai/station/pull/5638) test(cli): repair Windows running-service lifecycle fixtures (#5626)",
+          "[#5636](https://github.com/kontourai/station/pull/5636) test: isolate connected-agent confinement fixtures from ambient roots"
+        ]
+      },
+      "note": null,
+      "commitCount": 13
+    }
+  },
+  {
+    "timestampUtc": "2026-11-28T00:07:22Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261127.2",
+    "sha": "14470641affbaf208d22df143b9d4fa94bf35716",
+    "artifactBuiltAt": "2026-11-27T23:13:39.574Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/46079688159",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 46079688159)"
+    ],
+    "changelog": {
+      "previousSha": "5b580071865b98550e88fcdcd613043131ca109c",
+      "groups": {
+        "feat": [
+          "[#5649](https://github.com/kontourai/station/pull/5649) feat(ui): improve notification sheet actions and context",
+          "[#5648](https://github.com/kontourai/station/pull/5648) feat(chat): make the redesigned Queue and Steer controls the default",
+          "[#5645](https://github.com/kontourai/station/pull/5645) feat(ui): make image previews a swipeable gallery"
+        ],
+        "fix": [
+          "[#5653](https://github.com/kontourai/station/pull/5653) fix(chat): improve mobile turn navigation",
+          "[#5560](https://github.com/kontourai/station/pull/5560) fix(release): expose the Mac Store signing keychain to codesign",
+          "[#5640](https://github.com/kontourai/station/pull/5640) fix(ci): recover original-run Nightly CLI provenance receipts",
+          "[#5630](https://github.com/kontourai/station/pull/5630) fix(supervisor): observe initial Windows handoff quiet windows"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5650](https://github.com/kontourai/station/pull/5650) test(supervisor): wait for rollback passes after the quiet window",
+          "[#5642](https://github.com/kontourai/station/pull/5642) test(cli): model encoded Windows service trust requests (#5626)",
+          "[#5646](https://github.com/kontourai/station/pull/5646) perf(ui): reduce Home session row construction overhead",
+          "[#5641](https://github.com/kontourai/station/pull/5641) test(cli): repair portable service upgrade guidance fixtures",
+          "[#5638](https://github.com/kontourai/station/pull/5638) test(cli): repair Windows running-service lifecycle fixtures (#5626)",
+          "[#5636](https://github.com/kontourai/station/pull/5636) test: isolate connected-agent confinement fixtures from ambient roots"
+        ]
+      },
+      "note": null,
+      "commitCount": 13
+    }
+  },
+  {
+    "timestampUtc": "2026-11-27T23:10:51Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261127.46079688159",
+    "sha": "14470641affbaf208d22df143b9d4fa94bf35716",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/46079688159",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261127.46079688159 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "3dba664548727f58bfa9cf5ecabd12b3c80444e8",
+      "groups": {
+        "feat": [
+          "[#5649](https://github.com/kontourai/station/pull/5649) feat(ui): improve notification sheet actions and context",
+          "[#5648](https://github.com/kontourai/station/pull/5648) feat(chat): make the redesigned Queue and Steer controls the default",
+          "[#5645](https://github.com/kontourai/station/pull/5645) feat(ui): make image previews a swipeable gallery",
+          "[#5619](https://github.com/kontourai/station/pull/5619) feat: browse third-party history on demand"
+        ],
+        "fix": [
+          "[#5653](https://github.com/kontourai/station/pull/5653) fix(chat): improve mobile turn navigation",
+          "[#5560](https://github.com/kontourai/station/pull/5560) fix(release): expose the Mac Store signing keychain to codesign",
+          "[#5640](https://github.com/kontourai/station/pull/5640) fix(ci): recover original-run Nightly CLI provenance receipts",
+          "[#5630](https://github.com/kontourai/station/pull/5630) fix(supervisor): observe initial Windows handoff quiet windows",
+          "[#5629](https://github.com/kontourai/station/pull/5629) fix(runtime): retain loopback control for concrete interface binds",
+          "[#5623](https://github.com/kontourai/station/pull/5623) fix(diagnostics): approve server log reads in chat",
+          "[#5620](https://github.com/kontourai/station/pull/5620) fix(connect): preserve native controller authority during nearby pairing",
+          "[#5616](https://github.com/kontourai/station/pull/5616) fix(ui): preserve chat navigation intent and baseline responsiveness"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5650](https://github.com/kontourai/station/pull/5650) test(supervisor): wait for rollback passes after the quiet window",
+          "[#5642](https://github.com/kontourai/station/pull/5642) test(cli): model encoded Windows service trust requests (#5626)",
+          "[#5646](https://github.com/kontourai/station/pull/5646) perf(ui): reduce Home session row construction overhead",
+          "[#5641](https://github.com/kontourai/station/pull/5641) test(cli): repair portable service upgrade guidance fixtures",
+          "[#5638](https://github.com/kontourai/station/pull/5638) test(cli): repair Windows running-service lifecycle fixtures (#5626)",
+          "[#5636](https://github.com/kontourai/station/pull/5636) test: isolate connected-agent confinement fixtures from ambient roots",
+          "[#5631](https://github.com/kontourai/station/pull/5631) test(cli): make trusted installer fixture modes explicit (#5625)",
+          "[#5624](https://github.com/kontourai/station/pull/5624) test(native): repair Windows hostile-plugin containment proof",
+          "[#5621](https://github.com/kontourai/station/pull/5621) perf(ui): skip empty relationship joins in Home and Inbox"
+        ]
+      },
+      "note": null,
+      "commitCount": 21
+    }
+  },
+  {
     "timestampUtc": "2026-11-27T15:10:44Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261127.1",

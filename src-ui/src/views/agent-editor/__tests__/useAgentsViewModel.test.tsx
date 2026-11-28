@@ -268,7 +268,7 @@ test.each(['connection-broken', 'cli-missing'] as const)(
     renderComponent(result.current.listItems[0].trailing);
     fireEvent.click(screen.getByRole('button', { name: /^Set up OpenCode/ }));
     expect(navigate).toHaveBeenCalledWith(
-      '/connections/engines/oc%2Fwork%20laptop',
+      '/customize/engines/oc%2Fwork%20laptop',
     );
   },
 );
@@ -747,7 +747,7 @@ describe('AC7 — engineDefault is not a lock', () => {
     act(() => {
       result.current.handleConfigureConnection();
     });
-    expect(navigate).toHaveBeenCalledWith('/connections/engines/oc');
+    expect(navigate).toHaveBeenCalledWith('/customize/engines/oc');
   });
 });
 

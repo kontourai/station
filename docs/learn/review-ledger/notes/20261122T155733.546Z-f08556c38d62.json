@@ -1,0 +1,17 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fix round: the Registry destination's route is now /registry/agents, the remaining catalogue page; no citing page names its route.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/pane-or-shell.md","note":"Fix round: the Registry destination's route is now /registry/agents, the remaining catalogue page; no citing page names its route.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Fix round: the Registry destination's route is now /registry/agents, the remaining catalogue page; no citing page names its route.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/glossary.md","note":"Fix round: the Registry destination's route is now /registry/agents, the remaining catalogue page; no citing page names its route.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Fix round: the Registry destination's route is now /registry/agents, the remaining catalogue page; no citing page names its route.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Fix round: the Registry destination's route is now /registry/agents, the remaining catalogue page; no citing page names its route.","inputs":["src-ui/src/app-shell/destination-registry.ts"]}
+  ]
+}

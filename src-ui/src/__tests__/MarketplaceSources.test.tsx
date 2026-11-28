@@ -228,7 +228,7 @@ test('a kinds-filtered view includes a source that supplies that kind beside its
     <MarketplaceSources selected="all" onSelect={select} kinds={['plugins']} />,
   );
   // An option reads "<label> — <location>"; compare the label part.
-  const options = within(screen.getByLabelText('Browse marketplace'))
+  const options = within(screen.getByLabelText('Source'))
     .getAllByRole('option')
     .map((option) => option.textContent?.split(' — ')[0]);
   expect(options).toContain('Mixed folder');
@@ -239,7 +239,7 @@ test('a kinds-filtered view includes a source that supplies that kind beside its
 
 test('filters by host source identity and keeps plugin ownership and offline status visible', () => {
   render(<MarketplaceSources selected="all" onSelect={select} />);
-  fireEvent.change(screen.getByLabelText('Browse marketplace'), {
+  fireEvent.change(screen.getByLabelText('Source'), {
     target: { value: 'publisher' },
   });
   expect(select).toHaveBeenCalledWith('publisher', 'plugins', ['plugins']);
@@ -447,7 +447,7 @@ test('default sources have unique labels that do not differ only by punctuation,
       status: 'ready',
     });
   render(<MarketplaceSources selected="all" onSelect={select} />);
-  const options = within(screen.getByLabelText('Browse marketplace'))
+  const options = within(screen.getByLabelText('Source'))
     .getAllByRole('option')
     .map((option) => option.textContent ?? '');
   const labels = DEFAULT_SOURCES.map(
@@ -488,7 +488,7 @@ test('sources a person named alike are told apart by more than punctuation', () 
     },
   );
   render(<MarketplaceSources selected="all" onSelect={select} />);
-  const options = within(screen.getByLabelText('Browse marketplace'))
+  const options = within(screen.getByLabelText('Source'))
     .getAllByRole('option')
     .map((option) => option.textContent?.split(' — ')[0] ?? '')
     .filter((label) => label.startsWith('Local skills'));

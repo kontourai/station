@@ -412,7 +412,7 @@ export function ConnectionBannerSource() {
             : reason === 'relay-authority-unavailable'
               ? [
                   {
-                    label: 'Open Connections',
+                    label: 'Manage Stations',
                     onClick: () => openConnectionsModal({ mode: 'list' }),
                   },
                 ]

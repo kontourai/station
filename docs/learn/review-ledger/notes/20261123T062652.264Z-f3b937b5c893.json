@@ -1,0 +1,7 @@
+{
+  "revision": "ddb1d1a864db4b9c2f5f3d1a42f482f869591e62",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Default chain now says the fixed-order fallback includes Station's own last, other engines by id, and a default that cannot start or is not offered is passed over.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

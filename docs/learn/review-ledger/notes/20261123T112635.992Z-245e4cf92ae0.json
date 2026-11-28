@@ -1,0 +1,15 @@
+{
+  "revision": "96383c97823e8e2098028b36e0b5eef4d457228c",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Edited: Discover's Manage sources lists every source, including one that supplies only skills or agents, matching MarketplaceSources manageAll. RegistryView changes (skills default, no agent install path) are not restated here.","inputs":["docs/guides/plugins.md","src-ui/src/views/RegistryView.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Edited: the visual-skill picker's control is Browse apps and opens Apps › Discover, matching SkillExperiencePicker and NewChatModal.","inputs":["docs/user/getting-started.md","docs/guides/plugins.md"]},
+
+    {"path":"README.md","note":"Checked: plugins.md only adds that Discover manages every source; the root README states no source-management detail.","inputs":["README.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked: plugins.md only adds that Discover manages every source; this guide routes to references and restates none of it.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"Checked: RegistryView now opens on skills and has no agent install path; this guide's Browse layouts and source claims are unchanged.","inputs":["docs/guides/distribution-profiles.md","src-ui/src/views/RegistryView.tsx"]}
+  ]
+}

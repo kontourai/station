@@ -1,0 +1,7 @@
+{
+  "revision": "cf309ae51a58956742033da5acf2d780e25a697e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Adds that a default naming a folded alias shows on, and starts with, the Agent standing in for it; checked against newChatDefaultRow and its test.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

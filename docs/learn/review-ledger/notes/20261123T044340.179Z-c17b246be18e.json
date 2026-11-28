@@ -1,0 +1,9 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/decisions/telemetry-tiers.md","note":"Checked: only new tests for the default for new chats were appended; telemetry and other config tests are unchanged.","inputs":["src-server/routes/system/__tests__/config.routes.test.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked: only new tests for the default for new chats were appended; telemetry and other config tests are unchanged.","inputs":["src-server/routes/system/__tests__/config.routes.test.ts"]}
+  ]
+}

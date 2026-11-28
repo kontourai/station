@@ -8,7 +8,6 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
 } from '@testing-library/react';
 import { type ReactNode, StrictMode } from 'react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
@@ -153,25 +152,43 @@ describe('ProjectSidebarFooter', () => {
   // Exactly one control may claim to be the current location, and it is
   // derived through the registry's view ownership rather than a path-prefix
   // comparison here (#1582 D4's rule).
-  test.each([['/automations', 'Automations', 'Customize']])(
-    'marks the %s control as the current page',
-    (path, current, other) => {
-      renderFooter({ activePath: path });
-      expect(
-        screen
-          .getByRole('button', { name: current })
-          .getAttribute('aria-current'),
-      ).toBe('page');
-      expect(
-        screen
-          .getByRole('button', { name: other })
-          .getAttribute('aria-current'),
-      ).toBeNull();
-    },
-  );
+  test.each([
+    ['/automations', 'Automations', 'Customize'],
+    // Customize is a page: its landing and every item it lists mark it.
+    ['/customize', 'Customize', 'Automations'],
+    ['/customize/engines', 'Customize', 'Automations'],
+    ['/customize/providers/openai', 'Customize', 'Automations'],
+    ['/agents', 'Customize', 'Automations'],
+    ['/guidance', 'Customize', 'Automations'],
+  ])('marks the %s control as the current page', (path, current, other) => {
+    renderFooter({ activePath: path });
+    expect(
+      screen
+        .getByRole('button', { name: current })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+    expect(
+      screen.getByRole('button', { name: other }).getAttribute('aria-current'),
+    ).toBeNull();
+  });
 
   test('marks neither control on an unrelated route', () => {
-    renderFooter({ activePath: '/agents' });
+    // Apps and Computers are not Customize items.
+    for (const activePath of [
+      '/apps',
+      '/apps/discover',
+      '/apps/library',
+      '/connections/computers',
+    ]) {
+      const { unmount } = renderFooter({ activePath });
+      expect(
+        screen
+          .getAllByRole('button')
+          .filter((button) => button.getAttribute('aria-current') === 'page'),
+      ).toHaveLength(0);
+      unmount();
+    }
+    renderFooter({ activePath: '/settings' });
     expect(
       screen
         .getAllByRole('button')
@@ -191,7 +208,7 @@ describe('ProjectSidebarFooter', () => {
     expect(container.textContent).not.toMatch(/v\d+\.\d+\.\d+/);
   });
 
-  test('opens Customize, restores its trigger on close, and navigates through a choice', async () => {
+  test('Customize opens its page and closes the phone drawer', () => {
     const navigate = vi.fn();
     const onAfterNavigate = vi.fn();
     render(
@@ -203,14 +220,10 @@ describe('ProjectSidebarFooter', () => {
       />,
     );
     const trigger = screen.getByRole('button', { name: 'Customize' });
-    trigger.focus();
+    // A page, not a dialog.
+    expect(trigger.getAttribute('aria-haspopup')).toBeNull();
     fireEvent.click(trigger);
-    await screen.findByRole('dialog', { name: 'Customize' });
-    fireEvent.click(screen.getByRole('button', { name: 'Close Customize' }));
-    await waitFor(() => expect(document.activeElement).toBe(trigger));
-    fireEvent.click(trigger);
-    fireEvent.click(await screen.findByRole('link', { name: 'Agents' }));
-    expect(navigate).toHaveBeenCalledWith('/agents');
+    expect(navigate).toHaveBeenCalledWith('/customize');
     expect(onAfterNavigate).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('dialog', { name: 'Customize' })).toBeNull();
   });
@@ -303,7 +316,7 @@ describe('ProjectSidebarFooter', () => {
   });
 });
 
-test('the collapsed footer keeps utilities reachable and Customize returns to More', async () => {
+test('the collapsed footer keeps utilities reachable, and Customize opens its page', async () => {
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -346,9 +359,10 @@ test('the collapsed footer keeps utilities reachable and Customize returns to Mo
     more.focus();
     fireEvent.click(more);
     fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
-    await screen.findByRole('dialog', { name: 'Customize' });
-    fireEvent.click(screen.getByRole('button', { name: 'Close Customize' }));
-    await waitFor(() => expect(document.activeElement).toBe(more));
+    expect(navigate).toHaveBeenCalledWith('/customize');
+    expect(
+      screen.queryByRole('dialog', { name: 'Sidebar utilities' }),
+    ).toBeNull();
   } finally {
     vi.unstubAllGlobals();
   }

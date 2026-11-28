@@ -48,7 +48,7 @@ export function describeProviderDefaultFailure(
         summary:
           'Couldn’t start: more than one model connection is turned on and Station can’t tell which one to use.',
         actionLabel: 'Open model connections',
-        actionHref: '/connections/models',
+        actionHref: '/customize/providers',
       }
     : null;
 }

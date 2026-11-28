@@ -1,0 +1,7 @@
+{
+  "revision": "04bd4f768351f1ce7c2500c561698108b9c67e06",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Machine relationships links Connections for setup steps only; the route table change does not touch that.","inputs":["docs/guides/connections.md"]}
+  ]
+}

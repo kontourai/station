@@ -1,0 +1,7 @@
+{
+  "revision": "c0eeea5ee41188c63199ea4c8fd702db3aa30408",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Cites the responsive action inventory generally; removing the deleted stepper row changes no theming claim.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

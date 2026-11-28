@@ -41,6 +41,7 @@ const skill: Skill = {
 const agents = [{ slug: agentId('codex'), name: 'Codex' }];
 let availableAgents = agents;
 let refuseSend = false;
+let codexPromptsAvailable = false;
 let queryClient: QueryClient;
 
 function json(data: unknown, status = 200) {
@@ -67,6 +68,36 @@ const fetchMock = vi.fn(
       return json({ success: true, data: availableAgents });
     if (path === '/api/connections/agents')
       return json({ success: true, data: [] });
+    if (path === '/api/setup-imports/sources')
+      return json({
+        success: true,
+        data: [{ id: 'codex-prompts', available: codexPromptsAvailable }],
+      });
+    if (path === '/api/setup-imports/previews')
+      return json(
+        {
+          success: true,
+          data: {
+            id: 'preview-1',
+            createdAt: '2026-11-22T00:00:00.000Z',
+            expiresAt: '2026-11-22T00:15:00.000Z',
+            entries: [
+              {
+                id: 'review',
+                name: 'review-pr.md',
+                size: 32,
+                digest: 'a'.repeat(64),
+                skillName: 'review-pr',
+                collision: false,
+                warnings: [],
+              },
+            ],
+            excluded: {},
+            warnings: [],
+          },
+        },
+        201,
+      );
     if (path === '/api/orchestration/chat') {
       if (refuseSend)
         return json({ success: false, error: 'Engine sign-in required' }, 403);
@@ -139,6 +170,7 @@ function mountLibrary() {
 beforeEach(() => {
   availableAgents = agents;
   refuseSend = false;
+  codexPromptsAvailable = false;
   fetchMock.mockClear();
   vi.stubGlobal('fetch', fetchMock);
   _setApiBase(API_BASE);
@@ -241,4 +273,30 @@ test('an empty agent catalog cannot create a chat, dispatch, or record a skill u
   expect(Object.keys(activeChatsStore.getSnapshot())).toHaveLength(0);
   expect(requests('/api/orchestration/chat')).toHaveLength(0);
   expect(requests('/api/skills/release-check/run')).toHaveLength(0);
+});
+
+test('Skills offers Import from Codex only when the host has Codex prompts, and opens the import from it', async () => {
+  codexPromptsAvailable = true;
+  mountLibrary();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Import from Codex…' }),
+  );
+  expect(
+    await screen.findByRole('heading', {
+      name: 'Import your Codex prompts as skills',
+    }),
+  ).toBeTruthy();
+  await screen.findByRole('checkbox', { name: 'review-pr' });
+  expect(requests('/api/setup-imports/previews')).toHaveLength(1);
+});
+
+test('Skills hides Import from Codex when the host has no Codex prompts folder', async () => {
+  mountLibrary();
+  await waitFor(() =>
+    expect(requests('/api/setup-imports/sources')).toHaveLength(1),
+  );
+  await screen.findByRole('button', { name: 'Import .md' });
+  expect(
+    screen.queryByRole('button', { name: 'Import from Codex…' }),
+  ).toBeNull();
 });

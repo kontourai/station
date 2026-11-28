@@ -1,0 +1,7 @@
+{
+  "revision": "860ebdf5064136947d99cd64c5b5ea60f7e8ac7a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-read after the dialog's empty/error footer change (Close only, shared Empty): the LocalSkillMutationAuthority section's claims about receipts reaching the person through the dialog are unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/components/setup/CodexPromptImportDialog.tsx"]}
+  ]
+}

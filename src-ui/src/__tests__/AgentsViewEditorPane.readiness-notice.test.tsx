@@ -243,7 +243,7 @@ describe('AgentsViewEditorPane — readiness notice (station#4521 items 1/2)', (
     expect(onFixAgent).toHaveBeenCalledWith(agent, 'models');
   });
 
-  test('a connection-scoped agent keeps routing to Configure in Connections, unaffected', () => {
+  test('a connection-scoped agent keeps routing to Configure in Customize, unaffected', () => {
     const onConfigureConnection = vi.fn();
     const onFixAgent = vi.fn();
     const agent: AgentData = {
@@ -276,7 +276,7 @@ describe('AgentsViewEditorPane — readiness notice (station#4521 items 1/2)', (
       />,
     );
     const button = screen.getByRole('button', {
-      name: 'Configure in Connections',
+      name: 'Configure in Customize',
     });
     fireEvent.click(button);
     expect(onConfigureConnection).toHaveBeenCalled();

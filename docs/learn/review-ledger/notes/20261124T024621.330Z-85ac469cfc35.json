@@ -1,0 +1,7 @@
+{
+  "revision": "32c2bcd30e4c5809d189cb03cb43a9180295bef9",
+
+  "notes": [
+    {"path":"docs/design/modality-ladder.md","note":"Re-read against this change: routing.ts now also normalises /customize/ to /customize; nothing here says that address fails.","inputs":["docs/design/modality-ladder.md","src-ui/src/app-shell/routing.ts"]}
+  ]
+}

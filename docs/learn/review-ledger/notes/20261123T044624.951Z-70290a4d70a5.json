@@ -1,0 +1,17 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked: New Chat only passes the default's Agent id to the picker rows, which tag that row. Selection, setup and start behavior described here are unchanged.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked: New Chat only passes the default's Agent id to the picker rows, which tag that row. Selection, setup and start behavior described here are unchanged.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked: New Chat only passes the default's Agent id to the picker rows, which tag that row. Selection, setup and start behavior described here are unchanged.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Checked: New Chat only passes the default's Agent id to the picker rows, which tag that row. Selection, setup and start behavior described here are unchanged.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Checked: New Chat only passes the default's Agent id to the picker rows, which tag that row. Selection, setup and start behavior described here are unchanged.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked: New Chat only passes the default's Agent id to the picker rows, which tag that row. Selection, setup and start behavior described here are unchanged.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

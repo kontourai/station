@@ -195,7 +195,7 @@ setup belongs to R6; these inert endpoints are not an end-user integration examp
 
 
 In the isolated management composition, the **MCP access** panel in
-**Connections → Tools** reads the operator's pending requests, authorized clients and access history. It can copy the MCP URL. The operator can prepare an approval, denial,
+**Customize → Tools** reads the operator's pending requests, authorized clients and access history. It can copy the MCP URL. The operator can prepare an approval, denial,
 grant change or revocation and complete it on the consent listener with their
 passkey. Approval selects a single Project or work outside Projects and a
 read-only expiry. A grant change can keep or shorten the displayed expiry.

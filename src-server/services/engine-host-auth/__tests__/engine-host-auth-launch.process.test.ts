@@ -265,7 +265,7 @@ test('a managed connection whose runtime is not installed fails before spawning,
   const error = await acpProcess.start().catch((caught: unknown) => caught);
   expect(error).toBeInstanceOf(ManagedRuntimeNotInstalledError);
   expect((error as Error).message).toBe(
-    "Kiro (KAS, no CLI) isn't installed yet. Install it from the engine's sign-in panel in Connections.",
+    "Kiro (KAS, no CLI) isn't installed yet. Install it from the engine's sign-in panel in Customize › Engines.",
   );
 });
 

@@ -582,7 +582,7 @@ export async function buildCliRuntimePrerequisites(input: {
       : `${input.displayName} CLI credentials are present on this Station.`;
   const signedOutDescription =
     input.signIn === 'station'
-      ? `Sign in to ${input.displayName} from its sign-in panel in Connections.`
+      ? `Sign in to ${input.displayName} from its sign-in panel in Customize › Engines.`
       : `${input.displayName} CLI is not authenticated.`;
 
   const prerequisites: Prerequisite[] = [

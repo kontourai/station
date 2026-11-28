@@ -2427,7 +2427,11 @@ export function createOrchestrationRoutes(
       Partial<
         Pick<
           ThreadInboxDelivery,
-          'editQueued' | 'moveQueued' | 'promoteQueued' | 'currentSteerTarget'
+          | 'editQueued'
+          | 'moveQueued'
+          | 'promoteQueued'
+          | 'currentSteerTarget'
+          | 'currentSteerHead'
         >
       >;
     /**
@@ -4120,6 +4124,7 @@ export function createOrchestrationRoutes(
       success: true,
       data: {
         currentHead: deps.threadInbox.currentHead(conversationId),
+        steerHead: deps.threadInbox.currentSteerHead?.(conversationId),
         queueSteerTarget: entries.some(
           (entry) =>
             entry.kind === 'follow-up' &&

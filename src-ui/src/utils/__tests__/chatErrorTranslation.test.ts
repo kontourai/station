@@ -179,7 +179,7 @@ describe('translateChatError', () => {
 
     expect(result.title).toMatch(/credentials/i);
     expect(result.body).not.toContain('UnrecognizedClientException');
-    expect(result.hint).toMatch(/Connections.*Models/);
+    expect(result.hint).toMatch(/Customize.*Providers/);
   });
 
   it('classifies a credential-shaped message even without a 401 status', () => {
@@ -798,7 +798,7 @@ describe('describeProviderDefaultFailure (slice 0.17)', () => {
     summary:
       'Couldn’t start: more than one model connection is turned on and Station can’t tell which one to use.',
     actionLabel: 'Open model connections',
-    actionHref: '/connections/models',
+    actionHref: '/customize/providers',
   };
 
   it.each(AMBIGUITY_CASES)(

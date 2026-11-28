@@ -706,7 +706,7 @@ function formatEnvironmentOfferOutput(input: {
     input.publication
       ? `Reachability: published privately on this tailnet as ${input.publication.endpoint}.`
       : isLoopbackApiBase(endpoint)
-        ? 'Reachability: this offer uses loopback, so a phone cannot reach it directly. Use a reviewed reachable endpoint through the existing Connections UI.'
+        ? 'Reachability: this offer uses loopback, so a phone cannot reach it directly. Use a reviewed reachable endpoint through the Computers page.'
         : 'Reachability: verify this advertised endpoint from the joining device; publication and Origin admission are managed separately.',
     'Payload (one-time pairing offer; scan or paste into Join):',
     input.payload,

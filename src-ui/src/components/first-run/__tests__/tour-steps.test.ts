@@ -14,6 +14,7 @@ import {
   tourStepIndexForId,
   tourStepPath,
 } from '../tour-steps';
+import { sampleSurfaceForAnchor } from '../unpaired-sample';
 
 /**
  * Post-archive#2678 the repo has one canonical spelling per surface plus a central
@@ -167,5 +168,37 @@ describe('tourStepIndexForId', () => {
   test('retired sessions and activity steps restart the tour', () => {
     expect(tourStepIndexForId('sessions')).toBe(0);
     expect(tourStepIndexForId('activity')).toBe(0);
+  });
+});
+
+describe('the Customize step', () => {
+  // The step speaks for the Customize page, so every kind it names must be
+  // one of that page's items; a kind the page dropped would send a new
+  // person looking for something Customize does not list. The unpaired
+  // sample's Customize card names the same kinds and is held to the same rule.
+  const customizeItems = () =>
+    new Set(
+      APP_DESTINATION_REGISTRY.getCustomizeNav().map((item) =>
+        item.label.toLowerCase(),
+      ),
+    );
+  const expectOnlyCustomizeKinds = (list: string) => {
+    const named = list.toLowerCase().split(/,\s*(?:and\s+)?|\s+and\s+/);
+    const items = customizeItems();
+    expect(named.length).toBeGreaterThan(1);
+    for (const kind of named) expect(items).toContain(kind);
+  };
+
+  test('names only kinds the Customize page lists', () => {
+    const step = FIRST_RUN_TOUR_STEPS.find(
+      (candidate) => candidate.anchor === 'customize',
+    );
+    const list = step?.body.match(/^Choose the (.+) that power your work\.$/);
+    expect(list, 'the step lists what Customize holds').toBeTruthy();
+    expectOnlyCustomizeKinds(list![1]);
+
+    const sample = sampleSurfaceForAnchor('customize');
+    expect(sample, 'the unpaired sample has a Customize card').toBeTruthy();
+    expectOnlyCustomizeKinds(sample!.eyebrow);
   });
 });

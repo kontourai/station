@@ -1,0 +1,7 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated from station-docs.md; the page itself was edited and reviewed below.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

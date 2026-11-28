@@ -1508,7 +1508,7 @@ See [operator passkeys](../guides/operator-passkeys.md#change-device-access-from
 
 #### `useConnectionsQuery()`
 
-Returns the merged Connections list used by the Connections hub. The result includes both model and runtime rows from `GET /api/connections`.
+Returns the merged connections list that Customize's connection items read. The result includes both model and runtime rows from `GET /api/connections`.
 
 #### `useModelConnectionsQuery()`
 
@@ -1531,7 +1531,7 @@ Rows can expose model-catalog metadata on `runtimeCatalog`, including:
 - `builtInModels` — Station's bounded built-in entries when live enumeration is unavailable
 - `reason`, `fetchedAt`, and `truncated` — catalog status and completeness metadata
 
-Current callers include `ConnectionsHub`, `AgentConnectionView`, `EnginePicker`
+Current callers include `AgentConnectionView`, `EnginePicker`
 and `AgentEditorForm`. Built-in candidates are not proof that an engine currently
 offers a model; preserve the catalog source and availability when presenting them.
 
@@ -2193,6 +2193,15 @@ shape and rules). An error answer rejects rather than resolving as no branding.
 ### `useConfigQuery(config?)`
 
 Fetches app configuration.
+
+### `useNewChatDefaultCapability()` and `useRecordNewChatDefaultMutation()`
+
+`useNewChatDefaultCapability()` reads whether the host advertises
+`newChatDefault`; `null` means its handshake could not be read.
+`useRecordNewChatDefaultMutation()` posts `{ agent, reason }` to
+[`POST /config/new-chat-default`](api.md#default-for-new-chats) and refreshes
+the config read. It resolves `{ recorded, newChatDefault }`: `recorded: false`
+is the host keeping the default that already stood (its 409), not a failure.
 
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
@@ -3921,7 +3930,7 @@ Durably withdraws plugin permissions and returns the effective `granted` set
 plus runtime `reconciliation` truth. `completed` means the affected runtime
 generation retired; `winding-down` names an owned continuation; `superseded`
 means a newer grant/install generation won; and `incomplete` names stages that
-need another idempotent revoke attempt. Station's Plugins surface uses that
+need another idempotent revoke attempt. Station's Apps › Library uses that
 same mutation for its **Check cleanup** and **Retry cleanup** actions; retrying
 preserves the complete pending lifecycle-permission vector.
 
@@ -6112,7 +6121,7 @@ own these stages.
 A row also carries `activationInFlight: true` while this server is still
 activating the plugin: it settles on its own, so offer no recovery and read the
 list again until the flag is gone, for no longer than the activation deadline
-plus a margin (the Plugins view stops at 15 seconds). Absence preserves compatibility
+plus a margin (Apps › Library stops at 15 seconds). Absence preserves compatibility
 with older servers; it is not a new readiness proof. Keep pending rows visible,
 but do not load their bundles or enable their actions. The server sets
 `hasBundle: false` until readiness is established. Project Pane availability
@@ -6799,6 +6808,9 @@ view lists `social` only for a browser on that computer and otherwise carries
 `socialSignIn: 'needs-browser-on-host'`. Responses are parsed
 strictly against `@kontourai/station-contracts/engine-sign-in`, and every
 caller supplies a captured `ApiRequestScope`.
+When an attempt turns `succeeded`, a Station-run sign-in turns `completed`, or
+a check answers `authenticated`, these hooks re-read engine readiness (Agents,
+the picker catalog and the connection reads), as the engine status event does.
 
 ## Guided engine setup queries
 

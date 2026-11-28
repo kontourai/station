@@ -1,0 +1,7 @@
+{
+  "revision": "62694dedd2ad88de44a5fa70962aeab935bfd143",
+
+  "notes": [
+    {"path":"docs/design/plugin-authority-model.md","note":"Unchanged from the Apps slice head; its install and consent wording names Apps › Library, which still holds Install plugin and the consent flow in the combined tree.","inputs":["docs/design/plugin-authority-model.md"]}
+  ]
+}

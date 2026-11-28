@@ -1,0 +1,7 @@
+{
+  "revision": "fe3aafb9d61f45ec7e5403f36f84041486ac96cc",
+
+  "notes": [
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"The listing now reads local package manifests for display facts only; install staging, consent and activation described here are unchanged.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/providers/registries/json-manifest-registry.ts"]}
+  ]
+}

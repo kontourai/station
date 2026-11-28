@@ -50,6 +50,7 @@ import { Skeleton } from '../state';
 import { ProjectSidebarHeader } from './ProjectSidebarHeader';
 import { ProjectSidebarNav } from './ProjectSidebarNav';
 import { ProjectSidebarRow } from './ProjectSidebarRow';
+import { useQuietSidebarPreview } from './quietSidebarPreview';
 import { useProjectListReorder } from './useProjectListReorder';
 import { useProjectSidebarState } from './useProjectSidebarState';
 import { buildSidebarClassName } from './utils';
@@ -67,6 +68,9 @@ const loadWaitingOnYouSource = () =>
   import('../../views/project-page/ProjectWaitingOnYouSource').then(
     (module) => ({ default: module.ProjectWaitingOnYouSource }),
   );
+
+// The quiet sidebar's rows (`quiet-sidebar` preview) load only while it is on.
+const loadQuietSidebar = () => import('./QuietSidebar');
 
 const loadProjectSidebarBoards = () =>
   import('./ProjectSidebarBoards').then((module) => ({
@@ -214,6 +218,7 @@ function ProjectSidebarImpl() {
   // the conversation inventory here inline; see that module for what changed
   // and why.
   const projectOverviewOn = useProjectOverviewPreview();
+  const quiet = useQuietSidebarPreview(durableAuthorityNamespace);
   const waitingOnYouBySlug = useWaitingOnYouCounts();
   const liveLanesByProject = useMemo(
     () =>
@@ -232,6 +237,22 @@ function ProjectSidebarImpl() {
     mobileTriggerRef,
     setMobileOpen,
   } = useProjectSidebarState();
+  // One set of props for the quiet parts; the Apps section and the footer
+  // they replace take the same fields and ignore `part`.
+  const quietProps = {
+    collapsed: effectiveCollapsed,
+    isMobile,
+    navigate,
+    activePath: pathname,
+    onAfterNavigate: () => setMobileOpen(false),
+    // The quiet New chat closes the drawer for the chat dock, which takes
+    // focus itself, so the drawer does not hand it back to its trigger.
+    onCloseForChat: () => {
+      keepFocusForChat.current = true;
+      setMobileOpen(false);
+    },
+  } as const;
+  const keepFocusForChat = useRef(false);
   const navigationRef = useRef<HTMLElement>(null);
   const wasMobileOpen = useRef(false);
   const returnFocusRef = useRef<HTMLElement[]>([]);
@@ -253,6 +274,12 @@ function ProjectSidebarImpl() {
         ),
       );
       const main = document.querySelector<HTMLElement>('main');
+      if (keepFocusForChat.current) {
+        // Out of the closing drawer, and nowhere else: the dock focuses.
+        (document.activeElement as HTMLElement | null)?.blur();
+        setNavigationHidden(closed);
+        return;
+      }
       const chain = wasMobileOpen.current
         ? returnFocusRef.current
         : [
@@ -296,6 +323,10 @@ function ProjectSidebarImpl() {
     wasMobileOpen.current = false;
     const chain = returnFocusRef.current;
     returnFocusRef.current = [];
+    if (keepFocusForChat.current) {
+      keepFocusForChat.current = false;
+      return;
+    }
     const frame = restoreReturnFocus(chain, navigationRef.current);
     return () => cancelAnimationFrame(frame);
   }, [isMobile, mobileOpen, mobileTriggerRef]);
@@ -360,6 +391,13 @@ function ProjectSidebarImpl() {
           />
 
           <div className="sidebar__body">
+            {quiet && (
+              <LazyBoundary
+                load={loadQuietSidebar}
+                pending={null}
+                componentProps={{ part: 'new-chat' as const, ...quietProps }}
+              />
+            )}
             <button
               type="button"
               className={`sidebar__project-btn${isHomeActive ? ' sidebar__project-btn--active' : ''}`}
@@ -378,6 +416,13 @@ function ProjectSidebarImpl() {
               </span>
               <span className="sidebar__project-name">Home</span>
             </button>
+            {quiet && (
+              <LazyBoundary
+                load={loadQuietSidebar}
+                pending={null}
+                componentProps={{ part: 'places' as const, ...quietProps }}
+              />
+            )}
             {/* #2059 (D3): Activity sits directly under Home as the panel's
               other place. The destination rows used to be a band at the
               BOTTOM of the panel, below the projects, because that band was
@@ -493,15 +538,9 @@ function ProjectSidebarImpl() {
             )}
             <LazyBoundary
               key={durableAuthorityNamespace ?? ''}
-              load={loadProjectSidebarBoards}
+              load={quiet ? loadQuietSidebar : loadProjectSidebarBoards}
               pending={null}
-              componentProps={{
-                collapsed: effectiveCollapsed,
-                isMobile,
-                navigate,
-                activePath: pathname,
-                onAfterNavigate: () => setMobileOpen(false),
-              }}
+              componentProps={{ part: 'apps' as const, ...quietProps }}
             />
             <span
               role="status"
@@ -514,14 +553,8 @@ function ProjectSidebarImpl() {
 
           <LazyBoundary
             key={`${durableAuthorityNamespace ?? ''}:${isMobile}`}
-            load={loadProjectSidebarFooter}
-            componentProps={{
-              activePath: pathname,
-              navigate,
-              isMobile,
-              collapsed: effectiveCollapsed,
-              onAfterNavigate: () => setMobileOpen(false),
-            }}
+            load={quiet ? loadQuietSidebar : loadProjectSidebarFooter}
+            componentProps={{ part: 'footer', ...quietProps }}
             pending={null}
           />
         </nav>

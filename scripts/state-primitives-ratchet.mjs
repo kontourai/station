@@ -85,7 +85,6 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 // duplicate. Subtracted from the count entirely (not just "deferred").
 export const ALREADY_CANONICAL_EXCLUSIONS = [
   'src-ui/src/components/SplitPaneLayout.tsx',
-  'src-ui/src/components/registry/RegistryCatalog.tsx',
 ];
 
 // EMPTY, and meant to stay that way. Every bespoke empty state has been

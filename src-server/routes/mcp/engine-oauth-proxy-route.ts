@@ -192,7 +192,7 @@ export function createEngineOAuthProxyRoutes(): Hono {
         if (!(error instanceof ConnectAccountRequiredError)) throw error;
         await binding.needsSignIn();
         return failure(
-          `Integration '${serverId}' needs sign-in. Open Connections → Tools and sign in to its account.`,
+          `Integration '${serverId}' needs sign-in. Open Customize › Tools and sign in to its account.`,
           403,
         );
       }
@@ -220,7 +220,7 @@ export function createEngineOAuthProxyRoutes(): Hono {
           if (!(error instanceof ConnectAccountRequiredError)) throw error;
           await binding.needsSignIn();
           return failure(
-            `Integration '${serverId}' needs sign-in. Open Connections → Tools and sign in to its account.`,
+            `Integration '${serverId}' needs sign-in. Open Customize › Tools and sign in to its account.`,
             403,
           );
         }
@@ -229,7 +229,7 @@ export function createEngineOAuthProxyRoutes(): Hono {
           await response.body?.cancel();
           await binding.needsSignIn(token);
           return failure(
-            `Integration '${serverId}' needs sign-in. Open Connections → Tools and sign in to its account.`,
+            `Integration '${serverId}' needs sign-in. Open Customize › Tools and sign in to its account.`,
             403,
           );
         }

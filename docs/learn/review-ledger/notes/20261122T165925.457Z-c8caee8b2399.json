@@ -1,0 +1,9 @@
+{
+  "revision": "0672bb70a7355525e1c217ebe9e4f713930638ff",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"SDK reference install wording now names Apps > Library; citing pages unaffected.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"SDK reference install wording now names Apps > Library; citing pages unaffected.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

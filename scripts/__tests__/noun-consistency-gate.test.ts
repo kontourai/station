@@ -153,6 +153,43 @@ describe('noun-consistency-gate', () => {
       expect(findings[0].snippet).toBe('No runtime connections');
     });
 
+    // JSX handed to a component as an attribute (`listIntro={<div>…</div>}`)
+    // is copy like any other child. The whole outer tag used to match as one
+    // span, so the text inside it was never read.
+    it('flags a banned word in text inside JSX passed as an attribute', () => {
+      const source = `
+        export function Example() {
+          return (
+            <Page
+              listIntro={
+                <div>
+                  <p>Your playbooks live here.</p>
+                </div>
+              }
+            >
+              Runtime list
+            </Page>
+          );
+        }
+      `;
+      const findings = scanFileContent('Example.tsx', source);
+      expect(findings.map((finding) => finding.snippet).sort()).toEqual([
+        'Runtime list',
+        'Your playbooks live here.',
+      ]);
+      expect(
+        findings.find((finding) => finding.snippet.includes('playbooks'))?.line,
+      ).toBe(7);
+    });
+
+    it('passes clean text inside JSX passed as an attribute', () => {
+      const source =
+        'export function Example() {\n' +
+        '  return <Page listIntro={<p>Your skills live here.</p>}>Agents</Page>;\n' +
+        '}\n';
+      expect(scanFileContent('Example.tsx', source)).toHaveLength(0);
+    });
+
     // Review L: user-facing copy also travels as object-literal fields, and
     // the JSX-only scanners never read those.
     it('flags a banned word in an object-literal copy field', () => {
@@ -459,6 +496,9 @@ describe('noun-consistency-gate', () => {
       'Rewind conversation': 'Rewind conversation to here?',
       'Restore workspace': 'Restore workspace?',
       'Reset agent context': 'Reset agent context',
+      'Connections as a place': 'Configure in Connections',
+      'Registry as a place': 'Browse Registry Skills',
+      'Plugins as a place': 'Open in Plugins',
       'Settle conversation': 'Settle conversation',
       'Dismiss from inbox': 'Dismiss from inbox',
       'Hide from inbox': 'Hide from inbox',
@@ -492,6 +532,9 @@ describe('noun-consistency-gate', () => {
       'Rewind conversation': 'rewind conversation',
       'Restore workspace': 'restore workspace',
       'Reset agent context': 'reset agent context',
+      'Connections as a place': 'Open Connections › Models, then retry',
+      'Registry as a place': 'Install one from the Registry › Integrations tab',
+      'Plugins as a place': 'Review its request under plugins.',
       'Settle conversation': 'settle conversations',
       'Dismiss from inbox': 'dismiss from the inbox',
       'Hide from inbox': 'hide from the inbox',
@@ -504,6 +547,9 @@ describe('noun-consistency-gate', () => {
     };
     /** Retired by a slice that removed every use, so enforced now. */
     const ACTIVE = [
+      'Connections as a place',
+      'Registry as a place',
+      'Plugins as a place',
       'Settle conversation',
       'Dismiss from inbox',
       'Hide from inbox',
@@ -521,7 +567,7 @@ describe('noun-consistency-gate', () => {
       );
     });
 
-    it('keeps every other entry pending until the copy lanes merge', () => {
+    it('keeps every entry pending until the copy lanes merge, except those already enforced', () => {
       // Flip-on is deleting `pending`; when that happens this expectation
       // changes with it, deliberately.
       expect(ACTIVE_RETIRED_USER_TERMS.map(({ term }) => term)).toEqual(ACTIVE);
@@ -620,6 +666,19 @@ describe('noun-consistency-gate', () => {
         '<p>Rewind chat to here</p>',
         '<p>Restore files to here</p>',
         '<p>Start fresh context</p>',
+        '<p>Open Customize</p>',
+        '<p>Configure in Customize</p>',
+        '<p>Open Customize › Providers, then retry</p>',
+        // The Station menu keeps its Connections label until Phase 2.
+        '<p>Connections</p>',
+        // Registry and Plugins are retired only as places: technical
+        // registries and the developer word stay.
+        '<p>Browse skills</p>',
+        '<p>Open in Apps</p>',
+        '<p>Registry URL</p>',
+        '<p>Install it from the npm registry.</p>',
+        '<p>Reload plugins</p>',
+        '<p>Plugins can declare settings.</p>',
         '<p>Mark done</p>',
         '<p>Reopen</p>',
         '<p>Wake now</p>',

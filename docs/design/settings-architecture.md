@@ -20,7 +20,8 @@ has no subscriber), #802 (layout removal discoverability).
 
 The first visible increment shipped through #1354: `/settings` explains the
 Station, Defaults, and This-device scopes up front; provider, developer-service,
-and computer setup has one canonical home in Connections; host detection is
+and computer setup has one canonical home (Customize for providers and developer
+services, the Computers page for computers); host detection is
 clearly labeled as describing the Station host; Agent defaults remain behind
 progressive disclosure; and keyboard shortcuts use the versioned device-settings
 record. The [keyboard shortcuts editor](../guides/keyboard-shortcuts.md) explains
@@ -137,12 +138,12 @@ that cache is not a device setting and yields once the account answers or
 the page gets a definite "no person" (signed out, a refused credential; not
 while a session or relay account is still being checked).
 
-**Customize → Appearance → Answer width** offers Comfortable, Wide (default)
+**Appearance → Answer width** offers Comfortable, Wide (default)
 and Full width. It changes assistant answers only; phone answers use the
 available width. The shared device-setting key `chatAnswerWidth` supplies the
 legacy/default value and participates in account preferences.
 
-**Customize → Appearance → Display** offers Density (Comfortable, the 13px
+**Appearance → Display** offers Density (Comfortable, the 13px
 default, or Compact, the earlier 12px sizes) and Motion (System, the default,
 or Reduced). The device-setting keys `density` and `motion` are account
 preferences like the mode, kept in the account's appearance sibling file and
@@ -423,10 +424,11 @@ Settings gear no longer appear in the footer. A collapsed workspace map puts
 Automations and Customize in its Sidebar utilities popup, while Updates and the
 profile button remain on the rail. The obsolete Open chats/Drafts section
 toggles no longer appear in Appearance; existing device values remain compatible.
-Customize opens Agents, Skills, Connections, Plugins, Appearance and Settings
-at their existing routes. Developer joins that chooser, before Settings, when
-enabled. Settings stays reachable from the profile menu, Customize, its keyboard
-shortcut and the command palette. The Appearance page owns the mode (System, the
+Customize opens the Customize page (`/customize`), whose list is Agents and
+Skills, Engines and Providers, and Tools and Knowledge (first-release slice
+1.2). Plugins, Appearance, Developer and Settings are no longer in it; each
+keeps its route and its command-palette entry. Settings stays reachable from
+the profile menu, its keyboard shortcut and the command palette. The Appearance page owns the mode (System, the
 default, which follows the device, or Light or Dark), density, motion, the
 color theme, its flavor and its accent, and the signed-in person's own
 [custom appearance](../decisions/custom-appearance.md) (a palette and CSS
@@ -439,7 +441,7 @@ Theme and Accent color rows that link to the page. The footer replaces its
 command-palette chip and duplicate notification bell; the header bell and
 command-palette shortcut remain available.
 The Settings rail and phone picker stay within Settings; from management screens
-Settings remains reachable through the account menu and Customize. Long permission and checkpoint
+Settings remains reachable through the account menu. Long permission and checkpoint
 explanations keep their full text under Details, with a short consequence visible
 on the row. Registry remains reachable from Plugins and the command palette.
 
@@ -649,8 +651,10 @@ Station restart. The Veritas evidence switch is read from live configuration
 when Trust bundles or Task answer support are requested, so it applies after
 configuration activation without a restart.
 
-Settings export/import excludes `firstRun`: it records this home's first-run
-decision rather than a preference and cannot be written through `PUT /config/app`.
+Settings export/import excludes `firstRun` and `newChatDefault`: the first
+records this home's first-run decision rather than a preference, the second
+names this Station's own Agents, and neither can be written through
+`PUT /config/app`.
 Imports also ignore it in older settings files; other registered configuration
 and device preferences retain their existing transfer behavior.
 

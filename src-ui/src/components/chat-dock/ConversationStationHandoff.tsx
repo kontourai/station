@@ -415,9 +415,9 @@ export function ConversationStationHandoff({
           code === CONVERSATION_IMPORT_DELETED_CODE
             ? `That chat was removed on ${stationName}. Try again to send a fresh copy.`
             : code === PEER_CONVERSATION_HANDOFF_PAIRING_CODE
-              ? `${stationName} is connected with a device sign-in. Pair it as a Station in Connections to continue chats there.`
+              ? `${stationName} is connected with a device sign-in. Pair it as a Station from the Station menu to continue chats there.`
               : code === PEER_CONVERSATION_HANDOFF_ACCESS_CODE
-                ? `${stationName} didn't let this Station continue chats there. Check the pairing's access in Connections.`
+                ? `${stationName} didn't let this Station continue chats there. Check the pairing's access in the Station menu.`
                 : code === PEER_CONVERSATION_HANDOFF_REFUSAL_CODE
                   ? `${stationName} didn't take this chat. Check that it has this Agent and the chosen project.`
                   : userFacingErrorMessage(error),
@@ -436,7 +436,7 @@ export function ConversationStationHandoff({
       <ErrorState
         variant="compact"
         title={`Couldn't connect to ${stationName}`}
-        description="Check the pairing in Connections, then retry."
+        description="Check the pairing in the Station menu, then retry."
         action={<Button onClick={target.reconnect}>Retry</Button>}
       />
     );
