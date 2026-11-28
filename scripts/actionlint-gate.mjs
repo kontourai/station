@@ -509,11 +509,11 @@ export const CHECKOUT_ACTION =
 export const SETUP_NODE_ACTION =
   'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1';
 export const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066';
+  'github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea';
 export const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066';
+  'github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea';
 export const DEPENDENCY_REVIEW_ACTION =
-  'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
+  'actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec';
 export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =
   'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9';
 const WINDOWS_PR_WORKFLOW = '.github/workflows/windows-pr-verification.yml';
