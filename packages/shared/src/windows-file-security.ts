@@ -59,6 +59,9 @@ function api() {
     GetSecurityInfo: security.func(
       'uint32_t __stdcall GetSecurityInfo(intptr_t handle, uint32_t kind, uint32_t requested, _Out_ void **owner, void *group, _Out_ void **dacl, void *sacl, _Out_ void **descriptor)',
     ),
+    SetSecurityInfo: security.func(
+      'uint32_t __stdcall SetSecurityInfo(intptr_t handle, uint32_t kind, uint32_t requested, const void *owner, const void *group, const void *dacl, const void *sacl)',
+    ),
     GetSecurityDescriptorControl: security.func(
       'int __stdcall GetSecurityDescriptorControl(const void *descriptor, _Out_ uint16_t *control, _Out_ uint32_t *revision)',
     ),
@@ -145,7 +148,7 @@ function assertNoReparse(file: string): void {
   }
 }
 
-function assertPrivateHandle(handle: number): void {
+function assertPrivateHandle(handle: number, requireProtected = true): boolean {
   const { koffi, functions, sid } = api();
   const owner = [null];
   const dacl = [null];
@@ -170,7 +173,7 @@ function assertPrivateHandle(handle: number): void {
     if (
       !functions.EqualSid(owner[0], sid) ||
       !functions.GetSecurityDescriptorControl(security[0], control, revision) ||
-      (control[0] & 0x1000) === 0 ||
+      (requireProtected && (control[0] & 0x1000) === 0) ||
       !dacl[0] ||
       !functions.GetAclInformation(
         dacl[0],
@@ -194,6 +197,7 @@ function assertPrivateHandle(handle: number): void {
     ) {
       throw new Error('Windows private file permits unrelated access');
     }
+    return (control[0] & 0x1000) !== 0;
   } finally {
     functions.LocalFree(security[0]);
   }
@@ -315,10 +319,10 @@ function openPrivateFile(
   const handle = functions.CreateFileW(
     file,
     operation === 'read'
-      ? 0x80020000
+      ? 0x80060000
       : operation === 'create'
-        ? 0xc0030000
-        : 0xc0020000,
+        ? 0xc0070000
+        : 0xc0060000,
     1,
     attributes,
     operation === 'read' ? 3 : operation === 'create' ? 1 : 4,
@@ -331,6 +335,20 @@ function openPrivateFile(
     );
   try {
     assertNoReparse(file);
+    fileInformation(handle);
+    if (!assertPrivateHandle(handle, false)) {
+      const status = functions.SetSecurityInfo(
+        handle,
+        1,
+        0x80000004,
+        null,
+        null,
+        acl,
+        null,
+      );
+      if (status !== 0)
+        throw new Error(`Windows private file ACL migration failed: ${status}`);
+    }
     assertPrivateHandle(handle);
     assertPrivateFileBinding(handle, file);
     return new WindowsPrivateFile(handle, file, ancestors);
@@ -618,26 +636,22 @@ function withPrivateFile<Result>(
   action: (descriptor: WindowsPrivateFile) => Result,
 ): Result {
   const descriptor = openWindowsPrivateFile(file, operation);
-  let failure: unknown;
-  let failed = false;
+  let result: Result;
   try {
-    return action(descriptor);
-  } catch (error) {
-    failed = true;
-    failure = error;
-    throw error;
-  } finally {
+    result = action(descriptor);
+  } catch (failure) {
     try {
       descriptor.close();
     } catch (error) {
-      if (failed)
-        throw new AggregateError(
-          [failure, error],
-          'Windows private file operation and close failed',
-        );
-      throw error;
+      throw new AggregateError(
+        [failure, error],
+        'Windows private file operation and close failed',
+      );
     }
+    throw failure;
   }
+  descriptor.close();
+  return result;
 }
 
 export function readWindowsPrivateFile(file: string, maxBytes: number): Buffer {

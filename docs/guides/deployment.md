@@ -1197,9 +1197,12 @@ result; failed, orphaned, and expired operations cannot classify later exits as
 expected.
 
 On Windows, the journal uses retained native file handles rather than POSIX
-mode bits: a file must belong to the current user and have a protected DACL
-granting only that user FullControl. Existing broader file ACLs are refused,
-not silently repaired. Handles retain non-reparse ancestors and deny concurrent
+mode bits: a file must belong to the current user and grant only that user
+FullControl. An existing inherited owner-only DACL is verified through the
+retained handle, protected on that same handle, then reverified before content
+is read or appended; existing bytes are preserved. Existing broader file ACLs
+are refused, not silently repaired. New files start with a protected DACL.
+Handles retain non-reparse ancestors and deny concurrent
 write/delete sharing; reads check file identity and the handle's DACL before
 and after reading. The default rotation threshold is 10 MiB, not a record-size
 or read limit: configured larger thresholds and single larger records remain

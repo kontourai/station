@@ -297,6 +297,55 @@ describe('lifecycle event journal', () => {
     expect(readLifecycleEvents(file)).toHaveLength(2);
   });
 
+  it.runIf(process.platform === 'win32')(
+    'migrates an inherited owner-only journal without losing existing bytes',
+    () => {
+      const root = createJournalRoot('station-journal-inherited-');
+      const file = join(root, 'events.jsonl');
+      const event = {
+        ...identity,
+        version: 1 as const,
+        type: 'started' as const,
+        timestamp: '2026-07-10T12:00:00.000Z',
+      };
+      const original = `${JSON.stringify(event)}\n`;
+      try {
+        writeFileSync(file, original, { mode: 0o600 });
+        const encodedPath = Buffer.from(file).toString('base64');
+        const inspect = () => {
+          const result = runWindowsTrustCommand(
+            windowsSystemUtilityPath('powershell'),
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-EncodedCommand',
+              encodePowerShellCommand(
+                `$ErrorActionPreference='Stop'; $file=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedPath}')); $acl=[IO.File]::GetAccessControl($file); $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])); if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $sid.Value -or $rules.Count -ne 1 -or $rules[0].IdentityReference.Value -ne $sid.Value -or $rules[0].AccessControlType -ne 'Allow' -or $rules[0].FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl) { throw 'Fixture is not owner-only FullControl' }; @{ protected=$acl.AreAccessRulesProtected; inherited=$rules[0].IsInherited } | ConvertTo-Json -Compress`,
+              ),
+            ],
+          );
+          expect(result.error).toBeUndefined();
+          expect(result.status, result.stderr).toBe(0);
+          return JSON.parse(result.stdout ?? '');
+        };
+        expect(inspect()).toEqual({ protected: false, inherited: true });
+        expect(readLifecycleEvents(file)).toEqual([event]);
+        expect(readFileSync(file, 'utf8')).toBe(original);
+        expect(inspect()).toEqual({ protected: true, inherited: false });
+        appendLifecycleEvent(file, { ...event, type: 'process_exit' });
+        expect(readFileSync(file, 'utf8').startsWith(original)).toBe(true);
+        expect(readLifecycleEvents(file)).toHaveLength(2);
+        allowUnrelatedJournalAccess(file);
+        const beforeRefusal = readFileSync(file, 'utf8');
+        expect(() => readLifecycleEvents(file)).toThrow(/private file/);
+        expect(() => appendLifecycleEvent(file, event)).toThrow(/private file/);
+        expect(readFileSync(file, 'utf8')).toBe(beforeRefusal);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   it.each(['current', 'retained'] as const)(
     'refuses unrelated-principal access to the %s journal without rewriting it',
     (generation) => {
