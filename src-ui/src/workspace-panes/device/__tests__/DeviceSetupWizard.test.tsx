@@ -252,6 +252,79 @@ describe('device setup wizard', () => {
     );
   });
 
+  test('a helper that is turned on but not installed offers Install, which re-sends consent', async () => {
+    const log = stub({
+      status: () =>
+        status({
+          hubEnabled: true,
+          hub: {
+            tool: 'expo-device-hub',
+            state: 'not-installed',
+            requiredVersion: '0.10.1',
+          },
+        }),
+    });
+    mountWizard();
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain(
+      'Install the device helper 0.10.1 to finish setup.',
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    await click(screen.getByRole('button', { name: 'Install' }));
+    await waitFor(() =>
+      expect(log.posts).toEqual([
+        { path: 'toolchain/hub', body: { enabled: true, consent: true } },
+      ]),
+    );
+  });
+
+  test('agent access that is on but not installed offers Install for the agent tools', async () => {
+    const log = stub({
+      inventory: {
+        hostId: 'local',
+        state: 'ready',
+        observedAt: '2026-09-22T00:00:00.000Z',
+        devices: [],
+      },
+      status: () =>
+        status({
+          hubEnabled: true,
+          hub: INSTALLED_HUB,
+          hubSource: 'managed',
+          hubProcess: {
+            state: 'running',
+            version: '0.10.1',
+            startedAt: '2026-09-22T00:00:00.000Z',
+          },
+          agentAccess: true,
+          agentDevice: {
+            tool: 'agent-device',
+            state: 'not-installed',
+            requiredVersion: '0.21.12',
+          },
+        }),
+    });
+    mountWizard();
+    await screen.findByText('The device helper is ready.');
+    await click(screen.getByRole('button', { name: 'Continue' }));
+    await click(screen.getByRole('button', { name: 'Continue' }));
+    expect(
+      screen.getByText('Install agent tools 0.21.12 to finish setup.'),
+    ).toBeTruthy();
+    await click(screen.getByRole('button', { name: 'Install' }));
+    await waitFor(() =>
+      expect(log.posts).toEqual([
+        {
+          path: 'toolchain/agent-access',
+          body: { enabled: true, consent: true },
+        },
+      ]),
+    );
+  });
+
   test('missing user Node/npm gives setup guidance and can be checked again', async () => {
     const log = stub({
       status: () =>

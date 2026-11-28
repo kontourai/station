@@ -75,6 +75,12 @@ function installLine(
   retry: DeviceToolchainAction,
 ): Line | undefined {
   switch (tool.state) {
+    case 'not-installed':
+      return {
+        tone: 'problem',
+        text: `Install ${name} ${tool.requiredVersion} to finish setup.`,
+        action: { label: 'Install', run: retry },
+      };
     case 'installing':
       return {
         tone: 'progress',

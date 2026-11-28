@@ -466,6 +466,83 @@ describe('device toolchain: install', () => {
     expect(toolchain.state('expo-device-hub', true).state).toBe('installed');
   });
 
+  test('a failed install still reads as failed after a restart, until a retry succeeds', async () => {
+    const home = tempHome();
+    let fail = true;
+    const installer = fakeInstaller((dir) => {
+      if (fail)
+        throw new DeviceToolInstallError(
+          'package-manager-unavailable',
+          'npm is missing',
+          false,
+        );
+      writeFakeInstall(dir, hub);
+    });
+    await new DeviceToolchain({ stationHome: home, pins, installer }).install(
+      'expo-device-hub',
+      { consent: true },
+    ).completion;
+
+    // A new toolchain over the same home is a Station restart.
+    const restarted = new DeviceToolchain({
+      stationHome: home,
+      pins,
+      installer,
+    });
+    expect(restarted.state('expo-device-hub', true)).toEqual({
+      tool: 'expo-device-hub',
+      state: 'failed',
+      requiredVersion: '9.9.9',
+      reason: 'package-manager-unavailable',
+      detail: 'npm is missing',
+      retryable: false,
+    });
+
+    fail = false;
+    await restarted.install('expo-device-hub', { consent: true }).completion;
+    expect(restarted.state('expo-device-hub', true).state).toBe('installed');
+    expect(
+      existsSync(
+        join(home, 'devices', 'tools', 'expo-device-hub', '.last-failure.json'),
+      ),
+    ).toBe(false);
+  });
+
+  test('a failure record for another version or of the wrong shape is ignored', () => {
+    const home = tempHome();
+    const root = join(home, 'devices', 'tools', 'expo-device-hub');
+    mkdirSync(root, { recursive: true });
+    const record = join(root, '.last-failure.json');
+    const toolchain = new DeviceToolchain({
+      stationHome: home,
+      pins,
+      installer: fakeInstaller(),
+    });
+    writeFileSync(
+      record,
+      JSON.stringify({
+        requiredVersion: '1.0.0',
+        reason: 'install-failed',
+        detail: 'old',
+        retryable: true,
+      }),
+    );
+    expect(toolchain.state('expo-device-hub', true).state).toBe(
+      'not-installed',
+    );
+    writeFileSync(
+      record,
+      JSON.stringify({ requiredVersion: '9.9.9', reason: 'made-up' }),
+    );
+    expect(toolchain.state('expo-device-hub', true).state).toBe(
+      'not-installed',
+    );
+    writeFileSync(record, '{not json');
+    expect(toolchain.state('expo-device-hub', true).state).toBe(
+      'not-installed',
+    );
+  });
+
   test('stale staging directories are removed, fresh ones are left alone', () => {
     const home = tempHome();
     const root = join(home, 'devices', 'tools', 'expo-device-hub');
