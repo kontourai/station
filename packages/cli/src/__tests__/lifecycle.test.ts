@@ -62,7 +62,15 @@ import {
 } from '@kontourai/station-shared/windows-path-trust';
 import { buildSync } from 'esbuild';
 import { Hono } from 'hono';
-import { afterEach, beforeAll, describe, expect, it, type Mock, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../../src-server/runtime/bootstrap/runtime-http.js';
 import type { EventBus } from '../../../../src-server/services/orchestration/event-bus.js';
