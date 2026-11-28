@@ -94,7 +94,9 @@
 
     "src-server/services/connections/route-publications.ts",
 
-    "src-ui/src/views/settings/StationRoutesSection.tsx"
+    "src-ui/src/views/settings/StationRoutesSection.tsx",
+
+    "packages/shared/src/windows-file-security.ts"
   ],
 
   "checks": [

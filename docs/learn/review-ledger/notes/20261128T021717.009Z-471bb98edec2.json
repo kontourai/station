@@ -1,0 +1,9 @@
+{
+  "revision": "e57b948c965bbd2ffb995e2fc63e6330095eb0df",
+
+  "notes": [
+    {"path":"docs/design/instance-registry.md","note":"Reviewed #5655 Windows-only journal read/append dispatch and native handle custody against lifecycle-events.ts, windows-file-security.ts and real journal owner tests. Cross-process mutation-lock/reclamation code, registry publication, reconciler deadlines, desktop claim/attach authority and signed release provenance are unchanged. Checked the citing ADR0015/0020 historical limits, instance-registry Windows ACL disclaimer, reconciler cooperative-lock/deadline claims and RC provenance scope; none gains Windows registry/state/log custody from this journal repair. Source evidence is not installed Nightly or release qualification. POSIX path unchanged; larger maxBytes and oversized record compatibility explicitly retained.","inputs":["packages/shared/src/lifecycle-events.ts"]},
+
+    {"path":"docs/design/station-instance-reconciler.md","note":"Reviewed #5655 Windows-only journal read/append dispatch and native handle custody against lifecycle-events.ts, windows-file-security.ts and real journal owner tests. Cross-process mutation-lock/reclamation code, registry publication, reconciler deadlines, desktop claim/attach authority and signed release provenance are unchanged. Checked the citing ADR0015/0020 historical limits, instance-registry Windows ACL disclaimer, reconciler cooperative-lock/deadline claims and RC provenance scope; none gains Windows registry/state/log custody from this journal repair. Source evidence is not installed Nightly or release qualification. POSIX path unchanged; larger maxBytes and oversized record compatibility explicitly retained.","inputs":["packages/shared/src/lifecycle-events.ts"]}
+  ]
+}
