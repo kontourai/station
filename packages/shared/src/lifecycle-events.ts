@@ -37,6 +37,10 @@ import {
   ownProcessBirthProbeSchedule,
   PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
 } from './process-identity.mjs';
+import {
+  appendWindowsPrivateJournal,
+  readWindowsPrivateFile,
+} from './windows-file-security.js';
 
 export const LIFECYCLE_EVENT_VERSION = 1 as const;
 export const DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES = 10 * 1024 * 1024;
@@ -232,6 +236,12 @@ function openJournal(file: string): number {
 }
 
 function readExistingJournal(file: string): string {
+  if (process.platform === 'win32') {
+    return readWindowsPrivateFile(
+      file,
+      DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES,
+    ).toString('utf8');
+  }
   const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   try {
     const info = fstatSync(fd);
@@ -1344,6 +1354,16 @@ export function appendLifecycleEvent(
   });
   let fd: number | null = null;
   try {
+    if (process.platform === 'win32') {
+      if (!isAbsolute(file))
+        throw new Error('lifecycle journal path must be absolute');
+      appendWindowsPrivateJournal(
+        file,
+        line,
+        options.maxBytes ?? DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES,
+      );
+      return event;
+    }
     fd = openJournal(file);
     if (
       fstatSync(fd).size + Buffer.byteLength(line) >
