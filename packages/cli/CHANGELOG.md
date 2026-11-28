@@ -1,5 +1,93 @@
 # @kontourai/station-cli
 
+## 0.13.0
+
+### Minor Changes
+
+- de1aed1: Automation policy changes are explained and scoped (#4511), the operator
+  surface is complete (#4513), and the isolated-repair tick refuses intents whose
+  rule was deleted or changed kind (#4575).
+
+  Policy: a retained action's fingerprint covers only authority-bearing fields
+  (the source's repository, enabled/revoked state and the grant for this rule's
+  Project, Agent and action; the rule's mode, matcher and action). Renaming a
+  rule or a source, or changing a rate limit, episode policy or poll interval,
+  no longer stops work. A change to the action's instructions or budget is an
+  amendment: the action adopts it and the running Session gets the new text as
+  its next turn. Any other change is a revocation: automatic work stops, the
+  Session is marked blocked and the Task moves to `blocked`, both with the
+  reason. A person's own turn into that Session is admitted under their
+  authority (no rule budget, and Ask instead of an inherited Auto) and the
+  Session becomes theirs. This boundary survives action settlement and runtime
+  restart; a failed hand-over or approval write refuses the turn before send.
+  Intents retained before this change still match
+  until their rule or source changes in any way.
+
+  Task reads (`GET /api/tasks/:taskId` and `/graph`) carry `automation`
+  (`AutomationTaskProjection`): the immutable `AutomationTaskMandate` the Task
+  started under, its amendments, revocation and hand-over. Task Details shows it
+  as "Started by automation".
+
+  Operator surface: every `AUTOMATION_OPERATOR_SURFACE` verb has a route, an SDK
+  function and a `station automation` action, plus the new `update-rule`
+  (`PUT /automations/rules/:target`). Station Control MCP gains the four read
+  tools only. Mutations need the operator in person and edit `dispatch-task`
+  rules only. `retry-episode` gives an exhausted episode exactly one more
+  attempt under the rule's current policy.
+
+  Ledger: a held claim records `suppressed` with its reason (`rate-limited`,
+  `rule-active-limit`, `concurrency-limit`, `episode-active`,
+  `episode-exhausted`, `episode-indeterminate`). A refused intent keeps its
+  refusal reason (`policy_changed` and the new `admission_refused`), never
+  `policy_unavailable` by default.
+
+  Breaking for type consumers: `notify` is no longer an action kind and
+  `received` is no longer a delivery outcome; nothing ever executed or wrote
+  either. A stored grant listing `notify` drops it on read; a stored `notify`
+  rule makes the configuration unreadable (fails closed). Downgrade: once an
+  episode has been retried, an older Station cannot open the ledger and reads
+  Automation as `policy_unavailable` (fails closed).
+- 2d61598: `station plugin install`, `station plugin update` and `station registry install` now exit with status 2, not 0, when Station saved the plugin but it is not active (its activation did not finish and needs recovery). Scripts and agents that treated exit 0 as "installed and usable" now see the difference. A change Station finishes on its own, an answer from an older Station that did not say whether the plugin is active (the text then points to the plugin's row), and a saved `station plugin remove`, still exit 0.
+
+  New `station plugin recover <name> [--yes]` recovers a plugin that reads Needs recovery without the Plugins page. It prints the recovery review (contents digest, registry claim, required and awaiting permissions, retained dependencies), requires the same explicit decision as `station plugin install`, and sends exactly the reviewed revisions.
+- 3475cd8: Add `station acp setup` and the safe `ACPEngineSetupEntry` catalog contract for guided engine setup. Engine setup links lead to Station's existing connection and sign-in pane; installation and credential operations stay with the person. ACP command-catalog actions reject an engine id instead of implying they check that engine.
+
+  The `@kontourai/station-sdk/engine-setup` entry provides scoped installer and Agent-tool hooks. The guided pane reviews and runs built-in installers in a visible terminal, verifies device-code sign-in, repairs launch arguments in place, and explicitly selects Station tools while preserving authored settings. Installer retries reconcile the saved attempt; Stop targets that exact attempt. The supervisor's protocol 1.4 negotiates a process-owned lifetime before starting a bounded command.
+- 1d0dbf5: Add `station conversation settle <conversationId>` and
+  `station conversation reopen <conversationId>`, which move a conversation
+  between Open and Settled in your own inbox under the Open and Settled inbox
+  Feature Preview (`PUT /api/conversations/:id/work-state`). The contracts
+  package adds the activity phrase for Station Control's `settle_conversation`
+  tool.
+
+### Patch Changes
+
+- 302129e: `--approval-mode` help now says who accepts it: Claude and Codex accept it,
+  an ACP Agent accepts it when Station answers its approvals, and other Agents
+  refuse it.
+- 64522c2: `station plugin install` names Apps › Library, where installed plugins are now
+  managed in Station, instead of the retired Plugins page.
+- 64522c2: The CLI's device pairing offer, when it uses a loopback address, points at the
+  Computers page instead of the retired Connections page.
+- 64522c2: `station doctor`'s chat recommendation names Customize instead of the retired
+  Connections page: "Change the default path in Customize." when chat is
+  reachable, and "Customize → Providers" where it asks for an Ollama, Bedrock or
+  other model connection.
+- 64522c2: `station plugin install` and `station plugin update` say to choose Recover
+  plugin, and to approve trusted permissions, in Apps › Library instead of the
+  retired Plugins page.
+- c4272d5: `station schedule create` accepts a body with a `displayName` and no `name`;
+  the host then picks an unused slug and prints it as `name`. A body with
+  neither, or with no `prompt`, is still refused before any request.
+- 64522c2: A Station records a default for new chats. `AppConfig.newChatDefault` (`{ agent, reason }`) names the Agent new chats start with when nothing closer names one: `first-signed-in` when Station picked the first engine whose sign-in it has verified, in the fixed order Claude Code, Codex, other engines by id; `chosen` when a person picked it. `describeNewChatDefaultViolation` is the one rule: a `first-signed-in` record is written only while none exists. `ROUTE_WRITTEN_APP_CONFIG_KEYS` and `routeWrittenKeyRefusal` name the settings only their own routes write (`firstRun`, `newChatDefault`). `StationCapabilityFlags.newChatDefault` reports a host that serves `POST /config/new-chat-default`. The SDK adds `useNewChatDefaultCapability()` and `useRecordNewChatDefaultMutation()`; the mutation resolves `recorded: false` with the standing default when the host keeps one it already has. A sign-in the engine sign-in hooks see finish now re-reads engine readiness (Agents, picker catalog, connections).
+
+  Behaviour change: on an upgraded Station with no remembered Agent, new chats move from Station's assistant to the first engine whose sign-in Station has verified.
+
+  `station config set --offline` refuses `firstRun` and `newChatDefault`, naming the route that writes each.
+- 2d61598: A plugin install, update or removal that Station saved but did not finish applying is no longer reported as a failure. When the runtime pass does not complete, these routes answer `202` with `success: false` and `configurationActivation.status: 'pending'`. `usePluginInstallMutation`, `usePluginUpdateMutation`, `usePluginRemoveMutation`, `requestPluginRegistryInstallAction` (install and uninstall) and `requestRegistryCatalogAction('plugins', …)` used to throw "Install failed", "Update failed" or "Remove failed" for that response. They now resolve with the result. For an install or update the plugin is then not active, and Station does not retry its activation: it stays in Needs recovery until a person recovers it. A removal finishes unloading on Station's next reconciliation. A plugin list read made while the install request is still open reads `installationReadiness` as `pending` and also carries `activationInFlight: true`: clients offer no recovery for that row until the flag is gone. A client that predates the flag reads the row as `pending`, as before. `station plugin install`, `station plugin update`, `station plugin remove` and `station registry install` print the same outcomes.
+
+  `@kontourai/station-contracts/plugin` adds `readPluginLifecycleResponse(status, body)` (`applied`, `saved` or `refused`) and `pluginLifecycleUnapplied(body)` (`activation` or `projection`), so every caller reads the response the same way, and `describeActivationDeadline(ms)` for saying the deadline in whole seconds. `PluginInstallResult` gains an optional `configurationActivation` field whose `recovery` (`required` or `none`) and `deadlineMs` say whether the plugin needs recovery and why; readers branch on `recovery` and treat its absence (an older server) as unknown, and `recoverPlugin` reads its response through the same function. A `202` without that marker is still a refusal.
+
 ## 0.12.0
 
 ### Minor Changes
