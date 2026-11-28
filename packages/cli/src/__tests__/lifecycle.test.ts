@@ -1,4 +1,5 @@
 import {
+  execFileSync as realExecFileSync,
   execSync as realExecSync,
   spawnSync as realSpawnSync,
   spawn,
@@ -9145,7 +9146,7 @@ describe('lifecycle build + restart ergonomics', () => {
     const originalMode = statSync(TEST_CWD).mode;
     const originalAcl =
       process.platform === 'win32'
-        ? execFileSync('icacls', [TEST_CWD], {
+        ? realExecFileSync('icacls', [TEST_CWD], {
             encoding: 'utf8',
             windowsHide: true,
           })
@@ -9166,7 +9167,7 @@ describe('lifecycle build + restart ergonomics', () => {
     expect(statSync(TEST_CWD).mode).toBe(originalMode);
     if (originalAcl !== undefined) {
       expect(
-        execFileSync('icacls', [TEST_CWD], {
+        realExecFileSync('icacls', [TEST_CWD], {
           encoding: 'utf8',
           windowsHide: true,
         }),
