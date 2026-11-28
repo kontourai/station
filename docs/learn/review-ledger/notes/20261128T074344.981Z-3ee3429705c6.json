@@ -1,0 +1,9 @@
+{
+  "revision": "c22884a9a0eedcc97c83de2d467487e44e37fb63",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the Browser test evidence profiling section of module-map and fixture/profile sections of testing against the runner manifest, four post-click successful GET waits, production build provenance and unconditional teardown verdict. Added only Inbox refresh group; no sampler, lifecycle, policy, threshold or production endpoint change. Clean7a1dac2a1 capture completed3samples per width. Diagnostic Chromium only, not device/backend/whole-app qualification; other module-map topics unchanged.","inputs":["scripts/run-journey-profiles.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the Browser test evidence profiling section of module-map and fixture/profile sections of testing against the runner manifest, four post-click successful GET waits, production build provenance and unconditional teardown verdict. Added only Inbox refresh group; no sampler, lifecycle, policy, threshold or production endpoint change. Clean7a1dac2a1 capture completed3samples per width. Diagnostic Chromium only, not device/backend/whole-app qualification; other module-map topics unchanged.","inputs":["scripts/run-journey-profiles.mjs"]}
+  ]
+}

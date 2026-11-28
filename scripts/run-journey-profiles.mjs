@@ -11,6 +11,11 @@ import { startFixtureUi } from './lib/ui-profile-server.mjs';
 
 export const JOURNEYS = [
   {
+    spec: 'tests/chat-dock-inbox-open.spec.ts',
+    grep: 'profiles Inbox refresh while retaining the reader draft and list position',
+    ids: ['inbox-refresh', 'inbox-refresh-mobile'],
+  },
+  {
     spec: 'tests/mobile-chat-composer.spec.ts',
     grep: 'virtualizes a long real transcript|profiles switching between authoritative conversations',
     ids: ['long-transcript-stream', 'conversation-switch'],
