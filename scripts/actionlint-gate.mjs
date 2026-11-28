@@ -813,7 +813,7 @@ const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
   // trusted-base topology separately owns its credential admission.
   'actions/create-github-app-token': (step) =>
     step.uses ===
-    'actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc'
+    'actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510'
       ? []
       : [UNREVIEWED_CACHE_ACTION_MESSAGE],
   'actions/upload-artifact': noCacheFindings,
